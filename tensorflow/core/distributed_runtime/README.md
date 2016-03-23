@@ -6,73 +6,76 @@ communication.
 
 ## Quick start
 
-To get started, you will need to build the TensorFlow server binary
-(`grpc_tensorflow_server`) and a gRPC-based client. Currently this is only
-available using the source-based installation of TensorFlow, but it will be
-included in future binary releases. You can build the server binary using one of
-the following commands:
-
-```shell
-# CPU-only build.
-$ bazel build -c opt //tensorflow/core/distributed_runtime/rpc:grpc_tensorflow_server
-
-# GPU build.
-$ bazel build -c opt --config=cuda //tensorflow/core/distributed_runtime/rpc:grpc_tensorflow_server
-```
-
-If you build the latest Python (PIP) package from source, it will contain a
-gRPC-based client. If you are using a previous binary release, you may need to
-rebuild and install an up-to-date PIP package by following
+The gRPC server is included as part of the nightly PIP packages, which you can download from [the continuous integration site](http://ci.tensorflow.org/view/Nightly/). Alternatively, you can build an up-to-date PIP package by following
 [these installation instructions](https://www.tensorflow.org/versions/master/get_started/os_setup.html#create-the-pip-package-and-install).
 
 Once you have successfully built the distributed TensorFlow components, you can
-test your installation by starting a server as follows:
+test your installation by starting a local server as follows:
 
 ```shell
 # Start a TensorFlow server as a single-process "cluster".
-$ bazel-bin/tensorflow/core/distributed_runtime/rpc/grpc_tensorflow_server \
-    --cluster_spec='local|localhost:2222' --job_name=local --task_id=0 &
-```
-
-...then start a Python interpreter and create a remote session:
-
-```python
 $ python
 >>> import tensorflow as tf
 >>> c = tf.constant("Hello, distributed TensorFlow!")
->>> sess = tf.Session("grpc://localhost:2222")
+>>> server = tf.GrpcServer.new_local_server()
+>>> sess = tf.Session(server.target)
 >>> sess.run(c)
 'Hello, distributed TensorFlow!'
 ```
 
 ## Cluster definition
 
-The command-line arguments to `grpc_tensorflow_server` define the membership of a TensorFlow cluster. The `--cluster_spec` flag determines the set of processes in the cluster, as a list of *jobs*, each of which contains a list of *task* endpoints. All processes in the cluster must be started with the same `--cluster_spec`. Example values include:
+The `tf.GrpcServer.new_local_server()` method creates a single-process cluster.
+To create a more realistic distributed cluster, you create a `tf.GrpcServer` by
+passing in a `tf.ServerDef` that defines the membership of a TensorFlow cluster,
+and then run multiple processes that each have the same cluster definition.
+
+A `tf.ServerDef` comprises a cluster definition (`tf.ClusterDef`), which is the
+same for all servers in a cluster; and a job name and task index that are unique
+to a particular cluster.
+
+For constructing a `tf.ClusterDef`, the `tf.make_cluster_def()` function enables you to specify the jobs and tasks as a Python dictionary, mapping job names to lists of network addresses. For example:
 
 <table>
-  <tr><th><code>--cluster_spec='...'</code></th><th>Available tasks</th>
+  <tr><th><code>tf.ClusterDef</code> construction</th><th>Available tasks</th>
   <tr>
-    <td><code>local|localhost:2222</code></td><td><code>/job:local/task:0</code></td>
+    <td><code>tf.make_cluster_def({"local": ["localhost:2222", "localhost:2223"]})</code></td><td><code>/job:local/task:0<br/>/job:local/task:1</code></td>
   </tr>
   <tr>
-    <td><code>local|localhost:2222;localhost:2223</code></td><td><code>/job:local/task:0</code><br/><code>/job:local/task:1</code></td>
-  </tr>
-  <tr>
-    <td><code>worker|worker0:2222;worker1:2222;worker2:2222,</code><br/><code>ps|ps0:2222;ps1:2222</code></td><td><code>/job:worker/task:0</code><br/><code>/job:worker/task:1</code><br/><code>/job:worker/task:2</code><br/><code>/job:ps/task:0</code><br/><code>/job:ps/task:1</code></td>
+    <td><code>tf.make_cluster_def({<br/>&nbsp;&nbsp;&nbsp;&nbsp;"worker": ["worker0:2222", "worker1:2222", "worker2:2222"],<br/>&nbsp;&nbsp;&nbsp;&nbsp;"ps": ["ps0:2222", "ps1:2222"]})</code></td><td><code>/job:worker/task:0</code><br/><code>/job:worker/task:1</code><br/><code>/job:worker/task:2</code><br/><code>/job:ps/task:0</code><br/><code>/job:ps/task:1</code></td>
   </tr>
 </table>
 
-The `--job_name` and `--task_id` flags indicate which task will run in this
-process, out of the jobs and tasks defined in `--cluster_spec`.  For example,
-`--job_name=local --task_id=0` means that the process will be task
-`/job:local/task:0`, and TensorFlow devices in the process will have names
-starting with that prefix.
+The `server_def.job_name` and `server_def.task_index` fields select one of the
+defined tasks from the `tf.ClusterDef`. For example, running the following code
+in two different processes:
 
-**N.B.** Manually specifying these command lines can be tedious, especially for
-large clusters. We are working on tools for launching tasks programmatically,
-e.g. using a cluster manager like [Kubernetes](http://kubernetes.io). If there
-are particular cluster managers for which you'd like to see support, please
-raise a [GitHub issue](https://github.com/tensorflow/tensorflow/issues).
+```python
+# In task 0:
+server_def = tf.ServerDef(
+    cluster=tf.make_cluster_def({
+        "local": ["localhost:2222", "localhost:2223"]}),
+    job_name="local", task_index=0)
+server = tf.GrpcServer(server_def)
+```
+```python
+# In task 1:
+server_def = tf.ServerDef(
+    cluster=tf.make_cluster_def({
+        "local": ["localhost:2222", "localhost:2223"]}),
+    job_name="local", task_index=1)
+server = tf.GrpcServer(server_def)
+```
+
+&hellip;will define and instantiate servers running on `localhost:2222` and
+`localhost:2223`.
+
+**N.B.** Manually specifying these cluster specifications can be tedious,
+especially for large clusters. We are working on tools for launching tasks
+programmatically, e.g. using a cluster manager like
+[Kubernetes](http://kubernetes.io). If there are particular cluster managers for
+which you'd like to see support, please raise a
+[GitHub issue](https://github.com/tensorflow/tensorflow/issues).
 
 ## Specifying distributed devices in your model
 
@@ -84,11 +87,11 @@ function that is used to specify whether ops run on the CPU or GPU. For example:
 with tf.device("/job:ps/task:0"):
   weights_1 = tf.Variable(...)
   biases_1 = tf.Variable(...)
-  
+
 with tf.device("/job:ps/task:1"):
   weights_2 = tf.Variable(...)
   biases_2 = tf.Variable(...)
-  
+
 with tf.device("/job:worker/task:7"):
   input, labels = ...
   layer_1 = tf.nn.relu(tf.matmul(input, weights_1) + biases_1)
@@ -121,14 +124,15 @@ replicated model. Possible approaches include:
   different tasks in `/job:worker`. Each copy of the model can have a different
   `train_op`, and one or more client threads can call `sess.run(train_ops[i])`
   for each worker `i`. This implements *asynchronous* training.
-  
+
   This approach uses a single `tf.Session` whose target is one of the workers in
   the cluster.
-  
+
 * As above, but where the gradients from all workers are averaged. See the
   [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_multi_gpu_train.py)
-  for an example of this form of replication. This implements *synchronous* training
-  
+  for an example of this form of replication. This implements *synchronous*
+  training.
+
 * The "distributed trainer" approach uses multiple graphs&mdash;one per
   worker&mdash;where each graph contains one set of parameters (pinned to
   `/job:ps`) and one copy of the model (pinned to a particular
@@ -182,10 +186,9 @@ replicated model. Possible approaches include:
     belonging to a particular "job" and with a particular index within that
     job's list of tasks.
   </dd>
-  
   <dt>TensorFlow server</dt>
   <dd>
-    A process running the <code>grpc_tensorflow_server</code> binary, which is a
+    A process running a <code>tf.GrpcServer</code> instance, which is a
     member of a cluster, and exports a "master service" and "worker service".
   </dd>
   <dt>Worker service</dt>

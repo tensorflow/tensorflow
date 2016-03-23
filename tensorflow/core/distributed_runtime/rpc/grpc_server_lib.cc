@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
 #include <memory>
 
 #include "grpc++/grpc++.h"
@@ -138,6 +139,7 @@ class GrpcServer : public ServerInterface {
     ::grpc::ServerBuilder builder;
     builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port_),
                              ::grpc::InsecureServerCredentials(), &bound_port_);
+    builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
     master_service_ = NewGrpcMasterService(&master_env_, &builder);
     worker_service_ = NewGrpcWorkerService(&worker_env_, &builder);
     server_ = builder.BuildAndStart();

@@ -1054,12 +1054,16 @@ cc_library(
 
 # Low level library tests
 tf_cc_tests(
+    size = "small",
     tests = glob(
         [
             "lib/**/*_test.cc",
             "platform/**/*_test.cc",
         ],
-        exclude = ["lib/strings/ordered_code_test.cc"],
+        exclude = [
+            "lib/strings/ordered_code_test.cc",
+            "lib/random/weighted_picker_test.cc",
+        ],
     ),
     deps = [
         ":lib",
@@ -1095,8 +1099,23 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "lib_random_weighted_picker_test",
+    size = "medium",
+    srcs = ["lib/random/weighted_picker_test.cc"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+    ],
+)
+
 # higher level tests
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = glob(
         [
@@ -1139,6 +1158,7 @@ tf_cc_tests(
 
 # GPU-related tests
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     tests = glob(
@@ -1171,6 +1191,7 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
+    size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     tests = ["common_runtime/gpu/gpu_allocator_retry_test.cc"],

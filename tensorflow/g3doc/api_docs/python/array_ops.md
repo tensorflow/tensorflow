@@ -561,43 +561,62 @@ dimension. For example, tiling `[a b c d]` by `[2]` produces
 
 - - -
 
-### `tf.pad(input, paddings, name=None)` {#pad}
+### `tf.pad(tensor, paddings, mode='CONSTANT', name=None)` {#pad}
 
-Pads a tensor with zeros.
+Pads a tensor.
 
-This operation pads a `input` with zeros according to the `paddings` you
-specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the
-rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
-how many zeros to add before the contents of `input` in that dimension, and
-`paddings[D, 1]` indicates how many zeros to add after the contents of `input`
-in that dimension.
+This operation pads a `tensor` according to the `paddings` you specify.
+`paddings` is an integer tensor with shape `[n, 2]`, where n is the rank of
+`tensor`. For each dimension D of `input`, `paddings[D, 0]` indicates how
+many values to add before the contents of `tensor` in that dimension, and
+`paddings[D, 1]` indicates how many values to add after the contents of
+`tensor` in that dimension. If `mode` is "REFLECT" then both `paddings[D, 0]`
+and `paddings[D, 1]` must be no greater than `tensor.dim_size(D) - 1`. If
+`mode` is "SYMMETRIC" then both `paddings[D, 0]` and `paddings[D, 1]` must be
+no greater than `tensor.dim_size(D)`.
 
 The padded size of each dimension D of the output is:
 
-`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+`paddings[D, 0] + tensor.dim_size(D) + paddings[D, 1]`
 
 For example:
 
-```prettyprint
-# 't' is [[1, 1], [2, 2]]
-# 'paddings' is [[1, 1], [2, 2]]
-# rank of 't' is 2
-pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
-                      [0, 0, 1, 1, 0, 0]
-                      [0, 0, 2, 2, 0, 0]
-                      [0, 0, 0, 0, 0, 0]]
+```python
+# 't' is [[1, 2, 3], [4, 5, 6]].
+# 'paddings' is [[1, 1,], [2, 2]].
+# rank of 't' is 2.
+pad(t, paddings, "CONSTANT") ==> [[0, 0, 0, 0, 0, 0, 0],
+                                  [0, 0, 1, 2, 3, 0, 0],
+                                  [0, 0, 4, 5, 6, 0, 0],
+                                  [0, 0, 0, 0, 0, 0, 0]]
+
+pad(t, paddings, "REFLECT") ==> [[6, 5, 4, 5, 6, 5, 4],
+                                 [3, 2, 1, 2, 3, 2, 1],
+                                 [6, 5, 4, 5, 6, 5, 4],
+                                 [3, 2, 1, 2, 3, 2, 1]]
+
+pad(t, paddings, "SYMMETRIC") ==> [[2, 1, 1, 2, 3, 3, 2],
+                                   [2, 1, 1, 2, 3, 3, 2],
+                                   [5, 4, 4, 5, 6, 6, 5],
+                                   [5, 4, 4, 5, 6, 6, 5]]
 ```
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`.
+*  <b>`tensor`</b>: A `Tensor`.
 *  <b>`paddings`</b>: A `Tensor` of type `int32`.
+*  <b>`mode`</b>: One of "CONSTANT", "REFLECT", or "SYMMETRIC".
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `tensor`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
 
 
 - - -
@@ -1277,6 +1296,7 @@ where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 
 
 *  <b>`Examples`</b>: 
+
 ```python
 # 2-D example
 a = [[1, 2], [3, 4], [5, 6]]
@@ -1420,8 +1440,8 @@ dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
-*  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.qint8, tf.quint8, tf.qint32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
+*  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.complex128, tf.qint8, tf.quint8, tf.qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

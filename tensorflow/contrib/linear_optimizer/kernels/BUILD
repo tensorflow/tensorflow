@@ -22,6 +22,7 @@ cc_library(
 
 cc_test(
     name = "loss_updaters_test",
+    size = "small",
     srcs = ["loss_updaters_test.cc"],
     deps = [
         ":loss_updaters",
@@ -45,6 +46,7 @@ cc_library(
 
 cc_test(
     name = "resources_test",
+    size = "small",
     srcs = ["resources_test.cc"],
     deps = [
         ":resources",

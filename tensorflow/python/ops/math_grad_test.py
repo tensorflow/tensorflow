@@ -56,5 +56,45 @@ class SquaredDifferenceOpTest(tf.test.TestCase):
     self._testGrad([2, 4], [3, 2, 4])
 
 
+class AbsOpTest(tf.test.TestCase):
+
+  def _biasedRandN(self, shape, bias=0.1, sigma=1.0):
+    """Returns samples from a normal distribution shifted `bias` away from 0."""
+    value = np.random.randn(*shape) * sigma
+    return value + np.sign(value) * bias
+
+  def _testGrad(self, shape, dtype=None, max_error=None, bias=None, sigma=None):
+    np.random.seed(7)
+    if dtype == tf.complex64:
+      value = tf.complex(self._biasedRandN(shape, bias=bias, sigma=sigma),
+                         self._biasedRandN(shape, bias=bias, sigma=sigma))
+    else:
+      value = tf.convert_to_tensor(self._biasedRandN(shape, bias=bias),
+                                   dtype=dtype)
+
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        if dtype == tf.complex64:
+          output = tf.complex_abs(value)
+        else:
+          output = tf.abs(value)
+        error = tf.test.compute_gradient_error(
+            value, shape, output, output.get_shape().as_list())
+    self.assertLess(error, max_error)
+
+  def testComplexAbs(self):
+    # Bias random test values away from zero to avoid numeric instabilities.
+    self._testGrad([3, 3], dtype=tf.float32, max_error=2e-5, bias=0.1,
+                   sigma=1.0)
+    self._testGrad([3, 3], dtype=tf.complex64, max_error=2e-5, bias=0.1,
+                   sigma=1.0)
+
+    # Ensure stability near the pole at zero.
+    self._testGrad([3, 3], dtype=tf.float32, max_error=100.0, bias=0.0,
+                   sigma=0.1)
+    self._testGrad([3, 3], dtype=tf.complex64, max_error=100.0, bias=0.0,
+                   sigma=0.1)
+
+
 if __name__ == "__main__":
   tf.test.main()

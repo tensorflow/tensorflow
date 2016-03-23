@@ -1589,11 +1589,7 @@ def _SparseSegmentReductionGradShape(op):
   unused_segment_ids_shape = op.inputs[2].get_shape().merge_with(indices_shape)
   unused_output_dim0_shape = op.inputs[3].get_shape().merge_with(
       tensor_shape.scalar())
-  output_dim0 = tensor_util.constant_value(op.inputs[3])
-  if output_dim0 is not None:
-    dim0 = output_dim0[0]
-  else:
-    dim0 = None
+  dim0 = tensor_util.constant_value(op.inputs[3])
   return [tensor_shape.TensorShape([dim0]).concatenate(input_shape[1:])]
 # pylint: enable=invalid-name
 

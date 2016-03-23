@@ -127,7 +127,7 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   """
   var = _variable_on_cpu(name, shape,
                          tf.truncated_normal_initializer(stddev=stddev))
-  if wd:
+  if wd is not None:
     weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
     tf.add_to_collection('losses', weight_decay)
   return var
@@ -345,7 +345,7 @@ def train(total_loss, global_step):
 
   # Add histograms for gradients.
   for grad, var in grads:
-    if grad:
+    if grad is not None:
       tf.histogram_summary(var.op.name + '/gradients', grad)
 
   # Track the moving averages of all trainable variables.

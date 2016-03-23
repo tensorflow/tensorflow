@@ -114,6 +114,6 @@ Building on the Inception recognition model, we will release a TensorFlow
 version of the [Deep Dream](https://github.com/google/deepdream) neural network
 visual hallucination software.
 
-COMING SOON
+[View Tutorial](https://www.tensorflow.org/code/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
 
 

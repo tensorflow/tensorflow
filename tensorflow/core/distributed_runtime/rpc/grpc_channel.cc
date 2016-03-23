@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 
+#include <limits>
 #include <unordered_map>
 
 #include "grpc++/create_channel.h"
@@ -46,7 +47,10 @@ string MakeAddress(const string& job, int replica, int task) {
 
 SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target) {
   // TODO(mrry): Implement secure channels.
-  return ::grpc::CreateChannel(target, ::grpc::InsecureChannelCredentials());
+  ::grpc::ChannelArguments args;
+  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  return ::grpc::CreateCustomChannel(
+      target, ::grpc::InsecureChannelCredentials(), args);
 }
 
 Status GrpcChannelSpec::AddHostPortsJob(const string& job_id,
