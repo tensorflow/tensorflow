@@ -19,24 +19,18 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/dense_update_ops.h"
 
-#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_UPDATE(T, OP) \
-  template struct functor::DenseUpdate<GPUDevice, T, DenseUpdateType::OP>;
-#define DEFINE_ADD_SUB(T) \
-  DEFINE_UPDATE(T, ADD)   \
-  DEFINE_UPDATE(T, SUB)
-#define DEFINE_ASSIGN(T) DEFINE_UPDATE(T, ASSIGN)
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_ADD_SUB);
-TF_CALL_POD_TYPES(DEFINE_ASSIGN);
-#undef DEFINE_UPDATE
-#undef DEFINE_ADD_SUB
-#undef DEFINE_ASSIGN
+#define DEFINE_GPU_KERNELS(T)                              \
+  template struct functor::DenseUpdate<GPUDevice, T, ADD>; \
+  template struct functor::DenseUpdate<GPUDevice, T, SUB>; \
+  template struct functor::DenseUpdate<GPUDevice, T, ASSIGN>;
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+#undef DEFINE_GPU_KERNELS
 
 }  // end namespace tensorflow
 
