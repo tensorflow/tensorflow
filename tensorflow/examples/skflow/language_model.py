@@ -22,7 +22,7 @@ import os
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 ### Training data
 
@@ -86,16 +86,15 @@ def get_language_model(hidden_size):
         encoder_cell = tf.nn.rnn_cell.OutputProjectionWrapper(tf.nn.rnn_cell.GRUCell(hidden_size),256)
         output, _ = tf.nn.rnn(encoder_cell, inputs, dtype=tf.float32)
         return skflow.ops.sequence_classifier(output, target)
-  
+
     return language_model
 
 
 ### Training model.
 
-estimator = skflow.TensorFlowEstimator(model_fn=get_language_model(HIDDEN_SIZE), 
-                                       n_classes=256, 
-                                       optimizer='Adam', learning_rate=0.01, 
+estimator = skflow.TensorFlowEstimator(model_fn=get_language_model(HIDDEN_SIZE),
+                                       n_classes=256,
+                                       optimizer='Adam', learning_rate=0.01,
                                        steps=1000, batch_size=64, continue_training=True)
 
 estimator.fit(X, y)
-

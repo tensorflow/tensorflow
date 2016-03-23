@@ -21,7 +21,7 @@ import os
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 # Get training data
 
@@ -125,4 +125,3 @@ while True:
         print('English: %s. French (pred): %s, French (gold): %s' %
             (input_text, output_text, gold.decode('utf-8')))
         print(inp_data, pred)
-

@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 from sklearn import datasets
 from sklearn.metrics import mean_squared_error
 
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 # Create random dataset.
 rng = np.random.RandomState(1)

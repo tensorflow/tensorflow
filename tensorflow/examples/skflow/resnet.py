@@ -13,11 +13,11 @@
 #  limitations under the License.
 
 """
-This example builds deep residual network for mnist data. 
+This example builds deep residual network for mnist data.
 Reference Paper: http://arxiv.org/pdf/1512.03385.pdf
 
 Note that this is still a work-in-progress. Feel free to submit a PR
-to make this better. 
+to make this better.
 """
 
 import os
@@ -28,12 +28,12 @@ from sklearn import metrics
 
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 
 def res_net(x, y, activation=tf.nn.relu):
     """Builds a residual network. Note that if the input tensor is 2D, it must be
-    square in order to be converted to a 4D tensor. 
+    square in order to be converted to a 4D tensor.
 
     Borrowed structure from here: https://github.com/pkmital/tensorflow_tutorials/blob/master/10_residual_network.py
 
@@ -154,4 +154,3 @@ while True:
 
     # Save model graph and checkpoints.
     classifier.save("models/resnet/")
-

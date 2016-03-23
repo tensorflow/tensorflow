@@ -30,7 +30,7 @@ import pandas
 
 import tensorflow as tf
 from tensorflow.models.rnn import rnn, rnn_cell
-from tensorflow.contrib import skflow
+from tensorflow.contrib.sklow.python import skflow
 
 ### Training data
 
@@ -70,4 +70,3 @@ while True:
     classifier.fit(X_train, y_train)
     score = metrics.accuracy_score(y_test, classifier.predict(X_test))
     print("Accuracy: %f" % score)
-

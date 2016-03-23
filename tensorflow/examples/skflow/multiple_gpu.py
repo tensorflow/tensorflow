@@ -14,7 +14,7 @@
 
 from sklearn import datasets, metrics, cross_validation
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
@@ -24,8 +24,8 @@ def my_model(X, y):
     """
     This is DNN with 10, 20, 10 hidden layers, and dropout of 0.5 probability.
 
-    Note: If you want to run this example with multiple GPUs, Cuda Toolkit 7.0 and 
-    CUDNN 6.5 V2 from NVIDIA need to be installed beforehand. 
+    Note: If you want to run this example with multiple GPUs, Cuda Toolkit 7.0 and
+    CUDNN 6.5 V2 from NVIDIA need to be installed beforehand.
     """
     with tf.device('/gpu:1'):
     	layers = skflow.ops.dnn(X, [10, 20, 10], keep_prob=0.5)
