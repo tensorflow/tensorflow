@@ -15,6 +15,7 @@ py_library(
         "python/layers/__init__.py",
         "python/layers/initializers.py",
         "python/layers/layers.py",
+        "python/layers/optimizers.py",
         "python/layers/regularizers.py",
         "python/layers/summaries.py",
         "python/ops/__init__.py",
@@ -53,6 +54,18 @@ py_test(
     name = "initializers_test",
     size = "small",
     srcs = glob(["python/layers/initializers_test.py"]),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "optimizers_test",
+    srcs = glob(["python/layers/optimizers_test.py"]),
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
