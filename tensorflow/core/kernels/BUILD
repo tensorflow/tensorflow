@@ -828,6 +828,21 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "depthwise_conv_grad_op",
+    hdrs = [
+        "depthwise_conv_op.h",
+    ],
+    prefix = "depthwise_conv_grad_op",
+    deps = [
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:nn_ops_op_lib",
+    ],
+)
+
 tf_kernel_libraries(
     name = "nn",
     prefixes = [
@@ -847,6 +862,7 @@ tf_kernel_libraries(
         ":bounds_check",
         ":conv_2d",
         ":conv_ops",
+        ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
         ":ops_util",
         ":pooling_ops",
