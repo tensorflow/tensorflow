@@ -18,3 +18,9 @@ set -e
 
 pip install sklearn
 pip3 install scikit-learn
+
+# Benchmark tests require the following:
+pip install psutil
+pip3 install psutil
+pip install py-cpuinfo
+pip3 install py-cpuinfo
