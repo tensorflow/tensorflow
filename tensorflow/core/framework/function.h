@@ -258,6 +258,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // returns its definition proto.
   const FunctionDef* Find(const string& func) const;
 
+  // If the gradient function for 'func' is specified explicitly in
+  // the library, returns the gradient function name.  Otherwise,
+  // returns an empty string.
+  string FindGradient(const string& func) const;
+
   // OpRegistryInterface method. Useful for constructing a Graph.
   //
   // If "op" is defined in the library, returns its signature.
@@ -267,6 +272,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
  private:
   std::unordered_map<string, FunctionDef> function_defs_;
+  std::unordered_map<string, string> func_grad_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryDefinition);
 };

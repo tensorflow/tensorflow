@@ -12,6 +12,7 @@ import "tensorflow/core/framework/op_def.proto";
 // A library is a set of named functions.
 message FunctionDefLibrary {
   repeated FunctionDef function = 1;
+  repeated GradientDef gradient = 2;
 }
 
 // A function can be instantiated when the runtime can bind every attr
@@ -68,4 +69,27 @@ message FunctionDef {
     // signature.
     map<string, AttrValue> attr = 5;
   }
+}
+
+// GradientDef defines the gradient function of a function defined in
+// a function library.
+//
+// A gradient function g (specified by gradient_func) for a function f
+// (specified by function_name) must follow the following:
+//
+// The function 'f' must be a numerical function which takes N inputs
+// and produces M outputs. Its gradient function 'g', which is a
+// function taking N + M inputs and produces N outputs.
+//
+// I.e. if we have
+//    (y1, y2, ..., y_M) = f(x1, x2, ..., x_N),
+// then, g is
+//    (dL/dx1, dL/dx2, ..., dL/dx_N) = g(x1, x2, ..., x_N,
+//                                      dL/dy1, dL/dy2, ..., dL/dy_M),
+// where L is a scalar-value function of (x1, x2, ..., xN) (e.g., the
+// loss function). dL/dx_i is the partial derivative of L with respect
+// to x_i.
+message GradientDef {
+  string function_name = 1;  // The function name.
+  string gradient_func = 2;  // The gradient function's name.
 }

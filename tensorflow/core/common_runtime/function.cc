@@ -261,7 +261,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                            FunctionBody** fbody);
   Status CreateItem(Handle handle, Item** item);
   Status GetOrCreateItem(Handle handle, Item** item);
-  Status InstantiateSymbolicGradient(const InstantiateAttrValueMap& attrs,
+  Status InstantiateSymbolicGradient(const NameAttrList& func,
                                      FunctionBody** g_body);
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryRuntimeImpl);
@@ -363,8 +363,12 @@ class SymbolicGradientOp : public AsyncOpKernel {
              [ctx, done, rets](const Status& status) {
                if (!status.ok()) {
                  ctx->SetStatus(status);
+               } else if (rets->size() != ctx->num_outputs()) {
+                 ctx->SetStatus(errors::InvalidArgument(
+                     "SymGrad expects to return ", ctx->num_outputs(),
+                     " tensor(s), but get ", rets->size(),
+                     " tensor(s) instead."));
                } else {
-                 CHECK_EQ(rets->size(), ctx->num_outputs());
                  for (size_t i = 0; i < rets->size(); ++i) {
                    ctx->set_output(i, (*rets)[i]);
                  }
@@ -455,12 +459,7 @@ Status FunctionLibraryRuntimeImpl::FunctionDefToBody(
 }
 
 Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
-    const InstantiateAttrValueMap& attrs, FunctionBody** g_body) {
-  const AttrValue* f = gtl::FindOrNull(attrs, "f");
-  if (f == nullptr) {
-    return errors::InvalidArgument("SymbolicGradient is missing attr: f");
-  }
-  const auto& func = f->func();
+    const NameAttrList& func, FunctionBody** g_body) {
   const FunctionDef* fdef = lib_def_->Find(func.name());
   if (fdef == nullptr) {
     // f is a primitive op.
@@ -499,7 +498,19 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   Status s;
   FunctionBody* fbody = nullptr;
   if (function_name == kGradientOp) {
-    TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(attrs, &fbody));
+    const AttrValue* f = gtl::FindOrNull(attrs, "f");
+    if (f == nullptr) {
+      return errors::InvalidArgument("SymbolicGradient is missing attr: f");
+    }
+    const auto& func = f->func();
+    if (func.name() == kGradientOp) {
+      return errors::InvalidArgument("Can't take gradient of SymbolicGradient");
+    }
+    const string grad = lib_def_->FindGradient(func.name());
+    if (!grad.empty()) {
+      return Instantiate(grad, func.attr(), handle);
+    }
+    TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(func, &fbody));
   } else {
     const FunctionDef* fdef = lib_def_->Find(function_name);
     if (fdef == nullptr) {
