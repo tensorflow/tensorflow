@@ -20,7 +20,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RESIZE_NEAREST_NEIGHBOR_OP_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_RESIZE_NEAREST_NEIGHBOR_OP_GPU_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
