@@ -51,6 +51,7 @@ class SummaryWriter(object):
   @@add_session_log
   @@add_event
   @@add_graph
+  @@add_run_metadata
 
   @@flush
   @@close
@@ -104,6 +105,8 @@ class SummaryWriter(object):
         compat.as_bytes(os.path.join(self._logdir, "events")))
     self._worker = _EventLoggerThread(self._event_queue, self._ev_writer,
                                       flush_secs)
+    # For storing used tags for session.run() outputs.
+    self._session_run_tags = {}
     self._worker.start()
     if graph is not None or graph_def is not None:
       # Calling it with both graph and graph_def for backward compatibility.
@@ -218,6 +221,33 @@ class SummaryWriter(object):
                       "or the deprecated `GraphDef`")
     # Finally, add the graph_def to the summary writer.
     self._add_graph_def(true_graph_def, global_step)
+
+  def add_run_metadata(self, run_metadata, tag, global_step=None):
+    """Adds a metadata information for a single session.run() call.
+
+    Args:
+      run_metadata: A `RunMetadata` protobuf object.
+      tag: The tag name for this metadata.
+      global_step: Number. Optional global step counter to record with the
+        StepStats.
+
+    Raises:
+      ValueError: If the provided tag was already used for this type of event.
+    """
+    if tag in self._session_run_tags:
+      raise ValueError("The provided tag was already used for this event type")
+    self._session_run_tags[tag] = True
+
+    tagged_metadata = event_pb2.TaggedRunMetadata()
+    tagged_metadata.tag = tag
+    # Store the `RunMetadata` object as bytes in order to have postponed
+    # (lazy) deserialization when used later.
+    tagged_metadata.run_metadata = run_metadata.SerializeToString()
+    event = event_pb2.Event(wall_time=time.time(),
+                            tagged_run_metadata=tagged_metadata)
+    if global_step is not None:
+      event.step = int(global_step)
+    self._event_queue.put(event)
 
   def flush(self):
     """Flushes the event file to disk.

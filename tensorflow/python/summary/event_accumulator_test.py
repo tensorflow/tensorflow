@@ -116,7 +116,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
                   ea.SCALARS: [],
                   ea.HISTOGRAMS: [],
                   ea.COMPRESSED_HISTOGRAMS: [],
-                  ea.GRAPH: False}
+                  ea.GRAPH: False,
+                  ea.RUN_METADATA: []}
     self._real_constructor = ea.EventAccumulator
     self._real_generator = ea._GeneratorFromPath
 
@@ -152,7 +153,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.SCALARS: ['s1', 's2'],
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
-        ea.GRAPH: False
+        ea.GRAPH: False,
+        ea.RUN_METADATA: []
     })
 
   def testReload(self):
@@ -173,7 +175,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.SCALARS: ['s1', 's2'],
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
-        ea.GRAPH: False
+        ea.GRAPH: False,
+        ea.RUN_METADATA: []
     })
 
   def testScalars(self):
@@ -442,7 +445,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.SCALARS: ['s1', 's3'],
         ea.HISTOGRAMS: ['hst1'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1'],
-        ea.GRAPH: False
+        ea.GRAPH: False,
+        ea.RUN_METADATA: []
     })
 
   def testExpiredDataDiscardedAfterRestartForFileVersionLessThan2(self):
@@ -596,6 +600,11 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     # Add a graph to the summary writer.
     writer.add_graph(graph_def)
 
+    run_metadata = tf.RunMetadata()
+    device_stats = run_metadata.step_stats.dev_stats.add()
+    device_stats.device = 'test device'
+    writer.add_run_metadata(run_metadata, 'test run')
+
     # Write a bunch of events using the writer
     for i in xrange(30):
       summ_id = FakeScalarSummary('id', i)
@@ -612,7 +621,8 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
         ea.SCALARS: ['id', 'sq'],
         ea.HISTOGRAMS: [],
         ea.COMPRESSED_HISTOGRAMS: [],
-        ea.GRAPH: True
+        ea.GRAPH: True,
+        ea.RUN_METADATA: ['test run']
     })
     id_events = acc.Scalars('id')
     sq_events = acc.Scalars('sq')
