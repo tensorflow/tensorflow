@@ -21,6 +21,7 @@ apt-get update
 apt-get install -y \
     bc \
     build-essential \
+    cmake \
     curl \
     git \
     openjdk-8-jdk \

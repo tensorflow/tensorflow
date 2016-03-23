@@ -31,7 +31,9 @@ namespace tensorflow {
 template <typename Device, typename T>
 class SoftmaxOp : public OpKernel {
  public:
-  explicit SoftmaxOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit SoftmaxOp(OpKernelConstruction* context) : OpKernel(context) {
+    log_ = StringPiece(name()).starts_with("Log");
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& logits_in = context->input(0);
@@ -43,9 +45,12 @@ class SoftmaxOp : public OpKernel {
     if (logits_in.NumElements()) {
       functor::SoftmaxFunctor<Device, T> functor;
       functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
-              softmax_out->matrix<T>());
+              softmax_out->matrix<T>(), log_);
     }
   }
+
+ private:
+  bool log_;
 };
 
 }  // namespace tensorflow

@@ -265,7 +265,7 @@ class LSTMCell(RNNCell):
   def __init__(self, num_units, input_size=None,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None,
-               num_unit_shards=1, num_proj_shards=1):
+               num_unit_shards=1, num_proj_shards=1, forget_bias=1.0):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -282,6 +282,8 @@ class LSTMCell(RNNCell):
         matrix is stored across num_unit_shards.
       num_proj_shards: How to split the projection matrix.  If >1, the
         projection matrix is stored across num_proj_shards.
+      forget_bias: Biases of the forget gate are initialized by default to 1
+        in order to reduce the scale of forgetting at the beginning of the training.
     """
     self._num_units = num_units
     self._input_size = input_size
@@ -291,6 +293,7 @@ class LSTMCell(RNNCell):
     self._num_proj = num_proj
     self._num_unit_shards = num_unit_shards
     self._num_proj_shards = num_proj_shards
+    self._forget_bias = forget_bias
 
     if num_proj:
       self._state_size = num_units + num_proj
@@ -367,10 +370,10 @@ class LSTMCell(RNNCell):
             "W_O_diag", shape=[self._num_units], dtype=dtype)
 
       if self._use_peepholes:
-        c = (sigmoid(f + 1 + w_f_diag * c_prev) * c_prev +
+        c = (sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
              sigmoid(i + w_i_diag * c_prev) * tanh(j))
       else:
-        c = (sigmoid(f + 1) * c_prev + sigmoid(i) * tanh(j))
+        c = (sigmoid(f + self._forget_bias) * c_prev + sigmoid(i) * tanh(j))
 
       if self._cell_clip is not None:
         c = clip_ops.clip_by_value(c, -self._cell_clip, self._cell_clip)

@@ -1166,7 +1166,7 @@ cuda_py_tests(
     name = "kernel_tests_with_sharding",
     size = "small",
     srcs = sharded_kernel_test_list,
-    shard_count = 2,
+    shard_count = 4,
 )
 
 cuda_py_tests(

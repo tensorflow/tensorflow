@@ -34,8 +34,8 @@ namespace functor {
 template <typename T>
 struct SoftmaxFunctor<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix logits,
-                  typename TTypes<T>::Matrix softmax) {
-    SoftmaxEigenImpl<CPUDevice, T>::Compute(d, logits, softmax);
+                  typename TTypes<T>::Matrix softmax, const bool log) {
+    SoftmaxEigenImpl<CPUDevice, T>::Compute(d, logits, softmax, log);
   }
 };
 }  // namespace functor
@@ -48,9 +48,21 @@ REGISTER_KERNEL_BUILDER(Name("Softmax")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<double>("T"),
                         SoftmaxOp<CPUDevice, double>);
+REGISTER_KERNEL_BUILDER(Name("LogSoftmax")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<float>("T"),
+                        SoftmaxOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("LogSoftmax")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<double>("T"),
+                        SoftmaxOp<CPUDevice, double>);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("Softmax")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<float>("T"),
+                        SoftmaxOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("LogSoftmax")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T"),
                         SoftmaxOp<GPUDevice, float>);
