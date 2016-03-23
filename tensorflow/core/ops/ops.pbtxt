@@ -4387,6 +4387,30 @@ op {
   description: "The summary has up to `max_images` summary values containing images. The\nimages are built from `tensor` which must be 4-D with shape `[batch_size,\nheight, width, channels]` and where `channels` can be:\n\n*  1: `tensor` is interpreted as Grayscale.\n*  3: `tensor` is interpreted as RGB.\n*  4: `tensor` is interpreted as RGBA.\n\nThe images have the same number of channels as the input tensor. For float\ninput, the values are normalized one image at a time to fit in the range\n`[0, 255]`.  `uint8` values are unchanged.  The op uses two different\nnormalization algorithms:\n\n*  If the input values are all positive, they are rescaled so the largest one\n   is 255.\n\n*  If any input value is negative, the values are shifted so input value 0.0\n   is at 127.  They are then rescaled so that either the smallest value is 0,\n   or the largest one is 255.\n\nThe `tag` argument is a scalar `Tensor` of type `string`.  It is used to\nbuild the `tag` of the summary values:\n\n*  If `max_images` is 1, the summary value tag is \'*tag*/image\'.\n*  If `max_images` is greater than 1, the summary value tags are\n   generated sequentially as \'*tag*/image/0\', \'*tag*/image/1\', etc.\n\nThe `bad_color` argument is the color to use in the generated images for\nnon-finite input values.  It is a `unit8` 1-D tensor of length `channels`.\nEach element must be in the range `[0, 255]` (It represents the value of a\npixel in the output image).  Non-finite values in the input tensor are\nreplaced by this tensor in the output image.  The default value is the color\nred."
 }
 op {
+  name: "ImmutableConst"
+  output_arg {
+    name: "tensor"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "Type of the returned tensor."
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "Shape of the returned tensor."
+  }
+  attr {
+    name: "memory_region_name"
+    type: "string"
+    description: "Name of readonly memory region used by the tensor, see\nNewReadOnlyMemoryRegionFromFile in tensorflow::Env."
+  }
+  summary: "Returns immutable tensor from memory region."
+  description: "The current implementation memmaps the tensor from a file."
+}
+op {
   name: "InTopK"
   input_arg {
     name: "predictions"

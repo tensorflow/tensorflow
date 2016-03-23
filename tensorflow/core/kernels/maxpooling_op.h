@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_MAXPOOLING_OP_H_
 // Functor definition for MaxPoolingOp, must be compilable by nvcc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/eigen_pooling.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

@@ -54,6 +54,7 @@ cc_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
     deps = [
+        ":eigen_helpers",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
@@ -216,6 +217,24 @@ cc_header_only_library(
 )
 
 cc_library(
+    name = "eigen_helpers",
+    hdrs = [
+        "eigen_activations.h",
+        "eigen_attention.h",
+        "eigen_backward_cuboid_convolutions.h",
+        "eigen_backward_spatial_convolutions.h",
+        "eigen_cuboid_convolution.h",
+        "eigen_patch_3d.h",
+        "eigen_pooling.h",
+        "eigen_softmax.h",
+        "eigen_spatial_convolutions.h",
+    ],
+    deps = [
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "image_resizer_state",
     hdrs = ["image_resizer_state.h"],
     visibility = ["//visibility:private"],
@@ -243,6 +262,7 @@ tf_kernel_libraries(
         "edit_distance_op",
         "gather_op",
         "identity_op",
+        "immutable_constant_op",
         "listdiff_op",
         "mirror_pad_op",
         "one_hot_op",
@@ -550,12 +570,12 @@ tf_kernel_libraries(
     name = "image",
     prefixes = [
         "adjust_contrast_op",
-        "attention_ops",
         "colorspace_op",
         "decode_jpeg_op",
         "decode_png_op",
         "draw_bounding_box_op",
         "encode_jpeg_op",
+        "attention_ops",
         "encode_png_op",
         "random_crop_op",
         "resize_area_op",
@@ -565,6 +585,7 @@ tf_kernel_libraries(
         "sample_distorted_bounding_box_op",
     ],
     deps = [
+        ":eigen_helpers",
         ":image_resizer_state",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
@@ -577,6 +598,27 @@ tf_kernel_libraries(
 
 tf_cc_tests(
     size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    tests = [
+        "eigen_activations_test",
+        "eigen_attention_test",
+        "eigen_backward_spatial_convolutions_test",
+        "eigen_pooling_test",
+        "eigen_softmax_test",
+        "eigen_spatial_convolutions_test",
+    ],
+    deps = [
+        ":eigen_helpers",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_tests(
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     tests = [
         "adjust_contrast_op_benchmark_test",
@@ -738,6 +780,25 @@ tf_cc_tests(
     ],
 )
 
+tf_cc_test(
+    name = "immutable_constant_op_test",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    deps = [
+        ":array",
+        ":immutable_constant_op",
+        ":math",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # conv_grad_ops currently has to be built with conv_ops*.
 # TODO(josh11b, zhengxq): put these a separate libraries in ":nn" below once
 # conv_ops_gpu.h has be separated into its own library.
@@ -767,6 +828,21 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "depthwise_conv_grad_op",
+    hdrs = [
+        "depthwise_conv_op.h",
+    ],
+    prefix = "depthwise_conv_grad_op",
+    deps = [
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:nn_ops_op_lib",
+    ],
+)
+
 tf_kernel_libraries(
     name = "nn",
     prefixes = [
@@ -786,6 +862,7 @@ tf_kernel_libraries(
         ":bounds_check",
         ":conv_2d",
         ":conv_ops",
+        ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
         ":ops_util",
         ":pooling_ops",
@@ -846,6 +923,7 @@ tf_kernel_library(
     ],
     deps = [
         ":conv_2d",
+        ":eigen_helpers",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -1061,6 +1139,15 @@ filegroup(
     srcs = [
         "avgpooling_op.h",
         "bounds_check.h",
+        "eigen_activations.h",
+        "eigen_attention.h",
+        "eigen_backward_cuboid_convolutions.h",
+        "eigen_backward_spatial_convolutions.h",
+        "eigen_cuboid_convolution.h",
+        "eigen_patch_3d.h",
+        "eigen_pooling.h",
+        "eigen_softmax.h",
+        "eigen_spatial_convolutions.h",
         "maxpooling_op.h",
         "ops_util.cc",
         "ops_util.h",
@@ -1099,6 +1186,8 @@ filegroup(
         "gather_op.h",
         "identity_op.cc",
         "identity_op.h",
+        "immutable_constant_op.cc",
+        "immutable_constant_op.h",
         "matmul_op.cc",
         "matmul_op.h",
         "no_op.cc",

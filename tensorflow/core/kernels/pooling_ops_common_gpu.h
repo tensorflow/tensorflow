@@ -21,7 +21,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_GPU_H_
 
 #include <vector>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"

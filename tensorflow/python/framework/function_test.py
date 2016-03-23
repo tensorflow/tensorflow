@@ -28,6 +28,18 @@ from tensorflow.python.framework import function
 from tensorflow.python.ops import functional_ops
 
 
+def _OptimizerOptions():
+  for cse in [False, True]:
+    for inline in [False, True]:
+      for cfold in [False, True]:
+        yield tf.ConfigProto(
+            graph_options=tf.GraphOptions(optimizer_options=tf.OptimizerOptions(
+                opt_level=tf.OptimizerOptions.L0,
+                do_common_subexpression_elimination=cse,
+                do_function_inlining=inline,
+                do_constant_folding=cfold)))
+
+
 class FunctionTest(tf.test.TestCase):
 
   def _mat(self, x):
@@ -148,6 +160,61 @@ class FunctionTest(tf.test.TestCase):
     with tf.Session(graph=g, config=cfg) as sess:
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
+
+  def testCustomGradient(self):
+    g = tf.Graph()
+    dtype = tf.float32
+    with g.as_default():
+
+      @function.Defun(dtype, dtype, dtype)
+      def XentLossGrad(logits, labels, dloss):
+        dlogits = tf.reshape(dloss, [-1, 1]) * (tf.nn.softmax(logits) - labels)
+        dlabels = tf.zeros_like(labels)
+        # Takes exp(dlogits) to differentiate it from the "correct" gradient.
+        return tf.exp(dlogits), dlabels
+
+      @function.Defun(dtype, dtype, grad_func="XentLossGrad")
+      def XentLoss(logits, labels):
+        return tf.reduce_sum(labels * tf.log(tf.nn.softmax(logits)), 1)
+
+      logits = tf.placeholder(dtype)
+      labels = tf.placeholder(dtype)
+      loss = XentLoss(logits, labels)
+      dlogits = tf.gradients([loss], [logits])
+
+    x = np.random.uniform(-10., 10., size=(4, 9)).astype(np.float32)
+    prob = np.exp(x) / np.sum(np.exp(x), 1, keepdims=1)
+    y = np.random.uniform(-10., 10., size=(4, 9)).astype(np.float32)
+    for cfg in _OptimizerOptions():
+      print("cfg = ", cfg)
+      with tf.Session(graph=g, config=cfg) as sess:
+        out, = sess.run(dlogits, {logits: x, labels: y})
+      self.assertAllClose(out, np.exp(prob - y))
+
+  def testCustomGradientError(self):
+    g = tf.Graph()
+    dtype = tf.float32
+    with g.as_default():
+
+      @function.Defun(dtype, dtype, dtype)
+      def Grad(x, dy, dz):
+        # Should have returned 1 result.
+        return x, dy + dz
+
+      @function.Defun(dtype, grad_func="Grad")
+      def Forward(x):
+        return x, x
+
+      inp = tf.placeholder(dtype)
+      out = tf.add_n(Forward(inp))
+      dinp = tf.gradients(out, [inp])
+
+    x = np.random.uniform(-10., 10., size=(4, 9)).astype(np.float32)
+    with tf.Session(graph=g) as sess:
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError,
+          "SymGrad expects to return 1.*but get 2.*instead"):
+        _ = sess.run(dinp, {inp: x})
 
   def testSymGradShape(self):
     g = tf.Graph()
@@ -383,19 +450,6 @@ class UnrollLSTMTest(tf.test.TestCase):
 
       return LSTMLoop10(weights, inp)
 
-  def _OptimizerOptions(self):
-    ret = []
-    for cse in [False, True]:
-      for inline in [False, True]:
-        for cfold in [False, True]:
-          ret.append(tf.ConfigProto(graph_options=tf.GraphOptions(
-              optimizer_options=tf.OptimizerOptions(
-                  opt_level=tf.OptimizerOptions.L0,
-                  do_common_subexpression_elimination=cse,
-                  do_function_inlining=inline,
-                  do_constant_folding=cfold))))
-    return ret
-
   def testUnrollLSTM(self):
     # Run one step of the unrolled lstm graph.
     def RunForward(mode, cfg=None):
@@ -414,7 +468,7 @@ class UnrollLSTMTest(tf.test.TestCase):
         return sess.run(m)
 
     mv0 = RunForward("complete")
-    for cfg in self._OptimizerOptions():
+    for cfg in _OptimizerOptions():
       print("cfg = ", cfg)
       mv1 = RunForward("cell", cfg)
       mv2 = RunForward("loop", cfg)
@@ -443,7 +497,7 @@ class UnrollLSTMTest(tf.test.TestCase):
         return sess.run(dw)
 
     d0 = RunForwardBackward("complete")
-    for cfg in self._OptimizerOptions():
+    for cfg in _OptimizerOptions():
       print("cfg = ", cfg)
       d1 = RunForwardBackward("cell", cfg)
       d2 = RunForwardBackward("loop", cfg)

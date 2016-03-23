@@ -96,7 +96,7 @@ class SupervisorTest(tf.test.TestCase):
     ev = next(rr)
     ev_graph = tf.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
-    self.assertProtoEquals(sess.graph_def, ev_graph)
+    self.assertProtoEquals(sess.graph.as_graph_def(add_shapes=True), ev_graph)
 
     # The next one should have the values from the summary.
     ev = next(rr)
@@ -299,7 +299,7 @@ class SupervisorTest(tf.test.TestCase):
     ev = next(rr)
     ev_graph = tf.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
-    self.assertProtoEquals(sess.graph_def, ev_graph)
+    self.assertProtoEquals(sess.graph.as_graph_def(add_shapes=True), ev_graph)
     ev = next(rr)
     self.assertProtoEquals("value { tag: 'v' simple_value: 1.0 }", ev.summary)
     ev = next(rr)
@@ -336,7 +336,7 @@ class SupervisorTest(tf.test.TestCase):
     ev = next(rr)
     ev_graph = tf.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
-    self.assertProtoEquals(sess.graph_def, ev_graph)
+    self.assertProtoEquals(sess.graph.as_graph_def(add_shapes=True), ev_graph)
     ev = next(rr)
     # It is actually undeterministic whether SessionLog.START gets written
     # before the summary or the checkpoint, but this works when run 10000 times.

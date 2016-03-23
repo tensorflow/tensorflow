@@ -17,7 +17,9 @@ This example demonstrates one way to access the weights of a custom skflow
 model. It is otherwise identical to the standard MNIST convolutional code.
 """
 
-from __future__ import division, print_function, absolute_import
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 from sklearn import metrics
 import tensorflow as tf

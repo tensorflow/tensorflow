@@ -7117,6 +7117,48 @@ op {
   }
 }
 op {
+  name: "ImmutableConst"
+  output_arg {
+    name: "tensor"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
+  }
+  attr {
+    name: "memory_region_name"
+    type: "string"
+  }
+}
+op {
+  name: "ImmutableConst"
+  output_arg {
+    name: "tensor"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  attr {
+    name: "memory_region_name"
+    type: "string"
+  }
+}
+op {
   name: "InTopK"
   input_arg {
     name: "predictions"

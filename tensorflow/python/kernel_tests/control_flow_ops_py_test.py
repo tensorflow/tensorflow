@@ -426,6 +426,21 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertAllEqual(42.0, grad.eval(feed_dict={c: 1}))
       self.assertAllEqual(3.0, grad.eval(feed_dict={c: 3}))
 
+  def testNestedCond_Simple(self):
+    with self.test_session():
+      x = tf.constant(0., name="X")
+      y = tf.cond(tf.constant(True),
+                  lambda: x,
+                  lambda: tf.cond(x < 1., lambda: x, lambda: x))
+      result = tf.gradients(y, x)[0]
+      self.assertEqual(1.0, result.eval())
+
+      z = tf.cond(tf.constant(False),
+                  lambda: x,
+                  lambda: tf.cond(x < 1., lambda: x, lambda: x))
+      result = tf.gradients(z, x)[0]
+      self.assertEqual(1.0, result.eval())
+
   def testCondGrad_Gather(self):
     with self.test_session() as sess:
       v1 = tf.Variable([1.0, 42.0])
