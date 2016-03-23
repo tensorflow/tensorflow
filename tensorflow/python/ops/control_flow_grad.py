@@ -64,13 +64,7 @@ def _SwitchGrad(op, *grad):
   elif isinstance(op_ctxt, CondContext):
     good_grad = grad[op_ctxt.branch]
     zero_grad = grad[1 - op_ctxt.branch]
-    # If we are in a grad context, this switch is part of a cond within a
-    # loop. In this case, we have called ControlFlowState.ZeroLike() so grad
-    # is ready for merge. Otherwise, we need a switch to control zero_grad.
-    if not (grad_ctxt and grad_ctxt.grad_state):
-      dtype = good_grad.dtype
-      branch = op_ctxt.branch
-      zero_grad = switch(zero_grad, op_ctxt.pred, dtype=dtype)[1 - branch]
+    # At this point, we have created zero_grad guarded by the right switch.
     return merge([good_grad, zero_grad], name="cond_grad")[0], None
   else:
     false_grad = switch(grad[0], op.inputs[1])[0]
