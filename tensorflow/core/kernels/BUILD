@@ -262,6 +262,7 @@ tf_kernel_libraries(
         "edit_distance_op",
         "gather_op",
         "identity_op",
+        "immutable_constant_op",
         "listdiff_op",
         "mirror_pad_op",
         "one_hot_op",
@@ -779,6 +780,25 @@ tf_cc_tests(
     ],
 )
 
+tf_cc_test(
+    name = "immutable_constant_op_test",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    deps = [
+        ":array",
+        ":immutable_constant_op",
+        ":math",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # conv_grad_ops currently has to be built with conv_ops*.
 # TODO(josh11b, zhengxq): put these a separate libraries in ":nn" below once
 # conv_ops_gpu.h has be separated into its own library.
@@ -1150,6 +1170,8 @@ filegroup(
         "gather_op.h",
         "identity_op.cc",
         "identity_op.h",
+        "immutable_constant_op.cc",
+        "immutable_constant_op.h",
         "matmul_op.cc",
         "matmul_op.h",
         "no_op.cc",

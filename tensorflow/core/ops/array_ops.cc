@@ -133,6 +133,25 @@ value: Attr `value` is the tensor to return.
 )doc");
 
 // --------------------------------------------------------------------------
+// TODO(mgubin): Update the doc when the freeze_graph script supports converting
+// into memmapped format.
+REGISTER_OP("ImmutableConst")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .Attr("memory_region_name: string")
+    .Output("tensor: dtype")
+    .Doc(R"doc(
+Returns immutable tensor from memory region.
+
+The current implementation memmaps the tensor from a file.
+
+dtype: Type of the returned tensor.
+shape: Shape of the returned tensor.
+memory_region_name: Name of readonly memory region used by the tensor, see
+  NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")
     .Input("x: T")
     .Output("y: T")
