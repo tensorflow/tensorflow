@@ -954,6 +954,7 @@ tf_py_wrap_cc(
         "platform/base.i",
         "platform/numpy.i",
         "util/port.i",
+        "util/py_checkpoint_reader.i",
     ],
     deps = [
         ":py_func_lib",

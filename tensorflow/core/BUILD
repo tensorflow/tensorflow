@@ -251,6 +251,7 @@ tf_cuda_library(
         "framework/types.h",
         "public/version.h",
         "util/bcast.h",
+        "util/checkpoint_reader.h",
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/events_writer.h",

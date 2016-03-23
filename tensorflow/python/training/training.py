@@ -168,6 +168,8 @@ from tensorflow.python.training.summary_io import SummaryWriter
 from tensorflow.python.training.supervisor import Supervisor
 from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
+from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
+
 
 # Training data protos.
 from tensorflow.core.example.example_pb2 import *
