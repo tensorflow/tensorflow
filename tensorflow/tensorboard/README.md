@@ -1,62 +1,275 @@
 # TensorBoard
 
 TensorBoard is a suite of web applications for inspecting and understanding your
-TensorFlow runs and graphs.
+TensorFlow runs and graphs. TensorBoard currently supports four visualizations:
+scalars, images, histograms, and the graph.
 
+You can play with an interactive demo TensorBoard at
+[tensorflow.org/tensorboard/cifar.html](tensorflow.org/tensorboard/cifar.html).
 
-### Basic Usage
+This README gives an overview of key concepts in TensorBoard, as well as how to
+interpret the visualizations TensorBoard provides. For an in-depth example of
+using TensorBoard, see the tutorial: [TensorBoard: Visualizing
+Learning](https://www.tensorflow.org/versions/master/how_tos/summaries_and_tensorboard/index.html).
+For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoard: Graph Visualization](https://www.tensorflow.org/versions/master/how_tos/graph_viz/index.html).
 
-Before running TensorBoard, make sure you have
-generated summary data in a log directory by creating a `SummaryWriter`:
+# Usage
 
-```python
-# sess.graph_def is the graph definition.
+Before running TensorBoard, make sure you have generated summary data in a log
+directory by creating a `SummaryWriter`:
+
+``` python
+# sess.graph_def is the graph definition; that enables the Graph Visualizer.
+
 summary_writer = tf.train.SummaryWriter('/path/to/logs', sess.graph_def)
 ```
 
-For more details, see [this tutorial](http://www.tensorflow.org/how_tos/summaries_and_tensorboard/index.html#serializing-the-data).
-Then run TensorBoard and provide the log directory:
+For more details, see [this
+tutorial](http://www.tensorflow.org/how_tos/summaries_and_tensorboard/index.html#serializing-the-data).
+Once you have event files, run TensorBoard and provide the log directory. If
+you're using a precompiled TensorFlow package (e.g. you installed via pip), run:
 
 ```
-python tensorflow/tensorboard/tensorboard.py --logdir=path/to/logs
-# or if installed via pip, run:
 tensorboard --logdir=path/to/logs
+```
 
-# if building from source
+Or, if you are building from source:
+
+```
 bazel build tensorflow/tensorboard:tensorboard
 ./bazel-bin/tensorflow/tensorboard/tensorboard --logdir=path/to/logs
-
-# then connect to http://localhost:6006
 ```
+
+This should print that TensorBoard has started. Next, connect to http://localhost:6006.
 
 Note that TensorBoard requires a `logdir` to read logs from. For info on
 configuring TensorBoard, run `tensorboard --help`.
 
-### Comparing Multiple Runs
+# Key Concepts
 
-TensorBoard can compare many "runs" of TensorFlow with each other. For example,
-suppose you have two MNIST models with slightly different graphs or different
-learning rates, but both share tags, e.g. `"cross_entropy"`, `"loss"`,
-`"activations"`. TensorBoard has the capability to draw these charts on top of
-each other, so you can easily see which model is outperforming.
+### Summary Ops: How TensorBoard gets data from TensorFlow
 
-To use this functionality, ensure that the summaries from the two runs are being
-written to separate directories, for example:
+The first step in using TensorBoard is acquiring data from your TensorFlow run.
+For this, you need [summary
+ops](https://www.tensorflow.org/versions/r0.7/api_docs/python/train.html#summary-operations).
+Summary ops are ops, like
+[`tf.matmul`](https://www.tensorflow.org/versions/r0.7/api_docs/python/math_ops.html#matmul)
+or
+[`tf.nn.relu`](https://www.tensorflow.org/versions/r0.7/api_docs/python/nn.html#relu),
+which means they take in tensors, produce tensors, and are evaluated from within
+a TensorFlow graph. However, summary ops have a twist: the Tensors they produce
+contain serialized protobufs, which are written to disk and sent to TensorBoard.
+To visualize the summary data in TensorBoard, you should evaluate the summary
+op, retrieve the result, and then write that result to disk using a
+SummaryWriter. A full explanation, with examples, is in [the
+tutorial](https://www.tensorflow.org/versions/r0.7/how_tos/summaries_and_tensorboard/index.html).
+
+### Tags: Giving names to data
+
+When you make a summary op, you will also give it a `tag`. The tag is basically
+a name for the data recorded by that op, and will be used to organize the data
+in the frontend. The scalar and histogram dashboards organize data by tag, and
+group the tags into folders according to a directory/like/hierarchy. If you have
+a lot of tags, we recommend grouping them with slashes.
+
+### Event Files & LogDirs: How TensorBoard loads the data
+
+`SummaryWriters` take summary data from TensorFlow, and then write them to a
+specified directory, known as the `logdir`. Specifically, the data is written to
+an append-only record dump that will have "tfevents" in the filename.
+TensorBoard reads data from a full directory, and organizes it into the history
+of a single TensorFlow execution.
+
+Why does it read the whole directory, rather than an individual file? You might
+have been using
+[supervisor.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/supervisor.py)
+to run your model, in which case if TensorFlow crashes, the supervisor will
+restart it from a checkpoint. When it restarts, it will start writing to a new
+events file, and TensorBoard will stitch the various event files together to
+produce a consistent history of what happened.
+
+### Runs: Comparing different executions of your model
+
+You may want to visually compare multiple executions of your model; for example,
+suppose you've changed the hyperparameters and want to see if its converging
+faster. TensorBoard enables this through different "runs". When TensorBoard is
+passed a `logdir` at startup, it recursively walks the directory tree rooted at
+`logdir` looking for subdirectories that contain tfevents data. Every time it
+encounters such a subdirectory, it loads it as a new `run`, and the frontend
+will organize the data accordingly.
+
+For example, here is a well-organized TensorBoard log directory, with two runs,
+"run1" and "run2".
 
 ```
-./mnist_runs
-./mnist_runs/run1/.*tfevents.*
-./mnist_runs/run2/.*tfevents.*
+/some/path/mnist_experiments/ some/path/mnist_experiments/run1/
+/some/path/mnist_experiments/run1/events.out.tfevents.1456525581.name
+/some/path/mnist_experiments/run1/events.out.tfevents.1456525585.name
+/some/path/mnist_experiments/run2/
+/some/path/mnist_experiments/run2/events.out.tfevents.1456525385.name
+/tensorboard --logdir=/some/path/mnist_experiments
 ```
 
-Now, if you pass .../mnist_runs/run1 as the `logdir` to TensorBoard, you will
-visualize training data from that first run. But, if you instead pass the root
-directory .../mnist_runs/ as the logdir, then TensorBoard will load run1 and
-run2 and compare the two for you. In general, TensorBoard will recursively
-search the logdir provided, looking for subdirectories that contain TensorFlow
-event data.
+# The Visualizations
 
-### Exporting Data from TensorBoard
+### Scalar Dashboard
+
+TensorBoard's Scalar Dashboard visualizes scalar statistics that vary over time;
+for example, you might want to track the model's loss or learning rate. As
+described in *Key Concepts*, you can compare multiple runs, and the data is
+organized by tag. The line charts have the following interactions:
+
+* Clicking on the small blue icon in the lower-left corner of each chart will
+expand the chart
+
+* Dragging a rectangular region on the chart will zoom in
+
+* Double clicking on the chart will zoom out
+
+* Mousing over the chart will produce crosshairs, with data values recorded in
+the run-selector on the left.
+
+Additionally, you can create new folders to organize tags by writing regular
+expressions in the box in the top-left of the dashboard.
+
+### Histogram Dashboard
+
+The Histogram Dashboard is for visualizing how the statistical distribution of a
+Tensor has varied over time. It visualizes data recorded via a
+tf.histogram_summary. Right now, its name is a bit of a misnomer, as it doesn't
+show histograms; instead, it shows some high-level statistics on a distribution.
+Each line on the chart represents a percentile in the distribution over the
+data: for example, the bottom line shows how the minimum value has changed over
+time, and the line in the middle shows how the median has changed. Reading from
+top to bottom, the lines have the following meaning: `[maximum, 93%, 84%, 69%,
+50%, 31%, 16%, 7%, minimum]`
+
+These percentiles can also be viewed as standard deviation boundaries on a
+normal distribution: `[maximum, μ+1.5σ, μ+σ, μ+0.5σ, μ, μ-0.5σ, μ-σ, μ-1.5σ,
+minimum]` so that the colored regions, read from inside to outside, have widths
+`[σ, 2σ, 3σ]` respectively.
+
+This histogram visualization is a bit weird, and cannot meaningfully represent
+multimodal distributions. We are currently working on a true-histogram
+replacement.
+
+### Image Dashboard
+
+The Image Dashboard can display pngs that were saved via a tf.image_summary. The
+dashboard is set up so that each row corresponds to a different tag, and each
+column corresponds to a run. Since the image dashboard supports arbitrary pngs,
+you can use this to embed custom visualizations (e.g. matplotlib scatterplots)
+into TensorBoard. This dashboard always shows you the latest image for each tag.
+
+### Graph Explorer
+
+The Graph Explorer can visualize a TensorBoard graph, enabling inspection of the
+TensorFlow model. To get best use of the graph visualizer, you should use name
+scopes to hierarchically group the ops in your graph - otherwise, the graph may
+be difficult to decipher. For more information, including examples, see [the
+graph visualizer
+tutorial](https://www.tensorflow.org/versions/r0.7/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
+
+# Frequently Asked Questions
+
+### Does TensorBoard support distributed summary writers?
+
+No. Currently, TensorBoard expects that only a single summary writer will be
+active at a time, and as consequence, only a single events file is ever written
+to at a time. Violating this assumption may cause TensorBoard to lose data or
+stop updating unexpectedly. If you are running a distributed training process,
+we encourage you to designate a single worker as the "chief" that is responsible
+for writing all summaries to disk.
+
+### My TensorBoard isn't showing any data! What's wrong?
+
+The first thing to do is ensure that TensorBoard is properly loading data from
+the correct directory. Launch `tensorboard --logdir=DIRECTORY_PATH --debug` and
+look for output of the form
+
+`INFO:tensorflow:TensorBoard path_to_run is: {'DIRECTORY_PATH': None}`
+
+Verify that the DIRECTORY_PATH TensorBoard is looking at is the path you expect.
+(Note: There's a known issue where TensorBoard [does not handle paths starting
+in ~ properly](https://github.com/tensorflow/tensorflow/issues/1587)).
+
+If you're loading from the proper path, make sure that event files are present.
+TensorBoard will recursively walk its logdir, it's fine if the data is nested
+under a subdirectory. Try running the command:
+
+`find DIRECTORY_PATH | grep tfevents`
+
+If you have at least one result, then TensorBoard should be able to load data.
+
+Finally, let's make sure that the event files actually have data. Inspecting
+them is a bit tricky, but we can get a hint from the size: try
+
+`find DIRECTORY_PATH | grep tfevents | xargs ls -lh`  
+
+and look at the sizes of the files. If they are all tiny (around 69 bytes) then
+they probably just contain a file version descriptor, but no actual events.
+
+If after running this procedure, it's still not working, please file an [issue
+on GitHub](https://github.com/tensorflow/tensorflow/issues). It will be much
+easier for us to debug it if you provide an event file that isn't working.
+
+### TensorBoard is showing only some of my data, or isn't properly updating!
+
+This issue usually comes about because of how TensorBoard iterates through the
+`tfevents` files: it progresses through the events file in timestamp order, and
+only reads one file at a time. Let's suppose we have files with timestamps `a`
+and `b`, where `a<b`. Once TensorBoard has read all the events in `a`, it will
+never return to it, because it assumes any new events are being written in the
+more recent file. This could cause an issue if, for example, you have two
+`SummaryWriters` simultaneously writing to the same directory. If you have
+multiple summary writers, each one should be writing to a separate directory.
+
+### Does TensorBoard support multiple or distributed summary writers?
+
+No. TensorBoard expects that only one events file will be written to at a time,
+and multiple summary writers means multiple events files. If you are running a
+distributed TensorFlow instance, we encourage you to designate a single worker
+as the "chief" that is responsible for all summary processing. See
+[supervisor.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/supervisor.py)
+for an example.
+
+### I'm seeing data overlapped on itself! What gives?
+
+If you are seeing data that seems to travel backwards through time and overlap
+with itself, there are a few possible explanations.
+
+* You may have multiple execution of TensorFlow that all wrote to the same log
+directory. Please have each TensorFlow run write to its own logdir.
+
+* You may have a have a bug in your code where the global_step variable (passed
+to `SummaryWriter.add_summary`) is being maintained incorrectly.
+
+* It may be that your TensorFlow job crashed, and was restarted from an earlier
+checkpoint. See *How to handle TensorFlow restarts*, below.
+
+As a workaround, try changing the x-axis display in TensorBoard from `steps` to
+`wall_time`. This will frequently clear up the issue.
+
+### How should I handle TensorFlow restarts?
+
+TensorFlow is designed with a mechanism for graceful recovery if a job crashes
+or is killed: TensorFlow can periodically write model checkpoint files, which
+enable you to restart TensorFlow without losing all your training progress.
+
+However, this can complicate things for TensorBoard; imagine that TensorFlow
+wrote a checkpoint at step `a`, and then continued running until step `b`, and
+then crashed and restarted at timestamp `a`. All of the events written between
+`a` and `b` were "orphaned" by the restart event and should be removed.
+
+To facilitate this, we have a `SessionLog` message in
+`tensorflow/core/util/event.proto` which can record `SessionStatus.START` as an
+event; like all events, it may have a `step` associated with it. If TensorBoard
+detects a `SessionStatus.START` event with step `a`, it will assume that every
+event with a step greater than `a` was orphaned, and it will discard those
+events. This behavior may be disabled with the flag
+`--purge_orphaned_data=false` (in versions after 0.7).
+
+### How can I export data from TensorBoard?
 
 If you'd like to export data to visualize elsewhere (e.g. iPython Notebook),
 that's possible too. You can directly depend on the underlying classes that
@@ -67,59 +280,52 @@ groups of event files, discard data that was "orphaned" by TensorFlow crashes,
 and organize the data by tag.
 
 As another option, there is a script
-(tensorboard/scripts/serialize_tensorboard.py) which will load a logdir just
+(`tensorboard/scripts/serialize_tensorboard.py`) which will load a logdir just
 like TensorBoard does, but write all of the data out to disk as json instead of
 starting a server. This script is setup to make "fake TensorBoard backends" for
 testing, so it is a bit rough around the edges.
 
-### Purging 'Orphaned' Data
+### Can I overlap multiple plots?
 
-A TensorFlow job may occasionally crash and restart, for example if it was
-preempted by a higher priority job. When this happens, some data that was
-written to the summary files becomes 'orphaned' - for example, if TensorFlow ran
-to step 1337, but then crashed and restarted at step 1000, the data written from
-steps 1001 to 1337 is 'orphaned' - it no longer is part of the history of your
-TensorFlow job.
+Right now, you can overlap plots only if they are from different runs, and both
+have the same tag name.
 
-TensorBoard attempts to detect this, and purge the orphaned data. It does this
-by looking for a TensorFlow SessionLog.START event, and throwing away all data
-that occurred after the new SessionLog.START. If your TensorBoard seems to be
-missing valid data, it is possible that this logic is the culprit. Try launching
-TensorBoard with --purge_orphaned_data=False and see if your problem persists.
+### Can I create scatterplots (or other custom plots)?
 
-# Architecture
+This isn't yet possible. As a workaround, you could create your custom plot in
+your own code (e.g. matplotlib) and then write it into an `SummaryProto`
+(`core/framework/summary.proto`) and add it to your `SummaryWriter`. Then, your
+custom plot will appear in the TensorBoard image tab.
 
-TensorBoard consists of a Python backend (tensorboard/backend/) and a
-Typescript/Polymer/D3 frontend (tensorboard/lib/, tensorboard/components).
+### Is my data being downsampled? Am I really seeing all the data?
 
-# TensorBoard Development Instructions
+TensorBoard uses [reservoir
+sampling](https://en.wikipedia.org/wiki/Reservoir_sampling) to downsample your
+data so that it can be loaded into RAM. You can modify the number of elements it
+will keep per tag in
+[tensorboard/backend/server.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/backend/server.py).
 
-The following instructions are useful if you want to develop the TensorBoard
-frontend in a lightweight frontend-only environment. It sets up gulp with
-automatic recompiling and serves just the frontend assets without a connected
-backend.
+### I get a network security popup every time I run TensorBoard on a mac!
 
-If you just want to use TensorBoard, there is no need to read any further.
+This is because by default, TensorBoard serves on host `0.0.0.0` which is
+publicly accessible. You can stop the popups by specifying `--host=localhost` at
+startup.
 
-### Install Node, npm, gulp, and bower in your machine
-Get nodejs and npm through whatever package distribution system is appropriate
-for your machine. For example, on Ubuntu 14.04, run
-`sudo apt-get install nodejs nodejs-legacy npm`. Then, run
-`sudo npm install -g gulp bower`.
+### I have a different issue that wasn't addressed here!
 
-### Install project dependencies
+First, try searching our [GitHub
+issues](https://github.com/tensorflow/tensorflow/issues) and [Stack
+Overflow](https://stackoverflow.com/questions/tagged/tensorboard). It may be
+that someone else has already had the same issue or question.
 
-Inside this directory (`tensorflow/tensorboard`),
-run the following commands.
+If you have a bug, please [file a GitHub
+issue](https://github.com/tensorflow/tensorflow/issues). If the bug is related
+to your specific data (e.g. the events aren't loading properly), please upload
+some events files that will reproduce the issue - that makes it much easier for
+us to debug and fix.
 
-    npm install
-    bower install
+If you have a feature request, please [file a GitHub
+issue](https://github.com/tensorflow/tensorflow/issues).
 
-### Run Gulp
-
-Inside this directory, run `gulp`. That will compile all of the
-html/js/css dependencies for TensorBoard, and also spin up a server
-(by default at port 8000). You can navigate to component-specific demo pages to
-check out their behavior.
-
-Running `gulp test` will run all unit tests, the linter, etc.
+General usage questions should go to [Stack
+Overflow](http://stackoverflow.com/questions/tagged/tensorflow).
