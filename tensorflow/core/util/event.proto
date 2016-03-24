@@ -32,6 +32,8 @@ message Event {
     LogMessage log_message = 6;
     // The state of the session which can be used for restarting after crashes.
     SessionLog session_log = 7;
+    // The metadata returned by running a session.run() call.
+    TaggedRunMetadata tagged_run_metadata = 8;
   }
 }
 
@@ -62,4 +64,13 @@ message SessionLog {
   // This checkpoint_path contains both the path and filename.
   string checkpoint_path = 2;
   string msg = 3;
+}
+
+// For logging the metadata output for a single session.run() call.
+message TaggedRunMetadata {
+  // Tag name associated with this metadata.
+  string tag = 1;
+  // Byte-encoded version of the `RunMetadata` proto in order to allow lazy
+  // deserialization.
+  bytes run_metadata = 2;
 }

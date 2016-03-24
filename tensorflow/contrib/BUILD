@@ -11,7 +11,7 @@ py_library(
     name = "contrib_py",
     srcs = glob(["**/*.py"]),
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/ctc:ctc_py",
         "//tensorflow/contrib/distributions:distributions_py",
@@ -28,7 +28,7 @@ cc_library(
     name = "contrib_kernels",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/linear_optimizer/kernels:sdca_ops",
+        "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",
     ],
 )
 
