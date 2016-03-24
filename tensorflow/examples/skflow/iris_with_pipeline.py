@@ -32,7 +32,7 @@ scaler = StandardScaler()
 # DNN classifier
 DNNclassifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3, steps=200)
 
-pipeline = Pipeline([('scaler', scaler, ('DNNclassifier', DNNclassifier)])
+pipeline = Pipeline([('scaler', scaler), ('DNNclassifier', DNNclassifier)])
 
 pipeline.fit(X_train, y_train)
 
