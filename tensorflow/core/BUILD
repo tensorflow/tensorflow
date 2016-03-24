@@ -502,7 +502,6 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
@@ -510,7 +509,6 @@ cc_library(
         ":lib",
         ":protos_all_cc",
         ":tensor_testutil",
-        ":tensorflow",  # TODO(josh11b): Drop this dep?
         ":test",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
