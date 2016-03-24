@@ -21,44 +21,50 @@ from __future__ import print_function
 from collections import namedtuple
 
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import rnn_cell
 
 
-# TODO: update docs
-# TODO: remove Print ops
-
 class GridRNNCell(rnn_cell.RNNCell):
-  """Grid Long short-term memory unit (GridLSTM) recurrent network cell.
+  """Grid recurrent cell.
 
   This implementation is based on:
 
     http://arxiv.org/pdf/1507.01526v3.pdf
 
-    By default, a GridRNN cell has a depth dimension, which is also the "priority dimension" (section 3.2).
-    Therefore an N-RNN cell is defined with dims = N-1.
-    The length of the depth dimension is specified by the `depth` parameter in the constructor of this class.
-    Users can also specify an `Op` that will be used along the depth dimension, instead of recurrent. This is called
-     "Non-LSTM dimension" in section 3.3 of the paper.
+    This is the generic implementation of GridRNN. Users can specify arbitrary number of dimensions,
+    set some of them to be priority (section 3.2), non-recurrent (section 3.3)
+    and input/output dimensions (section 3.4).
+    Weight sharing can also be specified using the `tied` parameter.
+    Type of recurrent units can be specified via `cell_fn`.
   """
 
   def __init__(self, num_units, input_size=None, num_dims=1, input_dims=None, output_dims=None, priority_dims=None,
                non_recurrent_dims=None, tied=False, cell_fn=None, non_recurrent_fn=None):
-    """Initialize the parameters for a Grid RNN cell
-
-    def conversion_func(value, dtype=None, name=None, as_ref=False):
-      # ...
+    """Initialize the parameters of a Grid RNN cell
 
     Args:
       num_units: int, The number of units in the cells in all dimensions of this GridRNN cell
-      input_size: int, The dimensionality of the inputs into the cells
-      cell_class: class, the cell class used in this Grid cell, should be a subclass of :class:RNNCell
-      num_dims: int, number of dimensions (excluding the depth dimension).
-      tied: bool, whether to share the weights among all the dimensions.
-      cell_kwargs: dict, additional arguments passed to the constructor of cell.
+      input_size: int, The dimensionality of the inputs into the cells. If None, input_size is equal to num_units.
+      num_dims: int, Number of dimensions of this grid.
+      input_dims: int or list, List of dimensions which will receive input data.
+      output_dims: int or list, List of dimensions from which the output will be recorded.
+      priority_dims: int or list, List of dimensions to be considered as priority dimensions.
+              If None, no dimension is prioritized.
+      non_recurrent_dims: int or list, List of dimensions that are not recurrent.
+              The transfer function for non-recurrent dimensions is specified via `non_recurrent_fn`,
+              which is default to be `tensorflow.nn.relu`.
+      tied: bool, Whether to share the weights among the dimensions.
+              If there are non-recurrent dimensions in the grid, weights are shared between each
+              group of recurrent and non-recurrent dimensions.
+      cell_fn: function, a function which returns the recurrent cell object. Has to be in the following signature:
+              def cell_func(num_units, input_size):
+                # ...
+
+              and returns an object of type `RNNCell`. If None, LSTMCell with default parameters will be used.
+      non_recurrent_fn: a tensorflow Op that will be the transfer function of the non-recurrent dimensions
     """
     if num_dims < 1:
       raise ValueError('dims must be >= 1: {}'.format(num_dims))
@@ -155,7 +161,12 @@ class GridRNNCell(rnn_cell.RNNCell):
     return output, states
 
 
+"""
+Specialized cells, for convenience
+"""
+
 class Grid1BasicRNNCell(GridRNNCell):
+  """1D BasicRNN cell"""
   def __init__(self, num_units, input_size=None):
     super(Grid1BasicRNNCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=1,
                                             input_dims=0, output_dims=0, priority_dims=0, tied=False,
@@ -163,6 +174,10 @@ class Grid1BasicRNNCell(GridRNNCell):
 
 
 class Grid2BasicRNNCell(GridRNNCell):
+  """2D BasicRNN cell
+  This creates a 2D cell which receives input and gives output in the first dimension.
+  The first dimension can optionally be non-recurrent if `non_recurrent_fn` is specified.
+  """
   def __init__(self, num_units, input_size=None, tied=False, non_recurrent_fn=None):
     super(Grid2BasicRNNCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=2,
                                             input_dims=0, output_dims=0, priority_dims=0, tied=tied,
@@ -172,6 +187,7 @@ class Grid2BasicRNNCell(GridRNNCell):
 
 
 class Grid1BasicLSTMCell(GridRNNCell):
+  """1D BasicLSTM cell"""
   def __init__(self, num_units, input_size=None, forget_bias=1):
     super(Grid1BasicLSTMCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=1,
                                              input_dims=0, output_dims=0, priority_dims=0, tied=False,
@@ -180,6 +196,10 @@ class Grid1BasicLSTMCell(GridRNNCell):
 
 
 class Grid2BasicLSTMCell(GridRNNCell):
+  """2D BasicLSTM cell
+    This creates a 2D cell which receives input and gives output in the first dimension.
+    The first dimension can optionally be non-recurrent if `non_recurrent_fn` is specified.
+  """
   def __init__(self, num_units, input_size=None, tied=False, non_recurrent_fn=None, forget_bias=1):
     super(Grid2BasicLSTMCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=2,
                                              input_dims=0, output_dims=0, priority_dims=0, tied=tied,
@@ -190,6 +210,9 @@ class Grid2BasicLSTMCell(GridRNNCell):
 
 
 class Grid1LSTMCell(GridRNNCell):
+  """1D LSTM cell
+    This is different from Grid1BasicLSTMCell because it gives options to specify the forget bias and enabling peepholes
+  """
   def __init__(self, num_units, input_size=None, use_peepholes=False, forget_bias=1.0):
     super(Grid1LSTMCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=1,
                                         input_dims=0, output_dims=0, priority_dims=0,
@@ -199,6 +222,10 @@ class Grid1LSTMCell(GridRNNCell):
 
 
 class Grid2LSTMCell(GridRNNCell):
+  """2D LSTM cell
+    This creates a 2D cell which receives input and gives output in the first dimension.
+    The first dimension can optionally be non-recurrent if `non_recurrent_fn` is specified.
+  """
   def __init__(self, num_units, input_size=None, tied=False, non_recurrent_fn=None,
                use_peepholes=False, forget_bias=1.0):
     super(Grid2LSTMCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=2,
@@ -211,6 +238,11 @@ class Grid2LSTMCell(GridRNNCell):
 
 
 class Grid3LSTMCell(GridRNNCell):
+  """3D BasicLSTM cell
+    This creates a 2D cell which receives input and gives output in the first dimension.
+    The first dimension can optionally be non-recurrent if `non_recurrent_fn` is specified.
+    The second and third dimensions are LSTM.
+  """
   def __init__(self, num_units, input_size=None, tied=False, non_recurrent_fn=None,
                use_peepholes=False, forget_bias=1.0):
     super(Grid3LSTMCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=3,
@@ -292,8 +324,6 @@ def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state, f
           new_output[d.idx] = d.non_recurrent_fn(rnn_cell.linear(args=linear_args,
                                                                  output_size=conf.num_units, bias=True,
                                                                  scope='non_recurrent/cell_{}'.format(i)))
-      new_output[d.idx] = logging_ops.Print(new_output[d.idx], [new_output[d.idx], cell_inputs, last_dim_output],
-                                            summarize=100)
     else:
 
       if c_prev[i] is not None:
@@ -304,9 +334,6 @@ def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state, f
 
       if conf.tied:
         with vs.variable_scope('recurrent', reuse=not(first_call and i == dim_indices[0])):
-          a, b = cell(cell_inputs, cell_state)
+          new_output[d.idx], new_state[d.idx] = cell(cell_inputs, cell_state)
       else:
-        a, b = cell(cell_inputs, cell_state, scope='recurrent/cell_{}'.format(i))
-
-      a = logging_ops.Print(a, [cell_state, cell_inputs, a, b], message='tensor{} '.format(i), summarize=100)
-      new_output[d.idx], new_state[d.idx] = a, b
+        new_output[d.idx], new_state[d.idx] = cell(cell_inputs, cell_state, scope='recurrent/cell_{}'.format(i))
