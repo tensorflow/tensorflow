@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""DType tests."""
+"""tensor_util tests."""
 
 # pylint: disable=unused-import
 from __future__ import absolute_import
@@ -88,6 +88,22 @@ class FloatDTypeTest(tf.test.TestCase):
     with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
       tf.contrib.framework.assert_scalar_int(
           tf.constant([3, 4], dtype=tf.int32))
+
+
+class LocalVariabletest(tf.test.TestCase):
+
+  def test_local_variable(self):
+    with self.test_session() as sess:
+      self.assertEquals([], tf.local_variables())
+      value0 = 42
+      tf.contrib.framework.local_variable(value0)
+      value1 = 43
+      tf.contrib.framework.local_variable(value1)
+      variables = tf.local_variables()
+      self.assertEquals(2, len(variables))
+      self.assertRaises(tf.OpError, sess.run, variables)
+      tf.initialize_variables(variables).run()
+      self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
 
 
 if __name__ == "__main__":

@@ -12,21 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Framework utilities.
+"""tensor_util tests."""
 
-@@assert_same_float_dtype
-@@is_numeric_tensor
-@@assert_scalar_int
-@@local_variable
-"""
-
+# pylint: disable=unused-import
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
+import tensorflow as tf
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.framework.python.framework import *
-from tensorflow.contrib.framework.python.ops import *
-from tensorflow.python.util.all_util import make_all
+
+class LocalVariabletest(tf.test.TestCase):
+
+  def test_local_variable(self):
+    with self.test_session() as sess:
+      self.assertEquals([], tf.local_variables())
+      value0 = 42
+      tf.contrib.framework.local_variable(value0)
+      value1 = 43
+      tf.contrib.framework.local_variable(value1)
+      variables = tf.local_variables()
+      self.assertEquals(2, len(variables))
+      self.assertRaises(tf.OpError, sess.run, variables)
+      tf.initialize_variables(variables).run()
+      self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
+
+
+if __name__ == "__main__":
+  tf.test.main()

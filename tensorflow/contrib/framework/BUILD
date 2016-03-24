@@ -13,6 +13,7 @@ py_library(
         "__init__.py",
         "python/framework/__init__.py",
         "python/framework/tensor_util.py",
+        "python/ops/variables.py",
     ],
     srcs_version = "PY2AND3",
 )
@@ -20,6 +21,18 @@ py_library(
 py_test(
     name = "tensor_util_test",
     srcs = glob(["python/framework/tensor_util_test.py"]),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "variables_test",
+    srcs = glob(["python/ops/variables_test.py"]),
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
