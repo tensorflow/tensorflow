@@ -73,7 +73,9 @@ class OpKernel {
   virtual ~OpKernel();
 
   // An OpKernel's computation can be either synchronous or
-  // asynchronous.
+  // asynchronous. All OpKernel Compute() methods must be thread-safe as they
+  // may be called concurrently (e.g. by multiple executions of the same graph
+  // concurrently).
   //
   // Most OpKernels should compute synchronously.  They should
   // subclass OpKernel and override the Compute() method and have it
