@@ -31,6 +31,8 @@
 # ":tensorflow" - "tensorflow_opensource" plus some Google-internal libraries.
 # ":testlib" - TensorFlow-specific test support, e.g. utilities for testing
 #      kernels.
+# ":direct_session" - An implementation of the Session interface that
+#      directly runs Graphs via the internal TensorFlow executor.
 #
 # Public Android targets:
 #
@@ -517,6 +519,19 @@ cc_library(
     ],
 )
 
+# This is a link-only library to provide a DirectSession
+# implementation of the Session interface.
+tf_cuda_library(
+    name = "direct_session",
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":direct_session_internal",
+    ],
+    alwayslink = 1,
+)
+
 # -----------------------------------------------------------------------------
 # Public Android targets
 
@@ -951,7 +966,7 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-    name = "direct_session",
+    name = "direct_session_internal",
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = ["common_runtime/direct_session.h"],
     copts = tf_copts(),
@@ -1141,7 +1156,7 @@ tf_cc_tests(
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
-        ":direct_session",
+        ":direct_session_internal",
         ":framework",
         ":framework_internal",
         ":lib",

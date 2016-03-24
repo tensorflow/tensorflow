@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -682,22 +684,20 @@ TEST(DirectSessionTest, CostModelTest) {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
   options.config.mutable_graph_options()->set_build_cost_model(true);
-  std::vector<Device*> devices;
-  DeviceFactory::AddDevices(options, "/job:localhost/replica:0/task:0",
-                            &devices);
-  DirectSession session(options, new DeviceMgr(devices));
-  TF_ASSERT_OK(session.Create(def));
+  std::unique_ptr<Session> session(NewSession(options));
+  TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
   std::vector<string> output_names = {y->name() + ":0"};
   std::vector<string> target_nodes = {y_neg->name()};
   std::vector<Tensor> outputs;
-  Status s = session.Run(inputs, output_names, target_nodes, &outputs);
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
   TF_ASSERT_OK(s);
 
+  DirectSession* ds = static_cast<DirectSession*>(session.get());
   const std::unordered_map<const Graph*, CostModel*>& cost_models =
-      session.GetCostModels();
+      ds->GetCostModels();
   // We should have 2 cost models since we have 2 cpu devices.
   ASSERT_EQ(2, cost_models.size());
 
