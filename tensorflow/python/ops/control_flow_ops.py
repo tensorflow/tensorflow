@@ -897,7 +897,7 @@ def ZerosLikeOutsideLoop(op, index):
     branch = op_ctxt.branch
     switch_val = switch(op.inputs[0], pred)[1 - branch]
     zeros_shape = array_ops.shape(switch_val)
-    return array_ops.zeros(zeros_shape)
+    return array_ops.zeros(zeros_shape, dtype=val.dtype)
 
 
 class ControlFlowContext(object):

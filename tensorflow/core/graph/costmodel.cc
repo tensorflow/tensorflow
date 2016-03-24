@@ -124,6 +124,8 @@ void CostModel::Ensure(int id) {
     slot_bytes_.resize(id + 1);
     count_.resize(id + 1);
     time_.resize(id + 1);
+    max_mem_usage_.resize(id + 1);
+    output_port_alias_.resize(id + 1);
   }
 }
 
@@ -132,11 +134,16 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
   if (id < 0) return;
   Ensure(id);
   auto perslot = &slot_bytes_[id];
+  auto max_mem_usage = &max_mem_usage_[id];
+  auto output_port_alias = &output_port_alias_[id];
   if (perslot->size() > 0) {
     CHECK_EQ(num_outputs, perslot->size()) << "Cannot resize slot_bytes, node="
                                            << node->name();
   } else {
     perslot->resize(num_outputs, Bytes(-1));
+    max_mem_usage->output_port_mem.resize(num_outputs, Bytes(-1));
+    max_mem_usage->temp_memory_size = Bytes(-1);
+    output_port_alias->resize(num_outputs, -1);
   }
 }
 
@@ -222,6 +229,39 @@ void CostModel::CheckInitialized(const Graph& graph) const {
       }
     }
   }
+}
+
+void CostModel::RecordMaxSize(const Node* node, int output_slot, Bytes bytes) {
+  const int id = Id(node);
+  if (id < 0) return;
+  Ensure(id);
+  max_mem_usage_[id].output_port_mem[output_slot] = bytes;
+}
+
+Bytes CostModel::MaxSize(const Node* node, int slot) const {
+  const int id = Id(node);
+  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
+      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].output_port_mem[slot];
+}
+
+void CostModel::RecordAliases(const Node* node, int output_slot,
+                              int64 alias_id) {
+  const int id = Id(node);
+  if (id < 0) return;
+  Ensure(id);
+  output_port_alias_[id][output_slot] = alias_id;
+}
+
+int64 CostModel::Aliases(const Node* node, int slot) const {
+  const int id = Id(node);
+  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
+      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+    return -1;
+  }
+  return output_port_alias_[id][slot];
 }
 
 Microseconds CostModel::CopyTimeEstimate(Bytes b, double network_latency_millis,

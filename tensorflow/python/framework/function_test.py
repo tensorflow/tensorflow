@@ -537,12 +537,13 @@ class FunctionInlineControlTest(tf.test.TestCase):
         y = Forward(x)
         dx, = tf.gradients([y], [x])
 
-      np.random.seed(12345)
-      inp = np.random.uniform(-1, 1, [2 * 1024, 1]).astype(np.float32)
+      np.random.seed(321)
+      inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
       with tf.Session(graph=g, config=cfg) as sess:
         ans = sess.run([y, dx], {x: inp})
-        self.assertAllClose(ans[0], 1384849.5, rtol=1e-3)
-        self.assertAllClose(np.sum(ans[1]), 7127613.5, rtol=1e-3)
+        print(ans[0], np.sum(ans[1]))
+        self.assertAllClose(ans[0], 255.971, rtol=1e-3)
+        self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
 
 
 if __name__ == "__main__":

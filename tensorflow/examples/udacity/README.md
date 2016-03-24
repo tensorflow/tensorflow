@@ -58,7 +58,7 @@ Building a local Docker container
 ---------------------------------
 
     cd tensorflow/examples/udacity
-    docker build -t $USER/assignments .
+    docker build --pull -t $USER/assignments .
 
 Running the local container
 ---------------------------
