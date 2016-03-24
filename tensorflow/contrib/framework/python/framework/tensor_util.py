@@ -13,13 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor utility functions."""
+"""Tensor utility functions.
+
+@@assert_same_float_dtype
+@@is_numeric_tensor
+@@assert_scalar_int
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.ops import Tensor
-
 
 __all__ = ['assert_same_float_dtype', 'is_numeric_tensor', 'assert_scalar_int']
 

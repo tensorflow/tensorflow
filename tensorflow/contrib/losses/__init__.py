@@ -12,19 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""contrib module containing volatile or experimental code."""
+"""Ops for building neural network losses."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Add projects here, they will show up under tf.contrib.
-from tensorflow.contrib import ctc
-from tensorflow.contrib import distributions
-from tensorflow.contrib import framework
-from tensorflow.contrib import layers
-from tensorflow.contrib import linear_optimizer
-from tensorflow.contrib import lookup
-from tensorflow.contrib import losses
-from tensorflow.contrib import testing
-from tensorflow.contrib import util
+import sys
+
+# pylint: disable=unused-import,wildcard-import
+from tensorflow.contrib.losses.python.losses import *
+from tensorflow.python.util.all_util import make_all
