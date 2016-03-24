@@ -1900,6 +1900,7 @@ class Graph(object):
 
   @property
   def seed(self):
+    """The graph-level random seed of this graph."""
     return self._seed
 
   @seed.setter
