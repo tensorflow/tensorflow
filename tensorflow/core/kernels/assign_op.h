@@ -70,6 +70,7 @@ class AssignOp : public OpKernel {
         // allocation attributes.
         AllocatorAttributes attr;
         attr.set_gpu_compatible(true);
+        attr.set_nic_compatible(true);
         PersistentTensor copy;
         Tensor* copyTensor = nullptr;
         OP_REQUIRES_OK(
