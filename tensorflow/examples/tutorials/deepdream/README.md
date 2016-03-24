@@ -13,7 +13,7 @@ image generation techiques impelemented with TensorFlow:
 
 You can view "deepdream.ipynb" directly on GitHub. Note that GitHub Jupyter notebook preview removes 
 embedded graph visualizations. You can still see them online 
-[using nbviewer](http://nbviewer.jupyter.org/github/tensorflow/tensorflow/blob/master/tensorflow/tutorials/deepdream/deepdream.ipynb)
+[using nbviewer](http://nbviewer.jupyter.org/github/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
 service.
 
 In order to run the notebook locally, the following dependencies must be installed:
