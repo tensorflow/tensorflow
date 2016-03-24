@@ -29,6 +29,7 @@ from tensorflow.python.ops import rnn_cell
 
 
 # TODO: update docs
+# TODO: remove Print ops
 
 class GridRNNCell(rnn_cell.RNNCell):
   """Grid Long short-term memory unit (GridLSTM) recurrent network cell.
@@ -113,10 +114,11 @@ class GridRNNCell(rnn_cell.RNNCell):
     m_prev = [None] * self._config.num_dims
     cell_units = self._cell.state_size - self._cell.output_size
 
-    # for LSTM cell: state_size = num_units + output_size, because state = concat(cell_values + previous output)
-    # for GRU/RNN: state_size = output_size, because state = previous output
+    # for LSTM cell: state_size = num_units + output_size
+    # for GRU/RNN: state_size = output_size
     for recurrent_dim, start_idx in zip(self._config.recurrents, range(0, self.state_size, self._cell.state_size)):
-      c_prev[recurrent_dim] = array_ops.slice(state, [0, start_idx], [-1, cell_units])
+      if cell_units > 0:
+        c_prev[recurrent_dim] = array_ops.slice(state, [0, start_idx], [-1, cell_units])
       m_prev[recurrent_dim] = array_ops.slice(state, [0, start_idx + cell_units], [-1, self._cell.output_size])
 
     conf = self._config
@@ -129,11 +131,16 @@ class GridRNNCell(rnn_cell.RNNCell):
     new_state = [None] * conf.num_dims
 
     with vs.variable_scope(scope or type(self).__name__) as grid_scope:  # GridRNNCell
+
+      # project input
       for i, j in enumerate(conf.inputs):
-        input_project_c = vs.get_variable('project_c_{}'.format(j), [self._input_size, conf.num_units], dtype=dtype)
         input_project_m = vs.get_variable('project_m_{}'.format(j), [self._input_size, conf.num_units], dtype=dtype)
-        c_prev[j] = math_ops.matmul(input_splits[i], input_project_c)
         m_prev[j] = math_ops.matmul(input_splits[i], input_project_m)
+
+        if cell_units > 0:
+          input_project_c = vs.get_variable('project_c_{}'.format(j), [self._input_size, conf.num_units], dtype=dtype)
+          c_prev[j] = math_ops.matmul(input_splits[i], input_project_c)
+
 
       _propagate(conf.non_priority, conf, self._cell, c_prev, m_prev, new_output, new_state, True)
       _propagate(conf.priority, conf, self._cell, c_prev, m_prev, new_output, new_state, False)
@@ -271,7 +278,13 @@ def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state, f
                                                                  scope='non_recurrent/cell_{}'.format(i)))
       new_output[d.idx] = logging_ops.Print(new_output[d.idx], [new_output[d.idx], cell_inputs, last_dim_output])
     else:
-      cell_state = array_ops.concat(1, [c_prev[i], last_dim_output])
+
+      if c_prev[i] is not None:
+        cell_state = array_ops.concat(1, [c_prev[i], last_dim_output])
+      else:
+        # for GRU/RNN, the state is just the previous output
+        cell_state = last_dim_output
+
       if conf.tied:
         with vs.variable_scope('recurrent', reuse=not(first_call and i == dim_indices[0])):
           a, b = cell(cell_inputs, cell_state)

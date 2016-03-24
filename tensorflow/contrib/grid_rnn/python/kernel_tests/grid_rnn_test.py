@@ -44,7 +44,6 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertAllClose(res[1], [[ 0.71053141, 0.71053141, 0.36617181, 0.36617181,
                                        0.72320831, 0.80555487, 0.39102408, 0.42150158]])
 
-        # make sure variables are reused properly
         res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]), m.name: res[1]})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 8))
@@ -168,8 +167,7 @@ class GridRNNCellTest(tf.test.TestCase):
                                 m.name: np.array([[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2]])})
         self.assertEqual(res[0].shape, (2, 2))
         self.assertEqual(res[1].shape, (2, 4))
-        # print(res[0], res[1])
-      #TODO: check correctness of this
+        print(res[0], res[1])
 
   def testGrid2BasicRNNCellWithRelu(self):
     with self.test_session() as sess:
