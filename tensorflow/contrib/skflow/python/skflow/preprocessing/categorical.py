@@ -57,7 +57,7 @@ class CategoricalProcessor(object):
         """Learn a vocabulary dictionary of all categories in X.
 
         Args:
-            raw_documents: numpy matrix or iterable of lists/numpy arrays.
+            X: numpy matrix or iterable of lists/numpy arrays.
             unused_y: to match fit format signature of estimators.
 
         Returns:

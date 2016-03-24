@@ -25,10 +25,10 @@ def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
     """Creates fully connected deep neural network subgraph.
 
     Args:
-        tenson_in: tensor or placeholder for input features.
+        tensor_in: tensor or placeholder for input features.
         hidden_units: list of counts of hidden units in each layer.
         activation: activation function between layers. Can be None.
-        keep_proba: if not None, will add a dropout layer with given
+        keep_prob: if not None, will add a dropout layer with given
                     probability.
 
     Returns:
