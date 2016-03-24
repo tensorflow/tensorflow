@@ -47,25 +47,22 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Typed ref-counted buffer: T[n].
-template <typename T>
-class Buffer : public TensorBuffer {
+// An un-templated base class for Buffer.
+class BufferBase : public TensorBuffer {
  public:
-  Buffer(Allocator* a, int64 n);
-  Buffer(Allocator* a, int64 n, const AllocationAttributes& allocation_attr);
+  BufferBase(Allocator* alloc) : alloc_(alloc) {}
 
-  void* data() const override { return data_; }
-  size_t size() const override { return sizeof(T) * elem_; }
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(AllocationDescription* proto) const override {
+    void* data_ptr = data();
     int64 rb = size();
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(alloc_->Name());
-    proto->set_ptr(reinterpret_cast<uintptr_t>(data_));
+    proto->set_ptr(reinterpret_cast<uintptr_t>(data_ptr));
     if (alloc_->TracksAllocationSizes()) {
-      int64 ab = alloc_->AllocatedSize(data_);
+      int64 ab = alloc_->AllocatedSize(data_ptr);
       proto->set_allocated_bytes(ab);
-      int64 id = alloc_->AllocationId(data_);
+      int64 id = alloc_->AllocationId(data_ptr);
       if (id > 0) {
         proto->set_allocation_id(id);
       }
@@ -75,8 +72,26 @@ class Buffer : public TensorBuffer {
     }
   }
 
+ protected:
+  void RecordDeallocation() {
+    LogMemory::RecordTensorDeallocation(alloc_->AllocationId(data()),
+                                        alloc_->Name());
+  }
+
+  Allocator* const alloc_;
+};
+
+// Typed ref-counted buffer: T[n].
+template <typename T>
+class Buffer : public BufferBase {
+ public:
+  Buffer(Allocator* a, int64 n);
+  Buffer(Allocator* a, int64 n, const AllocationAttributes& allocation_attr);
+
+  void* data() const override { return data_; }
+  size_t size() const override { return sizeof(T) * elem_; }
+
  private:
-  Allocator* alloc_;
   T* data_;
   int64 elem_;
 
@@ -84,6 +99,10 @@ class Buffer : public TensorBuffer {
 
   TF_DISALLOW_COPY_AND_ASSIGN(Buffer);
 };
+
+void LogUnexpectedSize(int64 actual, int64 expected) {
+  LOG(ERROR) << "Input size was " << actual << " and expected " << expected;
+}
 
 // A set of helper functions depending on T.
 template <typename T>
@@ -105,8 +124,7 @@ struct Helper {
   template <typename Source>
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
     if (in.size() != sizeof(T) * n) {
-      LOG(ERROR) << "Input size was " << in.size() << " and expected "
-                 << sizeof(T) * n;
+      LogUnexpectedSize(in.size(), sizeof(T) * n);
       return nullptr;
     }
     Buffer<T>* buf = new Buffer<T>(a, n);
@@ -283,18 +301,17 @@ struct ProtoHelper<Eigen::half> {
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n)
-    : alloc_(a), data_(a->Allocate<T>(n)), elem_(n) {}
+    : BufferBase(a), data_(a->Allocate<T>(n)), elem_(n) {}
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n,
                   const AllocationAttributes& allocation_attr)
-    : alloc_(a), data_(a->Allocate<T>(n, allocation_attr)), elem_(n) {}
+    : BufferBase(a), data_(a->Allocate<T>(n, allocation_attr)), elem_(n) {}
 
 template <typename T>
 Buffer<T>::~Buffer() {
   if (LogMemory::IsEnabled()) {
-    LogMemory::RecordTensorDeallocation(alloc_->AllocationId(data_),
-                                        alloc_->Name());
+    RecordDeallocation();
   }
   alloc_->Deallocate<T>(data_, elem_);
 }
