@@ -952,7 +952,7 @@ def trace(x, name=None):
   ```
 
   Args:
-    input_tensor: 2-D tensor.
+    x: 2-D tensor.
     name: A name for the operation (optional).
 
   Returns:
