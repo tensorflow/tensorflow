@@ -369,6 +369,20 @@ bool Tensor::IsInitialized() const {
   return buf_ != nullptr && buf_->data() != nullptr;
 }
 
+void Tensor::CheckType(DataType expected_dtype) const {
+  CHECK_EQ(dtype(), expected_dtype);
+}
+
+void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
+  CHECK_EQ(dtype(), expected_dtype);
+  CHECK(IsAligned());
+}
+
+void Tensor::CheckIsAlignedAndSingleElement() const {
+  CHECK(IsAligned());
+  CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
+}
+
 Tensor::~Tensor() { UnrefIfNonNull(buf_); }
 
 void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
@@ -551,7 +565,8 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   set_dtype(proto.dtype());
   UnrefIfNonNull(buf_);
   buf_ = p;
-  // TODO(misard) add tracking of which kernels and steps are calling FromProto.
+  // TODO(misard) add tracking of which kernels and steps are calling
+  // FromProto.
   if (IsInitialized() && LogMemory::IsEnabled()) {
     LogMemory::RecordTensorAllocation("Unknown (from Proto)",
                                       LogMemory::UNKNOWN_STEP_ID, *this);

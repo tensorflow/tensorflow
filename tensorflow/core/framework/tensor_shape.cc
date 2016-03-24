@@ -32,6 +32,16 @@ static void AppendTo(const TensorShape& s, gtl::InlinedVector<int64, 8>* vals) {
   }
 }
 
+void TensorShape::CheckDimsEqual(int NDIMS) const {
+  CHECK_EQ(NDIMS, dims()) << "Asking for tensor of " << NDIMS
+                          << " for a tensor of " << dims() << " dimensions";
+}
+
+void TensorShape::CheckDimsAtLeast(int NDIMS) const {
+  CHECK_GE(NDIMS, dims()) << "Asking for tensor of at least " << NDIMS
+                          << " for a tensor of " << dims() << " dimensions";
+}
+
 bool TensorShape::IsValid(const TensorShapeProto& proto) {
   int64 num_elements = 1;
   for (const auto& d : proto.dim()) {

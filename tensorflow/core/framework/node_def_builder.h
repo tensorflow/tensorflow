@@ -32,7 +32,8 @@ namespace tensorflow {
 
 class NodeDefBuilder;
 typedef std::function<Status(const OpDef&, int, const NodeDef&,
-                             NodeDefBuilder*)> FakeInputFunctor;
+                             NodeDefBuilder*)>
+    FakeInputFunctor;
 
 // This is a helper for creating a NodeDef.  Automatically sets attrs
 // that can be inferred from the inputs, and uses default values
@@ -49,14 +50,9 @@ class NodeDefBuilder {
  public:
   // To specify an output to be consumed by one of the Input() methods below.
   struct NodeOut {
-    NodeOut(const string& n, int i, DataType dt)
-        : node(n), index(i), data_type(dt) {}
-    NodeOut() {}  // uninitialized, call Reset() before use.
-    void Reset(const string& n, int i, DataType dt) {
-      node = n;
-      index = i;
-      data_type = dt;
-    }
+    NodeOut(StringPiece n, int i, DataType dt);
+    NodeOut();  // uninitialized, call Reset() before use.
+    void Reset(StringPiece n, int i, DataType dt);
     string node;
     int index;
     DataType data_type;
@@ -66,16 +62,16 @@ class NodeDefBuilder {
   // the Op plus a registry) for the NodeDef.  Other fields are
   // specified by calling the methods below.
   // REQUIRES: The OpDef must satisfy ValidateOpDef().
-  NodeDefBuilder(const string& name, const string& op_name,
+  NodeDefBuilder(StringPiece name, StringPiece op_name,
                  const OpRegistryInterface* op_registry = OpRegistry::Global());
   // REQUIRES: in addition, *op_def must outlive *this.
-  NodeDefBuilder(const string& name, const OpDef* op_def);
+  NodeDefBuilder(StringPiece name, const OpDef* op_def);
 
   // You must call one Input() function per input_arg in the Op,
   // *and in the same order as the input_args appear in the OpDef.*
 
   // For inputs that take a single tensor.
-  NodeDefBuilder& Input(const string& src_node, int src_index, DataType dt) {
+  NodeDefBuilder& Input(StringPiece src_node, int src_index, DataType dt) {
     const OpDef::ArgDef* arg = NextArgDef();
     if (arg != nullptr) SingleInput(arg, src_node, src_index, dt);
     return *this;
@@ -96,25 +92,18 @@ class NodeDefBuilder {
   NodeDefBuilder& Input(FakeInputFunctor fake_input);
 
   // Specify that this node must only run after src_node.
-  NodeDefBuilder& ControlInput(const string& src_node) {
-    control_inputs_.push_back(src_node);
-    return *this;
-  }
+  NodeDefBuilder& ControlInput(StringPiece src_node);
 
   // Constrains what devices this node may be scheduled on.
-  NodeDefBuilder& Device(const string& device_spec) {
-    node_def_.set_device(device_spec);
-    return *this;
-  }
+  NodeDefBuilder& Device(StringPiece device_spec);
 
   // Sets the attr, if not already set.  If already set with a different
   // value, an error will be returned from Finalize().
   template <class T>
-  NodeDefBuilder& Attr(const string& attr_name, T&& value);
+  NodeDefBuilder& Attr(StringPiece attr_name, T&& value);
   // Note: overload needed to allow {...} expressions for value.
   template <class T>
-  NodeDefBuilder& Attr(const string& attr_name,
-                       std::initializer_list<T> value) {
+  NodeDefBuilder& Attr(StringPiece attr_name, std::initializer_list<T> value) {
     Attr<std::initializer_list<T>>(attr_name, std::move(value));
     return *this;
   }
@@ -141,13 +130,13 @@ class NodeDefBuilder {
   bool NextArgAvailable();
 
   // These do the main work of the Input() methods.
-  void SingleInput(const OpDef::ArgDef* input_arg, const string& src_node,
+  void SingleInput(const OpDef::ArgDef* input_arg, StringPiece src_node,
                    int src_index, DataType dt);
   void ListInput(const OpDef::ArgDef* input_arg,
                  gtl::ArraySlice<NodeOut> src_list);
 
   // Add "src_node:src_index" to the list of inputs in the node_def_.
-  void AddInput(const string& src_node, int src_index);
+  void AddInput(StringPiece src_node, int src_index);
 
   // Generate an error if you can't pass dt when expected is expected.
   void VerifyInputType(const OpDef::ArgDef* input_arg, DataType expected,
@@ -161,6 +150,9 @@ class NodeDefBuilder {
     return input_arg->is_ref() ? MakeRefType(dt) : dt;
   }
 
+  void CheckInconsistency(StringPiece attr_name, const AttrValue& found,
+                          const AttrValue& attr_value);
+
   const OpDef* op_def_;
   NodeDef node_def_;
   int inputs_specified_;
@@ -171,18 +163,14 @@ class NodeDefBuilder {
 // IMPLEMENTATION -------------------------------------------------------------
 
 template <class T>
-NodeDefBuilder& NodeDefBuilder::Attr(const string& attr_name, T&& value) {
+NodeDefBuilder& NodeDefBuilder::Attr(StringPiece attr_name, T&& value) {
   const AttrValue* found = AttrSlice(node_def_).Find(attr_name);
   if (found == nullptr) {
     AddNodeAttr(attr_name, std::forward<T>(value), &node_def_);
   } else {
     AttrValue attr_value;
     SetAttrValue(std::forward<T>(value), &attr_value);
-    if (!AreAttrValuesEqual(*found, attr_value)) {
-      errors_.push_back(strings::StrCat(
-          "Inconsistent values for attr '", attr_name, "' ",
-          SummarizeAttrValue(*found), " vs. ", SummarizeAttrValue(attr_value)));
-    }
+    CheckInconsistency(attr_name, *found, attr_value);
   }
   return *this;
 }
