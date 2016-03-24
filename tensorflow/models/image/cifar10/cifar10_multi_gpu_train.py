@@ -239,9 +239,7 @@ def train():
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
 
-    graph_def = sess.graph.as_graph_def(add_shapes=True)
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                            graph_def=graph_def)
+    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 
     for step in xrange(FLAGS.max_steps):
       start_time = time.time()

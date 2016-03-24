@@ -596,9 +596,11 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     gfile.MkDir(directory)
 
     writer = tf.train.SummaryWriter(directory, max_queue=100)
-    graph_def = tf.GraphDef(node=[tf.NodeDef(name='A', op='Mul')])
+
+    with tf.Graph().as_default() as graph:
+      _ = tf.constant([2.0, 1.0])
     # Add a graph to the summary writer.
-    writer.add_graph(graph_def)
+    writer.add_graph(graph)
 
     run_metadata = tf.RunMetadata()
     device_stats = run_metadata.step_stats.dev_stats.add()
@@ -651,7 +653,7 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
       self.assertEqual(i * 5, sq_events[i].step)
       self.assertEqual(i, id_events[i].value)
       self.assertEqual(i * i, sq_events[i].value)
-    self.assertProtoEquals(graph_def, acc.Graph())
+    self.assertProtoEquals(graph.as_graph_def(add_shapes=True), acc.Graph())
 
 
 if __name__ == '__main__':
