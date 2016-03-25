@@ -426,7 +426,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the adagrad scheme."
   description: "accum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
@@ -520,7 +520,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var, m, and v tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var, m, and v tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the Adam algorithm."
   description: "lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)\nm_t <- beta1 * m_{t-1} + (1 - beta1) * g_t\nv_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t\nvariable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)"
@@ -604,7 +604,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the Ftrl-proximal scheme."
   description: "accum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
@@ -661,7 +661,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Update \'*var\' by subtracting \'alpha\' * \'delta\' from it."
 }
@@ -728,7 +728,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the momentum scheme."
   description: "accum = accum * momentum + grad\nvar -= lr * accum"
@@ -811,7 +811,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var, m, and v tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var, m, and v tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the RMSProp algorithm."
   description: "mean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
@@ -9746,7 +9746,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update relevant entries in \'*var\' and \'*accum\' according to the adagrad scheme."
   description: "That is for rows we have grad for, we update var and accum as follows:\naccum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
@@ -9845,7 +9845,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update relevant entries in \'*var\' according to the Ftrl-proximal scheme."
   description: "That is for rows we have grad for, we update var, accum and linear as follows:\naccum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
@@ -9928,7 +9928,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update relevant entries in \'*var\' and \'*accum\' according to the momentum scheme."
   description: "That is for rows we have grad for, we update var and accum as follows:\n\naccum = accum * momentum + grad\nvar -= lr * accum"
