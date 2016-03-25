@@ -176,6 +176,9 @@ DirectSession::~DirectSession() {
   if (options_.config.use_per_session_threads()) {
     delete thread_pool_;
   }
+  for (auto it : cost_models_) {
+    delete it.second;
+  }
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
@@ -254,9 +257,9 @@ Status DirectSession::Run(const NamedTensorList& inputs,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs) {
-  RunOutputs run_outputs;
+  RunMetadata run_metadata;
   return Run(RunOptions(), inputs, output_names, target_nodes, outputs,
-             &run_outputs);
+             &run_metadata);
 }
 
 Status DirectSession::Run(const RunOptions& run_options,
@@ -264,7 +267,7 @@ Status DirectSession::Run(const RunOptions& run_options,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs,
-                          RunOutputs* run_outputs) {
+                          RunMetadata* run_metadata) {
   {
     mutex_lock l(graph_def_lock_);
     if (!graph_created_) {
@@ -314,9 +317,11 @@ Status DirectSession::Run(const RunOptions& run_options,
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
 
-  if (run_options.trace_level() == RunOptions::FULL_TRACE) {
-    args.stats_collector =
-        new StepStatsCollector(run_outputs->mutable_step_stats());
+  if (run_options.trace_level() == RunOptions::FULL_TRACE ||
+      options_.config.graph_options().build_cost_model()) {
+    args.stats_collector = new StepStatsCollector(
+        run_metadata->mutable_step_stats(), &cost_models_);
+    run_state.collector = args.stats_collector;
   }
 
   for (const auto& item : executors_and_keys->items) {
@@ -326,10 +331,6 @@ Status DirectSession::Run(const RunOptions& run_options,
   WaitForNotification(&run_state, run_options.timeout_in_ms() > 0
                                       ? run_options.timeout_in_ms()
                                       : operation_timeout_in_ms_);
-
-  if (run_options.trace_level() == RunOptions::FULL_TRACE) {
-    delete args.stats_collector;
-  }
 
   {
     mutex_lock l(run_state.mu_);
@@ -396,8 +397,14 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   args.rendezvous = run_state->rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
-  LOG(INFO) << "Step " << args.step_id << " is for handle "
-            << run_state_args.handle;
+  if (LogMemory::IsEnabled()) {
+    LogMemory::RecordStep(args.step_id, run_state_args.handle);
+  }
+
+  if (options_.config.graph_options().build_cost_model()) {
+    run_state->collector = new StepStatsCollector(nullptr, &cost_models_);
+    args.stats_collector = run_state->collector;
+  }
 
   for (auto& item : executors_and_keys->items) {
     Executor* exec = item.executor;
@@ -909,6 +916,19 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
 ::tensorflow::Status DirectSession::Close() {
   cancellation_manager_->StartCancel();
   return ::tensorflow::Status::OK();
+}
+
+DirectSession::RunState::~RunState() {
+  if (rendez != nullptr) {
+    if (!executors_done.HasBeenNotified()) {
+      rendez->StartAbort(errors::Cancelled("PRun cancellation"));
+      executors_done.WaitForNotification();
+    }
+    rendez->Unref();
+  }
+  if (collector != nullptr) {
+    delete collector;
+  }
 }
 
 void DirectSession::WaitForNotification(RunState* run_state,

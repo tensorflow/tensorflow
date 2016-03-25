@@ -51,10 +51,6 @@ class DataByExample : public ResourceBase {
     float primal_loss = 0;
     float dual_loss = 0;
     float example_weight = 0;
-
-    // Comparison operators for ease of testing.
-    bool operator==(const Data& other) const { return dual == other.dual; }
-    bool operator!=(const Data& other) const { return !(*this == other); }
   };
 
   // Accessor and mutator for the entry at Key. Accessor creates an entry with
@@ -90,13 +86,13 @@ class DataByExample : public ResourceBase {
   // So on average we use ~47.5 (28 + 19.5) bytes per entry in this table.
   using DataByKey = std::unordered_map<Key, Data, KeyHash>;
 
-  // TODO(katsiapis): Benchmark and/or optimize this.
+  // TODO(sibyl-Mooth6ku): Benchmark and/or optimize this.
   static const size_t kVisitChunkSize = 100;
 
   const string container_;
   const string solver_uuid_;
 
-  // TODO(katsiapis): Come up with a more efficient locking scheme.
+  // TODO(sibyl-Mooth6ku): Come up with a more efficient locking scheme.
   mutable mutex mu_;
   DataByKey data_by_key_ GUARDED_BY(mu_);
 

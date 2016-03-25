@@ -31,6 +31,8 @@
 # ":tensorflow" - "tensorflow_opensource" plus some Google-internal libraries.
 # ":testlib" - TensorFlow-specific test support, e.g. utilities for testing
 #      kernels.
+# ":direct_session" - An implementation of the Session interface that
+#      directly runs Graphs via the internal TensorFlow executor.
 #
 # Public Android targets:
 #
@@ -47,6 +49,7 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 # For platform specific build config
 load(
@@ -278,6 +281,7 @@ tf_cuda_library(
         "framework/reader_op_kernel.h",
         "framework/register_types.h",
         "framework/resource_mgr.h",
+        "framework/selective_registration.h",
         "framework/tensor.h",
         "framework/tensor_shape.h",
         "framework/tensor_slice.h",
@@ -289,10 +293,12 @@ tf_cuda_library(
         "framework/types.h",
         "public/version.h",
         "util/bcast.h",
+        "util/checkpoint_reader.h",
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/events_writer.h",
         "util/guarded_philox_random.h",
+        "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
         "util/saved_tensor_slice_util.h",
@@ -308,22 +314,6 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
-)
-
-cc_binary(
-    name = "libtensorflow_framework.so",
-    srcs = [],
-    linkopts = select({
-        "//conditions:default": [
-            "-Wl,-Bsymbolic",
-            "-lm",
-        ],
-        "//tensorflow:darwin": [],
-    }),
-    linkshared = 1,
-    linkstatic = 1,
-    visibility = ["//visibility:public"],
-    deps = [":framework"],
 )
 
 # Generates library per group of ops.
@@ -400,7 +390,7 @@ cc_library(
 cc_library(
     name = "array_grad",
     srcs = ["ops/array_grad.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_op_lib",
@@ -413,7 +403,7 @@ cc_library(
 cc_library(
     name = "functional_grad",
     srcs = ["ops/functional_grad.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -426,7 +416,7 @@ cc_library(
 cc_library(
     name = "math_grad",
     srcs = ["ops/math_grad.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -439,7 +429,7 @@ cc_library(
 cc_library(
     name = "nn_grad",
     srcs = ["ops/nn_grad.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -455,6 +445,7 @@ tf_cuda_library(
         "common_runtime/device.h",
         "graph/algorithm.h",
         "graph/default_device.h",
+        "graph/gradients.h",
         "graph/graph.h",
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
@@ -552,7 +543,6 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
@@ -560,13 +550,25 @@ cc_library(
         ":lib",
         ":protos_all_cc",
         ":tensor_testutil",
-        ":tensorflow",  # TODO(josh11b): Drop this dep?
         ":test",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform/default/build_config:gtest",
     ],
+)
+
+# This is a link-only library to provide a DirectSession
+# implementation of the Session interface.
+tf_cuda_library(
+    name = "direct_session",
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":direct_session_internal",
+    ],
+    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------
@@ -600,8 +602,6 @@ filegroup(
             "graph/**/*.cc",
             "lib/**/*.h",
             "lib/**/*.cc",
-            "ops/**/*.cc",
-            "ops/**/*.h",
             "platform/*.h",
             "platform/*.cc",
             "platform/**/*.h",
@@ -671,6 +671,7 @@ ANDROID_TF_COPTS = [
     "-mfpu=neon",
     "-std=c++11",
     "-DMIN_LOG_LEVEL=0",
+    "-DTF_LEAN_BINARY",
     "-O2",
 ]
 
@@ -720,6 +721,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = [
+        ":android_op_registrations_and_gradients",
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ],
@@ -743,8 +745,25 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "android_op_registrations_and_gradients",
+    srcs = glob(
+        [
+            "ops/**/*.cc",
+            "ops/**/*.h",
+        ],
+        exclude = [
+            "**/*test.cc",
+            "**/*testutil*",
+            "**/*testlib*",
+            "**/*main.cc",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
 # -----------------------------------------------------------------------------
-# Libraries for GPU facilities that are useful for writing kernels.
+# Libraries with GPU facilities that are useful for writing kernels.
 cc_library(
     name = "gpu_lib",
     srcs = [
@@ -752,7 +771,6 @@ cc_library(
     ],
     hdrs = [
         "common_runtime/gpu/gpu_event_mgr.h",
-        "common_runtime/gpu_device_context.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -763,6 +781,14 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
+    ],
+)
+
+cc_library(
+    name = "cuda",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:cuda",
     ],
 )
 
@@ -800,6 +826,7 @@ cc_library(
         "lib/random/weighted_picker.h",
         "lib/strings/ordered_code.h",
         "lib/strings/regexp.h",
+        "lib/strings/scanner.h",
         "platform/denormal.h",
         "platform/platform.h",
         "platform/tensor_coding.h",
@@ -850,9 +877,24 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
+        "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
+)
+
+cc_header_only_library(
+    name = "framework_headers_lib",
+    deps = [
+        ":framework",
+    ],
+)
+
+cc_header_only_library(
+    name = "stream_executor_headers_lib",
+    deps = [
+        ":stream_executor",
+    ],
 )
 
 filegroup(
@@ -874,6 +916,7 @@ filegroup(
         "framework/op_kernel.h",
         "framework/partial_tensor_shape.h",
         "framework/rendezvous.h",
+        "framework/selective_registration.h",
         "framework/tensor.h",
         "framework/tensor_reference.h",
         "framework/tensor_shape.h",
@@ -984,21 +1027,11 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "cuda",
-    deps = [
-        "//tensorflow/core/platform/default/build_config:cuda",
-    ],
-)
-
 tf_cuda_library(
-    name = "direct_session",
+    name = "direct_session_internal",
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = ["common_runtime/direct_session.h"],
     copts = tf_copts(),
-    cuda_deps = [
-        ":cuda",
-    ],
     linkstatic = 1,
     deps = [
         ":core_cpu_internal",
@@ -1013,7 +1046,6 @@ tf_cuda_library(
 tf_cuda_library(
     name = "gpu_runtime",
     srcs = [
-        "common_runtime/gpu/gpu_allocator_retry.cc",
         "common_runtime/gpu/gpu_bfc_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
@@ -1024,9 +1056,9 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util_platform_specific.cc",
         "common_runtime/gpu/pool_allocator.cc",
         "common_runtime/gpu/process_state.cc",
+        "common_runtime/gpu_device_context.h",
     ],
     hdrs = [
-        "common_runtime/gpu/gpu_allocator_retry.h",
         "common_runtime/gpu/gpu_bfc_allocator.h",
         "common_runtime/gpu/gpu_debug_allocator.h",
         "common_runtime/gpu/gpu_device.h",
@@ -1035,12 +1067,8 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util.h",
         "common_runtime/gpu/pool_allocator.h",
         "common_runtime/gpu/process_state.h",
-        "common_runtime/gpu/visitable_allocator.h",
     ],
     copts = tf_copts(),
-    cuda_deps = [
-        ":cuda",
-    ],
     linkstatic = 1,
     deps = [
         ":core_cpu",
@@ -1104,12 +1132,16 @@ cc_library(
 
 # Low level library tests
 tf_cc_tests(
+    size = "small",
     tests = glob(
         [
             "lib/**/*_test.cc",
             "platform/**/*_test.cc",
         ],
-        exclude = ["lib/strings/ordered_code_test.cc"],
+        exclude = [
+            "lib/strings/ordered_code_test.cc",
+            "lib/random/weighted_picker_test.cc",
+        ],
     ),
     deps = [
         ":lib",
@@ -1145,8 +1177,23 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "lib_random_weighted_picker_test",
+    size = "medium",
+    srcs = ["lib/random/weighted_picker_test.cc"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+    ],
+)
+
 # higher level tests
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = glob(
         [
@@ -1171,7 +1218,7 @@ tf_cc_tests(
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
-        ":direct_session",
+        ":direct_session_internal",
         ":framework",
         ":framework_internal",
         ":lib",
@@ -1189,6 +1236,7 @@ tf_cc_tests(
 
 # GPU-related tests
 tf_cc_tests(
+    size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     tests = glob(
@@ -1221,6 +1269,7 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
+    size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     tests = ["common_runtime/gpu/gpu_allocator_retry_test.cc"],

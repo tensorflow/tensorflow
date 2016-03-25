@@ -161,6 +161,8 @@ TEST(ContainerInfo, Basic) {
   EXPECT_EQ(Policy("cat", "", true), "[cat,foo,public]");
   EXPECT_EQ(Policy("cat", "bar", false), "[cat,bar,public]");
   EXPECT_EQ(Policy("cat", "bar", true), "[cat,bar,public]");
+  EXPECT_EQ(Policy("cat.0-dog", "bar", true), "[cat.0-dog,bar,public]");
+  EXPECT_EQ(Policy(".cat", "bar", true), "[.cat,bar,public]");
 }
 
 Status WrongPolicy(const string& attr_container, const string& attr_shared_name,
@@ -180,6 +182,7 @@ TEST(ContainerInfo, Error) {
 
   // Invalid container.
   HasError(WrongPolicy("12$%", "", false), "container contains invalid char");
+  HasError(WrongPolicy("-cat", "", false), "container contains invalid char");
 
   // Invalid shared name.
   HasError(WrongPolicy("", "_foo", false), "shared_name cannot start with '_'");

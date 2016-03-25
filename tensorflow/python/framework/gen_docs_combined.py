@@ -81,6 +81,7 @@ def all_libraries(module_to_name, members, documented):
               exclude_symbols=["sparse_matmul", "arg_min", "arg_max",
                                "lin_space", "sparse_segment_mean_grad"],
               prefix=PREFIX_TEXT),
+      library("histogram_ops", "Histograms"),
       library("control_flow_ops", "Control Flow", prefix=PREFIX_TEXT),
       library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"],
               prefix=PREFIX_TEXT),
@@ -123,7 +124,7 @@ def all_libraries(module_to_name, members, documented):
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
-                   "GPUOptions", "GraphOptions", "RunOptions", "RunOutputs",
+                   "GPUOptions", "GraphOptions", "RunOptions", "RunMetadata",
                    "SessionInterface", "BaseSession", "NameAttrList",
                    "AttrValue", "TensorArray", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",

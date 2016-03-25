@@ -43,15 +43,15 @@ This uses the default example image that ships with the framework, and should
 output something similar to this:
 
 ```
-I tensorflow/examples/label_image/main.cc:200] military uniform (866): 0.902268
-I tensorflow/examples/label_image/main.cc:200] bow tie (817): 0.05407
-I tensorflow/examples/label_image/main.cc:200] suit (794): 0.0113195
-I tensorflow/examples/label_image/main.cc:200] bulletproof vest (833): 0.0100269
-I tensorflow/examples/label_image/main.cc:200] bearskin (849): 0.00649746
+I tensorflow/examples/label_image/main.cc:207] military uniform (866): 0.647299
+I tensorflow/examples/label_image/main.cc:207] suit (794): 0.0477195
+I tensorflow/examples/label_image/main.cc:207] academic gown (896): 0.0232407
+I tensorflow/examples/label_image/main.cc:207] bow tie (817): 0.0157355
+I tensorflow/examples/label_image/main.cc:207] bolo tie (940): 0.0145023
 ```
 In this case, we're using the default image of Admiral Grace Hopper, and you can
 see the network correctly spots she's wearing a military uniform, with a high
-score of 0.9.
+score of 0.6.
 
 Next, try it out on your own images by supplying the --image= argument, e.g.
 

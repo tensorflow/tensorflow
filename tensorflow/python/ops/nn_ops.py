@@ -195,10 +195,8 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   can be a dog or a truck, but not both.
 
   **NOTE:**  While the classes are mutually exclusive, their probabilities
-  need not be.  All that is required is that each row of `labels` is
-  a valid probability distribution.  If using exclusive `labels`
-  (wherein one and only one class is true at a time), see
-  `sparse_softmax_cross_entropy_with_logits`.
+  need not be. If using exclusive `labels` (wherein one and only one class is
+  true at a time), see `sparse_softmax_cross_entropy_with_logits`.
 
   **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the
@@ -209,7 +207,9 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
 
   Args:
     logits: Unscaled log probabilities.
-    labels: Each row `labels[i]` must be a valid probability distribution.
+    labels: Each row `labels[i]` must be a valid probability distribution or
+        all zeros. If all zeros, the corresponding loss will be `0`, regardless
+        of the contents of `logits[i]`.
     name: A name for the operation (optional).
 
   Returns:
@@ -249,7 +249,9 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
 
   Args:
     logits: Unscaled log probabilities.
-    labels: Each entry `labels[i]` must be an index in `[0, num_classes)`.
+    labels: Each entry `labels[i]` must be an index in `[0, num_classes)` or
+        `-1`. If `-1`, the corresponding loss will be `0`, regardless
+        of the contents of `logits[i]`.
     name: A name for the operation (optional).
 
   Returns:
@@ -378,6 +380,10 @@ def _LRNGradShape(op):
 
 
 ops.RegisterShape("Softmax")(
+    common_shapes.unchanged_shape_with_rank(2))
+
+
+ops.RegisterShape("LogSoftmax")(
     common_shapes.unchanged_shape_with_rank(2))
 
 
@@ -663,7 +669,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
         keep_prob, dtype=x.dtype, name="keep_prob")
     keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
 
-    noise_shape = noise_shape or array_ops.shape(x)
+    noise_shape = noise_shape if noise_shape is not None else array_ops.shape(x)
     # uniform [keep_prob, 1.0 + keep_prob)
     random_tensor = keep_prob
     random_tensor += random_ops.random_uniform(

@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_OP_H_
 #define TENSORFLOW_FRAMEWORK_OP_H_
 
+#include <functional>
 #include <unordered_map>
 
 #include <vector>
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
+#include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -86,6 +88,23 @@ class OpRegistry : public OpRegistryInterface {
   // Get all registered ops.
   void GetRegisteredOps(std::vector<OpDef>* op_defs);
 
+  // Watcher, a function object.
+  // watcher_, if not null, is called every time an op is registered via the
+  // Register function. watcher_ is passed the OpDef of the op getting
+  // registered.
+  typedef std::function<void(const OpDef&)> Watcher;
+
+  // An OpRegistry object has only one watcher. This interface is not thread
+  // safe, as different clients are free to set the watcher any time.
+  // Clients are expected to atomically perform the following sequence of
+  // operations :
+  // SetWatcher(a_watcher);
+  // Register some ops;
+  // SetWatcher(nullptr);
+  // Returns a non-OK status if a non-null watcher is over-written by another
+  // non-null watcher.
+  Status SetWatcher(const Watcher& watcher);
+
  private:
   // Ensures that all the functions in deferred_ get called, their OpDef's
   // registered, and returns with deferred_ empty.  Returns true the first
@@ -102,6 +121,9 @@ class OpRegistry : public OpRegistryInterface {
   mutable std::vector<OpDef> deferred_ GUARDED_BY(mu_);
   mutable std::unordered_map<string, OpDef*> registry_ GUARDED_BY(mu_);
   mutable bool initialized_ GUARDED_BY(mu_);
+
+  // Registry watcher.
+  mutable Watcher watcher_ GUARDED_BY(mu_);
 };
 
 // An adapter to allow an OpList to be used as an OpRegistryInterface.
@@ -145,20 +167,91 @@ extern "C" void RegisterOps(void* registry_ptr);
 // For details, see the OpDefBuilder class in op_def_builder.h.
 
 namespace register_op {
+
+// OpDefBuilderWrapper is a templated class that is used in the REGISTER_OP
+// calls. This allows the result of REGISTER_OP to be used in chaining, as in
+// REGISTER_OP(a).Attr("...").Input("...");, while still allowing selective
+// registration to turn the entire call-chain into a no-op.
+template <bool should_register>
+class OpDefBuilderWrapper;
+
+// Template specialization that forwards all calls to the contained builder.
+template <>
+class OpDefBuilderWrapper<true> {
+ public:
+  typedef OpDefBuilderWrapper<true> WrapperType;
+  OpDefBuilderWrapper(const char name[]) : builder_(name) {}
+  OpDefBuilderWrapper<true>& Attr(StringPiece spec) {
+    builder_.Attr(spec);
+    return *this;
+  }
+  OpDefBuilderWrapper<true>& Input(StringPiece spec) {
+    builder_.Input(spec);
+    return *this;
+  }
+  OpDefBuilderWrapper<true>& Output(StringPiece spec) {
+    builder_.Output(spec);
+    return *this;
+  }
+  OpDefBuilderWrapper<true>& SetIsCommutative() {
+    builder_.SetIsCommutative();
+    return *this;
+  }
+  OpDefBuilderWrapper<true>& SetIsAggregate() {
+    builder_.SetIsAggregate();
+    return *this;
+  }
+  OpDefBuilderWrapper<true>& SetIsStateful() {
+    builder_.SetIsStateful();
+    return *this;
+  }
+  OpDefBuilderWrapper<true>& SetAllowsUninitializedInput() {
+    builder_.SetAllowsUninitializedInput();
+    return *this;
+  }
+  OpDefBuilderWrapper<true>& Doc(StringPiece text) {
+    builder_.Doc(text);
+    return *this;
+  }
+  const ::tensorflow::OpDefBuilder& builder() const { return builder_; }
+
+ private:
+  mutable ::tensorflow::OpDefBuilder builder_;
+};
+
+// Template specialization that turns all calls into no-ops.
+template <>
+class OpDefBuilderWrapper<false> {
+ public:
+  constexpr OpDefBuilderWrapper(const char name[]) {}
+  OpDefBuilderWrapper<false>& Attr(StringPiece spec) { return *this; }
+  OpDefBuilderWrapper<false>& Input(StringPiece spec) { return *this; }
+  OpDefBuilderWrapper<false>& Output(StringPiece spec) { return *this; }
+  OpDefBuilderWrapper<false>& SetIsCommutative() { return *this; }
+  OpDefBuilderWrapper<false>& SetIsAggregate() { return *this; }
+  OpDefBuilderWrapper<false>& SetIsStateful() { return *this; }
+  OpDefBuilderWrapper<false>& SetAllowsUninitializedInput() { return *this; }
+  OpDefBuilderWrapper<false>& Doc(StringPiece text) { return *this; }
+};
+
 struct OpDefBuilderReceiver {
   // To call OpRegistry::Global()->Register(...), used by the
   // REGISTER_OP macro below.
-  // Note: This is an implicitly converting constructor.
+  // Note: These are implicitly converting constructors.
   OpDefBuilderReceiver(
-      const OpDefBuilder& builder);  // NOLINT(runtime/explicit)
+      const OpDefBuilderWrapper<true>& wrapper);  // NOLINT(runtime/explicit)
+  constexpr OpDefBuilderReceiver(const OpDefBuilderWrapper<false>&) {
+  }  // NOLINT(runtime/explicit)
 };
 }  // namespace register_op
 
 #define REGISTER_OP(name) REGISTER_OP_UNIQ_HELPER(__COUNTER__, name)
 #define REGISTER_OP_UNIQ_HELPER(ctr, name) REGISTER_OP_UNIQ(ctr, name)
-#define REGISTER_OP_UNIQ(ctr, name)                                       \
-  static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr \
-      TF_ATTRIBUTE_UNUSED = ::tensorflow::OpDefBuilder(name)
+#define REGISTER_OP_UNIQ(ctr, name)                                          \
+  static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr    \
+      TF_ATTRIBUTE_UNUSED =                                                  \
+          ::tensorflow::register_op::OpDefBuilderWrapper<SHOULD_REGISTER_OP( \
+              name)>(name)
 
 }  // namespace tensorflow
 

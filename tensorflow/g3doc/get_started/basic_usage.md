@@ -96,7 +96,7 @@ sess = tf.Session()
 # All inputs needed by the op are run automatically by the session.  They
 # typically are run in parallel.
 #
-# The call 'run(product)' thus causes the execution of threes ops in the
+# The call 'run(product)' thus causes the execution of three ops in the
 # graph: the two constants and matmul.
 #
 # The output of the op is returned in 'result' as a numpy `ndarray` object.

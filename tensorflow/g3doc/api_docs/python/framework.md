@@ -620,6 +620,7 @@ the default graph.
 
 
 *  <b>`TypeError`</b>: if any of the inputs is not a `Tensor`.
+*  <b>`ValueError`</b>: if colocation conflicts with existing device assignment.
 
 ##### Returns:
 
@@ -639,7 +640,7 @@ For example:
 
 ```python
 @tf.RegisterGradient("CustomSquare")
-def _custom_square_grad(op, inputs):
+def _custom_square_grad(op, grad):
   # ...
 
 with tf.Graph().as_default() as g:
@@ -691,9 +692,62 @@ a collection several times. This function makes sure that duplicates in
 
 - - -
 
+#### `tf.Graph.colocate_with(op, ignore_existing=False)` {#Graph.colocate_with}
+
+Returns a context manager that specifies an op to colocate with.
+
+Note: this function is not for public use, only for internal libraries.
+
+For example:
+
+```python
+a = tf.Variable([1.0])
+with g.colocate_with(a):
+  b = tf.constant(1.0)
+  c = tf.add(a, b)
+```
+
+`b` and `c` will always be colocated with `a`, no matter where `a`
+is eventually placed.
+
+##### Args:
+
+
+*  <b>`op`</b>: The op to colocate all created ops with.
+*  <b>`ignore_existing`</b>: If true, only applies colocation of this op within
+    the context, rather than applying all colocation properties
+    on the stack.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if op is None.
+
+##### Yields:
+
+  A context manager that specifies the op with which to colocate
+  newly created ops.
+
+
+- - -
+
 #### `tf.Graph.get_all_collection_keys()` {#Graph.get_all_collection_keys}
 
 Returns a list of collections used in this graph.
+
+
+- - -
+
+#### `tf.Graph.is_feedable(tensor)` {#Graph.is_feedable}
+
+Returns `True` if and only if `tensor` is feedable.
+
+
+- - -
+
+#### `tf.Graph.prevent_feeding(tensor)` {#Graph.prevent_feeding}
+
+Marks the given `tensor` as unfeedable in this graph.
 
 
 
@@ -884,6 +938,13 @@ regular expression:
     or if `inputs` are not tensors,
     or if `inputs` and `input_types` are incompatible.
 *  <b>`ValueError`</b>: if the `node_def` name is not valid.
+
+
+- - -
+
+#### `tf.Operation.colocation_groups()` {#Operation.colocation_groups}
+
+Returns the list of colocation groups of the op.
 
 
 - - -
@@ -1168,6 +1229,7 @@ The following `DType` objects are defined:
 * `tf.float64`: 64-bit double-precision floating-point.
 * `tf.bfloat16`: 16-bit truncated floating-point.
 * `tf.complex64`: 64-bit single-precision complex.
+* `tf.complex128`: 128-bit double-precision complex.
 
 * `tf.int8`: 8-bit signed integer.
 * `tf.uint8`: 8-bit unsigned integer.
@@ -1514,15 +1576,15 @@ and scalars in addition to `Tensor` objects.
 
 Converts the given object to a `Tensor` or an `IndexedSlices`.
 
-If `value` is an `IndexedSlices` it is returned
+If `value` is an `IndexedSlices` or `SparseTensor` it is returned
 unmodified. Otherwise, it is converted to a `Tensor` using
 `convert_to_tensor()`.
 
 ##### Args:
 
 
-*  <b>`value`</b>: An `IndexedSlices` or an object that can be consumed by
-    `convert_to_tensor()`.
+*  <b>`value`</b>: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
+    by `convert_to_tensor()`.
 *  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Tensor` or
     `IndexedSlices`.
 *  <b>`name`</b>: (Optional.) A name to use if a new `Tensor` is created.
@@ -1530,7 +1592,7 @@ unmodified. Otherwise, it is converted to a `Tensor` using
 
 ##### Returns:
 
-  An `Tensor` or an `IndexedSlices` based on `value`.
+  An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
 ##### Raises:
 
@@ -1626,8 +1688,6 @@ Loads a TensorFlow plugin, containing custom ops and kernels.
 Pass "library_filename" to a platform-specific mechanism for dynamically
 loading a library. The rules for determining the exact location of the
 library are platform-specific and are not documented here.
-Expects the symbols "RegisterOps", "RegisterKernels", and "GetOpList", to be
-defined in the library.
 
 ##### Args:
 

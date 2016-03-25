@@ -1454,6 +1454,7 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
                              std::deque<TaggedNode>* inline_ready) {
   if (stats_collector_) {
     nodestats::SetAllEnd(stats);
+    stats_collector_->UpdateCostModel(stats, impl_->graph_, node);
     if (!SetTimelineLabel(node, stats)) {
       // Only record non-transfer nodes.
       stats_collector_->Save(impl_->params_.device->name(), stats);
@@ -1635,14 +1636,14 @@ void ExecutorState::DumpActiveNodeState(const int node_id,
 
 void ExecutorState::DumpIterationState(IterationState* iteration) {
   // Dump any waiting nodes that are holding on to tensors.
-  for (size_t i = 0; i < impl_->graph_->num_node_ids(); ++i) {
+  for (int i = 0; i < impl_->graph_->num_node_ids(); ++i) {
     if (iteration->node_state(i) == PendingCounts::PENDING_NOTREADY ||
         iteration->node_state(i) == PendingCounts::PENDING_READY) {
       DumpPendingNodeState(i, iteration->input_tensors, false);
     }
   }
   // Then the active nodes.
-  for (size_t i = 0; i < impl_->graph_->num_node_ids(); ++i) {
+  for (int i = 0; i < impl_->graph_->num_node_ids(); ++i) {
     if (iteration->node_state(i) == PendingCounts::STARTED) {
       DumpActiveNodeState(i, iteration->input_tensors);
     }

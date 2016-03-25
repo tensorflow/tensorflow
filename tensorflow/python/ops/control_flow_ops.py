@@ -26,6 +26,16 @@ the execution of operations and add conditional dependencies to your graph.
 @@cond
 @@case
 
+## Higher Order Operators
+
+TensorFlow provides several higher order operators to simplify the common
+map-reduce programming patterns.
+
+@@map_fn
+@@foldl
+@@foldr
+@@scan
+
 ## Logical Operators
 
 TensorFlow provides several operations that you can use to add logical operators
@@ -203,7 +213,7 @@ def switch(data, pred, dtype=None, name=None):
       val, ind, dense_shape = data.values, data.indices, data.dense_shape
       val_f, val_t = gen_control_flow_ops._switch(val, pred, name=name)
       ind_f, ind_t = gen_control_flow_ops._switch(ind, pred, name="indices")
-      if dense_shape:
+      if dense_shape is not None:
         dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
             dense_shape, pred, name="dense_shape")
       else:
@@ -247,8 +257,8 @@ def merge(inputs, name=None):
       values, _ = _Merge([inp.values for inp in inputs], name=name)
       indices, chosen_index = _Merge(
           [inp.indices for inp in inputs], name="indices")
-      if any(inp.dense_shape for inp in inputs):
-        if not all(inp.dense_shape for inp in inputs):
+      if any(inp.dense_shape is not None for inp in inputs):
+        if any(inp.dense_shape is None for inp in inputs):
           raise ValueError("Either all merged IndexedSlices must have a "
                            "dense_shape, or none must have a dense_shape.")
         dense_shape, _ = _Merge(
@@ -595,7 +605,7 @@ class GradLoopState(object):
         # Guard stack pop with a switch if it is controlled by a cond
         grad_state = self
         pred = None
-        while not pred and grad_state:
+        while pred is None and grad_state:
           pred = grad_state.history_map.get(cond_ctxt.pred.name)
           grad_state = grad_state.outer_grad_state
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
@@ -786,7 +796,8 @@ class ControlFlowState(object):
   def ZerosLike(self, op, index):
     """Create zeros_like for the specified output of an op.
 
-    This method must be called in the grad loop context.
+    If op is in a while loop that is part of gradients(), this method
+    must be called in its grad loop context.
 
     Args:
       op: A tensorflow operation.
@@ -796,10 +807,11 @@ class ControlFlowState(object):
       A zero tensor of the same shape of op.outputs[index].
     """
     if IsLoopSwitch(op): return None
-    dead_branch = op.type in {"Switch", "RefSwitch"}
+    dead_branch = IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
     if forward_ctxt is None:
-      return array_ops.zeros_like(op.outputs[index])
+      # op is not in a while loop that is part of gradients().
+      return ZerosLikeOutsideLoop(op, index)
     op_ctxt = op._get_control_flow_context()
     grad_state = self._map.get(forward_ctxt)
     val = ops.convert_to_tensor(op.outputs[index], name="tensor")
@@ -861,12 +873,31 @@ def MaybeCreateControlFlowState(between_op_list, between_ops):
   return loop_state
 
 
+def IsSwitch(op):
+  """Return true if `op` is the Switch."""
+  return op.type == "Switch" or op.type == "RefSwitch"
+
+
 def IsLoopSwitch(op):
   """Return true if `op` is the Switch for a While loop."""
-  if op.type == "Switch" or op.type == "RefSwitch":
+  if IsSwitch(op):
     ctxt = op._get_control_flow_context()
     return ctxt and isinstance(ctxt, WhileContext)
   return False
+
+
+def ZerosLikeOutsideLoop(op, index):
+  """Create zeros_like for the specified output of an op."""
+  val = op.outputs[index]
+  if not IsSwitch(op):
+    return array_ops.zeros_like(val)
+  else:
+    op_ctxt = op._get_control_flow_context()
+    pred = op_ctxt.pred
+    branch = op_ctxt.branch
+    switch_val = switch(op.inputs[0], pred)[1 - branch]
+    zeros_shape = array_ops.shape(switch_val)
+    return array_ops.zeros(zeros_shape, dtype=val.dtype)
 
 
 class ControlFlowContext(object):
@@ -899,6 +930,14 @@ class ControlFlowContext(object):
   def outer_context(self):
     """Return the context containing this context."""
     return self._outer_context
+
+  @property
+  def grad_state(self):
+    raise NotImplementedError("Abstract method")
+
+  @property
+  def back_prop(self):
+    raise NotImplementedError("Abstract method")
 
   def AddName(self, name):
     self._values.add(name)
@@ -970,10 +1009,27 @@ class CondContext(ControlFlowContext):
   def branch(self):
     return self._branch
 
+  @property
+  def grad_state(self):
+    if self.GetWhileContext():
+      return self.GetWhileContext().grad_state
+    return None
+
+  @property
+  def back_prop(self):
+    if self.GetWhileContext():
+      self.GetWhileContext().back_prop
+    return False
+
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
-    result = val
-    if val.name not in self._values:
+    if val.name in self._values:
+      # Use the real value if it comes from outer context. This is needed in
+      # particular for nested conds.
+      result = self._external_values.get(val.name)
+      result = val if result is None else result
+    else:
+      result = val
       self._values.add(val.name)
       if self._outer_context:
         result = self._outer_context.AddValue(val)
@@ -1056,12 +1112,12 @@ def cond(pred, fn1, fn2, name=None):
 
   Args:
     pred: A scalar determining whether to return the result of `fn1` or `fn2`.
-    fn1: The function to be performed if pred is true.
-    fn2: The function to be performed if pref is false.
+    fn1: The callable to be performed if pred is true.
+    fn2: The callable to be performed if pref is false.
     name: Optional name prefix for the returned tensors.
 
   Returns:
-    Tensors returned by the call to either `fn1` or `fn2`. If the functions
+    Tensors returned by the call to either `fn1` or `fn2`. If the callables
     return a singleton list, the element is extracted from the list.
 
   Raises:
@@ -1097,14 +1153,14 @@ def cond(pred, fn1, fn2, name=None):
     pred = array_ops.identity(pred, name="pred_id")
 
     # Build the graph for the true branch in a new context.
-    context_t = CondContext(pred, pivot_1, 1)
+    context_t = CondContext(pred, pivot_1, branch=1)
     context_t.Enter()
     res_t = context_t.BuildCondBranch(fn1)
     context_t.ExitResult(res_t)
     context_t.Exit()
 
     # Build the graph for the false branch in a new context.
-    context_f = CondContext(pred, pivot_2, 0)
+    context_f = CondContext(pred, pivot_2, branch=0)
     context_f.Enter()
     res_f = context_f.BuildCondBranch(fn2)
     context_f.ExitResult(res_f)
@@ -1191,7 +1247,7 @@ class WhileContext(ControlFlowContext):
     return self
 
   def GetControlPivot(self):
-    if self._pivot_for_body:
+    if self._pivot_for_body is not None:
       return self._pivot_for_body
     return self._pivot_for_pred
 
@@ -1485,8 +1541,8 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
           swap_memory=False, name=None):
   """Repeat `body` while the condition `cond` is true.
 
-  `cond` is a function taking a list of tensors and returning a boolean scalar
-  tensor. `body` is a function taking a list of tensors and returning a list of
+  `cond` is a callable taking a list of tensors and returning a boolean scalar
+  tensor. `body` is a callable taking a list of tensors and returning a list of
   tensors of the same length and with the same types as the input. `loop_vars`
   is a list of tensors that is passed to both `cond` and `body`.
 
@@ -1498,7 +1554,7 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
 
   Args:
     cond: The termination condition of the loop.
-    body: A function that represents the loop body.
+    body: A callable that represents the loop body.
     loop_vars: The list of variable input tensors.
     parallel_iterations: The number of iterations allowed to run in parallel.
     back_prop: Whether backprop is enabled for this while loop.
@@ -1706,7 +1762,7 @@ def tuple(tensors, name=None, control_inputs=None):
 
   """
   with ops.op_scope(tensors, name, "tuple") as name:
-    gating_ops = [t.op for t in tensors if t]
+    gating_ops = [t.op for t in tensors if t is not None]
     if control_inputs:
       for c in control_inputs:
         if isinstance(c, ops.Tensor):
@@ -1722,7 +1778,7 @@ def tuple(tensors, name=None, control_inputs=None):
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
-      if t:
+      if t is not None:
         tpl.append(with_dependencies([gate], t))
       else:
         tpl.append(None)
@@ -1730,23 +1786,34 @@ def tuple(tensors, name=None, control_inputs=None):
 
 
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
-def foldl(fn, elems, initializer=None, name=None):
-  """The foldl operator on the unpacked tensors of a tensor.
+def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
+          swap_memory=False, name=None):
+  """The foldl operator on the list of tensors resulted from unpacking `elems`
+  along the first dimension.
 
-  This foldl operator applies the function `fn` to a sequence of elements
-  from left to right. The elements are made of the tensors unpacked from
-  `elems`. If `initializer` is None, `elems` must contain at least one
-  element.
+  This foldl operator repeatedly applies the callable `fn` to a sequence
+  of elements from first to last. The elements are made of the tensors
+  unpacked from `elems` on dimension 0. The callable fn takes two tensors as
+  arguments. The first argument is the accumulated value computed from the
+  preceding invocation of fn. If `initializer` is None, `elems` must contain
+  at least one element, and its first element is used as the initializer.
+
+  Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
+  of the result tensor is fn(initializer, values[0]).shape`.
 
   Args:
-    fn: The function to be performed.
-    elems: A tensor to be unpacked.
+    fn: The callable to be performed.
+    elems: A tensor to be unpacked on dimension 0.
     initializer: (optional) The initial value for the accumulator.
+    parallel_iterations: (optional) The number of iterations allowed to run
+                         in parallel.
+    back_prop: (optional) True enables back propagation.
+    swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
 
   Returns:
-    A tensor resulting from applying `fn` consecutively on each
-    element/slice of `elems`, from left to right.
+    A tensor resulting from applying `fn` consecutively to the list of tensors
+    unpacked from `elems`, from first to last.
 
   Raises:
     TypeError: if `fn` is not callable.
@@ -1755,6 +1822,7 @@ def foldl(fn, elems, initializer=None, name=None):
     ```python
     elems = [1, 2, 3, 4, 5, 6]
     sum = foldl(lambda a, x: a + x, elems)
+    # sum == 21
     ```
   """
   with ops.op_scope([elems], name, "foldl") as name:
@@ -1777,27 +1845,40 @@ def foldl(fn, elems, initializer=None, name=None):
     def compute(i, a):
       a = fn(a, elems_ta.read(i))
       return [i + 1, a]
-    _, r_a = While(lambda i, a: i < n, compute, [i, a])
+    _, r_a = While(lambda i, a: i < n, compute, [i, a],
+                   parallel_iterations=parallel_iterations,
+                   back_prop=back_prop, swap_memory=swap_memory)
     return r_a
 
 
-def foldr(fn, elems, initializer=None, name=None):
-  """The foldr operator operator on the unpacked tensors of a tensor.
+def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
+          swap_memory=False, name=None):
+  """The foldr operator on the list of tensors resulted from unpacking `elems`
+  along the first dimension.
 
-  This foldr operator applies the function `fn` to a sequence of elements
-  from right to left. The elements are made of the tensors unpacked from
-  `elems`. If `initializer` is None, `elems` must contain at least one
-  element.
+  This foldr operator repeatedly applies the callable `fn` to a sequence
+  of elements from last to first. The elements are made of the tensors
+  unpacked from `elems`. The callable fn takes two tensors as arguments.
+  The first argument is the accumulated value computed from the preceding
+  invocation of fn. If `initializer` is None, `elems` must contain at least
+  one element, and its first element is used as the initializer.
+
+  Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
+  of the result tensor is `fn(initializer, values[0]).shape`.
 
   Args:
-    fn: The function to be performed.
+    fn: The callable to be performed.
     elems: A tensor that is unpacked into a sequence of tensors to apply `fn`.
     initializer: (optional) The initial value for the accumulator.
+    parallel_iterations: (optional) The number of iterations allowed to run
+                         in parallel.
+    back_prop: (optional) True enables back propagation.
+    swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
 
   Returns:
-    A tensor resulting from applying `fn` consecutively on each
-    element/slice of `elems`, from right to left.
+    A tensor resulting from applying `fn` consecutively to the list of tensors
+    unpacked from `elems`, from last to first.
 
   Raises:
     TypeError: if `fn` is not callable.
@@ -1806,6 +1887,7 @@ def foldr(fn, elems, initializer=None, name=None):
     ```python
     elems = [1, 2, 3, 4, 5, 6]
     sum = foldr(lambda a, x: a + x, elems)
+    # sum == 21
     ```
   """
   with ops.op_scope([elems], name, "foldr") as name:
@@ -1828,26 +1910,38 @@ def foldr(fn, elems, initializer=None, name=None):
       i -= 1
       a = fn(a, elems_ta.read(i))
       return [i, a]
-    _, r_a = While(lambda i, a: i > 0, compute, [i, a])
+    _, r_a = While(lambda i, a: i > 0, compute, [i, a],
+                   parallel_iterations=parallel_iterations,
+                   back_prop=back_prop, swap_memory=swap_memory)
     return r_a
 
 
-def map_fn(fn, elems, dtype=None, name=None):
-  """The map operator on the unpacked tensors of a tensor.
+def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
+           swap_memory=False, name=None):
+  """The map operator on the list of tensors resulted from unpacking `elems`
+  along the first dimension.
 
-  This map operator applies the function `fn` to a sequence of elements
-  from right to left. The elements are made of the tensors unpacked from
-  `elems`.
+  This map operator repeatedly applies the callable `fn` to a sequence of
+  elements from first to last. The elements are made of the tensors unpacked
+  from `elems`. `dtype` is the data type of the return value of `fn`. Users
+  must provide `dtype` if it is different from the data type of `elems`.
+
+  Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
+  of the result tensor is `[len(values)] + fn(values[0]).shape`.
 
   Args:
-    fn: The function to be performed.
+    fn: The callable to be performed.
     elems: A tensor to be unpacked to apply `fn`.
     dtype: (optional) The output type of `fn`.
+    parallel_iterations: (optional) The number of iterations allowed to run
+                         in parallel.
+    back_prop: (optional) True enables back propagation.
+    swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
 
   Returns:
-    A tensor that packs the results of applying `fn` on each element
-    of `elems`.
+    A tensor that packs the results of applying `fn` to the list of tensors
+    unpacked from `elems`, from first to last.
 
   Raises:
     TypeError: if `fn` is not callable.
@@ -1856,6 +1950,7 @@ def map_fn(fn, elems, dtype=None, name=None):
     ```python
     elems = [1, 2, 3, 4, 5, 6]
     squares = map_fn(lambda x: x * x, elems)
+    # squares == [1, 4, 9, 16, 25, 36]
     ```
   """
   with ops.op_scope([elems], name, "map") as name:
@@ -1872,11 +1967,84 @@ def map_fn(fn, elems, dtype=None, name=None):
     i = constant_op.constant(0)
     acc_ta = tensor_array_ops.TensorArray(dtype=dtype, size=n,
                                           dynamic_size=False)
-    def compute(i, a):
-      a = a.write(i, fn(elems_ta.read(i)))
-      i = math_ops.add(i, 1)
-      return [i, a]
-    _, r_a = While(lambda i, a: math_ops.less(i, n), compute, [i, acc_ta])
+    def compute(i, ta):
+      ta = ta.write(i, fn(elems_ta.read(i)))
+      return [i + 1, ta]
+    _, r_a = While(lambda i, a: i < n, compute, [i, acc_ta],
+                   parallel_iterations=parallel_iterations,
+                   back_prop=back_prop, swap_memory=swap_memory)
+    return r_a.pack()
+
+
+def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
+         swap_memory=False, name=None):
+  """The scan operator on the list of tensors resulted from unpacking `elems`
+  along the first dimension.
+
+  This scan operator repeatedly applies the callable `fn` to a sequence
+  of elements from first to last. The elements are made of the tensors
+  unpacked from `elems` on dimension 0. The callable fn takes two tensors as
+  arguments. The first argument is the accumulated value computed from the
+  preceding invocation of fn. If `initializer` is None, `elems` must contain
+  at least one element, and its first element is used as the initializer.
+
+  Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
+  of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
+
+  Args:
+    fn: The callable to be performed.
+    elems: A tensor to be unpacked on dimension 0.
+    initializer: (optional) The initial value for the accumulator.
+    parallel_iterations: (optional) The number of iterations allowed to run
+                         in parallel.
+    back_prop: (optional) True enables back propagation.
+    swap_memory: (optional) True enables GPU-CPU memory swapping.
+    name: (optional) Name prefix for the returned tensors.
+
+  Returns:
+    A tensor that packs the results of applying `fn` to the list of tensors
+    unpacked from `elems`, from first to last.
+
+  Raises:
+    TypeError: if `fn` is not callable.
+
+  Example:
+    ```python
+    elems = [1, 2, 3, 4, 5, 6]
+    sum = scan(lambda a, x: a + x, elems)
+    # sum == [1, 3, 6, 10, 15, 21]
+    ```
+  """
+  with ops.op_scope([elems], name, "scan") as name:
+    if not callable(fn):
+      raise TypeError("fn must be callable.")
+
+    # Convert elems to tensor array.
+    n = array_ops.shape(elems)[0]
+    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
+                                            dynamic_size=False)
+    elems_ta = elems_ta.unpack(elems)
+
+    if initializer is None:
+      a = elems_ta.read(0)
+      i = constant_op.constant(1)
+    else:
+      a = ops.convert_to_tensor(initializer)
+      i = constant_op.constant(0)
+
+    # Create a tensor array to store the intermediate values.
+    acc_ta = tensor_array_ops.TensorArray(dtype=a.dtype, size=n,
+                                          dynamic_size=False)
+    if initializer is None:
+      acc_ta = acc_ta.write(0, a)
+
+    def compute(i, a, ta):
+      a = fn(a, elems_ta.read(i))
+      ta = ta.write(i, a)
+      return [i + 1, a, ta]
+    _, _, r_a = While(lambda i, a, ta: i < n, compute, [i, a, acc_ta],
+                      parallel_iterations=parallel_iterations,
+                      back_prop=back_prop, swap_memory=swap_memory)
     return r_a.pack()
 
 
@@ -1885,10 +2053,10 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
 
   The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
   Each pair contains a boolean scalar tensor and a python callable that
-  creates the tensors to be returned if the boolean evaluates to True. `default`
-  is a callable generating a list of tensors. All the callables in
-  `pred_fn_pairs` as well as `default` should return the same number and types
-  of tensors.
+  creates the tensors to be returned if the boolean evaluates to True.
+  `default` is a callable generating a list of tensors. All the callables
+  in `pred_fn_pairs` as well as `default` should return the same number
+  and types of tensors.
 
   If `exclusive==True`, all predicates are evaluated, and a logging operation
   with an error is returned if more than one of the predicates evaluates to
@@ -2040,6 +2208,7 @@ ops.RegisterShape("RefExit")(common_shapes.unchanged_shape)
 ops.RegisterShape("RefNextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("ControlTrigger")(common_shapes.no_outputs)
 ops.RegisterShape("NoOp")(common_shapes.no_outputs)
+ops.RegisterShape("Abort")(common_shapes.no_outputs)
 
 
 @ops.RegisterShape("LoopCond")

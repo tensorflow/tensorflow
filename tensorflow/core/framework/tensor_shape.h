@@ -143,6 +143,9 @@ class TensorShape {
 
   void RecomputeNumElements();
 
+  void CheckDimsEqual(int NDIMS) const;
+  void CheckDimsAtLeast(int NDIMS) const;
+
   // We use 16 bytes to represent a TensorShape.  Because we need to
   // be able to support full 64-bit dimension sizes and an arbitrary
   // number of dimensions for a Tensor, but most tensor dimensions are
@@ -252,29 +255,10 @@ class TensorShapeUtils {
 
   /// \brief Returns a `TensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
-  template <typename T>
-  static Status MakeShape(const T* dims, int n, TensorShape* out) {
-    *out = TensorShape();
-    for (int i = 0; i < n; ++i) {
-      if (dims[i] >= 0) {
-        out->AddDim(dims[i]);
-      } else {
-        return errors::InvalidArgument("Dimension ", dims[i], " must be >= 0");
-      }
-    }
-    return Status::OK();
-  }
+  static Status MakeShape(const int32* dims, int n, TensorShape* out);
+  static Status MakeShape(const int64* dims, int n, TensorShape* out);
 
-  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes) {
-    string result = "[";
-    bool first = true;
-    for (const TensorShape& shape : shapes) {
-      strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
-      first = false;
-    }
-    strings::StrAppend(&result, "]");
-    return result;
-  }
+  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
 
   static bool StartsWith(const TensorShape& shape0, const TensorShape& shape1);
 };
@@ -285,16 +269,14 @@ class TensorShapeUtils {
 
 template <int NDIMS>
 Eigen::DSizes<Eigen::DenseIndex, NDIMS> TensorShape::AsEigenDSizes() const {
-  CHECK_EQ(NDIMS, dims()) << "Asking for tensor of " << NDIMS
-                          << " for a tensor of " << dims() << " dimensions";
+  CheckDimsEqual(NDIMS);
   return AsEigenDSizesWithPadding<NDIMS>();
 }
 
 template <int NDIMS>
 Eigen::DSizes<Eigen::DenseIndex, NDIMS> TensorShape::AsEigenDSizesWithPadding()
     const {
-  CHECK_GE(NDIMS, dims()) << "Asking for tensor of " << NDIMS
-                          << " for a tensor of " << dims() << " dimensions";
+  CheckDimsAtLeast(NDIMS);
   Eigen::DSizes<Eigen::DenseIndex, NDIMS> dsizes;
   for (int d = 0; d < dims(); d++) {
     dsizes[d] = dim_size(d);

@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/regexp.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -250,10 +249,16 @@ bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
   if (is_list) {
     // TextFormat parser considers "i: 7" to be the same as "i: [7]",
     // but we only want to allow list values with [].
-    if (!RE2::FullMatch(ToRegexpStringPiece(text), "\\s*\\[.*\\]\\s*")) {
+    StringPiece cleaned = text;
+    str_util::RemoveLeadingWhitespace(&cleaned);
+    str_util::RemoveTrailingWhitespace(&cleaned);
+    if (cleaned.size() < 2 || cleaned[0] != '[' ||
+        cleaned[cleaned.size() - 1] != ']') {
       return false;
     }
-    if (RE2::FullMatch(ToRegexpStringPiece(text), "\\s*\\[\\s*\\]\\s*")) {
+    cleaned.remove_prefix(1);
+    str_util::RemoveLeadingWhitespace(&cleaned);
+    if (cleaned.size() == 1) {
       // User wrote "[]", so return empty list without invoking the TextFormat
       // parse which returns an error for "i: []".
       out->Clear();

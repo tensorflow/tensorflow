@@ -81,5 +81,27 @@ TEST_F(SwitchOpTest, StringSuccess_s1) {
   EXPECT_EQ(nullptr, GetOutput(0));
 }
 
+class AbortOpTest : public OpsTestBase {
+ protected:
+};
+
+// Pass an error message to the op.
+TEST_F(AbortOpTest, pass_error_msg) {
+  TF_ASSERT_OK(NodeDefBuilder("abort_op", "Abort")
+                   .Attr("error_msg", "abort_op_test")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  EXPECT_EXIT(RunOpKernel(), ::testing::KilledBySignal(SIGABRT),
+              "Abort_op intentional failure; abort_op_test");
+}
+
+// Use the default error message.
+TEST_F(AbortOpTest, default_msg) {
+  TF_ASSERT_OK(NodeDefBuilder("abort_op", "Abort").Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  EXPECT_EXIT(RunOpKernel(), ::testing::KilledBySignal(SIGABRT),
+              "Abort_op intentional failure; ");
+}
+
 }  // namespace
 }  // namespace tensorflow

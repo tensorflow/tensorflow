@@ -85,12 +85,13 @@ def make_dense_examples_dict(dense_feature_values, weights, labels):
 
 
 def make_variable_dict(max_age, max_gender):
-  # TODO(dbaylor):  Figure out how to derive max_age & max_gender from
+  # TODO(sibyl-toe9oF2e):  Figure out how to derive max_age & max_gender from
   # examples_dict.
   age_weights = tf.Variable(tf.zeros([max_age + 1], dtype=tf.float32))
   gender_weights = tf.Variable(tf.zeros([max_gender + 1], dtype=tf.float32))
   return dict(sparse_features_weights=[age_weights, gender_weights],
               dense_features_weights=[])
+
 
 def make_dense_variable_dict(num_dense_features, num_examples):
   feature_weights = ([
@@ -111,12 +112,13 @@ def make_dense_variable_dict(num_dense_features, num_examples):
 def get_binary_predictions_for_logistic(predictions, cutoff=0.5):
   return tf.cast(
       tf.greater_equal(predictions, tf.ones_like(predictions) * cutoff),
-      tf.float32)
+      dtype=tf.int32)
 
 
 def get_binary_predictions_for_hinge(predictions):
-  all_ones = tf.ones_like(predictions)
-  return tf.add(tf.sign(predictions), all_ones) / 2
+  return tf.cast(
+      tf.greater_equal(predictions, tf.zeros_like(predictions)),
+      dtype=tf.int32)
 
 
 # Setup the single container shared across all tests. This is testing proper
@@ -126,18 +128,56 @@ CONTAINER = uuid.uuid4().hex
 
 # Clear the shared container.
 def tearDown():
-  # TODO(katsiapis): Proper cleanup of Containers when possible.
+  # TODO(sibyl-Mooth6ku): Proper cleanup of Containers when possible.
   pass
 
 
+# TODO(sibyl-Mooth6ku): Add tests that exercise L1 and Shrinking.
+# TODO(sibyl-vie3Poto): Refactor tests to avoid repetition of boilerplate code.
 class SdcaOptimizerTest(TensorFlowTestCase):
+  """Base SDCA optimizer test class for any loss type."""
 
   def _single_threaded_test_session(self):
     config = tf.ConfigProto(inter_op_parallelism_threads=1,
                             intra_op_parallelism_threads=1)
     return self.test_session(use_gpu=False, config=config)
 
-  def testSimpleLogistic(self):
+  # The following tests, check that operations raise errors when certain
+  # preconditions on the input data are not satisfied. These errors are raised
+  # regardless of the loss type.
+  def testNoWeightedExamples(self):
+    # Setup test data with 1 positive, and 1 negative example.
+    example_protos = [
+        make_example_proto(
+            {'age': [0],
+             'gender': [0]}, 0),
+        make_example_proto(
+            {'age': [1],
+             'gender': [1]}, 1),
+    ]
+    # Zeroed out example weights.
+    example_weights = [0.0, 0.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(symmetric_l2_regularization=1,
+                     symmetric_l1_regularization=0,
+                     loss_type='logistic_loss')
+
+      lr = SdcaModel(CONTAINER, examples, variables, options)
+      tf.initialize_all_variables().run()
+      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
+      lr.minimize().run()
+      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
+      with self.assertRaisesOpError(
+          'No examples found or all examples have zero weight.'):
+        lr.approximate_duality_gap().eval()
+
+
+class SdcaWithLogisticLossTest(SdcaOptimizerTest):
+  """SDCA optimizer test class for logistic loss."""
+
+  def testSimple(self):
     # Setup test data
     example_protos = [
         make_example_proto(
@@ -173,6 +213,44 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       # 0.411608 is the unregularized_loss at that optimum.
       self.assertAllClose(0.411608, unregularized_loss.eval(), rtol=0.11)
       self.assertAllClose(0.525457, loss.eval(), atol=0.01)
+      predicted_labels = get_binary_predictions_for_logistic(predictions)
+      self.assertAllEqual([0, 1], predicted_labels.eval())
+      self.assertAllClose(0.01,
+                          lr.approximate_duality_gap().eval(),
+                          rtol=1e-2,
+                          atol=1e-2)
+
+  def testSimpleNoL2(self):
+    # Same as test above (so comments from above apply) but without an L2.
+    # The algorithm should behave as if we have an L2 of 1 in optimization but
+    # 0 in regularized_loss.
+    example_protos = [
+        make_example_proto(
+            {'age': [0],
+             'gender': [0]}, 0),
+        make_example_proto(
+            {'age': [1],
+             'gender': [1]}, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(symmetric_l2_regularization=0,
+                     symmetric_l1_regularization=0,
+                     loss_type='logistic_loss')
+
+      lr = SdcaModel(CONTAINER, examples, variables, options)
+      tf.initialize_all_variables().run()
+      unregularized_loss = lr.unregularized_loss(examples)
+      loss = lr.regularized_loss(examples)
+      predictions = lr.predictions(examples)
+      self.assertAllClose(0.693147, unregularized_loss.eval())
+      self.assertAllClose(0.693147, loss.eval())
+      for _ in xrange(5):
+        lr.minimize().run()
+      self.assertAllClose(0.411608, unregularized_loss.eval(), rtol=0.11)
+      self.assertAllClose(0.371705, loss.eval(), atol=0.01)
       predicted_labels = get_binary_predictions_for_logistic(predictions)
       self.assertAllEqual([0, 1], predicted_labels.eval())
       self.assertAllClose(0.01,
@@ -226,7 +304,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
                           rtol=1e-2,
                           atol=1e-2)
 
-  def testFractionalLogisticExample(self):
+  def testFractionalExampleLabel(self):
     # Setup test data with 1 positive, and 1 mostly-negative example.
     example_protos = [
         make_example_proto(
@@ -249,60 +327,6 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       with self.assertRaisesOpError(
           'Only labels of 0.0 or 1.0 are supported right now.'):
         lr.minimize().run()
-
-  def testNoWeightedExamples(self):
-    # Setup test data with 1 positive, and 1 negative example.
-    example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
-    ]
-    # Zeroed out example weights.
-    example_weights = [0.0, 0.0]
-    with self._single_threaded_test_session():
-      examples = make_example_dict(example_protos, example_weights)
-      variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=1,
-                     symmetric_l1_regularization=0,
-                     loss_type='logistic_loss')
-
-      lr = SdcaModel(CONTAINER, examples, variables, options)
-      tf.initialize_all_variables().run()
-      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
-      with self.assertRaisesOpError(
-          'No weighted examples in 2 training examples'):
-        lr.minimize().run()
-      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
-
-  def testDuplicateExampleIds(self):
-    # Setup test data with 1 positive, and 1 negative example.
-    example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
-    ]
-    example_weights = [1.0, 1.0]
-    with self._single_threaded_test_session():
-      examples = make_example_dict(example_protos, example_weights)
-      examples['example_ids'] = ['duplicate_id'
-                                 for x in examples['example_ids']]
-      variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=0.5,
-                     symmetric_l1_regularization=0,
-                     loss_type='logistic_loss')
-
-      lr = SdcaModel(CONTAINER, examples, variables, options)
-      tf.initialize_all_variables().run()
-      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
-      with self.assertRaisesOpError('Detected 1 duplicates in example_ids'):
-        lr.minimize().run()
-      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
 
   def testImbalanced(self):
     # Setup test data with 1 positive, and 3 negative examples.
@@ -414,7 +438,13 @@ class SdcaOptimizerTest(TensorFlowTestCase):
                           rtol=1e-2,
                           atol=1e-2)
 
-  def testSimpleLinear(self):
+  # TODO(katsiaspis): add a test for the case when examples at the end of an
+  # epoch are repeated, since example id may be duplicated.
+
+class SdcaWithLinearLossTest(SdcaOptimizerTest):
+  """SDCA optimizer test class for linear (squared) loss."""
+
+  def testSimple(self):
     # Setup test data
     example_protos = [
         make_example_proto(
@@ -449,7 +479,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
                           rtol=1e-2,
                           atol=1e-2)
 
-  def testLinearL2Regularization(self):
+  def testL2Regularization(self):
     # Setup test data
     example_protos = [
         # 2 identical examples
@@ -491,7 +521,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
           predictions.eval(),
           rtol=0.01)
 
-  def testLinearL1Regularization(self):
+  def testL1Regularization(self):
     # Setup test data
     example_protos = [
         make_example_proto(
@@ -524,7 +554,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       # example after plugging in the optimal weights.
       self.assertAllClose(308.0 / 6.0, loss.eval(), atol=0.01)
 
-  def testLinearFeatureValues(self):
+  def testFeatureValues(self):
     # Setup test data
     example_protos = [
         make_example_proto(
@@ -556,7 +586,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
                           predictions.eval(),
                           rtol=0.07)
 
-  def testLinearDenseFeatures(self):
+  def testDenseFeatures(self):
     with self._single_threaded_test_session():
       examples = make_dense_examples_dict(
           dense_feature_values=[[-2.0, 0.0], [0.0, 2.0]],
@@ -582,7 +612,11 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       loss = lr.regularized_loss(examples)
       self.assertAllClose(148.0 / 10.0, loss.eval(), atol=0.01)
 
-  def testSimpleHinge(self):
+
+class SdcaWithHingeLossTest(SdcaOptimizerTest):
+  """SDCA optimizer test class for hinge loss."""
+
+  def testSimple(self):
     # Setup test data
     example_protos = [
         make_example_proto(
@@ -621,11 +655,11 @@ class SdcaOptimizerTest(TensorFlowTestCase):
 
       binary_predictions = get_binary_predictions_for_hinge(predictions)
       self.assertAllEqual([-1.0, 1.0], predictions.eval())
-      self.assertAllEqual([0.0, 1.0], binary_predictions.eval())
+      self.assertAllEqual([0, 1], binary_predictions.eval())
       self.assertAllClose(0.0, unregularized_loss.eval())
       self.assertAllClose(0.25, regularized_loss.eval(), atol=0.05)
 
-  def testHingeDenseFeaturesPerfectlySeparable(self):
+  def testDenseFeaturesPerfectlySeparable(self):
     with self._single_threaded_test_session():
       examples = make_dense_examples_dict(
           dense_feature_values=[[1.0, 1.0], [1.0, -1.0]],
@@ -644,7 +678,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
         model.minimize().run()
 
       self.assertAllClose([1.0, -1.0], predictions.eval(), atol=0.05)
-      self.assertAllClose([1.0, 0.0], binary_predictions.eval())
+      self.assertAllEqual([1, 0], binary_predictions.eval())
 
       # (1.0, 1.0) and (1.0, -1.0) are perfectly separable by x-axis (that is,
       # the SVM's functional margin >=1), so the unregularized loss is ~0.0.
@@ -655,7 +689,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       self.assertAllClose(0.0, unregularized_loss.eval(), atol=0.02)
       self.assertAllClose(0.25, regularized_loss.eval(), atol=0.02)
 
-  def testHingeDenseFeaturesSeparableWithinMargins(self):
+  def testDenseFeaturesSeparableWithinMargins(self):
     with self._single_threaded_test_session():
       examples = make_dense_examples_dict(
           dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
@@ -678,13 +712,13 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       # For these datapoints, optimal weights are w_1~=0.0 and w_2~=1.0 which
       # gives an L2 loss of ~0.25.
       self.assertAllClose([0.5, -0.5], predictions.eval(), rtol=0.05)
-      self.assertAllClose([1.0, 0.0], binary_predictions.eval())
+      self.assertAllEqual([1, 0], binary_predictions.eval())
       unregularized_loss = model.unregularized_loss(examples)
       regularized_loss = model.regularized_loss(examples)
       self.assertAllClose(0.5, unregularized_loss.eval(), atol=0.02)
       self.assertAllClose(0.75, regularized_loss.eval(), atol=0.02)
 
-  def testHingeDenseFeaturesWeightedExamples(self):
+  def testDenseFeaturesWeightedExamples(self):
     with self._single_threaded_test_session():
       examples = make_dense_examples_dict(
           dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
@@ -709,7 +743,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
       # correct, but the boundary will be much closer to the 2nd point than the
       # first one.
       self.assertAllClose([1.0, -0.2], predictions.eval(), atol=0.05)
-      self.assertAllClose([1.0, 0.0], binary_predictions.eval(), atol=0.05)
+      self.assertAllEqual([1, 0], binary_predictions.eval())
       unregularized_loss = model.unregularized_loss(examples)
       regularized_loss = model.regularized_loss(examples)
       self.assertAllClose(0.2, unregularized_loss.eval(), atol=0.02)

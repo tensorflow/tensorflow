@@ -16,12 +16,19 @@
 
 set -e
 
+# Install FFmpeg from an alternate repository.
+apt-get install -y software-properties-common
+add-apt-repository -y ppa:mc3man/trusty-media
+apt-get update
+
 # Install dependencies from ubuntu deb repository.
 apt-get update
 apt-get install -y \
     bc \
     build-essential \
+    cmake \
     curl \
+    ffmpeg \
     git \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
@@ -29,10 +36,12 @@ apt-get install -y \
     python-dev \
     python-numpy \
     python-pip \
+    python-scipy \
     python-virtualenv \
     python3-dev \
     python3-numpy \
     python3-pip \
+    python3-scipy \
     sudo \
     swig \
     unzip \

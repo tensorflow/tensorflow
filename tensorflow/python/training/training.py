@@ -28,6 +28,7 @@ of the subclasses.
 @@Optimizer
 
 @@GradientDescentOptimizer
+@@AdadeltaOptimizer
 @@AdagradOptimizer
 @@MomentumOptimizer
 @@AdamOptimizer
@@ -134,6 +135,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 
+from tensorflow.python.training.adadelta import AdadeltaOptimizer
 from tensorflow.python.training.adagrad import AdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
@@ -142,6 +144,7 @@ from tensorflow.python.training.moving_averages import ExponentialMovingAverage
 from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
+from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
 
 # Utility classes for training.
 from tensorflow.python.training.coordinator import Coordinator
@@ -159,10 +162,14 @@ from tensorflow.python.training.saver import Saver
 from tensorflow.python.training.saver import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
+from tensorflow.python.training.session_manager import SessionManager
 from tensorflow.python.training.summary_io import summary_iterator
 from tensorflow.python.training.summary_io import SummaryWriter
+from tensorflow.python.training.supervisor import Supervisor
 from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
+from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
+
 
 # Training data protos.
 from tensorflow.core.example.example_pb2 import *

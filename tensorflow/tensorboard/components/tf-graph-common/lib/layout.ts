@@ -87,7 +87,7 @@ export const PARAMS = {
        */
       labelHeight: 20,
       /** X-space between each extracted node and the core graph. */
-      extractXOffset: 50,
+      extractXOffset: 15,
       /** Y-space between each extracted node. */
       extractYOffset: 20
     },
@@ -486,9 +486,24 @@ function layoutMetanode(renderNodeInfo: render.RenderGroupNodeInfo): void {
       return height + yOffset + child.height;
     }, 0);
 
+  // Compute the total padding between the core graph, in-extract and
+  // out-extract boxes.
+  let numParts = 0;
+  if (renderNodeInfo.isolatedInExtract.length > 0) {
+    numParts++;
+  }
+  if (renderNodeInfo.isolatedOutExtract.length > 0) {
+    numParts++;
+  }
+  if (renderNodeInfo.coreGraph.nodeCount() > 0) {
+    numParts++;
+  }
+  let offset = PARAMS.subscene.meta.extractXOffset;
+  let padding = numParts <= 1 ? 0 : (numParts  <= 2 ? offset : 2 * offset);
+
   // Add the in-extract and out-extract width to the core box width.
   renderNodeInfo.coreBox.width += renderNodeInfo.inExtractBox.width +
-      renderNodeInfo.outExtractBox.width;
+      renderNodeInfo.outExtractBox.width + padding;
   renderNodeInfo.coreBox.height =
     params.labelHeight +
     Math.max(

@@ -262,11 +262,13 @@ Returns which elements of x are finite.
 REGISTER_OP("Sign")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {float, double, int32, int64, complex64}")
     .Doc(R"doc(
 Returns an element-wise indication of the sign of a number.
 
-y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0.
+`y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+
+For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 )doc");
 
 REGISTER_OP("Floor")
@@ -1172,6 +1174,26 @@ tf.conj(in) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 ```
 )doc");
 
+REGISTER_OP("FFT")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the 1-dimensional discrete Fourier Transform.
+
+in: A complex64 vector.
+out: The 1D Fourier Transform of `in`.
+)doc");
+
+REGISTER_OP("IFFT")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the inverse 1-dimensional discrete Fourier Transform.
+
+in: A complex64 vector.
+out: The inverse 1D Fourier Transform of `in`.
+)doc");
+
 REGISTER_OP("FFT2D")
     .Input("in: complex64")
     .Output("out: complex64")
@@ -1180,7 +1202,6 @@ Compute the 2-dimensional discrete Fourier Transform.
 
 in: A complex64 matrix.
 out: The 2D Fourier Transform of `in`.
-
 )doc");
 
 REGISTER_OP("IFFT2D")
@@ -1191,7 +1212,98 @@ Compute the inverse 2-dimensional discrete Fourier Transform.
 
 in: A complex64 matrix.
 out: The inverse 2D Fourier Transform of `in`.
+)doc");
 
+REGISTER_OP("FFT3D")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the 3-dimensional discrete Fourier Transform.
+
+in: A complex64 3-D tensor.
+out: The 3D Fourier Transform of `in`.
+)doc");
+
+REGISTER_OP("IFFT3D")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the inverse 3-dimensional discrete Fourier Transform.
+
+in: A complex64 3-D tensor.
+out: The inverse 3D Fourier Transform of `in`.
+)doc");
+
+REGISTER_OP("BatchFFT")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the 1-dimensional discrete Fourier Transform over the inner-most
+dimension of `in`.
+
+in: A complex64 tensor.
+out: A complex64 tensor of the same shape as `in`. The inner-most dimension of
+  `in` is replaced with its 1D Fourier Transform.
+)doc");
+
+REGISTER_OP("BatchIFFT")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
+dimension of `in`.
+
+in: A complex64 tensor.
+out: A complex64 tensor of the same shape as `in`. The inner-most dimension of
+  `in` is replaced with its inverse 1D Fourier Transform.
+)doc");
+
+REGISTER_OP("BatchFFT2D")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the 2-dimensional discrete Fourier Transform over the inner-most
+2 dimensions of `in`.
+
+in: A complex64 tensor.
+out: A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions
+  of `in` are replaced with their 2D Fourier Transform.
+)doc");
+
+REGISTER_OP("BatchIFFT2D")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
+2 dimensions of `in`.
+
+in: A complex64 tensor.
+out: A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions
+  of `in` are replaced with their inverse 2D Fourier Transform.
+)doc");
+
+REGISTER_OP("BatchFFT3D")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
+dimensions of `in`.
+
+in: A complex64 tensor.
+out: A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions
+  of `in` are replaced with their 3D Fourier Transform.
+)doc");
+
+REGISTER_OP("BatchIFFT3D")
+    .Input("in: complex64")
+    .Output("out: complex64")
+    .Doc(R"doc(
+Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
+3 dimensions of `in`.
+
+in: A complex64 tensor.
+out: A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions
+  of `in` are replaced with their inverse 3D Fourier Transform.
 )doc");
 
 // --------------------------------------------------------------------------

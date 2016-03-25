@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -88,8 +89,8 @@ class ProcessState {
   //
   // REQUIRES: gpu_id must be a valid ordinal for a GPU available in the
   // current system environment.  Otherwise returns nullptr.
-  Allocator* GetGPUAllocator(int gpu_id, size_t total_bytes,
-                             const string& allocator_type);
+  Allocator* GetGPUAllocator(const GPUOptions& options, int gpu_id,
+                             size_t total_bytes);
 
   Allocator* GetCUDAHostAllocator(int numa_node);
 

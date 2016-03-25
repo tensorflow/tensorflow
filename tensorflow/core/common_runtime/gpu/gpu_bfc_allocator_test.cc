@@ -60,14 +60,12 @@ TEST(GPUBFCAllocatorTest, NoDups) {
   std::sort(ptrs.begin(), ptrs.end());
 
   // Make sure none of them are equal, and that none of them overlap.
-  for (size_t i = 0; i < ptrs.size(); i++) {
-    if (i > 0) {
-      ASSERT_NE(ptrs[i], ptrs[i - 1]);  // No dups
-      size_t req_size = a.RequestedSize(ptrs[i - 1]);
-      ASSERT_GT(req_size, 0);
-      ASSERT_GE(static_cast<char*>(ptrs[i]) - static_cast<char*>(ptrs[i - 1]),
-                req_size);
-    }
+  for (size_t i = 1; i < ptrs.size(); i++) {
+    ASSERT_NE(ptrs[i], ptrs[i - 1]);  // No dups
+    size_t req_size = a.RequestedSize(ptrs[i - 1]);
+    ASSERT_GT(req_size, 0);
+    ASSERT_GE(static_cast<char*>(ptrs[i]) - static_cast<char*>(ptrs[i - 1]),
+              req_size);
   }
 
   for (size_t i = 0; i < ptrs.size(); i++) {
@@ -112,18 +110,16 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
 
   std::sort(existing_ptrs.begin(), existing_ptrs.end());
   // Make sure none of them are equal
-  for (size_t i = 0; i < existing_ptrs.size(); i++) {
-    if (i > 0) {
-      CHECK_NE(existing_ptrs[i], existing_ptrs[i - 1]);  // No dups
+  for (size_t i = 1; i < existing_ptrs.size(); i++) {
+    CHECK_NE(existing_ptrs[i], existing_ptrs[i - 1]);  // No dups
 
-      size_t req_size = a.RequestedSize(existing_ptrs[i - 1]);
-      ASSERT_GT(req_size, 0);
+    size_t req_size = a.RequestedSize(existing_ptrs[i - 1]);
+    ASSERT_GT(req_size, 0);
 
-      // Check that they don't overlap.
-      ASSERT_GE(static_cast<char*>(existing_ptrs[i]) -
-                    static_cast<char*>(existing_ptrs[i - 1]),
-                req_size);
-    }
+    // Check that they don't overlap.
+    ASSERT_GE(static_cast<char*>(existing_ptrs[i]) -
+                  static_cast<char*>(existing_ptrs[i - 1]),
+              req_size);
   }
 
   for (size_t i = 0; i < existing_ptrs.size(); i++) {
@@ -196,14 +192,81 @@ TEST(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
   a.DeallocateRaw(first_ptr);
 }
 
+TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
+  GPUOptions options;
+  options.set_allow_growth(true);
+
+  // Max of 2GiB, but starts out small.
+  GPUBFCAllocator a(0, 1LL << 31, options);
+
+  // Allocate 10 raw pointers of sizes between 100 bytes and about
+  // 64 megs.
+  random::PhiloxRandom philox(123, 17);
+  random::SimplePhilox rand(&philox);
+
+  const int32 max_mem = 1 << 27;
+
+  std::vector<void*> initial_ptrs;
+  for (int s = 1; s < 10; s++) {
+    size_t size = std::min<size_t>(
+        std::max<size_t>(rand.Rand32() % max_mem, 100), max_mem);
+    void* raw = a.AllocateRaw(1, size);
+
+    initial_ptrs.push_back(raw);
+  }
+
+  // Deallocate half of the memory, and keep track of the others.
+  std::vector<void*> existing_ptrs;
+  for (size_t i = 0; i < initial_ptrs.size(); i++) {
+    if (i % 2 == 1) {
+      a.DeallocateRaw(initial_ptrs[i]);
+    } else {
+      existing_ptrs.push_back(initial_ptrs[i]);
+    }
+  }
+
+  const int32 max_mem_2 = 1 << 26;
+  // Allocate a lot of raw pointers between 100 bytes and 64 megs.
+  for (int s = 1; s < 10; s++) {
+    size_t size = std::min<size_t>(
+        std::max<size_t>(rand.Rand32() % max_mem_2, 100), max_mem_2);
+    void* raw = a.AllocateRaw(1, size);
+    existing_ptrs.push_back(raw);
+  }
+
+  std::sort(existing_ptrs.begin(), existing_ptrs.end());
+  // Make sure none of them are equal
+  for (size_t i = 1; i < existing_ptrs.size(); i++) {
+    CHECK_NE(existing_ptrs[i], existing_ptrs[i - 1]);  // No dups
+
+    size_t req_size = a.RequestedSize(existing_ptrs[i - 1]);
+    ASSERT_GT(req_size, 0);
+
+    // Check that they don't overlap.
+    ASSERT_GE(static_cast<char*>(existing_ptrs[i]) -
+                  static_cast<char*>(existing_ptrs[i - 1]),
+              req_size);
+  }
+
+  for (size_t i = 0; i < existing_ptrs.size(); i++) {
+    a.DeallocateRaw(existing_ptrs[i]);
+  }
+
+  AllocatorStats stats;
+  a.GetStats(&stats);
+  LOG(INFO) << "Alloc stats: \n" << stats.DebugString();
+}
+
 static void BM_Allocation(int iters) {
-  GPUBFCAllocator a(0, 1 << 30);
+  GPUBFCAllocator a(0, 1uLL << 33);
   // Exercise a few different allocation sizes
-  std::vector<int> sizes = {256, 4096, 16384, 524288, 512, 1048576};
+  std::vector<size_t> sizes = {256,        4096,      16384,    524288,
+                               512,        1048576,   10485760, 104857600,
+                               1048576000, 2048576000};
   int size_index = 0;
 
   while (--iters > 0) {
-    int bytes = sizes[size_index++ % sizes.size()];
+    size_t bytes = sizes[size_index++ % sizes.size()];
     void* p = a.AllocateRaw(1, bytes);
     a.DeallocateRaw(p);
   }
@@ -211,7 +274,7 @@ static void BM_Allocation(int iters) {
 BENCHMARK(BM_Allocation);
 
 static void BM_AllocationThreaded(int iters, int num_threads) {
-  GPUBFCAllocator a(0, 1 << 30);
+  GPUBFCAllocator a(0, 1uLL << 33);
   thread::ThreadPool pool(Env::Default(), "test", num_threads);
   std::atomic_int_fast32_t count(iters);
   mutex done_lock;
@@ -221,7 +284,8 @@ static void BM_AllocationThreaded(int iters, int num_threads) {
   for (int t = 0; t < num_threads; t++) {
     pool.Schedule([&a, &count, &done_lock, &done, &done_flag, iters]() {
       // Exercise a few different allocation sizes
-      std::vector<int> sizes = {256, 4096, 16384, 524288, 512, 1048576};
+      std::vector<int> sizes = {256, 4096,    16384,    524288,
+                                512, 1048576, 10485760, 104857600};
       int size_index = 0;
       for (int i = 0; i < iters; i++) {
         int bytes = sizes[size_index++ % sizes.size()];

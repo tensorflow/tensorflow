@@ -150,7 +150,7 @@ kept independently and each row and column will be kept or not kept together.
 
 - - -
 
-### `tf.nn.bias_add(value, bias, name=None)` {#bias_add}
+### `tf.nn.bias_add(value, bias, data_format=None, name=None)` {#bias_add}
 
 Adds `bias` to `value`.
 
@@ -167,6 +167,7 @@ case where both types are quantized.
 *  <b>`bias`</b>: A 1-D `Tensor` with size matching the last dimension of `value`.
     Must be the same type as `value` unless `value` is a quantized type,
     in which case a different quantized type may be used.
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW" are supported.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -728,7 +729,7 @@ Computes half the L2 norm of a tensor without the `sqrt`:
 ##### Args:
 
 
-*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
     Typically 2-D, but may have any dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -779,6 +780,11 @@ To ensure stability and avoid overflow, the implementation uses
 
   A `Tensor` of the same shape as `logits` with the componentwise
   logistic losses.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `logits` and `targets` do not have the same shape.
 
 
 - - -

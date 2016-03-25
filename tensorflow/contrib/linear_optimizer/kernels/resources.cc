@@ -33,10 +33,10 @@ DataByExample::Key DataByExample::MakeKey(const string& example_id) {
   // The current probability of at least one collision for 1B example_ids is
   // approximately 10^-11 (ie 2^60 / 2^97).
   //
-  // TODO(katsiapis): Investigate using a smaller key space to save memory if
+  // TODO(sibyl-Mooth6ku): Investigate using a smaller key space to save memory if
   // collisions are not much of an issue.
   //
-  // TODO(katsiapis): Avoid the double-pass over the data.
+  // TODO(sibyl-Mooth6ku): Avoid the double-pass over the data.
   static const uint64 kSeed1 = 0xDECAFCAFFE;  // Same as Hash64 default seed.
   static const uint64 kSeed2 = 0xABCDEF0123;  // Anything != kSeed1 will do.
   return std::make_pair(

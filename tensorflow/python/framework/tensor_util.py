@@ -42,6 +42,9 @@ from tensorflow.python.framework import ops
 
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
+      # TODO(sesse): We should have a
+      # fast_tensor_util.AppendFloat16ArrayToTensorProto,
+      # but it seems np.float16_t doesn't exist?
       np.float32: fast_tensor_util.AppendFloat32ArrayToTensorProto,
       np.float64: fast_tensor_util.AppendFloat64ArrayToTensorProto,
       np.int32: fast_tensor_util.AppendInt32ArrayToTensorProto,
@@ -64,6 +67,9 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
   }
 else:
 
+  def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.float_val.extend([np.asscalar(x) for x in proto_values])
+
   def SlowAppendFloat32ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.float_val.extend([np.asscalar(x) for x in proto_values])
 
@@ -76,8 +82,13 @@ else:
   def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
 
-  def SlowAppendComplexArrayToTensorProto(tensor_proto, proto_values):
+  def SlowAppendComplex64ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.scomplex_val.extend([np.asscalar(v)
+                                      for x in proto_values
+                                      for v in [x.real, x.imag]])
+
+  def SlowAppendComplex128ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.dcomplex_val.extend([np.asscalar(v)
                                       for x in proto_values
                                       for v in [x.real, x.imag]])
 
@@ -88,6 +99,7 @@ else:
     tensor_proto.bool_val.extend([np.asscalar(x) for x in proto_values])
 
   _NP_TO_APPEND_FN = {
+      np.float16: SlowAppendFloat16ArrayToTensorProto,
       np.float32: SlowAppendFloat32ArrayToTensorProto,
       np.float64: SlowAppendFloat64ArrayToTensorProto,
       np.int32: SlowAppendIntArrayToTensorProto,
@@ -96,8 +108,8 @@ else:
       np.uint16: SlowAppendIntArrayToTensorProto,
       np.int16: SlowAppendIntArrayToTensorProto,
       np.int8: SlowAppendIntArrayToTensorProto,
-      np.complex64: SlowAppendComplexArrayToTensorProto,
-      np.complex128: SlowAppendComplexArrayToTensorProto,
+      np.complex64: SlowAppendComplex64ArrayToTensorProto,
+      np.complex128: SlowAppendComplex128ArrayToTensorProto,
       np.object: SlowAppendObjectArrayToTensorProto,
       np.bool: SlowAppendBoolArrayToTensorProto,
       dtypes.qint8.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
@@ -240,6 +252,7 @@ _TF_TO_IS_OK = {
     dtypes.int8: _FilterInt,
     dtypes.string: _FilterStr,
     dtypes.complex64: _FilterComplex,
+    dtypes.complex128: _FilterComplex,
     dtypes.int64: _FilterInt,
     dtypes.bool: _FilterBool,
     dtypes.qint32: _FilterInt,
@@ -453,6 +466,15 @@ def MakeNdarray(tensor):
     else:
       return np.array([complex(x[0], x[1]) for x in zip(it, it)],
                       dtype=dtype).reshape(shape)
+  elif tensor_dtype == dtypes.complex128:
+    it = iter(tensor.dcomplex_val)
+    if len(tensor.dcomplex_val) == 2:
+      return np.repeat(np.array(complex(tensor.dcomplex_val[0],
+                                        tensor.dcomplex_val[1]), dtype=dtype),
+                       num_elements).reshape(shape)
+    else:
+      return np.array([complex(x[0], x[1]) for x in zip(it, it)],
+                      dtype=dtype).reshape(shape)
   elif tensor_dtype == dtypes.bool:
     if len(tensor.bool_val) == 1:
       return np.repeat(np.array(tensor.bool_val[0], dtype=dtype),
@@ -487,26 +509,7 @@ def ShapeEquals(tensor_proto, shape):
   return all(x == y for x, y in zip(tensor_shape_list, shape))
 
 
-def constant_value(tensor):
-  """Returns the constant value of the given tensor, if efficiently calculable.
-
-  This function attempts to partially evaluate the given tensor, and
-  returns its value as a numpy ndarray if this succeeds.
-
-  TODO(mrry): Consider whether this function should use a registration
-  mechanism like gradients and ShapeFunctions, so that it is easily
-  extensible.
-
-  Args:
-    tensor: The Tensor to be evaluated.
-
-  Returns:
-    A numpy ndarray containing the constant value of the given `tensor`,
-    or None if it cannot be calculated.
-
-  Raises:
-    TypeError: if tensor is not an ops.Tensor.
-  """
+def _ConstantValue(tensor):
   # TODO(touts): Support Variables?
   if not isinstance(tensor, ops.Tensor):
     raise TypeError("tensor is not a Tensor")
@@ -561,3 +564,36 @@ def constant_value(tensor):
     return np.concatenate(values, axis=dim)
   else:
     return None
+
+
+def constant_value(tensor):
+  """Returns the constant value of the given tensor, if efficiently calculable.
+
+  This function attempts to partially evaluate the given tensor, and
+  returns its value as a numpy ndarray if this succeeds.
+
+  TODO(mrry): Consider whether this function should use a registration
+  mechanism like gradients and ShapeFunctions, so that it is easily
+  extensible.
+
+  NOTE: If `constant_value(tensor)` returns a non-`None` result, it will no
+  longer be possible to feed a different value for `tensor`. This allows the
+  result of this function to influence the graph that is constructed, and
+  permits static shape optimizations.
+
+  Args:
+    tensor: The Tensor to be evaluated.
+
+  Returns:
+    A numpy ndarray containing the constant value of the given `tensor`,
+    or None if it cannot be calculated.
+
+  Raises:
+    TypeError: if tensor is not an ops.Tensor.
+  """
+  ret = _ConstantValue(tensor)
+  if ret is not None:
+    # The caller may now depend on the constant value of `tensor`, so we
+    # conservatively prevent it from being fed.
+    tensor.graph.prevent_feeding(tensor)
+  return ret

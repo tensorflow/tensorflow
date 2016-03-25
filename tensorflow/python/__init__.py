@@ -27,10 +27,24 @@ import tensorflow as tf
 
 """
 
+import ctypes
 import inspect
+import sys
 import traceback
 
 # pylint: disable=g-import-not-at-top
+
+# pywrap_tensorflow is a SWIG generated python library that dynamically loads
+# _pywrap_tensorflow.so. The default mode for loading keeps all the symbol
+# private and not visible to other libraries that may be loaded. Setting
+# the mode to RTLD_GLOBAL to make the symbols visible, so libraries such
+# as the ones implementing custom ops can have access to tensorflow
+# framework's symbols.
+_default_dlopen_flags = sys.getdlopenflags()
+sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
+from tensorflow.python import pywrap_tensorflow
+sys.setdlopenflags(_default_dlopen_flags)
+
 try:
   from tensorflow.core.framework.graph_pb2 import *
 except ImportError:
@@ -45,7 +59,7 @@ from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 # Import things out of contrib
-from tensorflow import contrib
+import tensorflow.contrib as contrib
 
 # Framework
 from tensorflow.python.framework.framework_lib import *
@@ -87,6 +101,7 @@ from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
@@ -103,8 +118,8 @@ _whitelist = set([app, compat, contrib, errors, flags, gfile, image,
 # strings of other modules.
 __all__ = make_all(__name__,
                    [framework_lib, array_ops, client_lib, constant_op,
-                    control_flow_ops, io_ops, math_ops, nn, script_ops,
-                    sparse_ops, state_ops, train])
+                    control_flow_ops, histogram_ops, io_ops, math_ops, nn,
+                    script_ops, sparse_ops, state_ops, train])
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
@@ -129,7 +144,7 @@ __all__.extend([
     'OptimizerOptions',
     'PaddingFIFOQueue',
     'RunOptions',
-    'RunOutputs',
+    'RunMetadata',
     'ServerDef',
     'SessionLog',
     'Summary',
@@ -146,6 +161,7 @@ __all__.extend([
     'initialize_all_tables',
     'lin_space',
     'list_diff',
+    'make_cluster_def',
     'parse_single_sequence_example',
     'py_func',
     'scalar_mul',
@@ -167,7 +183,10 @@ __all__.extend([
     'bfloat16', 'bfloat16_ref',
     'bool', 'bool_ref',
     'complex64', 'complex64_ref',
+    'complex128', 'complex128_ref',
     'double', 'double_ref',
+    'half', 'half_ref',
+    'float16', 'float16_ref',
     'float32', 'float32_ref',
     'float64', 'float64_ref',
     'int16', 'int16_ref',

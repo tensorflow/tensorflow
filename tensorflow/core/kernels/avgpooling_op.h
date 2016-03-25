@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_AVGPOOLING_OP_H_
 // Functor definition for AvgPoolingOp, must be compilable by nvcc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/eigen_pooling.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -30,10 +30,17 @@ struct SpatialAvgPooling {
                   typename TTypes<T, 4>::ConstTensor input, int window_rows,
                   int window_cols, int row_stride, int col_stride,
                   const Eigen::PaddingType& padding) {
-    // Because we swap the layout, we swap the row/cols as well
-    output.swap_layout().device(d) =
-        Eigen::SpatialAvgPooling(input.swap_layout(), window_cols, window_rows,
-                                 col_stride, row_stride, padding);
+    if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
+      // Use 32bit indexing to speed up the computations
+      To32Bit(output).swap_layout().device(d) = Eigen::SpatialAvgPooling(
+          To32Bit(input).swap_layout(), window_cols, window_rows, col_stride,
+          row_stride, padding);
+    } else {
+      // Because we swap the layout, we swap the row/cols as well
+      output.swap_layout().device(d) = Eigen::SpatialAvgPooling(
+          input.swap_layout(), window_cols, window_rows, col_stride, row_stride,
+          padding);
+    }
   }
 };
 

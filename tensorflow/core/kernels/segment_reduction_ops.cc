@@ -91,6 +91,7 @@ class SegmentReductionOp : public OpKernel {
     // return an error).
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    if (num_indices == 0) return;
     auto output_flat = output->flat_outer_dims<T>();
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
@@ -100,19 +101,29 @@ class SegmentReductionOp : public OpKernel {
     Eigen::IndexList<Eigen::type2index<0>> dims_to_reduce;
 #endif
     Index start = 0, end = 1;
+
+    Index out_index = internal::SubtleMustCopy(segment_vec(start));
+    OP_REQUIRES(context, out_index == 0,
+                errors::InvalidArgument("segment ids do not start at 0"));
+
     // TODO(agarwal): if this loop becomes a bottleneck, consider sharding it
     // across threads.
     Eigen::DSizes<Eigen::DenseIndex, 1> out_slice_shape(num_col);
     while (end <= num_indices) {
+      // We initialize next_index to 0 to avoid "warning: 'next_index' may be
+      // used uninitialized in this function" in the Mac build (since the
+      // compiler isn't smart enough to realize the code is safe).
+      Index next_index = 0;
       if (end < num_indices) {
-        if (segment_vec(start) == segment_vec(end)) {
+        next_index = internal::SubtleMustCopy(segment_vec(end));
+        if (out_index == next_index) {
           ++end;
           continue;
         }
         // We have a new segment here.  Verify that the segment ids grow by one
         // each time, so that we cover every possible output value.
         OP_REQUIRES(
-            context, segment_vec(start) + 1 == segment_vec(end),
+            context, out_index + 1 == next_index,
             errors::InvalidArgument("segment ids are not increasing by 1"));
       }
 
@@ -122,7 +133,6 @@ class SegmentReductionOp : public OpKernel {
                                Eigen::Unaligned>
           OutT;
 
-      Index out_index = internal::SubtleMustCopy(segment_vec(start));
       OP_REQUIRES(
           context, FastBoundsCheck(out_index, output_rows),
           errors::InvalidArgument(
@@ -150,8 +160,10 @@ class SegmentReductionOp : public OpKernel {
 
         out_slice = in_slice.reduce(dims_to_reduce, Reducer());
       }
+      if (end >= num_indices) break;
       start = end;
       ++end;
+      out_index = next_index;
     }
   }
 };
@@ -299,13 +311,15 @@ class SparseSegmentReductionOpBase : public OpKernel {
                     "segment_ids and indices should have same size."));
 
     auto input_flat = input.flat_outer_dims<T>();
-
-    const auto indices_vec = indices.vec<int32>();
-    const auto segment_vec = segment_ids.vec<int32>();
+    const auto indices_vec = indices.vec<Index>();
+    typedef int32 OutputRow;
+    const auto segment_vec = segment_ids.vec<OutputRow>();
     // Note that the current implementation assumes that segment_vec values are
     // sorted.
-    const int32 output_rows =
-        num_indices > 0 ? segment_vec(num_indices - 1) + 1 : 0;
+    const OutputRow output_rows =
+        num_indices > 0
+            ? internal::SubtleMustCopy(segment_vec(num_indices - 1)) + 1
+            : 0;
 
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
@@ -319,81 +333,179 @@ class SparseSegmentReductionOpBase : public OpKernel {
     auto output_flat = output->flat_outer_dims<T>();
 
     int32 start = 0, end = 1;
-    while (end <= num_indices) {
+    OutputRow out_index = internal::SubtleMustCopy(segment_vec(start));
+    OP_REQUIRES(context, out_index == 0,
+                errors::InvalidArgument("segment ids do not start at 0"));
+
+    while (true) {
+      // We initialize next_index to 0 to avoid "warning: 'next_index' may be
+      // used uninitialized in this function" in the Mac build (since the
+      // compiler isn't smart enough to realize the code is safe).
+      OutputRow next_index = 0;
       if (end < num_indices) {
-        if (segment_vec(start) == segment_vec(end)) {
+        next_index = internal::SubtleMustCopy(segment_vec(end));
+        if (out_index == next_index) {
           ++end;
           continue;
         }
         // We have a new segment here.  Verify that the segment ids grow by one
         // each time, so that we cover every possible output value.
         OP_REQUIRES(
-            context, segment_vec(start) + 1 == segment_vec(end),
+            context, out_index + 1 == next_index,
             errors::InvalidArgument("segment ids are not increasing by 1"));
       }
 
-      auto out = output_flat.template chip<0>(segment_vec(start));
-#define I(i) input_flat.template chip<0>(indices_vec(start + i))
-      int num = end - start;
-      if (num == 1) {
-        out = I(0);
-      } else {
-        int r = num % 8;
-        T m = 1;
-        if (is_mean_ && (num < 10)) {
-          m = num;
-        }
-        if (is_sqrtn_ && (num < 10)) {
-          m = sqrt(num);
-        }
-        switch (r) {
-          case 2:
-            out = (I(0) + I(1)) / m;
-            break;
-          case 3:
-            out = (I(0) + I(1) + I(2)) / m;
-            break;
-          case 4:
-            out = (I(0) + I(1) + I(2) + I(3)) / m;
-            break;
-          case 5:
-            out = (I(0) + I(1) + I(2) + I(3) + I(4)) / m;
-            break;
-          case 6:
-            out = (I(0) + I(1) + I(2) + I(3) + I(4) + I(5)) / m;
-            break;
-          case 7:
-            out = (I(0) + I(1) + I(2) + I(3) + I(4) + I(5) + I(6)) / m;
-            break;
-          case 0:
-            out = (I(0) + I(1) + I(2) + I(3) + I(4) + I(5) + I(6) + I(7)) / m;
-            r = 8;
-            break;
-          case 1:
-            out =
-                (I(0) + I(1) + I(2) + I(3) + I(4) + I(5) + I(6) + I(7) + I(8)) /
-                m;
-            r = 9;
-            break;
-        }
-        for (; r < num; r += 8) {
-          out += I(r) + I(r + 1) + I(r + 2) + I(r + 3) + I(r + 4) + I(r + 5) +
-                 I(r + 6) + I(r + 7);
-        }
-#undef I
-        if (is_mean_ && num >= 10) {
-          out = out / static_cast<T>(num);
-        }
-        if (is_sqrtn_ && num >= 10) {
-          out = out / static_cast<T>(sqrt(num));
-        }
-      }
+      OP_REQUIRES(
+          context, FastBoundsCheck(out_index, output_rows),
+          errors::InvalidArgument(
+              "Segment id ", out_index, " out of range [0, ", output_rows,
+              "), probably because 'segment_ids' input is not sorted."));
+      auto out = output_flat.template chip<0>(out_index);
+      const int bad_offset =
+          Reduce(input_flat, indices_vec, start, end - start, out);
+      OP_REQUIRES(context, bad_offset < 0,
+                  errors::InvalidArgument(
+                      "Bad: indices[", start + bad_offset, "] == ",
+                      indices_vec(start + bad_offset), " out of range [0, ",
+                      input_flat.dimension(0), ")"));
+
+      if (end >= num_indices) break;
       start = end;
       ++end;
+      out_index = next_index;
     }
   }
 
  private:
+  typedef int32 Index;
+
+  int Reduce(const typename TTypes<T>::ConstMatrix& input_flat,
+             const typename TTypes<Index>::ConstVec& indices_vec, int start,
+             int num,
+             Eigen::TensorChippingOp<0, typename TTypes<T>::Matrix> out) {
+#define INDEX(n, i)                               \
+  const auto index##n = indices_vec(start + (i)); \
+  if (!FastBoundsCheck(index##n, input_flat.dimension(0))) return (i);
+
+#define L(n) input_flat.template chip<0>(index##n)
+
+    if (num == 1) {
+      INDEX(0, 0);
+      out = L(0);
+    } else {
+      int r = num % 8;
+      T m = 1;
+      if (is_mean_ && (num < 10)) {
+        m = num;
+      }
+      if (is_sqrtn_ && (num < 10)) {
+        m = sqrt(num);
+      }
+      switch (r) {
+        case 2: {
+          INDEX(0, 0);
+          INDEX(1, 1);
+          out = (L(0) + L(1)) / m;
+          break;
+        }
+        case 3: {
+          INDEX(0, 0);
+          INDEX(1, 1);
+          INDEX(2, 2);
+          out = (L(0) + L(1) + L(2)) / m;
+          break;
+        }
+        case 4: {
+          INDEX(0, 0);
+          INDEX(1, 1);
+          INDEX(2, 2);
+          INDEX(3, 3);
+          out = (L(0) + L(1) + L(2) + L(3)) / m;
+          break;
+        }
+        case 5: {
+          INDEX(0, 0);
+          INDEX(1, 1);
+          INDEX(2, 2);
+          INDEX(3, 3);
+          INDEX(4, 4);
+          out = (L(0) + L(1) + L(2) + L(3) + L(4)) / m;
+          break;
+        }
+        case 6: {
+          INDEX(0, 0);
+          INDEX(1, 1);
+          INDEX(2, 2);
+          INDEX(3, 3);
+          INDEX(4, 4);
+          INDEX(5, 5);
+          out = (L(0) + L(1) + L(2) + L(3) + L(4) + L(5)) / m;
+          break;
+        }
+        case 7: {
+          INDEX(0, 0);
+          INDEX(1, 1);
+          INDEX(2, 2);
+          INDEX(3, 3);
+          INDEX(4, 4);
+          INDEX(5, 5);
+          INDEX(6, 6);
+          out = (L(0) + L(1) + L(2) + L(3) + L(4) + L(5) + L(6)) / m;
+          break;
+        }
+        case 0: {
+          INDEX(0, 0);
+          INDEX(1, 1);
+          INDEX(2, 2);
+          INDEX(3, 3);
+          INDEX(4, 4);
+          INDEX(5, 5);
+          INDEX(6, 6);
+          INDEX(7, 7);
+          out = (L(0) + L(1) + L(2) + L(3) + L(4) + L(5) + L(6) + L(7)) / m;
+          r = 8;
+          break;
+        }
+        case 1: {
+          INDEX(0, 0);
+          INDEX(1, 1);
+          INDEX(2, 2);
+          INDEX(3, 3);
+          INDEX(4, 4);
+          INDEX(5, 5);
+          INDEX(6, 6);
+          INDEX(7, 7);
+          INDEX(8, 8);
+          out = (L(0) + L(1) + L(2) + L(3) + L(4) + L(5) + L(6) + L(7) + L(8)) /
+                m;
+          r = 9;
+          break;
+        }
+      }
+      for (; r < num; r += 8) {
+        INDEX(0, r);
+        INDEX(1, r + 1);
+        INDEX(2, r + 2);
+        INDEX(3, r + 3);
+        INDEX(4, r + 4);
+        INDEX(5, r + 5);
+        INDEX(6, r + 6);
+        INDEX(7, r + 7);
+        out += L(0) + L(1) + L(2) + L(3) + L(4) + L(5) + L(6) + L(7);
+      }
+      if (is_mean_ && num >= 10) {
+        out = out / static_cast<T>(num);
+      }
+      if (is_sqrtn_ && num >= 10) {
+        out = out / static_cast<T>(sqrt(num));
+      }
+    }
+
+    return -1;
+#undef L
+#undef INDEX
+  }
+
   const bool is_mean_;
   const bool is_sqrtn_;
 };
@@ -472,11 +584,14 @@ class SparseSegmentGradOpBase : public OpKernel {
     OP_REQUIRES(context, N == segment_ids.NumElements(),
                 errors::InvalidArgument(
                     "segment_ids and indices should have same size."));
-    const int32 M = output_dim0.scalar<int32>()();
+    typedef int32 SegmentId;
+    const SegmentId M =
+        internal::SubtleMustCopy(output_dim0.scalar<SegmentId>()());
 
     auto input_flat = input.flat_outer_dims<T>();
-    const auto indices_vec = indices.vec<int32>();
-    const auto segment_vec = segment_ids.vec<int32>();
+    typedef int32 Index;
+    const auto indices_vec = indices.vec<Index>();
+    const auto segment_vec = segment_ids.vec<SegmentId>();
 
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, M);
@@ -486,14 +601,20 @@ class SparseSegmentGradOpBase : public OpKernel {
 
     // Note that similar to SparseSegmentMean, we assume that segment_vec is
     // already sorted and has non-negative values.
-    int num_segments = segment_vec(N - 1) + 1;
+    const SegmentId num_segments =
+        internal::SubtleMustCopy(segment_vec(N - 1)) + 1;
     OP_REQUIRES(context, input.dim_size(0) == num_segments,
                 errors::InvalidArgument("Invalid number of segments"));
 
     // Compute scaling factors for input.
     std::vector<double> scaling(num_segments, 0.0);
     for (int64 i = 0; i < N; ++i) {
-      scaling[segment_vec(i)] += 1;
+      const SegmentId idx = internal::SubtleMustCopy(segment_vec(i));
+      OP_REQUIRES(
+          context, FastBoundsCheck(idx, num_segments),
+          errors::InvalidArgument("Segment id ", idx, " out of range [0, ",
+                                  num_segments, ")."));
+      scaling[idx] += 1;
     }
     for (size_t i = 0; i < scaling.size(); ++i) {
       if (is_sqrtn_) {
@@ -508,9 +629,18 @@ class SparseSegmentGradOpBase : public OpKernel {
     std::vector<bool> is_modified(M, false);
 
     for (int64 i = 0; i < N; ++i) {
-      int output_idx = indices_vec(i);
-      int idx = segment_vec(i);
-      T scale = static_cast<T>(scaling[idx]);
+      const Index output_idx = internal::SubtleMustCopy(indices_vec(i));
+      OP_REQUIRES(context, FastBoundsCheck(output_idx, M),
+                  errors::InvalidArgument("Index ", output_idx,
+                                          " out of range [0, ", M, ")."));
+
+      const SegmentId idx = internal::SubtleMustCopy(segment_vec(i));
+      OP_REQUIRES(
+          context, FastBoundsCheck(idx, num_segments),
+          errors::InvalidArgument("Segment id ", idx, " out of range [0, ",
+                                  num_segments, ")."));
+
+      const T scale = static_cast<T>(scaling[idx]);
       if (is_modified[output_idx]) {
         if (scale == 1.0) {
           output_flat.template chip<0>(output_idx) +=

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -84,7 +83,7 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
     auto blas_transpose_a = trans[transpose_a];
     auto blas_transpose_b = trans[transpose_b];
 
-    auto* stream = ctx->op_device_context<GPUDeviceContext>()->stream();
+    auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
     auto a_ptr = AsDeviceMemory(a.template flat<T>().data());

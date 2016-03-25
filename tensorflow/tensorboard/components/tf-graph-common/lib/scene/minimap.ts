@@ -161,7 +161,9 @@ export class Minimap {
           continue;
         }
         for (let i = 0; i < cssRules.length; i++) {
-          stylesText += cssRules[i].cssText + "\n";
+          // Remove tf-* selectors from the styles.
+          stylesText += cssRules[i].cssText.replace(/ ?tf-[\w-]+ ?/g, "") +
+              "\n";
         }
       } catch (e) {
         if (e.name !== "SecurityError") {

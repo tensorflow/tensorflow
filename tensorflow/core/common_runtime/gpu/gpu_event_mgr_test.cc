@@ -226,30 +226,6 @@ TEST(EventMgr, ManySmallTensorsSeparateCallsFlushed) {
   }
 }
 
-// Running the polling loop should clear the queue, without an explict
-// poll call here, given a moderate delay.
-TEST(EventMgr, LongDelayedPolling) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
-  EventMgr em(stream_exec, GPUOptions());
-  TEST_EventMgrHelper th(&em);
-  EXPECT_EQ(0, th.queue_size());
-  EXPECT_EQ(0, th.free_size());
-  std::unique_ptr<gpu::Stream> stream(new gpu::Stream(stream_exec));
-  CHECK(stream.get());
-  stream->Init();
-  for (int i = 0; i < 5; ++i) {
-    TensorReferenceVector* v = new TensorReferenceVector;
-    AddTensorReference(v, 100 * 1048576);
-    th.QueueTensors(stream.get(), v);
-    EXPECT_EQ(1 + i, th.queue_size());
-    EXPECT_EQ(0, th.free_size());
-  }
-  th.StartPollingLoop();
-  sleep(1);
-  EXPECT_EQ(0, th.queue_size());
-  EXPECT_EQ(5, th.free_size());
-}
-
 // Deleting the EventMgr when events are still pending should shut
 // down gracefully.
 TEST(EventMgr, NonEmptyShutdown) {

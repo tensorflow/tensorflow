@@ -83,7 +83,7 @@ void FIFOQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
 
 /* static */
 Status FIFOQueue::GetElementComponentFromBatch(const FIFOQueue::Tuple& tuple,
-                                               int index, int component,
+                                               int64 index, int component,
                                                OpKernelContext* ctx,
                                                PersistentTensor* out_tensor) {
   TensorShape element_shape(tuple[component].shape());
@@ -123,7 +123,7 @@ void FIFOQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
             RunResult result = kNoProgress;
             while (queues_[0].size() < static_cast<size_t>(capacity_)) {
               result = kProgress;
-              const int index =
+              const int64 index =
                   tuple[0].dim_size(0) - attempt->elements_requested;
               for (int i = 0; i < num_components(); ++i) {
                 PersistentTensor element;
@@ -162,7 +162,7 @@ void FIFOQueue::TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) {
       dequeue_attempts_.emplace_back(
           1, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            const int32 s = queues_[0].size();
+            const int64 s = queues_[0].size();
             if (closed_ && s == 0) {
               attempt->context->SetStatus(errors::OutOfRange(
                   "FIFOQueue '", name_, "' is closed and has ",
@@ -246,7 +246,7 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            int32 s = queues_[0].size();
+            int64 s = queues_[0].size();
             if (closed_ && s < attempt->elements_requested) {
               attempt->context->SetStatus(errors::OutOfRange(
                   "FIFOQueue '", name_, "' is closed and has ",
@@ -297,7 +297,7 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
               result = kProgress;
               Tuple tuple;
               DequeueLocked(attempt->context, &tuple);
-              const int index =
+              const int64 index =
                   attempt->tuple[0].dim_size(0) - attempt->elements_requested;
               for (int i = 0; i < num_components(); ++i) {
                 attempt->context->SetStatus(

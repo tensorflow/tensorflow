@@ -146,6 +146,9 @@ Polymer({
         })
       });
       this._setRenderHierarchy(renderGraph);
+      this.async(function() {
+        this.fire("rendered");
+      });
     }.bind(this));
   },
   _getVisible: function(name) {

@@ -588,6 +588,15 @@ def _ConjGrad(_, grad):
   return math_ops.conj(grad)
 
 
+@ops.RegisterGradient("ComplexAbs")
+def _ComplexAbsGrad(op, grad):
+  """Returns the gradient of ComplexAbs."""
+  # TODO(b/27786104): The cast to complex could be removed once arithmetic
+  # supports mixtures of complex64 and real values.
+  return (math_ops.complex(grad, array_ops.zeros_like(grad)) *
+          math_ops.sign(op.inputs[0]))
+
+
 @ops.RegisterGradient("Cast")
 def _CastGrad(op, grad):
   t = [dtypes.float32, dtypes.float64, dtypes.bfloat16]
@@ -597,6 +606,18 @@ def _CastGrad(op, grad):
     return math_ops.cast(grad, src_type)
   else:
     return None
+
+
+@ops.RegisterGradient("FFT")
+def _FFTGrad(_, grad):
+  size = math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.ifft(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("IFFT")
+def _IFFTGrad(_, grad):
+  rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.fft(grad) * math_ops.complex(rsize, 0.)
 
 
 @ops.RegisterGradient("FFT2D")
@@ -609,6 +630,60 @@ def _FFT2DGrad(_, grad):
 def _IFFT2DGrad(_, grad):
   rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
   return math_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("FFT3D")
+def _FFT3DGrad(_, grad):
+  size = math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.ifft3d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("IFFT3D")
+def _IFFT3DGrad(_, grad):
+  rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.fft3d(grad) * math_ops.complex(rsize, 0.)
+
+
+def _FFTSizeForGrad(grad, rank):
+  return math_ops.reduce_prod(array_ops.slice(
+      array_ops.reverse(
+          array_ops.shape(grad), (True,)), (0,), (rank,)))
+
+
+@ops.RegisterGradient("BatchFFT")
+def _BatchFFTGrad(_, grad):
+  size = math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
+  return math_ops.batch_ifft(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("BatchIFFT")
+def _BatchIFFTGrad(_, grad):
+  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
+  return math_ops.batch_fft(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("BatchFFT2D")
+def _BatchFFT2DGrad(_, grad):
+  size = math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
+  return math_ops.batch_ifft2d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("BatchIFFT2D")
+def _BatchIFFT2DGrad(_, grad):
+  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
+  return math_ops.batch_fft2d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("BatchFFT3D")
+def _BatchFFT3DGrad(_, grad):
+  size = math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
+  return math_ops.batch_ifft3d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("BatchIFFT3D")
+def _BatchIFFT3DGrad(_, grad):
+  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
+  return math_ops.batch_fft3d(grad) * math_ops.complex(rsize, 0.)
 
 
 @ops.RegisterGradient("Cross")

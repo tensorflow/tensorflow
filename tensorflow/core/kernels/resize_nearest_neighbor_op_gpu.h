@@ -20,7 +20,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RESIZE_NEAREST_NEIGHBOR_OP_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_RESIZE_NEAREST_NEIGHBOR_OP_GPU_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -31,6 +30,12 @@ bool ResizeNearestNeighbor(const T* bottom_data, const int batch, const int in_h
                            const int in_width, const int channels, const int out_height,
                            const int out_width, const float height_scale, const float width_scale,
                            T* top_data, const Eigen::GpuDevice& d);
+
+template <typename T>
+bool ResizeNearestNeighborBackward(const T* top_diff, const int batch, const int in_height,
+                                   const int in_width, const int channels, const int out_height,
+                                   const int out_width, const float height_scale, const float width_scale,
+                                   T* bottom_diff, const Eigen::GpuDevice& d);
 
 }  // namespace tensorflow
 

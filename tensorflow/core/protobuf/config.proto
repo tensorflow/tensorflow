@@ -29,6 +29,10 @@ message GPUOptions {
   // interactions with gpu driver code.  If 0, the system chooses
   // a reasonable default (several MBs).
   int64 deferred_deletion_bytes = 3;
+
+  // If true, the allocator does not pre-allocate the entire specified
+  // GPU memory region, instead starting small and growing as needed.
+  bool allow_growth = 4;
 };
 
 // Options passed to the graph optimizer
@@ -72,6 +76,10 @@ message GraphOptions {
 
   // Options controlling how graph is optimized.
   OptimizerOptions optimizer_options = 3;
+
+  // Build a cost model detailing the memory usage and performance of
+  // each node of the graph.
+  bool build_cost_model = 4;
 };
 
 // Session configuration parameters.
@@ -151,7 +159,7 @@ message RunOptions {
 }
 
 // EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.
-message RunOutputs {
+message RunMetadata {
   // Statistics traced for this step. Populated if tracing is turned on via the
   // "RunOptions" proto.
   // EXPERIMENTAL: The format and set of events may change in future versions.

@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -126,20 +126,21 @@ void GraphConstructor::SetError(const string& error) {
   status_->Update(errors::InvalidArgument(error));
 }
 
-void GraphConstructor::BuildNodeIndex() {
-  // Initialized outside the loop for efficiency
-  const char* pattern;
-  if (opts_.allow_internal_ops) {
-    pattern = "[A-Za-z0-9._][A-Za-z0-9_.\\-/]*";
-  } else {
-    pattern = "[A-Za-z0-9.][A-Za-z0-9_.\\-/]*";
-  }
-  RE2 node_name_re(pattern);
+bool IsValidNodeName(StringPiece s, bool allow_internal_ops) {
+  using ::tensorflow::strings::Scanner;
+  return Scanner(s)
+      .One(allow_internal_ops ? Scanner::LETTER_DIGIT_DOT_UNDERSCORE
+                              : Scanner::LETTER_DIGIT_DOT)
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
+      .Eos()
+      .GetResult();
+}
 
+void GraphConstructor::BuildNodeIndex() {
   // Validate the node names and add them to name_index_.
   for (int n = 0; n < gdef_->node_size(); ++n) {
     const NodeDef& node_def(gdef_->node(n));
-    if (!RE2::FullMatch(node_def.name(), node_name_re)) {
+    if (!IsValidNodeName(node_def.name(), opts_.allow_internal_ops)) {
       SetNodeError(node_def, "Node name contains invalid characters");
       return;
     }

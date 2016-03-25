@@ -175,7 +175,8 @@ TEST(JpegMemTest, Jpeg2) {
     flags.stride = 3 * 411;
     const std::unique_ptr<uint8[]> imgdata2(new uint8[flags.stride * in_h]);
     CHECK(imgdata2.get() == Uncompress(cpdata2.c_str(), cpdata2.length(), flags,
-                                       NULL, [&imgdata2](int w, int h, int c) {
+                                       nullptr /* nwarn */,
+                                       [&imgdata2](int w, int h, int c) {
                                          CHECK_EQ(w, in_w);
                                          CHECK_EQ(h, in_h);
                                          CHECK_EQ(c, 3);
@@ -241,7 +242,8 @@ TEST(JpegMemTest, ChromaDownsampling) {
   // First, uncompress the JPEG.
   UncompressFlags unflags;
   unflags.components = 3;
-  int w, h, c, num_warnings;
+  int w, h, c;
+  int64 num_warnings;
   std::unique_ptr<uint8[]> uncompressed(Uncompress(
       jpeg.c_str(), jpeg.size(), unflags, &w, &h, &c, &num_warnings));
   CHECK(uncompressed.get() != NULL);
