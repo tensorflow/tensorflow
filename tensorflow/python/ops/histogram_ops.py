@@ -27,14 +27,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
 
 
 def histogram_fixed_width(values,
                           value_range,
                           nbins=100,
-                          use_locking=True,
                           dtype=dtypes.int32,
                           name=None):
   """Return histogram of values.
@@ -48,14 +45,12 @@ def histogram_fixed_width(values,
     value_range:  Shape [2] `Tensor`.  new_values <= value_range[0] will be
       mapped to hist[0], values >= value_range[1] will be mapped to hist[-1].
       Must be same dtype as new_values.
-    nbins:  Integer number of bins in this histogram.
-    use_locking:  Boolean.
-      If `True`, use locking during the operation (optional).
+    nbins:  Scalar `int32 Tensor`.  Number of histogram bins.
     dtype:  dtype for returned histogram.
     name:  A name for this operation (defaults to 'histogram_fixed_width').
 
   Returns:
-    A `Variable` holding histogram of values.
+    A 1-D `Tensor` holding histogram of values.
 
   Examples:
   ```python
@@ -70,11 +65,13 @@ def histogram_fixed_width(values,
     sess.run(hist) => [2, 1, 1, 0, 2]
   ```
   """
-  with variable_scope.variable_op_scope(
-      [values, value_range], name, 'histogram_fixed_width') as scope:
+  with ops.op_scope([values, value_range, nbins], name,
+                    'histogram_fixed_width') as scope:
     values = ops.convert_to_tensor(values, name='values')
     values = array_ops.reshape(values, [-1])
     value_range = ops.convert_to_tensor(value_range, name='value_range')
+    nbins = ops.convert_to_tensor(nbins, dtype=dtypes.int32, name='nbins')
+    nbins_float = math_ops.to_float(nbins)
 
     # Map tensor values that fall within value_range to [0, 1].
     scaled_values = math_ops.truediv(values - value_range[0],
@@ -83,27 +80,16 @@ def histogram_fixed_width(values,
 
     # map tensor values within the open interval value_range to {0,.., nbins-1},
     # values outside the open interval will be zero or less, or nbins or more.
-    indices = math_ops.floor(nbins * scaled_values, name='indices')
+    indices = math_ops.floor(nbins_float * scaled_values, name='indices')
 
     # Clip edge cases (e.g. value = value_range[1]) or "outliers."
     indices = math_ops.cast(
-        clip_ops.clip_by_value(indices, 0, nbins - 1), dtypes.int32)
+        clip_ops.clip_by_value(indices, 0, nbins_float - 1), dtypes.int32)
 
-    # Dummy vector to scatter.
-    # TODO(langmore) Replace non-ideal creation of large dummy vector once an
-    # alternative to scatter is available.
-    updates = array_ops.ones_like(indices, dtype=dtype)
-
-    hist = variable_scope.get_variable('hist',
-                                       initializer=array_ops.zeros_initializer(
-                                           [nbins],
-                                           dtype=dtype),
-                                       trainable=False)
-    hist_assign_zero = hist.assign(array_ops.zeros_like(hist))
-
-    with ops.control_dependencies([hist_assign_zero]):
-      return state_ops.scatter_add(hist,
-                                   indices,
-                                   updates,
-                                   use_locking=use_locking,
-                                   name=scope.name)
+    # TODO(langmore) This creates an array of ones to add up and place in the
+    # bins.  This is inefficient, so replace when a better Op is available.
+    return math_ops.unsorted_segment_sum(
+        array_ops.ones_like(indices, dtype=dtype),
+        indices,
+        nbins,
+        name=scope)
