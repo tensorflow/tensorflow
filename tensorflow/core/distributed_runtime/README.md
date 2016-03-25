@@ -195,6 +195,6 @@ replicated model. Possible approaches include:
   <dd>
     An RPC service that executes parts of a TensorFlow graph using its local
     devices. A worker service implements <a
-    href="./worker_service.proto"><code>worker_service.proto</code></a>.
+    href="../protobuf/worker_service.proto"><code>worker_service.proto</code></a>.
   </dd>
 </dl>
