@@ -24,6 +24,7 @@ import tensorflow as tf
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.ops import tensor_array_ops
 
 
@@ -781,6 +782,49 @@ class TensorArrayTest(tf.test.TestCase):
   def testSumOfTwoReadVariablesWithoutRepeatGrad(self):
     self._testSumOfTwoReadVariablesWithoutRepeatGrad(use_gpu=False)
     self._testSumOfTwoReadVariablesWithoutRepeatGrad(use_gpu=True)
+
+  def _grad_source_for_name(self, name):
+    return tensor_array_grad._GetGradSource(tf.constant(0, name=name))
+
+  def testGetGradSource_Invalid(self):
+    with self.assertRaises(ValueError):
+      self._grad_source_for_name("")
+    with self.assertRaises(ValueError):
+      self._grad_source_for_name("foo")
+    with self.assertRaises(ValueError):
+      self._grad_source_for_name("foo/bar")
+
+  def testGetGradSource_NoEnclosingScope(self):
+    self.assertEqual("gradients:0", self._grad_source_for_name("gradients"))
+    self.assertEqual("gradients_0:0", self._grad_source_for_name("gradients_0"))
+    self.assertEqual("gradients", self._grad_source_for_name("gradients/foo"))
+    self.assertEqual(
+        "gradients_0", self._grad_source_for_name("gradients_0/foo"))
+    self.assertEqual(
+        "gradients", self._grad_source_for_name("gradients/foo/bar"))
+    self.assertEqual(
+        "gradients_0", self._grad_source_for_name("gradients_0/foo/bar"))
+
+  def testGetGradSource_EnclosingScope(self):
+    self.assertEqual(
+        "foo/gradients:0", self._grad_source_for_name("foo/gradients"))
+    self.assertEqual(
+        "foo/gradients_0:0", self._grad_source_for_name("foo/gradients_0"))
+    self.assertEqual(
+        "foo/gradients", self._grad_source_for_name("foo/gradients/bar"))
+    self.assertEqual(
+        "foo/gradients_0", self._grad_source_for_name("foo/gradients_0/bar"))
+    self.assertEqual(
+        "foo/bar/gradients",
+        self._grad_source_for_name("foo/bar/gradients/baz"))
+    self.assertEqual(
+        "foo/bar/gradients_0",
+        self._grad_source_for_name("foo/bar/gradients_0/baz"))
+
+  def testGetGradSource_NestedUsesTompost(self):
+    self.assertEqual(
+        "foo/gradients",
+        self._grad_source_for_name("foo/gradients/bar/gradients_0/baz"))
 
 if __name__ == "__main__":
   tf.test.main()
