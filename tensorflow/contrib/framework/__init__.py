@@ -18,6 +18,7 @@
 @@is_numeric_tensor
 @@assert_scalar_int
 @@local_variable
+@@reduce_sum_n
 """
 
 from __future__ import absolute_import
