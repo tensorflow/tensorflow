@@ -463,7 +463,7 @@ def gradients(ys,
               if loop_state:
                 out_grads[i] = loop_state.ZerosLike(op, i)
               else:
-                out_grads[i] = array_ops.zeros_like(op.outputs[i])
+                out_grads[i] = control_flow_ops.ZerosLikeOutsideLoop(op, i)
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access
             with ops.get_default_graph()._original_op(op):

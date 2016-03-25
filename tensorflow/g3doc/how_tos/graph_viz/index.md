@@ -233,10 +233,9 @@ The images below give an illustration for a piece of a real-life graph.
 
 When the serialized `GraphDef` includes tensor shapes, the graph visualizer
 labels edges with tensor dimensions, and edge thickness reflects total tensor
-size. To include tensor shapes in the `GraphDef` pass
-`sess.graph.as_graph_def(add_shapes=True)` to the `SummaryWriter` when
-serializing the graph. The images below show the CIFAR-10 model with tensor
-shape information:
+size. To include tensor shapes in the `GraphDef` pass the actual graph object
+(as in `sess.graph`) to the `SummaryWriter` when serializing the graph.
+The images below show the CIFAR-10 model with tensor shape information:
 <table width="100%;">
   <tr>
     <td style="width: 100%;">

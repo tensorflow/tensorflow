@@ -40,6 +40,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+class CostModel;
 class Device;
 class ThreadPool;
 
@@ -78,6 +79,12 @@ class DirectSession : public Session {
                             const std::vector<string>& output_names,
                             std::vector<Tensor>* outputs) override;
   ::tensorflow::Status Close() override;
+
+  // NOTE: This is a temporary api that is only meant to enable testing.
+  // This api will be replaced with better ones soon, so DO NOT USE
+  const std::unordered_map<const Graph*, CostModel*>& GetCostModels() const {
+    return cost_models_;
+  }
 
  private:
   typedef DirectSession ME;
@@ -124,6 +131,7 @@ class DirectSession : public Session {
     mutex mu_;
     Status status GUARDED_BY(mu_);
     IntraProcessRendezvous* rendez = nullptr;
+    StepStatsCollector* collector = nullptr;
     Notification executors_done;
     std::unordered_set<string> pending_inputs;
     std::unordered_set<string> pending_outputs;
@@ -138,16 +146,7 @@ class DirectSession : public Session {
         pending_outputs.emplace(name);
       }
     }
-
-    ~RunState() {
-      if (rendez != nullptr) {
-        if (!executors_done.HasBeenNotified()) {
-          rendez->StartAbort(errors::Cancelled("PRun cancellation"));
-          executors_done.WaitForNotification();
-        }
-        rendez->Unref();
-      }
-    }
+    ~RunState();
   };
 
   struct RunStateArgs {
@@ -249,6 +248,9 @@ class DirectSession : public Session {
 
   // Global timeout for all blocking operations in this session.
   const int64 operation_timeout_in_ms_ = 0;
+
+  std::unordered_map<const Graph*, CostModel*> cost_models_
+      GUARDED_BY(executor_lock_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 };

@@ -1900,6 +1900,7 @@ class Graph(object):
 
   @property
   def seed(self):
+    """The graph-level random seed of this graph."""
     return self._seed
 
   @seed.setter
@@ -2333,7 +2334,7 @@ class Graph(object):
     This method should be used if you want to create multiple graphs
     in the same process. For convenience, a global default graph is
     provided, and all ops will be added to this graph if you do not
-    create a new graph explicitly. Use this method the `with` keyword
+    create a new graph explicitly. Use this method with the `with` keyword
     to specify that ops created within the scope of a block should be
     added to this graph.
 

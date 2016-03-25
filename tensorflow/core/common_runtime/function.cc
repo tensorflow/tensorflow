@@ -39,6 +39,8 @@ static const char* const kArgOp = "_Arg";
 static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
+static const char* const kFuncAttr = "f";
+static const char* const kNoinlineAttr = "noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -498,7 +500,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   Status s;
   FunctionBody* fbody = nullptr;
   if (function_name == kGradientOp) {
-    const AttrValue* f = gtl::FindOrNull(attrs, "f");
+    const AttrValue* f = gtl::FindOrNull(attrs, kFuncAttr);
     if (f == nullptr) {
       return errors::InvalidArgument("SymbolicGradient is missing attr: f");
     }
@@ -988,10 +990,49 @@ static void InlineFunctionBody(Graph* g, Node* caller,
   g->RemoveNode(caller);  // 'caller' is replaced with inlined nodes.
 }
 
+// Given a node's NodeDef, returns false iff the node explicitly
+// specified noinline. This gives ExpandInlineFunctions a heuristic to
+// decide whether to inline the function.
+bool ShouldInline(const NodeDef& ndef) {
+  bool noinline = false;
+  if (GetNodeAttr(ndef, kNoinlineAttr, &noinline).ok()) {
+    // If the node specifies attribute 'noinlne', returns accordingly.
+    return !noinline;
+  }
+  if (ndef.op() != kGradientOp) {
+    // If the op is not SymbolicGradient, we should be free to decide
+    // whether to inline or not.
+    return true;
+  }
+  // If the node is a SymbolicGradient, we use the the forward
+  // function's attribute 'noinline' instead.
+  const NameAttrList* forward_func_attrs;
+  Status s =
+      GetNodeAttr(AttrSlice(&ndef.attr()), kFuncAttr, &forward_func_attrs);
+  if (!s.ok()) {
+    // The node def is malformed (missing attribute 'f'), we'll just
+    // continue and the runtime will error out.
+    return false;
+  }
+  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), kNoinlineAttr,
+                  &noinline);
+  if (!s.ok()) {
+    // The forward function doesn't specify 'noinline' attr, we should
+    // be free to decide.
+    return true;
+  }
+  // Otherwise, make inline decision according to the attr.
+  return !noinline;
+}
+
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
+    if (!ShouldInline(node->def())) {
+      VLOG(3) << "noinline: " << node->DebugString();
+      continue;
+    }
     FunctionLibraryRuntime::Handle handle;
     Status s =
         lib->Instantiate(node->type_string(), node->def().attr(), &handle);

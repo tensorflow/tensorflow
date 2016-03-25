@@ -21,6 +21,7 @@ import collections
 import threading
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf.config_pb2 import RunMetadata
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
@@ -61,6 +62,7 @@ HISTOGRAMS = 'histograms'
 IMAGES = 'images'
 SCALARS = 'scalars'
 GRAPH = 'graph'
+RUN_METADATA = 'run_metadata'
 
 ## Normal CDF for std_devs: (-Inf, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, Inf)
 ## naturally gives bands around median of width 1 std dev, 2 std dev, 3 std dev,
@@ -114,6 +116,7 @@ class EventAccumulator(object):
   @@Tags
   @@Scalars
   @@Graph
+  @@RunMetadata
   @@Histograms
   @@CompressedHistograms
   @@Images
@@ -150,6 +153,7 @@ class EventAccumulator(object):
 
     self._scalars = reservoir.Reservoir(size=sizes[SCALARS])
     self._graph = None
+    self._tagged_metadata = {}
     self._histograms = reservoir.Reservoir(size=sizes[HISTOGRAMS])
     self._compressed_histograms = reservoir.Reservoir(
         size=sizes[COMPRESSED_HISTOGRAMS])
@@ -196,6 +200,12 @@ class EventAccumulator(object):
             logging.warn(('Found more than one graph event per run.'
                           'Overwritting the graph with the newest event.'))
           self._graph = event.graph_def
+        elif event.HasField('tagged_run_metadata'):
+          tag = event.tagged_run_metadata.tag
+          if tag in self._tagged_metadata:
+            logging.warn('Found more than one "run metadata" event with tag ' +
+                         tag + '. Overwritting it with the newest event.')
+          self._tagged_metadata[tag] = event.tagged_run_metadata.run_metadata
         elif event.HasField('summary'):
           for value in event.summary.value:
             if value.HasField('simple_value'):
@@ -225,7 +235,8 @@ class EventAccumulator(object):
             HISTOGRAMS: self._histograms.Keys(),
             SCALARS: self._scalars.Keys(),
             COMPRESSED_HISTOGRAMS: self._compressed_histograms.Keys(),
-            GRAPH: self._graph is not None}
+            GRAPH: self._graph is not None,
+            RUN_METADATA: list(self._tagged_metadata.keys())}
 
   def Scalars(self, tag):
     """Given a summary tag, return all associated `ScalarEvent`s.
@@ -259,6 +270,27 @@ class EventAccumulator(object):
     graph = graph_pb2.GraphDef()
     graph.ParseFromString(self._graph)
     return graph
+
+  def RunMetadata(self, tag):
+    """Given a tag, return the associated session.run() metadata.
+
+    Args:
+      tag: A string tag associated with the event.
+
+    Raises:
+      ValueError: If the tag is not found.
+      RuntimeError: If the `EventAccumulator` has not been activated.
+
+    Returns:
+      The metadata in form of `RunMetadata` proto.
+    """
+    self._VerifyActivated()
+    if tag not in self._tagged_metadata:
+      raise ValueError('There is no run metadata with this tag name')
+
+    run_metadata = RunMetadata()
+    run_metadata.ParseFromString(self._tagged_metadata[tag])
+    return run_metadata
 
   def Histograms(self, tag):
     """Given a summary tag, return all associated histograms.

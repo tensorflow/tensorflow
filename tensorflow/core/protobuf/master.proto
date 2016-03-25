@@ -133,6 +133,9 @@ message RunStepRequest {
   // Target Nodes. A list of node names. The named nodes will be run
   // to but their outputs will not be fetched.
   repeated string target = 4;
+
+  // Options for the run call.
+  RunOptions options = 5;
 }
 
 message RunStepResponse {
@@ -140,7 +143,8 @@ message RunStepResponse {
   // the fetch order specified in RunStepRequest.
   repeated NamedTensorProto tensor = 1;
 
-  // TODO(mrry): Optionally aggregate StepStats in some form here.
+  // Returned metadata if requested in the options.
+  RunMetadata metadata = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
