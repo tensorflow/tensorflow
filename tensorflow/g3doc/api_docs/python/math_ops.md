@@ -186,7 +186,7 @@ of corresponding 3-element vectors is cross-multiplied independently.
 ##### Args:
 
 
-*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
     A tensor containing 3-element vectors.
 *  <b>`b`</b>: A `Tensor`. Must have the same type as `a`.
     Another tensor, of same type and shape as `a`.
@@ -213,7 +213,7 @@ Add all input tensors element wise.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of the same type in: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
+*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of the same type in: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Must all be the same size and shape.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -272,12 +272,14 @@ I.e., \\(y = -x\\).
 
 Returns an element-wise indication of the sign of a number.
 
-y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0.
+`y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+
+For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1513,6 +1515,40 @@ tf.real(in) ==> [-2.25, 3.25]
 
 - - -
 
+### `tf.fft(in_, name=None)` {#fft}
+
+Compute the 1-dimensional discrete Fourier Transform.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 vector.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`. The 1D Fourier Transform of `in`.
+
+
+- - -
+
+### `tf.ifft(in_, name=None)` {#ifft}
+
+Compute the inverse 1-dimensional discrete Fourier Transform.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 vector.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`. The inverse 1D Fourier Transform of `in`.
+
+
+- - -
+
 ### `tf.fft2d(in_, name=None)` {#fft2d}
 
 Compute the 2-dimensional discrete Fourier Transform.
@@ -1543,6 +1579,166 @@ Compute the inverse 2-dimensional discrete Fourier Transform.
 ##### Returns:
 
   A `Tensor` of type `complex64`. The inverse 2D Fourier Transform of `in`.
+
+
+- - -
+
+### `tf.fft3d(in_, name=None)` {#fft3d}
+
+Compute the 3-dimensional discrete Fourier Transform.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`. The 3D Fourier Transform of `in`.
+
+
+- - -
+
+### `tf.ifft3d(in_, name=None)` {#ifft3d}
+
+Compute the inverse 3-dimensional discrete Fourier Transform.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`. The inverse 3D Fourier Transform of `in`.
+
+
+- - -
+
+### `tf.batch_fft(in_, name=None)` {#batch_fft}
+
+Compute the 1-dimensional discrete Fourier Transform over the inner-most
+
+dimension of `in`.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`.
+  A complex64 tensor of the same shape as `in`. The inner-most dimension of
+  `in` is replaced with its 1D Fourier Transform.
+
+
+- - -
+
+### `tf.batch_ifft(in_, name=None)` {#batch_ifft}
+
+Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
+
+dimension of `in`.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`.
+  A complex64 tensor of the same shape as `in`. The inner-most dimension of
+  `in` is replaced with its inverse 1D Fourier Transform.
+
+
+- - -
+
+### `tf.batch_fft2d(in_, name=None)` {#batch_fft2d}
+
+Compute the 2-dimensional discrete Fourier Transform over the inner-most
+
+2 dimensions of `in`.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`.
+  A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions
+  of `in` are replaced with their 2D Fourier Transform.
+
+
+- - -
+
+### `tf.batch_ifft2d(in_, name=None)` {#batch_ifft2d}
+
+Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
+
+2 dimensions of `in`.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`.
+  A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions
+  of `in` are replaced with their inverse 2D Fourier Transform.
+
+
+- - -
+
+### `tf.batch_fft3d(in_, name=None)` {#batch_fft3d}
+
+Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
+
+dimensions of `in`.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`.
+  A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions
+  of `in` are replaced with their 3D Fourier Transform.
+
+
+- - -
+
+### `tf.batch_ifft3d(in_, name=None)` {#batch_ifft3d}
+
+Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
+
+3 dimensions of `in`.
+
+##### Args:
+
+
+*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `complex64`.
+  A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions
+  of `in` are replaced with their inverse 3D Fourier Transform.
 
 
 
@@ -1872,7 +2068,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -1906,7 +2102,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -1940,7 +2136,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -1973,7 +2169,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -2008,7 +2204,7 @@ values summed.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -2049,7 +2245,7 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.
@@ -2103,7 +2299,7 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`indices`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
@@ -2194,7 +2390,7 @@ Returns the index with the smallest value across dimensions of a tensor.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
 *  <b>`dimension`</b>: A `Tensor` of type `int32`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.
@@ -2214,7 +2410,7 @@ Returns the index with the largest value across dimensions of a tensor.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
 *  <b>`dimension`</b>: A `Tensor` of type `int32`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.

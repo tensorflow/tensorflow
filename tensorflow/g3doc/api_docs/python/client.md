@@ -93,7 +93,7 @@ the session constructor.
 
 - - -
 
-#### `tf.Session.run(fetches, feed_dict=None, options=None, run_outputs=None)` {#Session.run}
+#### `tf.Session.run(fetches, feed_dict=None, options=None, run_metadata=None)` {#Session.run}
 
 Runs the operations and evaluates the tensors in `fetches`.
 
@@ -137,7 +137,7 @@ The optional `options` argument expects a [`RunOptions`] proto. The options
 allow controlling the behavior of this particular step (e.g. turning tracing
 on).
 
-The optional `run_outputs` argument expects a [`RunOutputs`] proto. When
+The optional `run_metadata` argument expects a [`RunMetadata`] proto. When
 appropriate, the non-Tensor output of this step will be collected there. For
 example, when users turn on tracing in `options`, the profiled info will be
 collected into this argument and passed back.
@@ -150,7 +150,7 @@ collected into this argument and passed back.
 *  <b>`feed_dict`</b>: A dictionary that maps graph elements to values
     (described above).
 *  <b>`options`</b>: A [`RunOptions`] protocol buffer
-*  <b>`run_outputs`</b>: A [`RunOutputs`] protocol buffer
+*  <b>`run_metadata`</b>: A [`RunMetadata`] protocol buffer
 
 ##### Returns:
 
@@ -705,5 +705,30 @@ operation, if the file is truncated while it is being read.
 
 Creates a `DataLossError`.
 
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.make_cluster_def(cluster_spec)` {#make_cluster_def}
+
+Returns a `tf.ClusterDef` based on the given `cluster_spec`.
+
+##### Args:
+
+
+*  <b>`cluster_spec`</b>: A dictionary mapping one or more job names to lists
+    of network addresses.
+
+##### Returns:
+
+  A `tf.ClusterDef` protocol buffer.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cluster_spec` is not a dictionary mapping strings to lists
+    of strings.
 
 

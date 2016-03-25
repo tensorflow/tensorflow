@@ -63,7 +63,7 @@ Returns a context manager that makes this `Graph` the default graph.
 This method should be used if you want to create multiple graphs
 in the same process. For convenience, a global default graph is
 provided, and all ops will be added to this graph if you do not
-create a new graph explicitly. Use this method the `with` keyword
+create a new graph explicitly. Use this method with the `with` keyword
 to specify that ops created within the scope of a block should be
 added to this graph.
 
@@ -518,7 +518,7 @@ This method may be called concurrently from multiple threads.
 
 #### `tf.Graph.seed` {#Graph.seed}
 
-
+The graph-level random seed of this graph.
 
 
 - - -
@@ -1225,6 +1225,7 @@ Represents the type of the elements in a `Tensor`.
 
 The following `DType` objects are defined:
 
+* `tf.float16`: 16-bit half-precision floating-point.
 * `tf.float32`: 32-bit single-precision floating-point.
 * `tf.float64`: 64-bit double-precision floating-point.
 * `tf.bfloat16`: 16-bit truncated floating-point.
