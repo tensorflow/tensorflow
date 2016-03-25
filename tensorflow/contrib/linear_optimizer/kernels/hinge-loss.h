@@ -17,10 +17,11 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_HINGE_LOSS_H_
 
 #include <algorithm>
-#include <cmath>
+#include <limits>
 
 #include "tensorflow/contrib/linear_optimizer/kernels/loss.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
@@ -38,8 +39,8 @@ class HingeLossUpdater : public DualLossUpdater {
   double ComputeUpdatedDual(const double label, const double example_weight,
                             const double current_dual, const double wx,
                             const double weighted_example_norm,
-                            const double primal_loss,
-                            const double dual_loss) const final {
+                            const double unused_primal_loss,
+                            const double unused_dual_loss) const final {
     // Intutitvely there are 3 cases:
     // a. new optimal value of the dual variable falls withing the admissible
     // range [0, 1]. In this case we set new dual to this value.

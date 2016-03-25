@@ -55,11 +55,10 @@ Finally, to write this summary data to disk, pass the summary protobuf to a
 
 The `SummaryWriter` takes a logdir in its constructor - this logdir is quite
 important, it's the directory where all of the events will be written out.
-Also, the `SummaryWriter` can optionally take a `GraphDef` in its constructor.
-If it receives one, then TensorBoard will visualize your graph as well.
-To include tensor shape information in the `GraphDef`, pass
-`sess.graph.as_graph_def(add_shapes=True)` to the `SummaryWriter`. This will
-give you a much better sense of what flows through the graph: see
+Also, the `SummaryWriter` can optionally take a `Graph` in its constructor.
+If it receives a `Graph` object, then TensorBoard will visualize your graph
+along with tensor shape information. This will give you a much better sense of
+what flows through the graph: see
 [Tensor shape information](../../how_tos/graph_viz/index.md#tensor-shape-information).
 
 Now that you've modified your graph and have a `SummaryWriter`, you're ready to
@@ -106,8 +105,7 @@ with tf.name_scope("test") as scope:
 
 # Merge all the summaries and write them out to /tmp/mnist_logs
 merged = tf.merge_all_summaries()
-writer = tf.train.SummaryWriter("/tmp/mnist_logs",
-                                sess.graph.as_graph_def(add_shapes=True))
+writer = tf.train.SummaryWriter("/tmp/mnist_logs", sess.graph)
 tf.initialize_all_variables().run()
 
 # Train the model, and feed in test data and record summaries every 10 steps

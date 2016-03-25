@@ -53,26 +53,26 @@ class GrpcServerTest(tf.test.TestCase):
   def testLargeConstant(self):
     server = tf.GrpcServer.create_local_server()
     with tf.Session(server.target) as sess:
-      const_val = np.empty([10000, 10000], dtype=np.float32)
+      const_val = np.empty([10000, 3000], dtype=np.float32)
       const_val.fill(0.5)
       c = tf.constant(const_val)
       shape_t = tf.shape(c)
-      self.assertAllEqual([10000, 10000], sess.run(shape_t))
+      self.assertAllEqual([10000, 3000], sess.run(shape_t))
 
   def testLargeFetch(self):
     server = tf.GrpcServer.create_local_server()
     with tf.Session(server.target) as sess:
-      c = tf.fill([10000, 10000], 0.5)
-      expected_val = np.empty([10000, 10000], dtype=np.float32)
+      c = tf.fill([10000, 3000], 0.5)
+      expected_val = np.empty([10000, 3000], dtype=np.float32)
       expected_val.fill(0.5)
       self.assertAllEqual(expected_val, sess.run(c))
 
   def testLargeFeed(self):
     server = tf.GrpcServer.create_local_server()
     with tf.Session(server.target) as sess:
-      feed_val = np.empty([10000, 10000], dtype=np.float32)
+      feed_val = np.empty([10000, 3000], dtype=np.float32)
       feed_val.fill(0.5)
-      p = tf.placeholder(tf.float32, shape=[10000, 10000])
+      p = tf.placeholder(tf.float32, shape=[10000, 3000])
       min_t = tf.reduce_min(p)
       max_t = tf.reduce_max(p)
       min_val, max_val = sess.run([min_t, max_t], feed_dict={p: feed_val})

@@ -222,8 +222,11 @@ def call_function(func_def, *inputs, **kwargs):
   TensorFlow function.  See [`define_function()`](#define_function) for an
   easy way to create one from a Python function.
 
-  You can pass an optional keyword parameters `name=string` to name the
+  You can pass an optional keyword parameter `name=string` to name the
   added operation.
+
+  You can pass an optional keyword parameter `noinline=True|False` to instruct
+  the runtime not to inline the function body into the call site.
 
   `func_def` is automatically added to the function library of the graph if
   needed.
@@ -240,6 +243,12 @@ def call_function(func_def, *inputs, **kwargs):
     ValueError: if the arguments are invalid.
   """
   name = kwargs.pop("name", None)
+  noinline = kwargs.pop("noinline", None)
+  if noinline is None:
+    attrs = None
+  else:
+    attrs = {}
+    attrs["noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   func_name = func_def.signature.name
@@ -254,6 +263,7 @@ def call_function(func_def, *inputs, **kwargs):
                      list(inputs),
                      output_types,
                      name=name,
+                     attrs=attrs,
                      compute_shapes=False)
     if op.outputs:
       if len(op.outputs) == 1:
