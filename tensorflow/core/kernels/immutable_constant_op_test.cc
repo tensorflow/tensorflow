@@ -99,7 +99,7 @@ TEST(ImmutableConstantOpTest, Simple) {
   SessionOptions session_options;
   session_options.env = env_ptr.get();
   std::unique_ptr<Session> session(NewSession(session_options));
-  ASSERT_TRUE(session) << "Failed to create session";
+  ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(session->Run({}, {result->name() + ":0"}, {}, &outputs));
@@ -126,7 +126,7 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
   SessionOptions session_options;
   session_options.env = env_ptr.get();
   std::unique_ptr<Session> session(NewSession(session_options));
-  ASSERT_TRUE(session) << "Failed to create session";
+  ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";
   std::vector<Tensor> outputs;
   // Check that the run returned error.
@@ -167,7 +167,7 @@ TEST(ImmutableConstantOpTest, FromFile) {
   TF_ASSERT_OK(b.ToGraphDef(&graph_def));
   SessionOptions session_options;
   std::unique_ptr<Session> session(NewSession(session_options));
-  ASSERT_TRUE(session) << "Failed to create session";
+  ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(session->Run({}, {result->name() + ":0"}, {}, &outputs));
