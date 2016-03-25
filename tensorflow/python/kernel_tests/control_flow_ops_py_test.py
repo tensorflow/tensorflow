@@ -1468,6 +1468,11 @@ class ControlFlowTest(tf.test.TestCase):
     self.assertAllClose([0.0], v1_val)
     self.assertAllClose([1.0], v2_val)
 
+  def testGroupEmpty(self):
+    op = tf.group()
+    self.assertEqual(op.type, "NoOp")
+    self.assertEqual(op.control_inputs, [])
+
   def testMergeShapes(self):
     # All inputs unknown.
     p1 = tf.placeholder(tf.float32)
