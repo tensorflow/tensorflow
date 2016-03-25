@@ -11,7 +11,7 @@ exports_files([
     "ACKNOWLEDGMENTS",
 ])
 
-# open source marker; do not remove
+load("//tensorflow:all_files.bzl", "tf_all_files")
 
 config_setting(
     name = "darwin",
@@ -41,6 +41,12 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "all_opensource_files",
+    data = tf_all_files(),
+    visibility = [":__subpackages__"],
 )
 
 # -------------------------------------------
