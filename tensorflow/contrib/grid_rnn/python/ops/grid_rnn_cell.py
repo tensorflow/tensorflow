@@ -252,6 +252,20 @@ class Grid3LSTMCell(GridRNNCell):
                                           num_units=n, input_size=i, forget_bias=forget_bias,
                                           use_peepholes=use_peepholes),
                                         non_recurrent_fn=non_recurrent_fn)
+
+class Grid2GRUCell(GridRNNCell):
+  """2D LSTM cell
+    This creates a 2D cell which receives input and gives output in the first dimension.
+    The first dimension can optionally be non-recurrent if `non_recurrent_fn` is specified.
+  """
+
+  def __init__(self, num_units, input_size=None, tied=False, non_recurrent_fn=None):
+    super(Grid2GRUCell, self).__init__(num_units=num_units, input_size=input_size, num_dims=2,
+                                        input_dims=0, output_dims=0, priority_dims=0, tied=tied,
+                                        non_recurrent_dims=None if non_recurrent_fn is None else 0,
+                                        cell_fn=lambda n, i: rnn_cell.GRUCell(num_units=n, input_size=i),
+                                        non_recurrent_fn=non_recurrent_fn)
+
 """
 Helpers
 """
