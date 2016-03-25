@@ -9446,7 +9446,7 @@ op {
   name: "SparseAdd"
   input_arg {
     name: "a_indices"
-    description: "2-D.  The `indices` of the first `SparseTensor`, size `[nnz, 2]` Matrix."
+    description: "2-D.  The `indices` of the first `SparseTensor`, size `[nnz, ndims]` Matrix."
     type: DT_INT64
   }
   input_arg {
@@ -9456,12 +9456,12 @@ op {
   }
   input_arg {
     name: "a_shape"
-    description: "1-D.  The `shape` of the first `SparseTensor`, size `[2]` Vector."
+    description: "1-D.  The `shape` of the first `SparseTensor`, size `[ndims]` Vector."
     type: DT_INT64
   }
   input_arg {
     name: "b_indices"
-    description: "2-D.  The `indices` of the second `SparseTensor`, size `[nnz, 2]` Matrix."
+    description: "2-D.  The `indices` of the second `SparseTensor`, size `[nnz, ndims]` Matrix."
     type: DT_INT64
   }
   input_arg {
@@ -9471,7 +9471,7 @@ op {
   }
   input_arg {
     name: "b_shape"
-    description: "1-D.  The `shape` of the second `SparseTensor`, size `[2]` Vector."
+    description: "1-D.  The `shape` of the second `SparseTensor`, size `[ndims]` Vector."
     type: DT_INT64
   }
   input_arg {
@@ -9532,6 +9532,63 @@ op {
   }
   summary: "Adds two `SparseTensor` objects to produce another `SparseTensor`."
   description: "The input `SparseTensor` objects\' indices are assumed ordered in standard\nlexicographic order.  If this is not the case, before this step run\n`SparseReorder` to restore index ordering.\n\nBy default, if two values sum to zero at some index, the output `SparseTensor`\nwould still include that particular location in its index, storing a zero in the\ncorresponding value slot.  To override this, callers can specify `thresh`,\nindicating that if the sum has a magnitude strictly smaller than `thresh`, its\ncorresponding value and index would then not be included.  In particular,\n`thresh == 0` (default) means everything is kept and actual thresholding happens\nonly for a positive value.\n\nIn the following shapes, `nnz` is the count after taking `thresh` into account."
+}
+op {
+  name: "SparseAddGrad"
+  input_arg {
+    name: "backprop_val_grad"
+    description: "1-D with shape `[nnz(sum)]`.  The gradient with respect to\nthe non-empty values of the sum."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_indices"
+    description: "2-D.  The `indices` of the `SparseTensor` A, size `[nnz(A), ndims]`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_indices"
+    description: "2-D.  The `indices` of the `SparseTensor` B, size `[nnz(B), ndims]`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sum_indices"
+    description: "2-D.  The `indices` of the sum `SparseTensor`, size\n`[nnz(sum), ndims]`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "a_val_grad"
+    description: "1-D with shape `[nnz(A)]`. The gradient with respect to the\nnon-empty values of A."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "b_val_grad"
+    description: "1-D with shape `[nnz(B)]`. The gradient with respect to the\nnon-empty values of B."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "The gradient operator for the SparseAdd op."
+  description: "The SparseAdd op calculates A + B, where A, B, and the sum are all represented\nas `SparseTensor` objects.  This op takes in the upstream gradient w.r.t.\nnon-empty values of the sum, and outputs the gradients w.r.t. the non-empty\nvalues of A and B."
 }
 op {
   name: "SparseApplyAdadelta"
