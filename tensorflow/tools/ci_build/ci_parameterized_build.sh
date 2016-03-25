@@ -318,7 +318,7 @@ EXTRA_PARAMS="${EXTRA_PARAMS} ${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
 # TF_BUILD_SERIAL_TESTS=1), are written to a bash script, which is
 # then called. The name of the script is randomized to make concurrent
 # builds on the node possible.
-TMP_SCRIPT=$(mktemp --suffix="ci_parameterized_build.sh")
+TMP_SCRIPT="$(mktemp)_ci_parameterized_build.sh"
 
 if [[ "${DO_DOCKER}" == "1" ]]; then
   # Map the tmp script into the Docker container
