@@ -46,6 +46,7 @@ package(default_visibility = ["//tensorflow:internal"])
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -1146,13 +1147,18 @@ tf_cc_tests(
             # TODO(opensource): fix
             "common_runtime/gpu/*_test.cc",
             # Run by tests below
+            "common_runtime/constant_folding_test.cc",
+            "common_runtime/direct_session_test.cc",
+            "common_runtime/function_test.cc",
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_bfc_allocator_test.cc",
             "common_runtime/gpu/gpu_region_allocator_test.cc",
+            "framework/op_segment_test.cc",
+            "ops/array_grad_test.cc",
+            "ops/math_grad_test.cc",
         ],
     ),
     deps = [
-        ":all_kernels",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -1185,10 +1191,10 @@ tf_cc_tests(
         exclude = [
             # Run by tests below
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
+            "common_runtime/gpu/gpu_stream_util_test.cc",
         ],
     ),
     deps = [
-        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session",
@@ -1206,13 +1212,96 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
+    name = "common_runtime/constant_folding_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:bcast_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/direct_session_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:fifo_queue_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:variable_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/function_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:shape_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/gpu/gpu_allocator_retry_test.cc",
     size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
-    tests = ["common_runtime/gpu/gpu_allocator_retry_test.cc"],
     deps = [
-        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session",
@@ -1226,6 +1315,112 @@ tf_cc_tests(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/gpu/gpu_stream_util_test.cc",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:matmul_op",
+    ],
+)
+
+tf_cc_test(
+    name = "framework/op_segment_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "ops/array_grad_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:cwise_op",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "ops/math_grad_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:bcast_ops",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dynamic_stitch_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:reduction_ops",
+        "//tensorflow/core/kernels:reshape_op",
+        "//tensorflow/core/kernels:sequence_ops",
+        "//tensorflow/core/kernels:shape_ops",
+        "//tensorflow/core/kernels:tile_ops",
+        "//third_party/eigen3",
     ],
 )
 
