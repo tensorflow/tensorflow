@@ -1,7 +1,10 @@
 # Description:
 # TensorBoard, a dashboard for investigating TensorFlow
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = [
+    "//learning/lib/ami/mldash:internal",
+    "//tensorflow:internal",
+])
 
 licenses(["notice"])  # Apache 2.0
 
