@@ -80,6 +80,9 @@ class FloatDTypeTest(tf.test.TestCase):
     self.assertRaises(
         ValueError, tf.contrib.framework.assert_same_float_dtype, [const_int])
 
+
+class AssertScalarIntTest(tf.test.TestCase):
+
   def test_assert_scalar_int(self):
     tf.contrib.framework.assert_scalar_int(tf.constant(3, dtype=tf.int32))
     tf.contrib.framework.assert_scalar_int(tf.constant(3, dtype=tf.int64))
@@ -104,6 +107,16 @@ class LocalVariabletest(tf.test.TestCase):
       self.assertRaises(tf.OpError, sess.run, variables)
       tf.initialize_variables(variables).run()
       self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
+
+
+class ReduceSumNTest(tf.test.TestCase):
+
+  def test_reduce_sum_n(self):
+    with self.test_session():
+      a = tf.constant(1)
+      b = tf.constant([2])
+      c = tf.constant([[3, 4], [5, 6]])
+      self.assertEqual(21, tf.contrib.framework.reduce_sum_n([a, b, c]).eval())
 
 
 if __name__ == "__main__":

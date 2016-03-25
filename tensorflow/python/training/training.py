@@ -155,6 +155,7 @@ from tensorflow.python.training.queue_runner import *
 from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *
 
+from tensorflow.python.training.device_setter import replica_device_setter
 from tensorflow.python.training.saver import generate_checkpoint_state_proto
 from tensorflow.python.training.saver import get_checkpoint_state
 from tensorflow.python.training.saver import latest_checkpoint

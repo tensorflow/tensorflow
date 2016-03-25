@@ -220,7 +220,7 @@ class FullyConnectedTest(tf.test.TestCase):
       self.assertEqual(0, tf.size(x).eval())
       y = tf.contrib.layers.fully_connected(x, 2, activation_fn=tf.nn.softmax)
       tf.initialize_all_variables().run()
-      expected_y = np.array([]).reshape(0,2)
+      expected_y = np.array([]).reshape(0, 2)
       np.testing.assert_array_equal(expected_y, y.eval())
 
 

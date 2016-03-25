@@ -632,6 +632,57 @@ This op also returns an indicator vector such that
 ## Math Operations
 - - -
 
+### `tf.sparse_add(sp_a, sp_b, thresh=0)` {#sparse_add}
+
+Adds two `SparseTensor` objects to produce another `SparseTensor`.
+
+The input `SparseTensor` objects' indices are assumed ordered in standard
+lexicographic order.  If this is not the case, before this step run
+`SparseReorder` to restore index ordering.
+
+By default, if two values sum to zero at some index, the output `SparseTensor`
+would still include that particular location in its index, storing a zero in
+the corresponding value slot.  To override this, callers can specify `thresh`,
+indicating that if the sum has a magnitude strictly smaller than `thresh`, its
+corresponding value and index would then not be included.  In particular,
+`thresh == 0.0` (default) means everything is kept and actual thresholding
+happens only for a positive value.
+
+For example, suppose the logical sum is (densified):
+
+    [       2]
+    [.1      ]
+    [ 6   -.2]
+
+Then,
+
+    - thresh == 0 (the default): all 4 index/value pairs will be returned.
+    - thresh == 0.11: only .1 will vanish, and the remaining three index/value
+                      pairs will be returned.
+    - thresh == 0.21: both .1 and -.2 will vanish.
+
+##### Args:
+
+
+*  <b>`sp_a`</b>: The first input `SparseTensor`.
+*  <b>`sp_b`</b>: The second input `SparseTensor`.
+*  <b>`thresh`</b>: A 0-D `Tensor`.  The magnitude threshold that determines if an
+  output value/index pair takes space.  Its dtype should match that of the
+  values if they are real; if the latter are complex64/complex128, then the
+  dtype should be float32/float64, correspondingly.
+
+##### Returns:
+
+  A `SparseTensor` with the same shape, representing the sum.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If either `sp_a` or `sp_b` is not a `SparseTensor`.
+
+
+- - -
+
 ### `tf.sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False, name=None)` {#sparse_tensor_dense_matmul}
 
 Multiply SparseTensor (of rank 2) "A" by dense matrix "B".

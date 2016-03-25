@@ -1685,7 +1685,7 @@ def group(*inputs, **kwargs):
   See also `tuple` and `with_dependencies`.
 
   Args:
-    *inputs: One or more tensors to group.
+    *inputs: Zero or more tensors to group.
     **kwargs: Optional parameters to pass when constructing the NodeDef.
     name: A name for this operation (optional).
 
@@ -1693,16 +1693,16 @@ def group(*inputs, **kwargs):
     An Operation that executes all its inputs.
 
   Raises:
-    ValueError: If an unknown keyword argument is provided, or if there are
-                no inputs.
+    ValueError: If an unknown keyword argument is provided.
   """
   name = kwargs.pop("name", None)
   if kwargs:
     raise ValueError("Unknown keyword arguments: " + ", ".join(kwargs.keys()))
-  if not inputs:
-    # TODO(touts): Would make sense to return a NoOp.
-    raise ValueError("No inputs provided")
   with ops.op_scope(inputs, name, "group_deps") as name:
+    # Grouping no inputs means do nothing
+    if not inputs:
+      return no_op(name=name)
+
     # Sorts *inputs according to their devices.
     ops_on_device = {}  # device -> operations specified on the device.
     for inp in inputs:

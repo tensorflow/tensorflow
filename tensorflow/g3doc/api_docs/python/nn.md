@@ -27,7 +27,7 @@ Computes rectified linear: `max(features, 0)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -82,7 +82,7 @@ Computes softplus: `log(exp(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -99,7 +99,7 @@ Computes softsign: `features / (abs(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -303,7 +303,7 @@ performs the following:
 3. For each patch, right-multiplies the filter matrix and the image patch
    vector.
 
-In detail, with the default NCHW format,
+In detail, with the default NHWC format,
 
     output[b, i, j, k] =
         sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *
@@ -729,7 +729,7 @@ Computes half the L2 norm of a tensor without the `sqrt`:
 ##### Args:
 
 
-*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`.
+*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Typically 2-D, but may have any dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -796,6 +796,28 @@ Computes softmax activations.
 For each batch `i` and class `j` we have
 
     softmax[i, j] = exp(logits[i, j]) / sum(exp(logits[i]))
+
+##### Args:
+
+
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    2-D with shape `[batch_size, num_classes]`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+
+
+- - -
+
+### `tf.nn.log_softmax(logits, name=None)` {#log_softmax}
+
+Computes log softmax activations.
+
+For each batch `i` and class `j` we have
+
+    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))
 
 ##### Args:
 
