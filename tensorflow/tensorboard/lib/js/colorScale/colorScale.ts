@@ -66,7 +66,7 @@ module TF {
       this.domain([]);
 
       if (palette.length < 2) {
-        throw new Error("Not enough colors in palette. Must be more than one.")
+        throw new Error("Not enough colors in palette. Must be more than one.");
       }
 
       var k = (this.numColors - 1) / (palette.length - 1);
@@ -83,14 +83,13 @@ module TF {
      return Math.abs(Array.prototype.reduce.call(s, h, 0)) % this.numColors;
     }
 
-
     /**
      * Set the domain of strings so we can calculate collisions preemptively.
      * Can be reset at any point.
      *
      * @param {string[]} strings - An array of strings to use as the domain
      *                             for your scale.
-    */
+     */
     public domain(strings: string[]) {
       this.buckets = d3.range(this.numColors).map(() => []);
       var sortedUniqueKeys = d3.set(strings).values().sort(function(a, b) { return a.localeCompare(b); });
@@ -132,7 +131,7 @@ module TF {
      * @param {string} The input string to map to a color.
      * @return {string} The color corresponding to that input string.
      * @throws Will error if input string is not in the scale's domain.
-    */
+     */
 
     public getColor(s: string): string {
       var bucket = this.getBucketForString(s);
