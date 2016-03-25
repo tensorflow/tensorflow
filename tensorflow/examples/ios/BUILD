@@ -38,7 +38,8 @@ objc_binary(
     deps = [
         ":RunModelClasses",
     ],
-    copts = ["-Wl,--whole-archive", "-Wl,-all_load", "-femit-all-decls", "-O3"],
+    copts = ["-Wl,--whole-archive", "-femit-all-decls", "-O3"],
+    linkopts = ["-all_load"]
 )
 
 ios_application(
@@ -63,4 +64,5 @@ objc_binary(
         "data/tensorflow_inception_graph.pb",
     ],
     copts = ["-Wl,--whole-archive", "-femit-all-decls"],
+    linkopts = ["-all_load"]
 )

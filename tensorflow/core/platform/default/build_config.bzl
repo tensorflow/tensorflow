@@ -70,6 +70,7 @@ def tf_proto_library(name, srcs = [], has_services = None,
                       srcs=srcs + tf_deps(deps, "_proto_srcs"),
                       deps=deps,
                       cc_libs=cc_libs,
+		      copts=copts,
                       testonly=testonly,
                       visibility=visibility,)
 
