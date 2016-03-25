@@ -387,13 +387,6 @@ static RE2* valid_data_input_pattern =
 static RE2* valid_control_input_pattern =
     new RE2("\\^[A-Za-z0-9.][A-Za-z0-9_.\\-/]*");
 
-#include <sys/syslog.h>
-
-__attribute__((constructor))
-static void SomeFactoryInitFuncNDU() {
-  syslog(LOG_ERR, "SomeFactoryInitFunc was called from node_def_util!");
-}
-
 }  // namespace
 
 Status ValidateOpInput(const string& input_name, bool* is_control_input) {

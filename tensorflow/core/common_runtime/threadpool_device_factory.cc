@@ -42,11 +42,6 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
     }
   }
 };
-
-static int keep_this __attribute__((used));
-
-volatile ::tensorflow::dfactory::Registrar<ThreadPoolDeviceFactory> __attribute__((used)) tdf("CPU");
-
-  //REGISTER_LOCAL_DEVICE_FACTORY("CPU", ThreadPoolDeviceFactory);
+REGISTER_LOCAL_DEVICE_FACTORY("CPU", ThreadPoolDeviceFactory);
 
 }  // namespace tensorflow
