@@ -76,7 +76,6 @@ class Registrar {
       INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY_NAME(ctr)(device_type,         \
                                                        ##__VA_ARGS__)
 
-
 // __COUNTER__ must go through another macro to be properly expanded
 #define INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY_NAME(ctr) ___##ctr##__object_
 
