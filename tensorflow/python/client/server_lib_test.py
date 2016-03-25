@@ -83,7 +83,7 @@ class GrpcServerTest(tf.test.TestCase):
 class ServerDefTest(tf.test.TestCase):
 
   def testLocalServer(self):
-    cluster_def = tf.make_cluster_def({"local": ["localhost:2222"]})
+    cluster_def = tf.ClusterSpec({"local": ["localhost:2222"]}).as_cluster_def()
     server_def = tf.ServerDef(cluster=cluster_def,
                               job_name="local", task_index=0, protocol="grpc")
 
@@ -94,9 +94,13 @@ class ServerDefTest(tf.test.TestCase):
     job_name: 'local' task_index: 0 protocol: 'grpc'
     """, server_def)
 
+    # Verifies round trip from Proto->Spec->Proto is correct.
+    cluster_spec = tf.ClusterSpec(cluster_def)
+    self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
+
   def testTwoProcesses(self):
-    cluster_def = tf.make_cluster_def({"local": ["localhost:2222",
-                                                 "localhost:2223"]})
+    cluster_def = tf.ClusterSpec({"local": ["localhost:2222",
+                                            "localhost:2223"]}).as_cluster_def()
     server_def = tf.ServerDef(cluster=cluster_def,
                               job_name="local", task_index=1, protocol="grpc")
 
@@ -108,10 +112,14 @@ class ServerDefTest(tf.test.TestCase):
     job_name: 'local' task_index: 1 protocol: 'grpc'
     """, server_def)
 
+    # Verifies round trip from Proto->Spec->Proto is correct.
+    cluster_spec = tf.ClusterSpec(cluster_def)
+    self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
+
   def testTwoJobs(self):
-    cluster_def = tf.make_cluster_def({
-        "ps": ["ps0:2222", "ps1:2222"],
-        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
+    cluster_def = tf.ClusterSpec({"ps": ["ps0:2222", "ps1:2222"],
+                                  "worker": ["worker0:2222", "worker1:2222",
+                                             "worker2:2222"]}).as_cluster_def()
     server_def = tf.ServerDef(cluster=cluster_def,
                               job_name="worker", task_index=2, protocol="grpc")
 
@@ -125,6 +133,10 @@ class ServerDefTest(tf.test.TestCase):
     }
     job_name: 'worker' task_index: 2 protocol: 'grpc'
     """, server_def)
+
+    # Verifies round trip from Proto->Spec->Proto is correct.
+    cluster_spec = tf.ClusterSpec(cluster_def)
+    self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
 
 if __name__ == "__main__":
