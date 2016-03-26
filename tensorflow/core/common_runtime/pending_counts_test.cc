@@ -31,6 +31,13 @@ TEST(PendingCounts, Simple) {
     EXPECT_EQ(c.pending(id), id);
     EXPECT_EQ(c.dead_count(id), 0);
   }
+
+  for (int id = 0; id < C; id++) {
+    c.increment_dead_count(id);
+    // The dead count is no longer updated once pending is 0.
+    EXPECT_EQ(c.dead_count(id), (id == 0) ? 0 : 1);
+  }
+
   EXPECT_EQ(c.decrement_pending(1, 1), 0);
   EXPECT_EQ(c.decrement_pending(3, 1), 2);
   EXPECT_EQ(c.decrement_pending(3, 1), 1);
@@ -42,11 +49,6 @@ TEST(PendingCounts, Simple) {
   EXPECT_EQ(c.pending(3), 1);
   EXPECT_EQ(c.pending(5), 1);
   EXPECT_EQ(c.pending(170), 156);
-
-  for (int id = 0; id < C; id++) {
-    c.increment_dead_count(id);
-    EXPECT_EQ(c.dead_count(id), 1);
-  }
 }
 
 TEST(PendingCounts, InitializeFrom) {
@@ -78,17 +80,50 @@ TEST(PendingCounts, SmallPendingLargeDead) {
 }
 
 TEST(PendingCounts, MarkLiveShowsUpAsCount) {
-  PendingCounts c(3);
-  c.set_initial_count(1, 4, 4);
-  EXPECT_EQ(c.pending(1), 4);
-  c.mark_live(1);
-  EXPECT_EQ(c.pending(1), 5);
-  // mark_live should be idempotent
-  c.mark_live(1);
-  EXPECT_EQ(c.pending(1), 5);
+  PendingCounts c(2);
+  for (int id = 0; id < 2; id++) {
+    // Test for both packed and large.
+    int count = (id == 0) ? 5 : 15;
+    c.set_initial_count(id, count, 4);
+    EXPECT_EQ(c.pending(id), count);
+    c.mark_live(id);
+    EXPECT_EQ(c.pending(id), count - 1);
+    // mark_live should be idempotent
+    c.mark_live(id);
+    EXPECT_EQ(c.pending(id), count - 1);
 
-  c.decrement_pending(1, 2);
-  EXPECT_EQ(c.pending(1), 3);
+    c.decrement_pending(id, count - 1);
+    EXPECT_EQ(c.pending(id), 0);
+
+    // mark_live should be idempotent
+    c.mark_live(id);
+    EXPECT_EQ(c.pending(id), 0);
+    c.mark_started(id);
+    c.mark_live(id);
+    EXPECT_EQ(c.pending(id), 0);
+    c.mark_completed(id);
+    c.mark_live(id);
+    EXPECT_EQ(c.pending(id), 0);
+  }
+}
+
+TEST(PendingCounts, StateIsCorrect) {
+  const int C = 20;
+  PendingCounts c(C);
+  for (int id = 0; id < C; id++) {
+    c.set_initial_count(id, id, id);
+  }
+  for (int id = 0; id < C; id++) {
+    while (c.pending(id) > 0) {
+      EXPECT_EQ(c.node_state(id), PendingCounts::PENDING_NOTREADY);
+      c.decrement_pending(id, 1);
+    }
+    EXPECT_EQ(c.node_state(id), PendingCounts::PENDING_READY);
+    c.mark_started(id);
+    EXPECT_EQ(c.node_state(id), PendingCounts::STARTED);
+    c.mark_completed(id);
+    EXPECT_EQ(c.node_state(id), PendingCounts::COMPLETED);
+  }
 }
 
 }  // namespace tensorflow

@@ -134,6 +134,8 @@ have varying scale, and to aid generalization.
 
 @@l2_normalize
 @@local_response_normalization
+@@sufficient_statistics
+@@normalize_moments
 @@moments
 
 ## Losses
@@ -150,6 +152,7 @@ TensorFlow provides several operations that help you perform classification.
 
 @@sigmoid_cross_entropy_with_logits
 @@softmax
+@@log_softmax
 @@softmax_cross_entropy_with_logits
 @@sparse_softmax_cross_entropy_with_logits
 
@@ -159,6 +162,7 @@ TensorFlow provides library support for looking up values in embedding
 tensors.
 
 @@embedding_lookup
+@@embedding_lookup_sparse
 
 ## Evaluation
 
@@ -229,6 +233,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
+from tensorflow.python.util.all_util import make_all
 
 # Bring more nn-associated functionality into this package.
 # pylint: disable=wildcard-import
@@ -270,10 +275,20 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
   Returns:
     A `Tensor` of the same shape as `logits` with the componentwise
     logistic losses.
+
+  Raises:
+    ValueError: If `logits` and `targets` do not have the same shape.
   """
   with ops.op_scope([logits, targets], name, "logistic_loss") as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     targets = ops.convert_to_tensor(targets, name="targets")
+    try:
+      targets.get_shape().merge_with(logits.get_shape())
+    except ValueError:
+      raise ValueError(
+          "logits and targets must have the same shape (%s vs %s)"
+          % (logits.get_shape(), targets.get_shape()))
+
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
     # For x < 0, a more numerically stable formula is
@@ -342,7 +357,7 @@ def zero_fraction(value, name=None):
   This is useful in summaries to measure and report sparsity.  For example,
 
       z = tf.Relu(...)
-      summ = tf.scalar_summary('sparsity', tf.zero_fraction(z))
+      summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
 
   Args:
     value: A tensor of numeric type.
@@ -495,6 +510,101 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
                          padding="VALID", name=name)
 
 
+def sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None):
+  """Calculate the sufficient statistics for the mean and variance of `x`.
+
+  These sufficient statistics are computed using the one pass algorithm on
+  an input that's optionally shifted using the value of the 1st element in `x`.
+  See:
+  https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
+
+  Args:
+    x: A `Tensor`.
+    axes: Array of ints. Axes along which to compute mean and variance.
+    shift: If true, shift the data to provide more numerically stable results.
+    keep_dims: produce statistics with the same dimensionality as the input.
+    name: Name used to scope the operations that compute the sufficient stats.
+
+  Returns:
+    Four `Tensor` objects of the same type as `x`:
+    * the count (number of elements to average over).
+    * the (possibly shifted) sum of the elements in the array.
+    * the (possibly shifted) sum of squares of the elements in the array.
+    * the shift by which the mean must be corrected or None if `shift` is False.
+  """
+  with ops.op_scope([x, axes], name, "sufficient_statistics"):
+    x = ops.convert_to_tensor(x, name="x")
+    x_shape = x.get_shape()
+    if x_shape.is_fully_defined():
+      counts = 1
+      m_shape = []
+      for d in xrange(x_shape.ndims):
+        dim = x_shape[d].value
+        if d in set(axes):
+          counts *= dim
+          dim = 1
+        m_shape.append(dim)
+      counts = constant_op.constant(counts, dtype=x.dtype)
+    else:  # shape needs to be inferred at runtime.
+      x_shape = array_ops.shape(x)
+      select_axes = sparse_ops.sparse_to_dense(axes, array_ops.shape(x_shape),
+                                               True, False)
+      m_shape = math_ops.select(select_axes, array_ops.ones_like(x_shape),
+                                x_shape)
+      counts = math_ops.cast(
+          math_ops.reduce_prod(x_shape / m_shape),
+          x.dtype,
+          name="count")
+    if shift:
+      shift_value = array_ops.slice(x, array_ops.zeros_like(m_shape), m_shape)
+      m_ss = math_ops.sub(x, shift_value)
+      v_ss = math_ops.squared_difference(x, shift_value)
+      if keep_dims:
+        shift_value = array_ops.identity(shift_value, name="shift")
+      else:
+        shift_value = array_ops.squeeze(shift_value,
+                                        squeeze_dims=axes,
+                                        name="shift")
+    else:  # not shift.
+      m_ss = x
+      v_ss = math_ops.square(x)
+      shift_value = None
+    m_ss = math_ops.reduce_sum(m_ss, axes, keep_dims=keep_dims, name="mean_ss")
+    v_ss = math_ops.reduce_sum(v_ss, axes, keep_dims=keep_dims, name="var_ss")
+  return counts, m_ss, v_ss, shift_value
+
+
+def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
+  """Calculate the mean and variance of based on the sufficient statistics.
+
+  Args:
+    counts: A `Tensor` containing a the total count of the data (one value).
+    mean_ss: A `Tensor` containing the mean sufficient statistics: the (possibly
+      shifted) sum of the elements to average over.
+    variance_ss: A `Tensor` containing the variance sufficient statistics: the
+      (possibly shifted) squared sum of the data to compute the variance over.
+    shift: A `Tensor` containing the value by which the data is shifted for
+      numerical stability, or `None` if no shift was performed.
+    name: Name used to scope the operations that compute the moments.
+
+  Returns:
+    Two `Tensor` objects: `mean` and `variance`.
+  """
+  with ops.op_scope([counts, mean_ss, variance_ss, shift], name, "normalize"):
+    divisor = math_ops.inv(counts, name="divisor")
+    if shift is not None:
+      shifted_mean = math_ops.mul(mean_ss, divisor, name="shifted_mean")
+      mean = math_ops.add(shifted_mean, shift, name="mean")
+    else:  # no shift.
+      shifted_mean = math_ops.mul(mean_ss, divisor, name="mean")
+      mean = shifted_mean
+    variance = math_ops.sub(
+        math_ops.mul(variance_ss, divisor),
+        math_ops.square(shifted_mean),
+        name="variance")
+  return (mean, variance)
+
+
 def moments(x, axes, name=None, keep_dims=False):
   """Calculate the mean and variance of `x`.
 
@@ -519,40 +629,11 @@ def moments(x, axes, name=None, keep_dims=False):
     Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.op_scope([x, axes], name, "moments"):
-    x = ops.convert_to_tensor(x, name="x")
-    x_shape = x.get_shape()
-    if all(x_shape[d].value is not None for d in axes):
-      # The shape is known in the relevant axes, so we can statically
-      # compute the divisor.
-      divisor = 1.0
-      for d in set(axes):
-        divisor *= x.get_shape()[d].value
-      divisor = constant_op.constant(1.0 / divisor, x.dtype, name="divisor")
-    else:
-      divisor = constant_op.constant(1.0, dtype=x.dtype)
-      x_dynamic_shape = array_ops.shape(x)
-      for d in set(axes):
-        divisor *= math_ops.cast(x_dynamic_shape[d], x.dtype)
-      divisor = math_ops.inv(divisor, name="divisor")
-    constant_axes = constant_op.constant(axes, name="axes")
-    # Note: We do not use Mean here because it is very slow on GPU.
-    mean = math_ops.mul(
-        math_ops.reduce_sum(x,
-                            constant_axes,
-                            keep_dims=True),
-        divisor,
-        name="mean")
-    var = math_ops.mul(
-        math_ops.reduce_sum(
-            math_ops.squared_difference(x, mean),
-            constant_axes,
-            keep_dims=keep_dims),
-        divisor,
-        name="variance")
-    if keep_dims:
-      return mean, var
-    else:
-      return array_ops.squeeze(mean, squeeze_dims=axes), var
+    counts, m_ss, v_ss, shift = sufficient_statistics(x,
+                                                      axes,
+                                                      keep_dims=keep_dims,
+                                                      name=name)
+    return normalize_moments(counts, m_ss, v_ss, shift, name=name)
 
 
 def batch_normalization(x,
@@ -593,8 +674,8 @@ def batch_normalization(x,
     x: Input `Tensor` of arbitrary dimensionality.
     mean: A mean `Tensor`.
     variance: A variance `Tensor`.
-    offset: An offset `Tensor`, often denoted \\\\(\beta\\\\) in equations, to
-      be applied to the normalized tensor.
+    offset: An offset `Tensor`, often denoted \\\\(\beta\\\\) in equations, or
+      None. If present, will be added to the normalized tensor.
     scale: A scale `Tensor`, often denoted \\\\(\gamma\\\\) in equations, or
       `None`. If present, the scale is applied to the normalized tensor.
     variance_epsilon: A small float number to avoid dividing by 0.
@@ -607,7 +688,8 @@ def batch_normalization(x,
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
-    return x * inv + (offset - mean * inv)
+    return x * inv + (
+        offset - mean * inv if offset is not None else -mean * inv)
 
 
 def batch_norm_with_global_normalization(t,
@@ -950,3 +1032,31 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(logits, labels)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses
+
+
+# TODO(cwhipkey): sigmoid and tanh should not be exposed from tf.nn.
+__all__ = make_all(__name__)
+__all__.append("zero_fraction")  # documented in training.py
+
+# Modules whitelisted for reference through tf.nn.
+# TODO(cwhipkey): migrate callers to use the submodule directly.
+__all__.extend(["nn_ops", "rnn_cell", "seq2seq"])
+
+# Symbols whitelisted for export without documentation.
+# TODO(cwhipkey): review these and move to contrib or expose through
+# documentation.
+__all__.extend([
+    "all_candidate_sampler",
+    "batch_norm_with_global_normalization",
+    "batch_normalization",
+    "bidirectional_rnn",
+    "conv2d_backprop_filter",
+    "conv2d_backprop_input",
+    "depthwise_conv2d_native",
+    "dynamic_rnn",
+    "lrn",
+    "relu_layer",
+    "rnn",
+    "state_saving_rnn",
+    "xw_plus_b",
+])

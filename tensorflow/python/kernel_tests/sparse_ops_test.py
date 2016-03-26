@@ -100,6 +100,79 @@ class SparseToIndicatorTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output, expected_output)
 
 
+class SparseMergeTest(test_util.TensorFlowTestCase):
+
+  def _SparseTensor_3x50(self, indices_dtype, values_dtype):
+    ind = np.array([
+        [0, 0],
+        [1, 0], [1, 1], [1, 2],
+        [2, 0], [2, 1]])
+    # NB: these are not sorted
+    indices = np.array([0, 13, 10, 14, 32, 33])
+    values = np.array([-3, 4, 1, 1, 5, 9])
+    shape = np.array([3, 3])
+    indices = ops.SparseTensor(
+        constant_op.constant(ind, dtypes.int64),
+        constant_op.constant(indices, indices_dtype),
+        constant_op.constant(shape, dtypes.int64))
+    values = ops.SparseTensor(
+        constant_op.constant(ind, dtypes.int64),
+        constant_op.constant(values, values_dtype),
+        constant_op.constant(shape, dtypes.int64))
+    return indices, values
+
+  def testInt32AndFloat32(self):
+    vocab_size = 50
+    with self.test_session(use_gpu=False) as sess:
+      indices, values = self._SparseTensor_3x50(dtypes.int32, dtypes.float32)
+      sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
+
+      output = sess.run(sp_output)
+      self.assertAllEqual(
+          output.indices,
+          [[0, 0], [1, 10], [1, 13], [1, 14], [2, 32], [2, 33]])
+      self.assertAllEqual(
+          output.values,
+          [-3, 1, 4, 1, 5, 9])
+      self.assertAllEqual(
+          output.shape,
+          [3, vocab_size])
+
+  def testInt64AndFloat32(self):
+    vocab_size = 50
+    with self.test_session(use_gpu=False) as sess:
+      indices, values = self._SparseTensor_3x50(dtypes.int64, dtypes.float32)
+      sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
+
+      output = sess.run(sp_output)
+      self.assertAllEqual(
+          output.indices,
+          [[0, 0], [1, 10], [1, 13], [1, 14], [2, 32], [2, 33]])
+      self.assertAllEqual(
+          output.values,
+          [-3, 1, 4, 1, 5, 9])
+      self.assertAllEqual(
+          output.shape,
+          [3, vocab_size])
+
+  def testInt64AndFloat64(self):
+    vocab_size = 50
+    with self.test_session(use_gpu=False) as sess:
+      indices, values = self._SparseTensor_3x50(dtypes.int64, dtypes.float64)
+      sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
+
+      output = sess.run(sp_output)
+      self.assertAllEqual(
+          output.indices,
+          [[0, 0], [1, 10], [1, 13], [1, 14], [2, 32], [2, 33]])
+      self.assertAllEqual(
+          output.values,
+          [-3, 1, 4, 1, 5, 9])
+      self.assertAllEqual(
+          output.shape,
+          [3, vocab_size])
+
+
 class SparseRetainTest(test_util.TensorFlowTestCase):
 
   def _SparseTensor_5x6(self):

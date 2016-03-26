@@ -39,6 +39,10 @@ string TmpDir() {
   }
   return "/tmp";
 }
+string SrcDir() {
+  // Bazel makes data dependencies available via a relative path.
+  return "";
+}
 int RandomSeed() {
   const char* env = getenv("TEST_RANDOM_SEED");
   int result;

@@ -66,9 +66,11 @@ print(sess.run(norm))
 print(sess.run(norm))
 
 # Set an op-level seed to generate repeatable sequences across sessions.
-c = tf.constant([[1, 2], [3, 4], [5, 6]])
+norm = tf.random_normal([2, 3], seed=1234)
 sess = tf.Session()
-norm = tf.random_normal(c, seed=1234)
+print(sess.run(norm))
+print(sess.run(norm))
+sess = tf.Session()
 print(sess.run(norm))
 print(sess.run(norm))
 ```
@@ -125,9 +127,8 @@ def constant(value, dtype=None, shape=None, name="Const"):
    elements specified by `shape`, the last element in the list will be used
    to fill the remaining entries.
 
-   The argument `shape` is optional. If present, it specifies the dimensions
-   of the resulting tensor. If not present, then the tensor is a scalar (0-D)
-   if `value` is a scalar, or 1-D otherwise.
+   The argument `shape` is optional. If present, it specifies the dimensions of
+   the resulting tensor. If not present, the shape of `value` is used.
 
    If the argument `dtype` is not specified, then the type is inferred from
    the type of `value`.

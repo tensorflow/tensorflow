@@ -37,7 +37,7 @@ by default. The user can select a different run from a dropdown menu.
   </p>
   <p>
     To store a graph, create a
-    <code>tf.python.training.summary_io.SummaryWriter</code>
+    <code>tf.train.SummaryWriter</code>
     and pass the graph either via the constructor, or by calling its
     <code>add_graph()</code> method.
   </p>
@@ -63,6 +63,7 @@ by default. The user can select a different run from a dropdown menu.
           out-graph-name="{{_graphName}}"
           has-stats="{{_hasStats}}"
           progress="{{_progress}}"
+          out-hierarchy-params="{{_hierarchyParams}}"
   ></tf-graph-loader>
 </div>
 <div class="center">
@@ -73,7 +74,8 @@ by default. The user can select a different run from a dropdown menu.
                 graph-name="[[_graphName]]"
                 progress="[[_progress]]"
                 color-by="[[_colorBy]]"
-                color-by-params="{{_colorByParams}}">
+                color-by-params="{{_colorByParams}}"
+                hierarchy-params="[[_hierarchyParams]]">
     </tf-graph-board>
 </div>
 </tf-dashboard-layout>
@@ -113,7 +115,8 @@ Polymer({
     return _.map(runsWithGraph, function(runName) {
       return {
         name: runName,
-        path: graphUrlGen(runName)
+        path: graphUrlGen(runName, tf.graph.LIMIT_ATTR_SIZE,
+            tf.graph.LARGE_ATTRS_KEY)
       };
     });
   },

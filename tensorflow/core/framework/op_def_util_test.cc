@@ -246,6 +246,10 @@ TEST_F(ValidateOpDefTest, BadAttrAllowed) {
       TestBuilder(OpDefBuilder("BadAttrtude")
                       .Attr("x: list(realnumbertype) = [DT_COMPLEX64]")),
       "attr 'x' of complex64 is not in the list of allowed values");
+  ExpectFailure(
+      TestBuilder(OpDefBuilder("BadAttrtude")
+                      .Attr("x: list(realnumbertype) = [DT_COMPLEX128]")),
+      "attr 'x' of complex128 is not in the list of allowed values");
   // Is in list of allowed strings.
   TF_EXPECT_OK(TestBuilder(
       OpDefBuilder("GoodAttrtude").Attr("x: {'foo', 'bar'} = 'bar'")));

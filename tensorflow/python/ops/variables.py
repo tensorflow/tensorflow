@@ -142,7 +142,8 @@ class Variable(object):
   # ready for consumption.
 
   def __init__(self, initial_value=None, trainable=True, collections=None,
-               validate_shape=True, name=None, variable_def=None):
+               validate_shape=True, caching_device=None, name=None,
+               variable_def=None, dtype=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -166,11 +167,19 @@ class Variable(object):
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
+      caching_device: Optional device string describing where the Variable
+        should be cached for reading.  Defaults to the Variable's device.
+        If not `None`, caches on another device.  Typical use is to cache
+        on the device where the Ops using the Variable reside, to deduplicate
+        copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
       variable_def: `VariableDef` protocol buffer. If not `None`, recreates
         the Variable object with its contents. `variable_def` and the other
         arguments are mutually exclusive.
+      dtype: If set, initial_value will be converted to the given type.
+        If `None`, either the datatype will be kept (if `initial_value` is
+        a Tensor), or `convert_to_tensor` will decide.
 
     Returns:
       A Variable.
@@ -192,10 +201,13 @@ class Variable(object):
                            trainable=trainable,
                            collections=collections,
                            validate_shape=validate_shape,
-                           name=name)
+                           caching_device=caching_device,
+                           name=name,
+                           dtype=dtype)
 
   def _init_from_args(self, initial_value=None, trainable=True,
-                      collections=None, validate_shape=True, name=None):
+                      collections=None, validate_shape=True,
+                      caching_device=None, name=None, dtype=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -210,8 +222,17 @@ class Variable(object):
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
+      caching_device: Optional device string or function describing where the
+        Variable should be cached for reading.  Defaults to the Variable's
+        device.  If not `None`, caches on another device.  Typical use is to
+        cache on the device where the Ops using the Variable reside, to
+        deduplicate copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
+      dtype: If set, initial_value will be converted to the given type.
+        If None, either the datatype will be kept (if initial_value is
+       a Tensor) or float32 will be used (if it is a Python object convertible
+       to a Tensor).
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -226,22 +247,35 @@ class Variable(object):
     with ops.control_dependencies(None):
       with ops.op_scope([initial_value], name, "Variable") as name:
         self._initial_value = ops.convert_to_tensor(initial_value,
-                                                    name="initial_value")
+                                                    name="initial_value",
+                                                    dtype=dtype)
         initial_value_shape = self._initial_value.get_shape()
         if validate_shape and not initial_value_shape.is_fully_defined():
           raise ValueError("initial_value must have a shape specified: %s"
                            % self._initial_value)
         shape_to_set = initial_value_shape if validate_shape else []
+
         self._variable = state_ops.variable_op(
             shape_to_set, self._initial_value.dtype.base_dtype,
             set_shape=validate_shape, name=name)
-        with ops.device(self._variable.device):
+
+        with ops.colocate_with(self._variable.op):
           self._initializer_op = state_ops.assign(
               self._variable, self._initial_value,
               validate_shape=validate_shape).op
-          self._snapshot = array_ops.identity(self._variable, name="read")
+
+        # TODO(vrv): Change this class to not take caching_device, but
+        # to take the op to colocate the snapshot with, so we can use
+        # colocation rather than devices.
+        if caching_device is not None:
+          with ops.device(caching_device):
+            self._snapshot = array_ops.identity(self._variable, name="read")
+        else:
+          with ops.colocate_with(self._variable.op):
+            self._snapshot = array_ops.identity(self._variable, name="read")
 
     ops.add_to_collections(collections, self)
+    self._caching_device = caching_device
     self._save_slice_info = None
 
   def _init_from_proto(self, variable_def):
@@ -261,6 +295,7 @@ class Variable(object):
           save_slice_info_def=variable_def.save_slice_info_def)
     else:
       self._save_slice_info = None
+    self._caching_device = None
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -275,6 +310,18 @@ class Variable(object):
       A `Tensor` containing the value of the variable.
     """
     return self._snapshot
+
+  def __iter__(self):
+    """Dummy method to prevent iteration. Do not call.
+
+    NOTE(mrry): If we register __getitem__ as an overloaded operator,
+    Python will valiantly attempt to iterate over the variable's Tensor from 0
+    to infinity.  Declaring this method prevents this unintended behavior.
+
+    Raises:
+      TypeError: when invoked.
+    """
+    raise TypeError("'Variable' object is not iterable.")
 
   def value(self):
     """Returns the last snapshot of this variable.
@@ -366,8 +413,15 @@ class Variable(object):
     """
     with ops.control_dependencies(None):
       with ops.control_dependencies([self._initializer_op]):
-        with ops.device(self._variable.device):
-          return array_ops.identity(self._variable)
+        # TODO(vrv): Change this class to not take caching_device, but
+        # to take the op to colocate the snapshot with, so we can use
+        # colocation rather than devices.
+        if self._caching_device is not None:
+          with ops.device(self._caching_device):
+            return array_ops.identity(self._variable)
+        else:
+          with ops.colocate_with(self._variable.op):
+            return array_ops.identity(self._variable)
 
   def assign(self, value, use_locking=False):
     """Assigns a new value to the variable.
@@ -635,7 +689,7 @@ class Variable(object):
 
 
 def all_variables():
-  """Returns all variables collected in the graph.
+  """Returns all variables that must be saved/restored.
 
   The `Variable()` constructor automatically adds new variables to the graph
   collection `GraphKeys.VARIABLES`. This convenience function returns the
@@ -660,6 +714,13 @@ def trainable_variables():
   """
   return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
 
+def local_variables():
+  """Returns all variables created with collection=[LOCAL_VARIABLES].
+
+  Returns:
+    A list of local Variable objects.
+  """
+  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
 
 def moving_average_variables():
   """Returns all variables that maintain their moving averages.
@@ -712,6 +773,17 @@ def initialize_all_variables():
   return initialize_variables(all_variables())
 
 
+def initialize_local_variables():
+  """Returns an Op that initializes all local variables.
+
+  This is just a shortcut for `initialize_variables(local_variables())`
+
+  Returns:
+    An Op that initializes all local variables in the graph.
+  """
+  return initialize_variables(local_variables())
+
+
 def assert_variables_initialized(var_list=None):
   """Returns an Op to check if variables are initialized.
 
@@ -730,7 +802,7 @@ def assert_variables_initialized(var_list=None):
     An Op, or None if there are no variables.
   """
   if var_list is None:
-    var_list = all_variables()
+    var_list = all_variables() + local_variables()
   # Backwards compatibility for old-style variables. TODO(touts): remove.
   if not var_list:
     var_list = []
@@ -742,7 +814,7 @@ def assert_variables_initialized(var_list=None):
   else:
     ranks = []
     for var in var_list:
-      with ops.device(var.device):
+      with ops.colocate_with(var.op):
         ranks.append(array_ops.rank(var))
     if len(ranks) == 1:
       return ranks[0]

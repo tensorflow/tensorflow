@@ -58,7 +58,6 @@ static Node* Scalar(Graph* g, float val) {
 }
 
 static void SGD(int32 n, Graph** init_g, Graph** train_g) {
-  RequireDefaultOps();
   {
     Graph* g = new Graph(OpRegistry::Global());
     auto var = Var(g, n);
@@ -87,7 +86,6 @@ static void BM_SGD(int iters, int params) {
 BENCHMARK(BM_SGD)->Arg(128 << 10)->Arg(256 << 10);
 
 static void Adagrad(int32 n, Graph** init_g, Graph** train_g) {
-  RequireDefaultOps();
   {
     Graph* g = new Graph(OpRegistry::Global());
     auto var = Var(g, n);
@@ -120,7 +118,6 @@ static void BM_Adagrad(int iters, int params) {
 BENCHMARK(BM_Adagrad)->Arg(128 << 10)->Arg(256 << 10);
 
 static void Momentum(int32 n, Graph** init_g, Graph** train_g) {
-  RequireDefaultOps();
   TensorShape shape({n});
   {
     Graph* g = new Graph(OpRegistry::Global());
@@ -155,7 +152,6 @@ static void BM_Momentum(int iters, int params) {
 BENCHMARK(BM_Momentum)->Arg(128 << 10)->Arg(256 << 10);
 
 static void Adam(int32 n, Graph** init_g, Graph** train_g) {
-  RequireDefaultOps();
   TensorShape shape({n});
   {
     Graph* g = new Graph(OpRegistry::Global());
@@ -198,7 +194,6 @@ static void BM_Adam(int iters, int params) {
 BENCHMARK(BM_Adam)->Arg(128 << 10)->Arg(256 << 10);
 
 static void RMSProp(int32 n, Graph** init_g, Graph** train_g) {
-  RequireDefaultOps();
   TensorShape shape({n});
   {
     Graph* g = new Graph(OpRegistry::Global());

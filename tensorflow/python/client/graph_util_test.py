@@ -31,27 +31,6 @@ from tensorflow.python.ops import state_ops
 
 class DeviceFunctionsTest(tf.test.TestCase):
 
-  def testPinToCpu(self):
-    with ops.Graph().as_default() as g, g.device(graph_util.pin_to_cpu):
-      const_a = constant_op.constant(5.0)
-      const_b = constant_op.constant(10.0)
-      add_c = const_a + const_b
-      var_v = state_ops.variable_op([], dtype=dtypes.float32)
-      assign_c_to_v = state_ops.assign(var_v, add_c)
-      const_string = constant_op.constant("on a cpu")
-      dynamic_stitch_int_result = data_flow_ops.dynamic_stitch(
-          [[0, 1, 2], [2, 3]], [[12, 23, 34], [1, 2]])
-      dynamic_stitch_float_result = data_flow_ops.dynamic_stitch(
-          [[0, 1, 2], [2, 3]], [[12.0, 23.0, 34.0], [1.0, 2.0]])
-    self.assertDeviceEqual(const_a.device, "/device:CPU:0")
-    self.assertDeviceEqual(const_b.device, "/device:CPU:0")
-    self.assertDeviceEqual(add_c.device, "/device:CPU:0")
-    self.assertDeviceEqual(var_v.device, "/device:CPU:0")
-    self.assertDeviceEqual(assign_c_to_v.device, "/device:CPU:0")
-    self.assertDeviceEqual(const_string.device, "/device:CPU:0")
-    self.assertDeviceEqual(dynamic_stitch_int_result.device, "/device:CPU:0")
-    self.assertDeviceEqual(dynamic_stitch_float_result.device, "/device:CPU:0")
-
   def testPinRequiredOpsOnCPU(self):
     with ops.Graph().as_default() as g, g.device(
         graph_util.pin_variables_on_cpu):

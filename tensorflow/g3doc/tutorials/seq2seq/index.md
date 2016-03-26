@@ -176,8 +176,8 @@ projections are constructed by the following code in `seq2seq_model.py`.
 ```
 
 First, note that we only construct a sampled softmax if the number of samples
-(512 by default) is smaller that the target vocabulary size. For vocabularies
-smaller than 512 it might be a better idea to just use a standard softmax loss.
+(512 by default) is smaller than the target vocabulary size. For vocabularies
+smaller than 512, it might be a better idea to just use a standard softmax loss.
 
 Then, as you can see, we construct an output projection. It is a pair,
 consisting of a weight matrix and a bias vector. If used, the rnn cell

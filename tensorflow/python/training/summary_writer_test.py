@@ -49,7 +49,26 @@ class SummaryWriterTestCase(tf.test.TestCase):
   def _assertRecent(self, t):
     self.assertTrue(abs(t - time.time()) < 5)
 
-  def testAddingSummaryAndGraph(self):
+  def _assertEventsWithGraph(self, test_dir, g, has_shapes):
+    rr = self._EventsReader(test_dir)
+
+    # The first event should list the file_version.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals("brain.Event:2", ev.file_version)
+
+    # The next event should have the graph.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(0, ev.step)
+    ev_graph = tf.GraphDef()
+    ev_graph.ParseFromString(ev.graph_def)
+    self.assertProtoEquals(g.as_graph_def(add_shapes=has_shapes), ev_graph)
+
+    # We should be done.
+    self.assertRaises(StopIteration, lambda: next(rr))
+
+  def testAddingSummaryGraphAndRunMetadata(self):
     test_dir = self._CleanTestDir("basics")
     sw = tf.train.SummaryWriter(test_dir)
 
@@ -62,8 +81,12 @@ class SummaryWriterTestCase(tf.test.TestCase):
                    20)
     with tf.Graph().as_default() as g:
       tf.constant([0], name="zero")
-    gd = g.as_graph_def()
-    sw.add_graph(gd, global_step=30)
+    sw.add_graph(g, global_step=30)
+
+    run_metadata = tf.RunMetadata()
+    device_stats = run_metadata.step_stats.dev_stats.add()
+    device_stats.device = "test"
+    sw.add_run_metadata(run_metadata, "test run", global_step=40)
     sw.close()
     rr = self._EventsReader(test_dir)
 
@@ -100,35 +123,68 @@ class SummaryWriterTestCase(tf.test.TestCase):
     self.assertEquals(30, ev.step)
     ev_graph = tf.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
-    self.assertProtoEquals(gd, ev_graph)
+    self.assertProtoEquals(g.as_graph_def(add_shapes=True), ev_graph)
+
+    # The next event should have metadata for the run.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(40, ev.step)
+    self.assertEquals("test run", ev.tagged_run_metadata.tag)
+    parsed_run_metadata = tf.RunMetadata()
+    parsed_run_metadata.ParseFromString(ev.tagged_run_metadata.run_metadata)
+    self.assertProtoEquals(run_metadata, parsed_run_metadata)
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
-  def testInitializingWithGraphDef(self):
-    test_dir = self._CleanTestDir("basics_with_graph")
+  def testGraphAsNamed(self):
+    test_dir = self._CleanTestDir("basics_named_graph")
+    with tf.Graph().as_default() as g:
+      tf.constant([12], name="douze")
+    sw = tf.train.SummaryWriter(test_dir, graph=g)
+    sw.close()
+    self._assertEventsWithGraph(test_dir, g, True)
+
+  def testGraphAsPositional(self):
+    test_dir = self._CleanTestDir("basics_positional_graph")
+    with tf.Graph().as_default() as g:
+      tf.constant([12], name="douze")
+    sw = tf.train.SummaryWriter(test_dir, g)
+    sw.close()
+    self._assertEventsWithGraph(test_dir, g, True)
+
+  def testGraphDefAsNamed(self):
+    test_dir = self._CleanTestDir("basics_named_graph_def")
     with tf.Graph().as_default() as g:
       tf.constant([12], name="douze")
     gd = g.as_graph_def()
     sw = tf.train.SummaryWriter(test_dir, graph_def=gd)
     sw.close()
-    rr = self._EventsReader(test_dir)
+    self._assertEventsWithGraph(test_dir, g, False)
 
-    # The first event should list the file_version.
-    ev = next(rr)
-    self._assertRecent(ev.wall_time)
-    self.assertEquals("brain.Event:2", ev.file_version)
+  def testGraphDefAsPositional(self):
+    test_dir = self._CleanTestDir("basics_positional_graph_def")
+    with tf.Graph().as_default() as g:
+      tf.constant([12], name="douze")
+    gd = g.as_graph_def()
+    sw = tf.train.SummaryWriter(test_dir, gd)
+    sw.close()
+    self._assertEventsWithGraph(test_dir, g, False)
 
-    # The next event should have the graph.
-    ev = next(rr)
-    self._assertRecent(ev.wall_time)
-    self.assertEquals(0, ev.step)
-    ev_graph = tf.GraphDef()
-    ev_graph.ParseFromString(ev.graph_def)
-    self.assertProtoEquals(gd, ev_graph)
+  def testGraphAndGraphDef(self):
+    with self.assertRaises(ValueError):
+      test_dir = self._CleanTestDir("basics_graph_and_graph_def")
+      with tf.Graph().as_default() as g:
+        tf.constant([12], name="douze")
+      gd = g.as_graph_def()
+      sw = tf.train.SummaryWriter(test_dir, graph=g, graph_def=gd)
+      sw.close()
 
-    # We should be done.
-    self.assertRaises(StopIteration, lambda: next(rr))
+  def testNeitherGraphNorGraphDef(self):
+    with self.assertRaises(TypeError):
+      test_dir = self._CleanTestDir("basics_string_instead_of_graph")
+      sw = tf.train.SummaryWriter(test_dir, "string instead of graph object")
+      sw.close()
 
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the

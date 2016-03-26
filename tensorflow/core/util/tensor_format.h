@@ -69,17 +69,6 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
   }
 }
 
-// Return a tensor shape from the given format, and tensor dimensions.
-inline TensorShape ShapeFromFormat(TensorFormat format, int64 N, int64 H,
-                                   int64 W, int64 C) {
-  std::vector<int64> dim_sizes(4);
-  dim_sizes[GetTensorDimIndex(format, 'N')] = N;
-  dim_sizes[GetTensorDimIndex(format, 'H')] = H;
-  dim_sizes[GetTensorDimIndex(format, 'W')] = W;
-  dim_sizes[GetTensorDimIndex(format, 'C')] = C;
-  return TensorShape(dim_sizes);
-}
-
 // Return the given tensor dimension from a tensor. The tensor is interpretted
 // using the specified format, and a dimension specification using a char.
 inline int64 GetTensorDim(const Tensor& tensor, TensorFormat format,
@@ -119,6 +108,36 @@ T GetTensorDim(const std::vector<T>& attributes, TensorFormat format,
 
 // Return the string that specifies the data format for convnet operations.
 string GetConvnetDataFormatAttrString();
+
+// Return a tensor shape from the given format, and tensor dimensions.
+inline TensorShape ShapeFromFormat(TensorFormat format, int64 N, int64 H,
+                                   int64 W, int64 C) {
+  std::vector<int64> dim_sizes(4);
+  dim_sizes[GetTensorDimIndex(format, 'N')] = N;
+  dim_sizes[GetTensorDimIndex(format, 'H')] = H;
+  dim_sizes[GetTensorDimIndex(format, 'W')] = W;
+  dim_sizes[GetTensorDimIndex(format, 'C')] = C;
+  return TensorShape(dim_sizes);
+}
+
+// Return a tensor shape from the given format, and tensor dimensions.
+inline TensorShape ShapeFromFormat(TensorFormat dst_format,
+                                   const TensorShape& src_shape,
+                                   TensorFormat src_format) {
+  if (src_format == dst_format) {
+    return src_shape;
+  }
+  std::vector<int64> dim_sizes(4);
+  dim_sizes[GetTensorDimIndex(dst_format, 'N')] =
+      GetTensorDim(src_shape, src_format, 'N');
+  dim_sizes[GetTensorDimIndex(dst_format, 'H')] =
+      GetTensorDim(src_shape, src_format, 'H');
+  dim_sizes[GetTensorDimIndex(dst_format, 'W')] =
+      GetTensorDim(src_shape, src_format, 'W');
+  dim_sizes[GetTensorDimIndex(dst_format, 'C')] =
+      GetTensorDim(src_shape, src_format, 'C');
+  return TensorShape(dim_sizes);
+}
 
 }  // namespace tensorflow
 

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/cwise_ops_common.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 
 namespace tensorflow {

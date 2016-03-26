@@ -1,3 +1,20 @@
+# Release 0.7.1
+
+## Bug Fixes and Other Changes
+
+* Added gfile.Open and gfile.Copy, used by input_data.py.
+* Fixed Saver bug when MakeDirs tried to create empty directory.
+* GPU Pip wheels are built with cuda 7.5 and cudnn-v4, making them
+  required for the binary releases. Lower versions of cuda/cudnn can
+  be supported by installing from sources and setting the options
+  during ./configure
+* Fix dataset encoding example for Python3 (@danijar)
+* Fix PIP installation by not packaging protobuf as part of wheel,
+  require protobuf 3.0.0b2.
+* Fix Mac pip installation of numpy by requiring pip >= 1.10.1.
+* Improvements and fixes to Docker image.
+
+
 # Release 0.7.0
 
 ## Major Features and Improvements

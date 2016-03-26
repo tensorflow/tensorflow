@@ -19,10 +19,13 @@ limitations under the License.
 #include "tensorflow/core/framework/queue_interface.h"
 #include "tensorflow/core/framework/reader_interface.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 
-class ReaderVerbOpKernel : public OpKernel {
+class ReaderVerbSyncOpKernel : public OpKernel {
  public:
   using OpKernel::OpKernel;
 
@@ -39,9 +42,39 @@ class ReaderVerbOpKernel : public OpKernel {
                                  ReaderInterface* reader) = 0;
 };
 
-class ReaderReadOp : public ReaderVerbOpKernel {
+class ReaderVerbAsyncOpKernel : public AsyncOpKernel {
  public:
-  using ReaderVerbOpKernel::ReaderVerbOpKernel;
+  using AsyncOpKernel::AsyncOpKernel;
+
+  explicit ReaderVerbAsyncOpKernel(OpKernelConstruction* context)
+      : AsyncOpKernel(context),
+        thread_pool_(new thread::ThreadPool(
+            context->env(), strings::StrCat("reader_thread_",
+                                            SanitizeThreadSuffix(def().name())),
+            1 /* num_threads */)) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    ReaderInterface* reader;
+    OP_REQUIRES_OK(context,
+                   GetResourceFromContext(context, "reader_handle", &reader));
+    thread_pool_->Schedule([this, context, reader, done]() {
+      ComputeWithReader(context, reader);
+      reader->Unref();
+      done();
+    });
+  }
+
+ protected:
+  virtual void ComputeWithReader(OpKernelContext* context,
+                                 ReaderInterface* reader) = 0;
+
+ private:
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
+};
+
+class ReaderReadOp : public ReaderVerbAsyncOpKernel {
+ public:
+  using ReaderVerbAsyncOpKernel::ReaderVerbAsyncOpKernel;
 
   void ComputeWithReader(OpKernelContext* context,
                          ReaderInterface* reader) override {
@@ -64,9 +97,9 @@ class ReaderReadOp : public ReaderVerbOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ReaderRead").Device(DEVICE_CPU), ReaderReadOp);
 
-class ReaderNumRecordsProducedOp : public ReaderVerbOpKernel {
+class ReaderNumRecordsProducedOp : public ReaderVerbSyncOpKernel {
  public:
-  using ReaderVerbOpKernel::ReaderVerbOpKernel;
+  using ReaderVerbSyncOpKernel::ReaderVerbSyncOpKernel;
 
   void ComputeWithReader(OpKernelContext* context,
                          ReaderInterface* reader) override {
@@ -80,9 +113,9 @@ class ReaderNumRecordsProducedOp : public ReaderVerbOpKernel {
 REGISTER_KERNEL_BUILDER(Name("ReaderNumRecordsProduced").Device(DEVICE_CPU),
                         ReaderNumRecordsProducedOp);
 
-class ReaderNumWorkUnitsCompletedOp : public ReaderVerbOpKernel {
+class ReaderNumWorkUnitsCompletedOp : public ReaderVerbSyncOpKernel {
  public:
-  using ReaderVerbOpKernel::ReaderVerbOpKernel;
+  using ReaderVerbSyncOpKernel::ReaderVerbSyncOpKernel;
 
   void ComputeWithReader(OpKernelContext* context,
                          ReaderInterface* reader) override {
@@ -96,9 +129,9 @@ class ReaderNumWorkUnitsCompletedOp : public ReaderVerbOpKernel {
 REGISTER_KERNEL_BUILDER(Name("ReaderNumWorkUnitsCompleted").Device(DEVICE_CPU),
                         ReaderNumWorkUnitsCompletedOp);
 
-class ReaderSerializeStateOp : public ReaderVerbOpKernel {
+class ReaderSerializeStateOp : public ReaderVerbSyncOpKernel {
  public:
-  using ReaderVerbOpKernel::ReaderVerbOpKernel;
+  using ReaderVerbSyncOpKernel::ReaderVerbSyncOpKernel;
 
   void ComputeWithReader(OpKernelContext* context,
                          ReaderInterface* reader) override {
@@ -113,9 +146,9 @@ class ReaderSerializeStateOp : public ReaderVerbOpKernel {
 REGISTER_KERNEL_BUILDER(Name("ReaderSerializeState").Device(DEVICE_CPU),
                         ReaderSerializeStateOp);
 
-class ReaderRestoreStateOp : public ReaderVerbOpKernel {
+class ReaderRestoreStateOp : public ReaderVerbSyncOpKernel {
  public:
-  using ReaderVerbOpKernel::ReaderVerbOpKernel;
+  using ReaderVerbSyncOpKernel::ReaderVerbSyncOpKernel;
 
   void ComputeWithReader(OpKernelContext* context,
                          ReaderInterface* reader) override {
@@ -132,9 +165,9 @@ class ReaderRestoreStateOp : public ReaderVerbOpKernel {
 REGISTER_KERNEL_BUILDER(Name("ReaderRestoreState").Device(DEVICE_CPU),
                         ReaderRestoreStateOp);
 
-class ReaderResetOp : public ReaderVerbOpKernel {
+class ReaderResetOp : public ReaderVerbSyncOpKernel {
  public:
-  using ReaderVerbOpKernel::ReaderVerbOpKernel;
+  using ReaderVerbSyncOpKernel::ReaderVerbSyncOpKernel;
 
   void ComputeWithReader(OpKernelContext* context,
                          ReaderInterface* reader) override {

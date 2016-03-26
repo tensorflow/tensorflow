@@ -200,7 +200,7 @@ def train():
 
     # Add histograms for gradients.
     for grad, var in grads:
-      if grad:
+      if grad is not None:
         summaries.append(
             tf.histogram_summary(var.op.name + '/gradients', grad))
 
@@ -239,8 +239,7 @@ def train():
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
 
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                            graph_def=sess.graph_def)
+    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 
     for step in xrange(FLAGS.max_steps):
       start_time = time.time()

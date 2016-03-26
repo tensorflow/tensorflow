@@ -219,8 +219,8 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
       # To do that, we need a stable way of deciding based on just the file name
       # itself, so we do a hash of that and then use that to generate a
       # probability value that we use to assign it.
-      percentage_hash = (int(
-          hashlib.sha1(hash_name).hexdigest(), 16) % (65536)) * (100 / 65535.0)
+      hash_name_hashed = hashlib.sha1(hash_name.encode('utf-8')).hexdigest()
+      percentage_hash = (int(hash_name_hashed, 16) % (65536)) * (100 / 65535.0)
       if percentage_hash < validation_percentage:
         validation_images.append(base_name)
       elif percentage_hash < (testing_percentage + validation_percentage):
@@ -295,8 +295,9 @@ def create_inception_graph():
     Graph holding the trained Inception network.
   """
   with tf.Session() as sess:
-    with gfile.FastGFile(
-        os.path.join(FLAGS.model_dir, 'classify_image_graph_def.pb'), 'r') as f:
+    model_filename = os.path.join(
+        FLAGS.model_dir, 'classify_image_graph_def.pb')
+    with gfile.FastGFile(model_filename, 'rb') as f:
       graph_def = tf.GraphDef()
       graph_def.ParseFromString(f.read())
       _ = tf.import_graph_def(graph_def, name='')
@@ -395,7 +396,7 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
                                 category)
     if not gfile.Exists(image_path):
       tf.logging.fatal('File does not exist %s', image_path)
-    image_data = gfile.FastGFile(image_path, 'r').read()
+    image_data = gfile.FastGFile(image_path, 'rb').read()
     bottleneck_values = run_bottleneck_on_image(sess, image_data,
                                                 JPEG_DATA_TENSOR_NAME)
     bottleneck_string = ','.join(str(x) for x in bottleneck_values)
@@ -430,7 +431,7 @@ def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir):
   """
   how_many_bottlenecks = 0
   ensure_dir_exists(bottleneck_dir)
-  for label_name, label_lists in image_lists.iteritems():
+  for label_name, label_lists in image_lists.items():
     for category in ['training', 'testing', 'validation']:
       category_list = label_lists[category]
       for index, unused_base_name in enumerate(category_list):
@@ -467,7 +468,7 @@ def get_random_cached_bottlenecks(sess, image_lists, how_many, category,
   ground_truthes = []
   for unused_i in range(how_many):
     label_index = random.randrange(class_count)
-    label_name = image_lists.keys()[label_index]
+    label_name = list(image_lists.keys())[label_index]
     image_index = random.randrange(65536)
     bottleneck = get_or_create_bottleneck(sess, image_lists, label_name,
                                           image_index, image_dir, category,
@@ -818,7 +819,7 @@ def main(_):
   # Write out the trained graph and labels with the weights stored as constants.
   output_graph_def = graph_util.convert_variables_to_constants(
       sess, graph.as_graph_def(), [FLAGS.final_tensor_name])
-  with gfile.FastGFile(FLAGS.output_graph, 'w') as f:
+  with gfile.FastGFile(FLAGS.output_graph, 'wb') as f:
     f.write(output_graph_def.SerializeToString())
   with gfile.FastGFile(FLAGS.output_labels, 'w') as f:
     f.write('\n'.join(image_lists.keys()) + '\n')

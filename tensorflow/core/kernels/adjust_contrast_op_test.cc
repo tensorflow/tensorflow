@@ -31,12 +31,9 @@ limitations under the License.
 namespace tensorflow {
 
 class AdjustContrastOpTest : public OpsTestBase {
- protected:
-  void MakeOp() { RequireDefaultOps(); }
 };
 
 TEST_F(AdjustContrastOpTest, Simple_1113) {
-  RequireDefaultOps();
   TF_EXPECT_OK(NodeDefBuilder("adjust_constrast_op", "AdjustContrastv2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
@@ -52,7 +49,6 @@ TEST_F(AdjustContrastOpTest, Simple_1113) {
 }
 
 TEST_F(AdjustContrastOpTest, Simple_1223) {
-  RequireDefaultOps();
   TF_EXPECT_OK(NodeDefBuilder("adjust_constrast_op", "AdjustContrastv2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))

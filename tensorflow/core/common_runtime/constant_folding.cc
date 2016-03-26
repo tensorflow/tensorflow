@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -45,6 +46,12 @@ bool IsConstantFoldable(const Node* n,
     return false;
   }
   if (n->IsControlFlow() || n->IsSend() || n->IsRecv()) {
+    return false;
+  }
+  if (n->IsSource()) {
+    return false;
+  }
+  if (n->IsSink()) {
     return false;
   }
   return true;
@@ -72,9 +79,9 @@ void FindConstantFoldableNodes(const Graph* graph, ConstantFoldingOptions opts,
                  // Check whether the set of this node's in_nodes is completely
                  // included in the set of constant foldable nodes. If true,
                  // then this node is also constant foldable.
-                 bool all_parents_constant = n->num_inputs() > 0;
+                 bool all_parents_constant = true;
                  for (const Node* parent : n->in_nodes()) {
-                   if (node_set.count(parent) == 0) {
+                   if (node_set.count(parent) == 0 && !parent->IsSource()) {
                      all_parents_constant = false;
                      break;
                    }
@@ -315,6 +322,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
   core::ScopedUnref rendez_unref(rendez);
 
   Executor::Args args;
+  args.step_id = LogMemory::CONSTANT_FOLDING_STEP_ID;
   args.runner = runner;
   args.rendezvous = rendez;
 
@@ -329,10 +337,11 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
 
   executor->RunAsync(args, barrier->Get());
 
+  executor_done.WaitForNotification();
+
   if (!executor_done_status.ok()) {
     return false;
   }
-  executor_done.WaitForNotification();
 
   // Fetch the constant tensors and replace the corresponding tensors in the
   // original graph with those constants.

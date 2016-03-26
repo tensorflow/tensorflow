@@ -19,9 +19,9 @@ limitations under the License.
 #include <functional>
 
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/config.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 

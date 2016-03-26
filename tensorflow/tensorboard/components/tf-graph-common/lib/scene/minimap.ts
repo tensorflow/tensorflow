@@ -12,10 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="../../../../typings/tsd.d.ts" />
-/// <reference path="../common.ts" />
-
 module tf.scene {
 
 /** Show minimap when the viewpoint area is less than X% of the whole area. */
@@ -165,7 +161,9 @@ export class Minimap {
           continue;
         }
         for (let i = 0; i < cssRules.length; i++) {
-          stylesText += cssRules[i].cssText + "\n";
+          // Remove tf-* selectors from the styles.
+          stylesText += cssRules[i].cssText.replace(/ ?tf-[\w-]+ ?/g, "") +
+              "\n";
         }
       } catch (e) {
         if (e.name !== "SecurityError") {
@@ -262,7 +260,8 @@ export class Minimap {
       downloadContext.drawImage(image, 0, 0,
         this.downloadCanvas.width, this.downloadCanvas.height);
     };
-    image.src = "data:image/svg+xml;base64," + btoa(svgXml);
+    let blob = new Blob([svgXml], {type: "image/svg+xml;charset=utf-8"});
+    image.src = URL.createObjectURL(blob);
   }
 
   /**

@@ -561,43 +561,62 @@ dimension. For example, tiling `[a b c d]` by `[2]` produces
 
 - - -
 
-### `tf.pad(input, paddings, name=None)` {#pad}
+### `tf.pad(tensor, paddings, mode='CONSTANT', name=None)` {#pad}
 
-Pads a tensor with zeros.
+Pads a tensor.
 
-This operation pads a `input` with zeros according to the `paddings` you
-specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the
-rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
-how many zeros to add before the contents of `input` in that dimension, and
-`paddings[D, 1]` indicates how many zeros to add after the contents of `input`
-in that dimension.
+This operation pads a `tensor` according to the `paddings` you specify.
+`paddings` is an integer tensor with shape `[n, 2]`, where n is the rank of
+`tensor`. For each dimension D of `input`, `paddings[D, 0]` indicates how
+many values to add before the contents of `tensor` in that dimension, and
+`paddings[D, 1]` indicates how many values to add after the contents of
+`tensor` in that dimension. If `mode` is "REFLECT" then both `paddings[D, 0]`
+and `paddings[D, 1]` must be no greater than `tensor.dim_size(D) - 1`. If
+`mode` is "SYMMETRIC" then both `paddings[D, 0]` and `paddings[D, 1]` must be
+no greater than `tensor.dim_size(D)`.
 
 The padded size of each dimension D of the output is:
 
-`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+`paddings[D, 0] + tensor.dim_size(D) + paddings[D, 1]`
 
 For example:
 
-```prettyprint
-# 't' is [[1, 1], [2, 2]]
-# 'paddings' is [[1, 1], [2, 2]]
-# rank of 't' is 2
-pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
-                      [0, 0, 1, 1, 0, 0]
-                      [0, 0, 2, 2, 0, 0]
-                      [0, 0, 0, 0, 0, 0]]
+```python
+# 't' is [[1, 2, 3], [4, 5, 6]].
+# 'paddings' is [[1, 1,], [2, 2]].
+# rank of 't' is 2.
+pad(t, paddings, "CONSTANT") ==> [[0, 0, 0, 0, 0, 0, 0],
+                                  [0, 0, 1, 2, 3, 0, 0],
+                                  [0, 0, 4, 5, 6, 0, 0],
+                                  [0, 0, 0, 0, 0, 0, 0]]
+
+pad(t, paddings, "REFLECT") ==> [[6, 5, 4, 5, 6, 5, 4],
+                                 [3, 2, 1, 2, 3, 2, 1],
+                                 [6, 5, 4, 5, 6, 5, 4],
+                                 [3, 2, 1, 2, 3, 2, 1]]
+
+pad(t, paddings, "SYMMETRIC") ==> [[2, 1, 1, 2, 3, 3, 2],
+                                   [2, 1, 1, 2, 3, 3, 2],
+                                   [5, 4, 4, 5, 6, 6, 5],
+                                   [5, 4, 4, 5, 6, 6, 5]]
 ```
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`.
+*  <b>`tensor`</b>: A `Tensor`.
 *  <b>`paddings`</b>: A `Tensor` of type `int32`.
+*  <b>`mode`</b>: One of "CONSTANT", "REFLECT", or "SYMMETRIC".
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Tensor`. Has the same type as `tensor`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
 
 
 - - -
@@ -1277,12 +1296,127 @@ where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 
 
 *  <b>`Examples`</b>: 
+
 ```python
 # 2-D example
 a = [[1, 2], [3, 4], [5, 6]]
 mask = [True, False, True]
 boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
 ```
+
+
+- - -
+
+### `tf.one_hot(indices, depth, on_value, off_value, axis=None, name=None)` {#one_hot}
+
+Returns a one-hot tensor.
+
+The locations represented by indices in `indices` take value `on_value`,
+while all other locations take value `off_value`.
+
+If the input `indices` is rank `N`, the output will have rank `N+1`,
+The new axis is created at dimension `axis` (default: the new axis is
+appended at the end).
+
+If `indices` is a scalar the output shape will be a vector of length `depth`.
+
+If `indices` is a vector of length `features`, the output shape will be:
+```
+  features x depth if axis == -1
+  depth x features if axis == 0
+```
+
+If `indices` is a matrix (batch) with shape `[batch, features]`,
+the output shape will be:
+```
+  batch x features x depth if axis == -1
+  batch x depth x features if axis == 1
+  depth x batch x features if axis == 0
+```
+
+
+Examples
+=========
+
+Suppose that
+
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 5.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[4 x 3]`:
+
+    ```output =
+      [5.0 0.0 0.0]  // one_hot(0)
+      [0.0 0.0 5.0]  // one_hot(2)
+      [0.0 0.0 0.0]  // one_hot(-1)
+      [0.0 5.0 0.0]  // one_hot(1)
+    ```
+
+Suppose that
+
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 0.0
+  off_value = 3.0
+  axis = 0
+```
+
+Then output is `[3 x 4]`:
+
+    ```output =
+      [0.0 3.0 3.0 3.0]
+      [3.0 3.0 3.0 0.0]
+      [3.0 3.0 3.0 3.0]
+      [3.0 0.0 3.0 3.0]
+    //  ^                one_hot(0)
+    //      ^            one_hot(2)
+    //          ^        one_hot(-1)
+    //              ^    one_hot(1)
+    ```
+Suppose that
+
+```
+  indices = [[0, 2], [1, -1]]
+  depth = 3
+  on_value = 1.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[2 x 2 x 3]`:
+
+    ```output =
+      [
+        [1.0, 0.0, 0.0]  // one_hot(0)
+        [0.0, 0.0, 1.0]  // one_hot(2)
+      ][
+        [0.0, 1.0, 0.0]  // one_hot(1)
+        [0.0, 0.0, 0.0]  // one_hot(-1)
+      ]```
+
+##### Args:
+
+
+*  <b>`indices`</b>: A `Tensor` of type `int64`. A tensor of indices.
+*  <b>`depth`</b>: A `Tensor` of type `int32`.
+    A scalar defining the depth of the one hot dimension.
+*  <b>`on_value`</b>: A `Tensor`.
+    A scalar defining the value to fill in output when `indices[j] = i`.
+*  <b>`off_value`</b>: A `Tensor`. Must have the same type as `on_value`.
+    A scalar defining the value to fill in output when `indices[j] != i`.
+*  <b>`axis`</b>: An optional `int`. Defaults to `-1`.
+    The axis to fill (default: -1, a new inner-most axis).
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `on_value`. The one-hot tensor.
 
 
 
@@ -1306,8 +1440,8 @@ dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
-*  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.qint8, tf.quint8, tf.qint32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.complex128, tf.qint8, tf.quint8, tf.qint32, tf.half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

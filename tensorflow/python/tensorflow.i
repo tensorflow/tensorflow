@@ -18,6 +18,7 @@ limitations under the License.
  * includes follows dependency order */
 
 %include "tensorflow/python/util/port.i"
+%include "tensorflow/python/util/py_checkpoint_reader.i"
 
 %include "tensorflow/python/lib/core/py_func.i"
 %include "tensorflow/python/lib/core/status.i"
@@ -28,5 +29,7 @@ limitations under the License.
 %include "tensorflow/python/client/events_writer.i"
 
 %include "tensorflow/python/client/tf_session.i"
+%include "tensorflow/python/client/server_lib.i"
+%include "tensorflow/python/client/device_lib.i"
 
 %include "tensorflow/python/framework/python_op_gen.i"

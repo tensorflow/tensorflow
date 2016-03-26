@@ -194,6 +194,8 @@ def _InvGrad(op, grad):
   y = op.outputs[0]  # y = 1 / x
   # Added control dependencies to prevent -x^2 from being computed too early.
   with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
     return grad * (- math_ops.square(y))
 
 
@@ -202,6 +204,8 @@ def _SquareGrad(op, grad):
   x = op.inputs[0]
   # Added control dependencies to prevent 2*x from being computed too early.
   with ops.control_dependencies([grad.op]):
+    if x.dtype.is_complex:
+      x = math_ops.conj(x)
     return grad * (2.0 * x)
 
 
@@ -224,7 +228,10 @@ def _RsqrtGrad(op, grad):
 def _ExpGrad(op, grad):
   """Returns grad * exp(x)."""
   y = op.outputs[0]  # y = e^x
-  return grad * y
+  with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
+    return grad * y
 
 
 @ops.RegisterGradient("Log")
@@ -240,6 +247,8 @@ def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""
   y = op.outputs[0]  # y = tanh(x)
   with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
     return grad * (1 - math_ops.square(y))
 
 
@@ -280,6 +289,8 @@ def _SigmoidGrad(op, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
   y = op.outputs[0]  # y = sigmoid(x)
   with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
     return grad * (y * (1 - y))
 
 
@@ -295,6 +306,8 @@ def _SinGrad(op, grad):
   """Returns grad * cos(x)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    if x.dtype.is_complex:
+      x = math_ops.conj(x)
     return grad * math_ops.cos(x)
 
 
@@ -303,6 +316,8 @@ def _CosGrad(op, grad):
   """Returns grad * -sin(x)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    if x.dtype.is_complex:
+      x = math_ops.conj(x)
     return -grad * math_ops.sin(x)
 
 
@@ -337,18 +352,18 @@ def _SubGrad(op, grad):
 
 @ops.RegisterGradient("Mul")
 def _MulGrad(op, grad):
+  """The gradient of scalar multiplication."""
   x = op.inputs[0]
   y = op.inputs[1]
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  if x.dtype.base_dtype == dtypes.complex64:
-    return (array_ops.reshape(math_ops.reduce_sum(grad * math_ops.conj(y), rx), sx),
-            array_ops.reshape(math_ops.reduce_sum(math_ops.conj(x) * grad, ry), sy))
-  else:
-    return (array_ops.reshape(math_ops.reduce_sum(grad * y, rx), sx),
-            array_ops.reshape(math_ops.reduce_sum(x * grad, ry), sy))
+  if x.dtype.is_complex:
+    x = math_ops.conj(x)
+    y = math_ops.conj(y)
+  return (array_ops.reshape(math_ops.reduce_sum(grad * y, rx), sx),
+          array_ops.reshape(math_ops.reduce_sum(x * grad, ry), sy))
 
 
 @ops.RegisterGradient("Div")
@@ -372,9 +387,10 @@ def _PowGrad(op, grad):
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  gx = array_ops.reshape(math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx),
-                         sx)
-  gy = array_ops.reshape(math_ops.reduce_sum(grad * z * math_ops.log(x), ry), sy)
+  gx = array_ops.reshape(
+      math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx), sx)
+  gy = array_ops.reshape(
+      math_ops.reduce_sum(grad * z * math_ops.log(x), ry), sy)
   return gx, gy
 
 
@@ -572,6 +588,15 @@ def _ConjGrad(_, grad):
   return math_ops.conj(grad)
 
 
+@ops.RegisterGradient("ComplexAbs")
+def _ComplexAbsGrad(op, grad):
+  """Returns the gradient of ComplexAbs."""
+  # TODO(b/27786104): The cast to complex could be removed once arithmetic
+  # supports mixtures of complex64 and real values.
+  return (math_ops.complex(grad, array_ops.zeros_like(grad)) *
+          math_ops.sign(op.inputs[0]))
+
+
 @ops.RegisterGradient("Cast")
 def _CastGrad(op, grad):
   t = [dtypes.float32, dtypes.float64, dtypes.bfloat16]
@@ -581,6 +606,18 @@ def _CastGrad(op, grad):
     return math_ops.cast(grad, src_type)
   else:
     return None
+
+
+@ops.RegisterGradient("FFT")
+def _FFTGrad(_, grad):
+  size = math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.ifft(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("IFFT")
+def _IFFTGrad(_, grad):
+  rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.fft(grad) * math_ops.complex(rsize, 0.)
 
 
 @ops.RegisterGradient("FFT2D")
@@ -593,6 +630,60 @@ def _FFT2DGrad(_, grad):
 def _IFFT2DGrad(_, grad):
   rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
   return math_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("FFT3D")
+def _FFT3DGrad(_, grad):
+  size = math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.ifft3d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("IFFT3D")
+def _IFFT3DGrad(_, grad):
+  rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.fft3d(grad) * math_ops.complex(rsize, 0.)
+
+
+def _FFTSizeForGrad(grad, rank):
+  return math_ops.reduce_prod(array_ops.slice(
+      array_ops.reverse(
+          array_ops.shape(grad), (True,)), (0,), (rank,)))
+
+
+@ops.RegisterGradient("BatchFFT")
+def _BatchFFTGrad(_, grad):
+  size = math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
+  return math_ops.batch_ifft(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("BatchIFFT")
+def _BatchIFFTGrad(_, grad):
+  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
+  return math_ops.batch_fft(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("BatchFFT2D")
+def _BatchFFT2DGrad(_, grad):
+  size = math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
+  return math_ops.batch_ifft2d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("BatchIFFT2D")
+def _BatchIFFT2DGrad(_, grad):
+  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
+  return math_ops.batch_fft2d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("BatchFFT3D")
+def _BatchFFT3DGrad(_, grad):
+  size = math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
+  return math_ops.batch_ifft3d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("BatchIFFT3D")
+def _BatchIFFT3DGrad(_, grad):
+  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
+  return math_ops.batch_fft3d(grad) * math_ops.complex(rsize, 0.)
 
 
 @ops.RegisterGradient("Cross")

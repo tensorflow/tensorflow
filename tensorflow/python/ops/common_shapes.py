@@ -96,11 +96,37 @@ def bias_add_shape(op):
   bias_shape = op.inputs[1].get_shape().with_rank(1)
   if input_shape.ndims is not None:
     # Output has the same shape as input, and matches the length of
-    # bias in its last dimension.
-    output_shape = input_shape[0:-1].concatenate(
-        input_shape[-1].merge_with(bias_shape[0]))
+    # bias in its bias dimension.
+    try:
+      data_format = op.get_attr("data_format")
+    except ValueError:
+      data_format = None
+    if data_format == "NCHW":
+      # Merge the length of bias_shape into the third-to-last dimension.
+      output_shape = input_shape[0:-3].concatenate(
+          input_shape[-3].merge_with(bias_shape[0])).concatenate(
+              input_shape[-2:])
+    else:
+      output_shape = input_shape[0:-1].concatenate(
+          input_shape[-1].merge_with(bias_shape[0]))
   else:
     output_shape = tensor_shape.unknown_shape()
+  return [output_shape]
+
+
+def bias_add_grad_shape(op):
+  """Shape function for a BiasAddGrad op."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  try:
+    data_format = op.get_attr("data_format")
+  except ValueError:
+    data_format = None
+
+  if data_format == "NCHW":
+    output_shape = input_shape[-3]
+  else:
+    output_shape = input_shape[-1]
+
   return [output_shape]
 
 
@@ -225,6 +251,61 @@ def conv2d_shape(op):
   return [tensor_shape.TensorShape(output_shape)]
 
 
+def depthwise_conv2d_native_shape(op):
+  """Shape function for a DepthwiseConv2D op.
+
+  This op has two inputs:
+
+  * input, a 4D tensor with shape = [batch_size, rows, cols, depth_in]
+  * filter, a 4D tensor with shape =  [filter_rows, filter_cols,
+    depth_in, depthwise_multiplier]
+
+  The output is a 4D tensor with shape = [batch_size, out_rows,
+  out_cols, depth_in*depthwise_multiplier], where out_rows and out_cols depend
+  on the value of the op's "padding" and "strides" attrs.
+
+  Args:
+    op: A DepthwiseConv2dNative Operation.
+
+  Returns:
+    A list containing the Shape of the DepthwiseConv2DNative output.
+
+  Raises:
+    ValueError: If the shapes of the input or filter are incompatible.
+  """
+  input_shape = op.inputs[0].get_shape().with_rank(4)
+  filter_shape = op.inputs[1].get_shape().with_rank(4)
+
+  batch_size = input_shape[0]
+  in_rows = input_shape[1]
+  in_cols = input_shape[2]
+
+  filter_rows = filter_shape[0]
+  filter_cols = filter_shape[1]
+  depth_out = filter_shape[3] * filter_shape[2]
+  # Check that the input depths are compatible.
+  input_shape[3].assert_is_compatible_with(filter_shape[2])
+
+  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
+  if stride_b != 1 or stride_d != 1:
+    raise ValueError("Current implementation does not yet support "
+                     "strides in the batch and depth dimensions.")
+  if stride_r != stride_c:
+    # TODO(shlens): Add support for this.
+    raise ValueError("Current implementation only supports equal length "
+                     "strides in the row and column dimensions.")
+
+  # TODO(mrry,shlens): Raise an error if the stride would cause
+  # information in the input to be ignored. This will require a change
+  # in the kernel implementation.
+  stride = stride_r
+  padding = op.get_attr("padding")
+  out_rows, out_cols = get2d_conv_output_size(
+      in_rows, in_cols, filter_rows, filter_cols, stride, stride, padding)
+
+  return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth_out])]
+
+
 def separable_conv2d_shape(op):
   """Shape function for a SeparableConv2D op.
 
@@ -309,8 +390,22 @@ def avg_pool_shape(op):
       the values of the attrs.
   """
   input_shape = op.inputs[0].get_shape().with_rank(4)
-  ksize_b, ksize_r, ksize_c, ksize_d = op.get_attr("ksize")
-  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
+  try:
+    data_format = op.get_attr("data_format")
+  except ValueError:
+    data_format = None
+
+  if data_format == "NCHW":
+    # Convert input shape to the dfeault NHWC for inference.
+    input_shape = [input_shape[0], input_shape[2], input_shape[3],
+                   input_shape[1]]
+
+  if data_format == "NCHW":
+    ksize_b, ksize_d, ksize_r, ksize_c = op.get_attr("ksize")
+    stride_b, stride_d, stride_r, stride_c = op.get_attr("strides")
+  else:
+    ksize_b, ksize_r, ksize_c, ksize_d = op.get_attr("ksize")
+    stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
 
   batch_size = input_shape[0]
   in_rows = input_shape[1]
@@ -332,7 +427,12 @@ def avg_pool_shape(op):
   out_rows, out_cols = get2d_conv_output_size(
       in_rows, in_cols, ksize_r, ksize_c, stride_r, stride_c, padding)
 
-  return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth])]
+  output_shape = [batch_size, out_rows, out_cols, depth]
+  if data_format == "NCHW":
+    # Convert output shape back to NCHW.
+    output_shape = [output_shape[0], output_shape[3], output_shape[1],
+                    output_shape[2]]
+  return [tensor_shape.TensorShape(output_shape)]
 
 
 def max_pool_shape(op):
@@ -357,8 +457,22 @@ def max_pool_shape(op):
       the values of the attrs.
   """
   input_shape = op.inputs[0].get_shape().with_rank(4)
-  ksize_b, ksize_r, ksize_c, ksize_d = op.get_attr("ksize")
-  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
+  try:
+    data_format = op.get_attr("data_format")
+  except ValueError:
+    data_format = None
+
+  if data_format == "NCHW":
+    # Convert input shape to the default NHWC for inference.
+    input_shape = [input_shape[0], input_shape[2], input_shape[3],
+                   input_shape[1]]
+
+  if data_format == "NCHW":
+    ksize_b, ksize_d, ksize_r, ksize_c = op.get_attr("ksize")
+    stride_b, stride_d, stride_r, stride_c = op.get_attr("strides")
+  else:
+    ksize_b, ksize_r, ksize_c, ksize_d = op.get_attr("ksize")
+    stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
 
   batch_size = input_shape[0]
   in_rows = input_shape[1]
@@ -383,7 +497,7 @@ def max_pool_shape(op):
     padding = op.get_attr("padding")
     out_rows, out_cols = get2d_conv_output_size(
         in_rows, in_cols, ksize_r, ksize_c, stride_r, stride_c, padding)
-    return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth])]
+    output_shape = [batch_size, out_rows, out_cols, depth]
   else:
     if depth % ksize_d > 0:
       raise ValueError("Depthwise max pooling requires the depth window "
@@ -391,8 +505,13 @@ def max_pool_shape(op):
     if stride_d != ksize_d:
       raise ValueError("Depthwise max pooling requires the depth window "
                        "to equal the depth stride.")
-    return [tensor_shape.TensorShape([batch_size, in_rows, in_cols, depth //
-                                      ksize_d])]
+    output_shape = [batch_size, in_rows, in_cols, depth // ksize_d]
+
+  if data_format == "NCHW":
+    # Convert output shape back to NCHW.
+    output_shape = [output_shape[0], output_shape[3], output_shape[1],
+                    output_shape[2]]
+  return [tensor_shape.TensorShape(output_shape)]
 
 
 def no_outputs(unused_op):

@@ -13,118 +13,168 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// See docs in ../ops/nn_ops.cc.
+
 #ifndef TENSORFLOW_KERNELS_RELU_OP_H_
 #define TENSORFLOW_KERNELS_RELU_OP_H_
-// Functor definition for ReluOp and ReluGradOp, must be compilable by nvcc.
+
+#define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/numeric_op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/relu_op_functor.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
-namespace functor {
 
-// Functor used by ReluOp to do the computations.
 template <typename Device, typename T>
-struct Relu {
-  // Computes Relu activation.
-  //
-  // features: any shape.
-  // activations: same shape as "features".
-  void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
-                  typename TTypes<T>::Tensor activations) {
-    activations.device(d) = features.cwiseMax(static_cast<T>(0));
+class ReluOp : public UnaryElementWiseOp<T, ReluOp<Device, T>> {
+ public:
+  using UnaryElementWiseOp<T, ReluOp<Device, T>>::UnaryElementWiseOp;
+
+  void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
+    functor::Relu<Device, T> functor;
+    functor(context->eigen_device<Device>(), input.flat<T>(),
+            output->flat<T>());
   }
 };
 
-// Functor used by ReluGradOp to do the computations.
-template <typename Device, typename T>
-struct ReluGrad {
-  // Computes ReluGrad backprops.
-  //
-  // gradients: gradients backpropagated to the Relu op.
-  // features: either the inputs that were passed to the Relu or, or its
-  //           outputs (using either one yields the same result here).
-  // backprops: gradients to backpropagate to the Relu inputs.
-  void operator()(const Device& d, typename TTypes<T>::ConstTensor gradients,
-                  typename TTypes<T>::ConstTensor features,
-                  typename TTypes<T>::Tensor backprops) {
-    // NOTE: When the activation is exactly zero, we do not propagate the
-    // associated gradient value. This allows the output of the Relu to be used,
-    // as well as its input.
-    backprops.device(d) =
-        gradients * (features > features.constant(static_cast<T>(0)));
+// Out of line check to save code space (we have this code once, rather
+// than once for every NDIMS * NumTypes * Num_different_relu_variants
+// functions.
+struct ReluHelpers {
+  static void ValidateSameSizeHelper(OpKernelContext* context, const Tensor& g,
+                                     const Tensor& a) {
+    OP_REQUIRES(context, a.IsSameSize(g),
+                errors::InvalidArgument("g and a must be the same size"));
+  }
+  static bool ValidateSameSize(OpKernelContext* context, const Tensor& g,
+                               const Tensor& a) {
+    ValidateSameSizeHelper(context, g, a);
+    return context->status().ok();
   }
 };
 
-// Functor used by Relu6Op to do the computations.
 template <typename Device, typename T>
-struct Relu6 {
-  // Computes Relu6 activation.
-  //
-  // features: any shape.
-  // activations: same shape as "features".
-  void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
-                  typename TTypes<T>::Tensor activations) {
-    activations.device(d) =
-        features.cwiseMax(static_cast<T>(0)).cwiseMin(static_cast<T>(6));
+class ReluGradOp : public BinaryElementWiseOp<T, ReluGradOp<Device, T>> {
+ public:
+  using BinaryElementWiseOp<T, ReluGradOp<Device, T>>::BinaryElementWiseOp;
+
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
+  // INPUTS:
+  //   g (gradients): backpropagated gradients
+  //   a (inputs): either the inputs that were passed to ReluOp(), or its
+  //               outputs (using either one yields the same result here).
+  // OUTPUT:
+  //   gradients to backprop
+  template <int NDIMS>
+  void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
+               Tensor* output) {
+    OperateNoTemplate(context, g, a, output);
   }
 };
 
-// Functor used by ReluGradOp to do the computations.
 template <typename Device, typename T>
-struct Relu6Grad {
-  // Computes Relu6Grad backprops.
-  //
-  // gradients: gradients backpropagated to the Relu6 op.
-  // features: inputs that where passed to the Relu6 op.
-  // backprops: gradients to backpropagate to the Relu6 inputs.
-  void operator()(const Device& d, typename TTypes<T>::ConstTensor gradients,
-                  typename TTypes<T>::ConstTensor features,
-                  typename TTypes<T>::Tensor backprops) {
-    // NOTE: When the activation is exactly zero or six, we
-    // arbitrarily choose to not propagate the associated gradient
-    // value.
-    backprops.device(d) = gradients *
-                          (features > features.constant(static_cast<T>(0))) *
-                          (features < features.constant(static_cast<T>(6)));
+void ReluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                              const Tensor& g, const Tensor& a,
+                                              Tensor* output) {
+  if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
+  functor::ReluGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
+
+template <typename Device, typename T>
+class Relu6Op : public UnaryElementWiseOp<T, Relu6Op<Device, T>> {
+ public:
+  using UnaryElementWiseOp<T, Relu6Op<Device, T>>::UnaryElementWiseOp;
+
+  void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
+    functor::Relu6<Device, T> functor;
+    functor(context->eigen_device<Device>(), input.flat<T>(),
+            output->flat<T>());
   }
 };
 
-// Functor used by EluOp to do the computations.
 template <typename Device, typename T>
-struct Elu {
-  // Computes Relu activation.
-  //
-  // features: any shape.
-  // activations: same shape as "features".
-  void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
-                  typename TTypes<T>::Tensor activations) {
-    // features.constant(?)
-    activations.device(d) =
-        (features < static_cast<T>(0))
-            .select(features.exp() - features.constant(static_cast<T>(1)),
-                    features);
+class Relu6GradOp : public BinaryElementWiseOp<T, Relu6GradOp<Device, T>> {
+ public:
+  using BinaryElementWiseOp<T, Relu6GradOp<Device, T>>::BinaryElementWiseOp;
+
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
+  // INPUTS:
+  //   g (gradients): backpropagated gradients
+  //   a (inputs): inputs that were passed to Relu6Op()
+  // OUTPUT:
+  //   gradients to backprop
+  template <int NDIMS>
+  void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
+               Tensor* output) {
+    OperateNoTemplate(context, g, a, output);
   }
 };
 
-// Functor used by EluGradOp to do the computations.
 template <typename Device, typename T>
-struct EluGrad {
-  // Computes EluGrad backprops.
-  //
-  // gradients: gradients backpropagated to the Elu op.
-  // activations: outputs of the Elu op.
-  // backprops: gradients to backpropagate to the Elu inputs.
-  void operator()(const Device& d, typename TTypes<T>::ConstTensor gradients,
-                  typename TTypes<T>::ConstTensor activations,
-                  typename TTypes<T>::Tensor backprops) {
-    backprops.device(d) =
-        (activations < static_cast<T>(0))
-            .select((activations + static_cast<T>(1)) * gradients, gradients);
+void Relu6GradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                               const Tensor& g, const Tensor& a,
+                                               Tensor* output) {
+  if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
+  functor::Relu6Grad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
+
+template <typename Device, typename T>
+class EluOp : public UnaryElementWiseOp<T, EluOp<Device, T>> {
+ public:
+  using UnaryElementWiseOp<T, EluOp<Device, T>>::UnaryElementWiseOp;
+
+  void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
+    functor::Elu<Device, T> functor;
+    functor(context->eigen_device<Device>(), input.flat<T>(),
+            output->flat<T>());
   }
 };
 
-}  // namespace functor
+template <typename Device, typename T>
+class EluGradOp : public BinaryElementWiseOp<T, EluGradOp<Device, T>> {
+ public:
+  using BinaryElementWiseOp<T, EluGradOp<Device, T>>::BinaryElementWiseOp;
+
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
+  // INPUTS:
+  //   g (gradients): backpropagated gradients
+  //   a (outputs): outputs of the EluOp()
+  // OUTPUT:
+  //   gradients to backprop
+  template <int NDIMS>
+  void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
+               Tensor* output) {
+    OperateNoTemplate(context, g, a, output);
+  }
+};
+
+template <typename Device, typename T>
+void EluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                             const Tensor& g, const Tensor& a,
+                                             Tensor* output) {
+  if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
+  functor::EluGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
+
 }  // namespace tensorflow
+
+#undef EIGEN_USE_THREADS
 
 #endif  // TENSORFLOW_KERNELS_RELU_OP_H_

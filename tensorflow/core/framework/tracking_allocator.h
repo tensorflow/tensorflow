@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_TRACKING_ALLOCATOR_H_
 #define TENSORFLOW_FRAMEWORK_TRACKING_ALLOCATOR_H_
 
+#include <unordered_map>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -43,7 +44,7 @@ namespace tensorflow {
 // received and the high watermark has been retrieved.
 class TrackingAllocator : public Allocator {
  public:
-  explicit TrackingAllocator(Allocator* allocator);
+  explicit TrackingAllocator(Allocator* allocator, bool track_ids);
   string Name() override { return allocator_->Name(); }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return AllocateRaw(alignment, num_bytes, AllocationAttributes());
@@ -95,6 +96,17 @@ class TrackingAllocator : public Allocator {
   // otherwise the total number of bytes that have been requested by
   // this allocator.
   size_t total_bytes_ GUARDED_BY(mu_);
+
+  // Track allocations locally if requested in the constructor and the
+  // underlying allocator doesn't already do it for us.
+  const bool track_sizes_locally_;
+  struct Chunk {
+    size_t requested_size;
+    size_t allocated_size;
+    int64 allocation_id;
+  };
+  std::unordered_map<void*, Chunk> in_use_ GUARDED_BY(mu_);
+  int64 next_allocation_id_ GUARDED_BY(mu_);
 };
 
 }  // end namespace tensorflow

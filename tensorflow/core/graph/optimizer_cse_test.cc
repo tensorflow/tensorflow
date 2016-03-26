@@ -45,7 +45,7 @@ static void InitGraph(const string& s, Graph* graph) {
 
 class OptimizerCSETest : public ::testing::Test {
  public:
-  OptimizerCSETest() : graph_(OpRegistry::Global()) { RequireDefaultOps(); }
+  OptimizerCSETest() : graph_(OpRegistry::Global()) {}
 
   void InitGraph(const string& s) {
     ::tensorflow::InitGraph(s, &graph_);

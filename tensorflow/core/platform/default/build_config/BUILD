@@ -60,12 +60,6 @@ cc_library(
     deps = [],
 )
 
-cc_library(
-    name = "cuda_runtime_extra",
-    linkstatic = 1,
-    deps = [],
-)
-
 filegroup(
     name = "android_proto_lib_portable_proto",
     srcs = [],

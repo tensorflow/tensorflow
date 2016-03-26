@@ -63,7 +63,7 @@ grads_and_vars = opt.compute_gradients(loss, <list of variables>)
 
 # grads_and_vars is a list of tuples (gradient, variable).  Do whatever you
 # need to the 'gradient' part, for example cap them, etc.
-capped_grads_and_vars = [(MyCapper(gv[0]), gv[1])) for gv in grads_and_vars]
+capped_grads_and_vars = [(MyCapper(gv[0]), gv[1]) for gv in grads_and_vars]
 
 # Ask the optimizer to apply the capped gradients.
 opt.apply_gradients(capped_grads_and_vars)
@@ -298,6 +298,34 @@ Construct a new gradient descent optimizer.
 
 - - -
 
+### `class tf.train.AdadeltaOptimizer` {#AdadeltaOptimizer}
+
+Optimizer that implements the Adadelta algorithm. 
+
+See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
+([pdf](http://arxiv.org/pdf/1212.570.pdf))
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.__init__(learning_rate=0.001, rho=0.95, epsilon=1e-08, use_locking=False, name='Adadelta')` {#AdadeltaOptimizer.__init__}
+
+Construct a new Adadelta optimizer.
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value. The learning rate.
+*  <b>`rho`</b>: A `Tensor` or a floating point value. The decay rate.
+*  <b>`epsilon`</b>: A `Tensor` or a floating point value.  A constant epsilon used
+           to better conditioning the grad update.
+*  <b>`use_locking`</b>: If `True` use locks for update operations.
+*  <b>`name`</b>: Optional name prefix for the operations created when applying
+    gradients.  Defaults to "Adadelta".
+
+
+
+- - -
+
 ### `class tf.train.AdagradOptimizer` {#AdagradOptimizer}
 
 Optimizer that implements the Adagrad algorithm.
@@ -410,35 +438,14 @@ current good choice is 1.0 or 0.1.
 
 Optimizer that implements the FTRL algorithm.
 
+See this [paper](
+https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
+
 - - -
 
 #### `tf.train.FtrlOptimizer.__init__(learning_rate, learning_rate_power=-0.5, initial_accumulator_value=0.1, l1_regularization_strength=0.0, l2_regularization_strength=0.0, use_locking=False, name='Ftrl')` {#FtrlOptimizer.__init__}
 
 Construct a new FTRL optimizer.
-
-The Ftrl-proximal algorithm, abbreviated for Follow-the-regularized-leader,
-is described in the paper [Ad Click Prediction: a View from the Trenches](
-https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
-
-It can give a good performance vs. sparsity tradeoff.
-
-Ftrl-proximal uses its own global base learning rate and can behave like
-Adagrad with `learning_rate_power=-0.5`, or like gradient descent with
-`learning_rate_power=0.0`.
-
-The effective learning rate is adjusted per parameter, relative to this
-base learning rate as:
-
-```
-effective_learning_rate_i = (learning_rate /
-    pow(k + summed_squared_gradients_for_i, learning_rate_power));
-```
-
-where k is the small constant `initial_accumulator_value`.
-
-Note that the real regularization coefficient of `|w|^2` for objective
-function is `1 / lambda_2` if specifying `l2 = lambda_2` as argument when
-using this function.
 
 ##### Args:
 
@@ -815,9 +822,11 @@ global_step = tf.Variable(0, trainable=False)
 starter_learning_rate = 0.1
 learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
                                            100000, 0.96, staircase=True)
-optimizer = tf.GradientDescentOptimizer(learning_rate)
 # Passing global_step to minimize() will increment it at each step.
-optimizer.minimize(...my loss..., global_step=global_step)
+learning_step = (
+    tf.GradientDescentOptimizer(learning_rate)
+    .minimize(...my loss..., global_step=global_step)
+)
 ```
 
 ##### Args:
@@ -1233,6 +1242,10 @@ Request that the threads stop.
 
 After this is called, calls to `should_stop()` will return `True`.
 
+Note: If an exception is being passed in, in must be in the context of
+handling the exception (i.e. `try: ... except Exception as ex: ...`) and not
+a newly created one.
+
 ##### Args:
 
 
@@ -1442,7 +1455,7 @@ depending on whether or not a `Coordinator` was passed to
 
 #### `tf.train.QueueRunner.from_proto(queue_runner_def)` {#QueueRunner.from_proto}
 
-
+Returns a `QueueRunner` object created from `queue_runner_def`.
 
 
 - - -
@@ -1650,7 +1663,7 @@ If `value` is empty, the result is `nan`.
 This is useful in summaries to measure and report sparsity.  For example,
 
     z = tf.Relu(...)
-    summ = tf.scalar_summary('sparsity', tf.zero_fraction(z))
+    summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
 
 ##### Args:
 
@@ -1733,7 +1746,7 @@ training.
 
 - - -
 
-#### `tf.train.SummaryWriter.__init__(logdir, graph_def=None, max_queue=10, flush_secs=120)` {#SummaryWriter.__init__}
+#### `tf.train.SummaryWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#SummaryWriter.__init__}
 
 Creates a `SummaryWriter` and an event file.
 
@@ -1742,7 +1755,7 @@ This event file will contain `Event` protocol buffers constructed when you
 call one of the following functions: `add_summary()`, `add_session_log()`,
 `add_event()`, or `add_graph()`.
 
-If you pass a `graph_def` protocol buffer to the constructor it is added to
+If you pass a `Graph` to the constructor it is added to
 the event file. (This is equivalent to calling `add_graph()` later).
 
 TensorBoard will pick the graph from the file and display it graphically so
@@ -1753,8 +1766,8 @@ the graph from the session in which you launched it:
 ...create a graph...
 # Launch the graph in a session.
 sess = tf.Session()
-# Create a summary writer, add the 'graph_def' to the event file.
-writer = tf.train.SummaryWriter(<some-directory>, sess.graph_def)
+# Create a summary writer, add the 'graph' to the event file.
+writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
 ```
 
 The other arguments to the constructor control the asynchronous writes to
@@ -1769,10 +1782,11 @@ the event file:
 
 
 *  <b>`logdir`</b>: A string. Directory where event file will be written.
-*  <b>`graph_def`</b>: A `GraphDef` protocol buffer.
+*  <b>`graph`</b>: A `Graph` object, such as `sess.graph`.
 *  <b>`max_queue`</b>: Integer. Size of the queue for pending events and summaries.
 *  <b>`flush_secs`</b>: Number. How often, in seconds, to flush the
     pending events and summaries to disk.
+*  <b>`graph_def`</b>: DEPRECATED: Use the `graph` argument instead.
 
 
 
@@ -1786,7 +1800,7 @@ This method wraps the provided summary in an `Event` protocol buffer
 and adds it to the event file.
 
 You can pass the result of evaluating any summary op, using
-[`Session.run()`](client.md#Session.run] or
+[`Session.run()`](client.md#Session.run) or
 [`Tensor.eval()`](framework.md#Tensor.eval), to this
 function. Alternatively, you can pass a `tf.Summary` protocol
 buffer that you populate with your own data. The latter is
@@ -1831,9 +1845,9 @@ Adds an event to the event file.
 
 - - -
 
-#### `tf.train.SummaryWriter.add_graph(graph_def, global_step=None)` {#SummaryWriter.add_graph}
+#### `tf.train.SummaryWriter.add_graph(graph, global_step=None, graph_def=None)` {#SummaryWriter.add_graph}
 
-Adds a `GraphDef` protocol buffer to the event file.
+Adds a `Graph` to the event file.
 
 The graph described by the protocol buffer will be displayed by
 TensorBoard. Most users pass a graph in the constructor instead.
@@ -1841,9 +1855,35 @@ TensorBoard. Most users pass a graph in the constructor instead.
 ##### Args:
 
 
-*  <b>`graph_def`</b>: A `GraphDef` protocol buffer.
+*  <b>`graph`</b>: A `Graph` object, such as `sess.graph`.
 *  <b>`global_step`</b>: Number. Optional global step counter to record with the
     graph.
+*  <b>`graph_def`</b>: DEPRECATED. Use the `graph` parameter instead.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both graph and graph_def are passed to the method.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.add_run_metadata(run_metadata, tag, global_step=None)` {#SummaryWriter.add_run_metadata}
+
+Adds a metadata information for a single session.run() call.
+
+##### Args:
+
+
+*  <b>`run_metadata`</b>: A `RunMetadata` protobuf object.
+*  <b>`tag`</b>: The tag name for this metadata.
+*  <b>`global_step`</b>: Number. Optional global step counter to record with the
+    StepStats.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the provided tag was already used for this type of event.
 
 
 
@@ -1936,7 +1976,7 @@ global_step: 10
 ##### Args:
 
 
-*  <b>`sess`</b>: A brain `Session` object.
+*  <b>`sess`</b>: A TensorFlow `Session` object.
 *  <b>`global_step_tensor`</b>: `Tensor` or the `name` of the operation that contains
     the global step.
 
@@ -2180,6 +2220,13 @@ same thread object.
 Called when the thread starts.
 
 
+- - -
+
+#### `tf.train.LooperThread.stop_loop()` {#LooperThread.stop_loop}
+
+Called when the thread stops.
+
+
 
 - - -
 
@@ -2237,9 +2284,12 @@ Generates a checkpoint state proto.
 
 Recreates a Graph saved in a `MetaGraphDef` proto.
 
-This function reads from a file containing a `MetaGraphDef` proto,
-adds all the nodes from the graph_def proto to the current graph,
-recreates all the collections, and returns a saver from saver_def.
+This function takes a `MetaGraphDef` protocol buffer as input. If
+the argument is a file containing a `MetaGraphDef` protocol buffer ,
+it constructs a protocol buffer from the file content. The function
+then adds all the nodes from the `graph_def` field to the
+current graph, recreates all the collections, and returns a saver
+constructed from the `saver_def` field.
 
 In combination with `export_meta_graph()`, this function can be used to
 
@@ -2250,6 +2300,38 @@ In combination with `export_meta_graph()`, this function can be used to
 
 * Run inference from a saved graph and checkpoints.
 
+```Python
+...
+# Create a saver.
+saver = tf.train.Saver(...variables...)
+# Remember the training_op we want to run by adding it to a collection.
+tf.add_to_collection('train_op', train_op)
+sess = tf.Session()
+for step in xrange(1000000):
+    sess.run(train_op)
+    if step % 1000 == 0:
+        # Saves checkpoint, which by default also exports a meta_graph
+        # named 'my-model-global_step.meta'.
+        saver.save(sess, 'my-model', global_step=step)
+```
+
+Later we can continue training from this saved `meta_graph` without building
+the model from scratch.
+
+```Python
+with tf.Session() as sess:
+  new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
+  new_saver.restore(sess, 'my-save-dir/my-model-10000')
+  # tf.get_collection() returns a list. In this example we only want the
+  # first one.
+  train_op = tf.get_collection('train_op')[0]
+  for step in xrange(1000000):
+    sess.run(train_op)
+```
+
+NOTE: Restarting training from saved `meta_graph` only works if the
+device assignments have not changed.
+
 ##### Args:
 
 
@@ -2258,6 +2340,9 @@ In combination with `export_meta_graph()`, this function can be used to
 
 ##### Returns:
 
-  A saver constructed rom `saver_def` in `MetaGraphDef`.
+  A saver constructed from `saver_def` in `MetaGraphDef` or None.
+
+  A None value is returned if no variables exist in the `MetaGraphDef`
+  (i.e., there are no variables to restore).
 
 

@@ -75,7 +75,7 @@ class Optimizer(object):
 
   # grads_and_vars is a list of tuples (gradient, variable).  Do whatever you
   # need to the 'gradient' part, for example cap them, etc.
-  capped_grads_and_vars = [(MyCapper(gv[0]), gv[1])) for gv in grads_and_vars]
+  capped_grads_and_vars = [(MyCapper(gv[0]), gv[1]) for gv in grads_and_vars]
 
   # Ask the optimizer to apply the capped gradients.
   opt.apply_gradients(capped_grads_and_vars)
@@ -290,9 +290,11 @@ class Optimizer(object):
     with ops.op_scope([], name, self._name) as name:
       self._prepare()
       for grad, var in grads_and_vars:
-        if not grad:
+        if grad is None:
           continue
-        with ops.name_scope("update_" + var.op.name), ops.device(var.device):
+        # We colocate all ops created in _apply_dense or _apply_sparse
+        # on the same device as the variable.
+        with ops.name_scope("update_" + var.op.name), ops.colocate_with(var):
           if isinstance(grad, ops.Tensor):
             update_ops.append(self._apply_dense(grad, var))
           else:
@@ -301,7 +303,7 @@ class Optimizer(object):
         return self._finish(update_ops, name)
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
-          with ops.device(global_step.device):
+          with ops.colocate_with(global_step):
             return state_ops.assign_add(global_step, 1, name=name).op
 
   def get_slot(self, var, name):

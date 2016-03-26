@@ -37,7 +37,6 @@ namespace {
 class DynamicStitchOpTest : public OpsTestBase {
  protected:
   void MakeOp(int n, DataType dt) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "DynamicStitch")
                      .Input(FakeInput(n, DT_INT32))
                      .Input(FakeInput(n, dt))

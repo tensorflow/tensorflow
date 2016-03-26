@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Provides an interface for working with multiple event files."""
 
 from __future__ import absolute_import
@@ -27,6 +26,7 @@ import six
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary.impl import gcs
 
 
 class EventMultiplexer(object):
@@ -77,8 +77,10 @@ class EventMultiplexer(object):
   @@Images
   """
 
-  def __init__(self, run_path_map=None,
-               size_guidance=event_accumulator.DEFAULT_SIZE_GUIDANCE):
+  def __init__(self,
+               run_path_map=None,
+               size_guidance=event_accumulator.DEFAULT_SIZE_GUIDANCE,
+               purge_orphaned_data=True):
     """Constructor for the `EventMultiplexer`.
 
     Args:
@@ -88,12 +90,15 @@ class EventMultiplexer(object):
       size_guidance: A dictionary mapping from `tagType` to the number of items
         to store for each tag of that type. See
         `event_ccumulator.EventAccumulator` for details.
+      purge_orphaned_data: Whether to discard any events that were "orphaned" by
+        a TensorFlow restart.
     """
     self._accumulators_mutex = threading.Lock()
     self._accumulators = {}
     self._paths = {}
     self._reload_called = False
     self._size_guidance = size_guidance
+    self.purge_orphaned_data = purge_orphaned_data
     if run_path_map is not None:
       for (run, path) in six.iteritems(run_path_map):
         self.AddRun(path, run)
@@ -129,8 +134,10 @@ class EventMultiplexer(object):
           logging.warning('Conflict for name %s: old path %s, new path %s',
                           name, self._paths[name], path)
         logging.info('Constructing EventAccumulator for %s', path)
-        accumulator = event_accumulator.EventAccumulator(path,
-                                                         self._size_guidance)
+        accumulator = event_accumulator.EventAccumulator(
+            path,
+            size_guidance=self._size_guidance,
+            purge_orphaned_data=self.purge_orphaned_data)
         self._accumulators[name] = accumulator
         self._paths[name] = path
     if accumulator:
@@ -165,18 +172,30 @@ class EventMultiplexer(object):
     Returns:
       The `EventMultiplexer`.
     """
-    if not gfile.Exists(path):
-      return  # Maybe it hasn't been created yet, fail silently to retry later
-    if not gfile.IsDirectory(path):
-      raise ValueError('AddRunsFromDirectory: path exists and is not a '
-                       'directory, %s'  % path)
+    subdirs = []
+    if gcs.IsGCSPath(path):
+      subdirs = [
+          subdir
+          for (subdir, files) in gcs.ListRecursively(path)
+          if list(filter(event_accumulator.IsTensorFlowEventsFile, files))
+      ]
+    else:
+      if not gfile.Exists(path):
+        return  # Maybe it hasn't been created yet, fail silently to retry later
+      if not gfile.IsDirectory(path):
+        raise ValueError('AddRunsFromDirectory: path exists and is not a '
+                         'directory, %s' % path)
+      subdirs = [
+          subdir
+          for (subdir, _, files) in gfile.Walk(path)
+          if list(filter(event_accumulator.IsTensorFlowEventsFile, files))
+      ]
 
-    for (subdir, _, files) in gfile.Walk(path):
-      if list(filter(event_accumulator.IsTensorFlowEventsFile, files)):
-        logging.info('Adding events from directory %s', subdir)
-        rpath = os.path.relpath(subdir, path)
-        subname = os.path.join(name, rpath) if name else rpath
-        self.AddRun(subdir, name=subname)
+    for subdir in subdirs:
+      logging.info('Adding events from directory %s', subdir)
+      rpath = os.path.relpath(subdir, path)
+      subname = os.path.join(name, rpath) if name else rpath
+      self.AddRun(subdir, name=subname)
 
     return self
 
@@ -209,7 +228,7 @@ class EventMultiplexer(object):
     return accumulator.Scalars(tag)
 
   def Graph(self, run):
-    """Retrieve the graphs associated with the provided run.
+    """Retrieve the graph associated with the provided run.
 
     Args:
       run: A string name of a run to load the graph for.
@@ -224,6 +243,24 @@ class EventMultiplexer(object):
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Graph()
+
+  def RunMetadata(self, run, tag):
+    """Get the session.run() metadata associated with a TensorFlow run and tag.
+
+    Args:
+      run: A string name of a TensorFlow run.
+      tag: A string name of the tag associated with a particular session.run().
+
+    Raises:
+      KeyError: If the run is not found, or the tag is not available for the
+        given run.
+      RuntimeError: If the run's EventAccumulator has not been activated.
+
+    Returns:
+      The metadata in the form of `RunMetadata` protobuf data structure.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.RunMetadata(tag)
 
   def Histograms(self, run, tag):
     """Retrieve the histogram events associated with a run and tag.
@@ -294,10 +331,7 @@ class EventMultiplexer(object):
     with self._accumulators_mutex:
       # To avoid nested locks, we construct a copy of the run-accumulator map
       items = list(six.iteritems(self._accumulators))
-    return {
-        run_name: accumulator.Tags()
-        for run_name, accumulator in items
-    }
+    return {run_name: accumulator.Tags() for run_name, accumulator in items}
 
   def _GetAccumulator(self, run):
     with self._accumulators_mutex:

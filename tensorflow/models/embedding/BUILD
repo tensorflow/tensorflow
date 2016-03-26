@@ -82,6 +82,7 @@ cc_library(
     srcs = [
         "word2vec_ops.cc",
     ],
+    linkstatic = 1,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:framework",
@@ -94,8 +95,10 @@ cc_library(
     srcs = [
         "word2vec_kernels.cc",
     ],
+    linkstatic = 1,
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":word2vec_ops",
         "//tensorflow/core",
     ],
     alwayslink = 1,

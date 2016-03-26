@@ -53,29 +53,34 @@ Install TensorFlow:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only:
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.0-py2-none-linux_x86_64.whl
+$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.1-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.0-py2-none-linux_x86_64.whl
+$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.1-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
 $ sudo easy_install --upgrade six
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.0-py2-none-any.whl
+$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.1-cp27-none-any.whl
 ```
 
 For python3:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only:
-$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.0-py3-none-linux_x86_64.whl
+$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.0-py3-none-linux_x86_64.whl
+$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
 $ sudo easy_install --upgrade six
-$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.0-py3-none-any.whl
+$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.1-cp35-none-any.whl
 ```
+
+NOTE: If you are upgrading from a previous installation of TensorFlow < 0.7.1,
+you should uninstall the previous TensorFlow *and protobuf* using `pip
+uninstall` first to make sure you get a clean installation of the updated
+protobuf dependency.
 
 
 You can now [test your installation](#test-the-tensorflow-installation).
@@ -121,13 +126,13 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
 # Ubuntu/Linux 64-bit, CPU only:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.0-py2-none-linux_x86_64.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.1-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.0-py2-none-linux_x86_64.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.1-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.0-py2-none-any.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.1-cp27-none-any.whl
 ```
 
 and again for python3:
@@ -138,13 +143,13 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
 # Ubuntu/Linux 64-bit, CPU only:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.0-py3-none-linux_x86_64.whl
+(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.0-py3-none-linux_x86_64.whl
+(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
-(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.0-py3-none-any.whl
+(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.1-cp35-none-any.whl
 ```
 
 With the Virtualenv environment activated, you can now
@@ -186,7 +191,7 @@ code.
 * `b.gcr.io/tensorflow/tensorflow:latest-devel-gpu`: GPU Binary image plus source
 code.
 
-We also have tags with `latest` replaced by a released version (e.g., `0.7.0-gpu`).
+We also have tags with `latest` replaced by a released version (e.g., `0.7.1-gpu`).
 
 With Docker the installation is as follows:
 
@@ -459,7 +464,7 @@ We recommend using [homebrew](http://brew.sh) to install the bazel and SWIG
 dependencies, and installing python dependencies using easy_install or pip.
 
 Of course you can also install Swig from source without using homebrew. In that
-case, be sure to install its dependency [PCRE](from www.pcre.org) and not PCRE2.
+case, be sure to install its dependency [PCRE](http://www.pcre.org) and not PCRE2.
 
 #### Dependencies
 
@@ -479,8 +484,8 @@ $ sudo easy_install -U numpy
 $ sudo easy_install wheel
 ```
 
-We also recommend the [ipython](https://ipython.org) enhanced python shell, so
-best install that too:
+We also recommend the [ipython](https://ipython.org) enhanced python shell,
+which you can install as follows:
 
 ```bash
 $ sudo easy_install ipython
@@ -512,7 +517,7 @@ $ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_pack
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
 # The name of the .whl file will depend on your platform.
-$ pip install /tmp/tensorflow_pkg/tensorflow-0.7.0-py2-none-linux_x86_64.whl
+$ pip install /tmp/tensorflow_pkg/tensorflow-0.7.1-py2-none-linux_x86_64.whl
 ```
 
 ## Setting up TensorFlow for Development
@@ -581,6 +586,19 @@ If you built from source, and you left the Cuda or cuDNN version empty, try spec
 explicitly.
 
 ### Pip installation issues
+
+#### Cannot import name 'descriptor'
+
+```python
+ImportError: Traceback (most recent call last):
+  File "/usr/local/lib/python3.4/dist-packages/tensorflow/core/framework/graph_pb2.py", line 6, in <module>
+    from google.protobuf import descriptor as _descriptor
+ImportError: cannot import name 'descriptor'
+```
+
+If you the above error when upgrading to a newer version of TensorFlow, try
+uninstalling both TensorFlow and protobuf (if installed) and re-installing
+TensorFlow (which will also install the correct protobuf dependency).
 
 #### Can't find setup.py
 

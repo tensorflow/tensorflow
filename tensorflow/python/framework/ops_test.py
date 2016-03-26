@@ -30,6 +30,7 @@ from tensorflow.python.ops import constant_op
 # Import gradients to register _IndexedSlicesToTensor.
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -43,6 +44,15 @@ class TensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.unknown_shape(), t.get_shape())
     t.set_shape([1, 2, 3])
     self.assertEqual([1, 2, 3], t.get_shape())
+
+  def testIterable(self):
+    op = ops.Operation(
+        ops._NodeDef("noop", "myop"), ops.Graph(), [], [dtypes.float32])
+    t = op.outputs[0]
+    self.assertTrue(isinstance(t, ops.Tensor))
+    with self.assertRaisesRegexp(TypeError, "not iterable"):
+      for _ in t:
+        pass
 
 
 class SparseTensorTest(test_util.TensorFlowTestCase):
@@ -347,30 +357,68 @@ class NameStackTest(test_util.TensorFlowTestCase):
 
   def testBasics(self):
     g = ops.Graph()
+    self.assertEqual("foo", g.unique_name("foo", mark_as_used=False))
+    self.assertEqual("foo", g.unique_name("foo", mark_as_used=False))
     self.assertEqual("foo", g.unique_name("foo"))
+    self.assertEqual("foo_1", g.unique_name("foo", mark_as_used=False))
     self.assertEqual("foo_1", g.unique_name("foo"))
+    self.assertEqual("foo_2", g.unique_name("foo", mark_as_used=False))
     self.assertEqual("foo_2", g.unique_name("foo"))
+    self.assertEqual("foo_1_1", g.unique_name("foo_1", mark_as_used=False))
     self.assertEqual("foo_1_1", g.unique_name("foo_1"))
+    self.assertEqual("foo_1_2", g.unique_name("foo_1", mark_as_used=False))
     self.assertEqual("foo_1_2", g.unique_name("foo_1"))
+    self.assertEqual("foo_1_2_1", g.unique_name("foo_1_2", mark_as_used=False))
     self.assertEqual("foo_1_2_1", g.unique_name("foo_1_2"))
     with g.name_scope("bar"):
+      self.assertEqual("bar/foo", g.unique_name("foo", mark_as_used=False))
       self.assertEqual("bar/foo", g.unique_name("foo"))
+      self.assertEqual("bar/foo_1", g.unique_name("foo", mark_as_used=False))
       self.assertEqual("bar/foo_1", g.unique_name("foo"))
       with g.name_scope(None):
+        self.assertEqual("foo_3", g.unique_name("foo", mark_as_used=False))
         self.assertEqual("foo_3", g.unique_name("foo"))
       with g.name_scope("baz"):
+        self.assertEqual("bar/baz/foo", g.unique_name("foo",
+                                                      mark_as_used=False))
         self.assertEqual("bar/baz/foo", g.unique_name("foo"))
+        self.assertEqual("bar/baz/foo_1", g.unique_name("foo",
+                                                        mark_as_used=False))
         self.assertEqual("bar/baz/foo_1", g.unique_name("foo"))
       with g.name_scope("baz"):
+        self.assertEqual("bar/baz_1/foo", g.unique_name("foo",
+                                                        mark_as_used=False))
         self.assertEqual("bar/baz_1/foo", g.unique_name("foo"))
+        self.assertEqual("bar/baz_1/foo_1", g.unique_name("foo",
+                                                          mark_as_used=False))
         self.assertEqual("bar/baz_1/foo_1", g.unique_name("foo"))
     with g.name_scope("quux"):
+      self.assertEqual("quux/foo", g.unique_name("foo", mark_as_used=False))
       self.assertEqual("quux/foo", g.unique_name("foo"))
     with g.name_scope("bar"):
       with g.name_scope("baz"):
+        self.assertEqual("bar_1/baz/foo", g.unique_name("foo",
+                                                        mark_as_used=False))
         self.assertEqual("bar_1/baz/foo", g.unique_name("foo"))
+    self.assertEqual("foo_4", g.unique_name("foo", mark_as_used=False))
     self.assertEqual("foo_4", g.unique_name("foo"))
+    self.assertEqual("bar_2", g.unique_name("bar", mark_as_used=False))
     self.assertEqual("bar_2", g.unique_name("bar"))
+
+  def testNameAndVariableScope(self):
+    with self.test_session() as sess:
+      with sess.graph.name_scope("l0"):
+        with variable_scope.variable_scope("l1"):
+          with sess.graph.name_scope("l1") as scope:
+            self.assertEqual("l0/l1/l1/", scope)
+            self.assertEqual("l0/l1/l1/foo",
+                             sess.graph.unique_name("foo", mark_as_used=False))
+            self.assertEqual("l0/l1/l1/foo", sess.graph.unique_name("foo"))
+          with sess.graph.name_scope("l2") as scope:
+            self.assertEqual("l0/l1/l2/", scope)
+            self.assertEqual("l0/l1/l2/foo",
+                             sess.graph.unique_name("foo", mark_as_used=False))
+            self.assertEqual("l0/l1/l2/foo", sess.graph.unique_name("foo"))
 
   def testOutOfOrderUniqueName(self):
     g = ops.Graph()
@@ -1171,6 +1219,96 @@ class StatisticsTest(test_util.TensorFlowTestCase):
     second_weight_params = ops.OpStats("weight_parameters", 200)
     weight_params_total += second_weight_params
     self.assertEqual(300, weight_params_total.value)
+
+
+class ColocationGroupTest(test_util.TensorFlowTestCase):
+
+  def testBasic(self):
+    a = constant_op.constant([2.0], name="a")
+    with ops.colocate_with(a.op):
+      b = constant_op.constant(3.0)
+    c = constant_op.constant(4.0)
+    self.assertEqual([b"loc:@a"], a.op.colocation_groups())
+    self.assertEqual([b"loc:@a"], b.op.colocation_groups())
+    with self.assertRaises(ValueError):
+      c.op.get_attr("_class")
+
+  def testColocationDeviceInteraction(self):
+    with ops.device("/cpu:0"):
+      with ops.device("/gpu:0"):
+        a = constant_op.constant([2.0], name="a")
+      with ops.colocate_with(a.op):
+        # 'b' is created in the scope of /cpu:0, but but it is
+        # colocated with 'a', which is on '/gpu:0'.  colocate_with
+        # overrides devices because it is a stronger constraint.
+        b = constant_op.constant(3.0)
+    self.assertEqual([b"loc:@a"], b.op.colocation_groups())
+    self.assertEqual(a.op.device, b.op.device)
+
+  def testLocationOverrides(self):
+    with ops.device("/cpu:0"):
+      with ops.device("/gpu:0"):
+        a = constant_op.constant([2.0], name="a")
+        # Note that this colocation is "redundant", since we are
+        # within the scope of "/gpu:0".  However, we would like to
+        # preserve in the GraphDef that these two ops should be
+        # colocated in a portable way.
+        with ops.colocate_with(a.op):
+          b = constant_op.constant(3.0)
+        c = constant_op.constant(4.0)
+      d = constant_op.constant(5.0)
+
+    self.assertEqual([b"loc:@a"], b.op.colocation_groups())
+    self.assertEqual("/device:GPU:0", a.op.device)
+    self.assertEqual(a.op.device, b.op.device)
+
+    # Test that device function stack is restored.
+    self.assertEqual("/device:GPU:0", c.op.device)
+    self.assertEqual("/device:CPU:0", d.op.device)
+
+  def testNestedColocateWith(self):
+    a = constant_op.constant([2.0], name="a")
+    with ops.colocate_with(a.op):
+      b = constant_op.constant(3.0)
+      with ops.colocate_with(b.op):
+        c = constant_op.constant(4.0)
+    self.assertEqual([b"loc:@a"], b.op.colocation_groups())
+    self.assertEqual([b"loc:@a"], c.op.colocation_groups())
+
+  def testMultiColocationGroups(self):
+    a = constant_op.constant([2.0], name="a")
+    b = constant_op.constant(3.0, name="b")
+    with ops.colocate_with(a.op):
+      with ops.colocate_with(b.op):
+        c = constant_op.constant(4.0)
+    self.assertEqual(set([b"loc:@a", b"loc:@b"]), set(c.op.colocation_groups()))
+
+  def testColocationIgnoreStack(self):
+    a = constant_op.constant([2.0], name="a")
+    b = constant_op.constant(3.0, name="b")
+    with ops.colocate_with(a.op):
+      with ops.colocate_with(b.op, ignore_existing=True):
+        c = constant_op.constant(4.0)
+    self.assertEqual(set([b"loc:@b"]), set(c.op.colocation_groups()))
+
+  def testColocateVariables(self):
+    a = variables.Variable([2.0], name="a")
+    with ops.colocate_with(a.op):
+      b = variables.Variable([3.0], name="b")
+    self.assertEqual([b"loc:@a"], b.op.colocation_groups())
+
+  def testInconsistentDeviceWithinColocate(self):
+    with ops.device("/gpu:0"):
+      a = constant_op.constant([2.0], name="a")
+      with ops.colocate_with(a.op):
+        # This is allowed due to legacy but clearly wrong, since we
+        # should really be colocating with 'a'.  We allow devices to
+        # override colocate_with, but we log warnings to suggest that
+        # this is probably unintentional or misguided.
+        with ops.device("/cpu:0"):
+          b = constant_op.constant([3.0], name="b")
+
+    self.assertEqual("/device:CPU:0", b.device)
 
 
 if __name__ == "__main__":

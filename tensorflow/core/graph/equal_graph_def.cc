@@ -156,9 +156,16 @@ bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected,
 
   std::unordered_set<string> actual_attr;
   for (const auto& a : actual.attr()) {
+    if (!a.first.empty() && a.first[0] == '_') {
+      continue;
+    }
     actual_attr.insert(a.first);
   }
   for (const auto& e : expected.attr()) {
+    if (!e.first.empty() && e.first[0] == '_') {
+      continue;
+    }
+
     if (actual_attr.erase(e.first) == 0) {
       if (diff != nullptr) {
         *diff = strings::StrCat("Node named '", actual.name(),

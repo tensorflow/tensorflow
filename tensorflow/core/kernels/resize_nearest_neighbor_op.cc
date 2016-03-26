@@ -23,8 +23,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/image_resizer_state.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/kernels/resize_nearest_neighbor_op_gpu.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -40,56 +45,28 @@ class ResizeNearestNeighborOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
-    const Tensor& shape_t = context->input(1);
-    OP_REQUIRES(context, shape_t.dims() == 1,
-                errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().DebugString()));
-    OP_REQUIRES(context, shape_t.NumElements() == 2,
-                errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().DebugString()));
+    ImageResizerState st(align_corners_);
+    st.ValidateAndCreateOutput(context, input);
 
-    auto sizes = shape_t.vec<int32>();
-    OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,
-                errors::InvalidArgument("shape_t's elements must be positive"));
+    if (!context->status().ok()) return;
 
-    // Initialize shape to the batch size of the input, then add
-    // the rest of the dimensions
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({input.dim_size(0), sizes(0),
-                                                sizes(1), input.dim_size(3)}),
-                                &output));
-
-    const int64 batch_size = input.dim_size(0);
-    const int64 in_height = input.dim_size(1);
-    const int64 in_width = input.dim_size(2);
-    const int64 channels = input.dim_size(3);
-    const int64 out_height = output->dim_size(1);
-    const int64 out_width = output->dim_size(2);
+    OP_REQUIRES(context, st.in_height < (1 << 24) && st.in_width < (1 << 24),
+                errors::InvalidArgument("nearest neighbor requires max height "
+                                        "& width of 2^24"));
 
     typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
-    typename TTypes<T, 4>::Tensor output_data = output->tensor<T, 4>();
+    typename TTypes<T, 4>::Tensor output_data = st.output->tensor<T, 4>();
 
-    const float height_scale =
-        (align_corners_ && out_height > 1)
-            ? (in_height - 1) / static_cast<float>(out_height - 1)
-            : in_height / static_cast<float>(out_height);
-    const float width_scale =
-        (align_corners_ && out_width > 1)
-            ? (in_width - 1) / static_cast<float>(out_width - 1)
-            : in_width / static_cast<float>(out_width);
-
-    for (int b = 0; b < batch_size; ++b) {
-      for (int y = 0; y < out_height; ++y) {
-        const int in_y = std::min(static_cast<int64>(floorf(y * height_scale)),
-                                  (in_height - 1));
-        for (int x = 0; x < out_width; ++x) {
-          const int in_x = std::min(static_cast<int64>(floorf(x * width_scale)),
-                                    (in_width - 1));
-          for (int c = 0; c < channels; ++c) {
+    for (int b = 0; b < st.batch_size; ++b) {
+      for (int y = 0; y < st.out_height; ++y) {
+        const int in_y =
+            std::min(static_cast<int64>(floorf(y * st.height_scale)),
+                     (st.in_height - 1));
+        for (int x = 0; x < st.out_width; ++x) {
+          const int in_x =
+              std::min(static_cast<int64>(floorf(x * st.width_scale)),
+                       (st.in_width - 1));
+          for (int c = 0; c < st.channels; ++c) {
             output_data(b, y, x, c) = input_data(b, in_y, in_x, c);
           }
         }
@@ -132,10 +109,10 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     // Initialize shape to the batch size of the input, then add
     // the rest of the dimensions
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({input.dim_size(0), sizes(0),
-                                                sizes(1), input.dim_size(3)}),
-                                &output));
+    OP_REQUIRES_OK(
+        context, context->allocate_output(0, TensorShape({input.dim_size(0), sizes(0),
+                                                          sizes(1), input.dim_size(3)}),
+                                          &output));
 
     const int64 batch_size = input.dim_size(0);
     const int64 in_height = input.dim_size(1);
@@ -203,5 +180,162 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
+
+#if GOOGLE_CUDA
+
+template <typename T>
+class ResizeNearestNeighborGPUOp : public OpKernel {
+ public:
+  explicit ResizeNearestNeighborGPUOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    OP_REQUIRES(context, input.dims() == 4,
+                errors::InvalidArgument("input must be 4-dimensional",
+                                        input.shape().DebugString()));
+    const Tensor& shape_t = context->input(1);
+    OP_REQUIRES(context, shape_t.dims() == 1,
+                errors::InvalidArgument("shape_t must be 1-dimensional",
+                                        shape_t.shape().DebugString()));
+    OP_REQUIRES(context, shape_t.NumElements() == 2,
+                errors::InvalidArgument("shape_t must have two elements",
+                                        shape_t.shape().DebugString()));
+
+    auto sizes = shape_t.vec<int32>();
+    OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,
+                errors::InvalidArgument("shape_t's elements must be positive"));
+
+    // Initialize shape to the batch size of the input, then add
+    // the rest of the dimensions
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(
+        context, context->allocate_output(0, TensorShape({input.dim_size(0), sizes(0),
+                                                          sizes(1), input.dim_size(3)}),
+                                          &output));
+
+    const int64 batch_size = input.dim_size(0);
+    const int64 in_height = input.dim_size(1);
+    const int64 in_width = input.dim_size(2);
+    const int64 channels = input.dim_size(3);
+    const int64 out_height = output->dim_size(1);
+    const int64 out_width = output->dim_size(2);
+
+    const float height_scale =
+        (align_corners_ && out_height > 1)
+            ? (in_height - 1) / static_cast<float>(out_height - 1)
+            : in_height / static_cast<float>(out_height);
+    const float width_scale =
+        (align_corners_ && out_width > 1)
+            ? (in_width - 1) / static_cast<float>(out_width - 1)
+            : in_width / static_cast<float>(out_width);
+
+    bool status = ResizeNearestNeighbor<T>(
+        input.flat<T>().data(), batch_size, in_height,
+        in_width, channels, out_height, out_width,
+        height_scale, width_scale, output->flat<T>().data(),
+        context->eigen_gpu_device());
+
+    if (!status) {
+      context->SetStatus(
+          errors::Internal("Failed launching ResizeNearestNeighbor"));
+    }
+  }
+ private:
+  bool align_corners_;
+};
+
+#define REGISTER_KERNEL(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("ResizeNearestNeighbor")           \
+                              .Device(DEVICE_GPU)                 \
+                              .TypeConstraint<T>("T")             \
+                              .HostMemory("size"),                \
+                          ResizeNearestNeighborGPUOp<T>);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
+
+#undef REGISTER_KERNEL
+
+template <typename T>
+class ResizeNearestNeighborGPUOpGrad : public OpKernel {
+ public:
+  explicit ResizeNearestNeighborGPUOpGrad(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // Grab and validate the input:
+    const Tensor& input = context->input(0);
+    OP_REQUIRES(context, input.dims() == 4,
+                errors::InvalidArgument("input must be 4-dimensional",
+                                        input.shape().DebugString()));
+
+    // Grab and validate the output shape:
+    const Tensor& shape_t = context->input(1);
+    OP_REQUIRES(context, shape_t.dims() == 1,
+                errors::InvalidArgument("shape_t must be 1-dimensional",
+                                        shape_t.shape().DebugString()));
+    OP_REQUIRES(context, shape_t.NumElements() == 2,
+                errors::InvalidArgument("shape_t must have two elements",
+                                        shape_t.shape().DebugString()));
+
+    auto sizes = shape_t.vec<int32>();
+    OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,
+                errors::InvalidArgument("shape_t's elements must be positive"));
+
+    // Initialize shape to the batch size of the input, then add
+    // the rest of the dimensions
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(
+        context, context->allocate_output(0, TensorShape({input.dim_size(0), sizes(0),
+                                                          sizes(1), input.dim_size(3)}),
+                                          &output));
+
+    const int64 batch_size = input.dim_size(0);
+    const int64 in_height = input.dim_size(1);
+    const int64 in_width = input.dim_size(2);
+    const int64 channels = input.dim_size(3);
+
+    const int64 out_height = output->dim_size(1);
+    const int64 out_width = output->dim_size(2);
+
+    const float height_scale =
+        (align_corners_ && in_height > 1)
+            ? (out_height - 1) / static_cast<float>(in_height - 1)
+            : out_height / static_cast<float>(in_height);
+    const float width_scale =
+        (align_corners_ && in_width > 1)
+            ? (out_width - 1) / static_cast<float>(in_width - 1)
+            : out_width / static_cast<float>(in_width);
+
+    bool status = ResizeNearestNeighborBackward(
+        input.flat<T>().data(), batch_size, in_height,
+        in_width, channels, out_height, out_width,
+        height_scale, width_scale, output->flat<T>().data(),
+        context->eigen_gpu_device());
+
+    if (!status) {
+      context->SetStatus(
+          errors::Internal("Failed launching ResizeNearestNeighborGrad"));
+    }
+  }
+  bool align_corners_;
+};
+
+#define REGISTER_KERNEL(T)                                           \
+  REGISTER_KERNEL_BUILDER(Name("ResizeNearestNeighborGrad")          \
+                            .Device(DEVICE_GPU)                      \
+                            .TypeConstraint<T>("T")                  \
+                            .HostMemory("size"),                     \
+                          ResizeNearestNeighborGPUOpGrad<T>);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
+
+#undef REGISTER_KERNEL
+
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

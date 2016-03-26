@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -79,6 +80,9 @@ namespace tensorflow {
 /// after all other calls to Run() have returned.
 class Session {
  public:
+  Session();
+  virtual ~Session();
+
   /// \brief Create the graph to be used for the session.
   ///
   /// Returns an error if this session has already been created with a
@@ -114,32 +118,54 @@ class Session {
                      const std::vector<string>& target_node_names,
                      std::vector<Tensor>* outputs) = 0;
 
+  /// \brief Implementations which support `RunOptions`.
+  //
+  /// NOTE: This API is still experimental and may change.
+  virtual Status Create(const RunOptions& run_options, const GraphDef& graph) {
+    return errors::Unimplemented(
+        "Create(const RunOptions& run_options, const GraphDef& graph) is not "
+        "supported for this session.");
+  }
+  virtual Status Extend(const RunOptions& run_options, const GraphDef& graph) {
+    return errors::Unimplemented(
+        "Extend(const RunOptions& run_options, const GraphDef& graph) is not "
+        "supported for this session.");
+  }
+  virtual Status Close(const RunOptions& run_options) {
+    return errors::Unimplemented(
+        "Close(const RunOptions& run_options) is not supported for this "
+        "session.");
+  }
+
+  /// \brief Like `Run`, but allows users to pass in a `RunOptions` proto and
+  /// to retrieve non-Tensor metadata output via a `RunMetadata` proto for this
+  /// step.  `run_metadata` may be nullptr, in which case any metadata output is
+  /// discarded.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status Run(const RunOptions& run_options,
+                     const std::vector<std::pair<string, Tensor> >& inputs,
+                     const std::vector<string>& output_tensor_names,
+                     const std::vector<string>& target_node_names,
+                     std::vector<Tensor>* outputs, RunMetadata* run_metadata);
+
   /// \brief Sets up a graph for partial execution. All future feeds and
-  /// fetches are specified by 'input_names' and 'output_names'. Returns
-  /// 'handle' that can be used to perform a sequence of partial feeds and
+  /// fetches are specified by `input_names` and `output_names`. Returns
+  /// `handle` that can be used to perform a sequence of partial feeds and
   /// fetches.
   /// NOTE: This API is still experimental and may change.
   virtual Status PRunSetup(const std::vector<string>& input_names,
                            const std::vector<string>& output_names,
                            const std::vector<string>& target_nodes,
-                           string* handle) {
-    return errors::Unimplemented(
-        "Partial run is not supported for"
-        " this session.");
-  }
+                           string* handle);
 
-  /// \brief Continues the pending execution specified by 'handle' with the
+  /// \brief Continues the pending execution specified by `handle` with the
   /// provided input tensors and fills `outputs` for the endpoints specified
   /// in `output_names`.
   /// NOTE: This API is still experimental and may change.
   virtual Status PRun(const string& handle,
                       const std::vector<std::pair<string, Tensor> >& inputs,
                       const std::vector<string>& output_names,
-                      std::vector<Tensor>* outputs) {
-    return errors::Unimplemented(
-        "Partial run is not supported for"
-        " this session.");
-  }
+                      std::vector<Tensor>* outputs);
 
   /// \brief Closes this session.
   ///
@@ -147,8 +173,6 @@ class Session {
   /// on the TensorFlow runtime (specified during session creation by
   /// the `SessionOptions::target` field).
   virtual Status Close() = 0;
-
-  virtual ~Session() {}
 };
 
 /// \brief Create a new session with the given options.

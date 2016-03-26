@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
 #define TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
 
-#include "tensorflow/core/framework/config.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 

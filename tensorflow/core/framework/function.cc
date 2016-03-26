@@ -708,9 +708,12 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionDefLibrary& def_lib)
     : function_defs_(def_lib.function_size()) {
-  for (auto fdef : def_lib.function()) {
+  for (const auto& fdef : def_lib.function()) {
     // The latter function definition wins.
     function_defs_[fdef.signature().name()] = fdef;
+  }
+  for (const auto& grad : def_lib.gradient()) {
+    func_grad_[grad.function_name()] = grad.gradient_func();
   }
 }
 
@@ -723,6 +726,10 @@ const FunctionDef* FunctionLibraryDefinition::Find(const string& name) const {
   } else {
     return &iter->second;
   }
+}
+
+string FunctionLibraryDefinition::FindGradient(const string& func) const {
+  return gtl::FindWithDefault(func_grad_, func, "");
 }
 
 const OpDef* FunctionLibraryDefinition::LookUp(const string& op,

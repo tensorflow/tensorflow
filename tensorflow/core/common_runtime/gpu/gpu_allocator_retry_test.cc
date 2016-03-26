@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
+#include "tensorflow/core/common_runtime/allocator_retry.h"
 
 #include <vector>
 #include "tensorflow/core/lib/core/notification.h"
@@ -55,7 +55,7 @@ class FakeAllocator {
   }
 
  private:
-  GPUAllocatorRetry retry_;
+  AllocatorRetry retry_;
   void* good_ptr_ = reinterpret_cast<void*>(0xdeadbeef);
   mutex mu_;
   size_t memory_capacity_ GUARDED_BY(mu_);

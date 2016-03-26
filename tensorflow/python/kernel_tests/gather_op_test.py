@@ -23,9 +23,10 @@ import tensorflow as tf
 
 
 class GatherTest(tf.test.TestCase):
+  use_gpu = False
 
   def testScalar1D(self):
-    with self.test_session():
+    with self.test_session(use_gpu=self.use_gpu):
       params = tf.constant([0, 1, 2, 3, 7, 5])
       indices = tf.constant(4)
       gather_t = tf.gather(params, indices)
@@ -34,7 +35,7 @@ class GatherTest(tf.test.TestCase):
     self.assertEqual([], gather_t.get_shape())
 
   def testScalar2D(self):
-    with self.test_session():
+    with self.test_session(use_gpu=self.use_gpu):
       params = tf.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8],
                                      [9, 10, 11], [12, 13, 14]])
       indices = tf.constant(2)
@@ -44,7 +45,7 @@ class GatherTest(tf.test.TestCase):
     self.assertEqual([3], gather_t.get_shape())
 
   def testSimpleTwoD32(self):
-    with self.test_session():
+    with self.test_session(use_gpu=self.use_gpu):
       params = tf.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8],
                                      [9, 10, 11], [12, 13, 14]])
       indices = tf.constant([0, 4, 0, 2])
@@ -59,7 +60,7 @@ class GatherTest(tf.test.TestCase):
     shape = (4, 3, 2)
     params = np.random.randn(*shape)
     indices = np.random.randint(shape[0], size=15).reshape(3, 5)
-    with self.test_session():
+    with self.test_session(use_gpu=self.use_gpu):
       tf_params = tf.constant(params)
       tf_indices = tf.constant(indices)
       gather = tf.gather(tf_params, tf_indices)
@@ -82,6 +83,18 @@ class GatherTest(tf.test.TestCase):
     indices = tf.placeholder(tf.int32)
     gather_t = tf.gather(params, indices)
     self.assertEqual(None, gather_t.get_shape())
+
+  def testBadIndices(self):
+    with self.test_session(use_gpu=False):
+      params = [0, 1, 2]
+      indices = [[7]]
+      gather = tf.gather(params, indices)
+      with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 3\)"):
+        gather.eval()
+
+
+class GatherGpuTest(GatherTest):
+  use_gpu = True
 
 
 if __name__ == "__main__":

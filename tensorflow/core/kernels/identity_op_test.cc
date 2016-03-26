@@ -30,7 +30,6 @@ namespace {
 class IdentityOpTest : public OpsTestBase {
  protected:
   Status Init(DataType input_type) {
-    RequireDefaultOps();
     TF_CHECK_OK(NodeDefBuilder("op", "Identity")
                     .Input(FakeInput(input_type))
                     .Finalize(node_def()));
