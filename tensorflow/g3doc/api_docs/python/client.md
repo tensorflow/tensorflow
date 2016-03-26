@@ -711,24 +711,40 @@ Creates a `DataLossError`.
 ## Other Functions and Classes
 - - -
 
-### `tf.make_cluster_def(cluster_spec)` {#make_cluster_def}
+### `class tf.ClusterSpec` {#ClusterSpec}
 
-Returns a `tf.ClusterDef` based on the given `cluster_spec`.
+A class for representing a Cluster.
+- - -
+
+#### `tf.ClusterSpec.__init__(cluster)` {#ClusterSpec.__init__}
+
+Creates a `ClusterSpec`.
 
 ##### Args:
 
 
-*  <b>`cluster_spec`</b>: A dictionary mapping one or more job names to lists
-    of network addresses.
-
-##### Returns:
-
-  A `tf.ClusterDef` protocol buffer.
+*  <b>`cluster`</b>: A dictionary mapping one or more job names to lists of network
+    addresses, or a `tf.ClusterDef` protocol buffer.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If `cluster_spec` is not a dictionary mapping strings to lists
-    of strings.
+*  <b>`TypeError`</b>: If `cluster` is not a dictionary mapping strings to lists
+    of strings, and not a `ClusterDef` proto buf.
+
+
+- - -
+
+#### `tf.ClusterSpec.as_cluster_def()` {#ClusterSpec.as_cluster_def}
+
+Returns a `tf.ClusterDef` protocol buffer.
+
+
+- - -
+
+#### `tf.ClusterSpec.as_cluster_spec()` {#ClusterSpec.as_cluster_spec}
+
+Returns a dictionary from job names to list of network addresses.
+
 
 
