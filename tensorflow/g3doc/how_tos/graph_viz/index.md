@@ -78,9 +78,8 @@ and `control_dependency`.
 
 There's a second trick to simplifying the layout. Most TensorFlow graphs have a
 few nodes with many connections to other nodes. For example, many nodes might
-have a control dependencies on an initialization step. Drawing all edges
-between the `init` node and its dependencies would create a very cluttered
-view.
+have a control dependency on an initialization step. Drawing all edges between
+the `init` node and its dependencies would create a very cluttered view.
 
 To reduce clutter, the visualization separates out all high-degree nodes to an
 *auxiliary* area on the right and doesn't draw lines to represent their edges.
