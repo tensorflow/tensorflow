@@ -25,6 +25,7 @@ import functools
 from tensorflow.contrib.layers.python.layers import initializers
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
@@ -52,12 +53,24 @@ def fully_connected(x,
                     output_collections=(ops.GraphKeys.ACTIVATIONS,),
                     weight_regularizer=None,
                     bias_regularizer=None):
-  """Adds the parameters for a fully connected layer and returns the output.
+  # pylint: disable=anomalous-backslash-in-string
+  r"""Adds the parameters for a fully connected layer and returns the output.
 
   A fully connected layer is generally defined as a matrix multiply:
   `y = f(w * x + b)` where `f` is given by `activation_fn`. If
   `activation_fn` is `None`, the result of `y = w * x + b` is
   returned.
+
+  If `x` has shape [\\\(\\text{dim}_0, \\text{dim}_1, ..., \\text{dim}_n\\\)]
+  with more than 2 dimensions (\\\(n > 1\\\)), then we repeat the matrix
+  multiply along the first dimensions. The result r is a tensor of shape
+  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`],
+  where \\\( r_{i_0, ..., i_{n-1}, k} =
+  \\sum_{0 \\leq j < \\text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\\).
+  This is accomplished by reshaping `x` to 2-D
+  [\\\(\\text{dim}_0 \\cdot ... \\cdot \\text{dim}_{n-1}, \\text{dim}_n\\\)]
+  before the matrix multiply and afterwards reshaping it to
+  [\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`].
 
   This op creates `w` and optionally `b`. Bias (`b`) can be disabled by setting
   `bias_init` to `None`.
@@ -101,9 +114,20 @@ def fully_connected(x,
 
   Returns:
     The output of the fully connected layer.
+
+  Raises:
+    ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
+  # pylint: enable=anomalous-backslash-in-string
   with variable_scope.variable_op_scope([x], name, 'fully_connected'):
-    num_input_units = x.get_shape().dims[1].value
+    dims = x.get_shape().dims
+    if dims is None:
+      raise ValueError('dims of x must be known but is None')
+    if len(dims) < 2:
+      raise ValueError('rank of x must be at least 2 not: %d' % len(dims))
+    num_input_units = dims[-1].value
+    if num_input_units is None:
+      raise ValueError('last dimension of x must be known but is None')
     dtype = x.dtype.base_dtype
 
     weight_collections = set(list(weight_collections or []) +
@@ -114,8 +138,9 @@ def fully_connected(x,
                                     initializer=weight_init,
                                     collections=weight_collections,
                                     regularizer=weight_regularizer)
-
-    y = standard_ops.matmul(x, w)
+    x_2_dim = x if len(dims) <= 2 else array_ops.reshape(x,
+                                                         [-1, num_input_units])
+    y = standard_ops.matmul(x_2_dim, w)
 
     if bias_init is not None:
       bias_collections = set(list(bias_collections or []) +
@@ -128,6 +153,16 @@ def fully_connected(x,
                                       regularizer=bias_regularizer)
 
       y = nn.bias_add(y, b)
+
+    if len(dims) > 2:
+      out_shape = array_ops.unpack(array_ops.shape(x))
+      out_shape[-1] = num_output_units
+
+      y = array_ops.reshape(y, array_ops.pack(out_shape))
+
+      static_shape = x.get_shape().as_list()
+      static_shape[-1] = num_output_units
+      y.set_shape(static_shape)
 
     return _apply_activation(y, activation_fn, output_collections)
 
@@ -207,9 +242,9 @@ def convolution2d(x,
     num_input_channels = x.get_shape().dims[3].value
 
     if len(kernel_size) != 2:
-      raise ValueError('kernel_size must be length 2: ' % kernel_size)
+      raise ValueError('kernel_size must be length 2: %d ' % kernel_size)
     if len(stride) != 2:
-      raise ValueError('stride must be length 2: ' % kernel_size)
+      raise ValueError('stride must be length 2: %d' % stride)
 
     stride = [1, stride[0], stride[1], 1]
     shape = [kernel_size[0], kernel_size[1], num_input_channels,
