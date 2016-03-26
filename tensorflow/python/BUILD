@@ -704,6 +704,7 @@ tf_gen_op_wrapper_py(
         "SerializeManySparse",
         "SerializeSparse",
         "SparseAdd",
+        "SparseAddGrad",
         "SparseConcat",
         "SparseSplit",
         "SparseSelectLastK",

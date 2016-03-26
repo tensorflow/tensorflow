@@ -34,7 +34,7 @@ module TF {
     });
 
     it("Returns consistent colors, given no hash collisions", function() {
-      //These three colors don't have hash collisions
+      // These three colors don't have hash collisions
       ccs.domain(["red", "yellow"]);
       var firstRedColor = ccs.getColor("red");
       ccs.domain(["red", "yellow", "blue"]);
@@ -48,13 +48,13 @@ module TF {
       twoColorScale.domain(["red", "blue"]);
       assert.deepEqual(twoColorScale.getColor("blue"), TF.palettes.googleStandard[0]);
       assert.deepEqual(twoColorScale.getColor("red"), TF.palettes.googleStandard[TF.palettes.googleStandard.length - 1]);
-    })
+    });
 
-    //This is testing that when we reset the domain with new colors, the old
-    //domain doesn't influence the new color choices. Basically testing that we
-    //get a fresh slate if we have a new domain. Basically testing that all the
-    //internal bins are reset etc. and we aren't finding collisions with
-    //previous colors.
+    // This is testing that when we reset the domain with new colors, the old
+    // domain doesn't influence the new color choices. Basically testing that we
+    // get a fresh slate if we have a new domain. Basically testing that all the
+    // internal bins are reset etc. and we aren't finding collisions with
+    // previous colors.
     it("Colors don't nudge away from colors from an old domain.", function() {
       // at 12 breaks, "orange" and "blue" collide.
       ccs.domain(["red", "blue"]);
@@ -92,8 +92,5 @@ module TF {
         ccs.getColor("not in domain");
       }, "String was not in the domain.");
     });
-
-
   });
-
 }

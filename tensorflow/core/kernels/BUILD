@@ -1231,6 +1231,7 @@ tf_kernel_libraries(
 tf_kernel_libraries(
     name = "sparse",
     prefixes = [
+        "sparse_add_grad_op",
         "sparse_add_op",
         "sparse_concat_op",
         "sparse_reorder_op",
