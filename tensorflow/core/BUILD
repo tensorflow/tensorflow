@@ -666,6 +666,7 @@ cc_library(
         ":android_op_registrations_and_gradients",
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
+        "//tensorflow/core/util/ctc:android_srcs",
     ],
     copts = select({
         ":android": ANDROID_TF_COPTS,
@@ -679,7 +680,10 @@ cc_library(
     deps = [
         "@re2//:re2",
         ":android_tensorflow_lib_lite",
+        ":core_cpu",
+        ":framework",
         ":protos_cc",
+        "//tensorflow/core/kernels:pooling_ops",
         "//third_party/eigen3",
     ],
 )
