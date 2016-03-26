@@ -184,11 +184,11 @@ export function appendEdge(edgeGroup, d: EdgeData,
     // We have no information to show on this edge.
     return;
   }
-  
+
   // Put edge label in the middle of edge only if the edge is thick enough.
   let baseline = strokeWidth > CENTER_EDGE_LABEL_MIN_STROKE_WIDTH ?
     "central" : "text-after-edge";
-    
+
   edgeGroup.append("text").append("textPath").attr({
       "xlink:href": "#" + pathId,
       "startOffset": "50%",
