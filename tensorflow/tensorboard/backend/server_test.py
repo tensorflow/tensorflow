@@ -113,7 +113,8 @@ class TensorboardServerTest(tf.test.TestCase):
                   'scalars': ['simple_values'],
                   'histograms': ['histogram'],
                   'images': ['image'],
-                  'graph': True}})
+                  'graph': True,
+                  'run_metadata': ['test run']}})
 
   def testHistograms(self):
     """Test the format of /data/histograms."""
@@ -172,6 +173,18 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
                      [b'very_large_attr'])
 
+  def testRunMetadata(self):
+    """Test retrieving the run metadata information."""
+    response = self._get('/data/run_metadata?run=run1&tag=test%20run')
+    self.assertEqual(response.status, 200)
+    # Decompress (unzip) the response, since run outputs come gzipped.
+    run_metadata_pbtxt = self._decodeResponse(response)
+    # Parse from pbtxt into a message.
+    run_metadata = tf.RunMetadata()
+    text_format.Parse(run_metadata_pbtxt, run_metadata)
+    self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
+    self.assertEqual(run_metadata.step_stats.dev_stats[0].device, 'test device')
+
   def _GenerateTestData(self):
     """Generates the test data directory.
 
@@ -202,7 +215,13 @@ class TensorboardServerTest(tf.test.TestCase):
     node2 = graph_def.node.add()
     node2.name = 'b'
     node2.attr['very_large_attr'].s = b'a' * 2048  # 2 KB attribute
-    writer.add_event(tf.Event(graph_def=graph_def.SerializeToString()))
+    writer.add_graph(graph_def)
+
+    # Add a simple run metadata event.
+    run_metadata = tf.RunMetadata()
+    device_stats = run_metadata.step_stats.dev_stats.add()
+    device_stats.device = 'test device'
+    writer.add_run_metadata(run_metadata, 'test run')
 
     # 1x1 transparent GIF.
     encoded_image = base64.b64decode(

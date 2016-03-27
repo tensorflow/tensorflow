@@ -426,6 +426,21 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertAllEqual(42.0, grad.eval(feed_dict={c: 1}))
       self.assertAllEqual(3.0, grad.eval(feed_dict={c: 3}))
 
+  def testNestedCond_Simple(self):
+    with self.test_session():
+      x = tf.constant(0., name="X")
+      y = tf.cond(tf.constant(True),
+                  lambda: x,
+                  lambda: tf.cond(x < 1., lambda: x, lambda: x))
+      result = tf.gradients(y, x)[0]
+      self.assertEqual(1.0, result.eval())
+
+      z = tf.cond(tf.constant(False),
+                  lambda: x,
+                  lambda: tf.cond(x < 1., lambda: x, lambda: x))
+      result = tf.gradients(z, x)[0]
+      self.assertEqual(1.0, result.eval())
+
   def testCondGrad_Gather(self):
     with self.test_session() as sess:
       v1 = tf.Variable([1.0, 42.0])
@@ -654,8 +669,11 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(10, name="n")
       one = tf.convert_to_tensor(1, name="one")
       c = lambda x: tf.less(x, n)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: tf.cond(
           tf.constant(True), lambda: tf.add(x, one), lambda: tf.sub(x, one))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [i])
       self.assertAllEqual(10, r.eval())
 
@@ -671,8 +689,11 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       n = tf.convert_to_tensor(0)
       c = lambda x: tf.less(x, 10)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: tf.cond(tf.less(0, 1), lambda: tf.add(x, 1),
                             lambda: tf.sub(x, 1))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [n])
       self.assertAllEqual(10, r.eval())
 
@@ -1100,9 +1121,12 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(100.0, name="n")
       one = tf.convert_to_tensor(1.0, name="one")
       c = lambda x: tf.less(x, n)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: control_flow_ops.cond(tf.constant(True),
                                           lambda: tf.square(x),
                                           lambda: tf.sub(x, one))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [v])
       r = tf.gradients(r, v)[0]
       self.assertAllClose(1024.0, r.eval())
@@ -1117,9 +1141,12 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(100.0, name="n")
       one = tf.convert_to_tensor(1.0, name="one")
       c = lambda x: tf.less(x, n)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: control_flow_ops.cond(tf.constant(True),
                                           lambda: tf.square(x),
                                           lambda: tf.sub(x, one))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [v])
       r = tf.gradients(r, v)[0]
       r = sess.run(r, feed_dict={v: 2.0})
@@ -1440,6 +1467,11 @@ class ControlFlowTest(tf.test.TestCase):
     # Ensure that v1 and v2 are initialized
     self.assertAllClose([0.0], v1_val)
     self.assertAllClose([1.0], v2_val)
+
+  def testGroupEmpty(self):
+    op = tf.group()
+    self.assertEqual(op.type, "NoOp")
+    self.assertEqual(op.control_inputs, [])
 
   def testMergeShapes(self):
     # All inputs unknown.

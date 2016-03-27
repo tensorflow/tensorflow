@@ -11,7 +11,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-from __future__ import division, print_function, absolute_import
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 from sklearn import datasets, cross_validation, metrics
 from sklearn import preprocessing
@@ -26,7 +28,7 @@ X, y = boston.data, boston.target
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(X, y,
     test_size=0.2, random_state=42)
 
-# scale data (training set) to 0 mean and unit Std. dev
+# Scale data (training set) to 0 mean and unit standard deviation.
 scaler = preprocessing.StandardScaler()
 X_train = scaler.fit_transform(X_train)
 

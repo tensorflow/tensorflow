@@ -143,7 +143,6 @@ cc_library(
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core:worker_service_proto_cc",
         "//tensorflow/core/distributed_runtime:graph_mgr",
@@ -197,7 +196,6 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime:process_util",
         "//tensorflow/core/distributed_runtime:worker_cache",
@@ -258,7 +256,6 @@ tf_cuda_library(
     srcs = ["grpc_testlib_ops.cc"],
     linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -279,6 +276,13 @@ cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:reduction_ops",
+        "//tensorflow/core/kernels:variable_ops",
     ],
 )
 
@@ -297,7 +301,6 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
     ],
     alwayslink = 1,
@@ -316,7 +319,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
     ],
@@ -373,5 +375,9 @@ tf_cc_tests(
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:process_util",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:variable_ops",
     ],
 )

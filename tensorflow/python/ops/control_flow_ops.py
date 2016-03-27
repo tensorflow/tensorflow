@@ -213,7 +213,7 @@ def switch(data, pred, dtype=None, name=None):
       val, ind, dense_shape = data.values, data.indices, data.dense_shape
       val_f, val_t = gen_control_flow_ops._switch(val, pred, name=name)
       ind_f, ind_t = gen_control_flow_ops._switch(ind, pred, name="indices")
-      if dense_shape:
+      if dense_shape is not None:
         dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
             dense_shape, pred, name="dense_shape")
       else:
@@ -796,7 +796,8 @@ class ControlFlowState(object):
   def ZerosLike(self, op, index):
     """Create zeros_like for the specified output of an op.
 
-    This method must be called in the grad loop context.
+    If op is in a while loop that is part of gradients(), this method
+    must be called in its grad loop context.
 
     Args:
       op: A tensorflow operation.
@@ -806,10 +807,11 @@ class ControlFlowState(object):
       A zero tensor of the same shape of op.outputs[index].
     """
     if IsLoopSwitch(op): return None
-    dead_branch = op.type in {"Switch", "RefSwitch"}
+    dead_branch = IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
     if forward_ctxt is None:
-      return array_ops.zeros_like(op.outputs[index])
+      # op is not in a while loop that is part of gradients().
+      return ZerosLikeOutsideLoop(op, index)
     op_ctxt = op._get_control_flow_context()
     grad_state = self._map.get(forward_ctxt)
     val = ops.convert_to_tensor(op.outputs[index], name="tensor")
@@ -871,12 +873,31 @@ def MaybeCreateControlFlowState(between_op_list, between_ops):
   return loop_state
 
 
+def IsSwitch(op):
+  """Return true if `op` is the Switch."""
+  return op.type == "Switch" or op.type == "RefSwitch"
+
+
 def IsLoopSwitch(op):
   """Return true if `op` is the Switch for a While loop."""
-  if op.type == "Switch" or op.type == "RefSwitch":
+  if IsSwitch(op):
     ctxt = op._get_control_flow_context()
     return ctxt and isinstance(ctxt, WhileContext)
   return False
+
+
+def ZerosLikeOutsideLoop(op, index):
+  """Create zeros_like for the specified output of an op."""
+  val = op.outputs[index]
+  if not IsSwitch(op):
+    return array_ops.zeros_like(val)
+  else:
+    op_ctxt = op._get_control_flow_context()
+    pred = op_ctxt.pred
+    branch = op_ctxt.branch
+    switch_val = switch(op.inputs[0], pred)[1 - branch]
+    zeros_shape = array_ops.shape(switch_val)
+    return array_ops.zeros(zeros_shape, dtype=val.dtype)
 
 
 class ControlFlowContext(object):
@@ -1002,8 +1023,13 @@ class CondContext(ControlFlowContext):
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
-    result = val
-    if val.name not in self._values:
+    if val.name in self._values:
+      # Use the real value if it comes from outer context. This is needed in
+      # particular for nested conds.
+      result = self._external_values.get(val.name)
+      result = val if result is None else result
+    else:
+      result = val
       self._values.add(val.name)
       if self._outer_context:
         result = self._outer_context.AddValue(val)
@@ -1127,14 +1153,14 @@ def cond(pred, fn1, fn2, name=None):
     pred = array_ops.identity(pred, name="pred_id")
 
     # Build the graph for the true branch in a new context.
-    context_t = CondContext(pred, pivot_1, 1)
+    context_t = CondContext(pred, pivot_1, branch=1)
     context_t.Enter()
     res_t = context_t.BuildCondBranch(fn1)
     context_t.ExitResult(res_t)
     context_t.Exit()
 
     # Build the graph for the false branch in a new context.
-    context_f = CondContext(pred, pivot_2, 0)
+    context_f = CondContext(pred, pivot_2, branch=0)
     context_f.Enter()
     res_f = context_f.BuildCondBranch(fn2)
     context_f.ExitResult(res_f)
@@ -1659,7 +1685,7 @@ def group(*inputs, **kwargs):
   See also `tuple` and `with_dependencies`.
 
   Args:
-    *inputs: One or more tensors to group.
+    *inputs: Zero or more tensors to group.
     **kwargs: Optional parameters to pass when constructing the NodeDef.
     name: A name for this operation (optional).
 
@@ -1667,16 +1693,16 @@ def group(*inputs, **kwargs):
     An Operation that executes all its inputs.
 
   Raises:
-    ValueError: If an unknown keyword argument is provided, or if there are
-                no inputs.
+    ValueError: If an unknown keyword argument is provided.
   """
   name = kwargs.pop("name", None)
   if kwargs:
     raise ValueError("Unknown keyword arguments: " + ", ".join(kwargs.keys()))
-  if not inputs:
-    # TODO(touts): Would make sense to return a NoOp.
-    raise ValueError("No inputs provided")
   with ops.op_scope(inputs, name, "group_deps") as name:
+    # Grouping no inputs means do nothing
+    if not inputs:
+      return no_op(name=name)
+
     # Sorts *inputs according to their devices.
     ops_on_device = {}  # device -> operations specified on the device.
     for inp in inputs:

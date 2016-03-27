@@ -30,6 +30,7 @@ import weakref
 
 import six
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
@@ -1834,6 +1835,7 @@ class Graph(object):
     self._finalized = False
     # Functions defined in the graph
     self._functions = collections.OrderedDict()
+    self._function_gradient = collections.OrderedDict()
     # Default GraphDef versions
     self._graph_def_versions = versions_pb2.VersionDef(
         producer=versions.GRAPH_DEF_VERSION,
@@ -1898,6 +1900,7 @@ class Graph(object):
 
   @property
   def seed(self):
+    """The graph-level random seed of this graph."""
     return self._seed
 
   @seed.setter
@@ -1977,6 +1980,12 @@ class Graph(object):
         if bytesize >= (1 << 31) or bytesize < 0:
           raise ValueError("GraphDef cannot be larger than 2GB.")
       graph.library.function.extend(self._functions.values())
+      for func in self._function_gradient:
+        grad_def = function_pb2.GradientDef()
+        grad_def.function_name = func
+        grad_def.gradient_func = self._function_gradient[func]
+        graph.library.gradient.extend([grad_def])
+
     return graph
 
   def _is_function(self, name):
@@ -1999,7 +2008,7 @@ class Graph(object):
     """
     return self._functions[name]
 
-  def _add_function(self, function_def):
+  def _add_function(self, function_def, grad_function_name=None):
     """Adds a function to the graph.
 
     The function is specified as a [`FunctionDef`]
@@ -2012,6 +2021,9 @@ class Graph(object):
 
     Args:
       function_def: A `FunctionDef` protocol buffer.
+      grad_function_name: If not None, this specifies the name of a function
+                          that shall be used as the gradient function of
+                          the function being added.
     """
     previous_def = self._functions.get(function_def.signature.name, None)
     if previous_def:
@@ -2021,6 +2033,8 @@ class Graph(object):
         # No need to add again.
         return
     self._functions[function_def.signature.name] = function_def
+    if grad_function_name is not None:
+      self._function_gradient[function_def.signature.name] = grad_function_name
 
   # Helper functions to create operations.
   def create_op(self, op_type, inputs, dtypes,
@@ -2320,7 +2334,7 @@ class Graph(object):
     This method should be used if you want to create multiple graphs
     in the same process. For convenience, a global default graph is
     provided, and all ops will be added to this graph if you do not
-    create a new graph explicitly. Use this method the `with` keyword
+    create a new graph explicitly. Use this method with the `with` keyword
     to specify that ops created within the scope of a block should be
     added to this graph.
 

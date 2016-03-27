@@ -21,12 +21,11 @@ cc_library(
 )
 
 cc_test(
-    name = "loss_updaters_test",
+    name = "loss_test",
     size = "small",
-    srcs = ["loss_updaters_test.cc"],
+    srcs = ["loss_test.cc"],
     deps = [
         ":loss_updaters",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

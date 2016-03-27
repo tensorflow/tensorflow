@@ -22,6 +22,16 @@ while true; do
   # Retry
 done
 
+## Find swig path
+if [ -z "$SWIG_PATH" ]; then
+  SWIG_PATH=`type -p swig 2> /dev/null`
+fi
+if [[ ! -e "$SWIG_PATH" ]]; then
+  echo "Can't find swig.  Ensure swig is in \$PATH or set \$SWIG_PATH."
+  exit 1
+fi
+echo "$SWIG_PATH" > tensorflow/tools/swig/swig_path
+
 # Invoke python_config and set up symlinks to python includes
 (./util/python/python_config.sh --setup "$PYTHON_BIN_PATH";) || exit -1
 

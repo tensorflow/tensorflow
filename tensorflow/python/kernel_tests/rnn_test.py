@@ -901,7 +901,7 @@ def _static_vs_dynamic_rnn_benchmark_static(inputs_list_t, sequence_length):
   trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
   gradients = tf.gradients(outputs + [final_state], trainable_variables)
 
-  return tf.group(outputs, final_state, *gradients)
+  return tf.group(final_state, *(gradients + outputs))
 
 
 def _static_vs_dynamic_rnn_benchmark_dynamic(inputs_t, sequence_length):
@@ -916,7 +916,7 @@ def _static_vs_dynamic_rnn_benchmark_dynamic(inputs_t, sequence_length):
   trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
   gradients = tf.gradients([outputs, final_state], trainable_variables)
 
-  return tf.group(outputs, final_state, *gradients)
+  return tf.group(final_state, outputs, *gradients)
 
 
 def graph_creation_static_vs_dynamic_rnn_benchmark(max_time):
@@ -1030,7 +1030,7 @@ def _dynamic_rnn_swap_memory_benchmark(inputs_t, sequence_length,
   trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
   gradients = tf.gradients([outputs, final_state], trainable_variables)
 
-  return tf.group(outputs, final_state, *gradients)
+  return tf.group(final_state, outputs, *gradients)
 
 
 def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):

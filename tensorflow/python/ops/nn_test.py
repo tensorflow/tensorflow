@@ -588,7 +588,7 @@ class BatchNormalizationTest(tf.test.TestCase):
             shift_after_normalization)
       else:
         print("Invalid version", version)
-        raise
+        raise ValueError()
       all_params = [x, m, v, beta, gamma]
       all_shapes = [x_shape, param_shape, param_shape, param_shape, param_shape]
       err = tf.test.compute_gradient_error(

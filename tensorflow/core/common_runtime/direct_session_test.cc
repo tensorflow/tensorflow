@@ -20,11 +20,14 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -33,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -147,7 +151,7 @@ TEST_F(DirectSessionMinusAXTest, TestConcurrency) {
       std::vector<Tensor> outputs;
       // Run the graph
       Status s = session->Run(inputs, output_names, {}, &outputs);
-      ASSERT_TRUE(s.ok());
+      TF_ASSERT_OK(s);
       ASSERT_EQ(1, outputs.size());
       auto mat = outputs[0].matrix<float>();
       EXPECT_FLOAT_EQ(3.0, mat(0, 0));
@@ -184,7 +188,7 @@ TEST_F(DirectSessionMinusAXTest, TestPerSessionThreads) {
       std::vector<Tensor> outputs;
       // Run the graph
       Status s = session->Run(inputs, output_names, {}, &outputs);
-      ASSERT_TRUE(s.ok());
+      TF_ASSERT_OK(s);
       ASSERT_EQ(1, outputs.size());
       auto mat = outputs[0].matrix<float>();
       EXPECT_FLOAT_EQ(3.0, mat(0, 0));
@@ -354,7 +358,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   Status s = session->Run(
       {}, {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
   ASSERT_EQ(2, outputs.size());
   ASSERT_EQ(1.0, outputs[0].flat<float>()(0));
   ASSERT_EQ(2.0, outputs[1].flat<float>()(0));
@@ -362,7 +366,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   s = session->Run(
       {}, {second_identity->name() + ":0", first_identity->name() + ":0"}, {},
       &outputs);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
   ASSERT_EQ(2, outputs.size());
   ASSERT_EQ(2.0, outputs[0].flat<float>()(0));
   ASSERT_EQ(1.0, outputs[1].flat<float>()(0));
@@ -377,7 +381,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
       {{first_const->name(), value_11}, {second_const->name(), value_22}},
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
   ASSERT_EQ(2, outputs.size());
   ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
   ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
@@ -387,7 +391,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
       {{second_const->name(), value_22}, {first_const->name(), value_11}},
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
   ASSERT_EQ(2, outputs.size());
   ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
   ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
@@ -458,7 +462,7 @@ TEST(DirectSessionTest, PartialRunTest) {
       {first_identity->name() + ":0", second_identity->name() + ":0",
        third_identity->name() + ":0"},
       {}, &handle);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
 
   Tensor value_11(DT_FLOAT, TensorShape({}));
   value_11.scalar<float>()() = 11.0;
@@ -468,7 +472,7 @@ TEST(DirectSessionTest, PartialRunTest) {
   // Feed first_const, fetch first_identity
   s = session->PRun(handle, {{first_const->name(), value_11}},
                     {first_identity->name() + ":0"}, &outputs);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
   ASSERT_EQ(1, outputs.size());
   ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
 
@@ -477,7 +481,7 @@ TEST(DirectSessionTest, PartialRunTest) {
       handle, {{second_const->name(), value_22}},
       {second_identity->name() + ":0", third_identity->name() + ":0"},
       &outputs);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
   ASSERT_EQ(2, outputs.size());
   ASSERT_EQ(22.0, outputs[0].flat<float>()(0));
   ASSERT_EQ(11.0 + 22.0, outputs[1].flat<float>()(0));
@@ -511,7 +515,7 @@ TEST(DirectSessionTest, PartialRunMissingFeed) {
   string handle;
   Status s = session->PRunSetup({first_const->name(), second_const->name()},
                                 {third_identity->name() + ":0"}, {}, &handle);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
 
   // Feed first_const, fetch third_identity
   Tensor value_11(DT_FLOAT, TensorShape({}));
@@ -544,7 +548,7 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
   string handle;
   Status s = session->PRunSetup({switch_node->name() + ":1"},
                                 {fourth_identity->name() + ":0"}, {}, &handle);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
 
   // Fetch fourth_identity without feeds.
   s = session->PRun(handle, {}, {fourth_identity->name() + ":0"}, &outputs);
@@ -555,7 +559,7 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
   // Feed switch_node:1 and fetch fourth_identity.
   s = session->PRun(handle, {{switch_node->name() + ":1", bool_value}},
                     {fourth_identity->name() + ":0"}, &outputs);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
   ASSERT_EQ(1, outputs.size());
   ASSERT_EQ(true, outputs[0].flat<bool>()(0));
 }
@@ -652,6 +656,64 @@ TEST(DirectSessionTest, TimeoutSession) {
                            nullptr);
   ASSERT_EQ(error::DEADLINE_EXCEEDED, s2.code());
   session->Close();
+}
+
+TEST(DirectSessionTest, CostModelTest) {
+  Graph graph(OpRegistry::Global());
+
+  Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&a_tensor, {3, 2, -1, 0});
+  Node* a = test::graph::Constant(&graph, a_tensor);
+  a->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+
+  Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
+  test::FillValues<float>(&x_tensor, {1, 1});
+  Node* x = test::graph::Constant(&graph, x_tensor);
+  x->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
+
+  // y = A * x
+  Node* y = test::graph::Matmul(&graph, a, x, false, false);
+  y->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+
+  Node* y_neg = test::graph::Unary(&graph, "Neg", y);
+  y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
+
+  GraphDef def;
+  test::graph::ToGraphDef(&graph, &def);
+
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  options.config.mutable_graph_options()->set_build_cost_model(true);
+  std::unique_ptr<Session> session(NewSession(options));
+  TF_ASSERT_OK(session->Create(def));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y->name() + ":0"};
+  std::vector<string> target_nodes = {y_neg->name()};
+  std::vector<Tensor> outputs;
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  DirectSession* ds = static_cast<DirectSession*>(session.get());
+  const std::unordered_map<const Graph*, CostModel*>& cost_models =
+      ds->GetCostModels();
+  // We should have 2 cost models since we have 2 cpu devices.
+  ASSERT_EQ(2, cost_models.size());
+
+  for (auto it : cost_models) {
+    const Graph* g = (it).first;
+    const CostModel* cm = (it).second;
+    for (Node* node : g->nodes()) {
+      if (node->name() == y->name()) {
+        EXPECT_EQ(0, cm->MaxSize(node, 0));
+        EXPECT_EQ(0, cm->Aliases(node, 0));
+      } else if (node->name() == y_neg->name()) {
+        EXPECT_EQ(0, cm->MaxSize(node, 0));
+        EXPECT_EQ(0, cm->Aliases(node, 0));
+      }
+    }
+  }
 }
 
 }  // namespace

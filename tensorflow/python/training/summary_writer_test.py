@@ -68,7 +68,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
-  def testAddingSummaryAndGraph(self):
+  def testAddingSummaryGraphAndRunMetadata(self):
     test_dir = self._CleanTestDir("basics")
     sw = tf.train.SummaryWriter(test_dir)
 
@@ -81,8 +81,12 @@ class SummaryWriterTestCase(tf.test.TestCase):
                    20)
     with tf.Graph().as_default() as g:
       tf.constant([0], name="zero")
-    gd = g.as_graph_def()
-    sw.add_graph(gd, global_step=30)
+    sw.add_graph(g, global_step=30)
+
+    run_metadata = tf.RunMetadata()
+    device_stats = run_metadata.step_stats.dev_stats.add()
+    device_stats.device = "test"
+    sw.add_run_metadata(run_metadata, "test run", global_step=40)
     sw.close()
     rr = self._EventsReader(test_dir)
 
@@ -119,7 +123,16 @@ class SummaryWriterTestCase(tf.test.TestCase):
     self.assertEquals(30, ev.step)
     ev_graph = tf.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
-    self.assertProtoEquals(gd, ev_graph)
+    self.assertProtoEquals(g.as_graph_def(add_shapes=True), ev_graph)
+
+    # The next event should have metadata for the run.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(40, ev.step)
+    self.assertEquals("test run", ev.tagged_run_metadata.tag)
+    parsed_run_metadata = tf.RunMetadata()
+    parsed_run_metadata.ParseFromString(ev.tagged_run_metadata.run_metadata)
+    self.assertProtoEquals(run_metadata, parsed_run_metadata)
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))

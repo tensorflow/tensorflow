@@ -298,6 +298,34 @@ Construct a new gradient descent optimizer.
 
 - - -
 
+### `class tf.train.AdadeltaOptimizer` {#AdadeltaOptimizer}
+
+Optimizer that implements the Adadelta algorithm. 
+
+See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
+([pdf](http://arxiv.org/pdf/1212.570.pdf))
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.__init__(learning_rate=0.001, rho=0.95, epsilon=1e-08, use_locking=False, name='Adadelta')` {#AdadeltaOptimizer.__init__}
+
+Construct a new Adadelta optimizer.
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value. The learning rate.
+*  <b>`rho`</b>: A `Tensor` or a floating point value. The decay rate.
+*  <b>`epsilon`</b>: A `Tensor` or a floating point value.  A constant epsilon used
+           to better conditioning the grad update.
+*  <b>`use_locking`</b>: If `True` use locks for update operations.
+*  <b>`name`</b>: Optional name prefix for the operations created when applying
+    gradients.  Defaults to "Adadelta".
+
+
+
+- - -
+
 ### `class tf.train.AdagradOptimizer` {#AdagradOptimizer}
 
 Optimizer that implements the Adagrad algorithm.
@@ -1838,6 +1866,26 @@ TensorBoard. Most users pass a graph in the constructor instead.
 *  <b>`ValueError`</b>: If both graph and graph_def are passed to the method.
 
 
+- - -
+
+#### `tf.train.SummaryWriter.add_run_metadata(run_metadata, tag, global_step=None)` {#SummaryWriter.add_run_metadata}
+
+Adds a metadata information for a single session.run() call.
+
+##### Args:
+
+
+*  <b>`run_metadata`</b>: A `RunMetadata` protobuf object.
+*  <b>`tag`</b>: The tag name for this metadata.
+*  <b>`global_step`</b>: Number. Optional global step counter to record with the
+    StepStats.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the provided tag was already used for this type of event.
+
+
 
 - - -
 
@@ -2274,7 +2322,7 @@ the model from scratch.
 with tf.Session() as sess:
   new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
   new_saver.restore(sess, 'my-save-dir/my-model-10000')
-  # tf.get_collection() retrurns a list. In this example we only want the
+  # tf.get_collection() returns a list. In this example we only want the
   # first one.
   train_op = tf.get_collection('train_op')[0]
   for step in xrange(1000000):
@@ -2292,7 +2340,7 @@ device assignments have not changed.
 
 ##### Returns:
 
-  A saver constructed rom `saver_def` in `MetaGraphDef` or None.
+  A saver constructed from `saver_def` in `MetaGraphDef` or None.
 
   A None value is returned if no variables exist in the `MetaGraphDef`
   (i.e., there are no variables to restore).

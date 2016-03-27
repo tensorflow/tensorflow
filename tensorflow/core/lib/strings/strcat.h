@@ -172,9 +172,6 @@ string StrCat(const AlphaNum &a, const AlphaNum &b,
 string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
               const AlphaNum &d) TF_MUST_USE_RESULT;
 
-// inline definitions must be duplicated due to TF_MUST_USE_RESULT
-inline string StrCat(const AlphaNum &a) { return string(a.data(), a.size()); }
-
 namespace internal {
 
 // Do not call directly - this is not part of the public API.
@@ -190,8 +187,8 @@ string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
               const AV &... args) TF_MUST_USE_RESULT;
 
 template <typename... AV>
-inline string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-                     const AlphaNum &d, const AlphaNum &e, const AV &... args) {
+string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
+              const AlphaNum &d, const AlphaNum &e, const AV &... args) {
   return internal::CatPieces({a.Piece(), b.Piece(), c.Piece(), d.Piece(),
                               e.Piece(),
                               static_cast<const AlphaNum &>(args).Piece()...});

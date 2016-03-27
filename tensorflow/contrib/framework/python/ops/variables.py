@@ -12,11 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A module containing TensorFlow ops whose API may change in the future."""
 
+"""Variable functions.
+
+@@local_variable
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
 
-# pylint: disable=wildcard-import
-from tensorflow.contrib.layers.python.ops.loss_ops import *
+__all__ = ['local_variable']
+
+
+def local_variable(initial_value, validate_shape=True, name=None):
+  """Create variable and add it to `GraphKeys.LOCAL_VARIABLES` collection.
+
+  Args:
+    initial_value: See variables.Variable.__init__.
+    validate_shape: See variables.Variable.__init__.
+    name: See variables.Variable.__init__.
+  Returns:
+    New variable.
+  """
+  return variables.Variable(
+      initial_value, trainable=False,
+      collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      validate_shape=validate_shape, name=name)

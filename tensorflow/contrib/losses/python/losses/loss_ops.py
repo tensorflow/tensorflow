@@ -21,35 +21,23 @@ or for regularization purposes (e.g., weight decay).
 These loss ops are, by design, minimal, enabling flexibility in how
 their output can be used.
 
-@@reduce_batch_sum
-
-@@absolute_loss
-@@squared_loss
-@@logistic_loss
-
-@@sum_absolute_loss
-@@sum_squared_loss
-@@sum_logistic_loss
-
-@@scalar_absolute_loss
-@@scalar_squared_loss
-@@scalar_logistic_loss
+@@absolute
+@@squared
+@@logistic
+@@softmax
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.layers.python.framework import tensor_util
+from tensorflow.contrib.framework.python.framework import tensor_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
-__all__ = ["reduce_batch_sum", "absolute_loss", "squared_loss", "logistic_loss",
-           "sum_absolute_loss", "sum_squared_loss", "sum_logistic_loss",
-           "scalar_absolute_loss", "scalar_squared_loss",
-           "scalar_logistic_loss"]
+__all__ = ["absolute", "squared", "logistic", "softmax"]
 
 
 def _reduce_batch(x, reduce_fn, name=None):
@@ -95,15 +83,14 @@ def _reduce_batch(x, reduce_fn, name=None):
     return result
 
 
-def reduce_batch_sum(x, name=None):
+def _reduce_batch_sum(x, name=None):
   """Given a tensor `x`, sums across all dimensions except dimension 0.
 
-  Given a tensor with the number of dimensions > 1, reduce_batch_sum
-  will sum across all dimensions except for dimension 0. This function
-  is useful for summing the loss (error) across all examples in a
-  batch when training. As an example, given a tensor of shape
-  [batch_size, d1, d2], this function will sum across dimensions d1
-  and d2, returning a tensor of shape [batch_size].
+  Given a tensor with the number of dimensions > 1, this will sum across all
+  dimensions except for dimension 0. This function is useful for summing the
+  loss (error) across all examples in a batch when training. As an example,
+  given a tensor of shape [batch_size, d1, d2], this function will sum across
+  dimensions d1 and d2, returning a tensor of shape [batch_size].
 
   Tensors of dimension 1 are returned as-is, while tensors of dimension 0
   raise a ValueError.
@@ -122,6 +109,23 @@ def reduce_batch_sum(x, name=None):
   return _reduce_batch(x, math_ops.reduce_sum, name)
 
 
+def _reduce_to_scalar(x, name=None):
+  """Reduces losses to a scalar.
+
+  Given a tensor `x`, sums across all dimensions except dimension 0, then
+  average across dimension 0.
+
+  Args:
+    x: A `Tensor` with dimension > 0.
+    name: A name for the operation (optional).
+
+  Returns:
+    Caculate sum of losses per example, then average across batch.
+  """
+  with ops.op_scope([x], name, "scalar") as scope:
+    return math_ops.reduce_mean(_reduce_batch_sum(x), name=scope)
+
+
 def _validate_predicted_and_target(predicted, target):
   # TODO(ptucker): Optionally add assert op for shape check, for cases when
   # shape is not fully defined at graph construction time?
@@ -129,7 +133,7 @@ def _validate_predicted_and_target(predicted, target):
   tensor_util.assert_same_float_dtype([predicted, target])
 
 
-def absolute_loss(predicted, target, name=None):
+def _raw_absolute(predicted, target, name=None):
   """Computes and returns the per-example absolute loss.
 
   Computes the per-example absolute value of the difference between
@@ -158,7 +162,7 @@ def absolute_loss(predicted, target, name=None):
     return math_ops.abs(target - predicted, name=scope)
 
 
-def squared_loss(predicted, target, name=None):
+def _raw_squared(predicted, target, name=None):
   """Computes and returns the per-example squared loss, divided by 2.
 
   Computes the per-example squared difference between the target and
@@ -186,161 +190,7 @@ def squared_loss(predicted, target, name=None):
     return math_ops.div(math_ops.square(target - predicted), 2.0, name=scope)
 
 
-def logistic_loss(logit, target, name=None):
-  """Calculates the logistic cross-entropy loss.
-
-  **WARNING:** `logit` must be unscaled, while the `target` should be a
-  normalized probability prediction. See
-  `tf.nn.sigmoid_cross_entropy_with_logits` for more details.
-
-  Args:
-    logit: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
-      of predicted logit values.
-    target: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
-      target values. The shape of the target tensor should match the
-      `predicted` tensor.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` of the logistic cross-entropy loss.
-  """
-  return nn.sigmoid_cross_entropy_with_logits(logit, target, name=name)
-
-
-def _sum_loss(predicted, target, loss_fn, name="sum_loss"):
-  """Apply loss function, then sum across all non-batch dimensions.
-
-  Args:
-    predicted: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
-      of predicted values.
-    target: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
-      target values. The shape of the target tensor should match the
-      `predicted` tensor.
-    loss_fn: Loss to apply, takes 2 tensors as parameters and returns a tensor.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `[batch_size]` tensor of losses, averaged across all dimensions except
-    dimension 0.
-  """
-  return reduce_batch_sum(loss_fn(predicted, target), name=name)
-
-
-def sum_absolute_loss(predicted, target, name="sum_absolute_loss"):
-  """Calculates the sum of absolute losses across batches.
-
-  Computes the absolute difference between the target and predicted
-  tensors, averaged across all dimensions except dimension 0:
-
-        losses = reduce_batch_sum(absolute_loss(predicted, target))
-
-  where `losses` is a tensor with dimensions [batch_size].
-
-  The tensors must have the same shape.
-
-  This loss function is a form of L1 loss.
-
-  Args:
-    predicted: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
-      of predicted values.
-    target: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
-      target values. The shape of the target tensor should match the
-      `predicted` tensor.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `[batch_size]` tensor of absolute differences, averaged across all
-    dimensions except dimension 0.
-
-  Raises:
-    ValueError: If `predicted` and `target` shapes do not match.
-
-  """
-  return _sum_loss(predicted, target, absolute_loss, name=name)
-
-
-def sum_squared_loss(predicted, target, name="sum_squared_loss"):
-  """Calculates the sum of the squared loss across batches.
-
-  Computes the squared difference between the target and predicted
-  tensors, sums across all dimensions except dimension 0.
-
-      losses = reduce_batch_sum(squared_loss(predicted, target))
-
-  where `losses` is a tensor with dimensions [batch_size].
-
-  The tensors must have the same shape.
-
-  This function is equivalent to typical formulations of L2 loss, and
-  similar to TensorFlow's l2_loss function. It differs from the
-  l2_loss function by allowing the caller to specify both the
-  predicted and target tensors.
-
-  Args:
-    predicted: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
-      of predicted values.
-    target: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
-      target values. The shape of the target tensor should match the
-      `predicted` tensor.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `[batch_size]` tensor of squared losses summed across all dimensions
-    except dimension 0.
-
-  Raises:
-    ValueError: If `predicted` and `target` shapes do not match.
-
-  """
-  return _sum_loss(predicted, target, squared_loss, name=name)
-
-
-def sum_logistic_loss(logit, target, name="sum_logistic_loss"):
-  """Calculates the sum of the logistic loss across batches.
-
-  Computes the logistic between logit and predicted tensors, summed across all
-  dimensions except dimension 0.
-
-  **WARNING:** `logit` must be unscaled, while the `target` should be a
-  normalized probability prediction. See
-  `tf.nn.sigmoid_cross_entropy_with_logits` for more details.
-
-  Args:
-    logit: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
-      of predicted logit values.
-    target: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
-      target values. The shape of the target tensor should match the
-      `predicted` tensor.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `[batch_size]` tensor of logistic losses summed across all dimensions
-    except dimension 0.
-  """
-  return _sum_loss(logit, target, logistic_loss, name=name)
-
-
-def _scalar_loss(predicted, target, loss_fn, name=None):
-  """Reduces losses to a scalar.
-
-  Args:
-    predicted: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
-      of predicted values.
-    target: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
-      target values. The shape of the target tensor should match the
-      `predicted` tensor.
-    loss_fn: Loss to apply, takes 2 tensors as parameters and returns a tensor.
-    name: A name for the operation (optional).
-
-  Returns:
-    Caculate sum of losses per example, then average across batch.
-  """
-  with ops.op_scope([predicted, target], name, "scalar_loss") as scope:
-    return math_ops.reduce_mean(
-        _sum_loss(predicted, target, loss_fn), name=scope)
-
-
-def scalar_absolute_loss(predicted, target, name="scalar_absolute_loss"):
+def absolute(predicted, target, name=None):
   """Reduces absolute losses to a scalar.
 
   Args:
@@ -354,10 +204,11 @@ def scalar_absolute_loss(predicted, target, name="scalar_absolute_loss"):
   Returns:
     Caculate sum of absolute losses per example, then average across batch.
   """
-  return _scalar_loss(predicted, target, loss_fn=absolute_loss, name=name)
+  with ops.op_scope([predicted, target], name, "absolute_loss") as scope:
+    return _reduce_to_scalar(_raw_absolute(predicted, target), name=scope)
 
 
-def scalar_squared_loss(predicted, target, name="scalar_squared_loss"):
+def squared(predicted, target, name=None):
   """Reduces squared losses to a scalar.
 
   Args:
@@ -371,10 +222,11 @@ def scalar_squared_loss(predicted, target, name="scalar_squared_loss"):
   Returns:
     Caculate sum of squared losses per example, then average across batch.
   """
-  return _scalar_loss(predicted, target, loss_fn=squared_loss, name=name)
+  with ops.op_scope([predicted, target], name, "squared_loss") as scope:
+    return _reduce_to_scalar(_raw_squared(predicted, target), name=scope)
 
 
-def scalar_logistic_loss(logit, target, name="scalar_logistic_loss"):
+def logistic(logit, target, name=None):
   """Calculates the logistic cross-entropy loss, averaged across batches.
 
   **WARNING:** `logit` must be unscaled, while the `target` should be a
@@ -386,7 +238,7 @@ def scalar_logistic_loss(logit, target, name="scalar_logistic_loss"):
       of predicted logit values.
     target: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
       target values. The shape of the target tensor should match the
-      `predicted` tensor.
+      `logit` tensor.
     name: A name for the operation (optional).
 
   Returns:
@@ -396,5 +248,39 @@ def scalar_logistic_loss(logit, target, name="scalar_logistic_loss"):
   Raises:
     ValueError: If `logit` and `target` shapes do not match.
   """
-  return _scalar_loss(logit, target, loss_fn=logistic_loss, name=name)
+  with ops.op_scope([logit, target], name, "logistic_loss") as scope:
+    return _reduce_to_scalar(
+        nn.sigmoid_cross_entropy_with_logits(logit, target), name=scope)
 
+
+def softmax(logit, target, name=None):
+  """Calculates the softmax cross-entropy loss, averaged across batches.
+
+  **WARNING:** `logit` must be unscaled, while the `target` should be a
+  normalized probability prediction. See
+  `tf.nn.sigmoid_cross_entropy_with_logits` for more details.
+
+  Args:
+    logit: Tensor of actual values. Shape must have rank 2, generally
+        (batch, num_classes). num_classes must be > 1. For single-class
+        regression, use `logistic`. Type must be `tf.float32` or `tf.float64`.
+    target: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]` of
+      target values. The shape of the target tensor should match the
+      `logit` tensor.
+    name: A name for the operation (optional).
+
+  Returns:
+    A scalar `tensor` of the softmax cross-entropy loss, averaged across
+    batches.
+
+  Raises:
+    ValueError: If `logit` and `target` shapes do not match.
+  """
+  with ops.op_scope([logit, target], name, "softmax_loss") as scope:
+    shape = logit.get_shape().with_rank(2)
+    if shape.dims[1] and shape.dims[1] < 2:
+      raise ValueError(
+          "Invalid shape %s; use logistic() instead for only 1 class." %
+          shape)
+    return _reduce_to_scalar(
+        nn.softmax_cross_entropy_with_logits(logit, target), name=scope)

@@ -12,8 +12,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
-from __future__ import division, print_function, absolute_import
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import math
 import numpy as np
@@ -56,7 +57,7 @@ class CategoricalProcessor(object):
         """Learn a vocabulary dictionary of all categories in X.
 
         Args:
-            raw_documents: numpy matrix or iterable of lists/numpy arrays.
+            X: numpy matrix or iterable of lists/numpy arrays.
             unused_y: to match fit format signature of estimators.
 
         Returns:

@@ -578,7 +578,7 @@ class Supervisor(object):
       training_util.write_graph(self._graph.as_graph_def(),
                                 self._logdir, "graph.pbtxt")
     if self._summary_writer:
-      self._summary_writer.add_graph(self._graph.as_graph_def())
+      self._summary_writer.add_graph(self._graph)
 
   def start_standard_services(self, sess):
     """Start the standard services for 'sess'.

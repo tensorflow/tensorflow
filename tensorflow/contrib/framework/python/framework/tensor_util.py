@@ -13,15 +13,26 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor utility functions."""
+"""Tensor utility functions.
+
+@@assert_same_float_dtype
+@@is_numeric_tensor
+@@assert_scalar_int
+@@local_variable
+@@reduce_sum_n
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.ops import Tensor
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
+from tensorflow.python.ops import math_ops
 
-
-__all__ = ['assert_same_float_dtype', 'is_numeric_tensor', 'assert_scalar_int']
+__all__ = [
+    'assert_same_float_dtype', 'is_numeric_tensor', 'assert_scalar_int',
+    'local_variable', 'reduce_sum_n']
 
 
 NUMERIC_TYPES = frozenset([dtypes.float32, dtypes.float64, dtypes.int8,
@@ -31,7 +42,7 @@ NUMERIC_TYPES = frozenset([dtypes.float32, dtypes.float64, dtypes.int8,
 
 
 def is_numeric_tensor(tensor):
-  return isinstance(tensor, Tensor) and tensor.dtype in NUMERIC_TYPES
+  return isinstance(tensor, ops.Tensor) and tensor.dtype in NUMERIC_TYPES
 
 
 def _assert_same_base_type(items, expected_type=None):
@@ -109,3 +120,45 @@ def assert_scalar_int(tensor):
   if shape.ndims != 0:
     raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))
   return tensor
+
+
+# TODO(ptucker): Move to tf.variables?
+def local_variable(initial_value, validate_shape=True, name=None):
+  """Create variable and add it to `GraphKeys.LOCAL_VARIABLES` collection.
+
+  Args:
+    initial_value: See variables.Variable.__init__.
+    validate_shape: See variables.Variable.__init__.
+    name: See variables.Variable.__init__.
+  Returns:
+    New variable.
+  """
+  return variables.Variable(
+      initial_value, trainable=False,
+      collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      validate_shape=validate_shape, name=name)
+
+
+def reduce_sum_n(tensors, name=None):
+  """Reduce tensors to a scalar sum.
+
+  This reduces each tensor in `tensors` to a scalar via `tf.reduce_sum`, then
+  adds them via `tf.add_n`.
+
+  Args:
+    tensors: List of tensors, all of the same numeric type.
+    name: Tensor name, and scope for all other ops.
+
+  Returns:
+    Total loss tensor, or None if no losses have been configured.
+
+  Raises:
+    ValueError: if `losses` is missing or empty.
+  """
+  if not tensors:
+    raise ValueError('No tensors provided.')
+  tensors = [math_ops.reduce_sum(t, name='%s/sum' % t.op.name) for t in tensors]
+  if len(tensors) == 1:
+    return tensors[0]
+  with ops.op_scope(tensors, name, 'reduce_sum_n') as scope:
+    return math_ops.add_n(tensors, name=scope)

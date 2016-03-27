@@ -56,7 +56,6 @@ class GrpcWorkerCache : public WorkerCachePartial {
 
   WorkerInterface* CreateWorker(const string& target) override {
     SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
-    CHECK(channel) << "Channel was null";
     if (!channel) return nullptr;
     WorkerInterface* ret =
         NewGrpcRemoteWorker(channel, &completion_queue_, &logger_);

@@ -704,6 +704,7 @@ tf_gen_op_wrapper_py(
         "SerializeManySparse",
         "SerializeSparse",
         "SparseAdd",
+        "SparseAddGrad",
         "SparseConcat",
         "SparseSplit",
         "SparseSelectLastK",
@@ -954,6 +955,7 @@ tf_py_wrap_cc(
         "platform/base.i",
         "platform/numpy.i",
         "util/port.i",
+        "util/py_checkpoint_reader.i",
     ],
     deps = [
         ":py_func_lib",
@@ -1176,7 +1178,7 @@ cuda_py_tests(
     name = "kernel_tests_with_sharding",
     size = "medium",
     srcs = sharded_kernel_test_list,
-    shard_count = 5,
+    shard_count = 50,
 )
 
 cuda_py_tests(
@@ -1300,14 +1302,9 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-py_binary(
+cuda_py_test(
     name = "batch_norm_benchmark",
     srcs = [
         "ops/batch_norm_benchmark.py",
-    ],
-    main = "ops/batch_norm_benchmark.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
     ],
 )
