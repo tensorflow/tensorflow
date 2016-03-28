@@ -1,6 +1,6 @@
 package(default_visibility = ["//visibility:public"])
 
-archive_dir = "eigen-eigen-4b9c7d45d069"
+archive_dir = "eigen-eigen-36b0586de49f"
 
 cc_library(
     name = "eigen",
