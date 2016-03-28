@@ -6,8 +6,8 @@
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
     name = "gmock_archive",
-    url = "https://googlemock.googlecode.com/files/gmock-1.7.0.zip",
-    sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
+    url = "https://github.com/google/googlemock/archive/release-1.7.0.zip",
+    sha256 = "407992e9ef17a08339cd383c33dbaff923969cfa01f8e4ceaeea679400016d85",
     build_file = path_prefix + "google/protobuf/gmock.BUILD",
   )
 
