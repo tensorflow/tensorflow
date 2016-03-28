@@ -402,6 +402,35 @@ class BatchTest(tf.test.TestCase):
       for thread in threads:
         thread.join()
 
+  def testOneThreadDynamicPad(self):
+    with self.test_session() as sess:
+      batch_size = 10
+      num_batches = 3
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_batches * batch_size)
+      string = tf.tile(["string"], tf.to_int32(tf.pack([counter])))
+      tf.initialize_all_variables().run()
+      batched = tf.train.batch(
+          [counter, string], batch_size=batch_size, dynamic_pad=True)
+      threads = tf.train.start_queue_runners()
+
+      for i in range(num_batches):
+        results = sess.run(batched)
+        expected_results = np.arange(i * batch_size, (i + 1) * batch_size)
+        max_len = expected_results[-1]
+        self.assertAllEqual(results[0], expected_results)
+        expected_strings = [
+            [b"string"] * rep + [b""] * (max_len - rep)
+            for rep in expected_results]
+        self.assertAllEqual(results[1], expected_strings)
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
   def testOneThreadEnqueueMany(self):
     with self.test_session() as sess:
       batch_size = 10
@@ -491,6 +520,12 @@ class BatchTest(tf.test.TestCase):
           "s: 'SHARED_NAME_XYZ'",
           batched[0].op.inputs[0].op.node_def.attr["shared_name"])
 
+  def testCannotInferRankError(self):
+    with self.test_session():
+      x = tf.placeholder(dtype=tf.int64)
+      with self.assertRaisesRegexp(ValueError, "Cannot infer Tensor's rank"):
+        tf.train.batch([x], batch_size=2)
+
 
 class BatchJoinTest(tf.test.TestCase):
 
@@ -561,6 +596,70 @@ class BatchJoinTest(tf.test.TestCase):
       for thread in threads:
         thread.join()
 
+  def testTwoThreadsDynamicPad(self):
+    with self.test_session() as sess:
+      # Two threads, the first generates (0..69, ["a"] * 1..70).
+      num_a = 70
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_a)
+
+      # The second generates (99, ["b"] * 99) 90 times and then stops.
+      num_b = 90
+      ninety_nine = tf.train.limit_epochs(
+          tf.constant(99, dtype=tf.int64), num_b)
+
+      # These get joined together and grouped into batches of 5.
+      batch_size = 5
+      a = tf.tile(["a"], tf.to_int32(tf.pack([counter + 1])))
+      b = tf.tile(["b"], tf.to_int32(tf.pack([ninety_nine])))
+      batched = tf.train.batch_join(
+          [[counter, a],
+           [ninety_nine, b]],
+          batch_size=batch_size, dynamic_pad=True)
+      tf.initialize_all_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      # Should see the "a" and "b" threads mixed together.
+      all_a = []
+      count_string_a = []
+      seen_b = 0
+      saw_both = 0
+      num_batches = (num_a + num_b) // batch_size
+      for i in range(num_batches):
+        results = sess.run(batched)
+        tf.logging.info("Batch %d: %s", i, results[0])
+        self.assertEqual(len(results[0]), batch_size)
+        self.assertEqual(len(results[1]), batch_size)
+        for s in results[1]:
+          if s[0] == b"b":
+            self.assertAllEqual(s, [b"b"] * 99)
+          else:
+            count_string_a.append(sum(x == b"a" for x in s))
+        which_a = [i for i, s in enumerate(results[1]) if s[0] == b"a"]
+        which_b = [i for i, s in enumerate(results[1]) if s[0] == b"b"]
+        self.assertEqual(len(which_a) + len(which_b), batch_size)
+        if len(which_a) > 0 and len(which_b) > 0: saw_both += 1
+        all_a.extend([results[0][i] for i in which_a])
+        seen_b += len(which_b)
+        self.assertAllEqual([99] * len(which_b),
+                            [results[0][i] for i in which_b])
+
+      # Some minimum level of mixing of the results of both threads.
+      self.assertGreater(saw_both, 1)
+
+      # Verify the order of results from "a" were preserved.
+      self.assertAllEqual(  # tiled "a" with counter + 1
+          count_string_a, np.arange(num_a) + 1)
+      self.assertAllEqual(all_a, np.arange(num_a))
+      self.assertEqual(seen_b, num_b)
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
   def testSharedName(self):
     with self.test_session():
       batch_size = 10
@@ -575,6 +674,12 @@ class BatchJoinTest(tf.test.TestCase):
       self.assertProtoEquals(
           "s: 'SHARED_NAME_XYZ'",
           batched[0].op.inputs[0].op.node_def.attr["shared_name"])
+
+  def testCannotInferRankError(self):
+    with self.test_session():
+      x = tf.placeholder(dtype=tf.int64)
+      with self.assertRaisesRegexp(ValueError, "Cannot infer Tensor's rank"):
+        tf.train.batch_join([[x]], batch_size=2)
 
 
 class ShuffleBatchTest(tf.test.TestCase):
@@ -732,7 +837,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
         which_a = [i for i, s in enumerate(results[2]) if s == b"a"]
         which_b = [i for i, s in enumerate(results[2]) if s == b"b"]
         self.assertEqual(len(which_a) + len(which_b), batch_size)
-        if len(which_a) > 0 and len(which_b) > 0: saw_both += 1
+        if which_a and which_b: saw_both += 1
         all_a.extend([results[0][i] for i in which_a])
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
