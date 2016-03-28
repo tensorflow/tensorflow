@@ -618,7 +618,6 @@ ANDROID_TF_COPTS = [
     "-std=c++11",
     "-DMIN_LOG_LEVEL=0",
     "-DTF_LEAN_BINARY",
-    "-O2",
 ]
 
 # Native library support for Android applications.
@@ -648,7 +647,7 @@ cc_library(
         "public/session.h",
     ],
     copts = select({
-        ":android": ANDROID_TF_COPTS,
+        ":android": ANDROID_TF_COPTS + ["-Os"],
         "//conditions:default": [],
     }),
     tags = [
@@ -677,7 +676,7 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = select({
-        ":android": ANDROID_TF_COPTS,
+        ":android": ANDROID_TF_COPTS + ["-O2"],
         "//conditions:default": [],
     }),
     tags = [
