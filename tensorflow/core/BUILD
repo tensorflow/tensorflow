@@ -661,6 +661,7 @@ cc_library(
         ":protos_cc",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 # Full Tensorflow library with operator support. Use this unless reducing
@@ -690,6 +691,7 @@ cc_library(
         ":protos_cc",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 filegroup(
