@@ -24,22 +24,45 @@ const (
 	cBytesComplex64 = 8
 )
 
-// ErrInvalidTensorType The data type of the tensor is not compatible with the
-// expected data type on this function
 var (
-	ErrInvalidTensorType      = errors.New("Invalid tensor data type")
+	// ErrInvalidTensorType The data type of the tensor is not compatible
+	// with the expected data type on this function.
+	ErrInvalidTensorType = errors.New("Invalid tensor data type")
+	// ErrTensorTypeNotSupported The tensor type is still not supported.
 	ErrTensorTypeNotSupported = errors.New("The tensor type is still not supported")
-	ErrDimsOutOfTensorRange   = errors.New("The number of specified dimensions doesn't match with the tensor dimensions")
-	ErrIndexOutOfRange        = errors.New("The specified index is out of one of the dimensions range")
+	// ErrDimsOutOfTensorRange The number of specified dimensions doesn't
+	// match with the tensor dimensions
+	ErrDimsOutOfTensorRange = errors.New("The number of specified dimensions doesn't match with the tensor dimensions")
+	// ErrIndexOutOfRange The specified index is out of one of the dimensions range
+	ErrIndexOutOfRange = errors.New("The specified index is out of one of the dimensions range")
 
-	TensorShapeScalar = TensorShape{{1}}
+	tensorShapeScalar = TensorShape{{1}}
 )
 
+// TensorInt Interface to be implemented by the tensors.
 type TensorInt interface {
+	Data() []byte
+	DataSize() int64
+	DataType() tf.DataType
 	GetVal(d ...int) interface{}
+
+	Dim(n int) int
+	NumDims() int
+
+	AsBool() (res []bool, err error)
+	AsFloat32() (res []float32, err error)
+	AsFloat64() (res []float64, err error)
+	AsInt16() (res []int16, err error)
+	AsInt32() (res []int32, err error)
+	AsInt64() (res []int64, err error)
+	AsInt8() (res []int8, err error)
+	AsStr() (res []string, err error)
+	AsUint8() (res []uint8, err error)
+
+	String() string
 }
 
-// Tensor represents a value created from an Operation
+// Tensor Holds a multi-dimensional array of elements of a single data type.
 type Tensor struct {
 	tensor     tf.TF_Tensor
 	buf        interface{}
@@ -49,6 +72,7 @@ type Tensor struct {
 // TensorShape represents the shapre of a Tensor.
 type TensorShape [][]int64
 
+// NewTensor returns a new tensor with teh specified type, shape and data.
 func NewTensor(dataType tf.DataType, shape TensorShape, data interface{}) (*Tensor, error) {
 	// TODO(tmc): ensure data is a slice
 	v := reflect.ValueOf(data)
@@ -68,33 +92,39 @@ func newTensor(dataType tf.DataType, shape TensorShape, data uintptr, size int64
 	return t, nil
 }
 
+// DataType returns the data type of the elements contained by the tensor.
 func (t *Tensor) DataType() tf.DataType {
 	return tf.DataType(tf.TF_TensorType(t.tensor))
 }
 
+// NumDims returns the number of dimensions that this tensor in a tensor.
 func (t *Tensor) NumDims() int {
 	return tf.TF_NumDims(t.tensor)
 }
 
+// Dim returns the size of the specified dimension.
 func (t *Tensor) Dim(n int) int {
 	return int(tf.TF_Dim(t.tensor, n))
 }
 
+// DataSize returns the size of the data in bytes contained in a tensor.
 func (t *Tensor) DataSize() int64 {
 	return tf.TF_TensorByteSize(t.tensor)
 }
 
+// Data returns the data contained in a tensor as a slice of bytes.
 func (t *Tensor) Data() []byte {
 	length := t.DataSize()
 	return (*[1 << 40]byte)(unsafe.Pointer(tf.TF_TensorData(t.tensor)))[:length:length]
 }
 
+// String string representation of a tensor.
 func (t *Tensor) String() string {
 	return fmt.Sprintf("%v: dims:%v size:%v", t.DataType(), t.NumDims(), t.DataSize())
 }
 
-// AsStr Returns the content of the tensor as string if the tensor type
-// matches, if not returns a ErrInvalidTensorType error
+// AsStr returns the content of the tensor as slice of strings if the tensor
+// type matches, if not returns a ErrInvalidTensorType error
 func (t *Tensor) AsStr() (res []string, err error) {
 	if tf.TF_DataType(tf.TF_STRING) != tf.TF_TensorType(t.tensor) {
 		err = ErrInvalidTensorType
@@ -129,7 +159,7 @@ func (t *Tensor) AsStr() (res []string, err error) {
 	return
 }
 
-// AsFloat32 Returns the content of the tensor as a slice of float32 if the tensor
+// AsFloat32 returns the content of the tensor as a slice of float32 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 func (t *Tensor) AsFloat32() (res []float32, err error) {
 	if tf.TF_DataType(tf.TF_FLOAT) != tf.TF_TensorType(t.tensor) {
@@ -151,7 +181,7 @@ func (t *Tensor) AsFloat32() (res []float32, err error) {
 	return
 }
 
-// AsFloat64 Returns the content of the tensor as a slice of float64 if the tensor
+// AsFloat64 returns the content of the tensor as a slice of float64 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 func (t *Tensor) AsFloat64() (res []float64, err error) {
 	if tf.TF_DataType(tf.TF_DOUBLE) != tf.TF_TensorType(t.tensor) {
@@ -173,7 +203,7 @@ func (t *Tensor) AsFloat64() (res []float64, err error) {
 	return
 }
 
-// AsInt32 Returns the content of the tensor as a slice of int32 if the tensor
+// AsInt32 returns the content of the tensor as a slice of int32 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 func (t *Tensor) AsInt32() (res []int32, err error) {
 	if tf.TF_DataType(tf.TF_INT32) != tf.TF_TensorType(t.tensor) {
@@ -195,7 +225,7 @@ func (t *Tensor) AsInt32() (res []int32, err error) {
 	return
 }
 
-// AsInt64 Returns the content of the tensor as a slice of int64 if the tensor
+// AsInt64 returns the content of the tensor as a slice of int64 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 func (t *Tensor) AsInt64() (res []int64, err error) {
 	if tf.TF_DataType(tf.TF_INT64) != tf.TF_TensorType(t.tensor) {
@@ -217,7 +247,7 @@ func (t *Tensor) AsInt64() (res []int64, err error) {
 	return
 }
 
-// AsUint8 Returns the content of the tensor as a slice of uint8 if the tensor
+// AsUint8 returns the content of the tensor as a slice of uint8 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 func (t *Tensor) AsUint8() (res []uint8, err error) {
 	if tf.TF_DataType(tf.TF_UINT8) != tf.TF_TensorType(t.tensor) {
@@ -236,7 +266,7 @@ func (t *Tensor) AsUint8() (res []uint8, err error) {
 	return
 }
 
-// AsUint16 Returns the content of the tensor as a slice of uint16 if the tensor
+// AsUint16 returns the content of the tensor as a slice of uint16 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 /*func (t *Tensor) AsUint16() (res []uint16, err error) {
 	if tf.TF_DataType(tf.TF_UINT16) != tf.TF_TensorType(t.tensor) {
@@ -258,11 +288,99 @@ func (t *Tensor) AsUint8() (res []uint8, err error) {
 	return
 }*/
 
-// GetVal Resturns the value of the element contained in the specified position
+// AsInt16 returns the content of the tensor as a slice of int16 if the tensor
+// type matches, if not returns a ErrInvalidTensorType error
+func (t *Tensor) AsInt16() (res []int16, err error) {
+	if tf.TF_DataType(tf.TF_INT16) != tf.TF_TensorType(t.tensor) {
+		err = ErrInvalidTensorType
+		return
+	}
+
+	if t.buf != nil {
+		return t.buf.([]int16), nil
+	}
+
+	data := t.Data()
+	res = make([]int16, len(data)/cBytesInt16)
+	for i := range res {
+		res[i] = int16(binary.LittleEndian.Uint16(data[i*cBytesInt16 : (i+1)*cBytesInt16]))
+	}
+	t.buf = res
+
+	return
+}
+
+// AsInt8 returns the content of the tensor as a slice of int8 if the tensor
+// type matches, if not returns a ErrInvalidTensorType error
+func (t *Tensor) AsInt8() (res []int8, err error) {
+	if tf.TF_DataType(tf.TF_INT8) != tf.TF_TensorType(t.tensor) {
+		err = ErrInvalidTensorType
+		return
+	}
+
+	if t.buf != nil {
+		return t.buf.([]int8), nil
+	}
+
+	data := t.Data()
+	res = make([]int8, len(data))
+	for i := range res {
+		res[i] = int8(data[i])
+	}
+	t.buf = res
+
+	return
+}
+
+// AsComplex64 returns the content of the tensor as a slice of complex64 if the tensor
+// type matches, if not returns a ErrInvalidTensorType error
+/*func (t *Tensor) AsComplex64() (res []complex64, err error) {
+	if tf.TF_DataType(tf.TF_COMPLEX) != tf.TF_TensorType(t.tensor) {
+		err = ErrInvalidTensorType
+		return
+	}
+
+	if t.buf != nil {
+		return t.buf.([]complex64), nil
+	}
+
+	data := t.Data()
+	res = make([]complex64, len(data)/cBytesComplex64)
+	for i := range res {
+		res[i] = complex64(binary.LittleEndian.Complex64(data[i*cBytesComplex64 : (i+1)*cBytesComplex64]))
+	}
+	t.buf = res
+
+	return
+}*/
+
+// AsBool returns the content of the tensor as a slice of bool if the tensor
+// type matches, if not returns a ErrInvalidTensorType error
+func (t *Tensor) AsBool() (res []bool, err error) {
+	if tf.TF_DataType(tf.TF_BOOL) != tf.TF_TensorType(t.tensor) {
+		err = ErrInvalidTensorType
+		return
+	}
+
+	if t.buf != nil {
+		return t.buf.([]bool), nil
+	}
+
+	data := t.Data()
+	res = make([]bool, len(data))
+	for i, v := range data {
+		res[i] = v == 1
+	}
+	t.buf = res
+
+	return
+}
+
+// GetVal resturns the value of the element contained in the specified position
 // on the tensor, Ex: GetVal(1, 2, 3) is equivalent to data[1][2][3] on a
 // multidimensional array.
-// This method coul return an error in case of a wrong specified number of
-// dimensions or a dimesions out of range
+// This method could return an error in case of a wrong specified number of
+// dimensions or a dimesions out of range.
 func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 	if len(d) != t.NumDims() {
 		err = ErrDimsOutOfTensorRange
@@ -328,94 +446,6 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 		err = ErrTensorTypeNotSupported
 		return
 	}
-
-	return
-}
-
-// AsInt16 Returns the content of the tensor as a slice of int16 if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
-func (t *Tensor) AsInt16() (res []int16, err error) {
-	if tf.TF_DataType(tf.TF_INT16) != tf.TF_TensorType(t.tensor) {
-		err = ErrInvalidTensorType
-		return
-	}
-
-	if t.buf != nil {
-		return t.buf.([]int16), nil
-	}
-
-	data := t.Data()
-	res = make([]int16, len(data)/cBytesInt16)
-	for i := range res {
-		res[i] = int16(binary.LittleEndian.Uint16(data[i*cBytesInt16 : (i+1)*cBytesInt16]))
-	}
-	t.buf = res
-
-	return
-}
-
-// AsInt8 Returns the content of the tensor as a slice of int8 if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
-func (t *Tensor) AsInt8() (res []int8, err error) {
-	if tf.TF_DataType(tf.TF_INT8) != tf.TF_TensorType(t.tensor) {
-		err = ErrInvalidTensorType
-		return
-	}
-
-	if t.buf != nil {
-		return t.buf.([]int8), nil
-	}
-
-	data := t.Data()
-	res = make([]int8, len(data))
-	for i := range res {
-		res[i] = int8(data[i])
-	}
-	t.buf = res
-
-	return
-}
-
-// AsComplex64 Returns the content of the tensor as a slice of complex64 if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
-/*func (t *Tensor) AsComplex64() (res []complex64, err error) {
-	if tf.TF_DataType(tf.TF_COMPLEX) != tf.TF_TensorType(t.tensor) {
-		err = ErrInvalidTensorType
-		return
-	}
-
-	if t.buf != nil {
-		return t.buf.([]complex64), nil
-	}
-
-	data := t.Data()
-	res = make([]complex64, len(data)/cBytesComplex64)
-	for i := range res {
-		res[i] = complex64(binary.LittleEndian.Complex64(data[i*cBytesComplex64 : (i+1)*cBytesComplex64]))
-	}
-	t.buf = res
-
-	return
-}*/
-
-// AsBool Returns the content of the tensor as a slice of bool if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
-func (t *Tensor) AsBool() (res []bool, err error) {
-	if tf.TF_DataType(tf.TF_BOOL) != tf.TF_TensorType(t.tensor) {
-		err = ErrInvalidTensorType
-		return
-	}
-
-	if t.buf != nil {
-		return t.buf.([]bool), nil
-	}
-
-	data := t.Data()
-	res = make([]bool, len(data))
-	for i, v := range data {
-		res[i] = v == 1
-	}
-	t.buf = res
 
 	return
 }

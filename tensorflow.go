@@ -51,7 +51,7 @@ func Constant(value interface{}) (*Tensor, error) {
 	switch v := value.(type) {
 	case string:
 		buf := encodeStrings([]string{v})
-		t, err := newTensor(tf.DataType_DT_STRING, TensorShapeScalar, uintptr(unsafe.Pointer(&(buf[0]))), int64(len(buf)))
+		t, err := newTensor(tf.DataType_DT_STRING, tensorShapeScalar, uintptr(unsafe.Pointer(&(buf[0]))), int64(len(buf)))
 		if err != nil {
 			return nil, err
 		}
