@@ -260,6 +260,7 @@ tf_kernel_libraries(
         "constant_op",
         "diag_op",
         "edit_distance_op",
+        "gather_nd_op",
         "gather_op",
         "identity_op",
         "immutable_constant_op",
@@ -306,6 +307,7 @@ tf_cc_tests(
     tests = [
         "concat_op_test",
         "constant_op_test",
+        "gather_nd_op_test",
         "gather_op_test",
         "identity_op_test",
         "reverse_op_test",

@@ -57,6 +57,7 @@ or join multiple tensors together.
 @@space_to_depth
 @@depth_to_space
 @@gather
+@@gather_nd
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
@@ -877,6 +878,16 @@ def _GatherShape(op):
   params_shape = op.inputs[0].get_shape()
   indices_shape = op.inputs[1].get_shape()
   return [indices_shape.concatenate(params_shape[1:])]
+
+
+@ops.RegisterShape("GatherNd")
+def _GatherNdShape(op):
+  """Shape function for array_ops.gather_nd."""
+  params_shape = op.inputs[0].get_shape()
+  indices_shape = op.inputs[1].get_shape().with_rank_at_least(2)
+  if indices_shape.ndims is not None:
+    indices_shape[-1].merge_with(params_shape.ndims)
+  return [indices_shape[:-1]]
 
 
 @ops.RegisterShape("Unique")
