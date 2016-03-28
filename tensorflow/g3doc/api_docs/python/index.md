@@ -13,6 +13,7 @@
   * [`Dimension`](../../api_docs/python/framework.md#Dimension)
   * [`DType`](../../api_docs/python/framework.md#DType)
   * [`get_collection`](../../api_docs/python/framework.md#get_collection)
+  * [`get_collection_ref`](../../api_docs/python/framework.md#get_collection_ref)
   * [`get_default_graph`](../../api_docs/python/framework.md#get_default_graph)
   * [`get_seed`](../../api_docs/python/framework.md#get_seed)
   * [`Graph`](../../api_docs/python/framework.md#Graph)
