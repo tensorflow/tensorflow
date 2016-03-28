@@ -104,6 +104,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   # Now you can call `minimize()` or `compute_gradients()` and
   # `apply_gradients()` normally
   grads = opt.minimize(total_loss, global_step=self.global_step)
+
+
+  # You can now call get_init_tokens_op() and get_chief_queue_runner().
+  # Note that get_init_tokens_op() must be called before creating session
+  # because it modifies the graph.
+  init_token_op = opt.get_init_tokens_op()
+  chief_queue_runner = opt.get_chief_queue_runner()
   ```
 
   In the training program, every worker will run the train_op as if not
@@ -114,9 +121,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   # After the session is created by the superviser and before the main while
   # loop:
   if is_chief and FLAGS.sync_replicas:
-    sv.start_queue_runners(sess, [opt.get_chief_queue_runner()])
+    sv.start_queue_runners(sess, [chief_queue_runner])
     # Insert initial tokens to the queue.
-    sess.run(opt.get_init_tokens_op())
+    sess.run(init_token_op)
   ```
 
   @@__init__
