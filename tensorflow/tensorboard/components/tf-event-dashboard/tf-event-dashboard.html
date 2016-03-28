@@ -115,7 +115,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
             <p>
               Maybe data hasn't loaded yet, or maybe you need
               to add some <code>tf.scalar_summary</code> ops to your graph, and
-              serialize them using the <code>tf.training.summary_io.SummaryWriter</code>.
+              serialize them using the <code>tf.train.SummaryWriter</code>.
             </p>
           </div>
         </template>
@@ -186,6 +186,11 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           type: Object,
           value: TF.Urls.productionRouter(),
         },
+      },
+      attached: function() {
+        this.async(function() {
+          this.fire("rendered");
+        });
       },
       observers: ['redraw(_show_download_links)'],
       redraw: function(_show_download_links) {

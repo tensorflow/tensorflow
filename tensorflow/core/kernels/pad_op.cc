@@ -136,7 +136,7 @@ class PadOp : public OpKernel {
                               .HostMemory("paddings"),   \
                           PadOp<CPUDevice, type>)
 
-TF_CALL_ALL_TYPES(REGISTER_KERNEL);
+TF_CALL_POD_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA

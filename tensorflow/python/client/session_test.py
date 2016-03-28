@@ -25,8 +25,8 @@ import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.core.framework import config_pb2
 from tensorflow.core.lib.core import error_codes_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -69,7 +69,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testCreate(self):
     with session.Session():
-      inp = constant_op.constant(10.0, name='W1')
+      inp = constant_op.constant(10.0, shape=[2, 3], name='W1')
       copy = array_ops.identity(inp)
       # Test with feed.
       # TODO(mrry): Investigate why order='F' didn't work.
@@ -78,7 +78,8 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(arr, copy_val)
       # Test without feed.
       copy_val = copy.eval()
-      self.assertAllEqual(np.asarray(10.0, dtype=np.float32), copy_val)
+      self.assertAllEqual(np.asarray([[10.0, 10.0, 10.0], [10.0, 10.0, 10.0]],
+                                     dtype=np.float32), copy_val)
 
   def testManyCPUs(self):
     # TODO(keveman): Implement ListDevices and test for the number of
@@ -107,6 +108,19 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = array_ops.placeholder(dtypes.float32)
       with self.assertRaisesOpError(lambda e: e.op == a.op):
         a.eval()
+
+  def testErrorCodeWithNoNodeDef(self):
+    with session.Session() as s:
+      a = array_ops.placeholder(dtypes.float32, shape=[])
+      b = array_ops.placeholder(dtypes.float32, shape=[])
+      r1 = math_ops.add(a, b)
+
+      def exc_predicate(e):
+        return (e.op is None and e.node_def is None and
+                e.error_code == error_codes_pb2.INVALID_ARGUMENT)
+      with self.assertRaisesOpError(exc_predicate):
+        # Run with a bogus handle.
+        s.partial_run('foo', r1, feed_dict={a: 1, b: 2})
 
   def testOpConstructionErrorPayload(self):
     with session.Session():
@@ -672,7 +686,8 @@ class SessionTest(test_util.TensorFlowTestCase):
                     dtypes.int8,
                     dtypes.int64,
                     dtypes.bool,
-                    dtypes.complex64]:
+                    dtypes.complex64,
+                    dtypes.complex128]:
         for shape in [(32, 4, 128), (37,), (2, 0, 6), (0, 0, 0)]:
           np_dtype = dtype.as_numpy_dtype
 
@@ -683,6 +698,8 @@ class SessionTest(test_util.TensorFlowTestCase):
 
           if dtype == dtypes.bool:
             np_array = np_array > 0
+          elif dtype == dtypes.complex64:
+            np_array = np.sqrt(np_array.astype(np_dtype))
           elif dtype == dtypes.complex64:
             np_array = np.sqrt(np_array.astype(np_dtype))
           else:
@@ -750,8 +767,9 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(c_list[1], out[1].decode('utf-8'))
 
   def testInvalidTargetFails(self):
-    with self.assertRaisesRegexp(RuntimeError,
-                                 'Registered factories are {DIRECT_SESSION}'):
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        'No session factory registered for the given session options.'):
       session.Session('INVALID_TARGET')
 
   def testFetchByNameDifferentStringTypes(self):
@@ -891,6 +909,62 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(1.0, dtypes.float32, name='a')
       with self.assertRaisesRegexp(TypeError, "Cannot interpret feed_dict"):
         sess.run(a, feed_dict={'a': [2.0]})
+
+  def testPerStepTrace(self):
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+
+    with ops.device('/cpu:0'):
+      with session.Session() as sess:
+        sess.run(constant_op.constant(1.0))
+        self.assertTrue(not run_metadata.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0), run_metadata=run_metadata)
+        self.assertTrue(not run_metadata.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0),
+                 options=run_options,
+                 run_metadata=run_metadata)
+
+        self.assertTrue(run_metadata.HasField('step_stats'))
+        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
+
+  def testRunOptionsRunMetadata(self):
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+
+    with ops.device('/cpu:0'):
+      with session.Session() as sess:
+        # all combinations are valid
+        sess.run(constant_op.constant(1.0), options=None, run_metadata=None)
+        sess.run(constant_op.constant(1.0), options=None,
+                 run_metadata=run_metadata)
+        self.assertTrue(not run_metadata.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0), options=run_options,
+                 run_metadata=None)
+        self.assertTrue(not run_metadata.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0), options=run_options,
+                 run_metadata=run_metadata)
+
+        self.assertTrue(run_metadata.HasField('step_stats'))
+        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
+
+  def testFeedShapeCompatibility(self):
+    with session.Session() as sess:
+      some_tensor = constant_op.constant([2.0, 2.0, 2.0, 2.0])
+      new_shape = constant_op.constant([2, 2])
+      reshaped_tensor = array_ops.reshape(some_tensor, new_shape)
+
+      with self.assertRaisesRegexp(ValueError, 'Cannot feed value of shape'):
+        sess.run(reshaped_tensor, feed_dict={some_tensor: [1.0, 2.0, 3.0]})
+
+      with self.assertRaisesRegexp(ValueError, 'may not be fed'):
+        sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
+
 
 if __name__ == '__main__':
   googletest.main()

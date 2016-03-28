@@ -104,7 +104,13 @@ class StringPiece {
   // Checks whether StringPiece starts with x and if so advances the beginning
   // of it to past the match.  It's basically a shortcut for starts_with
   // followed by remove_prefix.
-  bool Consume(StringPiece x);
+  bool Consume(StringPiece x) {
+    if (starts_with(x)) {
+      remove_prefix(x.size_);
+      return true;
+    }
+    return false;
+  }
 
   StringPiece substr(size_t pos, size_t n = npos) const;
 

@@ -92,6 +92,18 @@ differentiation of graphs for comparison against registered analytic gradients.
 
 Computes and returns the theoretical and numerical Jacobian.
 
+If `x` or `y` is complex, the Jacobian will still be real but the
+corresponding Jacobian dimension(s) will be twice as large.  This is required
+even if both input and output is complex since TensorFlow graphs are not
+necessarily holomorphic, and may have gradients not expressible as complex
+numbers.  For example, if `x` is complex with shape `[m]` and `y` is complex
+with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
+
+    J[:m, :n] = d(Re y)/d(Re x)
+    J[:m, n:] = d(Im y)/d(Re x)
+    J[m:, :n] = d(Re y)/d(Im x)
+    J[m:, n:] = d(Im y)/d(Im x)
+
 ##### Args:
 
 

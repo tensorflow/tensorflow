@@ -25,7 +25,6 @@ namespace testing {
 
 #if defined(PLATFORM_GOOGLE) || defined(__ANDROID__)
 string TmpDir() { return FLAGS_test_tmpdir; }
-string SrcDir() { return FLAGS_test_srcdir; }
 int RandomSeed() { return FLAGS_test_random_seed; }
 #else
 string TmpDir() {

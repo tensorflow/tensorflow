@@ -28,7 +28,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Index>
 class SparseSoftmaxXentWithLogitsOp : public OpKernel {
  public:
   explicit SparseSoftmaxXentWithLogitsOp(OpKernelConstruction* context)
@@ -63,9 +63,9 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(1, logits_in.shape(), &back_out));
 
-    functor::SparseXentFunctor<Device, T> functor;
+    functor::SparseXentFunctor<Device, T, Index> functor;
     functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
-            labels_in.vec<int64>(), scratch.vec<T>(), loss_out->vec<T>(),
+            labels_in.vec<Index>(), scratch.vec<T>(), loss_out->vec<T>(),
             back_out->matrix<T>());
   }
 };
@@ -73,33 +73,35 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
 // Partial specialization for a CPUDevice, that uses the Eigen implementation
 // from XentEigenImpl.
 namespace functor {
-template <typename T>
-struct SparseXentFunctor<CPUDevice, T> {
+template <typename T, typename Index>
+struct SparseXentFunctor<CPUDevice, T, Index> {
   void operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix logits,
-                  typename TTypes<int64>::ConstVec labels,
-                  typename TTypes<T>::Vec scratch,
-                  typename TTypes<T>::Vec loss,
+                  typename TTypes<Index>::ConstVec labels,
+                  typename TTypes<T>::Vec scratch, typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
-    SparseXentEigenImpl<CPUDevice, T>::Compute(d, logits, labels, scratch, loss,
-                                         backprop);
+    SparseXentEigenImpl<CPUDevice, T, Index>::Compute(d, logits, labels,
+                                                      scratch, loss, backprop);
   }
 };
 }  // namespace functor
 
-REGISTER_KERNEL_BUILDER(Name("SparseSoftmaxCrossEntropyWithLogits")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        SparseSoftmaxXentWithLogitsOp<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("SparseSoftmaxCrossEntropyWithLogits")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        SparseSoftmaxXentWithLogitsOp<CPUDevice, double>);
+#define REGISTER(Dev, T, Index)                   \
+  REGISTER_KERNEL_BUILDER(                        \
+      Name("SparseSoftmaxCrossEntropyWithLogits") \
+          .Device(DEVICE_##Dev)                   \
+          .TypeConstraint<T>("T")                 \
+          .TypeConstraint<Index>("Tlabels"),      \
+      SparseSoftmaxXentWithLogitsOp<Dev##Device, T, Index>);
+REGISTER(CPU, float, int32)
+REGISTER(CPU, float, int64)
+REGISTER(CPU, double, int32)
+REGISTER(CPU, double, int64)
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("SparseSoftmaxCrossEntropyWithLogits")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        SparseSoftmaxXentWithLogitsOp<GPUDevice, float>);
+REGISTER(GPU, float, int32)
+REGISTER(GPU, float, int64)
 #endif  // GOOGLE_CUDA
+
+#undef REGISTER
 
 }  // namespace tensorflow

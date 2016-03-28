@@ -1,9 +1,8 @@
 build:cuda --crosstool_top=//third_party/gpus/crosstool
+build:cuda --define=using_cuda=true
 
 build --force_python=py$PYTHON_MAJOR_VERSION
 build --python$PYTHON_MAJOR_VERSION_path=$PYTHON_BINARY
-build --define=use_fast_cpp_protos=true
-build --define=allow_oversize_protos=true
 
 build --spawn_strategy=standalone
 test --spawn_strategy=standalone

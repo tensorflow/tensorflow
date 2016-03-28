@@ -41,7 +41,6 @@ class RestoreOpTest : public OpsTestBase {
  protected:
   // Makes an operation to restore two tensors
   void MakeRestoreOp(DataType dt) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "Restore")
                      .Input(FakeInput())
                      .Input(FakeInput())
@@ -327,7 +326,6 @@ TEST_F(RestoreOpTest, RestoreSimple) {
 class RestoreSliceOpTest : public OpsTestBase {
  protected:
   void MakeRestoreSliceOp(DataType dt) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "RestoreSlice")
                      .Input(FakeInput())
                      .Input(FakeInput())

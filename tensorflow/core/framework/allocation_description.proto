@@ -21,4 +21,7 @@ message AllocationDescription {
 
   // Set if this tensor only has one remaining reference
   bool has_single_reference = 5;
+
+  // Address of the allocation.
+  uint64 ptr = 6;
 };

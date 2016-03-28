@@ -61,7 +61,11 @@ class UnaryOpTest(tf.test.TestCase):
       if tf_func in (tf.digamma,):
         return  # Return early
 
-      if x.dtype == np.float32:
+      if x.dtype == np.complex64 and tf_func in (
+          tf.sign, tf.sqrt, tf.rsqrt, tf.log):
+        return  # Return early
+
+      if x.dtype == np.float32 or x.dtype == np.complex64:
         s = list(np.shape(x))
         jacob_t, jacob_n = tf.test.compute_gradient(inx,
                                                     s,
@@ -214,7 +218,7 @@ class UnaryOpTest(tf.test.TestCase):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
         np.complex64)
     y = x + 0.5  # no zeros
-    self._compareCpu(x, np.abs, tf.abs)
+    self._compareCpu(x, np.abs, tf.complex_abs)
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, tf.neg)
     self._compareCpu(x, np.negative, _NEG)
@@ -228,6 +232,11 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, self._sigmoid, tf.sigmoid)
     self._compareCpu(x, np.sin, tf.sin)
     self._compareCpu(x, np.cos, tf.cos)
+
+    # Numpy uses an incorrect definition of sign; use the right one instead.
+    def complex_sign(x):
+      return x / np.abs(x)
+    self._compareCpu(y, complex_sign, tf.sign)
 
 
 class BinaryOpTest(tf.test.TestCase):
@@ -889,6 +898,27 @@ class LogicalOpTest(tf.test.TestCase):
           ValueError, lambda e: "Incompatible shapes" in str(e)):
         f(x, y)
 
+  def testUsingAsPythonValueFails(self):
+    # Ensure that we raise an error when the user attempts to treat a
+    # `Tensor` as a Python `bool`.
+    b = tf.constant(False)
+    with self.assertRaises(TypeError):
+      if b:
+        pass
+
+    x = tf.constant(3)
+    y = tf.constant(4)
+    with self.assertRaises(TypeError):
+      if x > y:
+        pass
+
+    z = tf.constant(7)
+
+    # The chained comparison should fail because Python computes `x <
+    # y` and short-circuits the comparison with `z` if it is `False`.
+    with self.assertRaises(TypeError):
+      _ = x < y < z
+
 
 class SelectOpTest(tf.test.TestCase):
 
@@ -962,6 +992,17 @@ class SelectOpTest(tf.test.TestCase):
       yt = y.astype(t)
       with self.assertRaises(ValueError):
         tf.select(c, xt, yt)
+
+  def testEmptyTensor(self):
+    c = np.random.randint(0, 3, 0).astype(np.bool).reshape(1, 3, 0)
+    x = np.random.rand(1, 3, 0) * 100
+    y = np.random.rand(1, 3, 0) * 100
+    z_expected = np.zeros((1, 3, 0), dtype=np.float32)
+    with self.test_session():
+      xt = x.astype(np.float32)
+      yt = y.astype(np.float32)
+      z = tf.select(c, xt, yt).eval()
+      self.assertAllEqual(z_expected, z)
 
 
 class BatchSelectOpTest(tf.test.TestCase):

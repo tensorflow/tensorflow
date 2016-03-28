@@ -24,7 +24,6 @@ namespace tensorflow {
 // Creates a Graph which applies a unary "func" on a 3D float tensor
 // of "num" elements.
 static Graph* Unary(const string& func, int num) {
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
   Tensor data(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
   CHECK_GT(data.NumElements(), 0);
@@ -53,7 +52,6 @@ BM_UNARY(gpu, Floor);
 
 // data func scalar.
 static Graph* BinaryScalar(int num, const string& func) {
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
   Tensor lhs(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
   lhs.flat<float>().setRandom();
@@ -84,7 +82,6 @@ BM_BINARY_SCALAR(gpu, Add);
 #undef BM_BINARY_SCALAR
 
 static Graph* BiasAdd(int rows, int cols) {
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
   Tensor lhs(DT_FLOAT, TensorShape({rows, cols}));
   lhs.flat<float>().setRandom();
@@ -120,7 +117,6 @@ BM_BIAS_ADD_ALL(gpu);
 #undef BM_BIAS_ADD
 
 static Graph* BcastAdd(int rows, int cols, int dim) {
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
   Tensor lhs(DT_FLOAT, TensorShape({rows, cols}));
   lhs.flat<float>().setRandom();

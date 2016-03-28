@@ -10,7 +10,7 @@ For more information on the approach you can see
 
 Though it's not as good as a full training run, this is surprisingly effective
 for many applications, and can be run in as little as thirty minutes on a
-laptop, without requiring a GPU. This tutorial will how you how to run the
+laptop, without requiring a GPU. This tutorial will show you how to run the
 example script on your own images, and will explain some of the options you have
 to help control the training process.
 
@@ -69,12 +69,12 @@ the bottleneck values for each of them. 'Bottleneck' is an informal term we
 often use for the layer just before the final output layer that actually does
 the classification. This penultimate layer has been trained to output a set of
 values that's good enough for the classifier to use to distinguish between all
-the classes it's been asked to recognized. That means it has to be a meaningful
+the classes it's been asked to recognize. That means it has to be a meaningful
 and compact summary of the images, since it has to contain enough information
 for the classifier to make a good choice in a very small set of values. The
 reason our final layer retraining can work on new classes is that it turns out
 the kind of information needed to distinguish between all the 1,000 classes in
-ImageNet is often also useful to chose between new kinds of objects.
+ImageNet is often also useful to distinguish between new kinds of objects.
 
 Because every image is reused multiple times during training and calculating
 each bottleneck takes a significant amount of time, it speeds things up to
@@ -88,20 +88,20 @@ part again.
 Once the bottlenecks are complete, the actual training of the top layer of the
 network begins. You'll see a series of step outputs, each one showing training
 accuracy, validation accuracy, and the cross entropy. The training accuracy
-shows how many of the images used in the current training batch were labeled
-with the correct class. The validation accuracy is the precision on a
+shows what percent of the images used in the current training batch were
+labeled with the correct class. The validation accuracy is the precision on a
 randomly-selected group of images from a different set. The key difference is
 that the training accuracy is based on images that the network has been able
 to learn from so the network can overfit to the noise in the training data. A
 true measure of the performance of the network is to measure its performance on
 a data set not contained in the training data -- this is measured by the
-validation accuracy. If the test accuracy is high but the validation remains
-low, that means the network is overfitting and memorizing particular features
-in the training images that aren't helpful more generally. Cross entropy is a
-loss function which gives a glimpse into how well the learning process is
-progressing. The training's objective is to make the loss as small as possible,
-so you can tell if the learning is working by keeping an eye on whether the loss
-keeps trending downwards, ignoring the short-term noise.
+validation accuracy. If the train accuracy is high but the validation accuracy
+remains low, that means the network is overfitting and memorizing particular
+features in the training images that aren't helpful more generally. Cross
+entropy is a loss function which gives a glimpse into how well the learning
+process is progressing. The training's objective is to make the loss as small as
+possible, so you can tell if the learning is working by keeping an eye on
+whether the loss keeps trending downwards, ignoring the short-term noise.
 
 By default this script will run 4,000 training steps. Each step chooses ten
 images at random from the training set, finds their bottlenecks from the cache,
@@ -114,8 +114,8 @@ and validation pictures. This test evaluation is the best estimate of how the
 trained model will perform on the classification task. You should see an
 accuracy value of between 90% and 95%, though the exact value will vary from run
 to run since there's randomness in the training process. This number is based on
-how many of the images in the test set are given the correct label after the
-model is fully trained.
+the percent of the images in the test set that are given the correct label
+after the model is fully trained.
 
 ## Using the Retrained Model
 
@@ -266,7 +266,7 @@ memorized unimportant details of the training images.
 
 This problem is known as overfitting, and to avoid it we keep some of our data
 out of the training process, so that the model can't memorize them. We then use
-those images as a check to make sure that overfitting isn't occuring, since if
+those images as a check to make sure that overfitting isn't occurring, since if
 we see good accuracy on them it's a good sign the network isn't overfitting. The
 usual split is to put 80% of the images into the main training set, keep 10%
 aside to run as validation frequently during training, and then have a final 10%

@@ -73,17 +73,17 @@ class TensorArray(object):
       ValueError: if both handle and tensor_array_name are provided.
       TypeError: if handle is provided but is not a Tensor.
     """
-    if handle and tensor_array_name:
+    if handle is not None and tensor_array_name:
       raise ValueError(
           "Cannot construct with both handle and tensor_array_name")
-    if handle and not isinstance(handle, ops.Tensor):
+    if handle is not None and not isinstance(handle, ops.Tensor):
       raise TypeError("Handle must be a Tensor")
     if handle is None and size is None:
       raise ValueError("Size must be provided if handle is not provided")
-    if handle and size is not None:
+    if handle is not None and size is not None:
       raise ValueError("Cannot provide both a handle and size "
                        "at the same time")
-    if handle and dynamic_size is not None:
+    if handle is not None and dynamic_size is not None:
       raise ValueError("Cannot provide both a handle and dynamic_size "
                        "at the same time")
 
@@ -91,13 +91,16 @@ class TensorArray(object):
 
     self._dtype = dtype
     with ops.op_scope([handle, size, flow], name, "TensorArray") as scope:
-      if handle:
+      if handle is not None:
         self._handle = handle
       else:
         self._handle = gen_data_flow_ops._tensor_array(
             dtype=dtype, size=size, dynamic_size=dynamic_size,
             tensor_array_name=tensor_array_name, name=scope)
-    self._flow = flow or constant_op.constant(0, dtype=_dtypes.float32)
+    if flow is not None:
+      self._flow = flow
+    else:
+      self._flow = constant_op.constant(0, dtype=_dtypes.float32)
 
   @property
   def flow(self):
@@ -119,9 +122,11 @@ class TensorArray(object):
     # TensorArrays are dynamically sized.  This forces the creation
     # of the grad TensorArray only once the final forward array's size
     # is fixed.
+    if flow is None:
+      flow = self.flow
     g_handle = gen_data_flow_ops._tensor_array_grad(
-        handle=self._handle, source=source, flow_in=flow or self.flow)
-    g = TensorArray(dtype=self._dtype, handle=g_handle, flow=flow or self.flow)
+        handle=self._handle, source=source, flow_in=flow)
+    g = TensorArray(dtype=self._dtype, handle=g_handle, flow=flow)
     return g
 
   def read(self, index, name=None):

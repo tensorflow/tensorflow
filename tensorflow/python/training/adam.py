@@ -102,7 +102,7 @@ class AdamOptimizer(optimizer.Optimizer):
     # Create the beta1 and beta2 accumulators on the same device as the first
     # variable.
     if self._beta1_power is None:
-      with ops.device(var_list[0].device):
+      with ops.colocate_with(var_list[0]):
         self._beta1_power = variables.Variable(self._beta1,
                                                name="beta1_power",
                                                trainable=False)
@@ -154,7 +154,7 @@ class AdamOptimizer(optimizer.Optimizer):
   def _finish(self, update_ops, name_scope):
     # Update the power accumulators.
     with ops.control_dependencies(update_ops):
-      with ops.device(self._beta1_power.device):
+      with ops.colocate_with(self._beta1_power):
         update_beta1 = self._beta1_power.assign(
             self._beta1_power * self._beta1_t,
             use_locking=self._use_locking)

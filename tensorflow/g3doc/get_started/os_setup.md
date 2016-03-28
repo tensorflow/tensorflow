@@ -77,6 +77,11 @@ $ sudo easy_install --upgrade six
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.1-cp35-none-any.whl
 ```
 
+NOTE: If you are upgrading from a previous installation of TensorFlow < 0.7.1,
+you should uninstall the previous TensorFlow *and protobuf* using `pip
+uninstall` first to make sure you get a clean installation of the updated
+protobuf dependency.
+
 
 You can now [test your installation](#test-the-tensorflow-installation).
 
@@ -138,10 +143,10 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
 # Ubuntu/Linux 64-bit, CPU only:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
+(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
+(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
 (tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.7.1-cp35-none-any.whl
@@ -459,7 +464,7 @@ We recommend using [homebrew](http://brew.sh) to install the bazel and SWIG
 dependencies, and installing python dependencies using easy_install or pip.
 
 Of course you can also install Swig from source without using homebrew. In that
-case, be sure to install its dependency [PCRE](from www.pcre.org) and not PCRE2.
+case, be sure to install its dependency [PCRE](http://www.pcre.org) and not PCRE2.
 
 #### Dependencies
 
@@ -479,8 +484,8 @@ $ sudo easy_install -U numpy
 $ sudo easy_install wheel
 ```
 
-We also recommend the [ipython](https://ipython.org) enhanced python shell, so
-best install that too:
+We also recommend the [ipython](https://ipython.org) enhanced python shell,
+which you can install as follows:
 
 ```bash
 $ sudo easy_install ipython
@@ -526,6 +531,10 @@ directory:
 
 ```bash
 bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+
+# To build with GPU support:
+bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+
 mkdir _python_build
 cd _python_build
 ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/* .
@@ -580,7 +589,65 @@ Make sure you followed the GPU installation [instructions](#optional-install-cud
 If you built from source, and you left the Cuda or cuDNN version empty, try specifying them
 explicitly.
 
+### Protobuf library related issues
+
+TensorFlow pip package depends on protobuf pip package version
+3.0.0b2. Protobuf's pip package downloaded from [PyPI](https://pypi.python.org)
+(when running `pip install protobuf`) is a Python only library, that has
+Python implementations of proto serialization/deserialization which can be 10x-50x
+slower than the C++ implementation. Protobuf also supports a binary extension
+for the Python package that contains fast C++ based proto parsing. This
+extension is not available in the standard Python only PIP package. We have
+created a custom binary pip package for protobuf that contains the binary
+extension. Follow these instructions to install the custom binary protobuf pip
+package :
+
+```bash
+# Ubuntu/Linux 64-bit:
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0b2.post2-cp27-none-linux_x86_64.whl
+
+# Mac OS X:
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/protobuf-3.0.0b2.post2-cp27-none-any.whl
+```
+
+and for Python 3 :
+
+```bash
+# Ubuntu/Linux 64-bit:
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0b2.post2-cp34-none-linux_x86_64.whl
+
+# Mac OS X:
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/protobuf-3.0.0b2.post2-cp35-none-any.whl
+```
+
+Install the above package _after_ you have installed TensorFlow via pip, as the
+standard `pip install tensorflow` would install the python only pip package. The
+above pip package will over-write the existing protobuf package.
+Note that the binary pip package already has support for protobuf larger than
+64MB, that should fix errors such as these :
+
+```bash
+[libprotobuf ERROR google/protobuf/src/google/protobuf/io/coded_stream.cc:207] A
+protocol message was rejected because it was too big (more than 67108864 bytes).
+To increase the limit (or to disable these warnings), see
+CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.
+
+```
+
 ### Pip installation issues
+
+#### Cannot import name 'descriptor'
+
+```python
+ImportError: Traceback (most recent call last):
+  File "/usr/local/lib/python3.4/dist-packages/tensorflow/core/framework/graph_pb2.py", line 6, in <module>
+    from google.protobuf import descriptor as _descriptor
+ImportError: cannot import name 'descriptor'
+```
+
+If you the above error when upgrading to a newer version of TensorFlow, try
+uninstalling both TensorFlow and protobuf (if installed) and re-installing
+TensorFlow (which will also install the correct protobuf dependency).
 
 #### Can't find setup.py
 

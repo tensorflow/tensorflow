@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/test.h"
 
+#include <cstdlib>
 #include <unordered_set>
 
 #include <netinet/in.h>
@@ -22,6 +23,9 @@ limitations under the License.
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace testing {
@@ -42,11 +46,12 @@ class PosixSubProcess : public SubProcess {
     if (pid_ == 0) {
       // We are in the child process.
       const char* path = argv_[0].c_str();
-      const char** argv = new const char*[argv_.size()];
-      for (int i = 1; i < argv_.size(); ++i) {
-        argv[i - 1] = argv_[i].c_str();
+      const char** argv = new const char*[argv_.size() + 1];
+      int i = 0;
+      for (const string& arg : argv_) {
+        argv[i++] = arg.c_str();
       }
-      argv[argv_.size() - 1] = nullptr;
+      argv[argv_.size()] = nullptr;
       execv(path, (char* const*)argv);
       // Never executes.
       return true;
@@ -173,6 +178,18 @@ int PickUnusedPortOrDie() {
   }
 
   return 0;
+}
+
+string TensorFlowSrcRoot() {
+  // 'bazel test' sets TEST_SRCDIR
+  const char* env = getenv("TEST_SRCDIR");
+  if (env && env[0] != '\0') {
+    return strings::StrCat(env, "/tensorflow");
+  } else {
+    LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
+                 << "using $PWD/tensorflow as TensorFlowSrcRoot() for tests.";
+    return "tensorflow";
+  }
 }
 
 }  // namespace testing

@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="common.ts" />
 module tf.graph.parser {
 
 /**
@@ -137,7 +135,8 @@ export function parsePbtxt(input: string): TFNode[] {
     "node.attr.value.tensor.string_val": true,
     "node.attr.value.tensor.tensor_shape.dim": true,
     "node.attr.value.list.shape": true,
-    "node.attr.value.list.shape.dim": true
+    "node.attr.value.list.shape.dim": true,
+    "node.attr.value.list.s": true
   };
 
   /**

@@ -48,7 +48,6 @@ static void EXPECT_SummaryMatches(const Summary& actual,
 class SummaryScalarOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType dt) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "ScalarSummary")
                      .Input(FakeInput())
                      .Input(FakeInput(dt))

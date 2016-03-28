@@ -17,18 +17,16 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/split_op.h"
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -227,7 +225,7 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     if (prefix_dim_size * split_dim_output_size * suffix_dim_size == 0) {
       return;
     }
-    auto stream = context->op_device_context<GPUDeviceContext>()->stream();
+    auto stream = context->op_device_context()->stream();
     perftools::gputools::DeviceMemoryBase output_ptrs_base{
         output_ptrs_on_gpu.flat<int8>().data(), static_cast<uint64>(num_split)};
     TensorReference tensor_ref(output_ptrs_on_host);

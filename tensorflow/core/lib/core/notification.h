@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_UTIL_NOTIFICATION_H_
 
 #include <assert.h>
+#include <chrono>              // NOLINT
+#include <condition_variable>  // NOLINT
 
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -45,6 +47,13 @@ class Notification {
     while (!notified_) {
       cv_.wait(l);
     }
+  }
+
+  bool WaitForNotificationWithTimeout(int64 timeout_in_ms) {
+    mutex_lock l(mu_);
+    std::cv_status s =
+        cv_.wait_for(l, std::chrono::milliseconds(timeout_in_ms));
+    return (s == std::cv_status::timeout) ? true : false;
   }
 
  private:

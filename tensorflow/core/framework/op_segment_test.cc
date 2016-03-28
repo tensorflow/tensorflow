@@ -37,7 +37,6 @@ class OpSegmentTest : public ::testing::Test {
   std::vector<NodeDef> float_nodedefs_;
 
   OpSegmentTest() : device_(Env::Default()) {
-    RequireDefaultOps();
     for (int i = 0; i < 10; ++i) {
       NodeDef def;
       TF_CHECK_OK(NodeDefBuilder(strings::StrCat("op", i), "Mul")

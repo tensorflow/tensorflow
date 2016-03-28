@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright 2015 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,8 +35,14 @@ function main() {
   cp -R \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/{tensorflow,external} \
     ${TMPDIR}
-  # TODO: We should have cleaner solution for this after 0.7 release
-  rm -rf ${TMPDIR}/external/eigen_archive
+  # protobuf pip package doesn't ship with header files. Copy the headers
+  # over so user defined ops can be compiled.
+  rsync --include "*/" --include "*.h" --exclude "*" --prune-empty-dirs -a \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/google \
+    ${TMPDIR}
+  rsync -a \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/third_party/eigen3 \
+    ${TMPDIR}/third_party
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}

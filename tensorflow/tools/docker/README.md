@@ -48,4 +48,4 @@ Alternately, you can use the `docker_run_gpu.sh` script in this directory.
 
 Just pick the dockerfile corresponding to the container you want to build, and run;
 
-    $ docker build -t $USER/tensorflow-suffix -f Dockerfile.suffix .
+    $ docker build --pull -t $USER/tensorflow-suffix -f Dockerfile.suffix .

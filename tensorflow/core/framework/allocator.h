@@ -36,6 +36,12 @@ struct AllocationAttributes {
   // An example use case is optional scratch spaces where a failure
   // has only performance impact.
   bool no_retry_on_failure = false;
+  // If a Tensor is allocated without the following set to true, then
+  // it is logged as an unknown allocation. During execution Tensors
+  // should be allocated through the OpKernelContext which records
+  // which Op is performing the allocation, and sets this flag to
+  // true.
+  bool allocation_will_be_logged = false;
 };
 
 // Runtime statistics collected by an allocator.
@@ -181,13 +187,15 @@ class Allocator {
 
   // is_simple<T>::value if T[] can be safely constructed and destructed
   // without running T() and ~T().  We do not use std::is_trivial<T>
-  // directly because std::complex<float> is not trival but its array
-  // can be constructed and destructed without running its default ctor
-  // and dtor.
+  // directly because std::complex<float> and std::complex<double> are
+  // not trival, but their arrays can be constructed and destructed
+  // without running their default ctors and dtors.
   template <typename T>
   struct is_simple {
     static const bool value = std::is_trivial<T>::value ||
+                              std::is_same<T, Eigen::half>::value ||
                               std::is_same<T, complex64>::value ||
+                              std::is_same<T, complex128>::value ||
                               is_quantized<T>::value;
   };
 
@@ -284,6 +292,15 @@ Allocator* cpu_allocator();
 // If 'enable' is true, the process-wide cpu allocator collects
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
+
+// Abstract interface of an object that does the underlying suballoc/free of
+// memory for a higher-level allocator.
+class SubAllocator {
+ public:
+  virtual ~SubAllocator() {}
+  virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
+  virtual void Free(void* ptr, size_t num_bytes) = 0;
+};
 
 }  // namespace tensorflow
 

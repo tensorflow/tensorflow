@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -68,18 +69,21 @@ class SparseTensor {
 
   DataType dtype() const { return vals_.dtype(); }
 
-  bool IndicesValid() const {
+  Status IndicesValid() const {
     const auto ix_t = ix_.matrix<int64>();
     for (int64 ord : order_) {
-      CHECK_GE(ord, 0) << "Order was not provided.  Provide an order at "
-                          "construction time or run ReorderInPlace";
+      if (ord < 0) {
+        return errors::FailedPrecondition(
+            "Order was not provided.  Provide an order at "
+            "construction time or run ReorderInPlace");
+      }
     }
 
     for (std::size_t n = 0; n < num_entries(); ++n) {
-      if (!IndexValid(ix_t, n)) return false;
+      TF_RETURN_IF_ERROR(IndexValid(ix_t, n));
     }
 
-    return true;
+    return Status::OK();
   }
 
   // Returns the tensor shape (the dimensions of the "densified"
@@ -154,11 +158,11 @@ class SparseTensor {
   }
 
   // Helper for IndicesValid()
-  inline bool IndexValid(const TTypes<int64>::ConstMatrix& ix_t,
-                         int64 n) const {
-    bool different = false;
-    bool bad_order = false;
+  inline Status IndexValid(const TTypes<int64>::ConstMatrix& ix_t,
+                           int n) const {
     bool valid = true;
+    bool different = false;
+    bool increasing = true;
     if (n == 0) {
       for (int di = 0; di < dims_; ++di) {
         if (ix_t(n, di) < 0 || ix_t(n, di) >= shape_.dim_size(di))
@@ -171,13 +175,27 @@ class SparseTensor {
           valid = false;
         int64 diff = ix_t(n, order_[di]) - ix_t(n - 1, order_[di]);
         if (diff > 0) different = true;
-        if (!different && diff < 0) bad_order = true;
+        if (!different && diff < 0) increasing = false;
       }
     }
-    if (!valid) return false;      // Out of bounds
-    if (!different) return false;  // The past two indices are identical...
-    if (bad_order) return false;   // Decreasing in order.
-    return true;
+    if (TF_PREDICT_FALSE(!valid || !increasing || !different)) {
+      string index = strings::StrCat("indices[", n, "] = [");
+      for (int di = 0; di < dims_; ++di) {
+        strings::StrAppend(&index, ix_t(n, di), di < dims_ - 1 ? "," : "]");
+      }
+      if (!valid) {
+        return errors::InvalidArgument(index,
+                                       " is out of bounds: need 0 <= index < ",
+                                       shape_.DebugString());
+      }
+      if (!increasing) {
+        return errors::InvalidArgument(index, " is out of order");
+      }
+      if (!different) {
+        return errors::InvalidArgument(index, " is repeated");
+      }
+    }
+    return Status::OK();
   }
 
   // Helper for ToDense<T>()
@@ -325,8 +343,8 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
     bool invalid_dims = false;
     int64 ix = 0;
     for (int d = 0; d < dims_; ++d) {
-      const int64 ix_n_d = ix_t(n, d);
-      if (ix_n_d < 0 || ix_n_d >= out_shape.dim_size(d)) {
+      const int64 ix_n_d = internal::SubtleMustCopy(ix_t(n, d));
+      if (!FastBoundsCheck(ix_n_d, out_shape.dim_size(d))) {
         invalid_dims = true;
       }
       ix += strides[d] * ix_n_d;

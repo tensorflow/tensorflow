@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <deque>
 #include <vector>
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -58,6 +59,10 @@ class EventMgr {
   struct BufRec {
     Allocator* alloc;
     void* buf;
+    // operation and step_id are only populated when
+    // LogMemory::IsEnabled() is true.
+    string operation;
+    int64 step_id;
   };
 
   // Takes ownership of *bufrec.buf and calls bufrec.alloc->DeallocateRaw()
@@ -110,7 +115,14 @@ class EventMgr {
         }
         delete iu.mem;
       }
-      if (iu.bufrec.buf) iu.bufrec.alloc->DeallocateRaw(iu.bufrec.buf);
+      if (iu.bufrec.buf) {
+        if (LogMemory::IsEnabled()) {
+          LogMemory::RecordRawDeallocation(iu.bufrec.operation,
+                                           iu.bufrec.step_id, iu.bufrec.buf,
+                                           iu.bufrec.alloc, false);
+        }
+        iu.bufrec.alloc->DeallocateRaw(iu.bufrec.buf);
+      }
       // The function must be called in another thread.
       if (iu.func != nullptr) threadpool_.Schedule(iu.func);
     }

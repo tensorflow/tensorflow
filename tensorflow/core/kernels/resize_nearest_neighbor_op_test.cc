@@ -35,7 +35,6 @@ namespace tensorflow {
 class ResizeNearestNeighborOpTest : public OpsTestBase {
  protected:
   ResizeNearestNeighborOpTest() {
-    RequireDefaultOps();
     TF_EXPECT_OK(NodeDefBuilder("resize_nn", "ResizeNearestNeighbor")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
@@ -48,7 +47,6 @@ class ResizeNearestNeighborOpTest : public OpsTestBase {
 class ResizeNearestNeighborOpAlignCornersTest : public OpsTestBase {
  protected:
   ResizeNearestNeighborOpAlignCornersTest() {
-    RequireDefaultOps();
     TF_EXPECT_OK(NodeDefBuilder("resize_nn", "ResizeNearestNeighbor")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))

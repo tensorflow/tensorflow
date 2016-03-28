@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -257,6 +258,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // returns its definition proto.
   const FunctionDef* Find(const string& func) const;
 
+  // If the gradient function for 'func' is specified explicitly in
+  // the library, returns the gradient function name.  Otherwise,
+  // returns an empty string.
+  string FindGradient(const string& func) const;
+
   // OpRegistryInterface method. Useful for constructing a Graph.
   //
   // If "op" is defined in the library, returns its signature.
@@ -266,6 +272,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
  private:
   std::unordered_map<string, FunctionDef> function_defs_;
+  std::unordered_map<string, string> func_grad_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryDefinition);
 };
@@ -305,6 +312,8 @@ class FunctionLibraryRuntime {
   // Does not take ownership of "rets".
   struct Options {
     CancellationManager* cancellation_manager = nullptr;
+    // The id of the step that is calling this function.
+    int64 step_id = 0;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
@@ -375,8 +384,9 @@ class FunctionLibraryRuntime {
 #define REGISTER_OP_GRADIENT_UNIQ_HELPER(ctr, name, fn) \
   REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)
 
-#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn) \
-  static bool unused_grad_##ctr = ::tensorflow::gradient::RegisterOp(name, fn)
+#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)                 \
+  static bool unused_grad_##ctr = SHOULD_REGISTER_OP_GRADIENT && \
+                                  ::tensorflow::gradient::RegisterOp(name, fn)
 
 namespace gradient {
 // Register a gradient creator for the "op".

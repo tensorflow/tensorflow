@@ -13,6 +13,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":float_wrapper",
+        ":process_graph",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
         "//tensorflow/python:util",
@@ -28,6 +29,15 @@ py_test(
         ":handler",
         "//tensorflow/python:platform_test",
     ],
+)
+
+py_library(
+    name = "process_graph",
+    srcs = ["process_graph.py"],
+    srcs_version = "PY2AND3",
+    # Used by mldash and potentially other projects
+    visibility = ["//visibility:public"],
+    deps = [],
 )
 
 py_library(

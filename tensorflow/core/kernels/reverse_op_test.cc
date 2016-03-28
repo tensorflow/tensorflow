@@ -38,7 +38,6 @@ namespace {
 class ReverseOpTest : public OpsTestBase {
  protected:
   void MakeOp(DataType data_type) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "Reverse")
                      .Input(FakeInput(data_type))
                      .Input(FakeInput())

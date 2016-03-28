@@ -60,6 +60,7 @@ or join multiple tensors together.
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
+@@one_hot
 
 """
 from __future__ import absolute_import
@@ -91,6 +92,13 @@ _baseslice = slice
 
 # Aliases for some automatically-generated names.
 listdiff = gen_array_ops.list_diff
+
+
+# DEPRECATED use init_ops.zeros_initializer
+# TODO(irving) Move it to init_ops.py
+def zeros_initializer(shape, dtype=dtypes.float32):
+  """An adaptor for zeros() to match the Initializer spec."""
+  return zeros(shape, dtype)
 
 
 # pylint: disable=undefined-variable,protected-access
@@ -397,6 +405,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     ValueError:  If shapes do not conform.
 
   Examples:
+
   ```python
   # 2-D example
   a = [[1, 2], [3, 4], [5, 6]]
@@ -628,10 +637,12 @@ def zeros_like(tensor, dtype=None, name=None):
   """
   with ops.op_scope([tensor], name, "zeros_like") as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    ret = gen_array_ops._zeros_like(tensor)
-    if (dtype is not None) and (tensor.dtype != dtype):
-      ret = gen_math_ops.cast(ret, dtype)
-    return ret
+    if dtype is not None and tensor.dtype != dtype:
+      ret = zeros(shape(tensor), dtype, name=name)
+      ret.set_shape(tensor.get_shape())
+      return ret
+    else:
+      return gen_array_ops._zeros_like(tensor, name=name)
 
 
 def ones_like(tensor, dtype=None, name=None):
@@ -665,11 +676,6 @@ def ones_like(tensor, dtype=None, name=None):
     ret = ones(ones_shape, dtype=dtype, name=name)
     ret.set_shape(tensor.get_shape())
     return ret
-
-
-def zeros_initializer(shape, dtype=dtypes.float32):
-  """An adaptor for zeros() to match the Initializer spec."""
-  return zeros(shape, dtype)
 
 
 def ones(shape, dtype=dtypes.float32, name=None):
@@ -743,6 +749,73 @@ def placeholder(dtype, shape=None, name=None):
       name=name)
   ret.set_shape(shape)
   return ret
+
+
+def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invalid-name
+  """Pads a tensor.
+
+  This operation pads a `tensor` according to the `paddings` you specify.
+  `paddings` is an integer tensor with shape `[n, 2]`, where n is the rank of
+  `tensor`. For each dimension D of `input`, `paddings[D, 0]` indicates how
+  many values to add before the contents of `tensor` in that dimension, and
+  `paddings[D, 1]` indicates how many values to add after the contents of
+  `tensor` in that dimension. If `mode` is "REFLECT" then both `paddings[D, 0]`
+  and `paddings[D, 1]` must be no greater than `tensor.dim_size(D) - 1`. If
+  `mode` is "SYMMETRIC" then both `paddings[D, 0]` and `paddings[D, 1]` must be
+  no greater than `tensor.dim_size(D)`.
+
+  The padded size of each dimension D of the output is:
+
+  `paddings[D, 0] + tensor.dim_size(D) + paddings[D, 1]`
+
+  For example:
+
+  ```python
+  # 't' is [[1, 2, 3], [4, 5, 6]].
+  # 'paddings' is [[1, 1,], [2, 2]].
+  # rank of 't' is 2.
+  pad(t, paddings, "CONSTANT") ==> [[0, 0, 0, 0, 0, 0, 0],
+                                    [0, 0, 1, 2, 3, 0, 0],
+                                    [0, 0, 4, 5, 6, 0, 0],
+                                    [0, 0, 0, 0, 0, 0, 0]]
+
+  pad(t, paddings, "REFLECT") ==> [[6, 5, 4, 5, 6, 5, 4],
+                                   [3, 2, 1, 2, 3, 2, 1],
+                                   [6, 5, 4, 5, 6, 5, 4],
+                                   [3, 2, 1, 2, 3, 2, 1]]
+
+  pad(t, paddings, "SYMMETRIC") ==> [[2, 1, 1, 2, 3, 3, 2],
+                                     [2, 1, 1, 2, 3, 3, 2],
+                                     [5, 4, 4, 5, 6, 6, 5],
+                                     [5, 4, 4, 5, 6, 6, 5]]
+  ```
+
+  Args:
+    tensor: A `Tensor`.
+    paddings: A `Tensor` of type `int32`.
+    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC".
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `tensor`.
+
+  Raises:
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
+  """
+
+  if mode == "CONSTANT":
+    return gen_array_ops._pad(tensor, paddings, name=name)
+  if mode == "REFLECT":
+    return gen_array_ops._mirror_pad(tensor,
+                                     paddings,
+                                     mode="REFLECT",
+                                     name=name)
+  if mode == "SYMMETRIC":
+    return gen_array_ops._mirror_pad(tensor,
+                                     paddings,
+                                     mode="SYMMETRIC",
+                                     name=name)
+  raise ValueError("Unknown padding mode: %s" % mode)
 
 
 @ops.RegisterShape("Placeholder")
@@ -841,6 +914,35 @@ def _DiagShape(op):
   input_shape = op.inputs[0].get_shape().with_rank_at_most(3)
   return [input_shape.concatenate(input_shape)]
 
+@ops.RegisterShape("DiagPart")
+def _DiagPartShape(op):
+  """Shape function for array_ops.diag_part.
+
+  This op has one input (of rank k = 2, 4, or 6), and one output (of rank k/2),
+  where the shape of the output is the diagonal of the input shape.
+
+  Args:
+    op: A DiagPart Operation.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If input has odd rank or greater than 6
+
+  """
+  shape = op.inputs[0].get_shape()
+  rank = len(shape)
+  mid = rank // 2
+  if rank % 2 or rank > 6:
+    raise ValueError("Input must have even rank <= 6, input rank is " +
+                     str(rank) + "." )
+  if shape[:mid] != shape[mid:]:
+    raise ValueError("Invalid shape, shape[:mid] " + str(shape[:mid]) +
+                     " and shape[mid:] " + str(shape[mid:]) +
+                     " do not match ")
+  input_shape = shape.with_rank_at_most(6)
+  return [input_shape[:len(input_shape) // 2]]
 
 @ops.RegisterShape("ExpandDims")
 def _ExpandDimsShape(op):
@@ -1048,6 +1150,7 @@ def _ListDiffShape(op):
 
 
 @ops.RegisterShape("Pad")
+@ops.RegisterShape("MirrorPad")
 def _PadShape(op):
   """Shape function for the Pad op.
 
@@ -1085,6 +1188,27 @@ def _PadShape(op):
         raise ValueError("paddings must be non-negative")
       output_dims.append(dim + paddings[i, 0] + paddings[i, 1])
     return [tensor_shape.TensorShape(output_dims)]
+
+
+@ops.RegisterShape("MirrorPadGrad")
+def _MirrorPadGradShape(op):
+  """Shape function for the MirrorPadGrad op."""
+  paddings_shape = op.inputs[1].get_shape().with_rank(2)
+  input_shape = op.inputs[0].get_shape().with_rank(paddings_shape[0].value)
+  paddings_shape = paddings_shape.merge_with(tensor_shape.matrix(
+      input_shape.ndims, 2))
+  paddings = tensor_util.constant_value(op.inputs[1])
+  if paddings is None:
+    return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
+
+  output_dims = []
+  for i, dim in enumerate(input_shape.dims):
+    if paddings[i, 0] < 0 or paddings[i, 1] < 0:
+      raise ValueError("Paddings must be non-negative.")
+    if dim <= paddings[i, 0] + paddings[i, 1]:
+      raise ValueError("Output dimension is not positive.")
+    output_dims.append(dim - paddings[i, 0] - paddings[i, 1])
+  return [tensor_shape.TensorShape(output_dims)]
 
 
 @ops.RegisterShape("ReverseSequence")
@@ -1442,3 +1566,56 @@ def _DepthToSpaceShape(op):
   new_depth = input_depth // (block_size * block_size)
   return [tensor_shape.TensorShape(
       [input_shape[0], height, width, new_depth])]
+
+
+@ops.RegisterShape("OneHot")
+def _OneHotShape(op):
+  """Shape function for the OneHot op.
+
+  It closely follows the code in the .cc implementation.
+
+  Args:
+    op: A OneHot Operation.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: if axis < -1.
+  """
+  indices_shape = op.inputs[0].get_shape()
+  indices_dims = indices_shape.ndims
+  depth = tensor_util.constant_value(op.inputs[1])
+  axis = op.get_attr("axis")
+
+  if axis < -1:
+    raise ValueError("axis must be >= -1")
+
+  new_shape = None
+  if indices_dims is not None:
+    new_shape = indices_shape.as_list()
+    new_shape.insert(axis % (indices_dims + 1), depth)
+
+  return [tensor_shape.TensorShape(new_shape)]
+
+
+@ops.RegisterShape("PlaceholderWithDefault")
+def _PlaceholderWithDefaultShape(op):
+  """Shape function for the PlaceholderWithDefault op.
+
+  This op acts as an identity when it is not fed (passing through a
+  default value), but allows the user to feed it with tensors of a
+  possibly less precise shape than its default value.
+
+  Args:
+    op: A PlaceholderWithDefault `Operation`.
+
+  Returns:
+    A single-element list containing the shape of the output.
+  """
+  input_shape = op.inputs[0].get_shape()
+  output_shape = tensor_shape.TensorShape(op.get_attr("shape"))
+  # NOTE(mrry): We don't merge these shapes, because `output_shape`
+  # may be *less* precise than `input_shape`.
+  input_shape.assert_is_compatible_with(output_shape)
+  return [output_shape]

@@ -400,6 +400,39 @@ dimension.
 
 - - -
 
+### `tf.image.central_crop(image, central_fraction)` {#central_crop}
+
+Crop the central region of the image.
+
+Remove the outer parts of an image but retain the central region of the image
+along each dimension. If we specify central_fraction = 0.5, this function
+returns the region marked with "X" in the below diagram.
+
+     --------
+    |        |
+    |  XXXX  |
+    |  XXXX  |
+    |        |   where "X" is the central 50% of the image.
+     --------
+
+##### Args:
+
+
+*  <b>`image`</b>: 3-D float Tensor of shape [height, width, depth]
+*  <b>`central_fraction`</b>: float (0, 1], fraction of size to crop
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if central_crop_fraction is not within (0, 1].
+
+##### Returns:
+
+  3-D float Tensor
+
+
+- - -
+
 ### `tf.image.pad_to_bounding_box(image, offset_height, offset_width, target_height, target_width)` {#pad_to_bounding_box}
 
 Pad `image` with zeros to the specified `height` and `width`.
@@ -470,51 +503,32 @@ lower-right corner is at
 
 Extracts a glimpse from the input tensor.
 
-Returns a set of windows called glimpses extracted at location `offsets`
-from the input tensor. If the windows only partially overlaps the inputs, the
-non overlapping areas will be filled with random noise.
+Returns a set of windows called glimpses extracted at location
+`offsets` from the input tensor. If the windows only partially
+overlaps the inputs, the non overlapping areas will be filled with
+random noise.
 
 The result is a 4-D tensor of shape `[batch_size, glimpse_height,
-glimpse_width, channels]`. The channels and batch dimensions are the same as that
-of the input tensor. The height and width of the output windows are
-specified in the `size` parameter.
+glimpse_width, channels]`. The channels and batch dimensions are the
+same as that of the input tensor. The height and width of the output
+windows are specified in the `size` parameter.
 
-The argument `normalized` and `centered` controls how the windows are built:
-* If the coordinates are normalized but not centered, 0.0 and 1.0
-  correspond to the minimum and maximum of each height and width dimension.
-* If the coordinates are both normalized and centered, they range from -1.0 to
-  1.0. The coordinates (-1.0, -1.0) correspond to the upper left corner, the
-  lower right corner is located at  (1.0, 1.0) and the center is at (0, 0).
-* If the coordinates are not normalized they are interpreted as numbers of pixels.
+The argument `normalized` and `centered` controls how the windows are
 
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor` of type `float32`.
-    A 4-D float tensor of shape `[batch_size, height, width, channels]`.
 *  <b>`size`</b>: A `Tensor` of type `int32`.
-    A 1-D tensor of 2 elements containing the size of the glimpses to extract.
-    The glimpse height must be specified first, following by the glimpse width.
 *  <b>`offsets`</b>: A `Tensor` of type `float32`.
-    A 2-D integer tensor of shape `[batch_size, 2]` containing the x, y
-    locations of the center of each window.
 *  <b>`centered`</b>: An optional `bool`. Defaults to `True`.
-    indicates if the offset coordinates are centered relative to
-    the image, in which case the (0, 0) offset is relative to the center of the
-    input images. If false, the (0,0) offset corresponds to the upper left corner
-    of the input images.
 *  <b>`normalized`</b>: An optional `bool`. Defaults to `True`.
-    indicates if the offset coordinates are normalized.
 *  <b>`uniform_noise`</b>: An optional `bool`. Defaults to `True`.
-    indicates if the noise should be generated using a
-    uniform distribution or a gaussian distribution.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `float32`.
-  A tensor representing the glimpses `[batch_size, glimpse_height,
-  glimpse_width, channels]`.
 
 
 
@@ -1218,5 +1232,31 @@ false and no bounding boxes are supplied, an error is raised.
     `tf.slice`.
 *  <b>`bboxes`</b>: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
     Provide as input to `tf.image.draw_bounding_boxes`.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.contrib.layers.make_all(module_name, doc_string_modules=None)` {#make_all}
+
+Generate `__all__` from the docstring of one or more modules.
+
+Usage: `make_all(__name__)` or
+`make_all(__name__, [sys.modules(__name__), other_module])`. The doc string
+modules must each a docstring, and `__all__` will contain all symbols with
+`@@` references, where that symbol currently exists in the module named
+`module_name`.
+
+##### Args:
+
+
+*  <b>`module_name`</b>: The name of the module (usually `__name__`).
+*  <b>`doc_string_modules`</b>: a list of modules from which to take docstring.
+  If None, then a list containing only the module named `module_name` is used.
+
+##### Returns:
+
+  A list suitable for use as `__all__`.
 
 

@@ -78,9 +78,8 @@ and `control_dependency`.
 
 There's a second trick to simplifying the layout. Most TensorFlow graphs have a
 few nodes with many connections to other nodes. For example, many nodes might
-have a control dependencies on an initialization step. Drawing all edges
-between the `init` node and its dependencies would create a very cluttered
-view.
+have a control dependency on an initialization step. Drawing all edges between
+the `init` node and its dependencies would create a very cluttered view.
 
 To reduce clutter, the visualization separates out all high-degree nodes to an
 *auxiliary* area on the right and doesn't draw lines to represent their edges.
@@ -228,3 +227,25 @@ The images below give an illustration for a piece of a real-life graph.
     </td>
   </tr>
 </table>
+
+## Tensor shape information
+
+When the serialized `GraphDef` includes tensor shapes, the graph visualizer
+labels edges with tensor dimensions, and edge thickness reflects total tensor
+size. To include tensor shapes in the `GraphDef` pass the actual graph object
+(as in `sess.graph`) to the `SummaryWriter` when serializing the graph.
+The images below show the CIFAR-10 model with tensor shape information:
+<table width="100%;">
+  <tr>
+    <td style="width: 100%;">
+      <img src="../../images/tensor_shapes.png" alt="CIFAR-10 model with tensor shape information" title="CIFAR-10 model with tensor shape information" />
+    </td>
+  </tr>
+  <tr>
+    <td style="width: 100%;">
+      CIFAR-10 model with tensor shape information.
+    </td>
+  </tr>
+</table>
+
+

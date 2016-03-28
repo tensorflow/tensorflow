@@ -48,6 +48,9 @@ class SoftsignGradOp
  public:
   using BinaryElementWiseOp<T, SoftsignGradOp<Device, T>>::BinaryElementWiseOp;
 
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (inputs): inputs that were passed to SoftsignOp()
@@ -56,13 +59,21 @@ class SoftsignGradOp
   template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    OP_REQUIRES(context, a.IsSameSize(g),
-                errors::InvalidArgument("g and a must be the same size"));
-    functor::SoftsignGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, output);
   }
 };
+
+template <typename Device, typename T>
+void SoftsignGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                                  const Tensor& g,
+                                                  const Tensor& a,
+                                                  Tensor* output) {
+  OP_REQUIRES(context, a.IsSameSize(g),
+              errors::InvalidArgument("g and a must be the same size"));
+  functor::SoftsignGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
 
 #define REGISTER_KERNELS(type)                                           \
   REGISTER_KERNEL_BUILDER(                                               \

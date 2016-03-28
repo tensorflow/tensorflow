@@ -307,7 +307,13 @@ void Graph::ToGraphDef(GraphDef* graph_def) const {
       if (edge->IsControlEdge()) {
         inputs.push_back(edge);
       } else {
-        DCHECK(inputs[edge->dst_input()] == nullptr);
+        CHECK(inputs[edge->dst_input()] == nullptr)
+            << "Edge " << edge->src()->DebugString() << ":"
+            << edge->dst()->DebugString() << " with dst_input "
+            << edge->dst_input() << " and had pre-existing input edge "
+            << inputs[edge->dst_input()]->src()->DebugString() << ":"
+            << inputs[edge->dst_input()]->dst()->DebugString();
+
         inputs[edge->dst_input()] = edge;
       }
     }

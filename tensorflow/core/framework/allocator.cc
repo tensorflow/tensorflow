@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 
+#include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -99,8 +101,18 @@ class CPUAllocator : public Allocator {
   TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
 };
 
+namespace {
+Allocator* MakeCpuAllocator() {
+  Allocator* allocator = new CPUAllocator;
+  if (LogMemory::IsEnabled()) {
+    allocator = new TrackingAllocator(allocator, true);
+  }
+  return allocator;
+}
+}  // namespace
+
 Allocator* cpu_allocator() {
-  static CPUAllocator* cpu_alloc = new CPUAllocator;
+  static Allocator* cpu_alloc = MakeCpuAllocator();
   return cpu_alloc;
 }
 

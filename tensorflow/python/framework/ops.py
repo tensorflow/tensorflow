@@ -30,6 +30,7 @@ import weakref
 
 import six
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
@@ -440,6 +441,42 @@ class Tensor(object):
     """
     raise TypeError("'Tensor' object is not iterable.")
 
+  def __bool__(self):
+    """Dummy method to prevent a tensor from being used as a Python `bool`.
+
+    This overload raises a `TypeError` when the user inadvertently
+    treats a `Tensor` as a boolean (e.g. in an `if` statement). For
+    example:
+
+    ```python
+    if tf.constant(True):  # Will raise.
+      # ...
+
+    if tf.constant(5) < tf.constant(7):  # Will raise.
+      # ...
+    ```
+
+    Raises:
+      `TypeError`.
+    """
+    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
+                    "Use `if t is not None:` instead of `if t:` to test if a "
+                    "tensor is defined, and use the logical TensorFlow ops "
+                    "to test the value of a tensor.")
+
+  def __nonzero__(self):
+    """Dummy method to prevent a tensor from being used as a Python `bool`.
+
+    This is the Python 2.x counterpart to `__bool__()` above.
+
+    Raises:
+      `TypeError`.
+    """
+    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
+                    "Use `if t is not None:` instead of `if t:` to test if a "
+                    "tensor is defined, and use the logical TensorFlow ops "
+                    "to test the value of a tensor.")
+
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.
 
@@ -576,25 +613,25 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
                                         as_ref=False):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
-  If `value` is an `IndexedSlices` it is returned
+  If `value` is an `IndexedSlices` or `SparseTensor` it is returned
   unmodified. Otherwise, it is converted to a `Tensor` using
   `convert_to_tensor()`.
 
   Args:
-    value: An `IndexedSlices` or an object that can be consumed by
-      `convert_to_tensor()`.
+    value: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
+      by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor` or
       `IndexedSlices`.
     name: (Optional.) A name to use if a new `Tensor` is created.
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    An `Tensor` or an `IndexedSlices` based on `value`.
+    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
   """
-  if isinstance(value, IndexedSlices):
+  if isinstance(value, (IndexedSlices, SparseTensor)):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r"
@@ -608,9 +645,12 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
                                           as_ref=False):
   """Converts `values` to a list of `Tensor` or `IndexedSlices` objects.
 
+  Any `IndexedSlices` or `SparseTensor` objects in `values` are returned
+  unmodified.
+
   Args:
-    values: A list of `None`, `IndexedSlices`, or objects that can be consumed
-      by `convert_to_tensor()`.
+    values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
+      can be consumed by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor`
       `IndexedSlices`.
     name: (Optional.) A name prefix to used when a new `Tensor` is
@@ -619,7 +659,7 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    A list of `Tensor` and/or `IndexedSlices` objects.
+    A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
 
   Raises:
     TypeError: If no conversion function is registered for an element in
@@ -780,7 +820,8 @@ class IndexedSlices(object):
   def __str__(self):
     return "IndexedSlices(indices=%s, values=%s%s)" % (
         self._indices, self._values,
-        (", dense_shape=%s" % self._dense_shape) if self._dense_shape else "")
+        (", dense_shape=%s" % self._dense_shape)
+        if self._dense_shape is not None else "")
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
@@ -1096,6 +1137,23 @@ class Operation(object):
     # created.
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._recompute_node_def()
+
+  def colocation_groups(self):
+    """Returns the list of colocation groups of the op."""
+    default_colocation_group = [compat.as_bytes("loc:@%s" %
+                                                self._node_def.name)]
+    if "_class" not in self._node_def.attr:
+      # This op has no explicit colocation group, so it is itself its
+      # own root of a colocation group.
+      return default_colocation_group
+
+    attr_groups = [class_name
+                   for class_name in self.get_attr("_class")
+                   if class_name.startswith(b"loc:@")]
+
+    # If there are no colocation groups in the explicit _class field,
+    # return the default colocation group.
+    return attr_groups if attr_groups else default_colocation_group
 
   def values(self):
     """DEPRECATED: Use outputs."""
@@ -1777,10 +1835,15 @@ class Graph(object):
     self._finalized = False
     # Functions defined in the graph
     self._functions = collections.OrderedDict()
+    self._function_gradient = collections.OrderedDict()
     # Default GraphDef versions
     self._graph_def_versions = versions_pb2.VersionDef(
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
+    # Stack of colocate_with ops
+    self._colocation_stack = []
+    # Set of tensors that are dangerous to feed!
+    self._unfeedable_tensors = set()
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -1837,6 +1900,7 @@ class Graph(object):
 
   @property
   def seed(self):
+    """The graph-level random seed of this graph."""
     return self._seed
 
   @seed.setter
@@ -1916,6 +1980,12 @@ class Graph(object):
         if bytesize >= (1 << 31) or bytesize < 0:
           raise ValueError("GraphDef cannot be larger than 2GB.")
       graph.library.function.extend(self._functions.values())
+      for func in self._function_gradient:
+        grad_def = function_pb2.GradientDef()
+        grad_def.function_name = func
+        grad_def.gradient_func = self._function_gradient[func]
+        graph.library.gradient.extend([grad_def])
+
     return graph
 
   def _is_function(self, name):
@@ -1938,7 +2008,7 @@ class Graph(object):
     """
     return self._functions[name]
 
-  def _add_function(self, function_def):
+  def _add_function(self, function_def, grad_function_name=None):
     """Adds a function to the graph.
 
     The function is specified as a [`FunctionDef`]
@@ -1951,6 +2021,9 @@ class Graph(object):
 
     Args:
       function_def: A `FunctionDef` protocol buffer.
+      grad_function_name: If not None, this specifies the name of a function
+                          that shall be used as the gradient function of
+                          the function being added.
     """
     previous_def = self._functions.get(function_def.signature.name, None)
     if previous_def:
@@ -1960,6 +2033,8 @@ class Graph(object):
         # No need to add again.
         return
     self._functions[function_def.signature.name] = function_def
+    if grad_function_name is not None:
+      self._function_gradient[function_def.signature.name] = grad_function_name
 
   # Helper functions to create operations.
   def create_op(self, op_type, inputs, dtypes,
@@ -1997,6 +2072,7 @@ class Graph(object):
 
     Raises:
       TypeError: if any of the inputs is not a `Tensor`.
+      ValueError: if colocation conflicts with existing device assignment.
 
     Returns:
       An `Operation` object.
@@ -2042,8 +2118,31 @@ class Graph(object):
       set_shapes_for_outputs(ret)
     self._add_op(ret)
     self._record_op_seen_by_control_dependencies(ret)
+
     if compute_device:
       self._apply_device_functions(ret)
+
+    if self._colocation_stack:
+      all_colocation_groups = []
+      for colocation_op in self._colocation_stack:
+        all_colocation_groups.extend(colocation_op.colocation_groups())
+        if colocation_op.device:
+          # Make this device match the device of the colocated op, to
+          # provide consistency between the device and the colocation
+          # property.
+          if ret.device and ret.device != colocation_op.device:
+            logging.warning("Tried to colocate %s with an op %s that had "
+                            "a different device: %s vs %s. "
+                            "Ignoring colocation property.",
+                            name, colocation_op.name,
+                            ret.device, colocation_op.device)
+          else:
+            ret._set_device(colocation_op.device)
+
+      all_colocation_groups = list(set(all_colocation_groups))
+      ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
+          list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
+
     return ret
 
   def as_graph_element(self, obj, allow_tensor=True, allow_operation=True):
@@ -2092,7 +2191,9 @@ class Graph(object):
     else:
       raise ValueError("allow_tensor and allow_operation can't both be False.")
 
-    obj = _as_graph_element(obj) or obj
+    temp_obj = _as_graph_element(obj)
+    if temp_obj is not None:
+      obj = temp_obj
 
     # If obj appears to be a name...
     if isinstance(obj, compat.bytes_or_text_types):
@@ -2233,7 +2334,7 @@ class Graph(object):
     This method should be used if you want to create multiple graphs
     in the same process. For convenience, a global default graph is
     provided, and all ops will be added to this graph if you do not
-    create a new graph explicitly. Use this method the `with` keyword
+    create a new graph explicitly. Use this method with the `with` keyword
     to specify that ops created within the scope of a block should be
     added to this graph.
 
@@ -2482,6 +2583,72 @@ class Graph(object):
       if mark_as_used:
         self._names_in_use[name] = 1
     return name
+
+  @contextlib.contextmanager
+  def colocate_with(self, op, ignore_existing=False):
+    """Returns a context manager that specifies an op to colocate with.
+
+    Note: this function is not for public use, only for internal libraries.
+
+    For example:
+
+    ```python
+    a = tf.Variable([1.0])
+    with g.colocate_with(a):
+      b = tf.constant(1.0)
+      c = tf.add(a, b)
+    ```
+
+    `b` and `c` will always be colocated with `a`, no matter where `a`
+    is eventually placed.
+
+    Args:
+      op: The op to colocate all created ops with.
+      ignore_existing: If true, only applies colocation of this op within
+        the context, rather than applying all colocation properties
+        on the stack.
+
+    Raises:
+      ValueError: if op is None.
+
+    Yields:
+      A context manager that specifies the op with which to colocate
+      newly created ops.
+
+    """
+    if op is None:
+      raise ValueError("Tried to colocate with None")
+
+    if not isinstance(op, Operation):
+      # We always want to colocate with the reference op.
+      op = convert_to_tensor_or_indexed_slices(op, as_ref=True).op
+
+    # By default, colocate_with resets the device function stack,
+    # since colocate_with is typically used in specific internal
+    # library functions where colocation is intended to be "stronger"
+    # than device functions.
+    #
+    # In the future, a caller may specify that device_functions win
+    # over colocation, in which case we can add support.
+    device_fn_tmp = self._device_function_stack
+    self._device_function_stack = []
+
+    if ignore_existing:
+      current_stack = self._colocation_stack
+      self._colocation_stack = []
+
+    self._colocation_stack.append(op)
+
+    try:
+      yield
+    finally:
+      # Restore device function stack
+      self._device_function_stack = device_fn_tmp
+      self._colocation_stack.pop()
+
+      # Reset the colocation stack if requested.
+      if ignore_existing:
+        self._colocation_stack = current_stack
 
   @contextlib.contextmanager
   def device(self, device_name_or_function):
@@ -2842,7 +3009,7 @@ class Graph(object):
 
     ```python
     @tf.RegisterGradient("CustomSquare")
-    def _custom_square_grad(op, inputs):
+    def _custom_square_grad(op, grad):
       # ...
 
     with tf.Graph().as_default() as g:
@@ -2893,6 +3060,14 @@ class Graph(object):
           del self._gradient_override_map[op_type]
   # pylint: enable=g-doc-return-or-yield
 
+  def prevent_feeding(self, tensor):
+    """Marks the given `tensor` as unfeedable in this graph."""
+    self._unfeedable_tensors.add(tensor)
+
+  def is_feedable(self, tensor):
+    """Returns `True` if and only if `tensor` is feedable."""
+    return tensor not in self._unfeedable_tensors
+
 
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
@@ -2910,6 +3085,10 @@ def device(device_name_or_function):
     created ops.
   """
   return get_default_graph().device(device_name_or_function)
+
+
+def colocate_with(op, ignore_existing=False):
+  return get_default_graph().colocate_with(op, ignore_existing)
 
 
 def name_scope(name):
@@ -3247,11 +3426,11 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     else:
       graph_element = _as_graph_element(op_input)
 
-    if graph_element:
+    if graph_element is not None:
       if not graph:
         original_graph_element = graph_element
         graph = graph_element.graph
-      elif original_graph_element:
+      elif original_graph_element is not None:
         _assert_same_graph(original_graph_element, graph_element)
       elif graph_element.graph is not graph:
         raise ValueError(
@@ -3306,6 +3485,8 @@ class GraphKeys(object):
   # Key to collect Variable objects that will be trained by the
   # optimizers.
   TRAINABLE_VARIABLES = "trainable_variables"
+  # Key to collect local variables that are not saved/restored.
+  LOCAL_VARIABLES = "local_variables"
   # Key to collect summaries.
   SUMMARIES = "summaries"
   # Key to collect QueueRunners.
@@ -3332,6 +3513,7 @@ class GraphKeys(object):
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
+  LOCAL_INIT_OP = "local_init_op"
   READY_OP = "ready_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"

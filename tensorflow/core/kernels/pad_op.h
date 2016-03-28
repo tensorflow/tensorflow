@@ -32,7 +32,11 @@ struct Pad {
   void operator()(const Device& d, typename TTypes<T, Dims>::Tensor output,
                   typename TTypes<T, Dims>::ConstTensor input,
                   Eigen::array<std::pair<int32, int32>, Dims> paddings) {
-    output.device(d) = input.pad(paddings);
+    if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
+      To32Bit(output).device(d) = To32Bit(input).pad(paddings);
+    } else {
+      output.device(d) = input.pad(paddings);
+    }
   }
 };
 

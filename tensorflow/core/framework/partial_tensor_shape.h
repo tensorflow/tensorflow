@@ -116,59 +116,25 @@ class PartialTensorShape {
   /// \brief Returns a `PartialTensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.  Values of -1 are
   /// considered "unknown".
-  template <typename T>
-  static Status MakePartialShape(const T* dims, int n, PartialTensorShape* out);
+  static Status MakePartialShape(const int32* dims, int n,
+                                 PartialTensorShape* out);
+  static Status MakePartialShape(const int64* dims, int n,
+                                 PartialTensorShape* out);
 
  private:
   bool is_unknown_;
   gtl::InlinedVector<int64, 4> dim_sizes_;
 };
 
-template <typename T>
-Status PartialTensorShape::MakePartialShape(const T* dims, int n,
-                                            PartialTensorShape* out) {
-  *out = PartialTensorShape();
-  out->dim_sizes_.reserve(n);
-  for (int i = 0; i < n; ++i) {
-    if (dims[i] >= -1) {
-      out->dim_sizes_.push_back(dims[i]);
-    } else {
-      return errors::InvalidArgument("Dimension ", dims[i], " must be >= -1");
-    }
-  }
-  return Status::OK();
-}
-
 /// \brief Static helper routines for `PartialTensorShape`. Includes a few
 /// common predicates on a partially known tensor shape.
 class PartialTensorShapeUtils {
  public:
   static string PartialShapeListString(
-      const gtl::ArraySlice<PartialTensorShape>& shapes) {
-    string result = "[";
-    bool first = true;
-    for (const PartialTensorShape& shape : shapes) {
-      strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
-      first = false;
-    }
-    strings::StrAppend(&result, "]");
-    return result;
-  }
+      const gtl::ArraySlice<PartialTensorShape>& shapes);
 
-  static bool AreCompatible(
-      const gtl::ArraySlice<PartialTensorShape>& shapes0,
-      const gtl::ArraySlice<PartialTensorShape>& shapes1) {
-    if (shapes0.size() == shapes1.size()) {
-      for (size_t i = 0; i < shapes0.size(); ++i) {
-        if (!shapes0[i].IsCompatibleWith(shapes1[i])) {
-          return false;
-        }
-      }
-      return true;
-    } else {
-      return false;
-    }
-  }
+  static bool AreCompatible(const gtl::ArraySlice<PartialTensorShape>& shapes0,
+                            const gtl::ArraySlice<PartialTensorShape>& shapes1);
 };
 
 }  // namespace tensorflow

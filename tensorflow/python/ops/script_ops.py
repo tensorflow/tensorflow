@@ -59,9 +59,9 @@ class FuncRegistry(object):
     if func is None:
       raise ValueError("callback %s is not found" % token)
     ret = func(*args)
-    # Ensures that we return either a single np array or or a list of
-    # np array.
-    if isinstance(ret, list):
+    # Ensures that we return either a single numpy array or a list of numpy
+    # arrays.
+    if isinstance(ret, (tuple, list)):
       ret = [np.array(x) for x in ret]
     else:
       ret = np.array(ret)

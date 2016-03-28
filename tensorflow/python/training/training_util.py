@@ -39,7 +39,7 @@ def global_step(sess, global_step_tensor):
   ```
 
   Args:
-    sess: A brain `Session` object.
+    sess: A TensorFlow `Session` object.
     global_step_tensor:  `Tensor` or the `name` of the operation that contains
       the global step.
 

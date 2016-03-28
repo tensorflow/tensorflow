@@ -27,6 +27,10 @@ REGISTER_KERNEL_BUILDER(Name("Identity").Device(DEVICE_CPU), IdentityOp);
 // StopGradient does the same thing as Identity, but has a different
 // gradient registered.
 REGISTER_KERNEL_BUILDER(Name("StopGradient").Device(DEVICE_CPU), IdentityOp);
+// PlaceholderWithDefault does the same thing as Identity, but has a
+// different shape function (and constant value function) registered.
+REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault").Device(DEVICE_CPU),
+                        IdentityOp);
 
 REGISTER_KERNEL_BUILDER(Name("RefIdentity").Device(DEVICE_CPU), IdentityOp);
 

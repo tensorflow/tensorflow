@@ -63,6 +63,12 @@ overrides the `Compute` method. The `Compute` method provides one `context`
 argument of type `OpKernelContext*`, from which you can access useful things
 like the input and output tensors.
 
+> Important note: Instances of your OpKernel may be accessed concurrently. Your
+> `Compute` method must be thread-safe. Guard any access to class members with a
+> mutex (Or better yet, don't share state via class members! Consider using a
+> [`ResourceMgr`](https://www.tensorflow.org/code/tensorflow/core/framework/resource_mgr.h)
+> to keep track of Op state).
+
 Add your kernel to the file you created above. The kernel might look something
 like this:
 
@@ -115,18 +121,15 @@ REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
 You should be able to compile `zero_out.cc` with a `C++` compiler such as `g++`
 or `clang` available on your system. The binary PIP package installs the header
 files and the library that you need to compile your Op in locations that are
-system specific. However, the TensorFlow python library provides functions
-`get_include` and `get_lib` to get the header and library directories
-respectively. Here is the output of those functions on a Ubuntu machine.
+system specific. However, the TensorFlow python library provides the
+`get_include` function to get the header directory.
+Here is the output of this function on a Ubuntu machine.
 
 ```bash
 $ python
 >>> import tensorflow as tf
 >>> tf.sysconfig.get_include()
 '/usr/local/lib/python2.7/site-packages/tensorflow/include'
->>> tf.sysconfig.get_lib()
-'/usr/local/lib/python2.7/site-packages/tensorflow/core'
->>> 
 
 ```
 
@@ -134,34 +137,36 @@ Assuming you have `g++` installed, here is the sequence of commands you can use
 to compile your Op into a dynamic library.
 
 ```bash
-$ TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
-$ TF_LIB=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
+TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
 
-$ g++ -std=c++11 -shared zero_out.cc -o zero_out.so \
--I $TF_INC -l tensorflow_framework -L $TF_LIB \
--fPIC -Wl,-rpath $TF_LIB
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC
 ```
+
+> Note on gcc version 5: gcc5 uses the new C++
+[ABI](https://gcc.gnu.org/gcc-5/changes.html#libstdcxx). The binary pip packages
+available on the TensorFlow website are built with gcc4 that uses the older ABI.
+If you compile your op library with gcc5, add `-D_GLIBCXX_USE_CXX11_ABI=0` to
+the command line to make the library compatible with the older abi.
 
 ### With TensorFlow source installation
 
 If you have TensorFlow sources installed, you can make use of TensorFlow's build
-system to compile your Op. The following Bazel build rule would build
-`zero_out.so`.
+system to compile your Op. Place a BUILD file with following Bazel build rule in
+the [`tensorflow/core/user_ops`][user_ops] directory.
 
 ```python
-cc_binary(
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library)
+
+tf_custom_op_library(
     name = "zero_out.so",
     srcs = ["zero_out.cc"],
-    linkopts = [
-        "-Wl,-Bsymbolic",
-        "-lm",
-    ],
-    linkshared = 1,
-    linkstatic = 1,
-    deps = [
-        "//third_party/tensorflow/core:framework",
-    ],
 )
+```
+
+Run the following command to build `zero_out.so`.
+
+```bash
+$ bazel build -c opt //tensorflow/core/user_ops:zero_out.so
 ```
 
 ## Using the Op in Python
@@ -265,7 +270,7 @@ function on error.
 
 ## Op registration
 
-### Attrs 
+### Attrs
 
 Ops can have attrs, whose values are set when the Op is added to a graph. These
 are used to configure the Op, and their values can be accessed both within the
@@ -950,6 +955,33 @@ and the shared code is a templated class defined in
 One thing to note, even when the GPU kernel version of `pad` is used, it still
 needs its `"paddings"` input in CPU memory.  To mark that inputs or outputs are
 kept on the CPU, add a `HostMemory()` call to the kernel registration, e.g.:
+
+
+### Compiling the kernel for the GPU device
+
+Look at
+[cuda_op_kernel.cu.cc](https://www.tensorflow.org/code/tensorflow/g3doc/how_tos/adding_an_op/cuda_op_kernel.cu.cc)
+for an example that uses a CUDA kernel to implement an op. The
+`tf_custom_op_library` accepts a `gpu_srcs` argument in which the list of source
+files containing the CUDA kernels (`*.cu.cc` files) can be specified. For use
+with a binary installation of TensorFlow, the CUDA kernels have to be compiled
+with NVIDIA's `nvcc` compiler. Here is the sequence of commands you can use to
+compile the
+[cuda_op_kernel.cu.cc](https://www.tensorflow.org/code/tensorflow/g3doc/how_tos/adding_an_op/cuda_op_kernel.cu.cc)
+and
+[cuda_op_kernel.cc](https://www.tensorflow.org/code/tensorflow/g3doc/how_tos/adding_an_op/cuda_op_kernel.cc)
+into a single dynamically loadable library:
+
+```bash
+nvcc -std=c++11 -c -o cuda_op_kernel.cu.o cuda_op_kernel.cu.cc \
+-I $TF_INC -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
+
+g++ -std=c++11 -shared -o cuda_op_kernel.so cuda_op_kernel.cc \
+cuda_op_kernel.cu.o -I $TF_INC -fPIC -lcudart
+```
+
+`cuda_op_kernel.so` produced above can be loaded as usual in Python, using the
+`tf.load_op_library` function.
 
 ```c++
 #define REGISTER_GPU_KERNEL(T)                         \

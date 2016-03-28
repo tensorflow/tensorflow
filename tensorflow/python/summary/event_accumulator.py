@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Takes a generator of values, and accumulates them for a frontend."""
 from __future__ import absolute_import
 from __future__ import division
@@ -22,16 +21,18 @@ import collections
 import threading
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf.config_pb2 import RunMetadata
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.summary.impl import directory_watcher
 from tensorflow.python.summary.impl import event_file_loader
+from tensorflow.python.summary.impl import gcs
+from tensorflow.python.summary.impl import gcs_file_loader
 from tensorflow.python.summary.impl import reservoir
 
 namedtuple = collections.namedtuple
-ScalarEvent = namedtuple('ScalarEvent',
-                         ['wall_time', 'step', 'value'])
+ScalarEvent = namedtuple('ScalarEvent', ['wall_time', 'step', 'value'])
 
 CompressedHistogramEvent = namedtuple('CompressedHistogramEvent',
                                       ['wall_time', 'step',
@@ -48,8 +49,8 @@ HistogramValue = namedtuple('HistogramValue',
                              'bucket_limit', 'bucket'])
 
 ImageEvent = namedtuple('ImageEvent',
-                        ['wall_time', 'step', 'encoded_image_string',
-                         'width', 'height'])
+                        ['wall_time', 'step', 'encoded_image_string', 'width',
+                         'height'])
 
 ## Different types of summary events handled by the event_accumulator
 SUMMARY_TYPES = ('_scalars', '_histograms', '_compressed_histograms', '_images')
@@ -61,6 +62,7 @@ HISTOGRAMS = 'histograms'
 IMAGES = 'images'
 SCALARS = 'scalars'
 GRAPH = 'graph'
+RUN_METADATA = 'run_metadata'
 
 ## Normal CDF for std_devs: (-Inf, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, Inf)
 ## naturally gives bands around median of width 1 std dev, 2 std dev, 3 std dev,
@@ -114,13 +116,17 @@ class EventAccumulator(object):
   @@Tags
   @@Scalars
   @@Graph
+  @@RunMetadata
   @@Histograms
   @@CompressedHistograms
   @@Images
   """
 
-  def __init__(self, path, size_guidance=DEFAULT_SIZE_GUIDANCE,
-               compression_bps=NORMAL_HISTOGRAM_BPS):
+  def __init__(self,
+               path,
+               size_guidance=DEFAULT_SIZE_GUIDANCE,
+               compression_bps=NORMAL_HISTOGRAM_BPS,
+               purge_orphaned_data=True):
     """Construct the `EventAccumulator`.
 
     Args:
@@ -135,6 +141,8 @@ class EventAccumulator(object):
       compression_bps: Information on how the `EventAccumulator` should compress
         histogram data for the `CompressedHistograms` tag (for details see
         `ProcessCompressedHistogram`).
+      purge_orphaned_data: Whether to discard any events that were "orphaned" by
+        a TensorFlow restart.
     """
     sizes = {}
     for key in DEFAULT_SIZE_GUIDANCE:
@@ -145,14 +153,19 @@ class EventAccumulator(object):
 
     self._scalars = reservoir.Reservoir(size=sizes[SCALARS])
     self._graph = None
+    self._tagged_metadata = {}
     self._histograms = reservoir.Reservoir(size=sizes[HISTOGRAMS])
     self._compressed_histograms = reservoir.Reservoir(
         size=sizes[COMPRESSED_HISTOGRAMS])
     self._images = reservoir.Reservoir(size=sizes[IMAGES])
+
     self._generator_mutex = threading.Lock()
     self._generator = _GeneratorFromPath(path)
-    self._activated = False
+
     self._compression_bps = compression_bps
+    self.purge_orphaned_data = purge_orphaned_data
+
+    self._activated = False
     self.most_recent_step = -1
     self.most_recent_wall_time = -1
     self.file_version = None
@@ -179,15 +192,7 @@ class EventAccumulator(object):
                                                       new_file_version))
           self.file_version = new_file_version
 
-        ## Check if the event happened after a crash, and purge expired tags.
-        if self.file_version and self.file_version >= 2:
-          ## If the file_version is recent enough, use the SessionLog enum
-          ## to check for restarts.
-          self._CheckForRestartAndMaybePurge(event)
-        else:
-          ## If there is no file version, default to old logic of checking for
-          ## out of order steps.
-          self._CheckForOutOfOrderStepAndMaybePurge(event)
+        self._MaybePurgeOrphanedData(event)
 
         ## Process the event
         if event.HasField('graph_def'):
@@ -195,6 +200,12 @@ class EventAccumulator(object):
             logging.warn(('Found more than one graph event per run.'
                           'Overwritting the graph with the newest event.'))
           self._graph = event.graph_def
+        elif event.HasField('tagged_run_metadata'):
+          tag = event.tagged_run_metadata.tag
+          if tag in self._tagged_metadata:
+            logging.warn('Found more than one "run metadata" event with tag ' +
+                         tag + '. Overwritting it with the newest event.')
+          self._tagged_metadata[tag] = event.tagged_run_metadata.run_metadata
         elif event.HasField('summary'):
           for value in event.summary.value:
             if value.HasField('simple_value'):
@@ -224,7 +235,8 @@ class EventAccumulator(object):
             HISTOGRAMS: self._histograms.Keys(),
             SCALARS: self._scalars.Keys(),
             COMPRESSED_HISTOGRAMS: self._compressed_histograms.Keys(),
-            GRAPH: self._graph is not None}
+            GRAPH: self._graph is not None,
+            RUN_METADATA: list(self._tagged_metadata.keys())}
 
   def Scalars(self, tag):
     """Given a summary tag, return all associated `ScalarEvent`s.
@@ -258,6 +270,27 @@ class EventAccumulator(object):
     graph = graph_pb2.GraphDef()
     graph.ParseFromString(self._graph)
     return graph
+
+  def RunMetadata(self, tag):
+    """Given a tag, return the associated session.run() metadata.
+
+    Args:
+      tag: A string tag associated with the event.
+
+    Raises:
+      ValueError: If the tag is not found.
+      RuntimeError: If the `EventAccumulator` has not been activated.
+
+    Returns:
+      The metadata in form of `RunMetadata` proto.
+    """
+    self._VerifyActivated()
+    if tag not in self._tagged_metadata:
+      raise ValueError('There is no run metadata with this tag name')
+
+    run_metadata = RunMetadata()
+    run_metadata.ParseFromString(self._tagged_metadata[tag])
+    return run_metadata
 
   def Histograms(self, tag):
     """Given a summary tag, return all associated histograms.
@@ -306,6 +339,31 @@ class EventAccumulator(object):
     """
     self._VerifyActivated()
     return self._images.Items(tag)
+
+  def _MaybePurgeOrphanedData(self, event):
+    """Maybe purge orphaned data due to a TensorFlow crash.
+
+    When TensorFlow crashes at step T+O and restarts at step T, any events
+    written after step T are now "orphaned" and will be at best misleading if
+    they are included in TensorBoard.
+
+    This logic attempts to determine if there is orphaned data, and purge it
+    if it is found.
+
+    Args:
+      event: The event to use as a reference, to determine if a purge is needed.
+    """
+    if not self.purge_orphaned_data:
+      return
+    ## Check if the event happened after a crash, and purge expired tags.
+    if self.file_version and self.file_version >= 2:
+      ## If the file_version is recent enough, use the SessionLog enum
+      ## to check for restarts.
+      self._CheckForRestartAndMaybePurge(event)
+    else:
+      ## If there is no file version, default to old logic of checking for
+      ## out of order steps.
+      self._CheckForOutOfOrderStepAndMaybePurge(event)
 
   def _CheckForRestartAndMaybePurge(self, event):
     """Check and discard expired events using SessionLog.START.
@@ -362,16 +420,18 @@ class EventAccumulator(object):
     Returns:
       A linearly interpolated value of the histogram weight estimate.
     """
-    if histo_num == 0: return 0
+    if histo_num == 0:
+      return 0
 
     for i, cumsum in enumerate(cumsum_weights):
       if cumsum >= compression_bps:
-        cumsum_prev = cumsum_weights[i-1] if i > 0 else 0
+        cumsum_prev = cumsum_weights[i - 1] if i > 0 else 0
         # Prevent cumsum = 0, cumsum_prev = 0, lerp divide by zero.
-        if cumsum == cumsum_prev: continue
+        if cumsum == cumsum_prev:
+          continue
 
         # Calculate the lower bound of interpolation
-        lhs = bucket_limit[i-1] if (i > 0 and cumsum_prev > 0) else histo_min
+        lhs = bucket_limit[i - 1] if (i > 0 and cumsum_prev > 0) else histo_min
         lhs = max(lhs, histo_min)
 
         # Calculate the upper bound of interpolation
@@ -398,8 +458,9 @@ class EventAccumulator(object):
       step: Number of steps that have passed
       histo: proto2 histogram Object
     """
+
     def _CumulativeSum(arr):
-      return [sum(arr[:i+1]) for i in range(len(arr))]
+      return [sum(arr[:i + 1]) for i in range(len(arr))]
 
     # Convert from proto repeated field into a Python list.
     bucket = list(histo.bucket)
@@ -443,13 +504,11 @@ class EventAccumulator(object):
 
   def _ProcessImage(self, tag, wall_time, step, image):
     """Processes an image by adding it to accumulated state."""
-    event = ImageEvent(
-        wall_time=wall_time,
-        step=step,
-        encoded_image_string=image.encoded_image_string,
-        width=image.width,
-        height=image.height
-    )
+    event = ImageEvent(wall_time=wall_time,
+                       step=step,
+                       encoded_image_string=image.encoded_image_string,
+                       width=image.width,
+                       height=image.height)
     self._images.AddItem(tag, event)
 
   def _ProcessScalar(self, tag, wall_time, step, scalar):
@@ -522,12 +581,20 @@ def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
 
 def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
-  loader_factory = event_file_loader.EventFileLoader
-  if gfile.IsDirectory(path):
-    return directory_watcher.DirectoryWatcher(path, loader_factory,
-                                              IsTensorFlowEventsFile)
+  if gcs.IsGCSPath(path):
+    provider = directory_watcher.SequentialGCSProvider(
+        path,
+        path_filter=IsTensorFlowEventsFile)
+    return directory_watcher.DirectoryWatcher(provider,
+                                              gcs_file_loader.GCSFileLoader)
+  elif gfile.IsDirectory(path):
+    provider = directory_watcher.SequentialGFileProvider(
+        path,
+        path_filter=IsTensorFlowEventsFile)
+    return directory_watcher.DirectoryWatcher(provider,
+                                              event_file_loader.EventFileLoader)
   else:
-    return loader_factory(path)
+    return event_file_loader.EventFileLoader(path)
 
 
 def _ParseFileVersion(file_version):

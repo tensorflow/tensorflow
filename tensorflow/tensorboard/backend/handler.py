@@ -36,13 +36,13 @@ from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
 
-from google.protobuf import text_format
-
 from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.util import compat
 from tensorflow.tensorboard.backend import float_wrapper
+from tensorflow.tensorboard.backend import process_graph
+
 
 DATA_PREFIX = '/data'
 RUNS_ROUTE = '/runs'
@@ -52,6 +52,7 @@ HISTOGRAMS_ROUTE = '/' + event_accumulator.HISTOGRAMS
 COMPRESSED_HISTOGRAMS_ROUTE = '/' + event_accumulator.COMPRESSED_HISTOGRAMS
 INDIVIDUAL_IMAGE_ROUTE = '/individualImage'
 GRAPH_ROUTE = '/' + event_accumulator.GRAPH
+RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
 TAB_ROUTES = ['', '/events', '/images', '/graphs', '/histograms']
 
 _IMGHDR_TO_MIMETYPE = {
@@ -244,10 +245,48 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       self.send_response(404)
       return
 
+    limit_attr_size = query_params.get('limit_attr_size', None)
+    if limit_attr_size is not None:
+      try:
+        limit_attr_size = int(limit_attr_size)
+      except ValueError:
+        self.send_error(400, 'The query param `limit_attr_size` must be'
+                        'an integer')
+        return
+
+    large_attrs_key = query_params.get('large_attrs_key', None)
+    try:
+      process_graph.prepare_graph_for_ui(graph, limit_attr_size,
+                                         large_attrs_key)
+    except ValueError as e:
+      self.send_error(400, e.message)
+      return
+
     # Serialize the graph to pbtxt format.
-    graph_pbtxt = text_format.MessageToString(graph)
+    graph_pbtxt = str(graph)
     # Gzip it and send it to the user.
     self._send_gzip_response(graph_pbtxt, 'text/plain')
+
+  def _serve_run_metadata(self, query_params):
+    """Given a tag and a TensorFlow run, return the session.run() metadata."""
+    tag = query_params.get('tag', None)
+    run = query_params.get('run', None)
+    if tag is None:
+      self.send_error(400, 'query parameter "tag" is required')
+      return
+    if run is None:
+      self.send_error(400, 'query parameter "run" is required')
+      return
+
+    try:
+      run_metadata = self._multiplexer.RunMetadata(run, tag)
+    except ValueError:
+      self.send_response(404)
+      return
+    # Serialize to pbtxt format.
+    run_metadata_pbtxt = str(run_metadata)
+    # Gzip it and send it to the user.
+    self._send_gzip_response(run_metadata_pbtxt, 'text/plain')
 
   def _serve_histograms(self, query_params):
     """Given a tag and single run, return an array of histogram values."""
@@ -412,6 +451,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     data_handlers = {
         DATA_PREFIX + SCALARS_ROUTE: self._serve_scalars,
         DATA_PREFIX + GRAPH_ROUTE: self._serve_graph,
+        DATA_PREFIX + RUN_METADATA_ROUTE: self._serve_run_metadata,
         DATA_PREFIX + HISTOGRAMS_ROUTE: self._serve_histograms,
         DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
             self._serve_compressed_histograms,

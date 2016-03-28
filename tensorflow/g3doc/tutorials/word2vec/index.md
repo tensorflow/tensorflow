@@ -255,7 +255,7 @@ embeddings = tf.Variable(
     tf.random_uniform([vocabulary_size, embedding_size], -1.0, 1.0))
 ```
 
-The noise-contrastive estimation loss is defined in terms a logistic regression
+The noise-contrastive estimation loss is defined in terms of a logistic regression
 model. For this, we need to define the weights and biases for each word in the
 vocabulary (also called the `output weights` as opposed to the `input
 embeddings`). So let's define that.

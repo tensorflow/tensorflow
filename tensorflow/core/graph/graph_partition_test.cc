@@ -154,7 +154,6 @@ class GraphPartitionTest : public ::testing::Test {
         builder_b_(GraphDefBuilder::kFailImmediately),
         a_opts_(builder_a_.opts().WithDevice("/job:a/replica:0/task:0/cpu:0")),
         b_opts_(builder_b_.opts().WithDevice("/job:a/replica:0/task:0/cpu:1")) {
-    RequireDefaultOps();
   }
 
   const GraphDef& ToGraphDef() {

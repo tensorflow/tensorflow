@@ -39,19 +39,19 @@ class SparseReorderOp : public OpKernel {
     const Tensor& input_ind = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_ind.shape()),
                 errors::InvalidArgument(
-                    "Input indices should be a matrix but received shape",
+                    "Input indices should be a matrix but received shape ",
                     input_ind.shape().DebugString()));
 
     const Tensor& input_val = context->input(1);
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_val.shape()),
                 errors::InvalidArgument(
-                    "Input values should be a vector but received shape",
+                    "Input values should be a vector but received shape ",
                     input_val.shape().DebugString()));
 
     const Tensor& input_shape_in = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape_in.shape()),
                 errors::InvalidArgument(
-                    "Input shape should be a vector but received shape",
+                    "Input shape should be a vector but received shape ",
                     input_shape_in.shape().DebugString()));
 
     const TensorShape input_shape(input_shape_in.vec<int64>());
@@ -62,7 +62,7 @@ class SparseReorderOp : public OpKernel {
     // Check if the sparse tensor is already ordered correctly
     sparse::SparseTensor input_sp(input_ind, input_val, input_shape, std_order);
 
-    if (input_sp.IndicesValid()) {
+    if (input_sp.IndicesValid().ok()) {
       context->set_output(0, input_sp.indices());
       context->set_output(1, input_sp.values());
     } else {

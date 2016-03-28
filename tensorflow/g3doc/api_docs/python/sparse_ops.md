@@ -153,7 +153,7 @@ Alias for field number 1
 
 
 
-## Sparse to Dense Conversion
+## Conversion
 
 - - -
 
@@ -255,8 +255,8 @@ tested if validate_indices is True.
 
 Converts a `SparseTensor` of ids into a dense bool indicator tensor.
 
-The last dimension of `sp_input` is discarded and replaced with the values of
-`sp_input`.  If `sp_input.shape = [D0, D1, ..., Dn, K]`, then
+The last dimension of `sp_input.indices` is discarded and replaced with
+the values of `sp_input`.  If `sp_input.shape = [D0, D1, ..., Dn, K]`, then
 `output.shape = [D0, D1, ..., Dn, vocab_size]`, where
 
     output[d_0, d_1, ..., d_n, sp_input[d_0, d_1, ..., d_n, k]] = True
@@ -288,9 +288,10 @@ The input `SparseTensor` must be in row-major order.
 ##### Args:
 
 
-*  <b>`sp_input`</b>: A `SparseTensor` of type `int32` or `int64`.
-*  <b>`vocab_size`</b>: The new size of the last dimension, with
-    `all(0 <= sp_input.values < vocab_size)`.
+*  <b>`sp_input`</b>: A `SparseTensor` with `values` property of type `int32` or
+    `int64`.
+*  <b>`vocab_size`</b>: A scalar int64 Tensor (or Python int) containing the new size
+    of the last dimension, `all(0 <= sp_input.values < vocab_size)`.
 *  <b>`name`</b>: A name prefix for the returned tensors (optional)
 
 ##### Returns:
@@ -301,6 +302,82 @@ The input `SparseTensor` must be in row-major order.
 
 
 *  <b>`TypeError`</b>: If `sp_input` is not a `SparseTensor`.
+
+
+- - -
+
+### `tf.sparse_merge(sp_ids, sp_values, vocab_size, name=None)` {#sparse_merge}
+
+Combines a batch of feature ids and values into a single `SparseTensor`.
+
+The most common use case for this function occurs when feature ids and
+their corresponding values are stored in `Example` protos on disk.
+`parse_example` will return a batch of ids and a batch of values, and this
+function joins them into a single logical `SparseTensor` for use in
+functions such as `sparse_tensor_dense_matmul`, `sparse_to_dense`, etc.
+
+The `SparseTensor` returned by this function has the following properties:
+
+  - `indices` is equivalent to `sp_ids.indices` with the last
+    dimension discarded and replaced with `sp_ids.values`.
+  - `values` is simply `sp_values.values`.
+  - If `sp_ids.shape = [D0, D1, ..., Dn, K]`, then
+    `output.shape = [D0, D1, ..., Dn, vocab_size]`.
+
+For example, consider the following feature vectors:
+
+  vector1 = [-3, 0, 0, 0, 0, 0]
+  vector2 = [ 0, 1, 0, 4, 1, 0]
+  vector3 = [ 5, 0, 0, 9, 0, 0]
+
+These might be stored sparsely in the following Example protos by storing
+only the feature ids (column number if the vectors are treated as a matrix)
+of the non-zero elements and the corresponding values:
+
+  examples = [Example(features={
+                  "ids": Feature(int64_list=Int64List(value=[0])),
+                  "values": Feature(float_list=FloatList(value=[-3]))}),
+              Example(features={
+                  "ids": Feature(int64_list=Int64List(value=[1, 4, 3])),
+                  "values": Feature(float_list=FloatList(value=[1, 1, 4]))}),
+              Example(features={
+                  "ids": Feature(int64_list=Int64List(value=[0, 3])),
+                  "values": Feature(float_list=FloatList(value=[5, 9]))})]
+
+The result of calling parse_example on these examples will produce a
+dictionary with entries for "ids" and "values". Passing those two objects
+to this function will produce a `SparseTensor` that sparsely represents
+all three instances. Namely, the `indices` property will contain
+the coordinates of the non-zero entries in the feature matrix (the first
+dimension is the row number in the matrix, i.e., the index within the batch,
+and the second dimension is the column number, i.e., the feature id);
+`values` will contain the actual values. `shape` will be the shape of the
+original matrix, i.e., (3, 7). For our example above, the output will be
+equal to:
+
+  SparseTensor(indices=[[0, 0], [1, 1], [1, 3], [1, 4], [2, 0], [2, 3]],
+               values=[-3, 1, 4, 1, 5, 9],
+               shape=[3, 7])
+
+##### Args:
+
+
+*  <b>`sp_ids`</b>: A `SparseTensor` with `values` property of type `int32`
+    or `int64`.
+*  <b>`sp_values`</b>: A`SparseTensor` of any type.
+*  <b>`vocab_size`</b>: A scalar `int64` Tensor (or Python int) containing the new size
+    of the last dimension, `all(0 <= sp_ids.values < vocab_size)`.
+*  <b>`name`</b>: A name prefix for the returned tensors (optional)
+
+##### Returns:
+
+  A `SparseTensor` compactly representing a batch of feature ids and values,
+  useful for passing to functions that expect such a `SparseTensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `sp_ids` or `sp_values` are not a `SparseTensor`.
 
 
 
@@ -555,6 +632,57 @@ This op also returns an indicator vector such that
 ## Math Operations
 - - -
 
+### `tf.sparse_add(sp_a, sp_b, thresh=0)` {#sparse_add}
+
+Adds two `SparseTensor` objects to produce another `SparseTensor`.
+
+The input `SparseTensor` objects' indices are assumed ordered in standard
+lexicographic order.  If this is not the case, before this step run
+`SparseReorder` to restore index ordering.
+
+By default, if two values sum to zero at some index, the output `SparseTensor`
+would still include that particular location in its index, storing a zero in
+the corresponding value slot.  To override this, callers can specify `thresh`,
+indicating that if the sum has a magnitude strictly smaller than `thresh`, its
+corresponding value and index would then not be included.  In particular,
+`thresh == 0.0` (default) means everything is kept and actual thresholding
+happens only for a positive value.
+
+For example, suppose the logical sum is (densified):
+
+    [       2]
+    [.1      ]
+    [ 6   -.2]
+
+Then,
+
+    - thresh == 0 (the default): all 4 index/value pairs will be returned.
+    - thresh == 0.11: only .1 will vanish, and the remaining three index/value
+                      pairs will be returned.
+    - thresh == 0.21: both .1 and -.2 will vanish.
+
+##### Args:
+
+
+*  <b>`sp_a`</b>: The first input `SparseTensor`.
+*  <b>`sp_b`</b>: The second input `SparseTensor`.
+*  <b>`thresh`</b>: A 0-D `Tensor`.  The magnitude threshold that determines if an
+  output value/index pair takes space.  Its dtype should match that of the
+  values if they are real; if the latter are complex64/complex128, then the
+  dtype should be float32/float64, correspondingly.
+
+##### Returns:
+
+  A `SparseTensor` with the same shape, representing the sum.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If either `sp_a` or `sp_b` is not a `SparseTensor`.
+
+
+- - -
+
 ### `tf.sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False, name=None)` {#sparse_tensor_dense_matmul}
 
 Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
@@ -576,15 +704,13 @@ There are a number of questions to ask in the decision process, including:
 * Will the SparseTensor A fit in memory if densified?
 * Is the column count of the product large (>> 1)?
 * Is the density of A larger than approximately 15%?
-* Is backprop into A necessary?
 
 If the answer to several of these questions is yes, consider
 converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
 
-This operation tends to perform well when A is more sparse, if the column
-size of the product is small (e.g. matrix-vector multiplication),
-if sp_a.shape takes on large values.  While gradients with respect to B
-are supported, gradients with respect to A are not.
+This operation tends to perform well when A is more sparse, if the column size
+of the product is small (e.g. matrix-vector multiplication), if sp_a.shape
+takes on large values.
 
 Below is a rough speed comparison between sparse_tensor_dense_matmul,
 labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of
