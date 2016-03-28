@@ -2,25 +2,13 @@ package tensorflow
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
-	"reflect"
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
-const (
-	bytesInt32 = 4
-	bytesInt64 = 8
-)
-
-// ErrInvalidTensorType The data type of the tensor is not compatible with the
-// expected data type on this function
-var ErrInvalidTensorType = errors.New("Invalid tensor data type")
-
-// Session allows driving a TensorFlow graph computation.
 type Session struct {
 	session tf.TF_Session
 }
@@ -34,38 +22,6 @@ func NewSession() (*Session, error) {
 			status,
 		),
 	}, statusToError(status)
-}
-
-// Tensor represents a value created from an Operation
-type Tensor struct {
-	tensor tf.TF_Tensor
-	buf    []byte
-}
-
-// TensorShape represents the shapre of a Tensor.
-type TensorShape [][]int64
-
-var (
-	TensorShapeScalar = TensorShape{{1}}
-)
-
-func NewTensor(dataType tf.DataType, shape TensorShape, data interface{}) (*Tensor, error) {
-	// TODO(tmc): ensure data is a slice
-	v := reflect.ValueOf(data)
-	if v.Kind() != reflect.Slice {
-		return nil, fmt.Errorf("tensorflow: 'data' argument must be a slice")
-	}
-	dataSize := int64(v.Len()) * int64(v.Type().Elem().Size())
-	dataPtr := v.Pointer()
-	return newTensor(dataType, shape, dataPtr, dataSize)
-}
-
-func newTensor(dataType tf.DataType, shape TensorShape, data uintptr, size int64) (*Tensor, error) {
-	t := &Tensor{
-		tensor: tf.TF_NewTensor_wrapper(tf.TF_DataType(dataType), &(shape[0][0]), len(shape), data, size),
-	}
-
-	return t, nil
 }
 
 func encodeStrings(in []string) []byte {
@@ -99,7 +55,6 @@ func Constant(value interface{}) (*Tensor, error) {
 		if err != nil {
 			return nil, err
 		}
-		t.buf = buf
 		return t, nil
 	default:
 		return nil, fmt.Errorf("tensorflow: unsupported type %T", value)
@@ -155,73 +110,4 @@ func (s *Session) ExtendGraph(graph *tf.GraphDef) error {
 	}
 	tf.TF_ExtendGraph(s.session, buf, status)
 	return statusToError(status)
-}
-
-func (t *Tensor) DataType() tf.DataType {
-	return tf.DataType(tf.TF_TensorType(t.tensor))
-}
-
-func (t *Tensor) NumDims() int {
-	return tf.TF_NumDims(t.tensor)
-}
-
-func (t *Tensor) Dim(n int) int {
-	return int(tf.TF_Dim(t.tensor, n))
-}
-
-func (t *Tensor) DataSize() int64 {
-	return tf.TF_TensorByteSize(t.tensor)
-}
-
-func (t *Tensor) Data() []byte {
-	length := t.DataSize()
-	return (*[1 << 40]byte)(unsafe.Pointer(tf.TF_TensorData(t.tensor)))[:length:length]
-}
-
-func (t *Tensor) String() string {
-	return fmt.Sprintf("%v: dims:%v size:%v", t.DataType(), t.NumDims(), t.DataSize())
-}
-
-// AsStr Returns the content of the tensor as string if the tensor type
-// matches, if not returns a ErrInvalidTensorType error
-func (t *Tensor) AsStr() (string, error) {
-	if tf.TF_DataType(tf.TF_STRING) != tf.TF_TensorType(t.tensor) {
-		return "", ErrInvalidTensorType
-	}
-
-	return string(t.Data()), nil
-}
-
-// AsInt32 Returns the content of the tensor as a slice of int32 if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
-func (t *Tensor) AsInt32() (res []int32, err error) {
-	if tf.TF_DataType(tf.TF_INT32) != tf.TF_TensorType(t.tensor) {
-		err = ErrInvalidTensorType
-		return
-	}
-
-	data := t.Data()
-	res = make([]int32, len(data)/bytesInt32)
-	for i := range res {
-		res[i] = int32(binary.LittleEndian.Uint32(data[i*bytesInt32 : (i+1)*bytesInt32]))
-	}
-
-	return
-}
-
-// AsInt64 Returns the content of the tensor as a slice of int64 if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
-func (t *Tensor) AsInt64() (res []int64, err error) {
-	if tf.TF_DataType(tf.TF_INT64) != tf.TF_TensorType(t.tensor) {
-		err = ErrInvalidTensorType
-		return
-	}
-
-	data := t.Data()
-	res = make([]int64, len(data)/bytesInt64)
-	for i := range res {
-		res[i] = int64(binary.LittleEndian.Uint64(data[i*bytesInt64 : (i+1)*bytesInt64]))
-	}
-
-	return
 }
