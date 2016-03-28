@@ -69,7 +69,11 @@ class HashTable : public InitializableLookupTable {
  public:
   size_t size() const override {
     // return the size of the table only if it's initialized, otherwise 0.
-    return table_ && is_initialized_ ? table_->size() : 0;
+    if (!is_initialized_) {
+      return 0;
+    }
+    std::atomic_thread_fence(std::memory_order_acquire);
+    return table_ ? table_->size() : 0;
   }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
