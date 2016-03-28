@@ -38,23 +38,6 @@ struct scalar_fmod2_op {
   }
 };
 
-template <typename T>
-struct scalar_mod2_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_mod2_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
-                                                           const T& b) const {
-    return a % b;
-  }
-};
-
-template <typename T>
-struct functor_traits<scalar_mod2_op<T> > {
-  enum {
-    Cost = 5,  // Roughly the cost of a div
-    PacketAccess = false,
-  };
-};
-
 // scalar_left and scalar_right are template helpers to partially
 // apply a binary function.
 //
