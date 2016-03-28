@@ -96,6 +96,7 @@
   * [`dynamic_stitch`](../../api_docs/python/array_ops.md#dynamic_stitch)
   * [`expand_dims`](../../api_docs/python/array_ops.md#expand_dims)
   * [`gather`](../../api_docs/python/array_ops.md#gather)
+  * [`gather_nd`](../../api_docs/python/array_ops.md#gather_nd)
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
   * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)
