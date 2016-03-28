@@ -4070,14 +4070,17 @@ op {
   name: "GatherNd"
   input_arg {
     name: "params"
+    description: "R-D.  The tensor from which to gather values."
     type_attr: "Tparams"
   }
   input_arg {
     name: "indices"
+    description: "(N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`."
     type_attr: "Tindices"
   }
   output_arg {
     name: "output"
+    description: "N-D.  Values from `params` gathered from indices given by `indices`."
     type_attr: "Tparams"
   }
   attr {
@@ -4095,7 +4098,7 @@ op {
     }
   }
   summary: "Gather values from `params` according to `indices`."
-  description: "`indices` must be an integer matrix, containing indices into `params`.\nIt must be shape `[N, rank]` where `N` is the number of indices and `rank` is\nthe rank of `params`.\n\nProduces an output vector with length `N` where:\n\n    output[i] = params[indices[i, :]]"
+  description: "`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.\nThe innermost dimension of `indices` (with length `R`) corresponds to the\nindices of `params`.\n\nProduces an output tensor with shape `[d_0, ..., d_{n-1}]` where:\n\n    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]\n\ne.g. for `indices` a matrix:\n\n    output[i] = params[indices[i, :]]"
 }
 op {
   name: "Greater"
