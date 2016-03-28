@@ -359,7 +359,8 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
 
   """
   get_variable_scope()  # Ensure that a default exists, then get a pointer.
-  default_varscope = ops.get_collection(_VARSCOPE_KEY)
+  # Get the reference to the collection as we want to modify it in place.
+  default_varscope = ops.get_collection_ref(_VARSCOPE_KEY)
   try:
     old = default_varscope[0]
     reuse = reuse or old.reuse  # Re-using is inherited by sub-scopes.
