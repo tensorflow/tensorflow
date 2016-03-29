@@ -1,4 +1,4 @@
-# tensorflow for Go
+# TensorFlow for Go
 
 This package provides a SWIG-based Go package to run Tensorflow graphs in Go programs.
 
@@ -33,7 +33,7 @@ package main
 import (
 	"log"
 
-	tensorflow "github.com/tensorflow/tensorflow/tensorflow/go"
+	"github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 func main() {
