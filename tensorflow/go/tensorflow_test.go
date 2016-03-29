@@ -5,8 +5,7 @@ import (
 
 	//"github.com/davecgh/go-spew/spew"
 	"github.com/golang/protobuf/proto"
-	"github.com/tensorflow/tensorflow"
-	tf "github.com/tensorflow/tensorflow/tensorflow/go"
+	"github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 var exampleGraph = `node {
@@ -87,7 +86,7 @@ node {
 version: 5`
 
 func TestNewSession(t *testing.T) {
-	graph := &tf.GraphDef{}
+	graph := &tensorflow.GraphDef{}
 	if err := proto.UnmarshalText(exampleGraph, graph); err != nil {
 		t.Fatal(err)
 	}

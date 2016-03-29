@@ -5,14 +5,12 @@ import (
 	"reflect"
 	"testing"
 
-	//"github.com/davecgh/go-spew/spew"
 	"github.com/golang/protobuf/proto"
-	"github.com/tensorflow/tensorflow"
-	tf "github.com/tensorflow/tensorflow/tensorflow/go"
+	"github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 func getTensorFromGraph(t *testing.T, graphStr string) *tensorflow.Tensor {
-	graph := &tf.GraphDef{}
+	graph := &tensorflow.GraphDef{}
 	if err := proto.UnmarshalText(graphStr, graph); err != nil {
 		t.Fatal(err)
 	}
@@ -33,10 +31,10 @@ func getTensorFromGraph(t *testing.T, graphStr string) *tensorflow.Tensor {
 }
 
 func TestStrDecode(t *testing.T) {
-	expectedResult := []string{
-		"Hello1!",
-		"Hello2!",
-		"Hello3!",
+	expectedResult := [][]byte{
+		[]byte("Hello1!"),
+		[]byte("Hello2!"),
+		[]byte("Hello3!"),
 	}
 	tensor := getTensorFromGraph(t, fmt.Sprintf(`
 		node {
@@ -65,7 +63,7 @@ func TestStrDecode(t *testing.T) {
 				}
 			}
 		}
-		version: 5`, expectedResult[0], expectedResult[1], expectedResult[2]),
+		version: 5`, string(expectedResult[0]), string(expectedResult[1]), string(expectedResult[2])),
 	)
 
 	result, err := tensor.AsStr()
