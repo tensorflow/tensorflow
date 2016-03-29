@@ -165,6 +165,28 @@ export function getSubtaskTracker(parentTracker: ProgressTracker,
 }
 
 /**
+ * Runs an expensive task and return the result.
+ */
+export function runTask<T>(msg: string, incProgressValue: number,
+    task: () => T, tracker: ProgressTracker): T {
+  // Update the progress message to say the current running task.
+  tracker.setMessage(msg);
+  // Run the expensive task with a delay that gives enough time for the
+  // UI to update.
+  try {
+    var result = tf.time(msg, task);
+    // Update the progress value.
+    tracker.updateProgress(incProgressValue);
+    // Return the result to be used by other tasks.
+    return result;
+  } catch (e) {
+    // Errors that happen inside asynchronous tasks are
+    // reported to the tracker using a user-friendly message.
+    tracker.reportError("Failed " + msg, e);
+  }
+}
+
+/**
  * Runs an expensive task asynchronously and returns a promise of the result.
  */
 export function runAsyncTask<T>(msg: string, incProgressValue: number,
