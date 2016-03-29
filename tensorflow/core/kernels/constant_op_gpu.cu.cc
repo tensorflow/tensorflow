@@ -81,19 +81,17 @@ struct FillFunctor<GPUDevice, T> {
 #define DEFINE_FILL_GPU(T) template struct FillFunctor<GPUDevice, T>
 TF_CALL_REAL_NUMBER_TYPES(DEFINE_FILL_GPU);
 DEFINE_FILL_GPU(bool);
-DEFINE_FILL_GPU(Eigen::half);
 #undef DEFINE_FILL_GPU
 
 // Partial specialization of FillFunctor<Device=GPUDevice, T>.
 template <typename T>
 struct SetZeroFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out) {
-    To32Bit(out).device(d) = To32Bit(out).constant(T(0));
+    To32Bit(out).device(d) = To32Bit(out).constant(0);
   }
 };
 
 #define DEFINE_SETZERO_GPU(T) template struct SetZeroFunctor<GPUDevice, T>
-DEFINE_SETZERO_GPU(Eigen::half);
 DEFINE_SETZERO_GPU(float);
 DEFINE_SETZERO_GPU(double);
 #undef DEFINE_SETZERO_GPU
