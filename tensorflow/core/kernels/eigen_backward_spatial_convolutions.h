@@ -36,7 +36,6 @@ namespace Eigen {
   * It is possible to swap the order of the width and height dimensions provided that the same order is used in the input, the kernel, and the output.
   *
   */
-
 template <typename OutputBackward, typename Kernel>
 EIGEN_ALWAYS_INLINE static const typename internal::conditional<
     internal::traits<OutputBackward>::Layout == ColMajor,
@@ -45,14 +44,18 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
                      internal::traits<OutputBackward>::NumDimensions>,
         const TensorContractionOp<
             const array<
-                IndexPair<typename internal::traits<OutputBackward>::Index>, 2>,
+                IndexPair<typename internal::traits<OutputBackward>::Index>, 1>,
             const Eigen::TensorForcedEvalOp<const TensorReshapingOp<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
-                             3>,
-                const TensorReverseOp<const array<bool, 4>, const Kernel> > >,
+                             2>,
+                const TensorShufflingOp<
+                    const array<
+                        typename internal::traits<OutputBackward>::Index, 4>,
+                    const TensorReverseOp<const array<bool, 4>,
+                                          const Kernel> > > >,
             const TensorReshapingOp<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
-                             3>,
+                             2>,
                 const TensorImagePatchOp<Dynamic, Dynamic,
                                          const OutputBackward> > > >,
     TensorReshapingOp<
@@ -60,17 +63,20 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
                      internal::traits<OutputBackward>::NumDimensions>,
         const TensorContractionOp<
             const array<
-                IndexPair<typename internal::traits<OutputBackward>::Index>, 2>,
+                IndexPair<typename internal::traits<OutputBackward>::Index>, 1>,
             const TensorReshapingOp<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
-                             3>,
+                             2>,
                 const TensorImagePatchOp<Dynamic, Dynamic,
                                          const OutputBackward> >,
             const Eigen::TensorForcedEvalOp<const TensorReshapingOp<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
-                             3>,
-                const TensorReverseOp<const array<bool, 4>,
-                                      const Kernel> > > > > >::type
+                             2>,
+                const TensorShufflingOp<
+                    const array<
+                        typename internal::traits<OutputBackward>::Index, 4>,
+                    const TensorReverseOp<const array<bool, 4>,
+                                          const Kernel> > > > > > >::type
 SpatialConvolutionBackwardInput(
     const Kernel& kernel, const OutputBackward& output_backward,
     typename internal::traits<OutputBackward>::Index inputRows,
@@ -134,49 +140,57 @@ SpatialConvolutionBackwardInput(
     kernel_reverse[3] = false;
   }
 
-  DSizes<TensorIndex, 3> kernel_dims;
+  // Reorder the dimensions to filters X patch_rows X patch_cols X channels
+  array<TensorIndex, 4> kernel_shuffle;
   if (isColMajor) {
-    kernel_dims[0] = kernelFilters;
-    kernel_dims[1] = kernelChannels;
-    kernel_dims[2] = kernelRows * kernelCols;
+    kernel_shuffle[0] = 0;
+    kernel_shuffle[1] = 2;
+    kernel_shuffle[2] = 3;
+    kernel_shuffle[3] = 1;
   } else {
-    kernel_dims[0] = kernelRows * kernelCols;
+    kernel_shuffle[0] = 2;
+    kernel_shuffle[1] = 0;
+    kernel_shuffle[2] = 1;
+    kernel_shuffle[3] = 3;
+  }
+
+  // Collapse the dims
+  DSizes<TensorIndex, 2> kernel_dims;
+  if (isColMajor) {
+    kernel_dims[0] = kernelFilters * kernelRows * kernelCols;
     kernel_dims[1] = kernelChannels;
-    kernel_dims[2] = kernelFilters;
+  } else {
+    kernel_dims[1] = kernelFilters * kernelRows * kernelCols;
+    kernel_dims[0] = kernelChannels;
   }
 
   // The output_backward has dimensions out_depth X out_rows X out_cols X OTHERS
   // When we extract the image patches from output_backward, it will have dimensions
   //   out_depth X (patch_rows * patch_cols) X (input_rows * input_cols * OTHERS)
-  DSizes<TensorIndex, 3> pre_contract_dims;
+  DSizes<TensorIndex, 2> pre_contract_dims;
   if (isColMajor) {
-    pre_contract_dims[0] = kernelFilters;
-    pre_contract_dims[1] = kernelRows * kernelCols;
-    pre_contract_dims[2] = inputRows * inputCols;
+    pre_contract_dims[0] = kernelFilters * kernelRows * kernelCols;
+    pre_contract_dims[1] = inputRows * inputCols;
     for (int i = 3; i < NumDims; ++i) {
-      pre_contract_dims[2] *= out.dimension(i);
+      pre_contract_dims[1] *= out.dimension(i);
     }
   } else {
-    pre_contract_dims[2] = kernelFilters;
-    pre_contract_dims[1] = kernelRows * kernelCols;
+    pre_contract_dims[1] = kernelFilters * kernelRows * kernelCols;
     pre_contract_dims[0] = inputRows * inputCols;
     for (int i = 0; i < NumDims - 3; ++i) {
       pre_contract_dims[0] *= out.dimension(i);
     }
   }
 
-  // We will contract along dimensions (0, 2) in kernel and (0, 1) in
-  // output_backward, if this is col-major, and
-  // dimensions (0, 2) in kernel and (1, 2) in output_backward, if this row-major.
-  array<IndexPair<TensorIndex>, 2> contract_dims;
+  // We will contract along the fused dimension that contains the kernelFilters,
+  // the kernelRows and the kernelCols.
+  array<IndexPair<TensorIndex>, 1> contract_dims;
   if (isColMajor) {
     // col-major: kernel.contract(output.patches)
     contract_dims[0] = IndexPair<TensorIndex>(0, 0);
-    contract_dims[1] = IndexPair<TensorIndex>(2, 1);
   } else {
     // row-major: output.patches.contract(kernel)
-    contract_dims[0] = IndexPair<TensorIndex>(1, 0);
-    contract_dims[1] = IndexPair<TensorIndex>(2, 2);
+    contract_dims[0] = IndexPair<TensorIndex>(1, 1);
   }
 
   // Post contraction, the dimensions of the input_backprop is
@@ -201,6 +215,7 @@ SpatialConvolutionBackwardInput(
   return choose(
       Cond<internal::traits<OutputBackward>::Layout == ColMajor>(),
       kernel.reverse(kernel_reverse)
+          .shuffle(kernel_shuffle)
           .reshape(kernel_dims)
           .eval()
           .contract(output_backward
@@ -217,7 +232,10 @@ SpatialConvolutionBackwardInput(
                                  padding_bottom, padding_left, padding_right,
                                  OutScalar(0))
           .reshape(pre_contract_dims)
-          .contract(kernel.reverse(kernel_reverse).reshape(kernel_dims).eval(),
+          .contract(kernel.reverse(kernel_reverse)
+                        .shuffle(kernel_shuffle)
+                        .reshape(kernel_dims)
+                        .eval(),
                     contract_dims)
           .reshape(post_contract_dims));
 }
