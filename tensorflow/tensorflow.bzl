@@ -1,5 +1,12 @@
 # -*- Python -*-
 
+# Check that a specific bazel version is being used.
+def check_version(x):
+  if "bazel_version" in dir(native) and native.bazel_version < x:
+    fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
+        native.bazel_version, x))
+  pass
+
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 
