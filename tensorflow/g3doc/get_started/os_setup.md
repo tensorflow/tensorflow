@@ -551,7 +551,7 @@ rules.
 
 Starting from the root of your source tree, run:
 
-```python
+```bash
 $ cd tensorflow/models/image/mnist
 $ python convolutional.py
 Successfully downloaded train-images-idx3-ubyte.gz 9912422 bytes.
