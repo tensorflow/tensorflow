@@ -121,9 +121,10 @@ struct ApplyAdam<CPUDevice, T> {
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad) {
-    const T alpha = lr() * std::sqrt(1 - beta2_power()) / (1 - beta1_power());
-    m.device(d) += (grad - m) * (1 - beta1());
-    v.device(d) += (grad.square() - v) * (1 - beta2());
+    const T alpha =
+        lr() * std::sqrt(T(1) - beta2_power()) / (T(1) - beta1_power());
+    m.device(d) += (grad - m) * (T(1) - beta1());
+    v.device(d) += (grad.square() - v) * (T(1) - beta2());
     var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
   }
 };

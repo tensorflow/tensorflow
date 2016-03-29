@@ -394,12 +394,12 @@ class SparseSegmentReductionOpBase : public OpKernel {
       out = L(0);
     } else {
       int r = num % 8;
-      T m = 1;
+      T m(1);
       if (is_mean_ && (num < 10)) {
-        m = num;
+        m = T(num);
       }
       if (is_sqrtn_ && (num < 10)) {
-        m = sqrt(num);
+        m = T(sqrt(num));
       }
       switch (r) {
         case 2: {

@@ -363,11 +363,11 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
     typename TTypes<T, 1>::Tensor size_data = size->tensor<T, 1>();
     typename TTypes<float, 3>::Tensor bboxes_data = bboxes->tensor<float, 3>();
 
-    begin_data(0) = offset_height;
-    size_data(0) = target_height;
+    begin_data(0) = T(offset_height);
+    size_data(0) = T(target_height);
 
-    begin_data(1) = offset_width;
-    size_data(1) = target_width;
+    begin_data(1) = T(offset_width);
+    size_data(1) = T(target_width);
 
     bboxes_data(0, 0, 0) =
         static_cast<float>(crop_rect.min_y_) / static_cast<float>(height);
@@ -379,8 +379,8 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
         static_cast<float>(crop_rect.max_x_) / static_cast<float>(width);
 
     // Retain all of the channels.
-    begin_data(2) = 0;
-    size_data(2) = -1;
+    begin_data(2) = T(0);
+    size_data(2) = T(-1);
   }
 
  private:
