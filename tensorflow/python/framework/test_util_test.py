@@ -166,6 +166,19 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(7, 8)
 
+  def testArrayNear(self):
+    a = [1, 2]
+    b = [1, 2, 5]
+    with self.assertRaises(AssertionError):
+      self.assertArrayNear(a, b, 0.001)
+    a = [1, 2]
+    b = [[1, 2], [3, 4]]
+    with self.assertRaises(TypeError):
+      self.assertArrayNear(a, b, 0.001)
+    a = [1, 2]
+    b = [1, 2]
+    self.assertArrayNear(a, b, 0.001)
+
   def testForceGPU(self):
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Cannot assign a device to node"):
