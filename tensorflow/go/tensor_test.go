@@ -26,7 +26,9 @@ func getTensorFromGraph(t *testing.T, graphStr string) *tensorflow.Tensor {
 
 	if len(output) != 1 {
 		t.Fatalf("The expexted number of tensors is 1 but there was %d tensors returned", len(output))
+		t.FailNow()
 	}
+
 	return output[0]
 }
 

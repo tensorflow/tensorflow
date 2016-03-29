@@ -3,91 +3,14 @@ package tensorflow_test
 import (
 	"testing"
 
-	//"github.com/davecgh/go-spew/spew"
-	"github.com/golang/protobuf/proto"
 	"github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
-var exampleGraph = `node {
-  name: "output1"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_STRING
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_STRING
-        tensor_shape {
-        }
-        string_val: "Hello, TensorFlow!"
-      }
-    }
-  }
-}
-node {
-  name: "Const_1"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-        }
-        int_val: 10
-      }
-    }
-  }
-}
-node {
-  name: "Const_2"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-        }
-        int_val: 32
-      }
-    }
-  }
-}
-node {
-  name: "output2"
-  op: "Add"
-  input: "Const_1"
-  input: "Const_2"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-}
-version: 5`
-
 func TestNewSession(t *testing.T) {
 	graph := &tensorflow.GraphDef{}
-	if err := proto.UnmarshalText(exampleGraph, graph); err != nil {
+
+	graph, err := tensorflow.LoadGraphFromText("test_data/tests_constants_outputs.pb")
+	if err != nil {
 		t.Fatal(err)
 	}
 	s, err := tensorflow.NewSession()
@@ -106,5 +29,59 @@ func TestNewSession(t *testing.T) {
 
 	if len(output) != len(outputs) {
 		t.Fatal("There was", len(outputs), "expected outputs, but:", len(output), "obtained")
+	}
+}
+
+func TestInputParams(t *testing.T) {
+	inputSlice1 := []int64{1, 2, 3}
+	inputSlice2 := []int64{4, 5, 6}
+
+	t1, err := tensorflow.NewTensor([][]int64{{3}}, inputSlice1)
+	if err != nil {
+		t.Error("Problem trying create a new tensor, Error:", err)
+		t.FailNow()
+	}
+
+	t2, err := tensorflow.NewTensor([][]int64{{3}}, inputSlice2)
+	if err != nil {
+		t.Error("Problem trying create a new tensor, Error:", err)
+		t.FailNow()
+	}
+
+	graph, err := tensorflow.LoadGraphFromText("test_data/add_three_dim_graph.pb")
+	if err != nil {
+		t.Error("Problem trying read the graph from the origin file, Error:", err)
+		t.FailNow()
+	}
+
+	s, err := tensorflow.NewSession()
+	if err := s.ExtendGraph(graph); err != nil {
+		t.Fatal(err)
+	}
+
+	input := map[string]*tensorflow.Tensor{
+		"input1": t1,
+		"input2": t2,
+	}
+	out, err := s.Run(input, []string{"output"}, nil)
+	if err != nil {
+		t.Error("Problem trying to run the saved graph, Error:", err)
+		t.FailNow()
+	}
+
+	if len(out) != 1 {
+		t.Errorf("The expected number of outputs is 1 but: %d returned", len(out))
+		t.FailNow()
+	}
+
+	for i := 0; i < len(inputSlice1); i++ {
+		val, err := out[0].GetVal(i)
+		if err != nil {
+			t.Error("Error trying to read the output tensor, Error:", err)
+			t.FailNow()
+		}
+		if val != inputSlice1[i]+inputSlice2[i] {
+			t.Errorf("The sum of the two elements: %d + %d doesn't match with the returned value: %d", inputSlice1[i], inputSlice2[i], val)
+		}
 	}
 }

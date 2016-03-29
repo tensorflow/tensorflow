@@ -34,6 +34,11 @@ var (
 	// ErrIndexOutOfRange The specified index is out of one of the dimensions range
 	ErrIndexOutOfRange = errors.New("The specified index is out of one of the dimensions range")
 
+	// ErrDataTypeNotSupported Data type still not supported
+	ErrDataTypeNotSupported = errors.New("Data type still not supported")
+	// ErrSliceExpected The argument must be an Slice
+	ErrSliceExpected = errors.New("The argument must be an Slice")
+
 	tensorShapeScalar = TensorShape{{1}}
 )
 
@@ -67,26 +72,6 @@ type Tensor struct {
 
 // TensorShape represents the shapre of a Tensor.
 type TensorShape [][]int64
-
-// NewTensor returns a new tensor with teh specified type, shape and data.
-func NewTensor(dataType DataType, shape TensorShape, data interface{}) (TensorInt, error) {
-	// TODO(tmc): ensure data is a slice
-	v := reflect.ValueOf(data)
-	if v.Kind() != reflect.Slice {
-		return nil, fmt.Errorf("tensorflow: 'data' argument must be a slice")
-	}
-	dataSize := int64(v.Len()) * int64(v.Type().Elem().Size())
-	dataPtr := v.Pointer()
-	return newTensor(dataType, shape, dataPtr, dataSize)
-}
-
-func newTensor(dataType DataType, shape TensorShape, data uintptr, size int64) (*Tensor, error) {
-	t := &Tensor{
-		tensor: TF_NewTensor_wrapper(TF_DataType(dataType), &(shape[0][0]), len(shape), data, size),
-	}
-
-	return t, nil
-}
 
 // DataType returns the data type of the elements contained by the tensor.
 func (t *Tensor) DataType() DataType {
@@ -369,6 +354,9 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 	case TF_DataType(TF_INT8), TF_DataType(TF_INT16), TF_DataType(TF_INT32), TF_DataType(TF_UINT8):
 		vals, _ := t.AsInt32()
 		val = vals[pos]
+	case TF_DataType(TF_INT64):
+		vals, _ := t.AsInt64()
+		val = vals[pos]
 	case TF_DataType(TF_BOOL):
 		vals, _ := t.AsBool()
 		val = vals[pos]
@@ -381,4 +369,54 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 	}
 
 	return
+}
+
+// NewTensor returns a new tensor with teh specified type, shape and data.
+func NewTensor(shape TensorShape, data interface{}) (*Tensor, error) {
+	var dataType DataType
+
+	v := reflect.ValueOf(data)
+	if v.Kind() != reflect.Slice {
+		return nil, ErrSliceExpected
+	}
+
+	switch v.Type().Elem().Kind() {
+	case reflect.Int:
+		if cBytesInt32 == int(v.Type().Elem().Size()) {
+			dataType = DataType(TF_INT32)
+		} else {
+			dataType = DataType(TF_INT64)
+		}
+	case reflect.Int8:
+		dataType = DataType(TF_INT8)
+	case reflect.Int16:
+		dataType = DataType(TF_INT16)
+	case reflect.Int32:
+		dataType = DataType(TF_INT32)
+	case reflect.Int64:
+		dataType = DataType(TF_INT64)
+	case reflect.Uint8:
+		dataType = DataType(TF_UINT8)
+	case reflect.Uint16:
+		dataType = DataType(TF_UINT16)
+	case reflect.Float32:
+		dataType = DataType(TF_FLOAT)
+	case reflect.Float64:
+		dataType = DataType(TF_DOUBLE)
+	default:
+		return nil, ErrDataTypeNotSupported
+	}
+
+	dataSize := int64(v.Len()) * int64(v.Type().Elem().Size())
+	dataPtr := v.Pointer()
+
+	return newTensor(dataType, shape, dataPtr, dataSize)
+}
+
+func newTensor(dataType DataType, shape TensorShape, data uintptr, size int64) (*Tensor, error) {
+	t := &Tensor{
+		tensor: TF_NewTensor_wrapper(TF_DataType(dataType), &(shape[0][0]), len(shape), data, size),
+	}
+
+	return t, nil
 }

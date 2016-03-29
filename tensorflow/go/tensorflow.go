@@ -3,6 +3,7 @@ package tensorflow
 import (
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
@@ -99,6 +100,20 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 		})
 	}
 	return result, statusToError(status)
+}
+
+func LoadGraphFromText(path string) (graph *GraphDef, err error) {
+	graphStr, err := ioutil.ReadFile(path)
+	if err != nil {
+		return
+	}
+
+	graph = &GraphDef{}
+	if err = proto.UnmarshalText(string(graphStr), graph); err != nil {
+		return
+	}
+
+	return
 }
 
 func (s *Session) ExtendGraph(graph *GraphDef) error {
