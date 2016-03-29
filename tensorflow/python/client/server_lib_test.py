@@ -53,26 +53,26 @@ class GrpcServerTest(tf.test.TestCase):
   def testLargeConstant(self):
     server = tf.GrpcServer.create_local_server()
     with tf.Session(server.target) as sess:
-      const_val = np.empty([10000, 10000], dtype=np.float32)
+      const_val = np.empty([10000, 3000], dtype=np.float32)
       const_val.fill(0.5)
       c = tf.constant(const_val)
       shape_t = tf.shape(c)
-      self.assertAllEqual([10000, 10000], sess.run(shape_t))
+      self.assertAllEqual([10000, 3000], sess.run(shape_t))
 
   def testLargeFetch(self):
     server = tf.GrpcServer.create_local_server()
     with tf.Session(server.target) as sess:
-      c = tf.fill([10000, 10000], 0.5)
-      expected_val = np.empty([10000, 10000], dtype=np.float32)
+      c = tf.fill([10000, 3000], 0.5)
+      expected_val = np.empty([10000, 3000], dtype=np.float32)
       expected_val.fill(0.5)
       self.assertAllEqual(expected_val, sess.run(c))
 
   def testLargeFeed(self):
     server = tf.GrpcServer.create_local_server()
     with tf.Session(server.target) as sess:
-      feed_val = np.empty([10000, 10000], dtype=np.float32)
+      feed_val = np.empty([10000, 3000], dtype=np.float32)
       feed_val.fill(0.5)
-      p = tf.placeholder(tf.float32, shape=[10000, 10000])
+      p = tf.placeholder(tf.float32, shape=[10000, 3000])
       min_t = tf.reduce_min(p)
       max_t = tf.reduce_max(p)
       min_val, max_val = sess.run([min_t, max_t], feed_dict={p: feed_val})
@@ -83,7 +83,7 @@ class GrpcServerTest(tf.test.TestCase):
 class ServerDefTest(tf.test.TestCase):
 
   def testLocalServer(self):
-    cluster_def = tf.make_cluster_def({"local": ["localhost:2222"]})
+    cluster_def = tf.ClusterSpec({"local": ["localhost:2222"]}).as_cluster_def()
     server_def = tf.ServerDef(cluster=cluster_def,
                               job_name="local", task_index=0, protocol="grpc")
 
@@ -94,9 +94,13 @@ class ServerDefTest(tf.test.TestCase):
     job_name: 'local' task_index: 0 protocol: 'grpc'
     """, server_def)
 
+    # Verifies round trip from Proto->Spec->Proto is correct.
+    cluster_spec = tf.ClusterSpec(cluster_def)
+    self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
+
   def testTwoProcesses(self):
-    cluster_def = tf.make_cluster_def({"local": ["localhost:2222",
-                                                 "localhost:2223"]})
+    cluster_def = tf.ClusterSpec({"local": ["localhost:2222",
+                                            "localhost:2223"]}).as_cluster_def()
     server_def = tf.ServerDef(cluster=cluster_def,
                               job_name="local", task_index=1, protocol="grpc")
 
@@ -108,10 +112,14 @@ class ServerDefTest(tf.test.TestCase):
     job_name: 'local' task_index: 1 protocol: 'grpc'
     """, server_def)
 
+    # Verifies round trip from Proto->Spec->Proto is correct.
+    cluster_spec = tf.ClusterSpec(cluster_def)
+    self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
+
   def testTwoJobs(self):
-    cluster_def = tf.make_cluster_def({
-        "ps": ["ps0:2222", "ps1:2222"],
-        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
+    cluster_def = tf.ClusterSpec({"ps": ["ps0:2222", "ps1:2222"],
+                                  "worker": ["worker0:2222", "worker1:2222",
+                                             "worker2:2222"]}).as_cluster_def()
     server_def = tf.ServerDef(cluster=cluster_def,
                               job_name="worker", task_index=2, protocol="grpc")
 
@@ -125,6 +133,10 @@ class ServerDefTest(tf.test.TestCase):
     }
     job_name: 'worker' task_index: 2 protocol: 'grpc'
     """, server_def)
+
+    # Verifies round trip from Proto->Spec->Proto is correct.
+    cluster_spec = tf.ClusterSpec(cluster_def)
+    self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
 
 if __name__ == "__main__":

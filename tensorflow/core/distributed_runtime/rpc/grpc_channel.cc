@@ -299,7 +299,6 @@ class HostPortsGrpcChannelCache : public CachingGrpcChannelCache {
   SharedGrpcChannelPtr FindChannelOnce(const string& target) override {
     const string host_port = TranslateTask(target);
     if (host_port.empty()) {
-      LOG(WARNING) << "Could not find channel for target: " << target;
       return nullptr;
     }
     return channel_func_(host_port);

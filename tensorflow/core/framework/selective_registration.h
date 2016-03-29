@@ -34,13 +34,12 @@ limitations under the License.
 //    out.
 #include "ops_to_register.h"
 
-// Files which are not included in the whitelist provided by this
-// graph-specific header file will not be allowed to register their
-// operator kernels.
-#define SHOULD_REGISTER_OP_KERNEL(filename) \
-  (strstr(kNecessaryOpFiles, filename) != nullptr)
+// Op kernel classes for which ShouldRegisterOpKernel returns false will not be
+// registered.
+#define SHOULD_REGISTER_OP_KERNEL(clz) \
+  (strstr(kNecessaryOpKernelClasses, "," clz ",") != nullptr)
 
-// Ops for which ShouldRegisterOp return false will no be registered.
+// Ops for which ShouldRegisterOp returns false will not be registered.
 #define SHOULD_REGISTER_OP(op) ShouldRegisterOp(op)
 
 // If kRequiresSymbolicGradients is false, then no gradient ops are registered.

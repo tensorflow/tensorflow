@@ -507,5 +507,44 @@ class UnrollLSTMTest(tf.test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4)
 
 
+class FunctionInlineControlTest(tf.test.TestCase):
+
+  def testFoo(self):
+    dtype = tf.float32
+    cfg = tf.ConfigProto(
+        graph_options=tf.GraphOptions(optimizer_options=tf.OptimizerOptions(
+            opt_level=tf.OptimizerOptions.L0,
+            do_common_subexpression_elimination=True,
+            do_function_inlining=True,
+            do_constant_folding=True)))
+    for noinline in [False, True]:
+      g = tf.Graph()
+      with g.as_default():
+
+        @function.Defun(dtype)
+        def Cell(v):
+          # If v is a vector [n, 1], x is a big square matrix.
+          x = tf.tanh(v + tf.transpose(v, [1, 0]))
+          return tf.reduce_sum(x, 1, keep_dims=True)
+
+        @function.Defun(dtype)
+        def Forward(x):
+          for _ in range(10):
+            x = Cell(x, noinline=noinline)
+          return tf.reduce_sum(x, [0, 1])
+
+        x = tf.placeholder(dtype)
+        y = Forward(x)
+        dx, = tf.gradients([y], [x])
+
+      np.random.seed(321)
+      inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
+      with tf.Session(graph=g, config=cfg) as sess:
+        ans = sess.run([y, dx], {x: inp})
+        print(ans[0], np.sum(ans[1]))
+        self.assertAllClose(ans[0], 255.971, rtol=1e-3)
+        self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
+
+
 if __name__ == "__main__":
   tf.test.main()

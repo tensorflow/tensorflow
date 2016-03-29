@@ -37,11 +37,8 @@ from tensorflow.python.ops.control_flow_ops import no_op
 from tensorflow.python.ops.control_flow_ops import tuple
 from tensorflow.python.ops.control_flow_ops import cond
 from tensorflow.python.ops.control_flow_ops import case
-from tensorflow.python.ops.control_flow_ops import foldl
-from tensorflow.python.ops.control_flow_ops import foldr
-from tensorflow.python.ops.control_flow_ops import map_fn
-from tensorflow.python.ops.control_flow_ops import scan
 from tensorflow.python.ops.data_flow_ops import *
+from tensorflow.python.ops.functional_ops import *
 from tensorflow.python.ops.gradients import *
 from tensorflow.python.ops.histogram_ops import *
 from tensorflow.python.ops.init_ops import *

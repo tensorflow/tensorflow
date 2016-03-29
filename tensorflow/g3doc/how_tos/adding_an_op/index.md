@@ -63,6 +63,12 @@ overrides the `Compute` method. The `Compute` method provides one `context`
 argument of type `OpKernelContext*`, from which you can access useful things
 like the input and output tensors.
 
+> Important note: Instances of your OpKernel may be accessed concurrently. Your
+> `Compute` method must be thread-safe. Guard any access to class members with a
+> mutex (Or better yet, don't share state via class members! Consider using a
+> [`ResourceMgr`](https://www.tensorflow.org/code/tensorflow/core/framework/resource_mgr.h)
+> to keep track of Op state).
+
 Add your kernel to the file you created above. The kernel might look something
 like this:
 

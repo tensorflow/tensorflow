@@ -28,7 +28,7 @@ X, y = boston.data, boston.target
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(X, y,
     test_size=0.2, random_state=42)
 
-# scale data (training set) to 0 mean and unit Std. dev
+# Scale data (training set) to 0 mean and unit standard deviation.
 scaler = preprocessing.StandardScaler()
 X_train = scaler.fit_transform(X_train)
 

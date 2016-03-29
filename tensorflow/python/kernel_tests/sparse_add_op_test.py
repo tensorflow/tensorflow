@@ -25,7 +25,7 @@ import tensorflow as tf
 class SparseAddTest(tf.test.TestCase):
 
   def _sparsify(self, x):
-    x[x < 6] = 0
+    x[x < 0.5] = 0
 
     non_zero = np.where(x)
     x_indices = np.vstack(non_zero).astype(np.int64).T
@@ -122,6 +122,21 @@ class SparseAddTest(tf.test.TestCase):
       self.assertAllEqual(sum_out.indices, [[0, 1], [2, 0], [2, 1]])
       self.assertAllClose(sum_out.values, [2, 6, -.2])
       self.assertAllEqual(sum_out.shape, [3, 3])
+
+  def testGradients(self):
+    np.random.seed(1618)  # Make it reproducible.
+    with self.test_session(use_gpu=False):
+      for n in [10, 32]:
+        for m in [4, 100]:
+          sp_a, nnz_a = self._randomTensor([n, m], np.float32)
+          sp_b, nnz_b = self._randomTensor([n, m], np.float32)
+          sp_sum = tf.sparse_add(sp_a, sp_b)
+          nnz_sum = len(sp_sum.values.eval())
+
+          err = tf.test.compute_gradient_error([sp_a.values, sp_b.values],
+                                               [(nnz_a,), (nnz_b,)],
+                                               sp_sum.values, (nnz_sum,))
+          self.assertLess(err, 1e-3)
 
 
 if __name__ == '__main__':

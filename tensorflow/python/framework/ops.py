@@ -1787,6 +1787,7 @@ class Graph(object):
 
   @@add_to_collection
   @@get_collection
+  @@get_collection_ref
 
   @@as_graph_element
   @@get_operation_by_name
@@ -1900,6 +1901,7 @@ class Graph(object):
 
   @property
   def seed(self):
+    """The graph-level random seed of this graph."""
     return self._seed
 
   @seed.setter
@@ -2333,7 +2335,7 @@ class Graph(object):
     This method should be used if you want to create multiple graphs
     in the same process. For convenience, a global default graph is
     provided, and all ops will be added to this graph if you do not
-    create a new graph explicitly. Use this method the `with` keyword
+    create a new graph explicitly. Use this method with the `with` keyword
     to specify that ops created within the scope of a block should be
     added to this graph.
 
@@ -2395,6 +2397,30 @@ class Graph(object):
     for name in set(names):
       self.add_to_collection(name, value)
 
+  def get_collection_ref(self, name):
+    """Returns a list of values in the collection with the given `name`.
+
+    If the collection exists, this returns the list itself, which can
+    be modified in place to change the collection.  If the collection does
+    not exist, it is created as an empty list and the list is returned.
+
+    This is different from `get_collection()` which always returns a copy of
+    the collection list if it exists and never creates an empty collection.
+
+    Args:
+      name: The key for the collection. For example, the `GraphKeys` class
+        contains many standard names for collections.
+
+    Returns:
+      The list of values in the collection with the given `name`, or an empty
+      list if no value has been added to that collection.
+    """
+    coll_list = self._collections.get(name, None)
+    if coll_list is None:
+      coll_list = []
+      self._collections[name] = coll_list
+    return coll_list
+
   def get_collection(self, name, scope=None):
     """Returns a list of values in the collection with the given `name`.
 
@@ -2410,11 +2436,14 @@ class Graph(object):
       list contains the values in the order under which they were
       collected.
     """
+    coll_list = self._collections.get(name, None)
+    if coll_list is None:
+      return []
     if scope is None:
-      return self._collections.get(name, list())
+      return list(coll_list)
     else:
       c = []
-      for item in self._collections.get(name, list()):
+      for item in coll_list:
         if hasattr(item, "name") and item.name.startswith(scope):
           c.append(item)
       return c
@@ -3544,6 +3573,25 @@ def add_to_collections(names, value):
     value: The value to add to the collections.
   """
   get_default_graph().add_to_collections(names, value)
+
+
+def get_collection_ref(key):
+  """Wrapper for `Graph.get_collection_ref()` using the default graph.
+
+  See [`Graph.get_collection_ref()`](../../api_docs/python/framework.md#Graph.get_collection_ref)
+  for more details.
+
+  Args:
+    key: The key for the collection. For example, the `GraphKeys` class
+      contains many standard names for collections.
+
+  Returns:
+    The list of values in the collection with the given `name`, or an empty
+    list if no value has been added to that collection.  Note that this returns
+    the collection list itself, which can be modified in place to change the
+    collection.
+  """
+  return get_default_graph().get_collection_ref(key)
 
 
 def get_collection(key, scope=None):

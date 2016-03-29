@@ -15,19 +15,27 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_STEP_STATS_COLLECTOR_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_STEP_STATS_COLLECTOR_H_
 
+#include <unordered_map>
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
+class CostModel;
+class Graph;
+class Node;
 class NodeExecStats;
 class StepStats;
 
 class StepStatsCollector {
  public:
-  explicit StepStatsCollector(StepStats* ss);
+  explicit StepStatsCollector(
+      StepStats* ss,
+      std::unordered_map<const Graph*, CostModel*>* cost_models = nullptr);
 
+  void UpdateCostModel(const NodeExecStats* nt, const Graph* graph,
+                       const Node* node);
   void Save(const string& device, NodeExecStats* nt);
 
   void Swap(StepStats* ss);
@@ -36,6 +44,7 @@ class StepStatsCollector {
   friend class StepStatsMgr;
   mutex mu_;
   StepStats* step_stats_ GUARDED_BY(mu_);
+  std::unordered_map<const Graph*, CostModel*>* cost_models_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

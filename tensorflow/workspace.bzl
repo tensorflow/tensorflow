@@ -13,8 +13,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/4b9c7d45d069.tar.gz",
-    sha256 = "9228accc8e4a6e045ce6b1c28f2dbd0e09b9553f89e947db664f3c2d8e86c1e8",
+    url = "https://bitbucket.org/eigen/eigen/get/3d9f227afae2.tar.gz",
+    sha256 = "bf2638b7e1085de0b430b000c07e090dc71c83dd7f5b934a06f68b7db02676bf",
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -43,8 +43,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "png_archive",
-    url = "https://storage.googleapis.com/libpng-public-archive/libpng-1.2.53.tar.gz",
-    sha256 = "e05c9056d7f323088fd7824d8c6acc03a4a758c4b4916715924edc5dd3223a72",
+    url = "https://github.com/glennrp/libpng/archive/v1.2.53.zip",
+    sha256 = "c35bcc6387495ee6e757507a68ba036d38ad05b415c2553b3debe2a57647a692",
     build_file = path_prefix + "png.BUILD",
   )
 
@@ -74,7 +74,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.git_repository(
     name = "grpc",
-    commit = "73979f4",
+    commit = "3d62fc6",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
   )

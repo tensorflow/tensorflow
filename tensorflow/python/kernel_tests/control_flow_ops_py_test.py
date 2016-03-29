@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import sys
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -669,8 +668,11 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(10, name="n")
       one = tf.convert_to_tensor(1, name="one")
       c = lambda x: tf.less(x, n)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: tf.cond(
           tf.constant(True), lambda: tf.add(x, one), lambda: tf.sub(x, one))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [i])
       self.assertAllEqual(10, r.eval())
 
@@ -686,8 +688,11 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       n = tf.convert_to_tensor(0)
       c = lambda x: tf.less(x, 10)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: tf.cond(tf.less(0, 1), lambda: tf.add(x, 1),
                             lambda: tf.sub(x, 1))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [n])
       self.assertAllEqual(10, r.eval())
 
@@ -1115,9 +1120,12 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(100.0, name="n")
       one = tf.convert_to_tensor(1.0, name="one")
       c = lambda x: tf.less(x, n)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: control_flow_ops.cond(tf.constant(True),
                                           lambda: tf.square(x),
                                           lambda: tf.sub(x, one))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [v])
       r = tf.gradients(r, v)[0]
       self.assertAllClose(1024.0, r.eval())
@@ -1132,9 +1140,12 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(100.0, name="n")
       one = tf.convert_to_tensor(1.0, name="one")
       c = lambda x: tf.less(x, n)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: control_flow_ops.cond(tf.constant(True),
                                           lambda: tf.square(x),
                                           lambda: tf.sub(x, one))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [v])
       r = tf.gradients(r, v)[0]
       r = sess.run(r, feed_dict={v: 2.0})
@@ -1169,75 +1180,6 @@ class ControlFlowTest(tf.test.TestCase):
     self.assertEqual(10, value_i)
     self.assertEqual(0, value_x)
     self.assertEqual(73, value_x_grad)
-
-  def testFoldl_Simple(self):
-    with self.test_session():
-      elems = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-
-      r = control_flow_ops.foldl(
-          lambda a, x: tf.mul(tf.add(a, x), 2), elems)
-      self.assertAllEqual(208, r.eval())
-
-      r = control_flow_ops.foldl(
-          lambda a, x: tf.mul(tf.add(a, x), 2), elems, initializer=10)
-      self.assertAllEqual(880, r.eval())
-
-  def testFoldr_Simple(self):
-    with self.test_session():
-      elems = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-
-      r = control_flow_ops.foldr(
-          lambda a, x: tf.mul(tf.add(a, x), 2), elems)
-      self.assertAllEqual(450, r.eval())
-
-      r = control_flow_ops.foldr(
-          lambda a, x: tf.mul(tf.add(a, x), 2), elems, initializer=10)
-      self.assertAllEqual(1282, r.eval())
-
-  def testFold_Grad(self):
-    with self.test_session():
-      elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
-      v = tf.constant(2.0, name="v")
-
-      r = control_flow_ops.foldl(
-          lambda a, x: tf.mul(a, x), elems, initializer=v)
-      r = tf.gradients(r, v)[0]
-      self.assertAllEqual(720.0, r.eval())
-
-      r = control_flow_ops.foldr(
-          lambda a, x: tf.mul(a, x), elems, initializer=v)
-      r = tf.gradients(r, v)[0]
-      self.assertAllEqual(720.0, r.eval())
-
-  def testMap_Simple(self):
-    with self.test_session():
-      nums = [1, 2, 3, 4, 5, 6]
-      elems = tf.constant(nums, name="data")
-      r = control_flow_ops.map_fn(
-          lambda x: tf.mul(tf.add(x, 3), 2), elems)
-      self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
-
-  def testScan_Simple(self):
-    with self.test_session():
-      elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
-      v = tf.constant(2.0, name="v")
-
-      r = control_flow_ops.scan(lambda a, x: tf.mul(a, x), elems)
-      self.assertAllEqual([1., 2., 6., 24., 120., 720.], r.eval())
-
-      r = control_flow_ops.scan(
-          lambda a, x: tf.mul(a, x), elems, initializer=v)
-      self.assertAllEqual([2., 4., 12., 48., 240., 1440.], r.eval())
-
-  def testScan_Grad(self):
-    with self.test_session():
-      elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
-      v = tf.constant(2.0, name="v")
-
-      r = control_flow_ops.scan(
-          lambda a, x: tf.mul(a, x), elems, initializer=v)
-      r = tf.gradients(r, v)[0]
-      self.assertAllEqual(873.0, r.eval())
 
   def testOneValueCond(self):
     with self.test_session():
@@ -1455,6 +1397,11 @@ class ControlFlowTest(tf.test.TestCase):
     # Ensure that v1 and v2 are initialized
     self.assertAllClose([0.0], v1_val)
     self.assertAllClose([1.0], v2_val)
+
+  def testGroupEmpty(self):
+    op = tf.group()
+    self.assertEqual(op.type, "NoOp")
+    self.assertEqual(op.control_inputs, [])
 
   def testMergeShapes(self):
     # All inputs unknown.

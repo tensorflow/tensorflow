@@ -193,6 +193,11 @@ def _GatherGrad(op, grad):
   return [ops.IndexedSlices(values, indices, dense_shape), None]
 
 
+@ops.RegisterGradient("GatherNd")
+def _GatherNdGrad(unused_op, unused_grad):
+  raise NotImplementedError("Gradient for gather_nd is not implemented.")
+
+
 @ops.RegisterGradient("Identity")
 def _IdGrad(_, grad):
   return grad

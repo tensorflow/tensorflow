@@ -95,7 +95,6 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -125,7 +124,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -205,7 +203,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow_opensource",
     ],
 )
 
@@ -227,7 +224,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -240,7 +236,6 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:tensorflow_opensource",
     ],
 )
 
@@ -306,7 +301,6 @@ tf_cc_tests(
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:master_service_proto_cc",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -314,6 +308,11 @@ tf_cc_tests(
         "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:variable_ops",
     ],
 )
 
@@ -339,7 +338,6 @@ tf_cc_tests(
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:master_service_proto_cc",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

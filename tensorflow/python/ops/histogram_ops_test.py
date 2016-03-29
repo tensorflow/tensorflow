@@ -34,7 +34,6 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     expected_bin_counts = [0, 0, 0, 0, 0]
     with self.test_session():
       hist = tf.histogram_fixed_width(values, value_range, nbins=5)
-      tf.initialize_all_variables().run()
 
       # Hist should start "fresh" with every eval.
       self.assertAllClose(expected_bin_counts, hist.eval())
@@ -48,7 +47,6 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     expected_bin_counts = [2, 1, 1, 0, 2]
     with self.test_session():
       hist = tf.histogram_fixed_width(values, value_range, nbins=5)
-      tf.initialize_all_variables().run()
 
       # Hist should start "fresh" with every eval.
       self.assertAllClose(expected_bin_counts, hist.eval())
@@ -62,7 +60,6 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     expected_bin_counts = [2, 1, 1, 0, 2]
     with self.test_session():
       hist = tf.histogram_fixed_width(values, value_range, nbins=5)
-      tf.initialize_all_variables().run()
 
       # Hist should start "fresh" with every eval.
       self.assertAllClose(expected_bin_counts, hist.eval())
@@ -79,7 +76,6 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     with self.test_session():
       values = tf.placeholder(tf.float32, shape=[6])
       hist = tf.histogram_fixed_width(values, value_range, nbins=5)
-      tf.initialize_all_variables().run()
 
       # The values in hist should depend on the current feed and nothing else.
       self.assertAllClose(expected_bin_counts_1,
@@ -102,7 +98,6 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     with self.test_session():
       values = tf.placeholder(tf.float32, shape=[])
       hist = tf.histogram_fixed_width(values, value_range, nbins=5)
-      tf.initialize_all_variables().run()
 
       # The values in hist should depend on the current feed and nothing else.
       self.assertAllClose(expected_bin_counts_2,

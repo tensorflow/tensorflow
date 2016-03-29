@@ -370,7 +370,15 @@ class Tensor {
   void UnsafeCopyFromInternal(const Tensor&, const TensorShape&);
 
  private:
+  void CheckType(DataType expected_dtype) const;
+  void CheckTypeAndIsAligned(DataType expected_dtype) const;
+  void CheckIsAlignedAndSingleElement() const;
   void set_dtype(DataType t) { shape_.set_data_type(t); }
+  template <size_t NDIMS>
+  void FillDimsAndValidateCompatibleShape(
+      gtl::ArraySlice<int64> new_sizes,
+      Eigen::array<Eigen::DenseIndex, NDIMS>* dims) const;
+
   TensorShape shape_;
   TensorBuffer* buf_;
 
@@ -440,48 +448,46 @@ T* Tensor::base() const {
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::tensor() {
-  CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
-  CHECK(IsAligned());
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
   return typename TTypes<T, NDIMS>::Tensor(base<T>(),
                                            shape().AsEigenDSizes<NDIMS>());
 }
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::tensor() const {
-  CHECK(IsAligned());
-  CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
   return typename TTypes<T, NDIMS>::ConstTensor(base<const T>(),
                                                 shape().AsEigenDSizes<NDIMS>());
+}
+
+template <size_t NDIMS>
+void Tensor::FillDimsAndValidateCompatibleShape(
+    gtl::ArraySlice<int64> new_sizes,
+    Eigen::array<Eigen::DenseIndex, NDIMS>* dims) const {
+  CHECK_EQ(NDIMS, new_sizes.size());
+  int64 new_num_elements = 1;
+  for (size_t d = 0; d < NDIMS; d++) {
+    new_num_elements *= new_sizes[d];
+    (*dims)[d] = new_sizes[d];
+  }
+  CHECK_EQ(new_num_elements, NumElements());
 }
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) {
-  CHECK(IsAligned());
-  CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
-  CHECK_EQ(NDIMS, new_sizes.size());
-  int64 new_num_elements = 1;
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
-  for (size_t d = 0; d < NDIMS; d++) {
-    new_num_elements *= new_sizes[d];
-    dims[d] = new_sizes[d];
-  }
-  CHECK_EQ(new_num_elements, NumElements());
+  FillDimsAndValidateCompatibleShape<NDIMS>(new_sizes, &dims);
   return typename TTypes<T, NDIMS>::Tensor(base<T>(), dims);
 }
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::UnalignedTensor Tensor::unaligned_shaped(
     gtl::ArraySlice<int64> new_sizes) {
-  CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
-  CHECK_EQ(NDIMS, new_sizes.size());
-  int64 new_num_elements = 1;
+  CheckType(DataTypeToEnum<T>::v());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
-  for (size_t d = 0; d < NDIMS; d++) {
-    new_num_elements *= new_sizes[d];
-    dims[d] = new_sizes[d];
-  }
-  CHECK_EQ(new_num_elements, NumElements());
+  FillDimsAndValidateCompatibleShape<NDIMS>(new_sizes, &dims);
   return typename TTypes<T, NDIMS>::UnalignedTensor(base<T>(), dims);
 }
 
@@ -501,8 +507,7 @@ void Tensor::FillDimsAndValidateCompatibleShape(
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) const {
-  CHECK(IsAligned());
-  CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(&dims, new_sizes);
   return typename TTypes<T, NDIMS>::ConstTensor(base<T>(), dims);
@@ -511,7 +516,7 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
     gtl::ArraySlice<int64> new_sizes) const {
-  CHECK_EQ(dtype(), DataTypeToEnum<T>::v());
+  CheckType(DataTypeToEnum<T>::v());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(&dims, new_sizes);
   return typename TTypes<T, NDIMS>::UnalignedConstTensor(base<T>(), dims);
@@ -519,15 +524,13 @@ typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
 
 template <typename T>
 typename TTypes<T>::Scalar Tensor::scalar() {
-  CHECK(IsAligned());
-  CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
+  CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::Scalar(base<T>());
 }
 
 template <typename T>
 typename TTypes<T>::ConstScalar Tensor::scalar() const {
-  CHECK(IsAligned());
-  CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
+  CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::ConstScalar(base<T>());
 }
 

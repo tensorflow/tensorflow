@@ -43,13 +43,15 @@ import re
 import sys
 import pipes
 
-CURRENT_DIR = os.path.dirname(sys.argv[0])
+# "configure" uses the specific format to substitute the following string.
+# If you change it, make sure you modify "configure" as well.
 CPU_COMPILER = ('/usr/bin/gcc')
-NVCC_PATH = CURRENT_DIR + '/../../../cuda/bin/nvcc'
 GCC_HOST_COMPILER_PATH = ('/usr/bin/gcc')
+
+CURRENT_DIR = os.path.dirname(sys.argv[0])
+NVCC_PATH = CURRENT_DIR + '/../../../cuda/bin/nvcc'
 LLVM_HOST_COMPILER_PATH = ('/usr/bin/gcc')
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
-
 
 def Log(s):
   print 'gpus/crosstool: {0}'.format(s)

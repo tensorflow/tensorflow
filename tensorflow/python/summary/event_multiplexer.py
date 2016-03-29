@@ -228,7 +228,7 @@ class EventMultiplexer(object):
     return accumulator.Scalars(tag)
 
   def Graph(self, run):
-    """Retrieve the graphs associated with the provided run.
+    """Retrieve the graph associated with the provided run.
 
     Args:
       run: A string name of a run to load the graph for.
@@ -243,6 +243,24 @@ class EventMultiplexer(object):
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Graph()
+
+  def RunMetadata(self, run, tag):
+    """Get the session.run() metadata associated with a TensorFlow run and tag.
+
+    Args:
+      run: A string name of a TensorFlow run.
+      tag: A string name of the tag associated with a particular session.run().
+
+    Raises:
+      KeyError: If the run is not found, or the tag is not available for the
+        given run.
+      RuntimeError: If the run's EventAccumulator has not been activated.
+
+    Returns:
+      The metadata in the form of `RunMetadata` protobuf data structure.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.RunMetadata(tag)
 
   def Histograms(self, run, tag):
     """Retrieve the histogram events associated with a run and tag.

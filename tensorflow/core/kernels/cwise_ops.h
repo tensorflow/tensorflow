@@ -22,35 +22,23 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
-// The following functors (sign, tanh, sigmoid, etc.) are not defined
-// by Eigen.  When their equivalent are added into the Eigen, we can
-// replace them using type aliases.
-
 namespace Eigen {
 namespace internal {
 
+// TODO(rmlarsen): Get rid of fmod2 once fmod is upstreamed to Eigen.
 template <typename T>
 struct scalar_fmod2_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_fmod2_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
                                                            const T& b) const {
-    return fmod(a, b);
+    return std::fmod(a, b);
   }
 };
 
 template <typename T>
-struct scalar_mod2_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_mod2_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
-                                                           const T& b) const {
-    return a % b;
-  }
-};
-
-template <typename T>
-struct functor_traits<scalar_mod2_op<T> > {
+struct functor_traits<scalar_fmod2_op<T>> {
   enum {
-    Cost = 5,  // Roughly the cost of a div
+    Cost = 13,  // Reciprocal throughput of FPREM on Haswell.
     PacketAccess = false,
   };
 };
@@ -506,7 +494,7 @@ template <typename T>
 struct fmod : base<T, Eigen::internal::scalar_fmod2_op<T> > {};
 
 template <typename T>
-struct mod : base<T, Eigen::internal::scalar_mod2_op<T> > {};
+struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};
 
 template <typename T>
 struct pow : base<T, Eigen::internal::scalar_binary_pow_op<T, T> > {};

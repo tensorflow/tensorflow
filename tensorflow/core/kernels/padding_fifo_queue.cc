@@ -288,6 +288,9 @@ Status HandleElementToLargerSlice(const Tensor& element, Tensor* parent,
   if (!s.ok()) {
     return s;
   }
+  if (element.NumElements() == 0) {
+    return Status::OK();
+  }
   auto element_t = element.tensor<T, NDIMS>();
   auto parent_t = parent->tensor<T, NDIMS + 1>();
   Eigen::DSizes<Eigen::DenseIndex, NDIMS + 1> slice_indices;

@@ -72,13 +72,13 @@ string SummarizeNodeDef(const NodeDef& node_def) {
   return ret;
 }
 
-const AttrValue* AttrSlice::Find(const string& attr_name) const {
-  auto iter = attrs_->find(attr_name);
+const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
+  auto iter = attrs_->find(attr_name.ToString());
   if (iter == attrs_->end()) return nullptr;
   return &iter->second;
 }
 
-Status AttrSlice::Find(const string& attr_name,
+Status AttrSlice::Find(StringPiece attr_name,
                        const AttrValue** attr_value) const {
   *attr_value = Find(attr_name);
   if (*attr_value != nullptr) {
@@ -97,7 +97,7 @@ Status AttrSlice::Find(const string& attr_name,
 // The ... is to allow the caller to inject some value validation code.  Use
 // just ; if no additional validation code is needed.
 #define DEFINE_GET_ATTR(TYPE, FIELD, ATTR_TYPE, APPEND_OP, CAST, ...)         \
-  Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,         \
+  Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,           \
                      TYPE* value) {                                           \
     const AttrValue* attr_value;                                              \
     TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));                   \
@@ -107,7 +107,7 @@ Status AttrSlice::Find(const string& attr_name,
     *value = CAST;                                                            \
     return Status::OK();                                                      \
   }                                                                           \
-  Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,         \
+  Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,           \
                      std::vector<TYPE>* value) {                              \
     const AttrValue* attr_value;                                              \
     TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));                   \
@@ -149,7 +149,7 @@ DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
 
 #undef DEFINE_GET_ATTR
 
-Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    DataTypeVector* value) {
   const AttrValue* attr_value;
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
@@ -160,7 +160,7 @@ Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
   return Status::OK();
 }
 
-Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const TensorProto** value) {
   const AttrValue* attr_value;
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
@@ -169,7 +169,7 @@ Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
   return Status::OK();
 }
 
-Status GetNodeAttr(const AttrSlice& attrs, const string& attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const NameAttrList** value) {
   const AttrValue* attr_value;
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));

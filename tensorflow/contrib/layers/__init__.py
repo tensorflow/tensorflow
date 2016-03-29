@@ -57,13 +57,6 @@ The layers module defines convenience functions `summarize_variables`,
 of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
 
 @@summarize_activations
-
-## Utilities
-
-@@assert_same_float_dtype
-@@assert_scalar_int
-@@is_numeric_tensor
-
 """
 
 from __future__ import absolute_import
@@ -73,15 +66,5 @@ from __future__ import print_function
 import sys
 
 # pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.layers.python.framework.tensor_util import *
 from tensorflow.contrib.layers.python.layers import *
-from tensorflow.contrib.layers.python.ops import *
-from tensorflow.contrib.layers.python.ops import loss_ops
 from tensorflow.python.util.all_util import make_all
-
-
-# Include loss_ops to get the symbols in - but they are not documented in main
-# docs yet.
-# TODO(cwhipkey): get the loss_ops documented in the main documentation and do
-# this in a better way.
-__all__ = make_all(__name__, [sys.modules[__name__], loss_ops])

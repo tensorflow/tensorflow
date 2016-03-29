@@ -31,7 +31,7 @@ var: Should be from a Variable().
 alpha: Scaling factor. Must be a scalar.
 delta: The change.
 out: Same as "var".
-use_locking: If True, the subtraction will be protected by a lock;
+use_locking: If `True`, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
@@ -112,8 +112,9 @@ accum: Should be from a Variable().
 lr: Scaling factor. Must be a scalar.
 grad: The gradient.
 out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
 )doc");
 
 REGISTER_OP("SparseApplyAdagrad")
@@ -139,8 +140,9 @@ lr: Learning rate. Must be a scalar.
 grad: The gradient.
 indices: A vector of indices into the first dimension of var and accum.
 out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
 )doc");
 
 REGISTER_OP("ApplyFtrl")
@@ -173,8 +175,9 @@ l1: Scaling factor. Must be a scalar.
 l2: Scaling factor. Must be a scalar.
 lr_power: Scaling factor. Must be a scalar.
 out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
 )doc");
 
 REGISTER_OP("SparseApplyFtrl")
@@ -211,8 +214,9 @@ l1: Scaling factor. Must be a scalar.
 l2: Scaling factor. Must be a scalar.
 lr_power: Scaling factor. Must be a scalar.
 out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
 )doc");
 
 REGISTER_OP("ApplyMomentum")
@@ -236,8 +240,9 @@ lr: Scaling factor. Must be a scalar.
 grad: The gradient.
 momentum: Momentum. Must be a scalar.
 out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
 )doc");
 
 REGISTER_OP("SparseApplyMomentum")
@@ -266,8 +271,9 @@ grad: The gradient.
 indices: A vector of indices into the first dimension of var and accum.
 momentum: Momentum. Must be a scalar.
 out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
+use_locking: If `True`, updating of the var and accum tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
 )doc");
 
 REGISTER_OP("ApplyAdam")
@@ -303,8 +309,9 @@ beta2: Momentum factor. Must be a scalar.
 epsilon: Ridge term. Must be a scalar.
 grad: The gradient.
 out: Same as "var".
-use_locking: If True, updating of the var, m, and v tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
+use_locking: If `True`, updating of the var, m, and v tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
 )doc");
 
 REGISTER_OP("ApplyRMSProp")
@@ -337,8 +344,9 @@ epsilon: Ridge term. Must be a scalar.
 rho: Decay rate. Must be a scalar.
 grad: The gradient.
 out: Same as "var".
-use_locking: If True, updating of the var, m, and v tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
+use_locking: If `True`, updating of the var, m, and v tensors will be protected
+  by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
 )doc");
 
 }  // namespace tensorflow
