@@ -17,7 +17,7 @@ from sklearn import metrics
 import pandas
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 ### Training data
 

@@ -14,7 +14,7 @@
 
 from sklearn import datasets, metrics, cross_validation
 
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 
 # Load dataset.

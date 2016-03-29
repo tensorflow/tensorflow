@@ -17,7 +17,7 @@ from sklearn import datasets, metrics, cross_validation
 import pandas as pd
 import dask.dataframe as dd
 
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 # Sometimes when your dataset is too large to hold in the memory
 # you may want to load it into a out-of-core dataframe as provided by dask library

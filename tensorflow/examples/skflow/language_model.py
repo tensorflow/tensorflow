@@ -22,7 +22,7 @@ import os
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 ### Training data
 

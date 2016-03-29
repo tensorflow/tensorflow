@@ -15,7 +15,7 @@
 from sklearn import datasets, metrics
 from sklearn.cross_validation import train_test_split
 
-from tensorflow.contrib import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 
 iris = datasets.load_iris()

@@ -24,7 +24,7 @@ import random
 import numpy as np
 import tensorflow as tf
 
-import skflow
+from tensorflow.contrib.skflow.python import skflow
 
 # Get training data
 
