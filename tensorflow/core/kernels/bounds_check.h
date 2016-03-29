@@ -27,7 +27,8 @@ namespace tensorflow {
 // that 0 <= limit if Index is signed.  Intended for use in performance
 // critical contexts where 0 <= index < limit is almost always true.
 template <typename Ta, typename Tb>
-EIGEN_ALWAYS_INLINE bool FastBoundsCheck(const Ta index, const Tb limit) {
+EIGEN_ALWAYS_INLINE EIGEN_DEVICE_FUNC bool FastBoundsCheck(const Ta index,
+                                                           const Tb limit) {
   static_assert(std::is_integral<Ta>::value && std::is_integral<Tb>::value,
                 "FastBoundsCheck can only be used on integer types.");
   typedef typename std::make_unsigned<decltype(index + limit)>::type UIndex;

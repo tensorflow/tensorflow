@@ -619,14 +619,19 @@ ANDROID_TF_COPTS = [
     "-std=c++11",
     "-DMIN_LOG_LEVEL=0",
     "-DTF_LEAN_BINARY",
-    "-O2",
 ]
 
 # Native library support for Android applications.
 # Does not contain operators, use :android_tensorflow_lib if you want full
 # operator support.
-# Compiles to a trivial library on non-android to prevent irrelevant
-# build errors.
+#
+# Compiles to a trivial library on non-Android to prevent irrelevant
+# build errors. If not building this as part of an android_binary,
+# a command such as the following must be used:
+# bazel build -c opt tensorflow/core:android_tensorflow_lib \
+# --crosstool_top=//third_party/java/android/android_ndk_linux/toolchains:everything \
+# --cpu=armeabi-v7a \
+# --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = select({
@@ -643,7 +648,7 @@ cc_library(
         "public/session.h",
     ],
     copts = select({
-        ":android": ANDROID_TF_COPTS,
+        ":android": ANDROID_TF_COPTS + ["-Os"],
         "//conditions:default": [],
     }),
     tags = [
@@ -656,19 +661,23 @@ cc_library(
         ":protos_cc",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 # Full Tensorflow library with operator support. Use this unless reducing
 # binary size (by packaging a reduced operator set) is a concern.
 cc_library(
     name = "android_tensorflow_lib",
-    srcs = [
-        ":android_op_registrations_and_gradients",
-        "//tensorflow/core/kernels:android_core_ops",
-        "//tensorflow/core/kernels:android_extended_ops",
-    ],
+    srcs = select({
+        ":android": [
+            ":android_op_registrations_and_gradients",
+            "//tensorflow/core/kernels:android_core_ops",
+            "//tensorflow/core/kernels:android_extended_ops",
+        ],
+        "//conditions:default": [],
+    }),
     copts = select({
-        ":android": ANDROID_TF_COPTS,
+        ":android": ANDROID_TF_COPTS + ["-O2"],
         "//conditions:default": [],
     }),
     tags = [
@@ -682,6 +691,7 @@ cc_library(
         ":protos_cc",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 filegroup(

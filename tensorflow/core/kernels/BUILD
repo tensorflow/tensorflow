@@ -260,6 +260,7 @@ tf_kernel_libraries(
         "constant_op",
         "diag_op",
         "edit_distance_op",
+        "gather_nd_op",
         "gather_op",
         "identity_op",
         "immutable_constant_op",
