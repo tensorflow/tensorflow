@@ -88,7 +88,7 @@ class GrpcMasterService : public AsyncServiceInterface {
 // The implementation of the request handler for each RPC method
 // must ensure that it calls ENQUEUE_REQUEST() for that RPC method,
 // to keep accepting new requests.
-#define ENQUEUE_REQUEST(method)                                               \
+#define ENQUEUE_REQUEST(method, supports_cancel)                              \
   do {                                                                        \
     mutex_lock l(mu_);                                                        \
     if (!is_shutdown_) {                                                      \
@@ -96,19 +96,20 @@ class GrpcMasterService : public AsyncServiceInterface {
            method##Request, method##Response>::                               \
           EnqueueRequest(&master_service_, cq_,                               \
                          &grpc::MasterService::AsyncService::Request##method, \
-                         &GrpcMasterService::method##Handler);                \
+                         &GrpcMasterService::method##Handler,                 \
+                         (supports_cancel));                                  \
     }                                                                         \
   } while (0)
 
   void HandleRPCsLoop() {
-    ENQUEUE_REQUEST(CreateSession);
-    ENQUEUE_REQUEST(ExtendSession);
+    ENQUEUE_REQUEST(CreateSession, true);
+    ENQUEUE_REQUEST(ExtendSession, false);
     for (int i = 0; i < 100; ++i) {
-      ENQUEUE_REQUEST(RunStep);
+      ENQUEUE_REQUEST(RunStep, true);
     }
-    ENQUEUE_REQUEST(CloseSession);
-    ENQUEUE_REQUEST(ListDevices);
-    ENQUEUE_REQUEST(Reset);
+    ENQUEUE_REQUEST(CloseSession, false);
+    ENQUEUE_REQUEST(ListDevices, false);
+    ENQUEUE_REQUEST(Reset, false);
 
     void* tag;
     bool ok;
@@ -146,7 +147,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                                 [call](const Status& status) {
                                   call->SendResponse(ToGrpcStatus(status));
                                 });
-    ENQUEUE_REQUEST(CreateSession);
+    ENQUEUE_REQUEST(CreateSession, true);
   }
 
   // RPC handler for extending a session.
@@ -156,7 +157,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                                 [call](const Status& status) {
                                   call->SendResponse(ToGrpcStatus(status));
                                 });
-    ENQUEUE_REQUEST(ExtendSession);
+    ENQUEUE_REQUEST(ExtendSession, false);
   }
 
   // RPC handler for running one step in a session.
@@ -169,7 +170,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                             delete call_opts;
                             call->SendResponse(ToGrpcStatus(status));
                           });
-    ENQUEUE_REQUEST(RunStep);
+    ENQUEUE_REQUEST(RunStep, true);
   }
 
   // RPC handler for deleting a session.
@@ -179,7 +180,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                                [call](const Status& status) {
                                  call->SendResponse(ToGrpcStatus(status));
                                });
-    ENQUEUE_REQUEST(CloseSession);
+    ENQUEUE_REQUEST(CloseSession, false);
   }
 
   // RPC handler for listing devices.
@@ -189,7 +190,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                               [call](const Status& status) {
                                 call->SendResponse(ToGrpcStatus(status));
                               });
-    ENQUEUE_REQUEST(ListDevices);
+    ENQUEUE_REQUEST(ListDevices, false);
   }
 
   // RPC handler for resetting all sessions.
@@ -198,7 +199,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                         [call](const Status& status) {
                           call->SendResponse(ToGrpcStatus(status));
                         });
-    ENQUEUE_REQUEST(Reset);
+    ENQUEUE_REQUEST(Reset, false);
   }
 #undef ENQUEUE_REQUEST
 

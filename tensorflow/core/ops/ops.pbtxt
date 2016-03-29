@@ -4067,6 +4067,40 @@ op {
   description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/Gather.png\" alt>\n</div>"
 }
 op {
+  name: "GatherNd"
+  input_arg {
+    name: "params"
+    description: "R-D.  The tensor from which to gather values."
+    type_attr: "Tparams"
+  }
+  input_arg {
+    name: "indices"
+    description: "(N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`."
+    type_attr: "Tindices"
+  }
+  output_arg {
+    name: "output"
+    description: "N-D.  Values from `params` gathered from indices given by `indices`."
+    type_attr: "Tparams"
+  }
+  attr {
+    name: "Tparams"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Gather values from `params` according to `indices`."
+  description: "`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.\nThe innermost dimension of `indices` (with length `R`) corresponds to the\nindices of `params`.\n\nProduces an output tensor with shape `[d_0, ..., d_{n-1}]` where:\n\n    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]\n\ne.g. for `indices` a matrix:\n\n    output[i] = params[indices[i, :]]"
+}
+op {
   name: "Greater"
   input_arg {
     name: "x"

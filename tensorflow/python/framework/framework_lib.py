@@ -43,6 +43,7 @@
 
 @@add_to_collection
 @@get_collection
+@@get_collection_ref
 @@GraphKeys
 
 ## Defining new operations
@@ -82,6 +83,7 @@ from tensorflow.python.framework.ops import reset_default_graph
 from tensorflow.python.framework.ops import GraphKeys
 from tensorflow.python.framework.ops import add_to_collection
 from tensorflow.python.framework.ops import get_collection
+from tensorflow.python.framework.ops import get_collection_ref
 from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import convert_to_tensor_or_indexed_slices
 from tensorflow.python.framework.random_seed import get_seed

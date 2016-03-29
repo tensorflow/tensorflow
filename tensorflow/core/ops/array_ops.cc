@@ -408,6 +408,34 @@ this operation will permute `params` accordingly.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("GatherNd")
+    .Input("params: Tparams")
+    .Input("indices: Tindices")
+    .Output("output: Tparams")
+    .Attr("Tparams: type")
+    .Attr("Tindices: {int32,int64}")
+    .Doc(R"doc(
+Gather values from `params` according to `indices`.
+
+`indices` must be integer tensor, containing indices into `params`.
+It must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.
+The innermost dimension of `indices` (with length `R`) corresponds to the
+indices of `params`.
+
+Produces an output tensor with shape `[d_0, ..., d_{n-1}]` where:
+
+    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]
+
+e.g. for `indices` a matrix:
+
+    output[i] = params[indices[i, :]]
+
+params: R-D.  The tensor from which to gather values.
+indices: (N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`.
+output: N-D.  Values from `params` gathered from indices given by `indices`.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")

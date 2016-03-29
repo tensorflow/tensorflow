@@ -89,7 +89,8 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
 
   // Look up the Kernel registered for this node def.
   const KernelDef* kdef = nullptr;
-  status = FindKernelDef(device_type, ndef, &kdef);
+  status =
+      FindKernelDef(device_type, ndef, &kdef, nullptr /* kernel_class_name */);
 
   if (!status.ok() || HasTypeList(*op_def)) {
     // When there is no kernel def for this op or the op's arg is a

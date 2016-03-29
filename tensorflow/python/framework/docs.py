@@ -484,6 +484,9 @@ class Library(Document):
       names = self._members.items()
     else:
       names = inspect.getmembers(self._module)
+      all_names = getattr(self._module, "__all__", None)
+      if all_names is not None:
+        names = [(n, m) for n, m in names if n in all_names]
     leftovers = []
     for name, _ in names:
       if name in self._members and name not in self._documented:

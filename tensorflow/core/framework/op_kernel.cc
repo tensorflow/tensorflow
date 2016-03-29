@@ -594,10 +594,11 @@ Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
 // OpKernel registration ------------------------------------------------------
 
 struct KernelRegistration {
-  KernelRegistration(const KernelDef& d,
+  KernelRegistration(const KernelDef& d, StringPiece c,
                      kernel_factory::OpKernelRegistrar::Factory f)
-      : def(d), factory(f) {}
+      : def(d), kernel_class_name(c.ToString()), factory(f) {}
   const KernelDef def;
+  const string kernel_class_name;
   const kernel_factory::OpKernelRegistrar::Factory factory;
 };
 
@@ -624,12 +625,13 @@ static string Key(StringPiece op_type, DeviceType device_type,
 namespace kernel_factory {
 
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
+                                     StringPiece kernel_class_name,
                                      Factory factory) {
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
           kernel_def->label());
-  GlobalKernelRegistryTyped()->insert(
-      std::make_pair(key, KernelRegistration(*kernel_def, factory)));
+  GlobalKernelRegistryTyped()->insert(std::make_pair(
+      key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
   delete kernel_def;
 }
 
@@ -724,7 +726,7 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
 }  // namespace
 
 Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
-                     const KernelDef** def) {
+                     const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
   TF_RETURN_IF_ERROR(FindKernelRegistration(device_type, node_def, &reg));
   if (reg == nullptr) {
@@ -733,7 +735,8 @@ Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
                             " devices compatible with node ",
                             SummarizeNodeDef(node_def));
   }
-  *def = &reg->def;
+  if (def != nullptr) *def = &reg->def;
+  if (kernel_class_name != nullptr) *kernel_class_name = reg->kernel_class_name;
   return Status::OK();
 }
 
