@@ -188,7 +188,8 @@ Status OpKernelConstruction::allocate_persistent(
 // OpKernelContext -----------------------------------------------------------
 
 OpKernelContext::OpKernelContext(Params* params)
-    : OpKernelContext(params, params->op_kernel->output_types().size()) {}
+    : OpKernelContext(
+          params, static_cast<int>(params->op_kernel->output_types().size())) {}
 OpKernelContext::OpKernelContext(Params* params, int noutputs)
     : params_(params), outputs_(noutputs) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -143,6 +144,12 @@ class Conv2DOp : public BinaryOp<T> {
                 errors::InvalidArgument("filter must be 4-dimensional: ",
                                         filter.shape().DebugString()));
 
+    for (int i = 0; i < 3; i++) {
+      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
+                                           std::numeric_limits<int>::max()),
+                  errors::InvalidArgument("filter too large"));
+    }
+
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
@@ -152,20 +159,32 @@ class Conv2DOp : public BinaryOp<T> {
                                 in_depth, " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is out_depth.
-    const int64 out_depth = filter.dim_size(3);
+    const int out_depth = static_cast<int>(filter.dim_size(3));
 
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
-    const int64 input_rows = GetTensorDim(input, data_format_, 'H');
-    const int64 filter_rows = filter.dim_size(0);
+    const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
+    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input rows too large"));
+    const int input_rows = static_cast<int>(input_rows_raw);
+    const int filter_rows = static_cast<int>(filter.dim_size(0));
 
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
-    const int64 input_cols = GetTensorDim(input, data_format_, 'W');
-    const int64 filter_cols = filter.dim_size(1);
+    const int64 input_cols_raw = GetTensorDim(input, data_format_, 'W');
+    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input cols too large"));
+    const int input_cols = static_cast<int>(input_cols_raw);
+    const int filter_cols = static_cast<int>(filter.dim_size(1));
 
     // The first dimension for input is batch.
-    const int64 batch = GetTensorDim(input, data_format_, 'N');
+    const int64 batch_raw = GetTensorDim(input, data_format_, 'N');
+    OP_REQUIRES(context,
+                FastBoundsCheck(batch_raw, std::numeric_limits<int>::max()),
+                errors::InvalidArgument("batch is too large"));
+    const int batch = static_cast<int>(batch_raw);
 
     // For now we take the stride from the second dimension only (we
     // assume row = col stride, and do not support striding on the

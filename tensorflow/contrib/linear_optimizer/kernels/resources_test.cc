@@ -97,8 +97,8 @@ TEST_F(DataByExampleTest, VisitEmpty) {
 }
 
 TEST_F(DataByExampleTest, VisitMany) {
-  const int kNumElements = 2 * VisitChunkSize() + 1;
-  for (int i = 0; i < kNumElements; ++i) {
+  const size_t kNumElements = 2 * VisitChunkSize() + 1;
+  for (size_t i = 0; i < kNumElements; ++i) {
     DataByExample::Data data;
     data.dual = static_cast<float>(i);
     data_by_example_->Set(DataByExample::MakeKey(strings::StrCat(i)), data);
