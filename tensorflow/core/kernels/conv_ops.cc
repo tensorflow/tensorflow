@@ -49,13 +49,13 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Device, typename T>
 struct LaunchGeneric {
   static void launch(OpKernelContext* ctx, const Tensor& input,
-                     const Tensor& filter, int stride,
+                     const Tensor& filter, int row_stride, int col_stride,
                      const Eigen::PaddingType& padding, Tensor* output,
                      TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
     if (filter.dim_size(1) == filter.dim_size(0) && filter.dim_size(0) == 1 &&
-        stride == 1) {
+        row_stride == 1 && col_stride == 1) {
       // For 1x1 kernel, the 2D convolution is reduced to matrix
       // multiplication.
       //
@@ -78,7 +78,8 @@ struct LaunchGeneric {
     } else {
       functor::SpatialConvolution<Device, T>()(
           ctx->eigen_device<Device>(), output->tensor<T, 4>(),
-          input.tensor<T, 4>(), filter.tensor<T, 4>(), stride, padding);
+          input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
+          padding);
     }
   }
 };
@@ -89,11 +90,12 @@ struct LaunchConvOp;
 template <typename T>
 struct LaunchConvOp<CPUDevice, T> {
   static void launch(OpKernelContext* ctx, bool use_cudnn, const Tensor& input,
-                     const Tensor& filter, int stride,
+                     const Tensor& filter, int row_stride, int col_stride,
                      const Eigen::PaddingType& padding, Tensor* output,
                      TensorFormat data_format) {
-    LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, stride, padding,
-                                        output, data_format);
+    LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, row_stride,
+                                        col_stride, padding, output,
+                                        data_format);
   }
 };
 
@@ -223,8 +225,8 @@ class Conv2DOp : public BinaryOp<T> {
       return;
     }
     LaunchConvOp<Device, T>::launch(context, use_cudnn_, input, filter, stride,
-                                    BrainPadding2EigenPadding(padding_), output,
-                                    data_format_);
+                                    stride, BrainPadding2EigenPadding(padding_),
+                                    output, data_format_);
   }
 
  private:
@@ -236,10 +238,9 @@ class Conv2DOp : public BinaryOp<T> {
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("Conv2D")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        Conv2DOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    Conv2DOp<CPUDevice, float>);
 
 #if GOOGLE_CUDA
 
@@ -264,8 +265,9 @@ template <typename T>
 struct LaunchConvOp<GPUDevice, T> {
   static void launch(OpKernelContext* ctx, bool use_cudnn,
                      const Tensor& input_param, const Tensor& filter,
-                     int stride, const Eigen::PaddingType& padding,
-                     Tensor* output, TensorFormat data_format) {
+                     int row_stride, int col_stride,
+                     const Eigen::PaddingType& padding, Tensor* output,
+                     TensorFormat data_format) {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -288,8 +290,9 @@ struct LaunchConvOp<GPUDevice, T> {
 
         auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
         bool blas_launch_status =
-            stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f,
-                                 b_ptr, n, a_ptr, k, 0.0f, &c_ptr, n)
+            stream
+                ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
+                               n, a_ptr, k, 0.0f, &c_ptr, n)
                 .ok();
         if (!blas_launch_status) {
           ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -318,8 +321,8 @@ struct LaunchConvOp<GPUDevice, T> {
         // We pad Pr/2 on the left and Pr - Pr/2 on the right, Pc/2 on the top
         // and Pc - Pc/2 on the bottom.  When Pr or Pc is odd, this means
         // we pad more on the right and bottom than on the top and left.
-        padding_rows = (out_rows - 1) * stride + patch_rows - in_rows;
-        padding_cols = (out_cols - 1) * stride + patch_cols - in_cols;
+        padding_rows = (out_rows - 1) * row_stride + patch_rows - in_rows;
+        padding_cols = (out_cols - 1) * col_stride + patch_cols - in_cols;
         const bool rows_odd = (padding_rows % 2 != 0);
         const bool cols_odd = (padding_cols % 2 != 0);
         if (rows_odd || cols_odd) {
@@ -376,8 +379,8 @@ struct LaunchConvOp<GPUDevice, T> {
           .set_input_feature_map_count(filter.dim_size(2))
           .set_output_feature_map_count(filter.dim_size(3));
       perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
-      conv_desc.set_vertical_filter_stride(stride)
-          .set_horizontal_filter_stride(stride)
+      conv_desc.set_vertical_filter_stride(row_stride)
+          .set_horizontal_filter_stride(col_stride)
           .set_zero_padding_height(padding_rows / 2)
           .set_zero_padding_width(padding_cols / 2);
 
@@ -414,9 +417,10 @@ struct LaunchConvOp<GPUDevice, T> {
           );
       CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       bool cudnn_launch_status =
-          stream->ThenConvolveWithScratch(input_desc, input_ptr, filter_desc,
-                                          filter_ptr, conv_desc, output_desc,
-                                          &output_ptr, &scratch_allocator)
+          stream
+              ->ThenConvolveWithScratch(input_desc, input_ptr, filter_desc,
+                                        filter_ptr, conv_desc, output_desc,
+                                        &output_ptr, &scratch_allocator)
               .ok();
 
       if (!cudnn_launch_status) {
@@ -435,8 +439,9 @@ struct LaunchConvOp<GPUDevice, T> {
         *output = transformed_output;
       }
     } else {
-      LaunchGeneric<GPUDevice, T>::launch(ctx, input_param, filter, stride,
-                                          padding, output, data_format);
+      LaunchGeneric<GPUDevice, T>::launch(ctx, input_param, filter, row_stride,
+                                          col_stride, padding, output,
+                                          data_format);
     }
   }
 };
@@ -451,8 +456,8 @@ namespace functor {
   void SpatialConvolution<GPUDevice, T>::operator()(                         \
       const GPUDevice& d, typename TTypes<T, 4>::Tensor output,              \
       typename TTypes<T, 4>::ConstTensor input,                              \
-      typename TTypes<T, 4>::ConstTensor filter, int stride,                 \
-      const Eigen::PaddingType& padding);                                    \
+      typename TTypes<T, 4>::ConstTensor filter, int row_stride,             \
+      int col_stride, const Eigen::PaddingType& padding);                    \
   extern template struct SpatialConvolution<GPUDevice, T>;                   \
   template <>                                                                \
   void MatMulConvFunctor<GPUDevice, T>::operator()(                          \
@@ -479,10 +484,9 @@ DECLARE_GPU_SPEC(float);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-REGISTER_KERNEL_BUILDER(Name("Conv2D")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        Conv2DOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    Conv2DOp<GPUDevice, float>);
 
 #endif  // GOOGLE_CUDA
 
