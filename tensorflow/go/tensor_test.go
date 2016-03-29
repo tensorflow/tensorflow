@@ -333,7 +333,7 @@ func TestMultDimFloat32Decode(t *testing.T) {
 }
 
 func TestUint8Decode(t *testing.T) {
-	expectedResult := uint8(21)
+	expectedResult := int32(21)
 	tensor := getTensorFromGraph(t, fmt.Sprintf(`
 		node {
 			name: "output"
@@ -359,7 +359,7 @@ func TestUint8Decode(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsUint8()
+	result, err := tensor.AsInt32()
 	if err != nil {
 		t.Error("Problem trying to cast a tensor into uint8 slice, Error:", err)
 		t.FailNow()
@@ -421,7 +421,7 @@ func TestUint8Decode(t *testing.T) {
 }*/
 
 func TestInt16(t *testing.T) {
-	expectedResult := int16(21)
+	expectedResult := int32(21)
 	tensor := getTensorFromGraph(t, fmt.Sprintf(`
 		node {
 			name: "output"
@@ -447,7 +447,7 @@ func TestInt16(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsInt16()
+	result, err := tensor.AsInt32()
 	if err != nil {
 		t.Error("Problem trying to cast a tensor into int16 slice, Error:", err)
 		t.FailNow()
@@ -465,7 +465,7 @@ func TestInt16(t *testing.T) {
 }
 
 func TestInt8(t *testing.T) {
-	expectedResult := int8(21)
+	expectedResult := int32(21)
 	tensor := getTensorFromGraph(t, fmt.Sprintf(`
 		node {
 			name: "output"
@@ -491,7 +491,7 @@ func TestInt8(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsInt8()
+	result, err := tensor.AsInt32()
 	if err != nil {
 		t.Error("Problem trying to cast a tensor into int8 slice, Error:", err)
 		t.FailNow()
