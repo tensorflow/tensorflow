@@ -1083,7 +1083,6 @@ medium_kernel_test_list = glob([
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",
-    "kernel_tests/transpose_op_test.py",
 ])
 
 sharded_kernel_test_list = glob([
