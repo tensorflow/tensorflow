@@ -83,6 +83,7 @@ def all_libraries(module_to_name, members, documented):
               prefix=PREFIX_TEXT),
       library("histogram_ops", "Histograms"),
       library("control_flow_ops", "Control Flow", prefix=PREFIX_TEXT),
+      library("functional_ops", "Higher Order Functions", prefix=PREFIX_TEXT),
       library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"],
               prefix=PREFIX_TEXT),
       library("sparse_ops", "Sparse Tensors",

@@ -231,8 +231,6 @@
   * [`cond`](../../api_docs/python/control_flow_ops.md#cond)
   * [`count_up_to`](../../api_docs/python/control_flow_ops.md#count_up_to)
   * [`equal`](../../api_docs/python/control_flow_ops.md#equal)
-  * [`foldl`](../../api_docs/python/control_flow_ops.md#foldl)
-  * [`foldr`](../../api_docs/python/control_flow_ops.md#foldr)
   * [`greater`](../../api_docs/python/control_flow_ops.md#greater)
   * [`greater_equal`](../../api_docs/python/control_flow_ops.md#greater_equal)
   * [`group`](../../api_docs/python/control_flow_ops.md#group)
@@ -246,15 +244,19 @@
   * [`logical_not`](../../api_docs/python/control_flow_ops.md#logical_not)
   * [`logical_or`](../../api_docs/python/control_flow_ops.md#logical_or)
   * [`logical_xor`](../../api_docs/python/control_flow_ops.md#logical_xor)
-  * [`map_fn`](../../api_docs/python/control_flow_ops.md#map_fn)
   * [`no_op`](../../api_docs/python/control_flow_ops.md#no_op)
   * [`not_equal`](../../api_docs/python/control_flow_ops.md#not_equal)
   * [`Print`](../../api_docs/python/control_flow_ops.md#Print)
-  * [`scan`](../../api_docs/python/control_flow_ops.md#scan)
   * [`select`](../../api_docs/python/control_flow_ops.md#select)
   * [`tuple`](../../api_docs/python/control_flow_ops.md#tuple)
   * [`verify_tensor_all_finite`](../../api_docs/python/control_flow_ops.md#verify_tensor_all_finite)
   * [`where`](../../api_docs/python/control_flow_ops.md#where)
+
+* **[Higher Order Functions](../../api_docs/python/functional_ops.md)**:
+  * [`foldl`](../../api_docs/python/functional_ops.md#foldl)
+  * [`foldr`](../../api_docs/python/functional_ops.md#foldr)
+  * [`map_fn`](../../api_docs/python/functional_ops.md#map_fn)
+  * [`scan`](../../api_docs/python/functional_ops.md#scan)
 
 * **[Images](../../api_docs/python/image.md)**:
   * [`adjust_brightness`](../../api_docs/python/image.md#adjust_brightness)
