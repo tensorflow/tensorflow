@@ -63,7 +63,9 @@ class BCastGradArgsOp : public OpKernel {
     const int64 len = v.size();
     Tensor* o = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(idx, TensorShape({len}), &o));
-    for (int64 i = 0; i < len; ++i) o->flat<int32>()(i) = v[i];
+    for (int64 i = 0; i < len; ++i) {
+      o->flat<int32>()(i) = static_cast<int32>(v[i]);
+    }
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(BCastGradArgsOp);

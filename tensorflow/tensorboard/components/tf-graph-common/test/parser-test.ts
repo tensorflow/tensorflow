@@ -16,7 +16,7 @@ limitations under the License.
 suite("parser", () => {
 let assert = chai.assert;
 
-test("simple pbtxt", () => {
+test("simple pbtxt", (done) => {
   let pbtxt =
     `node {
        name: "Q"
@@ -32,8 +32,10 @@ test("simple pbtxt", () => {
        input: "Q"
        input: "W"
      }`;
-  let result = tf.graph.parser.parsePbtxt(pbtxt);
-  assert.isTrue(result != null);
+  tf.graph.parser.parsePbtxt(pbtxt).then(nodes => {
+    assert.isTrue(nodes != null && nodes.length === 3);
+    done();
+  });
 });
 
 test("d3 exists", () => {

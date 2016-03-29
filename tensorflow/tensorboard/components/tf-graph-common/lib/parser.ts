@@ -69,27 +69,29 @@ export function readJson(filepath: string): Promise<Object> {
  * promise of the result.
  */
 export function readAndParseData(dataset: {path: string, statsPath: string},
-    pbTxtContent: string, tracker: ProgressTracker):
+    pbTxtFile: Blob, tracker: ProgressTracker):
     Promise<{ nodes: TFNode[], statsJson: Object }|void> {
-  let graphPbTxt;
-  let statsJson;
-  return runAsyncTask("Reading graph.pbtxt", 20, () => {
-    return pbTxtContent || readPbTxt(dataset.path);
+  let graphPbTxt: Blob;
+  let statsJson: Object;
+  return runTask("Reading graph.pbtxt", 20, () => {
+    return pbTxtFile ?
+      Promise.resolve(pbTxtFile) :
+      readPbTxt(dataset.path).then(text => new Blob([text]));
   }, tracker)
-  .then(function(text) {
-    graphPbTxt = text;
-    return runAsyncTask("Reading stats.pbtxt", 20, () => {
+  .then(blob => {
+    graphPbTxt = blob;
+    return runTask("Reading stats.pbtxt", 20, () => {
       return (dataset != null && dataset.statsPath != null) ?
           readJson(dataset.statsPath) : null;
     }, tracker);
   })
-  .then(function(json) {
+  .then(json => {
     statsJson = json;
-    return runAsyncTask("Parsing graph.pbtxt", 60, () => {
-      return parsePbtxt(graphPbTxt);
+    return runTask("Parsing graph.pbtxt", 60, () => {
+      return parsePbtxtFile(graphPbTxt);
     }, tracker);
   })
-  .then(function(nodes) {
+  .then(nodes => {
     return {
       nodes: nodes,
       statsJson: statsJson
@@ -98,12 +100,70 @@ export function readAndParseData(dataset: {path: string, statsPath: string},
 }
 
 /**
- * Parses a proto txt file into a javascript object.
- *
- * @param input The string contents of the proto txt file.
- * @return The parsed object.
+ * Parse a file object in a streaming fashion line by line (or custom delim).
+ * Can handle very large files.
+ * @param input The file object
+ * @param callback The callback called on each line
+ * @param chunkSize The size of each read chunk. (optional)
+ * @param delim The delimiter used to split a line. (optional)
+ * @returns A promise for when it is finished.
  */
-export function parsePbtxt(input: string): TFNode[] {
+export function streamParse(file: Blob, callback: (string) => void,
+    chunkSize: number = 1000000, delim: string = "\n"): Promise<boolean> {
+  return new Promise<boolean>(function(resolve, reject) {
+    let offset = 0;
+    let fileSize = file.size - 1;
+    let data = "";
+
+    function readHandler(evt) {
+      if (evt.target.error == null) {
+        offset += evt.target.result.length;
+        let str = evt.target.result;
+        let parts = str.split(delim);
+        let first = data + parts[0];
+        if (parts.length === 1) {
+          data = first;
+          readChunk(offset, chunkSize);
+          return;
+        }
+        data = parts[parts.length - 1];
+        callback(first);
+        for (let i = 1; i < parts.length - 1; i++) {
+          callback(parts[i]);
+        }
+      } else {
+        // read error
+        reject(evt.target.error);
+        return;
+      }
+      if (offset >= fileSize) {
+        if (data) {
+          callback(data);
+        }
+        resolve(true);
+        return;
+      }
+      readChunk(offset, chunkSize);
+    }
+
+    function readChunk(offset: number, size: number) {
+      var reader = new FileReader();
+      var blob = file.slice(offset, offset + size);
+      reader.onload = readHandler;
+      reader.readAsText(blob);
+    }
+
+    readChunk(offset, chunkSize);
+  });
+}
+
+/**
+ * Parses a proto txt file or blob into javascript object.
+ *
+ * @param input The Blob or file object implementing slice.
+ * @returns The parsed object.
+ */
+export function parsePbtxtFile(input: Blob): Promise<TFNode[]> {
   let output: { [name: string]: any; } = { node: [] };
   let stack = [];
   let path: string[] = [];
@@ -164,16 +224,9 @@ export function parsePbtxt(input: string): TFNode[] {
   }
 
   // Run through the file a line at a time.
-  let startPos = 0;
-  while (startPos < input.length) {
-    let endPos = input.indexOf("\n", startPos);
-    if (endPos === -1) {
-      endPos = input.length;
-    }
-    let line = input.substring(startPos, endPos);
-    startPos = endPos + 1;
+  return streamParse(input, function(line: string) {
     if (!line) {
-      continue;
+      return;
     }
     switch (line[line.length - 1]) {
       case "{": // create new object
@@ -193,9 +246,20 @@ export function parsePbtxt(input: string): TFNode[] {
         addAttribute(current, x.name, x.value, path.concat(x.name));
         break;
     }
-  }
+  }).then(function() {
+    return output["node"];
+  });
+}
 
-  return output["node"];
+/**
+ * Parses a proto txt file into a javascript object.
+ *
+ * @param input The string contents of the proto txt file.
+ * @return The parsed object.
+ */
+export function parsePbtxt(input: string): Promise<TFNode[]> {
+  let blob = new Blob([input]);
+  return parsePbtxtFile(blob);
 }
 
 } // Close module tf.graph.parser.

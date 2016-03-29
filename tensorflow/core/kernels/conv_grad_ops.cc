@@ -329,11 +329,10 @@ class Conv2DFastBackpropInputOp : public OpKernel {
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
-    // Need to flip the input_rows and input_cols when passing to eigen.
     functor::SpatialConvolutionBackwardInput<Device, T>()(
         context->eigen_device<Device>(), in_backprop->tensor<T, 4>(),
-        filter.tensor<T, 4>(), out_backprop.tensor<T, 4>(), input_cols,
-        input_rows, stride);
+        filter.tensor<T, 4>(), out_backprop.tensor<T, 4>(), input_rows,
+        input_cols, stride, stride);
   }
 
  private:
@@ -467,9 +466,11 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
     if (use_parallel_contraction) {
       typedef Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>,
-                               Eigen::Unaligned> TensorMap;
+                               Eigen::Unaligned>
+          TensorMap;
       typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
-                               Eigen::Unaligned> ConstTensorMap;
+                               Eigen::Unaligned>
+          ConstTensorMap;
 
       // Initialize contraction dims (we need to transpose 'B' below).
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims;
@@ -493,10 +494,12 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
         input_backprop_data += input_offset;
       }
     } else {
-      typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
-                                       Eigen::RowMajor>> MatrixMap;
+      typedef Eigen::Map<
+          Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+          MatrixMap;
       typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
-                                             Eigen::RowMajor>> ConstMatrixMap;
+                                             Eigen::RowMajor>>
+          ConstMatrixMap;
 
       for (int image_id = 0; image_id < batch; image_id += shard_size) {
         const int shard_limit = std::min(static_cast<int>(shard_size),
@@ -544,10 +547,9 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropInputOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        Conv2DCustomBackpropInputOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2DBackpropInput").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    Conv2DCustomBackpropInputOp<CPUDevice, float>);
 
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .Device(DEVICE_CPU)
@@ -606,11 +608,10 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
-    // Need to flip the filter_rows and filter_cols when passing to eigen.
     functor::SpatialConvolutionBackwardKernel<Device, T>()(
         context->eigen_device<Device>(), filter_backprop->tensor<T, 4>(),
-        input.tensor<T, 4>(), out_backprop.tensor<T, 4>(), filter_cols,
-        filter_rows, stride);
+        input.tensor<T, 4>(), out_backprop.tensor<T, 4>(), filter_rows,
+        filter_cols, stride, stride);
   }
 
  private:
@@ -725,9 +726,11 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     auto* filter_backprop_data = filter_backprop->template flat<T>().data();
 
     typedef Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>,
-                             Eigen::Unaligned> TensorMap;
+                             Eigen::Unaligned>
+        TensorMap;
     typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
-                             Eigen::Unaligned> ConstTensorMap;
+                             Eigen::Unaligned>
+        ConstTensorMap;
 
     TensorMap C(filter_backprop_data, filter_total_size, out_depth);
     C.setZero();
@@ -782,10 +785,9 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropFilterOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        Conv2DCustomBackpropFilterOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2DBackpropFilter").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    Conv2DCustomBackpropFilterOp<CPUDevice, float>);
 
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .Device(DEVICE_CPU)
@@ -852,12 +854,12 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
-    const int padding_rows =
-        (padding_ == VALID) ? 0 : (output_rows - 1) * stride + filter_rows -
-                                      input_rows;
-    const int padding_cols =
-        (padding_ == VALID) ? 0 : (output_cols - 1) * stride + filter_cols -
-                                      input_cols;
+    const int padding_rows = (padding_ == VALID) ? 0
+                                                 : (output_rows - 1) * stride +
+                                                       filter_rows - input_rows;
+    const int padding_cols = (padding_ == VALID) ? 0
+                                                 : (output_cols - 1) * stride +
+                                                       filter_cols - input_cols;
 
     // TODO(keveman): cuDNN only supports equal padding on both sides, so only
     // calling it when that is true. Remove this check when (if?) cuDNN starts
@@ -887,8 +889,9 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
         auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
 
         bool blas_launch_status =
-            stream->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                                 k, a_ptr, k, 0.0f, &c_ptr, n)
+            stream
+                ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
+                               a_ptr, k, 0.0f, &c_ptr, n)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=",
@@ -1092,7 +1095,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
       // Now we can call conv_2d directly.
       functor::SpatialConvolution<Device, T>()(
           context->eigen_device<Device>(), in_backprop->tensor<T, 4>(),
-          padded_output_cref.tensor<T, 4>(), r_filter_cref.tensor<T, 4>(), 1,
+          padded_output_cref.tensor<T, 4>(), r_filter_cref.tensor<T, 4>(), 1, 1,
           BrainPadding2EigenPadding(VALID));
     }
   }
@@ -1152,12 +1155,12 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
-    const int padding_rows =
-        (padding_ == VALID) ? 0 : (output_rows - 1) * stride + filter_rows -
-                                      input_rows;
-    const int padding_cols =
-        (padding_ == VALID) ? 0 : (output_cols - 1) * stride + filter_cols -
-                                      input_cols;
+    const int padding_rows = (padding_ == VALID) ? 0
+                                                 : (output_rows - 1) * stride +
+                                                       filter_rows - input_rows;
+    const int padding_cols = (padding_ == VALID) ? 0
+                                                 : (output_cols - 1) * stride +
+                                                       filter_cols - input_cols;
 
     // TODO(zhengxq): cuDNN only supports equal padding on both sides, so only
     // calling it when that is true. Remove this check when (if?) cuDNN starts
@@ -1194,10 +1197,11 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                                     filter_backprop->template flat<T>().size());
 
         bool blas_launch_status =
-            stream->ThenBlasGemm(
-                      perftools::gputools::blas::Transpose::kNoTranspose,
-                      perftools::gputools::blas::Transpose::kTranspose, n, m, k,
-                      1.0f, a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
+            stream
+                ->ThenBlasGemm(
+                    perftools::gputools::blas::Transpose::kNoTranspose,
+                    perftools::gputools::blas::Transpose::kTranspose, n, m, k,
+                    1.0f, a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=",
@@ -1323,10 +1327,11 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                               context);
       bool cudnn_launch_status =
-          stream->ThenConvolveBackwardFilterWithScratch(
-                    input_desc, input_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator)
+          stream
+              ->ThenConvolveBackwardFilterWithScratch(
+                  input_desc, input_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, filter_desc, &filter_backprop_ptr,
+                  &scratch_allocator)
               .ok();
 
       if (!cudnn_launch_status) {
@@ -1408,7 +1413,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       functor::SpatialConvolution<Device, T>()(
           context->eigen_device<Device>(), filter_shuffle.tensor<T, 4>(),
           padded_output_cref.tensor<T, 4>(), in_shuffle_cref.tensor<T, 4>(), 1,
-          BrainPadding2EigenPadding(VALID));
+          1, BrainPadding2EigenPadding(VALID));
 
       // Now copy the filter_backprop back to the destination.
       Eigen::DSizes<int, 4> filter_order{1, 2, 3, 0};
@@ -1463,15 +1468,15 @@ namespace functor {
   void SpatialConvolution<GPUDevice, T>::operator()(                        \
       const GPUDevice& d, typename TTypes<T, 4>::Tensor output,             \
       typename TTypes<T, 4>::ConstTensor input,                             \
-      typename TTypes<T, 4>::ConstTensor filter, int stride,                \
-      const Eigen::PaddingType& padding);                                   \
+      typename TTypes<T, 4>::ConstTensor filter, int row_stride,            \
+      int col_stride, const Eigen::PaddingType& padding);                   \
   extern template struct SpatialConvolution<GPUDevice, T>;                  \
   template <>                                                               \
   void SpatialConvolutionBackwardInput<GPUDevice, T>::operator()(           \
       const GPUDevice& d, typename TTypes<T, 4>::Tensor in_backprop,        \
       typename TTypes<T, 4>::ConstTensor filter,                            \
       typename TTypes<T, 4>::ConstTensor output_backprop, int input_rows,   \
-      int input_cols, int stride);                                          \
+      int input_cols, int row_stride, int col_stride);                      \
   extern template struct SpatialConvolutionBackwardInput<GPUDevice, T>;     \
   template <>                                                               \
   void PadInput<GPUDevice, T, int>::operator()(                             \

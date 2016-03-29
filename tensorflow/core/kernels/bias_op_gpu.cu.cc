@@ -104,7 +104,7 @@ __global__ void BiasGradNHWC_SharedAtomics(int32 nthreads,
                                            T* bias_backprop, int32 bias_size) {
   T* s_data = reinterpret_cast<T*>(s_buf);
   for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
-    s_data[index] = 0;
+    s_data[index] = T(0);
   }
   __syncthreads();
 

@@ -147,8 +147,9 @@ class CpuCastOp : public CastOpBase {
       work_ = [](OpKernelContext* ctx, const Tensor& inp, Tensor* out) {
         int64 N = out->NumElements();
         auto worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
-        int num_threads =
-            std::min<int>(std::min(4, worker_threads->num_threads), N / 4096);
+        int num_threads = static_cast<int>(std::min(
+            static_cast<int64>(std::min(4, worker_threads->num_threads)),
+            N / 4096));
         if (num_threads < 1) {
           BFloat16ToFloat(inp.flat<bfloat16>().data(),
                           out->flat<float>().data(), N);
@@ -166,8 +167,9 @@ class CpuCastOp : public CastOpBase {
       work_ = [](OpKernelContext* ctx, const Tensor& inp, Tensor* out) {
         int64 N = out->NumElements();
         auto worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
-        int num_threads =
-            std::min<int>(std::min(4, worker_threads->num_threads), N / 4096);
+        int num_threads = static_cast<int>(std::min(
+            static_cast<int64>(std::min(4, worker_threads->num_threads)),
+            N / 4096));
         if (num_threads < 1) {
           FloatToBFloat16(inp.flat<float>().data(),
                           out->flat<bfloat16>().data(), N);

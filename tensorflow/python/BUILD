@@ -1013,6 +1013,15 @@ py_test(
     ],
 )
 
+py_library(
+    name = "timeline",
+    srcs = ["client/timeline.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":platform",
+    ],
+)
+
 # Just used by tests.
 tf_cuda_library(
     name = "construction_fails_op",
@@ -1036,6 +1045,17 @@ py_test(
         ":framework",
         ":framework_test_lib",
         ":session",
+    ],
+)
+
+py_test(
+    name = "timeline_test",
+    size = "small",
+    srcs = ["client/timeline_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":timeline",
+        "//tensorflow:tensorflow_py",
     ],
 )
 

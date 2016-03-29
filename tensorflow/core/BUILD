@@ -538,6 +538,8 @@ tf_cuda_library(
 
 # Android-specific BUILD targets
 load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources")
+load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources_relative")
+load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_headers")
 
 # List of protos we want on android
 filegroup(
@@ -621,6 +623,16 @@ ANDROID_TF_COPTS = [
     "-DTF_LEAN_BINARY",
 ]
 
+ANDROID_TF_LITE_HDRS = [
+    "framework/tensor.h",
+    "platform/default/integral_types.h",
+    "platform/env.h",
+    "platform/logging.h",
+    "platform/platform.h",
+    "platform/types.h",
+    "public/session.h",
+]
+
 # Native library support for Android applications.
 # Does not contain operators, use :android_tensorflow_lib if you want full
 # operator support.
@@ -634,19 +646,12 @@ ANDROID_TF_COPTS = [
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
-    srcs = select({
-        ":android": ["//tensorflow/core:android_srcs"],
-        "//conditions:default": [],
-    }),
-    hdrs = [
-        "framework/tensor.h",
-        "platform/default/integral_types.h",
-        "platform/env.h",
-        "platform/logging.h",
-        "platform/platform.h",
-        "platform/types.h",
-        "public/session.h",
-    ],
+    srcs =
+        select({
+            ":android": ["//tensorflow/core:android_srcs"],
+            "//conditions:default": [],
+        }),
+    hdrs = ANDROID_TF_LITE_HDRS,
     copts = select({
         ":android": ANDROID_TF_COPTS + ["-Os"],
         "//conditions:default": [],
