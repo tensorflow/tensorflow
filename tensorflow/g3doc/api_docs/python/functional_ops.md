@@ -18,8 +18,7 @@ map-reduce programming patterns.
 
 ### `tf.map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True, swap_memory=False, name=None)` {#map_fn}
 
-The map operator on the list of tensors resulted from unpacking `elems`
-along the first dimension.
+map on the list of tensors unpacked from `elems` on dimension 0.
 
 This map operator repeatedly applies the callable `fn` to a sequence of
 elements from first to last. The elements are made of the tensors unpacked
@@ -64,8 +63,7 @@ of the result tensor is `[len(values)] + fn(values[0]).shape`.
 
 ### `tf.foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True, swap_memory=False, name=None)` {#foldl}
 
-The foldl operator on the list of tensors resulted from unpacking `elems`
-along the first dimension.
+foldl on the list of tensors unpacked from `elems` on dimension 0.
 
 This foldl operator repeatedly applies the callable `fn` to a sequence
 of elements from first to last. The elements are made of the tensors
@@ -112,8 +110,7 @@ of the result tensor is fn(initializer, values[0]).shape`.
 
 ### `tf.foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True, swap_memory=False, name=None)` {#foldr}
 
-The foldr operator on the list of tensors resulted from unpacking `elems`
-along the first dimension.
+foldr on the list of tensors unpacked from `elems` on dimension 0.
 
 This foldr operator repeatedly applies the callable `fn` to a sequence
 of elements from last to first. The elements are made of the tensors
@@ -160,8 +157,7 @@ of the result tensor is `fn(initializer, values[0]).shape`.
 
 ### `tf.scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True, swap_memory=False, name=None)` {#scan}
 
-The scan operator on the list of tensors resulted from unpacking `elems`
-along the first dimension.
+scan on the list of tensors unpacked from `elems` on dimension 0.
 
 This scan operator repeatedly applies the callable `fn` to a sequence
 of elements from first to last. The elements are made of the tensors
