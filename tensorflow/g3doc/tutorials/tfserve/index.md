@@ -20,3 +20,11 @@ See the
 on the TensorFlow Serving site to learn how to build a server that
 dynamically discovers and serves new versions of a trained TensorFlow
 model.
+
+## Serving Inception Model Tutorial
+
+See the
+[serving inception tutorial](https://tensorflow.github.io/serving/serving_inception)
+on the TensorFlow Serving site to learn how to serve the inception model with
+TensorFlow Serving and Kubernetes.
+
