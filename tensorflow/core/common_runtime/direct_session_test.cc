@@ -659,6 +659,8 @@ TEST(DirectSessionTest, TimeoutSession) {
 }
 
 TEST(DirectSessionTest, CostModelTest) {
+  EnableCPUAllocatorDetailedStats(true);
+
   Graph graph(OpRegistry::Global());
 
   Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
@@ -706,11 +708,11 @@ TEST(DirectSessionTest, CostModelTest) {
     const CostModel* cm = (it).second;
     for (Node* node : g->nodes()) {
       if (node->name() == y->name()) {
-        EXPECT_EQ(0, cm->MaxSize(node, 0));
-        EXPECT_EQ(0, cm->Aliases(node, 0));
+        EXPECT_EQ(8, cm->MaxSize(node, 0));
+        EXPECT_EQ(5, cm->Aliases(node, 0));
       } else if (node->name() == y_neg->name()) {
-        EXPECT_EQ(0, cm->MaxSize(node, 0));
-        EXPECT_EQ(0, cm->Aliases(node, 0));
+        EXPECT_EQ(8, cm->MaxSize(node, 0));
+        EXPECT_EQ(6, cm->Aliases(node, 0));
       }
     }
   }
