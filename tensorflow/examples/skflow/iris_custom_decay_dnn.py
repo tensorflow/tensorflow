@@ -17,6 +17,7 @@ from __future__ import print_function
 
 from sklearn import datasets, metrics
 from sklearn.cross_validation import train_test_split
+
 import tensorflow as tf
 from tensorflow.contrib import skflow
 

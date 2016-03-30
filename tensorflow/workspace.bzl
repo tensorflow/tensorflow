@@ -6,7 +6,7 @@
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
     name = "gmock_archive",
-    url = "https://googlemock.googlecode.com/files/gmock-1.7.0.zip",
+    url = "https://archive.openswitch.net/gmock-1.7.0.zip",
     sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
     build_file = path_prefix + "google/protobuf/gmock.BUILD",
   )
@@ -43,8 +43,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "png_archive",
-    url = "https://storage.googleapis.com/libpng-public-archive/libpng-1.2.53.tar.gz",
-    sha256 = "e05c9056d7f323088fd7824d8c6acc03a4a758c4b4916715924edc5dd3223a72",
+    url = "https://github.com/glennrp/libpng/archive/v1.2.53.zip",
+    sha256 = "c35bcc6387495ee6e757507a68ba036d38ad05b415c2553b3debe2a57647a692",
     build_file = path_prefix + "png.BUILD",
   )
 
@@ -74,7 +74,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.git_repository(
     name = "grpc",
-    commit = "73979f4",
+    commit = "3d62fc6",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
   )

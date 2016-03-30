@@ -531,6 +531,10 @@ directory:
 
 ```bash
 bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+
+# To build with GPU support:
+bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+
 mkdir _python_build
 cd _python_build
 ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/* .
@@ -547,7 +551,7 @@ rules.
 
 Starting from the root of your source tree, run:
 
-```python
+```bash
 $ cd tensorflow/models/image/mnist
 $ python convolutional.py
 Successfully downloaded train-images-idx3-ubyte.gz 9912422 bytes.

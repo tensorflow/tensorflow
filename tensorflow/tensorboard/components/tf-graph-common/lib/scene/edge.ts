@@ -39,6 +39,9 @@ let arrowheadMap = d3.scale.quantize()
     .domain([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH])
     .range(["small", "medium", "large", "xlarge"]);
 
+/** Minimum stroke width to put edge labels in the middle of edges */
+const CENTER_EDGE_LABEL_MIN_STROKE_WIDTH = 2.5;
+
 export type EdgeData = {v: string, w: string, label: render.RenderMetaedgeInfo};
 
 export function getEdgeKey(edgeObj: EdgeData) {
@@ -254,11 +257,16 @@ export function appendEdge(edgeGroup, d: EdgeData,
     // We have no information to show on this edge.
     return;
   }
+
+  // Put edge label in the middle of edge only if the edge is thick enough.
+  let baseline = strokeWidth > CENTER_EDGE_LABEL_MIN_STROKE_WIDTH ?
+    "central" : "text-after-edge";
+
   edgeGroup.append("text").append("textPath").attr({
       "xlink:href": "#" + pathId,
       "startOffset": "50%",
       "text-anchor": "middle",
-      "dominant-baseline": "central"
+      "dominant-baseline": baseline
   }).text(labelForEdge);
 };
 

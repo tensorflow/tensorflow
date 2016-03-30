@@ -11,6 +11,10 @@ default_toolchain {
   toolchain_identifier: "local_linux"
 }
 default_toolchain {
+  cpu: "arm"
+  toolchain_identifier: "local_linux"
+}
+default_toolchain {
   cpu: "darwin"
   toolchain_identifier: "local_darwin"
 }

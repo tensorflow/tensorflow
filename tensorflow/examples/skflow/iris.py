@@ -32,3 +32,4 @@ classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
 classifier.fit(X_train, y_train)
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
+

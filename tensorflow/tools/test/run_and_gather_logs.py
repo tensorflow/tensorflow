@@ -44,6 +44,7 @@ from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
 from tensorflow.tools.test import run_and_gather_logs_lib
 
+
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string("test_name", "", """Test target to run.""")
@@ -92,7 +93,7 @@ def main(unused_args):
   else:
     output_path = os.path.abspath(FLAGS.test_log_output)
   tf.gfile.GFile(output_path, "w").write(serialized_test_results)
-  print("Test results written to: %s" % output_path)
+  tf.logging.info("Test results written to: %s" % output_path)
 
 
 if __name__ == "__main__":

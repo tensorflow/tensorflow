@@ -289,7 +289,7 @@ py_library(
 
 cuda_py_tests(
     name = "framework_function_test",
-    size = "small",
+    size = "medium",
     srcs = ["framework/function_test.py"],
     additional_deps = [
         ":functional_ops_lib",
@@ -1078,6 +1078,8 @@ py_library(
 )
 
 medium_kernel_test_list = glob([
+    "kernel_tests/concat_op_test.py",
+    "kernel_tests/division_future_test.py",
     "kernel_tests/fft_ops_test.py",
     "kernel_tests/rnn_test.py",
     "kernel_tests/scatter_ops_test.py",
@@ -1087,6 +1089,7 @@ medium_kernel_test_list = glob([
 
 sharded_kernel_test_list = glob([
     "kernel_tests/cwise_ops_test.py",
+    "kernel_tests/embedding_ops_test.py",
     "kernel_tests/linalg_grad_test.py",
 ])
 
@@ -1161,9 +1164,16 @@ cuda_py_tests(
         ["ops/*_test.py"],
         exclude = [
             "ops/image_ops_test.py",
+            "ops/nn_test.py",
             "ops/op_def_library_test.py",
         ],
     ),
+)
+
+cuda_py_tests(
+    name = "medium_op_tests",
+    size = "medium",
+    srcs = ["ops/nn_test.py"],
 )
 
 cuda_py_tests(

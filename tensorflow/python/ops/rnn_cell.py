@@ -208,7 +208,7 @@ class BasicLSTMCell(RNNCell):
       new_c = c * sigmoid(f + self._forget_bias) + sigmoid(i) * tanh(j)
       new_h = tanh(new_c) * sigmoid(o)
 
-    return new_h, array_ops.concat(1, [new_c, new_h])
+      return new_h, array_ops.concat(1, [new_c, new_h])
 
 
 def _get_concat_variable(name, shape, dtype, num_shards):
@@ -344,7 +344,7 @@ class LSTMCell(RNNCell):
     actual_input_size = inputs.get_shape().as_list()[1]
     if self._input_size and self._input_size != actual_input_size:
       raise ValueError("Actual input size not same as specified: %d vs %d." %
-                       actual_input_size, self._input_size)
+                       (actual_input_size, self._input_size))
     with vs.variable_scope(scope or type(self).__name__,
                            initializer=self._initializer):  # "LSTMCell"
       concat_w = _get_concat_variable(

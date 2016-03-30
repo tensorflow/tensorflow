@@ -197,14 +197,14 @@ class EventAccumulator(object):
         ## Process the event
         if event.HasField('graph_def'):
           if self._graph is not None:
-            logging.warn(('Found more than one graph event per run.'
-                          'Overwritting the graph with the newest event.'))
+            logging.warn(('Found more than one graph event per run. '
+                          'Overwriting the graph with the newest event.'))
           self._graph = event.graph_def
         elif event.HasField('tagged_run_metadata'):
           tag = event.tagged_run_metadata.tag
           if tag in self._tagged_metadata:
             logging.warn('Found more than one "run metadata" event with tag ' +
-                         tag + '. Overwritting it with the newest event.')
+                         tag + '. Overwriting it with the newest event.')
           self._tagged_metadata[tag] = event.tagged_run_metadata.run_metadata
         elif event.HasField('summary'):
           for value in event.summary.value:
