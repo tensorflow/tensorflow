@@ -34,7 +34,7 @@ from tensorflow.examples.tutorials.mnist import mnist
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_float('learning_rate', 0.1, 'Initial learning rate.')
-flags.DEFINE_float('keep_prob', 0.5, 'Dropout keep rate.')
+flags.DEFINE_float('keep_prob', 0.5, 'Dropout keep probability.')
 flags.DEFINE_integer('max_steps', 20000, 'Number of steps to run trainer.')
 flags.DEFINE_integer('hidden1', 1024, 'Number of units in hidden layer 1.')
 flags.DEFINE_integer('hidden2', 1024, 'Number of units in hidden layer 2.')
@@ -178,17 +178,11 @@ def run_training():
 
       # Fill a feed dictionary with the actual set of images and labels
       # for this particular training step.
-      feed_dict_train = fill_feed_dict(data_sets.train,
-                                       images_placeholder,
-                                       labels_placeholder,
-                                       keep_prob_placeholder,
-                                       FLAGS.keep_prob)
-
-      feed_dict_eval = fill_feed_dict(data_sets.train,
-                                      images_placeholder,
-                                      labels_placeholder,
-                                      keep_prob_placeholder,
-                                      1.0)
+      feed_dict = fill_feed_dict(data_sets.train,
+                                 images_placeholder,
+                                 labels_placeholder,
+                                 keep_prob_placeholder,
+                                 FLAGS.keep_prob)
 
       # Run one step of the model.  The return values are the activations
       # from the `train_op` (which is discarded) and the `loss` Op.  To
@@ -196,7 +190,7 @@ def run_training():
       # in the list passed to sess.run() and the value tensors will be
       # returned in the tuple from the call.
       _, loss_value = sess.run([train_op, loss],
-                               feed_dict=feed_dict_train)
+                               feed_dict=feed_dict)
 
       duration = time.time() - start_time
 
@@ -205,7 +199,7 @@ def run_training():
         # Print status to stdout.
         print('Step %d: loss = %.2f (%.3f sec)' % (step, loss_value, duration))
         # Update the events file.
-        summary_str = sess.run(summary_op, feed_dict=feed_dict_eval)
+        summary_str = sess.run(summary_op, feed_dict=feed_dict)
         summary_writer.add_summary(summary_str, step)
 
       # Save a checkpoint and evaluate the model periodically.
