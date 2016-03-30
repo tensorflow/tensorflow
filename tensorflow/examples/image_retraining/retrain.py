@@ -342,7 +342,7 @@ def maybe_download_and_extract():
 
     filepath, _ = urllib.request.urlretrieve(DATA_URL,
                                              filepath,
-                                             reporthook=_progress)
+                                             _progress)
     print()
     statinfo = os.stat(filepath)
     print('Succesfully downloaded', filename, statinfo.st_size, 'bytes.')
