@@ -17,6 +17,28 @@ module tf.graph.scene.edge {
 /** Delimiter between dimensions when showing sizes of tensors. */
 const TENSOR_SHAPE_DELIM = "×";
 
+/** The minimum stroke width of an edge. */
+const MIN_EDGE_WIDTH = 0.75;
+
+/** The maximum stroke width of an edge. */
+const MAX_EDGE_WIDTH = 12;
+
+/** The exponent used in the power scale for edge thickness. */
+const EDGE_WIDTH_SCALE_EXPONENT = 0.3;
+
+/** The domain (min and max value) for the edge width. */
+const DOMAIN_EDGE_WIDTH_SCALE = [1, 5E6];
+
+let edgeWidthScale = d3.scale.pow()
+      .exponent(EDGE_WIDTH_SCALE_EXPONENT)
+      .domain(DOMAIN_EDGE_WIDTH_SCALE)
+      .range([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH])
+      .clamp(true);
+
+let arrowheadMap = d3.scale.quantize()
+    .domain([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH])
+    .range(["small", "medium", "large", "xlarge"]);
+
 export type EdgeData = {v: string, w: string, label: render.RenderMetaedgeInfo};
 
 export function getEdgeKey(edgeObj: EdgeData) {
@@ -79,13 +101,9 @@ export function buildGroup(sceneGroup,
       // index node group for quick highlighting
       sceneElement._edgeGroupIndex[getEdgeKey(d)] = edgeGroup;
 
-      // If any edges are reference edges, add the reference edge class.
-      let extraEdgeClass = d.label.metaedge && d.label.metaedge.numRefEdges
-        ? Class.Edge.REF_LINE + " " + Class.Edge.LINE
-        : undefined;
       // Add line during enter because we're assuming that type of line
       // normally does not change.
-      appendEdge(edgeGroup, d, sceneElement, extraEdgeClass);
+      appendEdge(edgeGroup, d, sceneElement);
     });
 
   edgeGroups.each(position);
@@ -137,6 +155,54 @@ export function getLabelForEdge(metaedge: Metaedge,
 }
 
 /**
+ * Shortens the path enought such that the tip of the start/end marker will
+ * point to the start/end of the path. The marker can be of arbitrary size.
+ *
+ * @param points Array of path control points.
+ * @param marker D3 selection of the <marker> svg element.
+ * @param isStart Is the marker a `start-marker`. If false, the marker is
+ *     an `end-marker`.
+ * @return The new array of control points.
+ */
+function adjustPathPointsForMarker(points: render.Point[],
+    marker: d3.Selection<any>, isStart: boolean): render.Point[] {
+  let lineFunc = d3.svg.line<render.Point>()
+    .x(d => d.x)
+    .y(d => d.y);
+  let path = d3.select(
+      document.createElementNS("http://www.w3.org/2000/svg", "path")
+    ).attr("d", lineFunc(points));
+  let markerWidth = +marker.attr("markerWidth");
+  let viewBox = marker.attr("viewBox").split(" ").map(Number);
+  let viewBoxWidth = viewBox[2] - viewBox[0];
+  let refX = +marker.attr("refX");
+  let pathNode = <SVGPathElement> path.node();
+  if (isStart) {
+    let fractionStickingOut = refX / viewBoxWidth;
+    let length = markerWidth * fractionStickingOut;
+    let point = pathNode.getPointAtLength(length);
+    // Figure out how many segments of the path we need to remove in order
+    // to shorten the path.
+    let segIndex = pathNode.getPathSegAtLength(length);
+    // Update the very first segment.
+    points[segIndex - 1] = {x: point.x, y: point.y};
+    // Ignore every point before segIndex - 1.
+    return points.slice(segIndex - 1);
+  } else {
+    let fractionStickingOut = 1 - refX / viewBoxWidth;
+    let length = pathNode.getTotalLength() - markerWidth * fractionStickingOut;
+    let point = pathNode.getPointAtLength(length);
+    // Figure out how many segments of the path we need to remove in order
+    // to shorten the path.
+    let segIndex = pathNode.getPathSegAtLength(length);
+    // Update the very last segment.
+    points[segIndex] = {x: point.x, y: point.y};
+    // Ignore every point after segIndex.
+    return points.slice(0, segIndex + 1);
+  }
+}
+
+/**
  * For a given d3 selection and data object, create a path to represent the
  * edge described in d.label.
  *
@@ -146,7 +212,7 @@ export function getLabelForEdge(metaedge: Metaedge,
  */
 export function appendEdge(edgeGroup, d: EdgeData,
     sceneElement: {renderHierarchy: render.RenderGraphInfo},
-    edgeClass: string) {
+    edgeClass?: string) {
   let size = 1;
   if (d.label != null && d.label.metaedge != null) {
     // There is an underlying Metaedge.
@@ -160,15 +226,22 @@ export function appendEdge(edgeGroup, d: EdgeData,
   // Give the path a unique id, which will be used to link
   // the textPath (edge label) to this path.
   let pathId = "path_" + getEdgeKey(d);
-  let strokeWidth = sceneElement.renderHierarchy.edgeWidthScale(size);
+  let strokeWidth = edgeWidthScale(size);
 
-  edgeGroup.append("path")
+  let path = edgeGroup.append("path")
     .attr({
       "id": pathId,
       "class": edgeClass,
     }).style({
       "stroke-width": strokeWidth + "px"
     });
+
+  // Check if there is a reference edge and add an arrowhead of the right size.
+  if (d.label && d.label.metaedge && d.label.metaedge.numRefEdges) {
+    let markerId = `ref-arrowhead-${arrowheadMap(strokeWidth)}`;
+    path.style("marker-start", `url(#${markerId})`);
+    d.label.startMarkerId = markerId;
+  }
 
   if (d.label == null || d.label.metaedge == null) {
     // There is no associated metaedge, thus no text.
@@ -201,6 +274,18 @@ function getEdgePathInterpolator(d: EdgeData, i: number, a: string) {
   let renderMetaedgeInfo = <render.RenderMetaedgeInfo> d.label;
   let adjoiningMetaedge = renderMetaedgeInfo.adjoiningMetaedge;
   let points = renderMetaedgeInfo.points;
+
+  // Adjust the path so that start/end markers point to the end
+  // of the path.
+  if (d.label.startMarkerId) {
+    points = adjustPathPointsForMarker(points,
+      d3.select("#" + d.label.startMarkerId), true);
+  }
+  if (d.label.endMarkerId) {
+    points = adjustPathPointsForMarker(points,
+      d3.select("#" + d.label.endMarkerId), false);
+  }
+
   if (!adjoiningMetaedge) {
     return d3.interpolate(a, interpolate(points));
   }

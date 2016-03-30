@@ -289,21 +289,13 @@
   stroke-width: 0.75;
 }
 
-::content .edge > path.edgeline.refline {
-  marker-start: url(#ref-arrowhead);
-}
-
 /* Labels showing tensor shapes on edges */
 ::content .edge > text {
   font-size: 3.5px;
   fill: #666;
 }
 
-::content #arrowhead {
-  fill: #bbb;
-}
-
-::content #ref-arrowhead {
+::content .ref-arrowhead {
   fill: #bbb;
 }
 
@@ -370,15 +362,26 @@
 </div>
 <svg id="svg">
   <defs>
-    <!-- Arrow head for edge paths. -->
-    <marker id="arrowhead" markerWidth="10" markerHeight="10"
-      refX="9" refY="5" orient="auto">
-      <path d="M 0,0 L 10,5 L 0,10 C 3,7 3,3 0,0"/>
+
+    <!-- Arrow heads for edge paths of different predefined sizes. -->
+    <path id="ref-arrowhead-path" d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
+    <marker class="ref-arrowhead" id="ref-arrowhead-small" viewBox="0 0 10 10" markerWidth="10" markerHeight="10"
+      refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+      <use xlink:href="#ref-arrowhead-path" />
     </marker>
-    <marker id="ref-arrowhead" markerWidth="10" markerHeight="10"
-      refX="1" refY="5" orient="auto">
-      <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
+    <marker class="ref-arrowhead" id="ref-arrowhead-medium" viewBox="0 0 10 10" markerWidth="13" markerHeight="13"
+        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+      <use xlink:href="#ref-arrowhead-path" />
     </marker>
+    <marker class="ref-arrowhead" id="ref-arrowhead-large" viewBox="0 0 10 10" markerWidth="16" markerHeight="16"
+        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+      <use xlink:href="#ref-arrowhead-path" />
+    </marker>
+    <marker class="ref-arrowhead" id="ref-arrowhead-xlarge" viewBox="0 0 10 10" markerWidth="20" markerHeight="20"
+        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+      <use xlink:href="#ref-arrowhead-path" />
+    </marker>
+
     <!-- Arrow head for annotation edge paths. -->
     <marker id="annotation-arrowhead" markerWidth="5" markerHeight="5"
       refX="5" refY="2.5" orient="auto">
