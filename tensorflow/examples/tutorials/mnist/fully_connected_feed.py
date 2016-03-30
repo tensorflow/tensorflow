@@ -33,11 +33,12 @@ from tensorflow.examples.tutorials.mnist import mnist
 # Basic model parameters as external flags.
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
-flags.DEFINE_integer('max_steps', 2000, 'Number of steps to run trainer.')
-flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
-flags.DEFINE_integer('hidden2', 32, 'Number of units in hidden layer 2.')
-flags.DEFINE_integer('batch_size', 100, 'Batch size.  '
+flags.DEFINE_float('learning_rate', 0.1, 'Initial learning rate.')
+flags.DEFINE_float('keep_prob', 0.5, 'Dropout keep rate.')
+flags.DEFINE_integer('max_steps', 20000, 'Number of steps to run trainer.')
+flags.DEFINE_integer('hidden1', 1024, 'Number of units in hidden layer 1.')
+flags.DEFINE_integer('hidden2', 1024, 'Number of units in hidden layer 2.')
+flags.DEFINE_integer('batch_size', 200, 'Batch size.  '
                      'Must divide evenly into the dataset sizes.')
 flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
@@ -63,10 +64,11 @@ def placeholder_inputs(batch_size):
   images_placeholder = tf.placeholder(tf.float32, shape=(batch_size,
                                                          mnist.IMAGE_PIXELS))
   labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size))
-  return images_placeholder, labels_placeholder
+  keep_prob_placeholder = tf.placeholder(tf.float32)
+  return images_placeholder, labels_placeholder, keep_prob_placeholder
 
 
-def fill_feed_dict(data_set, images_pl, labels_pl):
+def fill_feed_dict(data_set, images_pl, labels_pl, keep_prob_pl, keep_prob):
   """Fills the feed_dict for training the given step.
 
   A feed_dict takes the form of:
@@ -90,6 +92,7 @@ def fill_feed_dict(data_set, images_pl, labels_pl):
   feed_dict = {
       images_pl: images_feed,
       labels_pl: labels_feed,
+      keep_prob_pl: keep_prob,
   }
   return feed_dict
 
@@ -98,6 +101,7 @@ def do_eval(sess,
             eval_correct,
             images_placeholder,
             labels_placeholder,
+            keep_prob_placeholder,
             data_set):
   """Runs one evaluation against the full epoch of data.
 
@@ -116,7 +120,9 @@ def do_eval(sess,
   for step in xrange(steps_per_epoch):
     feed_dict = fill_feed_dict(data_set,
                                images_placeholder,
-                               labels_placeholder)
+                               labels_placeholder,
+                               keep_prob_placeholder,
+                               1.0)
     true_count += sess.run(eval_correct, feed_dict=feed_dict)
   precision = true_count / num_examples
   print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
@@ -132,13 +138,14 @@ def run_training():
   # Tell TensorFlow that the model will be built into the default Graph.
   with tf.Graph().as_default():
     # Generate placeholders for the images and labels.
-    images_placeholder, labels_placeholder = placeholder_inputs(
+    images_placeholder, labels_placeholder, keep_prob_placeholder = placeholder_inputs(
         FLAGS.batch_size)
 
     # Build a Graph that computes predictions from the inference model.
     logits = mnist.inference(images_placeholder,
                              FLAGS.hidden1,
-                             FLAGS.hidden2)
+                             FLAGS.hidden2,
+                             keep_prob_placeholder)
 
     # Add to the Graph the Ops for loss calculation.
     loss = mnist.loss(logits, labels_placeholder)
@@ -171,9 +178,17 @@ def run_training():
 
       # Fill a feed dictionary with the actual set of images and labels
       # for this particular training step.
-      feed_dict = fill_feed_dict(data_sets.train,
-                                 images_placeholder,
-                                 labels_placeholder)
+      feed_dict_train = fill_feed_dict(data_sets.train,
+                                       images_placeholder,
+                                       labels_placeholder,
+                                       keep_prob_placeholder,
+                                       FLAGS.keep_prob)
+
+      feed_dict_eval = fill_feed_dict(data_sets.train,
+                                      images_placeholder,
+                                      labels_placeholder,
+                                      keep_prob_placeholder,
+                                      1.0)
 
       # Run one step of the model.  The return values are the activations
       # from the `train_op` (which is discarded) and the `loss` Op.  To
@@ -181,7 +196,7 @@ def run_training():
       # in the list passed to sess.run() and the value tensors will be
       # returned in the tuple from the call.
       _, loss_value = sess.run([train_op, loss],
-                               feed_dict=feed_dict)
+                               feed_dict=feed_dict_train)
 
       duration = time.time() - start_time
 
@@ -190,7 +205,7 @@ def run_training():
         # Print status to stdout.
         print('Step %d: loss = %.2f (%.3f sec)' % (step, loss_value, duration))
         # Update the events file.
-        summary_str = sess.run(summary_op, feed_dict=feed_dict)
+        summary_str = sess.run(summary_op, feed_dict=feed_dict_eval)
         summary_writer.add_summary(summary_str, step)
 
       # Save a checkpoint and evaluate the model periodically.
@@ -202,6 +217,7 @@ def run_training():
                 eval_correct,
                 images_placeholder,
                 labels_placeholder,
+                keep_prob_placeholder,
                 data_sets.train)
         # Evaluate against the validation set.
         print('Validation Data Eval:')
@@ -209,6 +225,7 @@ def run_training():
                 eval_correct,
                 images_placeholder,
                 labels_placeholder,
+                keep_prob_placeholder,
                 data_sets.validation)
         # Evaluate against the test set.
         print('Test Data Eval:')
@@ -216,6 +233,7 @@ def run_training():
                 eval_correct,
                 images_placeholder,
                 labels_placeholder,
+                keep_prob_placeholder,
                 data_sets.test)
 
 
