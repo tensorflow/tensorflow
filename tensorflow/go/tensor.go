@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"time"
 	"unsafe"
 )
 
@@ -372,17 +373,128 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 }
 
 // NewTensor returns a new tensor with teh specified type, shape and data.
+// The supported  data types are:
+//   - int
+//   - int8
+//   - int16
+//   - int32
+//   - int64
+//   - uint8
+//   - uint16
+//   - float32
+//   - float64
 func NewTensor(shape TensorShape, data interface{}) (*Tensor, error) {
-	var dataType DataType
-
 	v := reflect.ValueOf(data)
 	if v.Kind() != reflect.Slice {
 		return nil, ErrSliceExpected
 	}
 
+	dataType, err := getDataTypeFromReflect(v.Type().Elem().Kind(), int64(v.Type().Elem().Size()))
+	if err != nil {
+		return nil, err
+	}
+
+	dataSize := int64(v.Len()) * int64(v.Type().Elem().Size())
+	dataPtr := v.Pointer()
+
+	return newTensor(dataType, shape, dataPtr, dataSize)
+}
+
+func Constant(data interface{}) (*Tensor, error) {
+	var dataPtr uintptr
+
+	switch v := data.(type) {
+	case string:
+		buf := encodeStrings([]string{v})
+		t, err := newTensor(DataType_DT_STRING, tensorShapeScalar, uintptr(unsafe.Pointer(&(buf[0]))), int64(len(buf)))
+		if err != nil {
+			return nil, err
+		}
+		return t, nil
+	}
+
+	dataSer, dims, dataType, dataSize, err := serialize(data, 0, [][]int64{})
+	if err != nil {
+		return nil, err
+	}
+	ts := TensorShape(dims)
+
+	switch dataType {
+	case DataType(TF_FLOAT):
+		res := make([]float32, len(dataSer))
+		for i, v := range dataSer {
+			res[i] = v.(float32)
+		}
+		dataPtr = reflect.ValueOf(res).Pointer()
+	case DataType(TF_DOUBLE):
+		res := make([]float64, len(dataSer))
+		for i, v := range dataSer {
+			res[i] = v.(float64)
+		}
+		dataPtr = reflect.ValueOf(res).Pointer()
+	case DataType(TF_INT8), DataType(TF_INT16), DataType(TF_INT32), DataType(TF_UINT8):
+		res := make([]int32, len(dataSer))
+		for i, v := range dataSer {
+			res[i] = v.(int32)
+		}
+		dataPtr = reflect.ValueOf(res).Pointer()
+	case DataType(TF_INT64):
+		res := make([]int64, len(dataSer))
+		for i, v := range dataSer {
+			res[i] = v.(int64)
+		}
+		dataPtr = reflect.ValueOf(res).Pointer()
+	case DataType(TF_BOOL):
+		res := make([]bool, len(dataSer))
+		for i, v := range dataSer {
+			res[i] = v.(bool)
+		}
+		dataPtr = reflect.ValueOf(res).Pointer()
+	//case TF_DataType(TF_STRING):
+	default:
+		return nil, ErrTensorTypeNotSupported
+	}
+
+	return newTensor(dataType, ts, dataPtr, int64(len(dataSer))*dataSize)
+}
+
+func serialize(data interface{}, deep int, dimsIn [][]int64) (ser []interface{}, dims [][]int64, dataType DataType, dataSize int64, err error) {
+	v := reflect.ValueOf(data)
+	dims = dimsIn
+
+	if len(dims) == deep {
+		dims = append(dims, []int64{int64(v.Len())})
+	}
+	// Check the value of the elements on this slice, if they are still
+	// slices call to recursivity, if now just add the results
 	switch v.Type().Elem().Kind() {
+	case reflect.Slice:
+		for i := 0; i < v.Len(); i++ {
+			var intSer []interface{}
+			intSer, dims, dataType, dataSize, err = serialize(v.Index(i).Interface(), deep+1, dims)
+			if err != nil {
+				return
+			}
+			ser = append(ser, intSer...)
+		}
+	default:
+		dataSize = int64(v.Type().Elem().Size())
+		dataType, err = getDataTypeFromReflect(v.Type().Elem().Kind(), dataSize)
+		if err != nil {
+			return
+		}
+		for i := 0; i < v.Len(); i++ {
+			ser = append(ser, v.Index(i).Interface())
+		}
+	}
+
+	return
+}
+
+func getDataTypeFromReflect(refType reflect.Kind, dataSize int64) (dataType DataType, err error) {
+	switch refType {
 	case reflect.Int:
-		if cBytesInt32 == int(v.Type().Elem().Size()) {
+		if cBytesInt32 == dataSize {
 			dataType = DataType(TF_INT32)
 		} else {
 			dataType = DataType(TF_INT64)
@@ -404,19 +516,19 @@ func NewTensor(shape TensorShape, data interface{}) (*Tensor, error) {
 	case reflect.Float64:
 		dataType = DataType(TF_DOUBLE)
 	default:
-		return nil, ErrDataTypeNotSupported
+		return 0, ErrDataTypeNotSupported
 	}
 
-	dataSize := int64(v.Len()) * int64(v.Type().Elem().Size())
-	dataPtr := v.Pointer()
-
-	return newTensor(dataType, shape, dataPtr, dataSize)
+	return
 }
 
 func newTensor(dataType DataType, shape TensorShape, data uintptr, size int64) (*Tensor, error) {
 	t := &Tensor{
 		tensor: TF_NewTensor_wrapper(TF_DataType(dataType), &(shape[0][0]), len(shape), data, size),
 	}
+	// Super ugly hack to fix problems with the garbage collector during
+	// the tensor initialization
+	time.Sleep(time.Millisecond)
 
 	return t, nil
 }

@@ -561,3 +561,71 @@ func TestBool(t *testing.T) {
 		}
 	}
 }
+
+func TestConstant(t *testing.T) {
+	tensor, err := tensorflow.Constant([][][]int64{
+		{
+			{10, 12},
+			{14, 16},
+		},
+		{
+			{18, 20},
+			{22, 24},
+		},
+	})
+	if err != nil {
+		t.Error("Problem trying to instance the Constant, Error:", err)
+		t.FailNow()
+	}
+
+	tensorToCompare := getTensorFromGraph(t, fmt.Sprintf(`
+		node {
+			name: "output"
+			op: "Const"
+			attr {
+				key: "dtype"
+				value {
+					type: DT_INT64
+				}
+			}
+			attr {
+				key: "value"
+				value {
+					tensor {
+						dtype: DT_INT64
+						tensor_shape {
+							dim {
+								size: 2
+							}
+							dim {
+								size: 2
+							}
+							dim {
+								size: 2
+							}
+						}
+						tensor_content: "\n\000\000\000\000\000\000\000\014\000\000\000\000\000\000\000\016\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\022\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\026\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000"
+					}
+				}
+			}
+		}
+		version: 5`),
+	)
+
+	tensorSlice, err := tensorToCompare.AsInt64()
+	if err != nil {
+		t.Error("Problem trying to get the tensor as slice of integers, Error:", err)
+		t.FailNow()
+	}
+
+	resultSlice, err := tensor.AsInt64()
+	if err != nil {
+		t.Error("Problem trying to get the tensor as slice of integers, Error:", err)
+		t.FailNow()
+	}
+
+	if !reflect.DeepEqual(tensorSlice, resultSlice) {
+		t.Error("The returned values doesn't coeesponds with the expected strings:", tensorSlice, resultSlice)
+		t.FailNow()
+	}
+}
