@@ -19,8 +19,6 @@
 @@assert_scalar_int
 @@local_variable
 @@reduce_sum_n
-@@with_shape
-@@with_same_shape
 """
 
 from __future__ import absolute_import
