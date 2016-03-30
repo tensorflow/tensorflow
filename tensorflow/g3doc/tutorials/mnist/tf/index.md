@@ -385,8 +385,7 @@ may be instantiated to write the events files, which
 contain both the graph itself and the values of the summaries.
 
 ```python
-summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                        graph_def=sess.graph_def)
+summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 ```
 
 Lastly, the events file will be updated with new summary values every time the
