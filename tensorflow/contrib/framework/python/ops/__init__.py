@@ -20,5 +20,4 @@ from __future__ import print_function
 
 # TODO(ptucker): Add these to tf.contrib.variables?
 # pylint: disable=wildcard-import
-from tensorflow.contrib.framework.python.ops.ops import *
 from tensorflow.contrib.framework.python.ops.variables import *
