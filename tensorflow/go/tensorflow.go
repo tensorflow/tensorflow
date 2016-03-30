@@ -1,13 +1,14 @@
 package tensorflow
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 
 	"github.com/golang/protobuf/proto"
 )
 
+// Session A Session instance lets a caller drive a TensorFlow graph
+// computation.
 type Session struct {
 	session TF_Session
 }
@@ -15,6 +16,7 @@ type Session struct {
 // NewSession initializes a new TensorFlow session.
 func NewSession() (*Session, error) {
 	status := TF_NewStatus()
+
 	return &Session{
 		session: TF_NewSession(
 			TF_NewSessionOptions(),
@@ -23,6 +25,11 @@ func NewSession() (*Session, error) {
 	}, statusToError(status)
 }
 
+// Run Runs the operations on the target nodes, or all the operations if not
+// targets are specified. the Parameter Input in a dictionary where the key is
+// the tensor name on the graph, and the value the Tensor. The parameter
+// outputs is used to specify the tensors from the graph to be returned in the
+// same order as they occur on the slice.
 func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []string) ([]*Tensor, error) {
 	inputNames := NewStringVector()
 	inputValues := NewTensorVector()
@@ -51,9 +58,12 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 			tensor: outputValues.Get(int(i)),
 		})
 	}
+
 	return result, statusToError(status)
 }
 
+// LoadGraphFromText Loads a Graph as plain text from the file on the specified
+// path.
 func LoadGraphFromText(path string) (graph *GraphDef, err error) {
 	graphStr, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -68,6 +78,7 @@ func LoadGraphFromText(path string) (graph *GraphDef, err error) {
 	return
 }
 
+// ExtendGraph Loads the graph definition on the session
 func (s *Session) ExtendGraph(graph *GraphDef) error {
 	status := TF_NewStatus()
 	buf, err := proto.Marshal(graph)
@@ -75,6 +86,7 @@ func (s *Session) ExtendGraph(graph *GraphDef) error {
 		return err
 	}
 	TF_ExtendGraph(s.session, buf, status)
+
 	return statusToError(status)
 }
 
@@ -85,28 +97,6 @@ func statusToError(status TF_Status) error {
 	if code != 0 {
 		return fmt.Errorf("tensorflow: %d: %v", code, message)
 	}
+
 	return nil
-}
-
-func encodeStrings(in []string) []byte {
-	size := 0
-	for _, s := range in {
-		size += 8
-		size += len(s)
-		size += len(proto.EncodeVarint(uint64(len(s))))
-	}
-
-	out := make([]byte, size)
-
-	dataPos := 8 * len(in)
-	data := out[dataPos:]
-	offset := 0
-	for i, s := range in {
-		inBytes := []byte(s)
-		binary.LittleEndian.PutUint64(out[i*8:], uint64(offset))
-		inLen := proto.EncodeVarint(uint64(len(s)))
-		offset += copy(data[offset:], inLen)
-		offset += copy(data[offset:], inBytes)
-	}
-	return out
 }

@@ -6,9 +6,15 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"time"
 	"unsafe"
+
+	"github.com/golang/protobuf/proto"
 )
+
+/*
+#include <string.h>
+*/
+import "C"
 
 const (
 	cBellByte = 7
@@ -39,8 +45,6 @@ var (
 	ErrDataTypeNotSupported = errors.New("Data type still not supported")
 	// ErrSliceExpected The argument must be an Slice
 	ErrSliceExpected = errors.New("The argument must be an Slice")
-
-	tensorShapeScalar = TensorShape{{1}}
 )
 
 // TensorInt Interface to be implemented by the tensors.
@@ -108,7 +112,7 @@ func (t *Tensor) String() string {
 // AsStr returns the content of the tensor as slice of strings if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 // The datatypes are:
-//   - DT_STRING
+//  - DT_STRING
 func (t *Tensor) AsStr() (res [][]byte, err error) {
 	if TF_DataType(TF_STRING) != TF_TensorType(t.tensor) {
 		err = ErrInvalidTensorType
@@ -147,7 +151,7 @@ func (t *Tensor) AsStr() (res [][]byte, err error) {
 // AsFloat32 returns the content of the tensor as a slice of float32 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 // The datatypes are:
-//   - DT_FLOAT
+//  - DT_FLOAT
 func (t *Tensor) AsFloat32() (res []float32, err error) {
 	if TF_DataType(TF_FLOAT) != TF_TensorType(t.tensor) {
 		err = ErrInvalidTensorType
@@ -172,7 +176,7 @@ func (t *Tensor) AsFloat32() (res []float32, err error) {
 // AsFloat64 returns the content of the tensor as a slice of float64 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 // The datatypes are:
-//   - DT_DOUBLE
+//  - DT_DOUBLE
 func (t *Tensor) AsFloat64() (res []float64, err error) {
 	if TF_DataType(TF_DOUBLE) != TF_TensorType(t.tensor) {
 		err = ErrInvalidTensorType
@@ -197,10 +201,10 @@ func (t *Tensor) AsFloat64() (res []float64, err error) {
 // AsInt32 returns the content of the tensor as a slice of int32 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 // The datatypes are:
-//   - DT_INT32
-//   - DT_INT16
-//   - DT_INT8
-//   - DT_UINT8
+//  - DT_INT32
+//  - DT_INT16
+//  - DT_INT8
+//  - DT_UINT8
 func (t *Tensor) AsInt32() (res []int32, err error) {
 	if t.IntVal != nil {
 		return t.IntVal, nil
@@ -237,7 +241,7 @@ func (t *Tensor) AsInt32() (res []int32, err error) {
 // AsInt64 returns the content of the tensor as a slice of int64 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 // The datatypes are:
-//   - DT_INT64
+//  - DT_INT64
 func (t *Tensor) AsInt64() (res []int64, err error) {
 	if TF_DataType(TF_INT64) != TF_TensorType(t.tensor) {
 		err = ErrInvalidTensorType
@@ -285,7 +289,7 @@ func (t *Tensor) AsInt64() (res []int64, err error) {
 // AsBool returns the content of the tensor as a slice of bool if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 // The datatypes are:
-//   - DT_BOOL
+//  - DT_BOOL
 func (t *Tensor) AsBool() (res []bool, err error) {
 	if TF_DataType(TF_BOOL) != TF_TensorType(t.tensor) {
 		err = ErrInvalidTensorType
@@ -374,15 +378,15 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 
 // NewTensor returns a new tensor with teh specified type, shape and data.
 // The supported  data types are:
-//   - int
-//   - int8
-//   - int16
-//   - int32
-//   - int64
-//   - uint8
-//   - uint16
-//   - float32
-//   - float64
+//  - int
+//  - int8
+//  - int16
+//  - int32
+//  - int64
+//  - uint8
+//  - uint16
+//  - float32
+//  - float64
 func NewTensor(shape TensorShape, data interface{}) (*Tensor, error) {
 	v := reflect.ValueOf(data)
 	if v.Kind() != reflect.Slice {
@@ -397,16 +401,23 @@ func NewTensor(shape TensorShape, data interface{}) (*Tensor, error) {
 	dataSize := int64(v.Len()) * int64(v.Type().Elem().Size())
 	dataPtr := v.Pointer()
 
-	return newTensor(dataType, shape, dataPtr, dataSize)
+	return newTensor(dataType, shape, unsafe.Pointer(dataPtr), dataSize)
 }
 
+// Constant Initializes a tensor based on the slice passed by parameter, the
+// data type and shape is deducted from the data parameter
+// Example:
+//  Constant([][]int64{
+//    {1, 2, 3, 4},
+//    {5, 6, 7, 8},
+//  })
 func Constant(data interface{}) (*Tensor, error) {
 	var dataPtr uintptr
 
 	switch v := data.(type) {
 	case string:
 		buf := encodeStrings([]string{v})
-		t, err := newTensor(DataType_DT_STRING, tensorShapeScalar, uintptr(unsafe.Pointer(&(buf[0]))), int64(len(buf)))
+		t, err := newTensor(DataType_DT_STRING, TensorShape{{1}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
 		if err != nil {
 			return nil, err
 		}
@@ -455,7 +466,7 @@ func Constant(data interface{}) (*Tensor, error) {
 		return nil, ErrTensorTypeNotSupported
 	}
 
-	return newTensor(dataType, ts, dataPtr, int64(len(dataSer))*dataSize)
+	return newTensor(dataType, ts, unsafe.Pointer(dataPtr), int64(len(dataSer))*dataSize)
 }
 
 func serialize(data interface{}, deep int, dimsIn [][]int64) (ser []interface{}, dims [][]int64, dataType DataType, dataSize int64, err error) {
@@ -522,13 +533,49 @@ func getDataTypeFromReflect(refType reflect.Kind, dataSize int64) (dataType Data
 	return
 }
 
-func newTensor(dataType DataType, shape TensorShape, data uintptr, size int64) (*Tensor, error) {
-	t := &Tensor{
-		tensor: TF_NewTensor_wrapper(TF_DataType(dataType), &(shape[0][0]), len(shape), data, size),
+func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size int64) (*Tensor, error) {
+	// Move the data to C allocated memory
+	shapes := 0
+	for _, v := range shape {
+		shapes += len(v)
 	}
-	// Super ugly hack to fix problems with the garbage collector during
-	// the tensor initialization
-	time.Sleep(time.Millisecond)
+	llDims := make([]C.longlong, shapes)
+	i := 0
+	for _, v := range shape {
+		for _, s := range v {
+			llDims[i] = C.longlong(s)
+		}
+		i++
+	}
+
+	dataLen := C.size_t(size)
+	cData := C.malloc(dataLen)
+	C.memcpy(cData, data, dataLen)
+
+	t := &Tensor{
+		tensor: TF_NewTensor_wrapper(TF_DataType(dataType), (*int64)(unsafe.Pointer(&llDims[0])), len(llDims), uintptr(cData), size),
+	}
 
 	return t, nil
+}
+
+func encodeStrings(in []string) []byte {
+	size := 0
+	for _, s := range in {
+		size += 8 + len(s) + len(proto.EncodeVarint(uint64(len(s))))
+	}
+
+	out := make([]byte, size)
+
+	dataPos := 8 * len(in)
+	data := out[dataPos:]
+	offset := 0
+	for i, s := range in {
+		inBytes := []byte(s)
+		binary.LittleEndian.PutUint64(out[i*8:], uint64(offset))
+		inLen := proto.EncodeVarint(uint64(len(s)))
+		offset += copy(data[offset:], inLen)
+		offset += copy(data[offset:], inBytes)
+	}
+	return out
 }

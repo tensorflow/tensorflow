@@ -15,8 +15,8 @@ In order to generate a valid Graph you can use the next Python code
 ```python
 import tensorflow as tf
 
-input1 = tf.placeholder(tf.int64, shape=(3), name='input1')
-input2 = tf.placeholder(tf.int64, shape=(3), name='input2')
+input1 = tf.placeholder(tf.int64, shape=(2, 2, 2), name='input1')
+input2 = tf.placeholder(tf.int64, shape=(2, 2, 2), name='input2')
 output = tf.add(input1, input2, name='output')
 
 with tf.Session() as sess:
@@ -38,17 +38,33 @@ import (
 
 func main() {
 	// This are the input tensors to be used
-	inputSlice1 := []int64{1, 2, 3}
-	inputSlice2 := []int64{4, 5, 6}
+	inputSlice1 := [][][]int64{
+		{
+			{1, 2},
+			{3, 4},
+		}, {
+			{5, 6},
+			{7, 8},
+		},
+	}
+	inputSlice2 := [][][]int64{
+		{
+			{9, 10},
+			{11, 12},
+		}, {
+			{13, 14},
+			{15, 16},
+		},
+	}
 
-	// Create the two tensors, the data type is recognised automatically,
-	// the second parameter are the unrolled tensor values
-	t1, err := tensorflow.NewTensor([][]int64{{3}}, inputSlice1)
+	// Create the two tensors, the data type is recognized automatically as
+	// also the tensor shape from the input slice
+	t1, err := tensorflow.Constant(inputSlice1)
 	if err != nil {
 		log.Fatal("Problem trying create a new tensor, Error:", err)
 	}
 
-	t2, err := tensorflow.NewTensor([][]int64{{3}}, inputSlice2)
+	t2, err := tensorflow.Constant(inputSlice2)
 	if err != nil {
 		log.Fatal("Problem trying create a new tensor, Error:", err)
 	}
@@ -81,25 +97,32 @@ func main() {
 		log.Fatalf("The expected number of outputs is 1 but: %d returned", len(out))
 	}
 
-	for i := 0; i < len(inputSlice1); i++ {
-		// Using GetVal we can access to the corresponding positions of
-		// the tensor as if we had been accessing to the positions in a
-		// multidimensional array, for instance GetVal(1, 2, 3) is
-		// equivalent to array[1][2][3] on a three dimensional array
-		val, err := out[0].GetVal(i)
-		if err != nil {
-			log.Fatal("Error trying to read the output tensor, Error:", err)
-		}
-		if val != inputSlice1[i]+inputSlice2[i] {
-			log.Println("The sum of the two elements: %d + %d doesn't match with the returned value: %d", inputSlice1[i], inputSlice2[i], val)
-		}
+	outputTensor := out[0]
+	for x := 0; x < outputTensor.Dim(0); x++ {
+		for y := 0; y < outputTensor.Dim(1); y++ {
+			for z := 0; z < outputTensor.Dim(2); z++ {
+				// Using GetVal we can access to the corresponding positions of
+				// the tensor as if we had been accessing to the positions in a
+				// multidimensional array, for instance GetVal(1, 2, 3) is
+				// equivalent to array[1][2][3] on a three dimensional array
+				val, err := out[0].GetVal(x, y, z)
+				if err != nil {
+					log.Fatal("Error trying to read the output tensor, Error:", err)
+				}
+				if val != inputSlice1[x][y][z]+inputSlice2[x][y][z] {
+					log.Printf(
+						"The sum of the two elements: %d + %d doesn't match with the returned value: %d",
+						inputSlice1[x][y][z], inputSlice2[x][y][z], val)
+				}
 
-		log.Println("The value value on position:", i, "is:", val)
+				log.Println("The value value on coordinates:", x, y, z, "is:", val)
+			}
+		}
 	}
 }
 ```
 
-As you can see the previous code creates two Tensors to be processed by the previously generated Graph and after the execution returns the Tensor with the result.
+As you can see the previous code creates two Tensors to be processed by the previously generated Graph, after the execution returns the Tensor with the result.
 
 ## Troubleshooting
 
