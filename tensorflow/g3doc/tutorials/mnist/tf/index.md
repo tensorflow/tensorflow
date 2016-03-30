@@ -23,7 +23,9 @@ File | Purpose
 
 Simply run the `fully_connected_feed.py` file directly to start training:
 
-`python fully_connected_feed.py`
+```bash
+python fully_connected_feed.py
+```
 
 ## Prepare the Data
 
