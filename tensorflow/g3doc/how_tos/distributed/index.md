@@ -21,7 +21,7 @@ test your installation by starting a local server as follows:
 $ python
 >>> import tensorflow as tf
 >>> c = tf.constant("Hello, distributed TensorFlow!")
->>> server = tf.GrpcServer.new_local_server()
+>>> server = tf.GrpcServer.create_local_server()
 >>> sess = tf.Session(server.target)
 >>> sess.run(c)
 'Hello, distributed TensorFlow!'
@@ -29,7 +29,7 @@ $ python
 
 ## Cluster definition
 
-The `tf.GrpcServer.new_local_server()` method creates a single-process cluster.
+The `tf.GrpcServer.create_local_server()` method creates a single-process cluster.
 To create a more realistic distributed cluster, you create a `tf.GrpcServer` by
 passing in a `tf.ServerDef` that defines the membership of a TensorFlow cluster,
 and then run multiple processes that each have the same cluster definition.
