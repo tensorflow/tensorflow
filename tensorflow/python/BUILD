@@ -51,7 +51,10 @@ py_library(
         "platform/googletest.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":platform"],
+    deps = [
+        ":platform",
+        ":timeline",
+    ],
 )
 
 py_tests(
