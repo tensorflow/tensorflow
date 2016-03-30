@@ -220,16 +220,19 @@ typedef Eigen::GpuDevice GPUDevice;
       context, out_depth == GetTensorDim(out_backprop, data_format_, 'C'),     \
       errors::InvalidArgument(                                                 \
           label, ": filter and out_backprop must have the same out_depth"));   \
-  const auto stride = GetTensorDim(strides_, data_format_, 'H');               \
+  const auto stride_rows = GetTensorDim(strides_, data_format_, 'H');          \
+  const auto stride_cols = GetTensorDim(strides_, data_format_, 'W');          \
   int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                  \
-  if (filter_cols == filter_rows && filter_rows == 1 && stride == 1) {         \
+  if (filter_cols == filter_rows && filter_rows == 1 && stride_rows == 1 &&    \
+      stride_cols == 1) {                                                      \
     out_rows = input_rows;                                                     \
     out_cols = input_cols;                                                     \
   } else {                                                                     \
     OP_REQUIRES_OK(                                                            \
-        context, Get2dOutputSize(input_rows, input_cols, filter_rows,          \
-                                 filter_cols, stride, stride, padding_,        \
-                                 &out_rows, &out_cols, &pad_rows, &pad_cols)); \
+        context,                                                               \
+        Get2dOutputSize(input_rows, input_cols, filter_rows, filter_cols,      \
+                        stride_rows, stride_cols, padding_, &out_rows,         \
+                        &out_cols, &pad_rows, &pad_cols));                     \
   }                                                                            \
   OP_REQUIRES(                                                                 \
       context, output_rows == out_rows,                                        \
@@ -241,8 +244,8 @@ typedef Eigen::GpuDevice GPUDevice;
       errors::InvalidArgument(                                                 \
           label, ": Number of cols of out_backprop doesn't match computed: ",  \
           "actual = ", output_cols, ", computed = ", out_cols));               \
-  const auto expanded_out_rows = (output_rows - 1) * stride + 1;               \
-  const auto expanded_out_cols = (output_cols - 1) * stride + 1;               \
+  const auto expanded_out_rows = (output_rows - 1) * stride_rows + 1;          \
+  const auto expanded_out_cols = (output_cols - 1) * stride_cols + 1;          \
   const auto padded_out_rows = input_rows + filter_rows - 1;                   \
   const auto padded_out_cols = input_cols + filter_cols - 1;                   \
   const int top_pad_rows = filter_rows - 1 - pad_rows;                         \
@@ -251,7 +254,7 @@ typedef Eigen::GpuDevice GPUDevice;
       padded_out_rows - expanded_out_rows - top_pad_rows;                      \
   const int right_pad_cols =                                                   \
       padded_out_cols - expanded_out_cols - left_pad_cols;                     \
-  Eigen::DSizes<int, 4> strides{1, stride, stride, 1};                         \
+  Eigen::DSizes<int, 4> strides{1, stride_rows, stride_cols, 1};               \
   VLOG(2) << "Conv2d: " << label                                               \
           << ": expanded_out_rows = " << expanded_out_rows                     \
           << ", expanded_out_cols = " << expanded_out_cols                     \
@@ -263,7 +266,8 @@ typedef Eigen::GpuDevice GPUDevice;
           << ", left_pad_cols = " << left_pad_cols                             \
           << ", bottom_pad_rows = " << bottom_pad_rows                         \
           << ", right_pad_cols = " << right_pad_cols                           \
-          << ", strides = " << strides[1]
+          << ", strides_rows = " << strides[1]                                 \
+          << ", strides_cols = " << strides[2]
 
 namespace {
 Status VectorToShape(const TTypes<int32>::ConstVec& sizes, TensorShape* out) {
@@ -301,10 +305,6 @@ class Conv2DFastBackpropInputOp : public OpKernel {
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, strides_[1] == strides_[2],
-                errors::InvalidArgument(
-                    "Current implementation only supports equal length "
-                    "strides in the row and column dimensions."));
     OP_REQUIRES(
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
@@ -332,7 +332,7 @@ class Conv2DFastBackpropInputOp : public OpKernel {
     functor::SpatialConvolutionBackwardInput<Device, T>()(
         context->eigen_device<Device>(), in_backprop->tensor<T, 4>(),
         filter.tensor<T, 4>(), out_backprop.tensor<T, 4>(), input_rows,
-        input_cols, stride, stride);
+        input_cols, stride_rows, stride_cols);
   }
 
  private:
@@ -360,10 +360,6 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, strides_[1] == strides_[2],
-                errors::InvalidArgument(
-                    "Current implementation only supports equal length "
-                    "strides in the row and column dimensions."));
     OP_REQUIRES(
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
@@ -395,11 +391,11 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     int pad_bottom;
     int pad_left;
     int pad_right;
-    OP_REQUIRES_OK(
-        context,
-        Get2dOutputSizeVerbose(input_rows, input_cols, filter_rows, filter_cols,
-                               stride, stride, padding_, &out_rows, &out_cols,
-                               &pad_top, &pad_bottom, &pad_left, &pad_right));
+    OP_REQUIRES_OK(context,
+                   Get2dOutputSizeVerbose(
+                       input_rows, input_cols, filter_rows, filter_cols,
+                       stride_rows, stride_cols, padding_, &out_rows, &out_cols,
+                       &pad_top, &pad_bottom, &pad_left, &pad_right));
 
     // The total dimension size of each kernel.
     const int filter_total_size = filter_rows * filter_cols * in_depth;
@@ -489,7 +485,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
         Col2im<T>(col_buffer_data, in_depth, input_rows, input_cols,
                   filter_rows, filter_cols, pad_top, pad_left, pad_bottom,
-                  pad_right, stride, stride, input_backprop_data);
+                  pad_right, stride_rows, stride_cols, input_backprop_data);
 
         input_backprop_data += input_offset;
       }
@@ -507,11 +503,11 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
         auto shard = [&in_depth, &input_rows, &input_cols, &filter_rows,
                       &filter_cols, &pad_top, &pad_left, &pad_bottom,
-                      &pad_right, &stride, &output_image_size,
-                      &filter_total_size, &out_depth, &input_backprop_data,
-                      &col_buffer_data, &out_backprop_data, &filter_data,
-                      &input_offset, &output_offset,
-                      &size_C](int64 start, int64 limit) {
+                      &pad_right, &stride_rows, &stride_cols,
+                      &output_image_size, &filter_total_size, &out_depth,
+                      &input_backprop_data, &col_buffer_data,
+                      &out_backprop_data, &filter_data, &input_offset,
+                      &output_offset, &size_C](int64 start, int64 limit) {
           for (int shard_id = start; shard_id < limit; ++shard_id) {
             T* im2col_buf = col_buffer_data + shard_id * size_C;
             T* input_data = input_backprop_data + shard_id * input_offset;
@@ -527,7 +523,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
             Col2im<T>(im2col_buf, in_depth, input_rows, input_cols, filter_rows,
                       filter_cols, pad_top, pad_left, pad_bottom, pad_right,
-                      stride, stride, input_data);
+                      stride_rows, stride_cols, input_data);
           }
         };
         Shard(worker_threads.num_threads, worker_threads.workers, shard_limit,
@@ -579,10 +575,6 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, strides_[1] == strides_[2],
-                errors::InvalidArgument(
-                    "Current implementation only supports equal length "
-                    "strides in the row and column dimensions."));
     OP_REQUIRES(
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
@@ -611,7 +603,7 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     functor::SpatialConvolutionBackwardKernel<Device, T>()(
         context->eigen_device<Device>(), filter_backprop->tensor<T, 4>(),
         input.tensor<T, 4>(), out_backprop.tensor<T, 4>(), filter_rows,
-        filter_cols, stride, stride);
+        filter_cols, stride_rows, stride_cols);
   }
 
  private:
@@ -639,10 +631,6 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, strides_[1] == strides_[2],
-                errors::InvalidArgument(
-                    "Current implementation only supports equal length "
-                    "strides in the row and column dimensions."));
     OP_REQUIRES(
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
@@ -673,11 +661,11 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     int pad_bottom;
     int pad_left;
     int pad_right;
-    OP_REQUIRES_OK(
-        context,
-        Get2dOutputSizeVerbose(input_rows, input_cols, filter_rows, filter_cols,
-                               stride, stride, padding_, &out_rows, &out_cols,
-                               &pad_top, &pad_bottom, &pad_left, &pad_right));
+    OP_REQUIRES_OK(context,
+                   Get2dOutputSizeVerbose(
+                       input_rows, input_cols, filter_rows, filter_cols,
+                       stride_rows, stride_cols, padding_, &out_rows, &out_cols,
+                       &pad_top, &pad_bottom, &pad_left, &pad_right));
 
     // The total dimension size of each kernel.
     const int filter_total_size = filter_rows * filter_cols * in_depth;
@@ -748,7 +736,8 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
 
       auto shard = [&input_data, &col_buffer_data, &in_depth, &input_rows,
                     &input_cols, &filter_rows, &filter_cols, &pad_top,
-                    &pad_left, &pad_bottom, &pad_right, &stride, &input_offset,
+                    &pad_left, &pad_bottom, &pad_right, &stride_rows,
+                    &stride_cols, &input_offset,
                     &size_A](int64 start, int64 limit) {
         for (int shard_id = start; shard_id < limit; ++shard_id) {
           const T* input_data_shard = input_data + shard_id * input_offset;
@@ -758,7 +747,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
           // to do im2col to allow gemm-type computation.
           Im2col<T>(input_data_shard, in_depth, input_rows, input_cols,
                     filter_rows, filter_cols, pad_top, pad_left, pad_bottom,
-                    pad_right, stride, stride, col_data_shard);
+                    pad_right, stride_rows, stride_cols, col_data_shard);
         }
       };
       Shard(worker_threads.num_threads, worker_threads.workers, shard_limit,
@@ -820,13 +809,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
-    int stride_h = GetTensorDim(strides_, data_format_, 'H');
-    int stride_w = GetTensorDim(strides_, data_format_, 'W');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
-    OP_REQUIRES(context, stride_h == stride_w,
-                errors::InvalidArgument(
-                    "Current implementation only supports equal length "
-                    "strides in the row and column dimensions."));
     OP_REQUIRES(
         context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
@@ -854,12 +837,14 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
-    const int padding_rows = (padding_ == VALID) ? 0
-                                                 : (output_rows - 1) * stride +
-                                                       filter_rows - input_rows;
-    const int padding_cols = (padding_ == VALID) ? 0
-                                                 : (output_cols - 1) * stride +
-                                                       filter_cols - input_cols;
+    const int padding_rows =
+        (padding_ == VALID)
+            ? 0
+            : (output_rows - 1) * stride_rows + filter_rows - input_rows;
+    const int padding_cols =
+        (padding_ == VALID)
+            ? 0
+            : (output_cols - 1) * stride_cols + filter_cols - input_cols;
 
     // TODO(keveman): cuDNN only supports equal padding on both sides, so only
     // calling it when that is true. Remove this check when (if?) cuDNN starts
@@ -871,8 +856,8 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     if (use_cudnn_) {
-      if (filter_rows == 1 && filter_cols == 1 && stride == 1 &&
-          data_format_ == FORMAT_NHWC) {
+      if (filter_rows == 1 && filter_cols == 1 && stride_rows == 1 &&
+          stride_cols == 1 && data_format_ == FORMAT_NHWC) {
         // 1x1 filter, so call cublas directly.
         const uint64 m = batch * input_rows * input_cols;
         const uint64 k = out_depth;
@@ -930,8 +915,8 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
           .set_input_feature_map_count(in_depth)
           .set_output_feature_map_count(out_depth);
       perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
-      conv_desc.set_vertical_filter_stride(stride)
-          .set_horizontal_filter_stride(stride)
+      conv_desc.set_vertical_filter_stride(stride_rows)
+          .set_horizontal_filter_stride(stride_cols)
           .set_zero_padding_height(padding_rows / 2)
           .set_zero_padding_width(padding_cols / 2);
 
@@ -1121,13 +1106,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
-    int stride_h = GetTensorDim(strides_, data_format_, 'H');
-    int stride_w = GetTensorDim(strides_, data_format_, 'W');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
-    OP_REQUIRES(context, stride_h == stride_w,
-                errors::InvalidArgument(
-                    "Current implementation only supports equal length "
-                    "strides in the row and column dimensions."));
     OP_REQUIRES(
         context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
@@ -1155,12 +1134,14 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
-    const int padding_rows = (padding_ == VALID) ? 0
-                                                 : (output_rows - 1) * stride +
-                                                       filter_rows - input_rows;
-    const int padding_cols = (padding_ == VALID) ? 0
-                                                 : (output_cols - 1) * stride +
-                                                       filter_cols - input_cols;
+    const int padding_rows =
+        (padding_ == VALID)
+            ? 0
+            : (output_rows - 1) * stride_rows + filter_rows - input_rows;
+    const int padding_cols =
+        (padding_ == VALID)
+            ? 0
+            : (output_cols - 1) * stride_cols + filter_cols - input_cols;
 
     // TODO(zhengxq): cuDNN only supports equal padding on both sides, so only
     // calling it when that is true. Remove this check when (if?) cuDNN starts
@@ -1172,8 +1153,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
     if (use_cudnn_) {
-      if (filter_rows == 1 && filter_cols == 1 && stride == 1 &&
-          data_format_ == FORMAT_NHWC) {
+      if (filter_rows == 1 && filter_cols == 1 && stride_rows == 1 &&
+          stride_cols == 1 && data_format_ == FORMAT_NHWC) {
         const uint64 m = in_depth;
         const uint64 k = batch * input_rows * input_cols;
         const uint64 n = out_depth;
@@ -1249,8 +1230,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
           .set_input_feature_map_count(in_depth)
           .set_output_feature_map_count(out_depth);
       perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
-      conv_desc.set_vertical_filter_stride(stride)
-          .set_horizontal_filter_stride(stride)
+      conv_desc.set_vertical_filter_stride(stride_rows)
+          .set_horizontal_filter_stride(stride_cols)
           .set_zero_padding_height(padding_rows / 2)
           .set_zero_padding_width(padding_cols / 2);
 
