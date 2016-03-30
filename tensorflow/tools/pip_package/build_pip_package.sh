@@ -59,7 +59,20 @@ function main() {
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd
-  rm -rf ${TMPDIR}
+  
+  if [ "$2" = "tarball" ] ; then
+    whl_filename=$(basename `ls ${DEST}/*.whl`)
+    tarball_prefix="${whl_filename%.*}"
+    TMPDIR2=$(mktemp -d -t tmp.XXXXXXXXXX)
+    mv ${TMPDIR} ${TMPDIR2}/${tarball_prefix}
+    pushd ${TMPDIR2}
+    tar zcfh ${DEST}/${tarball_prefix}.tar.gz --exclude=dist --exclude=build ${tarball_prefix}
+    popd
+    rm -rf ${TMPDIR2}
+  else
+    rm -rf ${TMPDIR}
+  fi
+  
   echo $(date) : "=== Output wheel file is in: ${DEST}"
 }
 
