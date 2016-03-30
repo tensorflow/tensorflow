@@ -21,6 +21,8 @@
 @@reduce_sum_n
 @@with_shape
 @@with_same_shape
+
+@@get_graph_from_inputs
 """
 
 from __future__ import absolute_import
