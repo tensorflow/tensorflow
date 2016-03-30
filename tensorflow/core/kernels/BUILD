@@ -499,6 +499,7 @@ tf_kernel_library(
     name = "ctc_ops",
     prefix = "ctc",
     deps = [
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:ctc_ops_op_lib",
         "//tensorflow/core:framework",
@@ -1023,6 +1024,7 @@ tf_kernel_library(
     srcs = ["conv_grad_ops.cc"],
     prefix = "conv_ops",
     deps = [
+        ":bounds_check",
         ":conv_2d",
         ":ops_util",
         "//tensorflow/core:core_cpu",

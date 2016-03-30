@@ -113,7 +113,7 @@ class CTCDecodeHelper {
       OpOutputList* decoded_indices, OpOutputList* decoded_values,
       OpOutputList* decoded_shape) const {
     // Calculate the total number of entries for each path
-    const int batch_size = sequences.size();
+    const int64 batch_size = sequences.size();
     std::vector<int64> num_entries(top_paths_, 0);
 
     // Calculate num_entries per path
@@ -146,12 +146,12 @@ class CTCDecodeHelper {
       int64 max_decoded = 0;
       int64 offset = 0;
 
-      for (int b = 0; b < batch_size; ++b) {
+      for (int64 b = 0; b < batch_size; ++b) {
         auto& p_batch = sequences[b][p];
         int64 num_decoded = p_batch.size();
         max_decoded = std::max(max_decoded, num_decoded);
         std::copy_n(p_batch.begin(), num_decoded, &values_t(offset));
-        for (int t = 0; t < num_decoded; ++t, ++offset) {
+        for (int64 t = 0; t < num_decoded; ++t, ++offset) {
           indices_t(offset, 0) = b;
           indices_t(offset, 1) = t;
         }
@@ -190,7 +190,11 @@ class CTCGreedyDecoderOp : public OpKernel {
     std::vector<TTypes<float>::UnalignedConstMatrix> input_list_t;
     const int64 max_time = inputs_shape.dim_size(0);
     const int64 batch_size = inputs_shape.dim_size(1);
-    const int64 num_classes = inputs_shape.dim_size(2);
+    const int64 num_classes_raw = inputs_shape.dim_size(2);
+    OP_REQUIRES(
+        ctx, FastBoundsCheck(num_classes_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("num_classes cannot exceed max int"));
+    const int num_classes = static_cast<const int>(num_classes_raw);
 
     auto inputs_t = inputs->tensor<float, 3>();
 
@@ -268,7 +272,11 @@ class CTCBeamSearchDecoderOp : public OpKernel {
 
     const int64 max_time = inputs_shape.dim_size(0);
     const int64 batch_size = inputs_shape.dim_size(1);
-    const int64 num_classes = inputs_shape.dim_size(2);
+    const int64 num_classes_raw = inputs_shape.dim_size(2);
+    OP_REQUIRES(
+        ctx, FastBoundsCheck(num_classes_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("num_classes cannot exceed max int"));
+    const int num_classes = static_cast<const int>(num_classes_raw);
 
     log_prob_t.setZero();
 

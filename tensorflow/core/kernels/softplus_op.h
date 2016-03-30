@@ -34,8 +34,8 @@ struct Softplus {
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
     activations.device(d) =
-        (features > features.constant(30.f))
-            .select(features, (features.exp() + features.constant(1.0f)).log());
+        (features > features.constant(T(30)))
+            .select(features, (features.exp() + features.constant(T(1))).log());
   }
 };
 
@@ -51,7 +51,7 @@ struct SoftplusGrad {
                   typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor backprops) {
     backprops.device(d) =
-        gradients / ((-features).exp() + features.constant(1.0f));
+        gradients / ((-features).exp() + features.constant(T(1)));
   }
 };
 
