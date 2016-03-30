@@ -11,7 +11,7 @@ py_library(
     name = "skflow",
     srcs = glob([
         "python/skflow/**/*.py",
-    ]),
+    ]) + ["__init__.py", "python/__init__.py"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/python:framework"],
 )
