@@ -167,7 +167,7 @@ case where both types are quantized.
 *  <b>`bias`</b>: A 1-D `Tensor` with size matching the last dimension of `value`.
     Must be the same type as `value` unless `value` is a quantized type,
     in which case a different quantized type may be used.
-*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW" are supported.
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -492,7 +492,7 @@ window in `value`.
     The stride of the sliding window for each dimension of the
     input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW" are supported.
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
@@ -516,7 +516,7 @@ Performs the max pooling on the input.
 *  <b>`strides`</b>: A list of ints that has length >= 4.  The stride of the sliding
     window for each dimension of the input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW" are supported.
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
