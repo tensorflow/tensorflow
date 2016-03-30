@@ -152,9 +152,9 @@ of the input placeholders or the output tensors of the previous layer.
 
 After all training epochs, the accuracy on test data will be around 98.5%.
 However if we remove dropout in the network architecture, the accuracy will
-decrease to 98.2%. This is becasue dropout can reduce the effect of overfitting.
+decrease to 98.2%. This is because dropout can reduce the effect of overfitting.
 If we do not have dropout, the accuracy on training data will eventually become
-1.0, however the accuracy on test data will soon increase to 98.2% but get
+100%, however the accuracy on test data will soon increase to 98.2% but get
 stalled there. By adding dropout, the accuracy on training data increase slower,
 but the generalization ability will become better.
 
