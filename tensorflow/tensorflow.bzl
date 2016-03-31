@@ -82,7 +82,14 @@ def if_cuda(a, b=[]):
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
-          select({"//tensorflow:darwin": [],
+          select({"//tensorflow:android": [
+                    "-mfpu=neon",
+                    "-std=c++11",
+                    "-DMIN_LOG_LEVEL=0",
+                    "-DTF_LEAN_BINARY",
+                    "-O2",
+                  ],
+                  "//tensorflow:darwin": [],
                   "//conditions:default": ["-pthread"]}))
 
 
