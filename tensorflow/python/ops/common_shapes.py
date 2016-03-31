@@ -230,18 +230,12 @@ def conv2d_shape(op):
   if stride_b != 1 or stride_d != 1:
     raise ValueError("Current implementation does not yet support "
                      "strides in the batch and depth dimensions.")
-  if stride_r != stride_c:
-    # TODO(shlens): Add support for this.
-    raise ValueError("Current implementation only supports equal length "
-                     "strides in the row and column dimensions.")
-
   # TODO(mrry,shlens): Raise an error if the stride would cause
   # information in the input to be ignored. This will require a change
   # in the kernel implementation.
-  stride = stride_r
   padding = op.get_attr("padding")
   out_rows, out_cols = get2d_conv_output_size(
-      in_rows, in_cols, filter_rows, filter_cols, stride, stride, padding)
+      in_rows, in_cols, filter_rows, filter_cols, stride_r, stride_c, padding)
 
   output_shape = [batch_size, out_rows, out_cols, depth_out]
   if data_format == "NCHW":

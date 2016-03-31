@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import os
 import random
 
@@ -60,6 +61,14 @@ class TestReportingBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=2, name="custom_benchmark_name",
         extras={"number_key": 3, "other_key": "string"})
+
+  def benchmark_times_an_op(self):
+    with tf.Session() as sess:
+      a = tf.constant(0.0)
+      a_plus_a = a + a
+      self.run_op_benchmark(
+          sess, a_plus_a, min_iters=1000, store_trace=True,
+          name="op_benchmark")
 
 
 class BenchmarkTest(tf.test.TestCase):
@@ -109,6 +118,8 @@ class BenchmarkTest(tf.test.TestCase):
         prefix, "TestReportingBenchmark.benchmarkReport1")
     expected_output_file_2 = "%s%s" % (
         prefix, "TestReportingBenchmark.custom_benchmark_name")
+    expected_output_file_3 = "%s%s" % (
+        prefix, "TestReportingBenchmark.op_benchmark")
     try:
       self.assertFalse(tf.gfile.Exists(expected_output_file))
       # Run benchmark but without env, shouldn't write anything
@@ -124,10 +135,12 @@ class BenchmarkTest(tf.test.TestCase):
       reporting = TestReportingBenchmark()
       reporting.benchmarkReport1()  # This should write
       reporting.benchmarkReport2()  # This should write
+      reporting.benchmark_times_an_op()  # This should write
 
       # Check the files were written
       self.assertTrue(tf.gfile.Exists(expected_output_file))
       self.assertTrue(tf.gfile.Exists(expected_output_file_2))
+      self.assertTrue(tf.gfile.Exists(expected_output_file_3))
 
       # Check the contents are correct
       expected_1 = test_log_pb2.BenchmarkEntry()
@@ -140,6 +153,10 @@ class BenchmarkTest(tf.test.TestCase):
       expected_2.extras["number_key"].double_value = 3
       expected_2.extras["other_key"].string_value = "string"
 
+      expected_3 = test_log_pb2.BenchmarkEntry()
+      expected_3.name = "TestReportingBenchmark.op_benchmark"
+      expected_3.iters = 1000
+
       read_benchmark_1 = tf.gfile.GFile(expected_output_file, "r").read()
       read_benchmark_1 = text_format.Merge(
           read_benchmark_1, test_log_pb2.BenchmarkEntry())
@@ -149,6 +166,17 @@ class BenchmarkTest(tf.test.TestCase):
       read_benchmark_2 = text_format.Merge(
           read_benchmark_2, test_log_pb2.BenchmarkEntry())
       self.assertProtoEquals(expected_2, read_benchmark_2)
+
+      read_benchmark_3 = tf.gfile.GFile(expected_output_file_3, "r").read()
+      read_benchmark_3 = text_format.Merge(
+          read_benchmark_3, test_log_pb2.BenchmarkEntry())
+      self.assertEquals(expected_3.name, read_benchmark_3.name)
+      self.assertEquals(expected_3.iters, read_benchmark_3.iters)
+      self.assertGreater(read_benchmark_3.wall_time, 0)
+      full_trace = read_benchmark_3.extras["full_trace_chrome_format"]
+      json_trace = json.loads(full_trace.string_value)
+      self.assertTrue(isinstance(json_trace, dict))
+      self.assertTrue("traceEvents" in json_trace.keys())
 
     finally:
       tf.gfile.DeleteRecursively(tempdir)

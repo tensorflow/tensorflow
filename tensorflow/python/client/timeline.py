@@ -20,8 +20,11 @@ from __future__ import print_function
 
 import json
 
-import numpy as np  # pylint: disable=unused-import
+import six  # pylint: disable=unused-import
 
+# The timeline target is usually imported as part of BUILD target
+# "platform_test", which includes also includes the "platform"
+# dependency.  This is why the logging import here is okay.
 from tensorflow.python.platform import logging
 
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Copyright 2015 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,18 +12,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-set -e
-
-pip install sklearn
-pip3 install scikit-learn
-
-# Benchmark tests require the following:
-pip install psutil
-pip3 install psutil
-pip install py-cpuinfo
-pip3 install py-cpuinfo
-
-# pylint tests require the following:
-pip install pylint
-pip3 install pylint

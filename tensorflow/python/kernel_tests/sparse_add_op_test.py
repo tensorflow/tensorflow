@@ -126,8 +126,8 @@ class SparseAddTest(tf.test.TestCase):
   def testGradients(self):
     np.random.seed(1618)  # Make it reproducible.
     with self.test_session(use_gpu=False):
-      for n in [10, 32]:
-        for m in [4, 100]:
+      for n in [10, 31]:
+        for m in [4, 17]:
           sp_a, nnz_a = self._randomTensor([n, m], np.float32)
           sp_b, nnz_b = self._randomTensor([n, m], np.float32)
           sp_sum = tf.sparse_add(sp_a, sp_b)

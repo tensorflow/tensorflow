@@ -114,13 +114,7 @@ class Conv2DOp : public BinaryOp<T> {
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
     const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
-    const int64 stride_h = GetTensorDim(strides_, data_format_, 'H');
-    const int64 stride_w = GetTensorDim(strides_, data_format_, 'W');
     const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
-    OP_REQUIRES(context, stride_h == stride_w,
-                errors::InvalidArgument(
-                    "Current implementation only supports equal length "
-                    "strides in the row and column dimensions."));
     OP_REQUIRES(
         context, stride_n == 1 && stride_c == 1,
         errors::InvalidArgument("Current implementation does not yet support "
@@ -188,22 +182,24 @@ class Conv2DOp : public BinaryOp<T> {
                 errors::InvalidArgument("batch is too large"));
     const int batch = static_cast<int>(batch_raw);
 
-    // For now we take the stride from the second dimension only (we
-    // assume row = col stride, and do not support striding on the
-    // batch or depth dimension).
-    const int stride = GetTensorDim(strides_, data_format_, 'H');
+    // For now we take the stride from the second and third dimensions only (we
+    // do not support striding on the batch or depth dimension).
+    const int stride_rows = GetTensorDim(strides_, data_format_, 'H');
+    const int stride_cols = GetTensorDim(strides_, data_format_, 'W');
 
     int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-    if (filter_cols == filter_rows && filter_rows == 1 && stride == 1) {
+    if (filter_cols == filter_rows && filter_rows == 1 && stride_rows == 1 &&
+        stride_cols == 1) {
       // For 1x1 kernel, the 2D convolution is reduced to matrix
       // multiplication.
       out_rows = input_rows;
       out_cols = input_cols;
     } else {
       OP_REQUIRES_OK(
-          context, Get2dOutputSize(input_rows, input_cols, filter_rows,
-                                   filter_cols, stride, stride, padding_,
-                                   &out_rows, &out_cols, &pad_rows, &pad_cols));
+          context,
+          Get2dOutputSize(input_rows, input_cols, filter_rows, filter_cols,
+                          stride_rows, stride_cols, padding_, &out_rows,
+                          &out_cols, &pad_rows, &pad_cols));
     }
     TensorShape out_shape =
         ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
@@ -217,16 +213,18 @@ class Conv2DOp : public BinaryOp<T> {
             << ", input_cols = " << input_cols
             << ", filter_cols = " << filter_cols
             << ", input_rows = " << input_rows
-            << ", filter_rows = " << filter_rows << ", stride = " << stride
+            << ", filter_rows = " << filter_rows
+            << ", stride_rows = " << stride_rows
+            << ", stride_cols = " << stride_cols
             << ", out_depth = " << out_depth;
 
     // If there is nothing to compute, return.
     if (out_shape.num_elements() == 0) {
       return;
     }
-    LaunchConvOp<Device, T>::launch(context, use_cudnn_, input, filter, stride,
-                                    stride, BrainPadding2EigenPadding(padding_),
-                                    output, data_format_);
+    LaunchConvOp<Device, T>::launch(
+        context, use_cudnn_, input, filter, stride_rows, stride_cols,
+        BrainPadding2EigenPadding(padding_), output, data_format_);
   }
 
  private:

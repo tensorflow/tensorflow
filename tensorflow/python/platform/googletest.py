@@ -30,7 +30,7 @@ from unittest import *
 
 from tensorflow.python.platform import benchmark  # pylint: disable=unused-import
 
-Benchmark = benchmark.Benchmark  # pylint: disable=invalid-name
+Benchmark = benchmark.TensorFlowBenchmark  # pylint: disable=invalid-name
 
 unittest_main = main
 

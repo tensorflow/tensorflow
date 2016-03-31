@@ -340,6 +340,25 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "constant_op_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    deps = [
+        ":constant_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "gather_op_test",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
@@ -629,52 +648,6 @@ tf_kernel_library(
 )
 
 tf_kernel_libraries(
-    name = "io",
-    prefixes = [
-        "fixed_length_record_reader_op",
-        "identity_reader_op",
-        "matching_files_op",
-        "reader_ops",
-        "restore_op",
-        "save_op",
-        "text_line_reader_op",
-        "tf_record_reader_op",
-        "whole_file_read_ops",
-    ],
-    deps = [
-        ":ops_util",
-        ":reader_base",
-        ":save_restore_tensor",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:io_ops_op_lib",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_cc_tests(
-    size = "small",
-    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
-    tests = [
-        "restore_op_test",
-        "save_op_test",
-    ],
-    deps = [
-        ":io",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_kernel_libraries(
     name = "image",
     prefixes = [
         "adjust_contrast_op",
@@ -742,6 +715,52 @@ tf_cc_tests(
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_libraries(
+    name = "io",
+    prefixes = [
+        "fixed_length_record_reader_op",
+        "identity_reader_op",
+        "matching_files_op",
+        "reader_ops",
+        "restore_op",
+        "save_op",
+        "text_line_reader_op",
+        "tf_record_reader_op",
+        "whole_file_read_ops",
+    ],
+    deps = [
+        ":ops_util",
+        ":reader_base",
+        ":save_restore_tensor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:io_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_tests(
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    tests = [
+        "restore_op_test",
+        "save_op_test",
+    ],
+    deps = [
+        ":io",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

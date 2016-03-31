@@ -47,9 +47,14 @@ Allocator::~Allocator() {}
 
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
+// If true, cpu allocator collects detailed stats.
+static bool cpu_allocator_collect_detailed_stats = false;
 
 void EnableCPUAllocatorStats(bool enable) {
   cpu_allocator_collect_stats = enable;
+}
+void EnableCPUAllocatorDetailedStats(bool enable) {
+  cpu_allocator_collect_detailed_stats = enable;
 }
 
 class CPUAllocator : public Allocator {
@@ -104,7 +109,7 @@ class CPUAllocator : public Allocator {
 namespace {
 Allocator* MakeCpuAllocator() {
   Allocator* allocator = new CPUAllocator;
-  if (LogMemory::IsEnabled()) {
+  if (cpu_allocator_collect_detailed_stats || LogMemory::IsEnabled()) {
     allocator = new TrackingAllocator(allocator, true);
   }
   return allocator;

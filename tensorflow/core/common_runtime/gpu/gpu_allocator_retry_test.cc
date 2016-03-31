@@ -141,6 +141,7 @@ TEST_F(GPUAllocatorRetryTest, RetrySuccess) {
   EXPECT_GT(consumer_count_[2], 0);
 }
 
+/* Disabled due to flakiness.  b/24738751
 // Verifies OutOfMemory failure when memory is slightly overcommitted
 // and retry is not allowed.
 TEST_F(GPUAllocatorRetryTest, NoRetryFail) {
@@ -161,6 +162,7 @@ TEST_F(GPUAllocatorRetryTest, NoRetryFail) {
     EXPECT_TRUE(has_failed_);
   }
 }
+*/
 
 // Verifies OutOfMemory failure when retry is allowed but memory capacity
 // is too low even for retry.

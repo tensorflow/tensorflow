@@ -510,7 +510,7 @@ functions below.
 
 ### `tf.gradients(ys, xs, grad_ys=None, name='gradients', colocate_gradients_with_ops=False, gate_gradients=False, aggregation_method=None)` {#gradients}
 
-Constructs symbolic partial derivatives of `ys` w.r.t. x in `xs`.
+Constructs symbolic partial derivatives of sum of `ys` w.r.t. x in `xs`.
 
 `ys` and `xs` are each a `Tensor` or a list of tensors.  `grad_ys`
 is a list of `Tensor`, holding the gradients received by the
