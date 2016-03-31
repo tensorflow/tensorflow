@@ -18,7 +18,7 @@ def _parse_bazel_version(bazel_version):
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
-  if "bazel_version" in dir(native):
+  if "bazel_version" in dir(native) and native.bazel_version:
     current_bazel_version = _parse_bazel_version(native.bazel_version)
     minimum_bazel_version = _parse_bazel_version(bazel_version)
     if minimum_bazel_version > current_bazel_version:
