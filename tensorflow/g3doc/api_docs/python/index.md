@@ -390,6 +390,7 @@
   * [`tanh`](../../api_docs/python/nn.md#tanh)
   * [`top_k`](../../api_docs/python/nn.md#top_k)
   * [`uniform_candidate_sampler`](../../api_docs/python/nn.md#uniform_candidate_sampler)
+  * [`weighted_cross_entropy_with_logits`](../../api_docs/python/nn.md#weighted_cross_entropy_with_logits)
 
 * **[Running Graphs](../../api_docs/python/client.md)**:
   * [`AbortedError`](../../api_docs/python/client.md#AbortedError)

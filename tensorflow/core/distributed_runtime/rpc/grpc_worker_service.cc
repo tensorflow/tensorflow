@@ -122,9 +122,14 @@ class GrpcWorkerService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(RegisterGraph, false);
     ENQUEUE_REQUEST(DeregisterGraph, false);
 
-    // TODO(mrry): Consider enqueuing more of these request types.
-    ENQUEUE_REQUEST(RecvTensor, true);
-    ENQUEUE_REQUEST(RunGraph, true);
+    // TODO(mrry): Determine a better policy for enqueuing the appropriate
+    // number of each request type.
+    for (int i = 0; i < 1000; ++i) {
+      ENQUEUE_REQUEST(RecvTensor, true);
+    }
+    for (int i = 0; i < 100; ++i) {
+      ENQUEUE_REQUEST(RunGraph, true);
+    }
 
     ENQUEUE_REQUEST(CleanupGraph, false);
     ENQUEUE_REQUEST(Logging, false);

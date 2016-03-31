@@ -375,8 +375,9 @@ class TensorFlowTestCase(googletest.TestCase):
       farray2: a list of float values.
       err: a float value.
     """
+    self.assertEqual(len(farray1), len(farray2))
     for f1, f2 in zip(farray1, farray2):
-      self.assertNear(f1, f2, err)
+      self.assertNear(float(f1), float(f2), err)
 
   def _NDArrayNear(self, ndarray1, ndarray2, err):
     return np.linalg.norm(ndarray1 - ndarray2) < err

@@ -778,7 +778,7 @@ tf.trace(x) ==> 15
 ##### Args:
 
 
-*  <b>`input_tensor`</b>: 2-D tensor.
+*  <b>`x`</b>: 2-D tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

@@ -155,7 +155,7 @@ system to compile your Op. Place a BUILD file with following Bazel build rule in
 the [`tensorflow/core/user_ops`][user_ops] directory.
 
 ```python
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library)
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 tf_custom_op_library(
     name = "zero_out.so",
