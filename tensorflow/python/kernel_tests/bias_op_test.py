@@ -143,7 +143,7 @@ class BiasAddTest(tf.test.TestCase):
   def testGradientBias(self):
     with self.test_session():
       t = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2],
-                               dtype=tf.float64)
+                      dtype=tf.float64)
       b = tf.constant([1.3, 2.4], dtype=tf.float64)
       bo = tf.nn.bias_add(t, b)
       err = tf.test.compute_gradient_error(b, [2], bo, [3, 2])
