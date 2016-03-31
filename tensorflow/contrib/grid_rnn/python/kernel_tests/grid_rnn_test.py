@@ -30,24 +30,29 @@ class GridRNNCellTest(tf.test.TestCase):
       with tf.variable_scope('root', initializer=tf.constant_initializer(0.2)) as root_scope:
         x = tf.zeros([1, 3])
         m = tf.zeros([1, 8])
-        cell = tf.contrib.grid_rnn.Grid2BasicLSTMCell(2, input_size=3)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 3)
+        cell = tf.contrib.grid_rnn.Grid2BasicLSTMCell(2)
         self.assertEqual(cell.state_size, 8)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (1, 2))
+        self.assertEqual(s.get_shape(), (1, 8))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]),
-                             m.name: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
+        res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
+                                m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 8))
         self.assertAllClose(res[0], [[ 0.36617181, 0.36617181]])
         self.assertAllClose(res[1], [[ 0.71053141, 0.71053141, 0.36617181, 0.36617181,
                                        0.72320831, 0.80555487, 0.39102408, 0.42150158]])
 
-        # emulate a training loop, where we call cell() multiple times
+        # emulate a loop through the input sequence, where we call cell() multiple times
         root_scope.reuse_variables()
         g2, s2 = cell(x, m)
-        res = sess.run([g2, s2], {x.name: np.array([[2., 2., 2.]]), m.name: res[1]})
+        self.assertEqual(g2.get_shape(), (1, 2))
+        self.assertEqual(s2.get_shape(), (1, 8))
+
+        res = sess.run([g2, s2], {x: np.array([[2., 2., 2.]]), m: res[1]})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 8))
         self.assertAllClose(res[0], [[0.58847463, 0.58847463]])
@@ -59,21 +64,23 @@ class GridRNNCellTest(tf.test.TestCase):
       with tf.variable_scope('root', initializer=tf.constant_initializer(0.2)):
         x = tf.zeros([1, 3])
         m = tf.zeros([1, 8])
-        cell = tf.contrib.grid_rnn.Grid2BasicLSTMCell(2, input_size=3, tied=True)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 3)
+        cell = tf.contrib.grid_rnn.Grid2BasicLSTMCell(2, tied=True)
         self.assertEqual(cell.state_size, 8)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (1, 2))
+        self.assertEqual(s.get_shape(), (1, 8))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]),
-                             m.name: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
+        res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
+                                m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 8))
         self.assertAllClose(res[0], [[ 0.36617181, 0.36617181]])
         self.assertAllClose(res[1], [[ 0.71053141, 0.71053141, 0.36617181, 0.36617181,
                                        0.72320831, 0.80555487, 0.39102408, 0.42150158]])
 
-        res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]), m.name: res[1]})
+        res = sess.run([g, s], {x: np.array([[1., 1., 1.]]), m: res[1]})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 8))
         self.assertAllClose(res[0], [[0.36703536, 0.36703536]])
@@ -85,14 +92,16 @@ class GridRNNCellTest(tf.test.TestCase):
       with tf.variable_scope('root', initializer=tf.constant_initializer(0.2)):
         x = tf.zeros([1, 3])
         m = tf.zeros([1, 4])
-        cell = tf.contrib.grid_rnn.Grid2BasicLSTMCell(2, input_size=3, tied=False, non_recurrent_fn=tf.nn.relu)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 3)
+        cell = tf.contrib.grid_rnn.Grid2BasicLSTMCell(2, tied=False, non_recurrent_fn=tf.nn.relu)
         self.assertEqual(cell.state_size, 4)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (1, 2))
+        self.assertEqual(s.get_shape(), (1, 4))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]),
-                             m.name: np.array([[0.1, 0.2, 0.3, 0.4]])})
+        res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
+                                m: np.array([[0.1, 0.2, 0.3, 0.4]])})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 4))
         self.assertAllClose(res[0], [[ 0.31667367, 0.31667367]])
@@ -107,14 +116,16 @@ class GridRNNCellTest(tf.test.TestCase):
       with tf.variable_scope('root', initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([1, 3])
         m = tf.zeros([1, 8])
-        cell = tf.contrib.grid_rnn.Grid2LSTMCell(2, input_size=3, use_peepholes=True)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 3)
+        cell = tf.contrib.grid_rnn.Grid2LSTMCell(2, use_peepholes=True)
         self.assertEqual(cell.state_size, 8)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (1, 2))
+        self.assertEqual(s.get_shape(), (1, 8))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]),
-                                m.name: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
+        res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
+                                m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 8))
         self.assertAllClose(res[0], [[ 0.95686918, 0.95686918]])
@@ -126,14 +137,16 @@ class GridRNNCellTest(tf.test.TestCase):
       with tf.variable_scope('root', initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([1, 3])
         m = tf.zeros([1, 8])
-        cell = tf.contrib.grid_rnn.Grid2LSTMCell(2, input_size=3, tied=True, use_peepholes=True)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 3)
+        cell = tf.contrib.grid_rnn.Grid2LSTMCell(2, tied=True, use_peepholes=True)
         self.assertEqual(cell.state_size, 8)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (1, 2))
+        self.assertEqual(s.get_shape(), (1, 8))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]),
-                                m.name: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
+        res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
+                                m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 8))
         self.assertAllClose(res[0], [[ 0.95686918, 0.95686918]])
@@ -145,14 +158,16 @@ class GridRNNCellTest(tf.test.TestCase):
       with tf.variable_scope('root', initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([1, 3])
         m = tf.zeros([1, 4])
-        cell = tf.contrib.grid_rnn.Grid2LSTMCell(2, input_size=3, use_peepholes=True, non_recurrent_fn=tf.nn.relu)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 3)
+        cell = tf.contrib.grid_rnn.Grid2LSTMCell(2, use_peepholes=True, non_recurrent_fn=tf.nn.relu)
         self.assertEqual(cell.state_size, 4)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (1, 2))
+        self.assertEqual(s.get_shape(), (1, 4))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]),
-                                m.name: np.array([[0.1, 0.2, 0.3, 0.4]])})
+        res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
+                                m: np.array([[0.1, 0.2, 0.3, 0.4]])})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 4))
         self.assertAllClose(res[0], [[ 2.1831727, 2.1831727]])
@@ -168,13 +183,15 @@ class GridRNNCellTest(tf.test.TestCase):
         x = tf.zeros([2, 2])
         m = tf.zeros([2, 4])
         cell = tf.contrib.grid_rnn.Grid2BasicRNNCell(2)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 2)
         self.assertEqual(cell.state_size, 4)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (2, 2))
+        self.assertEqual(s.get_shape(), (2, 4))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1.], [2., 2.]]),
-                                m.name: np.array([[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2]])})
+        res = sess.run([g, s], {x: np.array([[1., 1.], [2., 2.]]),
+                                m: np.array([[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2]])})
         self.assertEqual(res[0].shape, (2, 2))
         self.assertEqual(res[1].shape, (2, 4))
         self.assertAllClose(res[0], [[0.94685763, 0.94685763],
@@ -188,13 +205,15 @@ class GridRNNCellTest(tf.test.TestCase):
         x = tf.zeros([2, 2])
         m = tf.zeros([2, 4])
         cell = tf.contrib.grid_rnn.Grid2BasicRNNCell(2, tied=True)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 2)
         self.assertEqual(cell.state_size, 4)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (2, 2))
+        self.assertEqual(s.get_shape(), (2, 4))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1.], [2., 2.]]),
-                                m.name: np.array([[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2]])})
+        res = sess.run([g, s], {x: np.array([[1., 1.], [2., 2.]]),
+                                m: np.array([[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2]])})
         self.assertEqual(res[0].shape, (2, 2))
         self.assertEqual(res[1].shape, (2, 4))
         self.assertAllClose(res[0], [[0.94685763, 0.94685763],
@@ -208,12 +227,14 @@ class GridRNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 2])
         cell = tf.contrib.grid_rnn.Grid2BasicRNNCell(2, non_recurrent_fn=tf.nn.relu)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 2)
         self.assertEqual(cell.state_size, 2)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (1, 2))
+        self.assertEqual(s.get_shape(), (1, 2))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1.]]), m.name: np.array([[0.1, 0.1]])})
+        res = sess.run([g, s], {x: np.array([[1., 1.]]), m: np.array([[0.1, 0.1]])})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 2))
         self.assertAllClose(res[0], [[1.80049896, 1.80049896]])
@@ -228,14 +249,16 @@ class GridRNNCellTest(tf.test.TestCase):
       with tf.variable_scope('root', initializer=tf.constant_initializer(0.5)) as root_scope:
         x = tf.zeros([1, 3])
         m = tf.zeros([1, 4])
-        cell = tf.contrib.grid_rnn.Grid1LSTMCell(2, input_size=3, use_peepholes=True)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 3)
+        cell = tf.contrib.grid_rnn.Grid1LSTMCell(2, use_peepholes=True)
         self.assertEqual(cell.state_size, 4)
+
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (1, 2))
+        self.assertEqual(s.get_shape(), (1, 4))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]),
-                                m.name: np.array([[0.1, 0.2, 0.3, 0.4]])})
+        res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
+                                m: np.array([[0.1, 0.2, 0.3, 0.4]])})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 4))
         self.assertAllClose(res[0], [[0.91287315, 0.91287315]])
@@ -245,16 +268,22 @@ class GridRNNCellTest(tf.test.TestCase):
 
         # for 1LSTM, next iterations we will set input is None
         g2, s2 = cell(None, m)
+        self.assertEqual(g2.get_shape(), (1, 2))
+        self.assertEqual(s2.get_shape(), (1, 4))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g2, s2], {m.name: res[1]})
+        res = sess.run([g2, s2], {m: res[1]})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 4))
         self.assertAllClose(res[0], [[0.9032144, 0.9032144]])
         self.assertAllClose(res[1], [[2.79966092, 2.79966092, 0.9032144, 0.9032144]])
 
         g3, s3 = cell(None, m)
+        self.assertEqual(g3.get_shape(), (1, 2))
+        self.assertEqual(s3.get_shape(), (1, 4))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g3, s3], {m.name: res[1]})
+        res = sess.run([g3, s3], {m: res[1]})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 4))
         self.assertAllClose(res[0], [[0.92727238, 0.92727238]])
@@ -268,15 +297,16 @@ class GridRNNCellTest(tf.test.TestCase):
       with tf.variable_scope('root', initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([1, 3])
         m = tf.zeros([1, 12])
-        cell = tf.contrib.grid_rnn.Grid3LSTMCell(2, input_size=3, use_peepholes=True)
-        self.assertEqual(cell.output_size, 2)
-        self.assertEqual(cell.input_size, 3)
+        cell = tf.contrib.grid_rnn.Grid3LSTMCell(2, use_peepholes=True)
         self.assertEqual(cell.state_size, 12)
 
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (1, 2))
+        self.assertEqual(s.get_shape(), (1, 12))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1., 1.]]),
-                                m.name: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, -0.1, -0.2, -0.3, -0.4]])})
+        res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
+                                m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, -0.1, -0.2, -0.3, -0.4]])})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 12))
 
@@ -298,8 +328,11 @@ class GridRNNCellTest(tf.test.TestCase):
         cell = tf.contrib.grid_rnn.GridRNNCell(num_units=2, num_dims=1, input_dims=0, output_dims=0,
                                                non_recurrent_dims=0, non_recurrent_fn=tf.nn.relu)
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (3, 2))
+        self.assertEqual(s.get_shape(), (0, 0))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., -1.], [-2, 1], [2, -1]])})
+        res = sess.run([g, s], {x: np.array([[1., -1.], [-2, 1], [2, -1]])})
         self.assertEqual(res[0].shape, (3, 2))
         self.assertEqual(res[1].shape, (0, 0))
         self.assertAllClose(res[0], [[0, 0], [0, 0], [0.5, 0.5]])
@@ -314,9 +347,12 @@ class GridRNNCellTest(tf.test.TestCase):
         cell = tf.contrib.grid_rnn.GridRNNCell(num_units=2, num_dims=2, input_dims=0, output_dims=None,
                                                non_recurrent_dims=0, non_recurrent_fn=tf.nn.relu)
         g, s = cell(x, m)
+        self.assertEqual(g.get_shape(), (0, 0))
+        self.assertEqual(s.get_shape(), (1, 4))
+
         sess.run([tf.initialize_all_variables()])
-        res = sess.run([g, s], {x.name: np.array([[1., 1.]]),
-                                m.name: np.array([[0.1, 0.1, 0.1, 0.1]])})
+        res = sess.run([g, s], {x: np.array([[1., 1.]]),
+                                m: np.array([[0.1, 0.1, 0.1, 0.1]])})
         self.assertEqual(res[0].shape, (0, 0))
         self.assertEqual(res[1].shape, (1, 4))
 
