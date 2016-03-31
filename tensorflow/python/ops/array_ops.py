@@ -318,6 +318,11 @@ def concat(concat_dim, values, name="concat"):
     values = [values]
   # TODO(mrry): Change to return values?
   if len(values) == 1:  # Degenerate case of one tensor.
+    # Make a throwaway call to make_tensor_proto to make sure
+    # that concat_dim is of the correct type.
+    # TODO(keveman): Extract the type and shape checks out of make_tensor_proto
+    # in to a standalone function.
+    tensor_util.make_tensor_proto(concat_dim, dtype=dtypes.int32, shape=[])
     return identity(values[0], name=name)
   return gen_array_ops._concat(concat_dim=concat_dim,
                                values=values,
