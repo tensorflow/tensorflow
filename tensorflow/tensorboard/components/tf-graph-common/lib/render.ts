@@ -74,18 +74,6 @@ export let SeriesNodeColors = {
   DEFAULT_STROKE: "#b2b2b2"
 };
 
-/** The minimum stroke width of an edge. */
-const MIN_EDGE_WIDTH = 0.75;
-
-/** The maximum stroke width of an edge. */
-const MAX_EDGE_WIDTH = 12;
-
-/** The exponent used in the power scale for edge thickness. */
-const EDGE_WIDTH_SCALE_EXPONENT = 0.3;
-
-/** The domain (min and max value) for the edge width. */
-const DOMAIN_EDGE_WIDTH_SCALE = [1, 5E6];
-
 /**
  * Parameters that affect how the graph is rendered on the screen.
  */
@@ -169,7 +157,6 @@ export class RenderGraphInfo {
   private deviceColorMap: d3.scale.Ordinal<string, string>;
   private memoryUsageScale: d3.scale.Linear<string, string>;
   private computeTimeScale: d3.scale.Linear<string, string>;
-  edgeWidthScale: d3.scale.Pow<number, number>;
   // Since the rendering information for each node is constructed lazily,
   // upon node's expansion by the user, we keep a map between the node's name
   // and whether the rendering information was already constructed for that
@@ -184,12 +171,6 @@ export class RenderGraphInfo {
         .domain(hierarchy.devices)
         .range(_.map(d3.range(hierarchy.devices.length),
                      MetanodeColors.DEVICE_PALETTE));
-
-    this.edgeWidthScale = d3.scale.pow()
-      .exponent(EDGE_WIDTH_SCALE_EXPONENT)
-      .domain(DOMAIN_EDGE_WIDTH_SCALE)
-      .range([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH])
-      .clamp(true);
 
     let topLevelGraph = hierarchy.root.metagraph;
     // Find the maximum and minimum memory usage.
@@ -1093,6 +1074,12 @@ export class RenderMetaedgeInfo {
    * D3 selection of the group containing the path that displays this edge.
    */
   edgeGroup: d3.Selection<RenderMetaedgeInfo>;
+
+  /** Id of the <marker> used as a start-marker for the edge path. */
+  startMarkerId: string;
+
+  /** Id of the <marker> used as an end-marker for the edge path. */
+  endMarkerId: string;
 
   constructor(metaedge: Metaedge) {
     this.metaedge = metaedge;

@@ -1163,7 +1163,7 @@ tf_cc_tests(
             "common_runtime/gpu/*_test.cc",
             # Run by tests below
             "common_runtime/constant_folding_test.cc",
-            "common_runtime/direct_session_test.cc",
+            "common_runtime/direct_session*_test.cc",
             "common_runtime/function_test.cc",
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_bfc_allocator_test.cc",
@@ -1285,6 +1285,37 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "common_runtime/direct_session_with_tracking_alloc_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:fifo_queue_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:variable_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
     name = "common_runtime/function_test",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1376,6 +1407,7 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
 )
