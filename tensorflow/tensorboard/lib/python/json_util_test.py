@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.platform import googletest
-from tensorflow.tensorboard.backend import float_wrapper
+from tensorflow.tensorboard.lib.python import json_util
 
 _INFINITY = float('inf')
 
@@ -27,7 +27,7 @@ class FloatWrapperTest(googletest.TestCase):
 
   def _assertWrapsAs(self, to_wrap, expected):
     """Asserts that |to_wrap| becomes |expected| when wrapped."""
-    actual = float_wrapper.WrapSpecialFloats(to_wrap)
+    actual = json_util.WrapSpecialFloats(to_wrap)
     for a, e in zip(actual, expected):
       self.assertEqual(e, a)
 
