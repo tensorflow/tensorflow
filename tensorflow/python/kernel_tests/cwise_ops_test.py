@@ -83,6 +83,9 @@ class UnaryOpTest(tf.test.TestCase):
         self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
   def _compareGpu(self, x, np_func, tf_func):
+    if not tf.test.is_built_with_cuda():
+      return
+
     np_ans = np_func(x)
     with self.test_session(use_gpu=True):
       result = tf_func(tf.convert_to_tensor(x))
@@ -295,6 +298,9 @@ class BinaryOpTest(tf.test.TestCase):
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
   def _compareGpu(self, x, y, np_func, tf_func):
+    if not tf.test.is_built_with_cuda():
+      return
+
     np_ans = np_func(x, y)
     with self.test_session(use_gpu=True):
       inx = tf.convert_to_tensor(x)
@@ -447,7 +453,7 @@ class BinaryOpTest(tf.test.TestCase):
       self._compareGpu(x, y, np_func, tf_func)
 
   # TODO(josh11b,vrv): Refactor this to use parameterized tests.
-  def _testBCastByFunc(self, funcs, xs, ys):
+  def _testBCastByFunc(self, np_func, tf_func, xs, ys):
     dtypes = [
         np.float32,
         np.float64,
@@ -456,235 +462,65 @@ class BinaryOpTest(tf.test.TestCase):
         np.complex64
     ]
     for dtype in dtypes:
-      for (np_func, tf_func) in funcs:
-        if dtype == np.complex64 and tf_func in (_FLOORDIV, tf.floordiv):
-          continue  # floordiv makes no sense for complex numbers
-        self._compareBCast(xs, ys, dtype, np_func, tf_func)
-        self._compareBCast(ys, xs, dtype, np_func, tf_func)
-
-  def _testBCastA(self, xs, ys):
-    funcs = [
-        (np.add, tf.add),
-        (np.add, _ADD),
-    ]
-    self._testBCastByFunc(funcs, xs, ys)
-
-  def _testBCastB(self, xs, ys):
-    funcs = [
-        (np.subtract, tf.sub),
-        (np.subtract, _SUB),
-        (np.power, tf.pow),
-    ]
-    self._testBCastByFunc(funcs, xs, ys)
-
-  def _testBCastC(self, xs, ys):
-    funcs = [
-        (np.multiply, tf.mul),
-        (np.multiply, _MUL),
-    ]
-    self._testBCastByFunc(funcs, xs, ys)
-
-  def _testBCastD(self, xs, ys):
-    funcs = [
-        (np.true_divide, tf.truediv),
-        (np.floor_divide, tf.floordiv),
-        (np.true_divide, _TRUEDIV),
-        (np.floor_divide, _FLOORDIV),
-    ]
-    self._testBCastByFunc(funcs, xs, ys)
-
-  def testBCast_0A(self):
-    self._testBCastA([1, 3, 2], [1])
-
-  def testBCast_0B(self):
-    self._testBCastB([1, 3, 2], [1])
-
-  def testBCast_0C(self):
-    self._testBCastC([1, 3, 2], [1])
-
-  def testBCast_0D(self):
-    self._testBCastD([1, 3, 2], [1])
-
-  def testBCast_1A(self):
-    self._testBCastA([1, 3, 2], [2])
-
-  def testBCast_1B(self):
-    self._testBCastB([1, 3, 2], [2])
-
-  def testBCast_1C(self):
-    self._testBCastC([1, 3, 2], [2])
-
-  def testBCast_1D(self):
-    self._testBCastD([1, 3, 2], [2])
-
-  def testBCast_2A(self):
-    self._testBCastA([1, 3, 2], [3, 2])
-
-  def testBCast_2B(self):
-    self._testBCastB([1, 3, 2], [3, 2])
-
-  def testBCast_2C(self):
-    self._testBCastC([1, 3, 2], [3, 2])
-
-  def testBCast_2D(self):
-    self._testBCastD([1, 3, 2], [3, 2])
-
-  def testBCast_3A(self):
-    self._testBCastA([1, 3, 2], [3, 1])
-
-  def testBCast_3B(self):
-    self._testBCastB([1, 3, 2], [3, 1])
-
-  def testBCast_3C(self):
-    self._testBCastC([1, 3, 2], [3, 1])
-
-  def testBCast_3D(self):
-    self._testBCastD([1, 3, 2], [3, 1])
-
-  def testBCast_4A(self):
-    self._testBCastA([1, 3, 2], [1, 3, 2])
-
-  def testBCast_4B(self):
-    self._testBCastB([1, 3, 2], [1, 3, 2])
-
-  def testBCast_4C(self):
-    self._testBCastC([1, 3, 2], [1, 3, 2])
-
-  def testBCast_4D(self):
-    self._testBCastD([1, 3, 2], [1, 3, 2])
-
-  def testBCast_5A(self):
-    self._testBCastA([1, 3, 2], [2, 3, 1])
-
-  def testBCast_5B(self):
-    self._testBCastB([1, 3, 2], [2, 3, 1])
-
-  def testBCast_5C(self):
-    self._testBCastC([1, 3, 2], [2, 3, 1])
-
-  def testBCast_5D(self):
-    self._testBCastD([1, 3, 2], [2, 3, 1])
-
-  def testBCast_6A(self):
-    self._testBCastA([1, 3, 2], [2, 1, 1])
-
-  def testBCast_6B(self):
-    self._testBCastB([1, 3, 2], [2, 1, 1])
-
-  def testBCast_6C(self):
-    self._testBCastC([1, 3, 2], [2, 1, 1])
-
-  def testBCast_6D(self):
-    self._testBCastD([1, 3, 2], [2, 1, 1])
-
-  def testBCast_7A(self):
-    self._testBCastA([1, 3, 2], [1, 3, 1])
-
-  def testBCast_7B(self):
-    self._testBCastB([1, 3, 2], [1, 3, 1])
-
-  def testBCast_7C(self):
-    self._testBCastC([1, 3, 2], [1, 3, 1])
-
-  def testBCast_7D(self):
-    self._testBCastD([1, 3, 2], [1, 3, 1])
-
-  def testBCast_8A(self):
-    self._testBCastA([2, 1, 5], [2, 3, 1])
-
-  def testBCast_8B(self):
-    self._testBCastB([2, 1, 5], [2, 3, 1])
-
-  def testBCast_8C(self):
-    self._testBCastC([2, 1, 5], [2, 3, 1])
-
-  def testBCast_8D(self):
-    self._testBCastD([2, 1, 5], [2, 3, 1])
-
-  def testBCast_9A(self):
-    self._testBCastA([2, 0, 5], [2, 0, 1])
-
-  def testBCast_9B(self):
-    self._testBCastB([2, 0, 5], [2, 0, 1])
-
-  def testBCast_9C(self):
-    self._testBCastC([2, 0, 5], [2, 0, 1])
-
-  def testBCast_9D(self):
-    self._testBCastD([2, 0, 5], [2, 0, 1])
-
-  def testBCast_10A(self):
-    self._testBCastA([2, 3, 0], [2, 3, 1])
-
-  def testBCast_10B(self):
-    self._testBCastB([2, 3, 0], [2, 3, 1])
-
-  def testBCast_10C(self):
-    self._testBCastC([2, 3, 0], [2, 3, 1])
-
-  def testBCast_10D(self):
-    self._testBCastD([2, 3, 0], [2, 3, 1])
-
-  def testBCast_11A(self):
-    self._testBCastA([1, 3, 2], [1, 3, 2])
-
-  def testBCast_11B(self):
-    self._testBCastB([1, 3, 2], [1, 3, 2])
-
-  def testBCast_11C(self):
-    self._testBCastC([1, 3, 2], [1, 3, 2])
-
-  def testBCast_11D(self):
-    self._testBCastD([1, 3, 2], [1, 3, 2])
-
-  def testBCast_12A(self):
-    self._testBCastA([1, 1, 1, 1, 3, 2], [1, 3, 2])
-
-  def testBCast_12B(self):
-    self._testBCastB([1, 1, 1, 1, 3, 2], [1, 3, 2])
-
-  def testBCast_12C(self):
-    self._testBCastC([1, 1, 1, 1, 3, 2], [1, 3, 2])
-
-  def testBCast_12D(self):
-    self._testBCastD([1, 1, 1, 1, 3, 2], [1, 3, 2])
-
-  def testBCast_13A(self):
-    self._testBCastA([1, 3, 2, 1, 1], [1])
-
-  def testBCast_13B(self):
-    self._testBCastB([1, 3, 2, 1, 1], [1])
-
-  def testBCast_13C(self):
-    self._testBCastC([1, 3, 2, 1, 1], [1])
-
-  def testBCast_13D(self):
-    self._testBCastD([1, 3, 2, 1, 1], [1])
-
-  def testBCast_14A(self):
-    self._testBCastA([2, 3, 1, 1, 5], [1])
-
-  def testBCast_14B(self):
-    self._testBCastB([2, 3, 1, 1, 5], [1])
-
-  def testBCast_14C(self):
-    self._testBCastC([2, 3, 1, 1, 5], [1])
-
-  def testBCast_14D(self):
-    self._testBCastD([2, 3, 1, 1, 5], [1])
-
-  def testBCast_15A(self):
-    self._testBCastA([10, 3, 1, 2], [3, 1, 2])
-
-  def testBCast_15B(self):
-    self._testBCastB([10, 3, 1, 2], [3, 1, 2])
-
-  def testBCast_15C(self):
-    self._testBCastC([10, 3, 1, 2], [3, 1, 2])
-
-  def testBCast_15D(self):
-    self._testBCastD([10, 3, 1, 2], [3, 1, 2])
-
+      if dtype == np.complex64 and tf_func in (_FLOORDIV, tf.floordiv):
+        continue  # floordiv makes no sense for complex numbers
+      self._compareBCast(xs, ys, dtype, np_func, tf_func)
+      self._compareBCast(ys, xs, dtype, np_func, tf_func)
+
+  def _testBCastForSimpleShape(self, np_func, tf_func):
+    self._testBCastByFunc(np_func, tf_func, [2, 2, 3], [3])
+
+  def testAdd(self):
+    self._testBCastForSimpleShape(np.add, _ADD)
+
+  def testSub1(self):
+    self._testBCastForSimpleShape(np.subtract, tf.sub)
+
+  def testSub2(self):
+    self._testBCastForSimpleShape(np.subtract, _SUB)
+
+  def testPow(self):
+    self._testBCastForSimpleShape(np.power, tf.pow)
+
+  def testMul(self):
+    self._testBCastForSimpleShape(np.multiply, tf.mul)
+
+  def testMul2(self):
+    self._testBCastForSimpleShape(np.multiply, _MUL)
+
+  def testTrueDiv(self):
+    self._testBCastForSimpleShape(np.true_divide, tf.truediv)
+
+  def testFloorDiv(self):
+    self._testBCastForSimpleShape(np.floor_divide, tf.floordiv)
+
+  def testTrueDiv2(self):
+    self._testBCastForSimpleShape(np.true_divide, _TRUEDIV)
+
+  def testFloorDiv2(self):
+    self._testBCastForSimpleShape(np.floor_divide, _FLOORDIV)
+
+  def _testBCastAdd(self, xs, ys):
+    self._compareBCast(xs, ys, np.float32, np.add, tf.add)
+    self._compareBCast(ys, xs, np.float32, np.add, tf.add)
+
+  def testVariousBroadcastSizes(self):
+    self._testBCastAdd([1, 3, 2], [1])
+    self._testBCastAdd([1, 3, 2], [2])
+    self._testBCastAdd([1, 3, 2], [3, 1])
+    self._testBCastAdd([1, 3, 2], [1, 3, 2])
+    self._testBCastAdd([1, 3, 2], [2, 3, 1])
+    self._testBCastAdd([1, 3, 2], [1, 3, 1])
+    self._testBCastAdd([1, 3, 2], [2, 1, 1])
+    self._testBCastAdd([2, 1, 5], [2, 3, 1])
+    self._testBCastAdd([2, 0, 5], [2, 0, 1])
+    self._testBCastAdd([2, 3, 0], [2, 3, 1])
+    self._testBCastAdd([1, 3, 2], [1, 3, 2])
+    self._testBCastAdd([1, 1, 1, 1, 3, 2], [1, 3, 2])
+    self._testBCastAdd([1, 3, 2, 1, 1], [1])
+    self._testBCastAdd([2, 3, 1, 1, 5], [1])
+    self._testBCastAdd([10, 3, 1, 2], [3, 1, 2])
+    
   def testMismatchedDimensions(self):
     for func in [tf.add, tf.sub, tf.mul, tf.div, _ADD, _SUB, _MUL, _TRUEDIV,
                  _FLOORDIV]:
@@ -730,6 +566,9 @@ class ComparisonOpTest(tf.test.TestCase):
     self.assertAllEqual(np_ans, tf_cpu)
 
   def _compareGpu(self, x, y, np_func, tf_func):
+    if not tf.test.is_built_with_cuda():
+      return
+
     np_ans = np_func(x, y)
     with self.test_session(use_gpu=True):
       out = tf_func(tf.convert_to_tensor(x), tf.convert_to_tensor(y))

@@ -560,7 +560,7 @@ class LSTMTest(tf.test.TestCase):
         self.assertAllEqual(out0, out1)
 
   def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
-    time_steps = 8
+    time_steps = 3
     num_units = 3
     num_proj = 4
     input_size = 5
@@ -749,10 +749,11 @@ class LSTMTest(tf.test.TestCase):
     self._testDynamicEquivalentToStaticRNN(
         use_gpu=False, use_sequence_length=False)
     self._testDynamicEquivalentToStaticRNN(
-        use_gpu=True, use_sequence_length=False)
-    self._testDynamicEquivalentToStaticRNN(
         use_gpu=False, use_sequence_length=True)
-    self._testDynamicEquivalentToStaticRNN(
+    if tf.test.is_built_with_cuda():
+      self._testDynamicEquivalentToStaticRNN(
+        use_gpu=True, use_sequence_length=False)
+      self._testDynamicEquivalentToStaticRNN(
         use_gpu=True, use_sequence_length=True)
 
 

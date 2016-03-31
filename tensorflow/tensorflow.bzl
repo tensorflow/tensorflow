@@ -552,7 +552,8 @@ def py_tests(name,
                additional_deps=additional_deps)
 
 
-def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[], shard_count=1):
-  test_tags = tf_cuda_tests_tags()
+def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[], shard_count=1,
+                  tags=[]):
+  test_tags = tf_cuda_tests_tags() + tags
   py_tests(name=name, size=size, srcs=srcs, additional_deps=additional_deps,
            data=data, tags=test_tags, shard_count=shard_count)
