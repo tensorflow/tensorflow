@@ -319,6 +319,17 @@ class Stream {
                         const DeviceMemory<float> &input_data,
                         DeviceMemory<float> *output_data);
 
+  Stream &ThenBatchNormalizeTraining(
+                    const dnn::BatchDescriptor& input_dimensions,
+                    const DeviceMemory<float>& input_data,
+                    const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+                    const DeviceMemory<float>& bn_scale,
+                    const DeviceMemory<float>& bn_bias,
+                    const dnn::BatchDescriptor& output_dimensions,
+                    DeviceMemory<float>* output_data,
+                    DeviceMemory<float>* running_mean,
+                    DeviceMemory<float>* running_inv_var);
+
   Stream &ThenActivate(dnn::ActivationMode activation_mode,
                        const dnn::BatchDescriptor &dimensions,
                        const DeviceMemory<float> &input_data,

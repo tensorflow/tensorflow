@@ -824,6 +824,19 @@ class DnnSupport {
                            const DeviceMemory<float>& input_data,
                            DeviceMemory<float>* output_data) = 0;
 
+  // TODO docs
+  virtual bool DoBatchNormForwardTraining(
+      Stream* stream,
+      const dnn::BatchDescriptor& input_dimensions,
+      const DeviceMemory<float>& input_data,
+      const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& bias_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemory<float>* output_data,
+      DeviceMemory<float>* running_mean,
+      DeviceMemory<float>* running_inv_var) = 0;
+
   // Applies an activation function (see ActivationMode) to all of the values
   // held on the device in 'input_data', whose dimensions are described by
   // 'dimensions'.

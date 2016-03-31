@@ -53,6 +53,18 @@ class CudnnSupport : public dnn::DnnSupport {
                   DeviceMemory<float>* output_data,
                   ScratchAllocator* scratch_allocator) override;
 
+  bool DoBatchNormForwardTraining(
+                    Stream* stream,
+                    const dnn::BatchDescriptor& input_dimensions,
+                    const DeviceMemory<float>& input_data,
+                    const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+                    const DeviceMemory<float>& scale_data,
+                    const DeviceMemory<float>& bias_data,
+                    const dnn::BatchDescriptor& output_dimensions,
+                    DeviceMemory<float>* output_data,
+                    DeviceMemory<float>* running_mean,
+                    DeviceMemory<float>* running_inv_var) override;
+
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
                   const DeviceMemory<double>& input_data,
                   const dnn::FilterDescriptor& filter_descriptor,

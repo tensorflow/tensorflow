@@ -601,6 +601,41 @@ Stream &Stream::ThenNormalize(
   return *this;
 }
 
+Stream &Stream::ThenBatchNormalizeTraining(
+                    const dnn::BatchDescriptor& input_dimensions,
+                    const DeviceMemory<float>& input_data,
+                    const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+                    const DeviceMemory<float>& scale_data,
+                    const DeviceMemory<float>& bias_data,
+                    const dnn::BatchDescriptor& output_dimensions,
+                    DeviceMemory<float>* output_data,
+                    DeviceMemory<float>* running_mean,
+                    DeviceMemory<float>* running_inv_var) {
+    VLOG_CALL(PARAM(input_dimensions),
+              PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+
+    if (ok()) {
+      if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+        CheckError(dnn->DoBatchNormForwardTraining(this,
+                                      input_dimensions, input_data,
+                                      scale_bias_mean_var_dimentions,
+                                      scale_data, bias_data,
+                                      output_dimensions,
+                                      output_data,
+                                      running_mean,
+                                      running_inv_var
+                                      ));
+      } else {
+        SetError();
+        LOG(WARNING)
+            << "attempting to perform DNN operation using StreamExecutor "
+               "without DNN support";
+      }
+    }
+    return *this;
+
+}
+
 Stream &Stream::ThenActivate(dnn::ActivationMode activation_mode,
                              const dnn::BatchDescriptor &dimensions,
                              const DeviceMemory<float> &input_data,

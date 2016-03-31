@@ -1,0 +1,12 @@
+Add to tensorflow/stream_executor/cuda/cuda_dnn.cc add batchnorm helper
+  And associated header
+
+make the wrapper in dnn so baseclass works out.
+
+Add kernel that calls into dnn
+
+figure out how the scale and bias descriptor gets made.
+  Possibly with a derive call or something similar
+
+Do the call. Running mean is mutable??? scary...
+Figure out a way to manage that... Maybe just pass in a tf.Variable?
