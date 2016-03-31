@@ -71,7 +71,7 @@ func main() {
 
 	// Load the graph from the file that we had generated from Python on
 	// the previous step
-	graph, err := tensorflow.LoadGraphFromText("/tmp/graph/test_graph.pb")
+	graph, err := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
 	if err != nil {
 		log.Fatal("Problem reading the graph from the text file, Error:", err)
 	}

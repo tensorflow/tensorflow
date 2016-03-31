@@ -45,6 +45,24 @@ var (
 	ErrDataTypeNotSupported = errors.New("Data type still not supported")
 	// ErrSliceExpected The argument must be an Slice
 	ErrSliceExpected = errors.New("The argument must be an Slice")
+
+	DtBfloat  = DataType(TF_BFLOAT16)
+	DtBool    = DataType(TF_BOOL)
+	DtComplex = DataType(TF_COMPLEX)
+	DtDouble  = DataType(TF_DOUBLE)
+	DtFloat   = DataType(TF_FLOAT)
+	DtInt16   = DataType(TF_INT16)
+	DtInt32   = DataType(TF_INT32)
+	DtInt64   = DataType(TF_INT64)
+	DtInt8    = DataType(TF_INT8)
+	DtQint16  = DataType(TF_QINT16)
+	DtQuint16 = DataType(TF_QUINT16)
+	DtQuint32 = DataType(TF_QINT32)
+	DtQint8   = DataType(TF_QINT8)
+	DtQuint8  = DataType(TF_QUINT8)
+	DtString  = DataType(TF_STRING)
+	DtUint16  = DataType(TF_UINT16)
+	DtUint8   = DataType(TF_UINT8)
 )
 
 // TensorInt Interface to be implemented by the tensors.
@@ -114,7 +132,7 @@ func (t *Tensor) String() string {
 // The datatypes are:
 //  - DT_STRING
 func (t *Tensor) AsStr() (res [][]byte, err error) {
-	if TF_DataType(TF_STRING) != TF_TensorType(t.tensor) {
+	if DtString != t.DataType() {
 		err = ErrInvalidTensorType
 		return
 	}
@@ -143,7 +161,7 @@ func (t *Tensor) AsStr() (res [][]byte, err error) {
 		res = append(res, resultBytes)
 	}
 	t.StringVal = res
-	t.Dtype = DataType_DT_STRING
+	t.Dtype = DtString
 
 	return
 }
@@ -153,7 +171,7 @@ func (t *Tensor) AsStr() (res [][]byte, err error) {
 // The datatypes are:
 //  - DT_FLOAT
 func (t *Tensor) AsFloat32() (res []float32, err error) {
-	if TF_DataType(TF_FLOAT) != TF_TensorType(t.tensor) {
+	if DtFloat != t.DataType() {
 		err = ErrInvalidTensorType
 		return
 	}
@@ -168,7 +186,7 @@ func (t *Tensor) AsFloat32() (res []float32, err error) {
 		res[i] = math.Float32frombits(binary.LittleEndian.Uint32(data[i*cBytesFloat32 : (i+1)*cBytesFloat32]))
 	}
 	t.FloatVal = res
-	t.Dtype = DataType_DT_FLOAT
+	t.Dtype = DtFloat
 
 	return
 }
@@ -178,7 +196,7 @@ func (t *Tensor) AsFloat32() (res []float32, err error) {
 // The datatypes are:
 //  - DT_DOUBLE
 func (t *Tensor) AsFloat64() (res []float64, err error) {
-	if TF_DataType(TF_DOUBLE) != TF_TensorType(t.tensor) {
+	if DtDouble != t.DataType() {
 		err = ErrInvalidTensorType
 		return
 	}
@@ -193,7 +211,7 @@ func (t *Tensor) AsFloat64() (res []float64, err error) {
 		res[i] = math.Float64frombits(binary.LittleEndian.Uint64(data[i*cBytesFloat64 : (i+1)*cBytesFloat64]))
 	}
 	t.DoubleVal = res
-	t.Dtype = DataType_DT_DOUBLE
+	t.Dtype = DtDouble
 
 	return
 }
@@ -211,18 +229,18 @@ func (t *Tensor) AsInt32() (res []int32, err error) {
 	}
 
 	data := t.Data()
-	switch TF_TensorType(t.tensor) {
-	case TF_DataType(TF_INT8), TF_DataType(TF_UINT8):
+	switch t.DataType() {
+	case DtInt8, DtUint8:
 		res = make([]int32, len(data))
 		for i, v := range data {
 			res[i] = int32(v)
 		}
-	case TF_DataType(TF_INT16):
+	case DtInt16:
 		res = make([]int32, len(data)/cBytesUint16)
 		for i := range res {
 			res[i] = int32(binary.LittleEndian.Uint16(data[i*cBytesUint16 : (i+1)*cBytesUint16]))
 		}
-	case TF_DataType(TF_INT32):
+	case DtInt32:
 		res = make([]int32, len(data)/cBytesInt32)
 		for i := range res {
 			res[i] = int32(binary.LittleEndian.Uint32(data[i*cBytesInt32 : (i+1)*cBytesInt32]))
@@ -243,7 +261,7 @@ func (t *Tensor) AsInt32() (res []int32, err error) {
 // The datatypes are:
 //  - DT_INT64
 func (t *Tensor) AsInt64() (res []int64, err error) {
-	if TF_DataType(TF_INT64) != TF_TensorType(t.tensor) {
+	if DtInt64 != t.DataType() {
 		err = ErrInvalidTensorType
 		return
 	}
@@ -291,7 +309,7 @@ func (t *Tensor) AsInt64() (res []int64, err error) {
 // The datatypes are:
 //  - DT_BOOL
 func (t *Tensor) AsBool() (res []bool, err error) {
-	if TF_DataType(TF_BOOL) != TF_TensorType(t.tensor) {
+	if DtBool != t.DataType() {
 		err = ErrInvalidTensorType
 		return
 	}
@@ -349,23 +367,23 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 		}
 	}
 
-	switch TF_TensorType(t.tensor) {
-	case TF_DataType(TF_FLOAT):
+	switch t.DataType() {
+	case DtFloat:
 		vals, _ := t.AsFloat32()
 		val = vals[pos]
-	case TF_DataType(TF_DOUBLE):
+	case DtDouble:
 		vals, _ := t.AsFloat64()
 		val = vals[pos]
-	case TF_DataType(TF_INT8), TF_DataType(TF_INT16), TF_DataType(TF_INT32), TF_DataType(TF_UINT8):
+	case DtInt8, DtInt16, DtInt32, DtUint8:
 		vals, _ := t.AsInt32()
 		val = vals[pos]
-	case TF_DataType(TF_INT64):
+	case DtInt64:
 		vals, _ := t.AsInt64()
 		val = vals[pos]
-	case TF_DataType(TF_BOOL):
+	case DtBool:
 		vals, _ := t.AsBool()
 		val = vals[pos]
-	case TF_DataType(TF_STRING):
+	case DtString:
 		vals, _ := t.AsStr()
 		val = vals[pos]
 	default:
@@ -461,7 +479,7 @@ func Constant(data interface{}) (*Tensor, error) {
 			res[i] = v.(bool)
 		}
 		dataPtr = reflect.ValueOf(res).Pointer()
-	//case TF_DataType(TF_STRING):
+	//case DtString:
 	default:
 		return nil, ErrTensorTypeNotSupported
 	}

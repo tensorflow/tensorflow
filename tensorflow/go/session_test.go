@@ -7,9 +7,7 @@ import (
 )
 
 func TestNewSession(t *testing.T) {
-	graph := &tensorflow.GraphDef{}
-
-	graph, err := tensorflow.LoadGraphFromText("test_data/tests_constants_outputs.pb")
+	graph, err := tensorflow.LoadGraphFromTextFile("test_data/tests_constants_outputs.pb")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +46,7 @@ func TestInputParams(t *testing.T) {
 		t.FailNow()
 	}
 
-	graph, err := tensorflow.LoadGraphFromText("test_data/add_three_dim_graph.pb")
+	graph, err := tensorflow.LoadGraphFromTextFile("test_data/add_three_dim_graph.pb")
 	if err != nil {
 		t.Error("Problem trying read the graph from the origin file, Error:", err)
 		t.FailNow()
@@ -118,7 +116,7 @@ func TestInputMultDimParams(t *testing.T) {
 		t.FailNow()
 	}
 
-	graph, err := tensorflow.LoadGraphFromText("test_data/test_graph_multi_dim.pb")
+	graph, err := tensorflow.LoadGraphFromTextFile("test_data/test_graph_multi_dim.pb")
 	if err != nil {
 		t.Error("Problem trying read the graph from the origin file, Error:", err)
 		t.FailNow()

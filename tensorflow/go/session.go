@@ -2,7 +2,6 @@ package tensorflow
 
 import (
 	"fmt"
-	"io/ioutil"
 
 	"github.com/golang/protobuf/proto"
 )
@@ -62,26 +61,10 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 	return result, statusToError(status)
 }
 
-// LoadGraphFromText Loads a Graph as plain text from the file on the specified
-// path.
-func LoadGraphFromText(path string) (graph *GraphDef, err error) {
-	graphStr, err := ioutil.ReadFile(path)
-	if err != nil {
-		return
-	}
-
-	graph = &GraphDef{}
-	if err = proto.UnmarshalText(string(graphStr), graph); err != nil {
-		return
-	}
-
-	return
-}
-
 // ExtendGraph Loads the graph definition on the session
-func (s *Session) ExtendGraph(graph *GraphDef) error {
+func (s *Session) ExtendGraph(graph *Graph) error {
 	status := TF_NewStatus()
-	buf, err := proto.Marshal(graph)
+	buf, err := proto.Marshal(graph.def)
 	if err != nil {
 		return err
 	}

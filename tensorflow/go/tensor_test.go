@@ -5,13 +5,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 func getTensorFromGraph(t *testing.T, graphStr string) *tensorflow.Tensor {
-	graph := &tensorflow.GraphDef{}
-	if err := proto.UnmarshalText(graphStr, graph); err != nil {
+	graph, err := tensorflow.NewGraphFromText(graphStr)
+	if err != nil {
 		t.Fatal(err)
 	}
 	s, err := tensorflow.NewSession()
