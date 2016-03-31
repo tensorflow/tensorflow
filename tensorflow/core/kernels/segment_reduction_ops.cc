@@ -82,6 +82,8 @@ class SegmentReductionOp : public OpKernel {
         num_indices > 0
             ? internal::SubtleMustCopy(segment_vec(num_indices - 1)) + 1
             : 0;
+    OP_REQUIRES(context, output_rows >= 0,
+                errors::InvalidArgument("segment ids must be >= 0"));
 
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
@@ -92,6 +94,8 @@ class SegmentReductionOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (num_indices == 0) return;
+    OP_REQUIRES(context, output_rows > 0,
+                errors::InvalidArgument("segment ids must be >= 0"));
     auto output_flat = output->flat_outer_dims<T>();
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
@@ -238,7 +242,7 @@ class UnsortedSegmentSumOp : public OpKernel {
                                 segment_ids.shape().DebugString()));
 
     const auto segment_flat = segment_ids.flat<Index>();
-    const int32 N = segment_flat.dimension(0);
+    const int64 N = segment_flat.dimension(0);
     const Index output_rows =
         internal::SubtleMustCopy(num_segments.scalar<int32>()());
     OP_REQUIRES(context, output_rows >= 0,
@@ -258,7 +262,7 @@ class UnsortedSegmentSumOp : public OpKernel {
 
     if (data.NumElements() > 0) {
       auto data_flat = data.shaped<T, 2>({N, data.NumElements() / N});
-      for (int i = 0; i < N; ++i) {
+      for (int64 i = 0; i < N; ++i) {
         Index j = internal::SubtleMustCopy(segment_flat(i));
         OP_REQUIRES(context, FastBoundsCheck(j, output_rows),
                     errors::InvalidArgument(
@@ -305,7 +309,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
                 errors::InvalidArgument("segment_ids should be a vector."));
 
-    const int32 num_indices = indices.NumElements();
+    const int64 num_indices = indices.NumElements();
     OP_REQUIRES(context, num_indices == segment_ids.NumElements(),
                 errors::InvalidArgument(
                     "segment_ids and indices should have same size."));
@@ -320,6 +324,8 @@ class SparseSegmentReductionOpBase : public OpKernel {
         num_indices > 0
             ? internal::SubtleMustCopy(segment_vec(num_indices - 1)) + 1
             : 0;
+    OP_REQUIRES(context, output_rows >= 0,
+                errors::InvalidArgument("segment ids must be >= 0"));
 
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
@@ -330,9 +336,11 @@ class SparseSegmentReductionOpBase : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (num_indices == 0) return;
+    OP_REQUIRES(context, output_rows > 0,
+                errors::InvalidArgument("segment ids must be >= 0"));
     auto output_flat = output->flat_outer_dims<T>();
 
-    int32 start = 0, end = 1;
+    int64 start = 0, end = 1;
     OutputRow out_index = internal::SubtleMustCopy(segment_vec(start));
     OP_REQUIRES(context, out_index == 0,
                 errors::InvalidArgument("segment ids do not start at 0"));
@@ -379,10 +387,10 @@ class SparseSegmentReductionOpBase : public OpKernel {
  private:
   typedef int32 Index;
 
-  int Reduce(const typename TTypes<T>::ConstMatrix& input_flat,
-             const typename TTypes<Index>::ConstVec& indices_vec, int start,
-             int num,
-             Eigen::TensorChippingOp<0, typename TTypes<T>::Matrix> out) {
+  int64 Reduce(const typename TTypes<T>::ConstMatrix& input_flat,
+               const typename TTypes<Index>::ConstVec& indices_vec, int64 start,
+               int64 num,
+               Eigen::TensorChippingOp<0, typename TTypes<T>::Matrix> out) {
 #define INDEX(n, i)                               \
   const auto index##n = indices_vec(start + (i)); \
   if (!FastBoundsCheck(index##n, input_flat.dimension(0))) return (i);
@@ -393,7 +401,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
       INDEX(0, 0);
       out = L(0);
     } else {
-      int r = num % 8;
+      int64 r = num % 8;
       T m(1);
       if (is_mean_ && (num < 10)) {
         m = T(num);

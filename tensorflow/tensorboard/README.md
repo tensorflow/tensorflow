@@ -311,6 +311,10 @@ This is because by default, TensorBoard serves on host `0.0.0.0` which is
 publicly accessible. You can stop the popups by specifying `--host=localhost` at
 startup.
 
+### How can I develop TensorBoard?
+
+See [tensorflow/tensorboard/DEVELOPMENT.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/DEVELOPMENT.md).
+
 ### I have a different issue that wasn't addressed here!
 
 First, try searching our [GitHub
