@@ -1387,6 +1387,7 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 
