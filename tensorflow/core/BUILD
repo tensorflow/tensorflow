@@ -377,7 +377,10 @@ cc_library(
 
 cc_library(
     name = "math_grad",
-    srcs = ["ops/math_grad.cc"],
+    srcs = [
+        "ops/math_grad.cc",
+        "ops/random_grad.cc",
+    ],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
