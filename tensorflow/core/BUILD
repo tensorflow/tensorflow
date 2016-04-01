@@ -303,6 +303,7 @@ tf_gen_op_libs(
         "state_ops",
         "string_ops",
         "training_ops",
+        "batchnorm_training_op",
     ],
 )
 
@@ -343,6 +344,7 @@ cc_library(
         ":state_ops_op_lib",
         ":string_ops_op_lib",
         ":training_ops_op_lib",
+        ":batchnorm_training_op_op_lib",
         ":user_ops_op_lib",
         "//tensorflow/models/embedding:word2vec_ops",
     ],
@@ -456,6 +458,7 @@ cc_library(
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
+        "//tensorflow/core/kernels:batchnorm_training_op",
         "//tensorflow/models/embedding:word2vec_kernels",
     ],
 )
