@@ -1557,7 +1557,7 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    copts = tf_copts() + ["-O2"],
+    copts = tf_copts(),
     tags = [
         "manual",
         "notap",
