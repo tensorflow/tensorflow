@@ -19,10 +19,12 @@ set -e
 # Select bazel version.
 PROTOBUF_VERSION="3.0.0-beta-2"
 
-# Install proto.
+# Install protobuf3.
 mkdir /protobuf
 cd /protobuf
 curl -fSsL -O https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-cpp-$PROTOBUF_VERSION.tar.gz
+tar zxf protobuf-cpp-$PROTOBUF_VERSION.tar.gz
+cd protobuf-$PROTOBUF_VERSION
 ./autogen.sh
 ./configure
 make
