@@ -24,12 +24,15 @@ apt-get update
 # Install dependencies from ubuntu deb repository.
 apt-get update
 apt-get install -y \
+    autoconf \
+    automake \
     bc \
     build-essential \
     cmake \
     curl \
     ffmpeg \
     git \
+    libtool \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
     pkg-config \
