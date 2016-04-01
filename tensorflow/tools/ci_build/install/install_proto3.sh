@@ -28,7 +28,6 @@ cd protobuf-$PROTOBUF_VERSION
 ./autogen.sh
 ./configure
 make
-make check
 make install
 make clean
 ldconfig
