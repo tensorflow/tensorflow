@@ -535,7 +535,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     if num_tokens > 0:
       with ops.device(self._global_step.device), ops.name_scope(""):
         tokens = array_ops.fill([num_tokens],
-                                self._global_step.initialized_value())
+                                self._global_step.ref())
         init_tokens = self._sync_token_queue.enqueue_many((tokens,))
     else:
       init_tokens = control_flow_ops.no_op(name="no_init_tokens")

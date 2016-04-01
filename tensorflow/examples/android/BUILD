@@ -5,6 +5,8 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_copts")
+
 exports_files(["LICENSE"])
 
 cc_binary(
@@ -13,11 +15,7 @@ cc_binary(
         "jni/**/*.cc",
         "jni/**/*.h",
     ]) + [":libpthread.so"],
-    copts = [
-        "-std=c++11",
-        "-mfpu=neon",
-        "-O2",
-    ],
+    copts = tf_copts(),
     linkopts = [
         "-landroid",
         "-ljnigraphics",

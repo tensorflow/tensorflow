@@ -64,6 +64,7 @@ struct CastFunctor<CPUDevice, O, I> {
   FN(arg0, int16);             \
   FN(arg0, int32);             \
   FN(arg0, int64);             \
+  FN(arg0, Eigen::half);       \
   FN(arg0, float);             \
   FN(arg0, double)
 
@@ -75,6 +76,7 @@ struct CastFunctor<CPUDevice, O, I> {
   FN(arg0, arg1, int16);             \
   FN(arg0, arg1, int32);             \
   FN(arg0, arg1, int64);             \
+  FN(arg0, arg1, Eigen::half);       \
   FN(arg0, arg1, float);             \
   FN(arg0, arg1, double)
 
@@ -140,6 +142,7 @@ class CpuCastOp : public CastOpBase {
     CURRY_TYPES3(CAST_CASE, CPUDevice, int16);
     CURRY_TYPES3(CAST_CASE, CPUDevice, int32);
     CURRY_TYPES3(CAST_CASE, CPUDevice, int64);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, Eigen::half);
     CURRY_TYPES3(CAST_CASE, CPUDevice, float);
     CURRY_TYPES3(CAST_CASE, CPUDevice, double);
 
@@ -183,6 +186,12 @@ class CpuCastOp : public CastOpBase {
       };
       return Status::OK();
     }
+
+    // TODO(sesse): If CPU casting to or from Eigen::half ever becomes a
+    // bottleneck, we could probably implement specialized support for
+    // vectorized versions (not the least based on F16C for Haswell
+    // or newer) here.
+
     return Unimplemented();
   }
 };
@@ -206,6 +215,7 @@ class GpuCastOp : public CastOpBase {
     CURRY_TYPES3(CAST_CASE, GPUDevice, int16);
     CURRY_TYPES3(CAST_CASE, GPUDevice, int32);
     CURRY_TYPES3(CAST_CASE, GPUDevice, int64);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, Eigen::half);
     CURRY_TYPES3(CAST_CASE, GPUDevice, float);
     CURRY_TYPES3(CAST_CASE, GPUDevice, double);
     CAST_CASE(GPUDevice, float, bfloat16);
@@ -233,6 +243,7 @@ CURRY_TYPES2(REGISTER_CAST_GPU, uint16);
 CURRY_TYPES2(REGISTER_CAST_GPU, int16);
 CURRY_TYPES2(REGISTER_CAST_GPU, int32);
 CURRY_TYPES2(REGISTER_CAST_GPU, int64);
+CURRY_TYPES2(REGISTER_CAST_GPU, Eigen::half);
 CURRY_TYPES2(REGISTER_CAST_GPU, float);
 CURRY_TYPES2(REGISTER_CAST_GPU, double);
 REGISTER_CAST_GPU(float, bfloat16);
