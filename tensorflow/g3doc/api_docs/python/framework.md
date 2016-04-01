@@ -238,7 +238,7 @@ string, a device function, or None:
 * If it is a device name string, all operations constructed in
   this context will be assigned to the device with that name, unless
   overridden by a nested `device()` context.
-* If it is a function, it will be treated as function from
+* If it is a function, it will be treated as a function from
   Operation objects to device name strings, and invoked each time
   a new Operation is created. The Operation will be assigned to
   the device with the returned name.

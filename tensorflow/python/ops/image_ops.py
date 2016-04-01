@@ -945,7 +945,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   """
   image = ops.convert_to_tensor(image, name='image')
   if dtype == image.dtype:
-    return image
+    return array_ops.identity(image, name=name)
 
   with ops.op_scope([image], name, 'convert_image') as name:
     # Both integer: use integer multiplication in the larger range
@@ -960,9 +960,9 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         scaled = math_ops.div(image, scale)
 
         if saturate:
-          return math_ops.saturate_cast(scaled, dtype)
+          return math_ops.saturate_cast(scaled, dtype, name=name)
         else:
-          return math_ops.cast(scaled, dtype)
+          return math_ops.cast(scaled, dtype, name=name)
       else:
         # Scaling up, cast first, then scale. The scale will not map in.max to
         # out.max, but converting back and forth should result in no change.
@@ -971,29 +971,29 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         else:
           cast = math_ops.cast(image, dtype)
         scale = (scale_out + 1) // (scale_in + 1)
-        return math_ops.mul(cast, scale)
+        return math_ops.mul(cast, scale, name=name)
     elif image.dtype.is_floating and dtype.is_floating:
       # Both float: Just cast, no possible overflows in the allowed ranges.
       # Note: We're ignoreing float overflows. If your image dynamic range
       # exceeds float range you're on your own.
-      return math_ops.cast(image, dtype)
+      return math_ops.cast(image, dtype, name=name)
     else:
       if image.dtype.is_integer:
         # Converting to float: first cast, then scale. No saturation possible.
         cast = math_ops.cast(image, dtype)
         scale = 1. / image.dtype.max
-        return math_ops.mul(cast, scale)
+        return math_ops.mul(cast, scale, name=name)
       else:
         # Converting from float: first scale, then cast
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
         scaled = math_ops.mul(image, scale)
         if saturate:
-          return math_ops.saturate_cast(scaled, dtype)
+          return math_ops.saturate_cast(scaled, dtype, name=name)
         else:
-          return math_ops.cast(scaled, dtype)
+          return math_ops.cast(scaled, dtype, name=name)
 
 
-def rgb_to_grayscale(images):
+def rgb_to_grayscale(images, name=None):
   """Converts one or more images from RGB to Grayscale.
 
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
@@ -1003,11 +1003,12 @@ def rgb_to_grayscale(images):
   Args:
     images: The RGB tensor to convert. Last dimension must have size 3 and
       should contain RGB values.
+    name: A name for the operation (optional).
 
   Returns:
     The converted grayscale image(s).
   """
-  with ops.op_scope([images], None, 'rgb_to_grayscale'):
+  with ops.op_scope([images], name, 'rgb_to_grayscale') as name:
     images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
@@ -1021,10 +1022,10 @@ def rgb_to_grayscale(images):
                                      rank_1,
                                      keep_dims=True)
     gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
-    return convert_image_dtype(gray_float, orig_dtype)
+    return convert_image_dtype(gray_float, orig_dtype, name=name)
 
 
-def grayscale_to_rgb(images):
+def grayscale_to_rgb(images, name=None):
   """Converts one or more images from Grayscale to RGB.
 
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
@@ -1032,18 +1033,19 @@ def grayscale_to_rgb(images):
 
   Args:
     images: The Grayscale tensor to convert. Last dimension must be size 1.
+    name: A name for the operation (optional).
 
   Returns:
     The converted grayscale image(s).
   """
-  with ops.op_scope([images], None, 'grayscale_to_rgb'):
+  with ops.op_scope([images], name, 'grayscale_to_rgb') as name:
     images = ops.convert_to_tensor(images, name='images')
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     shape_list = (
         [array_ops.ones(rank_1,
                         dtype=dtypes.int32)] + [array_ops.expand_dims(3, 0)])
     multiples = array_ops.concat(0, shape_list)
-    rgb = array_ops.tile(images, multiples)
+    rgb = array_ops.tile(images, multiples, name=name)
     rgb.set_shape(images.get_shape()[:-1].concatenate([3]))
     return rgb
 

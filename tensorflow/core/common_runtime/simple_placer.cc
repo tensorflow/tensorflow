@@ -199,6 +199,7 @@ class ColocationGraph {
   Status ColocateNodes(const Node& x, const Node& y) {
     int x_root = FindRoot(x.id());
     int y_root = FindRoot(y.id());
+    Status s;
     if (x_root != y_root) {
       // Merge the sets by swinging the parent pointer of the smaller
       // tree to point to the root of the larger tree. Together with
@@ -236,9 +237,14 @@ class ColocationGraph {
       // TODO(mrry): Consider enriching the error message by pointing
       // out which nodes have the explicit partial device
       // specifications that caused this conflict.
-      TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
+      s = DeviceNameUtils::MergeDevNames(
           &members_[new_root].device_name, members_[old_root].device_name,
-          options_ == nullptr || options_->config.allow_soft_placement()));
+          options_ == nullptr || options_->config.allow_soft_placement());
+      if (!s.ok()) {
+        return errors::InvalidArgument("Cannot colocate nodes '", x.name(),
+                                       "' and '", y.name(), ": ",
+                                       s.error_message());
+      }
 
       // Ensure that the common root has at least one supported device
       // type, by computing the intersection of
@@ -609,11 +615,13 @@ Status SimplePlacer::Run() {
           IsRefType(node->input_type(edge->dst_input()))) {
         status = colocation_graph.ColocateNodes(*edge->src(), *node);
         if (!status.ok()) {
-          return AttachDef(
-              errors::InvalidArgument("Cannot satisfy colocation constraint "
-                                      "implied by reference connection: ",
-                                      status.error_message()),
-              node->def());
+          return AttachDef(errors::InvalidArgument(
+                               "Nodes were connected by a "
+                               "reference connection (requiring them to "
+                               "be on the same device), but the two nodes "
+                               "were assigned two different devices: ",
+                               status.error_message()),
+                           node->def());
         }
       }
     }

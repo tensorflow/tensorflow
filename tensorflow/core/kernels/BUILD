@@ -13,6 +13,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
+    "tf_copts",
     "tf_kernel_libraries",
     "tf_kernel_library",
     "cc_header_only_library",
@@ -1545,6 +1546,30 @@ filegroup(
         "xent_op.cc",
         ":android_extended_ops_headers",
     ],
+)
+
+cc_library(
+    name = "android_tensorflow_kernels",
+    srcs = select({
+        "//tensorflow:android": [
+            "//tensorflow/core/kernels:android_core_ops",
+            "//tensorflow/core/kernels:android_extended_ops",
+        ],
+        "//conditions:default": [],
+    }),
+    copts = tf_copts() + ["-O2"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@re2//:re2",
+        "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/core:protos_cc",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------

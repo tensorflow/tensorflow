@@ -377,7 +377,10 @@ cc_library(
 
 cc_library(
     name = "math_grad",
-    srcs = ["ops/math_grad.cc"],
+    srcs = [
+        "ops/math_grad.cc",
+        "ops/random_grad.cc",
+    ],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
@@ -608,21 +611,6 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Config setting for determining if we are building for Android.
-config_setting(
-    name = "android",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-    },
-)
-
-ANDROID_TF_COPTS = [
-    "-mfpu=neon",
-    "-std=c++11",
-    "-DMIN_LOG_LEVEL=0",
-    "-DTF_LEAN_BINARY",
-]
-
 ANDROID_TF_LITE_HDRS = [
     "framework/tensor.h",
     "platform/default/integral_types.h",
@@ -648,14 +636,11 @@ cc_library(
     name = "android_tensorflow_lib_lite",
     srcs =
         select({
-            ":android": ["//tensorflow/core:android_srcs"],
+            "//tensorflow:android": ["//tensorflow/core:android_srcs"],
             "//conditions:default": [],
         }),
     hdrs = ANDROID_TF_LITE_HDRS,
-    copts = select({
-        ":android": ANDROID_TF_COPTS + ["-Os"],
-        "//conditions:default": [],
-    }),
+    copts = tf_copts() + ["-Os"],
     tags = [
         "manual",
         "notap",
@@ -674,17 +659,12 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = select({
-        ":android": [
+        "//tensorflow:android": [
             ":android_op_registrations_and_gradients",
-            "//tensorflow/core/kernels:android_core_ops",
-            "//tensorflow/core/kernels:android_extended_ops",
         ],
         "//conditions:default": [],
     }),
-    copts = select({
-        ":android": ANDROID_TF_COPTS + ["-O2"],
-        "//conditions:default": [],
-    }),
+    copts = tf_copts(),
     tags = [
         "manual",
         "notap",
@@ -694,6 +674,7 @@ cc_library(
         "@re2//:re2",
         ":android_tensorflow_lib_lite",
         ":protos_cc",
+        "//tensorflow/core/kernels:android_tensorflow_kernels",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -1384,6 +1365,7 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 
