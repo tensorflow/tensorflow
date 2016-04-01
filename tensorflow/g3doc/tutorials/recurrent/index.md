@@ -49,7 +49,7 @@ to make it easy for the neural network to process.
 
 ### LSTM
 
-The core of the model consists of an LSTM cell that processes one word at the
+The core of the model consists of an LSTM cell that processes one word at a
 time and computes probabilities of the possible continuations of the sentence.
 The memory state of the network is initialized with a vector of zeros and gets
 updated after reading each word. Also, for computational reasons, we will
