@@ -18,11 +18,14 @@
 # and run the Python unit tests from the source code on the installation
 #
 # Usage:
-#   test_installation.sh [--virtualenv]
+#   test_installation.sh [--virtualenv] [--gpu]
 #
 # If the flag --virtualenv is set, the script will use "python" as the Python
 # binary path. Otherwise, it will use tools/python_bin_path.sh to determine
 # the Python binary path.
+#
+# The --gpu flag informs the script that this is a GPU build, so that the
+# appropriate test blacklists can be applied accordingly.
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: PY_TEST_WHITELIST, PY_TEST_BLACKLIST, PY_TEST_GPU_BLACKLIST,
@@ -88,6 +91,10 @@ fi
 
 # =============================================================================
 
+echo "PY_TEST_WHITELIST: ${PY_TEST_WHITELIST}"
+echo "PY_TEST_BLACKLIST: ${PY_TEST_BLACKLIST}"
+echo "PY_TEST_GPU_BLACKLIST: ${PY_TEST_GPU_BLACKLIST}"
+
 
 # Helper functions
 # Get the absolute path from a path
@@ -104,9 +111,24 @@ die() {
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Process input arguments
+IS_VIRTUALENV=0
+IS_GPU=0
+while true; do
+  if [[ "$1" == "--virtualenv" ]]; then
+    IS_VIRTUALENV=1
+  elif [[ "$1" == "--gpu" ]]; then
+    IS_GPU=1
+  fi
+  shift
+
+  if [[ -z "$1" ]]; then
+    break
+  fi
+done
+
 # Obtain the path to Python binary
-# source tools/python_bin_path.sh
-if [[ "$1" == "--virtualenv" ]]; then
+if [[ ${IS_VIRTUALENV} == "1" ]]; then
   PYTHON_BIN_PATH="$(which python)"
 else
   source tools/python_bin_path.sh
@@ -116,6 +138,11 @@ fi
 if [[ -z "${PYTHON_BIN_PATH}" ]]; then
   die "PYTHON_BIN_PATH was not provided. If this is not virtualenv, "\
 "did you run configure?"
+fi
+
+# Append GPU-only test blacklist
+if [[ ${IS_GPU} == "1" ]]; then
+  PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:${PY_TEST_GPU_BLACKLIST}"
 fi
 
 # Determine the major and minor versions of Python being used (e.g., 2.7)
