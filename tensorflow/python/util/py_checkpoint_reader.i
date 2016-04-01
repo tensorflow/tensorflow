@@ -107,8 +107,8 @@ limitations under the License.
 %unignore tensorflow::checkpoint;
 %unignore tensorflow::checkpoint::CheckpointReader;
 %unignore tensorflow::checkpoint::CheckpointReader::~CheckpointReader;
-%unignore tensorflow::checkpoint::CheckpointReader::DebugString;
-%unignore tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap;
+%rename("debug_string") tensorflow::checkpoint::CheckpointReader::DebugString;
+%rename("get_variable_to_shape_map") tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap;
 %rename("_HasTensor") tensorflow::checkpoint::CheckpointReader::HasTensor;
 %unignore tensorflow::checkpoint::PyCheckpointReader;
 %unignore tensorflow::checkpoint::~PyCheckpointReader;
@@ -133,7 +133,6 @@ limitations under the License.
     from tensorflow.python.util import compat
     return _NewPyCheckpointReader(compat.as_bytes(filepattern))
 %}
-
 
 %newobject tensorflow::checkpoint::PyCheckpointReader::get_tensor;
 
