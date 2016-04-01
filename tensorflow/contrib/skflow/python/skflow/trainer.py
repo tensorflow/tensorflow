@@ -27,13 +27,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
-
-
-OPTIMIZER_CLS_NAMES = {
-    "SGD": train.GradientDescentOptimizer,
-    "Adagrad": train.AdagradOptimizer,
-    "Adam": train.AdamOptimizer,
-}
+from tensorflow.contrib.layers import optimizers
 
 
 class TensorFlowTrainer(object):
@@ -65,30 +59,13 @@ class TensorFlowTrainer(object):
         """
         self.loss = loss
         self.global_step = global_step
-        # pylint: disable=redefined-variable-type
-        if isinstance(learning_rate, float):
-            self._learning_rate = vs.get_variable(
-                "learning_rate",
-                [],
-                initializer=init_ops.constant_initializer(learning_rate))
-        elif callable(learning_rate):
-            self._learning_rate = learning_rate(self.global_step)
-        else:
-            raise ValueError("learning_rate should be a float or a callable function.")
-        params = variables.trainable_variables()
-        self.gradients = gradients.gradients(loss, params)
-        if clip_gradients > 0.0:
-            self.gradients, self.gradients_norm = clip_ops.clip_by_global_norm(
-                self.gradients, clip_gradients)
-        grads_and_vars = zip(self.gradients, params)
-        if isinstance(optimizer, str):
-            self._optimizer = OPTIMIZER_CLS_NAMES[
-                optimizer](self._learning_rate)
-        else:
-            self._optimizer = optimizer(self._learning_rate)
-        self.trainer = self._optimizer.apply_gradients(grads_and_vars,
-                                                       global_step=global_step,
-                                                       name="train")
+
+        if callable(learning_rate):
+            learning_rate = learning_rate(global_step)
+        self.trainer = optimizers.optimize_loss(loss, global_step,
+            learning_rate=learning_rate,
+            optimizer=optimizer,
+            clip_gradients=clip_gradients)
         # Update ops during training, e.g. batch_norm_ops
         self.trainer = control_flow_ops.group(self.trainer, *ops.get_collection('update_ops'))
         # Get all initializers for all trainable variables.
