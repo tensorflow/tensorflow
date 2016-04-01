@@ -18,7 +18,7 @@ def _parse_bazel_version(bazel_version):
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
-  if "bazel_version" in dir(native):
+  if "bazel_version" in dir(native) and native.bazel_version:
     current_bazel_version = _parse_bazel_version(native.bazel_version)
     minimum_bazel_version = _parse_bazel_version(bazel_version)
     if minimum_bazel_version > current_bazel_version:
@@ -82,7 +82,14 @@ def if_cuda(a, b=[]):
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
-          select({"//tensorflow:darwin": [],
+          select({"//tensorflow:android": [
+                    "-mfpu=neon",
+                    "-std=c++11",
+                    "-DMIN_LOG_LEVEL=0",
+                    "-DTF_LEAN_BINARY",
+                    "-O2",
+                  ],
+                  "//tensorflow:darwin": [],
                   "//conditions:default": ["-pthread"]}))
 
 
