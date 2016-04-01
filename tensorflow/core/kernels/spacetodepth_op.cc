@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/core/kernels/spacetodepth_op.h"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -89,27 +91,43 @@ class SpaceToDepthOp : public OpKernel {
     auto Toutput = outputs_tensor->tensor<T, 4>();
     auto Tinput = input.tensor<T, 4>();
 
-    for (int b = 0; b < batch_size; ++b) {
-      for (int h = 0; h < height; ++h) {
-        const int out_h = h / block_size_;
-        const int offset_h = (h % block_size_);
-        for (int w = 0; w < width; ++w) {
-          const int out_w = w / block_size_;
-          const int offset_w = (w % block_size_);
-          const int offset_d =
-              (offset_h * block_size_ + offset_w) * input_depth;
-          for (int d = 0; d < input_depth; ++d) {
-            const int out_d = d + offset_d;
-            Toutput(b, out_h, out_w, out_d) = Tinput(b, h, w, d);
-          }
-        }
-      }
-    }
+    functor::SpaceToDepthOpFunctor<Device, T> functor;
+    functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
   };
 
  private:
   int block_size_;
 };
+
+// Partial specialization of SpaceToDepthOpFunctor for a CPUDevice.
+namespace functor {
+template <typename T>
+struct SpaceToDepthOpFunctor<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+                  int block_size, typename TTypes<T, 4>::Tensor output) {
+    const int batch_size = output.dimension(0);
+    const int input_height = input.dimension(1);
+    const int input_width = input.dimension(2);
+    const int input_depth = input.dimension(3);
+
+    for (int b = 0; b < batch_size; ++b) {
+      for (int h = 0; h < input_height; ++h) {
+        const int out_h = h / block_size;
+        const int offset_h = (h % block_size);
+        for (int w = 0; w < input_width; ++w) {
+          const int out_w = w / block_size;
+          const int offset_w = (w % block_size);
+          const int offset_d = (offset_h * block_size + offset_w) * input_depth;
+          for (int d = 0; d < input_depth; ++d) {
+            const int out_d = d + offset_d;
+            output(b, out_h, out_w, out_d) = input(b, h, w, d);
+          }
+        }
+      }
+    }
+  }
+};
+}  // namespace functor
 
 #define REGISTER(type)                                                   \
   REGISTER_KERNEL_BUILDER(                                               \
@@ -118,5 +136,11 @@ class SpaceToDepthOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER);
 #undef REGISTER
+
+#if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(
+    Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    SpaceToDepthOp<GPUDevice, float>);
+#endif  // GOOGLE_CUDA
 
 }  // end namespace tensorflow

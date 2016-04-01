@@ -26,7 +26,8 @@ namespace tensorflow {
 namespace {
 
 template <DataType DT>
-Status HandleSliceToElement(const Tensor& parent, Tensor* element, int index) {
+Status HandleSliceToElement(const Tensor& parent, Tensor* element,
+                            int64 index) {
   typedef typename EnumToDataType<DT>::Type T;
   DCHECK_NE(parent.dim_size(0), 0);
   if (element->NumElements() != (parent.NumElements() / parent.dim_size(0))) {
@@ -285,9 +286,21 @@ bool QueueBase::TryAttemptLocked(Action action,
   while (!done && !attempts->empty()) {
     if (attempts->front().is_cancelled) {
       if (action == kEnqueue) {
-        LOG(INFO) << "Skipping cancelled enqueue attempt";
+        if (closed_) {
+          VLOG(1) << "Skipping cancelled enqueue attempt";
+        } else {
+          LOG(WARNING)
+              << name_
+              << ": Skipping cancelled enqueue attempt with queue not closed";
+        }
       } else {
-        LOG(INFO) << "Skipping cancelled dequeue attempt";
+        if (closed_) {
+          VLOG(1) << "Skipping cancelled dequeue attempt";
+        } else {
+          LOG(WARNING)
+              << name_
+              << ": Skipping cancelled dequeue attempt with queue not closed";
+        }
       }
       attempts->pop_front();
     } else {
@@ -337,7 +350,7 @@ void QueueBase::FlushUnlocked() {
 }
 
 Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
-                                     int index) {
+                                     int64 index) {
 #define HANDLE_TYPE(DT)                                                   \
   if (parent.dtype() == DT) {                                             \
     TF_RETURN_IF_ERROR(HandleSliceToElement<DT>(parent, element, index)); \
@@ -365,7 +378,7 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
 
 // Static method
 Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                     int index) {
+                                     int64 index) {
 #define HANDLE_TYPE(DT)                                                   \
   if (element.dtype() == DT) {                                            \
     TF_RETURN_IF_ERROR(HandleElementToSlice<DT>(element, parent, index)); \

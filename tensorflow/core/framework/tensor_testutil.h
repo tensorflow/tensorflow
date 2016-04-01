@@ -107,24 +107,30 @@ struct is_floating_point_type {
 };
 
 template <typename T>
-static void ExpectEqual(const T& a, const T& b) {
+inline void ExpectEqual(const T& a, const T& b) {
   EXPECT_EQ(a, b);
 }
 
 template <>
-void ExpectEqual<float>(const float& a, const float& b) {
+inline void ExpectEqual<float>(const float& a, const float& b) {
   EXPECT_FLOAT_EQ(a, b);
 }
 
 template <>
-void ExpectEqual<double>(const double& a, const double& b) {
+inline void ExpectEqual<double>(const double& a, const double& b) {
   EXPECT_DOUBLE_EQ(a, b);
 }
 
 template <>
-void ExpectEqual<complex64>(const complex64& a, const complex64& b) {
+inline void ExpectEqual<complex64>(const complex64& a, const complex64& b) {
   EXPECT_FLOAT_EQ(a.real(), b.real()) << a << " vs. " << b;
   EXPECT_FLOAT_EQ(a.imag(), b.imag()) << a << " vs. " << b;
+}
+
+template <>
+inline void ExpectEqual<complex128>(const complex128& a, const complex128& b) {
+  EXPECT_DOUBLE_EQ(a.real(), b.real()) << a << " vs. " << b;
+  EXPECT_DOUBLE_EQ(a.imag(), b.imag()) << a << " vs. " << b;
 }
 
 inline void AssertSameTypeDims(const Tensor& x, const Tensor& y) {

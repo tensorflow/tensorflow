@@ -84,8 +84,13 @@ DEFINE_CONST(int8, int_val);
 DEFINE_CONST(int64, int64_val);
 DEFINE_CONST(bool, bool_val);
 
+DEFINE_CONST_IMPL(Eigen::half, proto.add_half_val(t.begin()->x));
+
 DEFINE_CONST_IMPL(complex64, proto.add_scomplex_val(t.begin()->real());
                   proto.add_scomplex_val(t.begin()->imag()););
+
+DEFINE_CONST_IMPL(complex128, proto.add_dcomplex_val(t.begin()->real());
+                  proto.add_dcomplex_val(t.begin()->imag()););
 
 Node* Const(StringPiece s, const GraphDefBuilder::Options& options) {
   if (options.HaveError()) return nullptr;

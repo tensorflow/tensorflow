@@ -632,6 +632,57 @@ This op also returns an indicator vector such that
 ## Math Operations
 - - -
 
+### `tf.sparse_add(sp_a, sp_b, thresh=0)` {#sparse_add}
+
+Adds two `SparseTensor` objects to produce another `SparseTensor`.
+
+The input `SparseTensor` objects' indices are assumed ordered in standard
+lexicographic order.  If this is not the case, before this step run
+`SparseReorder` to restore index ordering.
+
+By default, if two values sum to zero at some index, the output `SparseTensor`
+would still include that particular location in its index, storing a zero in
+the corresponding value slot.  To override this, callers can specify `thresh`,
+indicating that if the sum has a magnitude strictly smaller than `thresh`, its
+corresponding value and index would then not be included.  In particular,
+`thresh == 0.0` (default) means everything is kept and actual thresholding
+happens only for a positive value.
+
+For example, suppose the logical sum is (densified):
+
+    [       2]
+    [.1      ]
+    [ 6   -.2]
+
+Then,
+
+    - thresh == 0 (the default): all 4 index/value pairs will be returned.
+    - thresh == 0.11: only .1 will vanish, and the remaining three index/value
+                      pairs will be returned.
+    - thresh == 0.21: both .1 and -.2 will vanish.
+
+##### Args:
+
+
+*  <b>`sp_a`</b>: The first input `SparseTensor`.
+*  <b>`sp_b`</b>: The second input `SparseTensor`.
+*  <b>`thresh`</b>: A 0-D `Tensor`.  The magnitude threshold that determines if an
+  output value/index pair takes space.  Its dtype should match that of the
+  values if they are real; if the latter are complex64/complex128, then the
+  dtype should be float32/float64, correspondingly.
+
+##### Returns:
+
+  A `SparseTensor` with the same shape, representing the sum.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If either `sp_a` or `sp_b` is not a `SparseTensor`.
+
+
+- - -
+
 ### `tf.sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False, name=None)` {#sparse_tensor_dense_matmul}
 
 Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
@@ -653,15 +704,13 @@ There are a number of questions to ask in the decision process, including:
 * Will the SparseTensor A fit in memory if densified?
 * Is the column count of the product large (>> 1)?
 * Is the density of A larger than approximately 15%?
-* Is backprop into A necessary?
 
 If the answer to several of these questions is yes, consider
 converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
 
-This operation tends to perform well when A is more sparse, if the column
-size of the product is small (e.g. matrix-vector multiplication),
-if sp_a.shape takes on large values.  While gradients with respect to B
-are supported, gradients with respect to A are not.
+This operation tends to perform well when A is more sparse, if the column size
+of the product is small (e.g. matrix-vector multiplication), if sp_a.shape
+takes on large values.
 
 Below is a rough speed comparison between sparse_tensor_dense_matmul,
 labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of

@@ -50,9 +50,9 @@ message BenchmarkEntries {
 }
 
 message BuildConfiguration {
-  string mode = 1;             // opt, dbg, etc
-  repeated string config = 2;  // asan, cuda, etc
-  repeated string copts = 3;   // -mavx, etc.
+  string mode = 1;               // opt, dbg, etc
+  repeated string cc_flags = 2;  // CC compiler flags, if known
+  repeated string opts = 3;      // Bazel compilation options, if known
 };
 
 message CommitId {
@@ -60,37 +60,56 @@ message CommitId {
     int64 changelist = 1;
     string hash = 2;
   }
+  // Hash of intermediate change between hash/changelist and what was tested.
+  // Not used if the build is from a commit without modifications.
+  string snapshot = 3;
 };
 
 message CPUInfo {
+  int64 num_cores = 1;
+
+  int64 num_cores_allowed = 2;
+
   // How fast are these cpus?
-  double mhz_per_cpu = 1;
+  double mhz_per_cpu = 3;
 
   // Additional cpu information. For example,
   // Intel Ivybridge with HyperThreading (24 cores) dL1:32KB dL2:256KB dL3:30MB
-  string cpu_info = 2;
+  string cpu_info = 4;
 
   // What kind of cpu scaling is enabled on the host.
   // Examples include "performance", "ondemand", "conservative", "mixed".
-  string cpu_governor = 3;
+  string cpu_governor = 5;
 
   // Cache sizes (in bytes), e.g. "L2": 262144 (for 256KB)
-  map<string, int64> cache_size = 4;
+  map<string, int64> cache_size = 6;
 };
+
+message MemoryInfo {
+  int64 total = 1;      // Total virtual memory in bytes
+  int64 available = 2;  // Immediately available memory in bytes
+}
 
 message GPUInfo {
   string model = 1;  // e.g. "Tesla K40c"
   string uuid = 2;   // Final entry in output of "nvidia-smi -L"
+  string bus_id = 3;  // e.g. "0000:04:00.0"
 };
 
 message PlatformInfo {
   string bits = 1;       // e.g. '64bit'
   string linkage = 2;    // e.g. 'ELF'
   string machine = 3;    // e.g. 'i386'
-  string processor = 4;  // e.g. 'amdk6'  (the real processor name)
-  string release = 5;    // e.g. '3.13.0-76-generic'
-  string system = 6;     // e.g. 'Linux'
-  string version = 7;    // e.g. '#120-Ubuntu SMP Mon Jan 18 15:59:10 UTC 2016'
+  string release = 4;    // e.g. '3.13.0-76-generic'
+  string system = 5;     // e.g. 'Linux'
+  string version = 6;    // e.g. '#120-Ubuntu SMP Mon Jan 18 15:59:10 UTC 2016'
+};
+
+message AvailableDeviceInfo {       // Matches DeviceAttributes
+  string name = 1;                  // Device name.
+  string type = 2;                  // Device type, e.g. 'CPU' or 'GPU'.
+  int64 memory_limit = 3;           // Memory capacity in bytes.
+  string physical_description = 4;  // The physical description of this device.
 };
 
 message MachineConfiguration {
@@ -105,11 +124,16 @@ message MachineConfiguration {
 
   // Other devices that are attached and relevant (e.g. GPUInfo).
   repeated google.protobuf.Any device_info = 4;
+
+  // Devices accessible to the test (e.g. as given by list_local_devices).
+  repeated AvailableDeviceInfo available_device_info = 5;
+
+  MemoryInfo memory_info = 6;
 };
 
 // Run-specific items such as arguments to the test / benchmark.
 message RunConfiguration {
-  repeated string arguments = 1;
+  repeated string argument = 1;
 }
 
 // The output of one benchmark / test run.  Each run contains a list of

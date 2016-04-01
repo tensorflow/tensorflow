@@ -21,6 +21,7 @@ on execution.  For more info, see the section on [Feeding
 data](../../how_tos/reading_data/index.md#feeding).
 
 @@placeholder
+@@placeholder_with_default
 
 ## Readers
 
@@ -91,6 +92,7 @@ The "producer" functions add a queue to the graph and a corresponding
 
 @@match_filenames_once
 @@limit_epochs
+@@input_producer
 @@range_input_producer
 @@slice_input_producer
 @@string_input_producer

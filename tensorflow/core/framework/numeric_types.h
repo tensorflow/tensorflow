@@ -24,6 +24,8 @@ namespace tensorflow {
 
 // Single precision complex.
 typedef std::complex<float> complex64;
+// Double precision complex.
+typedef std::complex<double> complex128;
 
 }  // end namespace tensorflow
 

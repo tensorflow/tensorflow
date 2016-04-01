@@ -155,6 +155,9 @@ Node* Select(Graph* g, Node* c, Node* inx, Node* iny);
 // Casts "in" into data type "dst".
 Node* Cast(Graph* g, Node* in, DataType dst);
 
+// Perform gather op on params "in0" with indicies "in1".
+Node* Gather(Graph* g, Node* in0, Node* in1);
+
 // Computes the args needed broadcast gradient function.
 Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
 

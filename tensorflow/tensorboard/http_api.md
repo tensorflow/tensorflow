@@ -14,8 +14,8 @@ information on weights in a particular layer over time, and an `images` tag that
 shows input images flowing into the system. The "eval" run might have an
 entirely different set of tag names, or some duplicated tag names.
 
-The currently supported tag types are `scalars`, `images`, `histograms` and
-`graph`. Each tag type corresponds to a route (documented below) for
+The currently supported tag types are `scalars`, `images`, `histograms`, `graph`
+and `run_metadata`. Each tag type corresponds to a route (documented below) for
 retrieving tag data of that type.
 
 All of the data provided comes from TensorFlow events files ('\*.tfevents\*'),
@@ -28,46 +28,49 @@ a collection of tags of that type, but a boolean denoting if there is a graph
 definition associated with the run. The tag is provided to the summary
 op (usually as a constant).
 
-## `/runs`
+## `data/runs`
 
 Returns a dictionary mapping from `run name` (quoted string) to dictionaries
 mapping from all available tagTypes to a list of tags of that type available for
 the run. Think of this as a comprehensive index of all of the data available
 from the TensorBoard server. Here is an example:
 
-{
-  "train_run": {
-    "histograms": ["foo_histogram", "bar_histogram"],
-    "compressedHistograms": ["foo_histogram", "bar_histogram"],
-    "scalars": ["xent", "loss", "learning_rate"],
-    "images": ["input"],
-    "graph": true
-  },
-  "eval": {
-    "histograms": ["foo_histogram", "bar_histogram"],
-    "compressedHistograms": ["foo_histogram", "bar_histogram"],
-    "scalars": ["precision", "recall"],
-    "images": ["input"],
-    "graph": false
-  }
-}
+    {
+      "train_run": {
+        "histograms": ["foo_histogram", "bar_histogram"],
+        "compressedHistograms": ["foo_histogram", "bar_histogram"],
+        "scalars": ["xent", "loss", "learning_rate"],
+        "images": ["input"],
+        "graph": true,
+        "run_metadata": ["forward prop", "inference"]
+      },
+      "eval": {
+        "histograms": ["foo_histogram", "bar_histogram"],
+        "compressedHistograms": ["foo_histogram", "bar_histogram"],
+        "scalars": ["precision", "recall"],
+        "images": ["input"],
+        "graph": false,
+        "run_metadata": []
+      }
+    }
 
 Note that the same tag may be present for many runs. It is not guaranteed that
 they will have the same meaning across runs. It is also not guaranteed that they
 will have the same tag type across different runs.
 
-## '/scalars?run=foo&tag=bar'
+## '/data/scalars?run=foo&tag=bar'
 
 Returns an array of event_accumulator.SimpleValueEvents ([wall_time, step,
 value]) for the given run and tag. wall_time is seconds since epoch.
 
 Example:
-[
-  [1443856985.705543, 1448, 0.7461960315704346],  # wall_time, step, value
-  [1443857105.704628, 3438, 0.5427092909812927],
-  [1443857225.705133, 5417, 0.5457325577735901],
-  ...
-]
+
+    [
+      [1443856985.705543, 1448, 0.7461960315704346],  # wall_time, step, value
+      [1443857105.704628, 3438, 0.5427092909812927],
+      [1443857225.705133, 5417, 0.5457325577735901],
+      ...
+    ]
 
 If the format parameter is set to 'csv', the response will instead be in CSV
 format:
@@ -77,7 +80,7 @@ format:
     1443857105.704628,3438,0.5427092909812927
     1443857225.705133,5417,0.5457325577735901
 
-## '/scalars?[sample_count=10]'
+## '/data/scalars?[sample_count=10]'
 
 Without any parameters, returns a dictionary mapping from run name to a
 dictionary mapping from tag name to a sampled list of scalars from that run and
@@ -98,7 +101,7 @@ The samples are distributed uniformly over the list of values. The sample_count
 parameter is optional and defaults to 10; it must be at least 2. The first and
 the last value will always be sampled.
 
-## '/histograms?run=foo&tag=bar'
+## '/data/histograms?run=foo&tag=bar'
 
 Returns an array of event_accumulator.HistogramEvents ([wall_time, step,
 HistogramValue]) for the given run and tag. A HistogramValue is [min, max, num,
@@ -106,26 +109,26 @@ sum, sum_squares, bucket_limit, bucket]. wall_time is seconds since epoch.
 
 Annotated Example: (note - real data is higher precision)
 
-[
-  [
-    1443871386.185149, # wall_time
-    235166,            # step
     [
-      -0.66,           # minimum value
-      0.44,            # maximum value
-      8.0,             # number of items in the histogram
-      -0.80,           # sum of items in the histogram
-      0.73,            # sum of squares of items in the histogram
-      [-0.68, -0.62, -0.292, -0.26, -0.11, -0.10, -0.08, -0.07, -0.05,
-       -0.0525, -0.0434, -0.039, -0.029, -0.026, 0.42, 0.47, 1.8e+308],
-                       # the right edge of each bucket
-     [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0,
-      1.0, 0.0]        # the number of elements within each bucket
-     ]
-   ]
- ]
+      [
+        1443871386.185149, # wall_time
+        235166,            # step
+        [
+          -0.66,           # minimum value
+          0.44,            # maximum value
+          8.0,             # number of items in the histogram
+          -0.80,           # sum of items in the histogram
+          0.73,            # sum of squares of items in the histogram
+          [-0.68, -0.62, -0.292, -0.26, -0.11, -0.10, -0.08, -0.07, -0.05,
+          -0.0525, -0.0434, -0.039, -0.029, -0.026, 0.42, 0.47, 1.8e+308],
+                          # the right edge of each bucket
+        [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0,
+          1.0, 0.0]        # the number of elements within each bucket
+        ]
+      ]
+    ]
 
-## '/compressedHistograms?run=foo&tag=bar'
+## '/data/compressedHistograms?run=foo&tag=bar'
 
 Returns an array of event_accumulator.CompressedHistogramEvents ([wall_time,
 step, CompressedHistogramValues]) for the given run and tag.
@@ -141,21 +144,21 @@ data -- this is something that will be improved in a later iteration.
 
 Annotated Example: (note - real data is higher precision)
 
-[
-  [
-    1441154832.580509,   # wall_time
-    5,                   # step
-    [  [0, -3.67],       # CompressedHistogramValue for 0th percentile
-       [2500, -4.19],    # CompressedHistogramValue for 25th percentile
-       [5000, 6.29],
-       [7500, 1.64],
-       [10000, 3.67]
+    [
+      [
+        1441154832.580509,   # wall_time
+        5,                   # step
+        [  [0, -3.67],       # CompressedHistogramValue for 0th percentile
+          [2500, -4.19],    # CompressedHistogramValue for 25th percentile
+          [5000, 6.29],
+          [7500, 1.64],
+          [10000, 3.67]
+        ]
+      ],
+      ...
     ]
-  ],
-  ...
-]
 
-## `/images?run=foo&tag=bar`
+## `/data/images?run=foo&tag=bar`
 
 Gets a sample of ImageMetadatas for the given run and tag.
 
@@ -164,6 +167,7 @@ crucially including the query parameter that may be used to retrieve that image.
 (See /individualImage for details.)
 
 For example:
+
       {
         "width": 28,                 # width in pixels
         "height": 28,                # height in pixels
@@ -173,7 +177,7 @@ For example:
                                      # param for /individualImage
       }
 
-## `/individualImage?{{query}}`
+## `/data/individualImage?{{query}}`
 
 Retrieves an individual image. The image query should not be generated by the
 frontend, but instead acquired from calling the /images route (the image
@@ -187,27 +191,101 @@ replaced with other images. (See Notes for details on the reservoir sampling.)
 An example call to this route would look like this:
 /individualImage?index=0&tagname=input%2Fimage%2F2&run=train
 
-## `/graph?run=foo`
+## `/data/graph?run=foo&limit_attr_size=1024&large_attrs_key=key`
 
 Returns the graph definition for the given run in gzipped pbtxt format. The
 graph is composed of a list of nodes, where each node is a specific TensorFlow
 operation which takes as inputs other nodes (operations).
 
-An example pbtxt response of graph with 3 nodes:
-node {
-  op: "Input"
-  name: "A"
-}
-node {
-  op: "Input"
-  name: "B"
-}
-node {
-  op: "MatMul"
-  name: "C"
-  input: "A"
-  input: "B"
-}
+The query parameters `limit_attr_size` and `large_attrs_key` are optional.
+
+`limit_attr_size` specifies the maximum allowed size in bytes, before the
+attribute is considered large and filtered out of the graph. If specified,
+it must be an int and > 0. If not specified, no filtering is applied.
+
+`large_attrs_key` is the attribute key that will be used for storing
+attributes that are too large. The value of this key (list of strings)
+should be used by the client in order to determine which attributes
+have been filtered. Must be specified if `limit_attr_size` is specified.
+
+For the query `/graph?run=foo&limit_attr_size=1024&large_attrs_key=_too_large`,
+here is an example pbtxt response of a graph with 3 nodes, where the second
+node had two large attributes "a" and "b" that were filtered out (size > 1024):
+
+    node {
+      op: "Input"
+      name: "A"
+    }
+    node {
+      op: "Input"
+      name: "B"
+      attr {
+        key: "small_attr"
+        value: {
+          s: "some string"
+        }
+      }
+      attr {
+        key: "_too_large"
+        value {
+          list {
+            s: "a"
+            s: "b"
+          }
+        }
+      }
+    }
+    node {
+      op: "MatMul"
+      name: "C"
+      input: "A"
+      input: "B"
+    }
+
+Prior to filtering, the original node "B" had the following content:
+
+    node {
+      op: "Input"
+      name: "B"
+      attr {
+        key: "small_attr"
+        value: {
+          s: "some string"
+        }
+      }
+      attr {
+        key: "a"
+        value { Very large object... }
+      }
+      attr {
+        key: "b"
+        value { Very large object... }
+      }
+    }
+
+## `/data/run_metadata?run=foo&tag=bar`
+
+Given a run and tag, returns the metadata of a particular
+`session.run()` as a gzipped, pbtxt serialized [`RunMetadata`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/config.proto)
+proto. For example:
+
+    step_stats {
+      dev_stats {
+        device: "/job:localhost/replica:0/task:0/cpu:0"
+        node_stats {
+          node_name: "_SOURCE"
+          all_start_micros: 1458337695775395
+          op_start_rel_micros: 11
+          op_end_rel_micros: 12
+          all_end_rel_micros: 38
+          memory {
+            allocator_name: "cpu"
+          }
+          timeline_label: "_SOURCE = NoOp()"
+          scheduled_micros: 1458337695775363
+        }
+      }
+    }
 
 ## Notes
 

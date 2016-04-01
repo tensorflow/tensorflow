@@ -22,15 +22,19 @@ from __future__ import division
 from __future__ import print_function
 
 import base64
+import gzip
 import json
 import os
 import shutil
 import threading
+import zlib
 
+from six import BytesIO
 from six.moves import http_client
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from google.protobuf import text_format
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 
@@ -70,6 +74,18 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertEqual(response.status, 200)
     return json.loads(response.read().decode('utf-8'))
 
+  def _decodeResponse(self, response):
+    """Decompresses (if necessary) the response from the server."""
+    encoding = response.getheader('Content-Encoding')
+    content = response.read()
+    if encoding in ('gzip', 'x-gzip', 'deflate'):
+      if encoding == 'deflate':
+        data = BytesIO(zlib.decompress(content))
+      else:
+        data = gzip.GzipFile('', 'rb', 9, BytesIO(content))
+      content = data.read()
+    return content
+
   def testBasicStartup(self):
     """Start the server up and then shut it down immediately."""
     pass
@@ -97,7 +113,8 @@ class TensorboardServerTest(tf.test.TestCase):
                   'scalars': ['simple_values'],
                   'histograms': ['histogram'],
                   'images': ['image'],
-                  'graph': False}})
+                  'graph': True,
+                  'run_metadata': ['test run']}})
 
   def testHistograms(self):
     """Test the format of /data/histograms."""
@@ -137,12 +154,46 @@ class TensorboardServerTest(tf.test.TestCase):
     response = self._get('/data/individualImage?%s' % image_query)
     self.assertEqual(response.status, 200)
 
+  def testGraph(self):
+    """Test retrieving the graph definition."""
+    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
+                         '&large_attrs_key=_very_large_attrs')
+    self.assertEqual(response.status, 200)
+    # Decompress (unzip) the response, since graphs come gzipped.
+    graph_pbtxt = self._decodeResponse(response)
+    # Parse the graph from pbtxt into a graph message.
+    graph = tf.GraphDef()
+    graph = text_format.Parse(graph_pbtxt, graph)
+    self.assertEqual(len(graph.node), 2)
+    self.assertEqual(graph.node[0].name, 'a')
+    self.assertEqual(graph.node[1].name, 'b')
+    # Make sure the second node has an attribute that was filtered out because
+    # it was too large and was added to the "too large" attributes list.
+    self.assertEqual(list(graph.node[1].attr.keys()), ['_very_large_attrs'])
+    self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
+                     [b'very_large_attr'])
+
+  def testRunMetadata(self):
+    """Test retrieving the run metadata information."""
+    response = self._get('/data/run_metadata?run=run1&tag=test%20run')
+    self.assertEqual(response.status, 200)
+    # Decompress (unzip) the response, since run outputs come gzipped.
+    run_metadata_pbtxt = self._decodeResponse(response)
+    # Parse from pbtxt into a message.
+    run_metadata = tf.RunMetadata()
+    text_format.Parse(run_metadata_pbtxt, run_metadata)
+    self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
+    self.assertEqual(run_metadata.step_stats.dev_stats[0].device, 'test device')
+
   def _GenerateTestData(self):
     """Generates the test data directory.
 
-    The test data has a single run named run1 which contains a histogram and an
-    image at timestamp and step 0 and scalar events containing the value i at
-    step 10 * i and wall time 100 * i, for i in [1, _SCALAR_COUNT).
+    The test data has a single run named run1 which contains:
+     - a histogram
+     - an image at timestamp and step 0
+     - scalar events containing the value i at step 10 * i and wall time
+         100 * i, for i in [1, _SCALAR_COUNT).
+     - a graph definition
     """
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir)
@@ -157,6 +208,20 @@ class TensorboardServerTest(tf.test.TestCase):
                                         sum_squares=5,
                                         bucket_limit=[0, 1, 2],
                                         bucket=[1, 1, 1])
+    # Add a simple graph event.
+    graph_def = tf.GraphDef()
+    node1 = graph_def.node.add()
+    node1.name = 'a'
+    node2 = graph_def.node.add()
+    node2.name = 'b'
+    node2.attr['very_large_attr'].s = b'a' * 2048  # 2 KB attribute
+    writer.add_graph(graph_def)
+
+    # Add a simple run metadata event.
+    run_metadata = tf.RunMetadata()
+    device_stats = run_metadata.step_stats.dev_stats.add()
+    device_stats.device = 'test device'
+    writer.add_run_metadata(run_metadata, 'test run')
 
     # 1x1 transparent GIF.
     encoded_image = base64.b64decode(
@@ -184,6 +249,14 @@ class TensorboardServerTest(tf.test.TestCase):
                                                      simple_value=i)])))
     writer.flush()
     writer.close()
+
+
+class ParseEventFilesSpecTest(tf.test.TestCase):
+
+  def testRespectsGCSPath(self):
+    logdir_string = 'gs://foo/path'
+    expected = {'gs://foo/path': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
 
 
 if __name__ == '__main__':

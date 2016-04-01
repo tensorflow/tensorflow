@@ -26,6 +26,7 @@ import six
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary.impl import gcs
 
 
 class EventMultiplexer(object):
@@ -171,18 +172,30 @@ class EventMultiplexer(object):
     Returns:
       The `EventMultiplexer`.
     """
-    if not gfile.Exists(path):
-      return  # Maybe it hasn't been created yet, fail silently to retry later
-    if not gfile.IsDirectory(path):
-      raise ValueError('AddRunsFromDirectory: path exists and is not a '
-                       'directory, %s' % path)
+    subdirs = []
+    if gcs.IsGCSPath(path):
+      subdirs = [
+          subdir
+          for (subdir, files) in gcs.ListRecursively(path)
+          if list(filter(event_accumulator.IsTensorFlowEventsFile, files))
+      ]
+    else:
+      if not gfile.Exists(path):
+        return  # Maybe it hasn't been created yet, fail silently to retry later
+      if not gfile.IsDirectory(path):
+        raise ValueError('AddRunsFromDirectory: path exists and is not a '
+                         'directory, %s' % path)
+      subdirs = [
+          subdir
+          for (subdir, _, files) in gfile.Walk(path)
+          if list(filter(event_accumulator.IsTensorFlowEventsFile, files))
+      ]
 
-    for (subdir, _, files) in gfile.Walk(path):
-      if list(filter(event_accumulator.IsTensorFlowEventsFile, files)):
-        logging.info('Adding events from directory %s', subdir)
-        rpath = os.path.relpath(subdir, path)
-        subname = os.path.join(name, rpath) if name else rpath
-        self.AddRun(subdir, name=subname)
+    for subdir in subdirs:
+      logging.info('Adding events from directory %s', subdir)
+      rpath = os.path.relpath(subdir, path)
+      subname = os.path.join(name, rpath) if name else rpath
+      self.AddRun(subdir, name=subname)
 
     return self
 
@@ -215,7 +228,7 @@ class EventMultiplexer(object):
     return accumulator.Scalars(tag)
 
   def Graph(self, run):
-    """Retrieve the graphs associated with the provided run.
+    """Retrieve the graph associated with the provided run.
 
     Args:
       run: A string name of a run to load the graph for.
@@ -230,6 +243,24 @@ class EventMultiplexer(object):
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Graph()
+
+  def RunMetadata(self, run, tag):
+    """Get the session.run() metadata associated with a TensorFlow run and tag.
+
+    Args:
+      run: A string name of a TensorFlow run.
+      tag: A string name of the tag associated with a particular session.run().
+
+    Raises:
+      KeyError: If the run is not found, or the tag is not available for the
+        given run.
+      RuntimeError: If the run's EventAccumulator has not been activated.
+
+    Returns:
+      The metadata in the form of `RunMetadata` protobuf data structure.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.RunMetadata(tag)
 
   def Histograms(self, run, tag):
     """Retrieve the histogram events associated with a run and tag.

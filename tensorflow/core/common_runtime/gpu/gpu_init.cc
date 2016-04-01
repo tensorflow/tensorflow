@@ -77,7 +77,7 @@ static void InitGPU() {
 
   int dev_count = platform->VisibleDeviceCount();
 
-  if (dev_count == 0) {
+  if (dev_count <= 0) {
     LOG(INFO) << "No GPU devices available on machine.";
     return;
   }

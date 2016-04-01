@@ -136,6 +136,22 @@ class ConcatOpTest(tf.test.TestCase):
     self._testRandom(tf.bfloat16)
     self._testRandom(tf.bfloat16, use_gpu=True)
 
+  def testInvalidConcatDimTypeAndShape(self):
+    a = tf.Variable(tf.constant(1.0, shape=[1]))
+    b = tf.Variable(tf.constant(2.0, shape=[1]))
+    with self.assertRaises(TypeError):
+      tf.concat(a, b)
+    with self.assertRaises(TypeError):
+      tf.concat(4.2, 1)
+    with self.assertRaises(TypeError):
+      tf.concat(a, 1)
+    with self.assertRaises(TypeError):
+      tf.concat(a, [a, b])
+    with self.assertRaises(ValueError):
+      tf.concat([3], [a, b])
+    with self.assertRaises(ValueError):
+      tf.concat(0, [])
+
   def _testGradientsSimple(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       inp = []

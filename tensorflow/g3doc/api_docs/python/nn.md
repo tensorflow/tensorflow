@@ -27,7 +27,7 @@ Computes rectified linear: `max(features, 0)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -82,7 +82,7 @@ Computes softplus: `log(exp(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -99,7 +99,7 @@ Computes softsign: `features / (abs(features) + 1)`.
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -150,7 +150,7 @@ kept independently and each row and column will be kept or not kept together.
 
 - - -
 
-### `tf.nn.bias_add(value, bias, name=None)` {#bias_add}
+### `tf.nn.bias_add(value, bias, data_format=None, name=None)` {#bias_add}
 
 Adds `bias` to `value`.
 
@@ -167,6 +167,7 @@ case where both types are quantized.
 *  <b>`bias`</b>: A 1-D `Tensor` with size matching the last dimension of `value`.
     Must be the same type as `value` unless `value` is a quantized type,
     in which case a different quantized type may be used.
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -302,7 +303,7 @@ performs the following:
 3. For each patch, right-multiplies the filter matrix and the image patch
    vector.
 
-In detail, with the default NCHW format,
+In detail, with the default NHWC format,
 
     output[b, i, j, k] =
         sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *
@@ -491,7 +492,7 @@ window in `value`.
     The stride of the sliding window for each dimension of the
     input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW" are supported.
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
@@ -515,7 +516,7 @@ Performs the max pooling on the input.
 *  <b>`strides`</b>: A list of ints that has length >= 4.  The stride of the sliding
     window for each dimension of the input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW" are supported.
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
@@ -728,7 +729,7 @@ Computes half the L2 norm of a tensor without the `sqrt`:
 ##### Args:
 
 
-*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `qint8`, `quint8`, `qint32`.
+*  <b>`t`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Typically 2-D, but may have any dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -780,6 +781,11 @@ To ensure stability and avoid overflow, the implementation uses
   A `Tensor` of the same shape as `logits` with the componentwise
   logistic losses.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `logits` and `targets` do not have the same shape.
+
 
 - - -
 
@@ -805,6 +811,28 @@ For each batch `i` and class `j` we have
 
 - - -
 
+### `tf.nn.log_softmax(logits, name=None)` {#log_softmax}
+
+Computes log softmax activations.
+
+For each batch `i` and class `j` we have
+
+    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))
+
+##### Args:
+
+
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    2-D with shape `[batch_size, num_classes]`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+
+
+- - -
+
 ### `tf.nn.softmax_cross_entropy_with_logits(logits, labels, name=None)` {#softmax_cross_entropy_with_logits}
 
 Computes softmax cross entropy between `logits` and `labels`.
@@ -815,10 +843,8 @@ example, each CIFAR-10 image is labeled with one and only one label: an image
 can be a dog or a truck, but not both.
 
 **NOTE:**  While the classes are mutually exclusive, their probabilities
-need not be.  All that is required is that each row of `labels` is
-a valid probability distribution.  If using exclusive `labels`
-(wherein one and only one class is true at a time), see
-`sparse_softmax_cross_entropy_with_logits`.
+need not be. If using exclusive `labels` (wherein one and only one class is
+true at a time), see `sparse_softmax_cross_entropy_with_logits`.
 
 **WARNING:** This op expects unscaled logits, since it performs a `softmax`
 on `logits` internally for efficiency.  Do not call this op with the
@@ -831,7 +857,9 @@ and the same dtype (either `float32` or `float64`).
 
 
 *  <b>`logits`</b>: Unscaled log probabilities.
-*  <b>`labels`</b>: Each row `labels[i]` must be a valid probability distribution.
+*  <b>`labels`</b>: Each row `labels[i]` must be a valid probability distribution or
+      all zeros. If all zeros, the corresponding loss will be `0`, regardless
+      of the contents of `logits[i]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -871,13 +899,70 @@ and the dtype (either `float32` or `float64`).
 
 
 *  <b>`logits`</b>: Unscaled log probabilities.
-*  <b>`labels`</b>: Each entry `labels[i]` must be an index in `[0, num_classes)`.
+*  <b>`labels`</b>: Each entry `labels[i]` must be an index in `[0, num_classes)` or
+      `-1`. If `-1`, the corresponding loss will be `0`, regardless
+      of the contents of `logits[i]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
   softmax cross entropy loss.
+
+
+- - -
+
+### `tf.nn.weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None)` {#weighted_cross_entropy_with_logits}
+
+Computes a weighted cross entropy.
+
+This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
+allows one to trade off recall and precision by up- or down-weighting the
+cost of a positive error relative to a negative error.
+
+The usual cross-entropy cost is defined as:
+
+  targets * -log(sigmoid(logits)) + (1 - targets) * -log(1 - sigmoid(logits))
+
+The argument `pos_weight` is used as a multiplier for the positive targets:
+
+  targets * -log(sigmoid(logits)) * pos_weight +
+      (1 - targets) * -log(1 - sigmoid(logits))
+
+For brevity, let `x = logits`, `z = targets`, `q = pos_weight`.
+The loss is:
+
+      qz * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+    = qz * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
+    = qz * log(1 + exp(-x)) + (1 - z) * (-log(exp(-x)) + log(1 + exp(-x)))
+    = qz * log(1 + exp(-x)) + (1 - z) * (x + log(1 + exp(-x))
+    = (1 - z) * x + (qz +  1 - z) * log(1 + exp(-x))
+    = (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
+
+Setting `l = (1 + (q - 1) * z)`, to ensure stability and avoid overflow,
+the implementation uses
+
+    (1 - z) * x + l * (log(1 + exp(-abs(x))) + max(-x, 0))
+
+`logits` and `targets` must have the same type and shape.
+
+##### Args:
+
+
+*  <b>`logits`</b>: A `Tensor` of type `float32` or `float64`.
+*  <b>`targets`</b>: A `Tensor` of the same type and shape as `logits`.
+*  <b>`pos_weight`</b>: A coefficient to use on the positive examples.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of the same shape as `logits` with the componentwise
+  weightedlogistic losses.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `logits` and `targets` do not have the same shape.
 
 
 

@@ -337,10 +337,11 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
 
   executor->RunAsync(args, barrier->Get());
 
+  executor_done.WaitForNotification();
+
   if (!executor_done_status.ok()) {
     return false;
   }
-  executor_done.WaitForNotification();
 
   // Fetch the constant tensors and replace the corresponding tensors in the
   // original graph with those constants.

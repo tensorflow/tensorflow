@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Maintain moving averages of parameters."""
 from __future__ import absolute_import
 from __future__ import division
@@ -20,8 +19,8 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -52,55 +51,67 @@ def assign_moving_average(variable, value, decay, name=None):
     moving average.
   """
   with ops.op_scope([variable, value, decay], name, "AssignMovingAvg") as scope:
-    with ops.device(variable.device):
+    with ops.colocate_with(variable):
       decay = ops.convert_to_tensor(1.0 - decay, name="decay")
       if decay.dtype != variable.dtype.base_dtype:
         decay = math_ops.cast(decay, variable.dtype.base_dtype)
-      return state_ops.assign_sub(variable, (variable - value) * decay,
+      return state_ops.assign_sub(variable,
+                                  (variable - value) * decay,
                                   name=scope)
 
 
-def weighted_moving_average(
-    value, decay, weight, truediv=True, name="WeightedMovingAvg"):
+def weighted_moving_average(value,
+                            decay,
+                            weight,
+                            truediv=True,
+                            collections=None,
+                            name=None):
   """Compute the weighted moving average of `value`.
 
   Conceptually, the weighted moving average is:
-    moving_average(value * weight) / moving_average(weight),
+    `moving_average(value * weight) / moving_average(weight)`,
   where a moving average updates by the rule
-    new_value = decay * old_value + (1 - decay) * update
+    `new_value = decay * old_value + (1 - decay) * update`
+  Internally, this Op keeps moving average variables of both `value * weight`
+  and `weight`.
 
   Args:
-    value: A tensor.
-    decay: A float Tensor or float value.  The moving average decay.
-    weight:  A tensor that keeps the current value of a weight.
+    value: A numeric `Tensor`.
+    decay: A float `Tensor` or float value.  The moving average decay.
+    weight:  `Tensor` that keeps the current value of a weight.
       Shape should be able to multiply `value`.
-    truediv:  Boolean, if True, dividing by moving_average(weight) is floating
-      point division.  If False, use division implied by dtypes.
+    truediv:  Boolean, if `True`, dividing by `moving_average(weight)` is
+      floating point division.  If `False`, use division implied by dtypes.
+    collections:  List of graph collections keys to add the internal variables
+      `value * weight` and `weight` to.  Defaults to `[GraphKeys.VARIABLES]`.
     name: Optional name of the returned operation.
+      Defaults to "WeightedMovingAvg".
 
   Returns:
-    An Operation that updates the weighted moving average.
+    An Operation that updates and returns the weighted moving average.
   """
   # Unlike assign_moving_average, the weighted moving average doesn't modify
   # user-visible variables. It is the ratio of two internal variables, which are
   # moving averages of the updates.  Thus, the signature of this function is
   # quite different than assign_moving_average.
+  if collections is None:
+    collections = [ops.GraphKeys.VARIABLES]
   with variable_scope.variable_op_scope(
-      [value, weight, decay], name, name) as scope:
-    value_variable = variable_scope.get_variable(
-        "value",
-        initializer=array_ops.zeros_initializer(
-            value.get_shape(), dtype=value.dtype),
-        trainable=False
-    )
-    weight_variable = variable_scope.get_variable(
+      [value, weight, decay], name, "WeightedMovingAvg") as scope:
+    value_x_weight_var = variable_scope.get_variable(
+        "value_x_weight",
+        initializer=init_ops.zeros_initializer(value.get_shape(),
+                                               dtype=value.dtype),
+        trainable=False,
+        collections=collections)
+    weight_var = variable_scope.get_variable(
         "weight",
-        initializer=array_ops.zeros_initializer(
-            weight.get_shape(), dtype=weight.dtype),
-        trainable=False
-    )
-    numerator = assign_moving_average(value_variable, value * weight, decay)
-    denominator = assign_moving_average(weight_variable, weight, decay)
+        initializer=init_ops.zeros_initializer(weight.get_shape(),
+                                               dtype=weight.dtype),
+        trainable=False,
+        collections=collections)
+    numerator = assign_moving_average(value_x_weight_var, value * weight, decay)
+    denominator = assign_moving_average(weight_var, weight, decay)
 
     if truediv:
       return math_ops.truediv(numerator, denominator, name=scope.name)
@@ -196,8 +207,7 @@ class ExponentialMovingAverage(object):
   @@variables_to_restore
   """
 
-  def __init__(self, decay, num_updates=None,
-               name="ExponentialMovingAverage"):
+  def __init__(self, decay, num_updates=None, name="ExponentialMovingAverage"):
     """Creates a new ExponentialMovingAverage object.
 
     The `Apply()` method has to be called to create shadow variables and add
@@ -266,22 +276,25 @@ class ExponentialMovingAverage(object):
       # tensors, we rely on the existing device allocation mechanism.
       with ops.control_dependencies(None):
         if isinstance(var, variables.Variable):
-          avg = slot_creator.create_slot(
-              var, var.initialized_value(), self._name,
-              colocate_with_primary=True)
+          avg = slot_creator.create_slot(var,
+                                         var.initialized_value(),
+                                         self._name,
+                                         colocate_with_primary=True)
           # NOTE(mrry): We only add `tf.Variable` objects to the
           # `MOVING_AVERAGE_VARIABLES` collection.
           ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
         else:
           avg = slot_creator.create_zeros_slot(
-              var, self._name,
+              var,
+              self._name,
               colocate_with_primary=(var.op.type == "Variable"))
       self._averages[var] = avg
 
     with ops.name_scope(self._name) as scope:
       decay = ops.convert_to_tensor(self._decay, name="decay")
       if self._num_updates is not None:
-        num_updates = math_ops.cast(self._num_updates, dtypes.float32,
+        num_updates = math_ops.cast(self._num_updates,
+                                    dtypes.float32,
                                     name="num_updates")
         decay = math_ops.minimum(decay,
                                  (1.0 + num_updates) / (10.0 + num_updates))

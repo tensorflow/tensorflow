@@ -40,6 +40,7 @@ dimension, and dense along all other dimensions.
 @@sparse_fill_empty_rows
 
 ## Math Operations
+@@sparse_add
 @@sparse_tensor_dense_matmul
 """
 from __future__ import absolute_import
@@ -139,6 +140,85 @@ def sparse_concat(concat_dim, sp_inputs, name=None):
                                     name=name))
 
   return ops.SparseTensor(output_ind, output_val, output_shape)
+
+
+def sparse_add(sp_a, sp_b, thresh=0):
+  """Adds two `SparseTensor` objects to produce another `SparseTensor`.
+
+  The input `SparseTensor` objects' indices are assumed ordered in standard
+  lexicographic order.  If this is not the case, before this step run
+  `SparseReorder` to restore index ordering.
+
+  By default, if two values sum to zero at some index, the output `SparseTensor`
+  would still include that particular location in its index, storing a zero in
+  the corresponding value slot.  To override this, callers can specify `thresh`,
+  indicating that if the sum has a magnitude strictly smaller than `thresh`, its
+  corresponding value and index would then not be included.  In particular,
+  `thresh == 0.0` (default) means everything is kept and actual thresholding
+  happens only for a positive value.
+
+  For example, suppose the logical sum is (densified):
+
+      [       2]
+      [.1      ]
+      [ 6   -.2]
+
+  Then,
+
+      - thresh == 0 (the default): all 4 index/value pairs will be returned.
+      - thresh == 0.11: only .1 will vanish, and the remaining three index/value
+                        pairs will be returned.
+      - thresh == 0.21: both .1 and -.2 will vanish.
+
+  Args:
+    sp_a: The first input `SparseTensor`.
+    sp_b: The second input `SparseTensor`.
+    thresh: A 0-D `Tensor`.  The magnitude threshold that determines if an
+    output value/index pair takes space.  Its dtype should match that of the
+    values if they are real; if the latter are complex64/complex128, then the
+    dtype should be float32/float64, correspondingly.
+
+  Returns:
+    A `SparseTensor` with the same shape, representing the sum.
+
+  Raises:
+    TypeError: If either `sp_a` or `sp_b` is not a `SparseTensor`.
+  """
+  if not all(isinstance(sp_input, ops.SparseTensor) for sp_input in [sp_a,
+                                                                     sp_b]):
+    raise TypeError("All inputs must be SparseTensors")
+
+  thresh = ops.convert_to_tensor(thresh, dtype=sp_a.values.dtype.real_dtype,
+                                 name="thresh")
+  output_ind, output_val, output_shape = (
+      gen_sparse_ops._sparse_add(sp_a.indices,
+                                 sp_a.values,
+                                 sp_a.shape,
+                                 sp_b.indices,
+                                 sp_b.values,
+                                 sp_b.shape,
+                                 thresh))
+
+  return ops.SparseTensor(output_ind, output_val, output_shape)
+
+
+@ops.RegisterShape("SparseAdd")
+def _SparseAddShape(op):  # pylint: disable=invalid-name
+  input_shape_shape = op.inputs[2].get_shape()
+  dim = input_shape_shape.num_elements()
+  return [
+      tensor_shape.TensorShape([None, dim]),
+      tensor_shape.unknown_shape(1),
+      input_shape_shape
+  ]
+
+
+@ops.RegisterShape("SparseAddGrad")
+def _SparseAddGradShape(op):  # pylint: disable=invalid-name
+  # shapes for (a_val_grad, b_val_grad)
+  a_nnz = op.inputs[1].get_shape()[0]
+  b_nnz = op.inputs[2].get_shape()[0]
+  return [tensor_shape.TensorShape([a_nnz]), tensor_shape.TensorShape([b_nnz])]
 
 
 @ops.RegisterShape("SparseConcat")
@@ -774,7 +854,7 @@ def _SerializeManySparseShape(op):  # pylint: disable=invalid-name
   return [tensor_shape.matrix(None, 3)]
 
 
-def deserialize_many_sparse(serialized_sparse, dtype, name=None):
+def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
   """Deserialize and concatenate `SparseTensors` from a serialized minibatch.
 
   The input `serialized_sparse` must be a string matrix of shape `[N x 3]` where
@@ -823,6 +903,7 @@ def deserialize_many_sparse(serialized_sparse, dtype, name=None):
     serialized_sparse: 2-D `Tensor` of type `string` of shape `[N, 3]`.
       The serialized and packed `SparseTensor' objects.
     dtype: The `dtype` of the serialized `SparseTensor` objects.
+    rank: (optional) Python int, the rank of the `SparseTensor` objects.
     name: A name prefix for the returned tensors (optional)
 
   Returns:
@@ -834,6 +915,10 @@ def deserialize_many_sparse(serialized_sparse, dtype, name=None):
   output_indices, output_values, output_shape = (
       gen_sparse_ops._deserialize_many_sparse(
           serialized_sparse, dtype, name=name))
+
+  # Feed rank data back in, if available
+  output_indices.set_shape([None, rank])
+  output_shape.set_shape([rank])
 
   return ops.SparseTensor(output_indices, output_values, output_shape)
 
@@ -872,15 +957,13 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
   * Will the SparseTensor A fit in memory if densified?
   * Is the column count of the product large (>> 1)?
   * Is the density of A larger than approximately 15%?
-  * Is backprop into A necessary?
 
   If the answer to several of these questions is yes, consider
   converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
 
-  This operation tends to perform well when A is more sparse, if the column
-  size of the product is small (e.g. matrix-vector multiplication),
-  if sp_a.shape takes on large values.  While gradients with respect to B
-  are supported, gradients with respect to A are not.
+  This operation tends to perform well when A is more sparse, if the column size
+  of the product is small (e.g. matrix-vector multiplication), if sp_a.shape
+  takes on large values.
 
   Below is a rough speed comparison between sparse_tensor_dense_matmul,
   labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of

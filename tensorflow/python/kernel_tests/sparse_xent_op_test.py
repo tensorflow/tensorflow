@@ -24,7 +24,6 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.client import graph_util
 from tensorflow.python.ops import sparse_ops
 
 
@@ -58,24 +57,24 @@ class SparseXentTest(tf.test.TestCase):
     self._testXent(features, labels, use_gpu=True)
 
   def _testSingleClass(self, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu) as sess:
-      loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-          np.array([[1.], [-1.], [0.]]).astype(np.float32),
-          np.array([1, 1, 1]).astype(np.int64))
-      backprop = loss.op.outputs[1]
-      tf_loss, tf_backprop = sess.run([loss, backprop])
-    # loss = -1.0*log(1.0), 1.0*log(1.0), 0.0*log(0.0) == 1.0
-    self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
-    self.assertAllClose([[2.0], [1.0], [0.0]], tf_backprop)
+    for label_dtype in np.int32, np.int64:
+      with self.test_session(use_gpu=use_gpu) as sess:
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            np.array([[1.], [-1.], [0.]]).astype(np.float32),
+            np.array([0, 0, 0]).astype(label_dtype))
+        backprop = loss.op.outputs[1]
+        tf_loss, tf_backprop = sess.run([loss, backprop])
+      self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
+      self.assertAllClose([[0.0], [0.0], [0.0]], tf_backprop)
 
-  # def testSingleClass(self):
-  #   self._testSingleClass(True)
-  #   self._testSingleClass(False)
+  def testSingleClass(self):
+    self._testSingleClass(use_gpu=True)
+    self._testSingleClass(use_gpu=False)
 
   def testRankTooLarge(self):
     np_features = np.array(
         [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]).astype(np.float32)
-    np_labels = np.array([1, 2]).astype(np.int64)
+    np_labels = np.array([1, 2])
     self.assertRaisesRegexp(
         ValueError, "must have rank 2",
         tf.nn.sparse_softmax_cross_entropy_with_logits, np_features, np_labels)
@@ -105,8 +104,7 @@ class SparseXentTest(tf.test.TestCase):
     # With a hard 1, the backprop is [0.032 - 1.0 = -0.968, 0.087, 0.237, 0.644]
     # The loss for this batch is [1.0 * -log(0.25), 1.0 * -log(0.032)]
     # = [1.3862, 3.4420]
-    np_loss, np_backprop = self._npXent(
-        np.array(features), np.array(labels, dtype=np.int64))
+    np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
     self.assertAllClose(np.array([[0.25, 0.25, 0.25, -0.75],
                                   [-0.968, 0.087, 0.237, 0.6439]]),
                         np_backprop,
@@ -127,19 +125,21 @@ class SparseXentTest(tf.test.TestCase):
             [0., 1., 2., 3.], [0, 2])
 
   def testFloat(self):
-    self._testAll(
-        np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float32),
-        np.array([3, 0]).astype(np.int64))
+    for label_dtype in np.int32, np.int64:
+      self._testAll(
+          np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float32),
+          np.array([3, 0]).astype(label_dtype))
 
   def testDouble(self):
-    self._testXent(
-        np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
-        np.array([0, 3]).astype(np.int64),
-        use_gpu=False)
+    for label_dtype in np.int32, np.int64:
+      self._testXent(
+          np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
+          np.array([0, 3]).astype(label_dtype),
+          use_gpu=False)
 
   def testGradient(self):
     with self.test_session():
-      l = tf.constant([3, 0, 1], dtype=tf.int64, name="l")
+      l = tf.constant([3, 0, 1], name="l")
       f = tf.constant([0.1, 0.2, 0.3, 0.4,
                        0.1, 0.4, 0.9, 1.6,
                        0.1, 0.8, 2.7, 6.4], shape=[3, 4],
@@ -205,7 +205,7 @@ def sparse_vs_dense_xent_benchmark(batch_size, num_entries, use_gpu):
   # Using sparse_to_dense and softmax_cross_entropy_with_logits
   with tf.Session(config=config) as sess:
     if not use_gpu:
-      with tf.device(graph_util.pin_to_cpu):
+      with tf.device("/cpu:0"):
         ops = _sparse_vs_dense_xent_benchmark_dense(labels, logits)
     else:
       ops = _sparse_vs_dense_xent_benchmark_dense(labels, logits)
@@ -214,7 +214,7 @@ def sparse_vs_dense_xent_benchmark(batch_size, num_entries, use_gpu):
   # Using sparse_softmax_cross_entropy_with_logits
   with tf.Session(config=config) as sess:
     if not use_gpu:
-      with tf.device(graph_util.pin_to_cpu):
+      with tf.device("/cpu:0"):
         ops = _sparse_vs_dense_xent_benchmark_sparse(labels, logits)
     else:
       ops = _sparse_vs_dense_xent_benchmark_sparse(labels, logits)

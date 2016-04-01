@@ -143,7 +143,7 @@ class Variable(object):
 
   def __init__(self, initial_value=None, trainable=True, collections=None,
                validate_shape=True, caching_device=None, name=None,
-               variable_def=None):
+               variable_def=None, dtype=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -177,6 +177,9 @@ class Variable(object):
       variable_def: `VariableDef` protocol buffer. If not `None`, recreates
         the Variable object with its contents. `variable_def` and the other
         arguments are mutually exclusive.
+      dtype: If set, initial_value will be converted to the given type.
+        If `None`, either the datatype will be kept (if `initial_value` is
+        a Tensor), or `convert_to_tensor` will decide.
 
     Returns:
       A Variable.
@@ -199,11 +202,12 @@ class Variable(object):
                            collections=collections,
                            validate_shape=validate_shape,
                            caching_device=caching_device,
-                           name=name)
+                           name=name,
+                           dtype=dtype)
 
   def _init_from_args(self, initial_value=None, trainable=True,
                       collections=None, validate_shape=True,
-                      caching_device=None, name=None):
+                      caching_device=None, name=None, dtype=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -225,6 +229,10 @@ class Variable(object):
         deduplicate copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
+      dtype: If set, initial_value will be converted to the given type.
+        If None, either the datatype will be kept (if initial_value is
+       a Tensor) or float32 will be used (if it is a Python object convertible
+       to a Tensor).
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -239,22 +247,32 @@ class Variable(object):
     with ops.control_dependencies(None):
       with ops.op_scope([initial_value], name, "Variable") as name:
         self._initial_value = ops.convert_to_tensor(initial_value,
-                                                    name="initial_value")
+                                                    name="initial_value",
+                                                    dtype=dtype)
         initial_value_shape = self._initial_value.get_shape()
         if validate_shape and not initial_value_shape.is_fully_defined():
           raise ValueError("initial_value must have a shape specified: %s"
                            % self._initial_value)
         shape_to_set = initial_value_shape if validate_shape else []
+
         self._variable = state_ops.variable_op(
             shape_to_set, self._initial_value.dtype.base_dtype,
             set_shape=validate_shape, name=name)
-        with ops.device(self._variable.device):
+
+        with ops.colocate_with(self._variable.op):
           self._initializer_op = state_ops.assign(
               self._variable, self._initial_value,
               validate_shape=validate_shape).op
-        with ops.device(caching_device if caching_device is not None
-                        else self._variable.device):
-          self._snapshot = array_ops.identity(self._variable, name="read")
+
+        # TODO(vrv): Change this class to not take caching_device, but
+        # to take the op to colocate the snapshot with, so we can use
+        # colocation rather than devices.
+        if caching_device is not None:
+          with ops.device(caching_device):
+            self._snapshot = array_ops.identity(self._variable, name="read")
+        else:
+          with ops.colocate_with(self._variable.op):
+            self._snapshot = array_ops.identity(self._variable, name="read")
 
     ops.add_to_collections(collections, self)
     self._caching_device = caching_device
@@ -395,10 +413,15 @@ class Variable(object):
     """
     with ops.control_dependencies(None):
       with ops.control_dependencies([self._initializer_op]):
-        with ops.device(
-            self._caching_device if self._caching_device is not None
-            else self._variable.device):
-          return array_ops.identity(self._variable)
+        # TODO(vrv): Change this class to not take caching_device, but
+        # to take the op to colocate the snapshot with, so we can use
+        # colocation rather than devices.
+        if self._caching_device is not None:
+          with ops.device(self._caching_device):
+            return array_ops.identity(self._variable)
+        else:
+          with ops.colocate_with(self._variable.op):
+            return array_ops.identity(self._variable)
 
   def assign(self, value, use_locking=False):
     """Assigns a new value to the variable.
@@ -791,7 +814,7 @@ def assert_variables_initialized(var_list=None):
   else:
     ranks = []
     for var in var_list:
-      with ops.device(var.device):
+      with ops.colocate_with(var.op):
         ranks.append(array_ops.rank(var))
     if len(ranks) == 1:
       return ranks[0]

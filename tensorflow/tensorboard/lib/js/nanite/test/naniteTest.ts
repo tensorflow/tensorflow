@@ -14,11 +14,9 @@ limitations under the License.
 ==============================================================================*/
 var assert = chai.assert;
 declare function fixture(id: string): void;
-declare module HTMLImports {
-  export function whenReady(f: Function): void;
-}
+
 module TF.Nanite {
-  HTMLImports.whenReady(function() {
+  window.HTMLImports.whenReady(function() {
     Polymer({
       is: "test-element",
       properties: {

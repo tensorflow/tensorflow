@@ -11,8 +11,6 @@ cc_library(
         "unsupported/Eigen/CXX11/Tensor",
         "unsupported/Eigen/CXX11/FixedPoint",
         "unsupported/Eigen/CXX11/src/FixedPoint/*.h",
-        "unsupported/Eigen/CXX11/NeuralNetworks",
-        "unsupported/Eigen/CXX11/src/NeuralNetworks/*.h",
     ]),
     includes = ["."],
     visibility = ["//visibility:public"],

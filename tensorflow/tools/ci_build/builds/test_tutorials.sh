@@ -21,7 +21,11 @@
 # decrement of loss with training, and verifying the existence of saved
 # checkpoints and summaries files.
 #
-# Usage: test_tutorials.sh
+# Usage: test_tutorials.sh [--virtualenv]
+#
+# If the flag --virtualenv is set, the script will use "python" as the Python
+# binary path. Otherwise, it will use tools/python_bin_path.sh to determine
+# the Python binary path.
 #
 # This script obeys the following environment variables (if exists):
 #   TUT_TESTS_BLACKLIST: Force skipping of specified tutorial tests listed
@@ -104,42 +108,48 @@ if [[ -z "$(which ${TIMEOUT_BIN})" ]]; then
 fi
 echo "Binary path for timeout: \"$(which ${TIMEOUT_BIN})\""
 
+# Avoid permission issues outside Docker containers
+umask 000
+
 mkdir -p "${LOGS_DIR}" || die "Failed to create logs directory"
 mkdir -p "${TUT_TEST_ROOT}" || die "Failed to create test directory"
 
-source tools/python_bin_path.sh
-
-if [[ -z "$PYTHON_BIN_PATH" ]]; then
-  die "PYTHON_BIN_PATH was not provided. Did you run configure?"
+if [[ "$1" == "--virtualenv" ]]; then
+  PYTHON_BIN_PATH="$(which python)"
+else
+  source tools/python_bin_path.sh
 fi
 
-echo "Binary path for python: \"$PYTHON_BIN_PATH\""
+if [[ -z "${PYTHON_BIN_PATH}" ]]; then
+  die "PYTHON_BIN_PATH was not provided. If this is not virtualenv, "\
+"did you run configure?"
+else
+  echo "Binary path for python: \"$PYTHON_BIN_PATH\""
+fi
 
 # Determine the TensorFlow installation path
+# pushd/popd avoids importing TensorFlow from the source directory.
 pushd /tmp > /dev/null
-TF_INSTALL_PATH=$(dirname $(${PYTHON_BIN_PATH} -c "import tensorflow; print(tensorflow.__file__)"))
+TF_INSTALL_PATH=$(dirname \
+    $("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; print(tf.__file__)"))
 popd > /dev/null
 
 echo "Detected TensorFlow installation path: ${TF_INSTALL_PATH}"
 
 TEST_DIR="pip_test/tutorials"
-mkdir -p "${TEST_DIR}" ||
-die "Failed to create test directory: ${TEST_DIR}"
+mkdir -p "${TEST_DIR}" || \
+    die "Failed to create test directory: ${TEST_DIR}"
 
 # Copy folders required by mnist tutorials
+mkdir -p "${TF_INSTALL_PATH}/examples/tutorials"
+cp tensorflow/examples/tutorials/__init__.py \
+    "${TF_INSTALL_PATH}/examples/tutorials/"
+cp -r tensorflow/examples/tutorials/mnist \
+    "${TF_INSTALL_PATH}/examples/tutorials/"
+
 if [[ ! -d "${TF_INSTALL_PATH}/examples/tutorials/mnist" ]]; then
-  echo "Copying files required by MNIST tutorials..."
-
-  mkdir -p "${TF_INSTALL_PATH}/examples/tutorials"
-  cp tensorflow/examples/tutorials/__init__.py \
-    "${TF_INSTALL_PATH}/examples/tutorials/"
-  cp -r tensorflow/examples/tutorials/mnist \
-    "${TF_INSTALL_PATH}/examples/tutorials/"
-
-  if [[ ! -d "${TF_INSTALL_PATH}/examples/tutorials/mnist" ]]; then
-    die "FAILED: Unable to copy directory required by MNIST tutorials: "\
+  die "FAILED: Unable to copy directory required by MNIST tutorials: "\
 "${TF_INSTALL_PATH}/examples/tutorials/mnist"
-  fi
 fi
 
 # -----------------------------------------------------------

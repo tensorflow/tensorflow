@@ -36,6 +36,10 @@ message TensorProto {
   // be set.  The values hold the flattened representation of the tensor in
   // row major order.
 
+  // DT_HALF. Note that since protobuf has no int16 type, we'll have some
+  // pointless zero padding for each value here.
+  repeated int32 half_val = 13 [packed = true];
+
   // DT_FLOAT.
   repeated float float_val = 5 [packed = true];
 
@@ -57,4 +61,8 @@ message TensorProto {
 
   // DT_BOOL
   repeated bool bool_val = 11 [packed = true];
+
+  // DT_COMPLEX128. dcomplex_val(2*i) and dcomplex_val(2*i+1) are real
+  // and imaginary parts of i-th double precision complex.
+  repeated double dcomplex_val = 12 [packed = true];
 };

@@ -22,6 +22,19 @@ import numpy as np
 import tensorflow as tf
 
 
+def GetTestConfigs():
+  """Get all the valid tests configs to run.
+
+  Returns:
+    all the valid test configs as tuples of data_format and use_gpu.
+  """
+  test_configs = [("NHWC", False), ("NHWC", True)]
+  if tf.test.is_built_with_cuda():
+    # "NCHW" format is not currently supported on CPU.
+    test_configs += [("NCHW", True)]
+  return test_configs
+
+
 class BiasAddTest(tf.test.TestCase):
 
   def _npBias(self, inputs, bias):
@@ -43,10 +56,37 @@ class BiasAddTest(tf.test.TestCase):
       tf_val = tf.nn.bias_add(np_inputs, np_bias).eval()
     self.assertAllClose(np_val, tf_val)
 
+  def _NHWCToNCHW(self, np_value):
+    # fill the input value to at least 3-dimension
+    if np_value.ndim < 3:
+      np_value = np.reshape(np_value,
+                            (1,) * (3 - np_value.ndim) + np_value.shape)
+    # move the last dimension to third-to-last
+    np_dim = list(range(np_value.ndim))
+    np_dim_new = list(np_dim[0:-3]) + list(np_dim[-1:]) + list(np_dim[-3:-1])
+    return np.transpose(np_value, np_dim_new)
+
+  def _NCHWToNHWC(self, np_value):
+    assert len(np_value.shape) >= 3
+    np_dim = list(range(np_value.ndim))
+    # move the third-to-last dimension to the last
+    np_dim_new = list(np_dim[0:-3]) + list(np_dim[-2:]) + list(np_dim[-3:-2])
+    return np.transpose(np_value, np_dim_new)
+
+  def _testBiasNCHW(self, np_inputs, np_bias, use_gpu):
+    np_val = self._npBias(np_inputs, np_bias)
+    np_inputs = self._NHWCToNCHW(np_inputs)
+    with self.test_session(use_gpu=use_gpu):
+      tf_val = tf.nn.bias_add(np_inputs, np_bias, data_format="NCHW").eval()
+    tf_val = self._NCHWToNHWC(tf_val)
+    self.assertAllClose(np_val, tf_val)
+
   def _testAll(self, np_inputs, np_bias):
     self._testBias(np_inputs, np_bias, use_gpu=False)
     if np_inputs.dtype == np.float32 or np_inputs.dtype == np.float64:
       self._testBias(np_inputs, np_bias, use_gpu=True)
+      if tf.test.is_built_with_cuda():
+        self._testBiasNCHW(np_inputs, np_bias, use_gpu=True)
 
   def testInputDims(self):
     with self.assertRaises(ValueError):
@@ -72,20 +112,38 @@ class BiasAddTest(tf.test.TestCase):
       self._testAll(np.random.rand(4, 3, 3).astype(t),
                     np.random.rand(3).astype(t))
 
+  def _testGradient(self, np_input, bias, dtype, data_format, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
+      if data_format == "NCHW":
+        np_input = self._NHWCToNCHW(np_input)
+      input_tensor = tf.constant(np_input, shape=np_input.shape, dtype=dtype)
+      bias_tensor = tf.constant(bias, shape=bias.shape, dtype=dtype)
+      output_tensor = tf.nn.bias_add(input_tensor, bias_tensor,
+                                     data_format=data_format)
+      err = tf.test.compute_gradient_error(input_tensor, np_input.shape,
+                                           output_tensor, np_input.shape)
+      threshold = 2e-3
+      if dtype == tf.float64:
+        threshold = 1e-10
+      print("bias add tensor gradient err = ", err)
+      self.assertLess(err, threshold)
+      err = tf.test.compute_gradient_error(bias_tensor, bias.shape,
+                                           output_tensor, np_input.shape)
+      print("bias-add bias gradient err = ", err)
+      self.assertLess(err, threshold)
+
   def testGradientTensor(self):
-    with self.test_session():
-      t = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2],
-                               dtype=tf.float64)
-      b = tf.constant([1.3, 2.4], dtype=tf.float64)
-      bo = tf.nn.bias_add(t, b)
-      err = tf.test.compute_gradient_error(t, [3, 2], bo, [3, 2])
-    print("bias add tensor gradient err = ", err)
-    self.assertLess(err, 1e-10)
+    for (data_format, use_gpu) in GetTestConfigs():
+      for dtype in (tf.float32, tf.float64):
+        np_input = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                            dtype=dtype.as_numpy_dtype).reshape(3, 2)
+        bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
+        self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
   def testGradientBias(self):
     with self.test_session():
       t = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2],
-                               dtype=tf.float64)
+                      dtype=tf.float64)
       b = tf.constant([1.3, 2.4], dtype=tf.float64)
       bo = tf.nn.bias_add(t, b)
       err = tf.test.compute_gradient_error(b, [2], bo, [3, 2])
@@ -93,15 +151,12 @@ class BiasAddTest(tf.test.TestCase):
     self.assertLess(err, 1e-10)
 
   def testGradientTensor4D(self):
-    with self.test_session():
-      s = [2, 3, 4, 2]
-      x = np.arange(1.0, 49.0).reshape(s).astype(np.float32)
-      t = tf.constant(x, shape=s, dtype=tf.float32)
-      b = tf.constant([1.3, 2.4], dtype=tf.float32)
-      bo = tf.nn.bias_add(t, b)
-      err = tf.test.compute_gradient_error(t, s, bo, s, x_init_value=x)
-    print("bias add tensor gradient err = ", err)
-    self.assertLess(err, 1e-3)
+    for (data_format, use_gpu) in GetTestConfigs():
+      for dtype in (tf.float32, tf.float64):
+        np_input = np.arange(1.0, 49.0, dtype=dtype.as_numpy_dtype).reshape(
+            [2, 3, 4, 2]).astype(np.float32)
+        bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
+        self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
 
 if __name__ == "__main__":

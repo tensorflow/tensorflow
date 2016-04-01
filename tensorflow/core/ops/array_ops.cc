@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/util/mirror_pad_mode.h"
 
 namespace tensorflow {
 
@@ -132,6 +133,25 @@ value: Attr `value` is the tensor to return.
 )doc");
 
 // --------------------------------------------------------------------------
+// TODO(mgubin): Update the doc when the freeze_graph script supports converting
+// into memmapped format.
+REGISTER_OP("ImmutableConst")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .Attr("memory_region_name: string")
+    .Output("tensor: dtype")
+    .Doc(R"doc(
+Returns immutable tensor from memory region.
+
+The current implementation memmaps the tensor from a file.
+
+dtype: Type of the returned tensor.
+shape: Shape of the returned tensor.
+memory_region_name: Name of readonly memory region used by the tensor, see
+  NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")
     .Input("x: T")
     .Output("y: T")
@@ -170,6 +190,38 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
 ```
 
 diagonal: Rank k tensor where k is at most 3.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DiagPart")
+    .Input("input: T")
+    .Output("diagonal: T")
+    .Attr("T: {float, double, int32, int64}")
+    .Doc(R"doc(
+Returns the diagonal part of the tensor.
+
+This operation returns a tensor with the `diagonal` part
+of the `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
+tensor of rank `k` with dimensions `[D1,..., Dk]` where:
+
+`diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
+
+For example:
+
+```prettyprint
+# 'input' is [[1, 0, 0, 0]
+              [0, 2, 0, 0]
+              [0, 0, 3, 0]
+              [0, 0, 0, 4]]
+
+tf.diag_part(input) ==> [1, 2, 3, 4]
+```
+
+input: Rank k tensor where k is 2, 4, or 6.
+diagonal: The extracted diagonal.
+
 )doc");
 
 // --------------------------------------------------------------------------
@@ -353,6 +405,34 @@ this operation will permute `params` accordingly.
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/Gather.png" alt>
 </div>
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("GatherNd")
+    .Input("params: Tparams")
+    .Input("indices: Tindices")
+    .Output("output: Tparams")
+    .Attr("Tparams: type")
+    .Attr("Tindices: {int32,int64}")
+    .Doc(R"doc(
+Gather values from `params` according to `indices`.
+
+`indices` must be integer tensor, containing indices into `params`.
+It must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.
+The innermost dimension of `indices` (with length `R`) corresponds to the
+indices of `params`.
+
+Produces an output tensor with shape `[d_0, ..., d_{n-1}]` where:
+
+    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]
+
+e.g. for `indices` a matrix:
+
+    output[i] = params[indices[i, :]]
+
+params: R-D.  The tensor from which to gather values.
+indices: (N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`.
+output: N-D.  Values from `params` gathered from indices given by `indices`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -837,7 +917,6 @@ This is typically used by gradient computations for a broadcasting operation.
 )doc");
 
 // --------------------------------------------------------------------------
-
 REGISTER_OP("Pad")
     .Input("input: T")
     .Input("paddings: int32")
@@ -872,6 +951,89 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("MirrorPad")
+    .Input("input: T")
+    .Input("paddings: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr(GetMirrorPadModeAttrString())
+    .Doc(R"doc(
+Pads a tensor with mirrored values.
+
+This operation pads a `input` with mirrored values according to the `paddings`
+you specify. `paddings` is an integer tensor with shape `[n, 2]`, where n is
+the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
+how many values to add before the contents of `input` in that dimension, and
+`paddings[D, 1]` indicates how many values to add after the contents of `input`
+in that dimension. Both `paddings[D, 0]` and `paddings[D, 1]` must be no greater
+than `input.dim_size(D)` (or `input.dim_size(D) - 1`) if `copy_border` is true
+(if false, respectively).
+
+The padded size of each dimension D of the output is:
+
+`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+
+For example:
+
+```prettyprint
+# 't' is [[1, 2, 3], [4, 5, 6]].
+# 'paddings' is [[1, 1]], [2, 2]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
+                      [2, 1, 1, 2, 3, 3, 2]
+                      [5, 4, 4, 5, 6, 6, 5]
+                      [5, 4, 4, 5, 6, 6, 5]]
+```
+
+input: The input tensor to be padded.
+paddings: A two-column matrix specifying the padding sizes. The number of
+  rows must be the same as the rank of `input`.
+mode: Either `REFLECT` or `SYMMETRIC`. In reflect mode the padded regions
+  do not include the borders, while in symmetric mode the padded regions
+  do include the borders. For example, if `input` is `[1, 2, 3]` and `paddings`
+  is `[0, 2]`, then the output is `[1, 2, 3, 2, 1]` in reflect mode, and
+  it is `[1, 2, 3, 3, 2]` in symmetric mode.
+output: The padded tensor.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("MirrorPadGrad")
+    .Input("input: T")
+    .Input("paddings: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr(GetMirrorPadModeAttrString())
+    .Doc(R"doc(
+Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor.
+
+This operation folds the padded areas of `input` by `MirrorPad` according to the
+`paddings` you specify. `paddings` must be the same as `paddings` argument
+given to the corresponding `MirrorPad` op.
+
+The folded size of each dimension D of the output is:
+
+`input.dim_size(D) - paddings(D, 0) - paddings(D, 1)`
+
+For example:
+
+```prettyprint
+# 't' is [[1, 2, 3], [4, 5, 6], [7, 8, 9]].
+# 'paddings' is [[0, 1]], [0, 1]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[ 1,  5]
+                      [11, 28]]
+```
+
+input: The input tensor to be folded.
+paddings: A two-column matrix specifying the padding sizes. The number of
+  rows must be the same as the rank of `input`.
+mode: The mode used in the `MirrorPad` op.
+output: The folded tensor.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("Placeholder")
     .Output("output: dtype")
     .Attr("dtype: type")
@@ -887,6 +1049,21 @@ output: A placeholder tensor that must be replaced using the feed mechanism.
 dtype: The type of elements in the tensor.
 shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
   shape is unconstrained.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("PlaceholderWithDefault")
+    .Input("input: dtype")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .Doc(R"doc(
+A placeholder op that passes though `input` when its output is not fed.
+
+input: The default value to produce when `output` is not fed.
+output: A placeholder tensor that defaults to `input` if it is not fed.
+dtype: The type of elements in the tensor.
+shape: The (possibly partial) shape of the tensor.
 )doc");
 
 // --------------------------------------------------------------------------
