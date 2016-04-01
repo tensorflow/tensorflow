@@ -1166,25 +1166,36 @@ class CheckpointReaderTest(tf.test.TestCase):
     save_path = os.path.join(self.get_temp_dir(), "ckpt_for_debug_string")
     with self.test_session() as sess:
       # Builds a graph.
-      v0 = tf.Variable(tf.zeros([2, 3]), name="v0")
-      v1 = tf.Variable(tf.zeros([3, 2, 1]), name="v1")
+      v0 = tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")
+      v1 = tf.Variable([[[1], [2]], [[3], [4]], [[5], [6]]], dtype=tf.float32,
+                       name="v1")
       save = tf.train.Saver({"v0": v0, "v1": v1})
       tf.initialize_all_variables().run()
       # Saves a checkpoint.
       save.save(sess, save_path)
+
       # Creates a reader.
       reader = tf.train.NewCheckpointReader(save_path)
       # Verifies that the tensors exist.
-      self.assertTrue(reader.HasTensor("v0"))
-      self.assertTrue(reader.HasTensor("v1"))
+      self.assertTrue(reader.has_tensor("v0"))
+      self.assertTrue(reader.has_tensor("v1"))
       debug_string = reader.DebugString()
       # Verifies that debug string contains the right strings.
-      self.assertTrue(compat.as_bytes("v1 [3,2,1]") in debug_string)
       self.assertTrue(compat.as_bytes("v0 [2,3]") in debug_string)
+      self.assertTrue(compat.as_bytes("v1 [3,2,1]") in debug_string)
       # Verifies GetVariableToShapeMap() returns the correct information.
       var_map = reader.GetVariableToShapeMap()
-      self.assertEquals([3, 2, 1], var_map["v1"])
       self.assertEquals([2, 3], var_map["v0"])
+      self.assertEquals([3, 2, 1], var_map["v1"])
+      # Verifies get_tensor() returns the tensor value.
+      v0_tensor = reader.get_tensor("v0")
+      v1_tensor = reader.get_tensor("v1")
+      self.assertAllEqual(v0.eval(), v0_tensor)
+      self.assertAllEqual(v1.eval(), v1_tensor)
+      # Verifies get_tensor() fails for non-existent tensors.
+      with self.assertRaisesRegexp(pywrap_tensorflow.StatusNotOK,
+                                   "Not found"):
+        reader.get_tensor("v3")
 
   def testNonexistentPath(self):
     with self.assertRaisesRegexp(pywrap_tensorflow.StatusNotOK,
