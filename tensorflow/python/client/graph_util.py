@@ -115,34 +115,6 @@ def must_run_on_cpu(node, pin_variables_on_cpu=False):
 ################################################################################
 
 
-def pin_variables_on_cpu(op):
-  """Returns a CPU device for Variable nodes if the device is not specified.
-
-  Args:
-    op: The ops.Operation object describing the node for which a device
-      should be chosen. The op.device field is respected.
-
-  Returns:
-    A device containing "/device:CPU:0" if the node is related to a variable.
-  """
-  device = op.device if op.device is not None else ""
-  dev = pydev.from_string(device)
-
-  # If a device type exists already, do not override.
-  if dev.device_type:
-    return device
-
-  if isinstance(op, ops.Operation):
-    node_def = op.node_def
-  else:
-    assert isinstance(op, graph_pb2.NodeDef)
-    node_def = op
-
-  if _is_variable_op(node_def.op):
-    return set_cpu0(device)
-  return device
-
-
 def _node_name(n):
   if n.startswith("^"):
     return n[1:]
