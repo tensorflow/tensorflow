@@ -1,0 +1,24 @@
+{
+  "run1": {
+    "images": [
+      "im1"
+    ],
+    "scalars": [
+      "cross_entropy (1)"
+    ],
+    "histograms": [
+      "histo1"
+    ],
+    "compressedHistograms": [
+      "histo1"
+    ],
+    "graph": false
+  },
+  "fake_run_no_data": {
+    "images": ["im1", "im2"],
+    "scalars": ["scalar2"],
+    "histograms": ["histo1"],
+    "compressedHistograms": ["histo1"],
+    "graph": true
+  }
+}

@@ -19,15 +19,6 @@ future for loading older images.
   }
   </style>
   <template>
-    <iron-ajax
-      id="ajax"
-      auto
-      url="[[metadataUrl]]"
-      handle-as="json"
-      debounce="50"
-      last-response="{{imageMetadata}}"
-      verbose="true"
-    ></iron-ajax>
     <template is="dom-if" if="[[imageUrl]]">
       <img src="[[imageUrl]]">
     </template>
@@ -39,27 +30,18 @@ future for loading older images.
         run: String,
         tag: String,
         imagesGenerator: Function,
-        individualImageGenerator: Function,
-        imageMetadata: Array,
-        metadataUrl: {
-          type: String,
-          computed: "apply(imagesGenerator, tag, run)",
-        },
-        imageUrl: {
-          type: String,
-          computed: "getLastImage(imageMetadata, individualImageGenerator)",
-        },
+        imageUrl: String,
       },
-      apply: function(imagesGenerator, run, tag) {
-        return imagesGenerator(run, tag);
+      reload: function() {
+        var _this = this;
+        this.imagesGenerator(this.tag, this.run).then(function(metadatas) {
+          var last_metadata = _.last(metadatas);
+          _this.imageUrl = last_metadata.url;
+        })
       },
-      getLastImage: function(imageMetadata, individualImageGenerator) {
-        if (imageMetadata == null) {
-          return null;
-        }
-        var query = _.last(imageMetadata).query;
-        return individualImageGenerator(query);
-      },
+      ready: function() {
+        this.reload();
+      }
     });
   </script>
 </dom-module>

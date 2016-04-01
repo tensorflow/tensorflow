@@ -25,6 +25,7 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 

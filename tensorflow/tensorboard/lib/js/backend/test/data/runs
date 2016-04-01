@@ -1,1 +1,0 @@
-{"run1": {"images": ["im1"], "scalars": ["cross_entropy (1)"], "histograms": ["histo1"], "compressedHistograms": ["histo1"], "graph": false}}

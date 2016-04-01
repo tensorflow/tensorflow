@@ -38,7 +38,7 @@ is high)
         <div class="noshrink" id="paddingCell"></div>
         <template
           is="dom-repeat"
-          items="[[_runs]]"
+          items="[[runs]]"
           as="run"
         >
         <div class="run-name-cell noshrink">
@@ -49,7 +49,7 @@ is high)
       <div id="bottomContainer" class="container">
         <template
           is="dom-repeat"
-          items="[[_tags]]"
+          items="[[tags]]"
           as="tag"
         >
           <div class="image-row container noshrink">
@@ -58,7 +58,7 @@ is high)
             </div>
             <template
               is="dom-repeat"
-              items="[[_runs]]"
+              items="[[runs]]"
               as="run"
             >
               <div class="image-cell noshrink">
@@ -68,7 +68,6 @@ is high)
                     run="[[run]]"
                     tag="[[tag]]"
                     images-generator="[[imagesGenerator]]"
-                    individual-image-generator="[[individualImageGenerator]]"
                   >
                   </tf-image-loader>
                 </template>
@@ -145,22 +144,12 @@ is high)
       is: "tf-image-grid",
       properties: {
         runToImages: Object,
-        _tags: {type: Array, computed: "_getTags(runToImages.*)"},
-        _runs: {type: Array, computed: "_getRuns(runToImages.*)"},
+        tags: Array,
+        runs: Array,
         imagesGenerator: Function,
-        individualImageGenerator: Function,
       },
-      _getTags: function(runToImages) {
-        var r2i = runToImages.base;
-        return _.chain(r2i).values().flatten().union().value().sort();
-      },
-      _getRuns: function(runToImages) {
-        var r2i = runToImages.base;
-        return _.keys(r2i).filter((x) => r2i[x].length > 0).sort();
-      },
-      _exists: function (run, tag, runToImages) {
-        var r2i = runToImages.base;
-        return r2i[run].indexOf(tag) !== -1;
+      _exists: function (run, tag) {
+        return this.runToImages[run].indexOf(tag) !== -1;
       },
     });
   </script>
