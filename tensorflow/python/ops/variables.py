@@ -423,6 +423,20 @@ class Variable(object):
           with ops.colocate_with(self._variable.op):
             return array_ops.identity(self._variable)
 
+  @property
+  def initial_value(self):
+    """Returns the Tensor used as the initial value for the variable.
+
+    Note that this is different from `initialized_value()` which runs
+    the op that initializes the variable before returning its value.
+    This method returns the tensor that is used by the op that initializes
+    the variable.
+
+    Returns:
+      A `Tensor`.
+    """
+    return self._initial_value
+
   def assign(self, value, use_locking=False):
     """Assigns a new value to the variable.
 
