@@ -32,4 +32,4 @@ make check
 make install
 make clean
 ldconfig
-cd /; rm -f /protobuf
+cd /; rm -rf /protobuf
