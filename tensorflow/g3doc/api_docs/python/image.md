@@ -700,7 +700,7 @@ hsv_image = tf.image.rgb_to_hsv(rgb_image)
 
 - - -
 
-### `tf.image.rgb_to_grayscale(images)` {#rgb_to_grayscale}
+### `tf.image.rgb_to_grayscale(images, name=None)` {#rgb_to_grayscale}
 
 Converts one or more images from RGB to Grayscale.
 
@@ -713,6 +713,7 @@ pixels.
 
 *  <b>`images`</b>: The RGB tensor to convert. Last dimension must have size 3 and
     should contain RGB values.
+*  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
@@ -721,7 +722,7 @@ pixels.
 
 - - -
 
-### `tf.image.grayscale_to_rgb(images)` {#grayscale_to_rgb}
+### `tf.image.grayscale_to_rgb(images, name=None)` {#grayscale_to_rgb}
 
 Converts one or more images from Grayscale to RGB.
 
@@ -732,6 +733,7 @@ last dimension of the output is 3, containing the RGB value of the pixels.
 
 
 *  <b>`images`</b>: The Grayscale tensor to convert. Last dimension must be size 1.
+*  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
