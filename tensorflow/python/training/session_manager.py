@@ -256,7 +256,7 @@ class SessionManager(object):
       self._safe_close(sess)
       logging.info("Waiting for model to be ready: %s", not_ready)
       time.sleep(self._recovery_wait_secs)
-      sess = session.Session(master, graph=self._graph)
+      sess = session.Session(target, graph=self._graph, config=config)
 
     return sess
 

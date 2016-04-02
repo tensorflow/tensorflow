@@ -52,62 +52,6 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Device, typename T>
 struct LaunchDepthwiseConvOp;
 
-// Pads 'filter' to vector-register boundary along its inner dimension:
-//   filter_inner_dim_size = in_depth * depth_multiplier
-// Requires 'filter' to have the following storage order:
-//   [filter_rows, filter_cols, in_depth, depth_multiplier]
-// Returns zero-padded filter in 'padded_filter'.
-//
-// EX:
-//   in_depth = 3, depth_multiplier = 2, filter [2, 2], register_width = 4
-//   So we have a total of 3 * 2 = 6 filters, each of spatial size 2 x 2.
-//
-//   filter [rows, cols, in_depth, depth_multiplier]
-//     [u0, v0, w0, x0] [y0, z0, u1, v1] [w1, x1, y1, z1]
-//     [u2, v2, w2, x2] [y2, z2, u3, v3] [w3, x3, y3, z3]
-//
-//   padded_filter [rows, cols, in_depth, depth_multiplier]
-//     [u0, v0, w0, x0] [y0, z0, 0, 0] [u1, v1, w1, x1] [y1, z1, 0, 0]
-//     [u2, v2, w2, x2] [y2, z2, 0, 0] [u3, v3, w3, x3] [y3, z3, 0, 0]
-
-template <typename T>
-struct DepthwiseFilterPadOp {
-  static void Run(const DepthwiseArgs& args, const T* filter,
-                  T* padded_filter) {
-    typedef typename Eigen::internal::packet_traits<T>::type Packet;
-    static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
-
-    // Calculate vectorized and scalar lengths of filter's inner dimension.
-    const int64 filter_inner_dim_size = args.out_depth;
-    const int64 vectorized_size =
-        (filter_inner_dim_size / kPacketSize) * kPacketSize;
-    const int64 scalar_size = filter_inner_dim_size - vectorized_size;
-    // Calculate required padding and padded output buffer stride.
-    const int64 pad_size = scalar_size > 0 ? kPacketSize - scalar_size : 0;
-    const int64 padded_filter_stride = vectorized_size + kPacketSize;
-
-    const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
-    for (int64 i = 0; i < filter_spatial_size; ++i) {
-      const int64 input_base = i * filter_inner_dim_size;
-      const int64 output_base = i * padded_filter_stride;
-      // Write vectorized length of filter's inner dimension to output.
-      for (int64 j = 0; j < vectorized_size; j += kPacketSize) {
-        const auto v = Eigen::internal::ploadu<Packet>(filter + input_base + j);
-        Eigen::internal::pstoreu<T>(padded_filter + output_base + j, v);
-      }
-      // Write scalar length of filter's inner dimension to output.
-      for (int64 j = 0; j < scalar_size; ++j) {
-        padded_filter[output_base + vectorized_size + j] =
-            filter[input_base + vectorized_size + j];
-      }
-      // Pad the remainder of output to vector-register boundary.
-      for (int64 j = 0; j < pad_size; ++j) {
-        padded_filter[output_base + vectorized_size + scalar_size + j] = 0;
-      }
-    }
-  }
-};
-
 // Copies data from local region in 'input' specified by 'out_r' and 'out_'c'
 // to 'input_buffer'. The copied data is replicated by factor
 // 'args.depth_mulitplier', and padded to vector register-width boundaries so
@@ -340,8 +284,8 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
                                                padded_filter_inner_dim_size}),
                                   &padded_filter));
       // Write out padded filter.
-      DepthwiseFilterPadOp<T>::Run(args, depthwise_filter,
-                                   padded_filter.template flat<T>().data());
+      functor::DepthwiseFilterPadOp<T>()(
+          args, depthwise_filter, padded_filter.template flat<T>().data());
     }
     const T* filter_data =
         pad_filter ? padded_filter.template flat<T>().data() : depthwise_filter;

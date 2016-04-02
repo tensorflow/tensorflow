@@ -213,6 +213,14 @@ def _SparseAddShape(op):  # pylint: disable=invalid-name
   ]
 
 
+@ops.RegisterShape("SparseAddGrad")
+def _SparseAddGradShape(op):  # pylint: disable=invalid-name
+  # shapes for (a_val_grad, b_val_grad)
+  a_nnz = op.inputs[1].get_shape()[0]
+  b_nnz = op.inputs[2].get_shape()[0]
+  return [tensor_shape.TensorShape([a_nnz]), tensor_shape.TensorShape([b_nnz])]
+
+
 @ops.RegisterShape("SparseConcat")
 def _SparseConcatShape(op):
   """Shape function for SparseConcat op."""

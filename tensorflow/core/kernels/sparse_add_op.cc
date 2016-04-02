@@ -95,7 +95,7 @@ class SparseAddOp : public OpKernel {
     std::vector<std::pair<bool, int64>> entries_to_copy;  // from_a?, idx
     entries_to_copy.reserve(a_nnz + b_nnz);
     std::vector<T> out_values;
-    const int64 num_dims = a_shape->dim_size(0);
+    const int num_dims = a_shape->dim_size(0);
 
     // The input and output sparse tensors are assumed to be ordered along
     // increasing dimension number.

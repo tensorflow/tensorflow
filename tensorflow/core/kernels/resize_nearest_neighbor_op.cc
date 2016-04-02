@@ -138,7 +138,7 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
       for (int y = 0; y < out_height; ++y) {
         for (int x = 0; x < out_width; ++x) {
           for (int b = 0; b < batch_size; ++b) {
-            output_data(b, y, x, c) = 0;
+            output_data(b, y, x, c) = T(0);
           }
         }
       }

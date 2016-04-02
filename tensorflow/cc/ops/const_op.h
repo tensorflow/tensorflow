@@ -42,6 +42,7 @@ namespace ops {
     return Const(gtl::ArraySlice<TYPE>(t), shape, options);                  \
   }
 
+DECLARE_CONST(Eigen::half);
 DECLARE_CONST(float);
 DECLARE_CONST(double);
 DECLARE_CONST(int32);

@@ -426,7 +426,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the adagrad scheme."
   description: "accum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
@@ -520,7 +520,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var, m, and v tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var, m, and v tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the Adam algorithm."
   description: "lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)\nm_t <- beta1 * m_{t-1} + (1 - beta1) * g_t\nv_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t\nvariable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)"
@@ -604,7 +604,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the Ftrl-proximal scheme."
   description: "accum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
@@ -661,7 +661,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Update \'*var\' by subtracting \'alpha\' * \'delta\' from it."
 }
@@ -728,7 +728,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the momentum scheme."
   description: "accum = accum * momentum + grad\nvar -= lr * accum"
@@ -811,7 +811,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var, m, and v tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var, m, and v tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the RMSProp algorithm."
   description: "mean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
@@ -4065,6 +4065,40 @@ op {
   }
   summary: "Gather slices from `params` according to `indices`."
   description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/Gather.png\" alt>\n</div>"
+}
+op {
+  name: "GatherNd"
+  input_arg {
+    name: "params"
+    description: "R-D.  The tensor from which to gather values."
+    type_attr: "Tparams"
+  }
+  input_arg {
+    name: "indices"
+    description: "(N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`."
+    type_attr: "Tindices"
+  }
+  output_arg {
+    name: "output"
+    description: "N-D.  Values from `params` gathered from indices given by `indices`."
+    type_attr: "Tparams"
+  }
+  attr {
+    name: "Tparams"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Gather values from `params` according to `indices`."
+  description: "`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.\nThe innermost dimension of `indices` (with length `R`) corresponds to the\nindices of `params`.\n\nProduces an output tensor with shape `[d_0, ..., d_{n-1}]` where:\n\n    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]\n\ne.g. for `indices` a matrix:\n\n    output[i] = params[indices[i, :]]"
 }
 op {
   name: "Greater"
@@ -9446,7 +9480,7 @@ op {
   name: "SparseAdd"
   input_arg {
     name: "a_indices"
-    description: "2-D.  The `indices` of the first `SparseTensor`, size `[nnz, 2]` Matrix."
+    description: "2-D.  The `indices` of the first `SparseTensor`, size `[nnz, ndims]` Matrix."
     type: DT_INT64
   }
   input_arg {
@@ -9456,12 +9490,12 @@ op {
   }
   input_arg {
     name: "a_shape"
-    description: "1-D.  The `shape` of the first `SparseTensor`, size `[2]` Vector."
+    description: "1-D.  The `shape` of the first `SparseTensor`, size `[ndims]` Vector."
     type: DT_INT64
   }
   input_arg {
     name: "b_indices"
-    description: "2-D.  The `indices` of the second `SparseTensor`, size `[nnz, 2]` Matrix."
+    description: "2-D.  The `indices` of the second `SparseTensor`, size `[nnz, ndims]` Matrix."
     type: DT_INT64
   }
   input_arg {
@@ -9471,7 +9505,7 @@ op {
   }
   input_arg {
     name: "b_shape"
-    description: "1-D.  The `shape` of the second `SparseTensor`, size `[2]` Vector."
+    description: "1-D.  The `shape` of the second `SparseTensor`, size `[ndims]` Vector."
     type: DT_INT64
   }
   input_arg {
@@ -9532,6 +9566,63 @@ op {
   }
   summary: "Adds two `SparseTensor` objects to produce another `SparseTensor`."
   description: "The input `SparseTensor` objects\' indices are assumed ordered in standard\nlexicographic order.  If this is not the case, before this step run\n`SparseReorder` to restore index ordering.\n\nBy default, if two values sum to zero at some index, the output `SparseTensor`\nwould still include that particular location in its index, storing a zero in the\ncorresponding value slot.  To override this, callers can specify `thresh`,\nindicating that if the sum has a magnitude strictly smaller than `thresh`, its\ncorresponding value and index would then not be included.  In particular,\n`thresh == 0` (default) means everything is kept and actual thresholding happens\nonly for a positive value.\n\nIn the following shapes, `nnz` is the count after taking `thresh` into account."
+}
+op {
+  name: "SparseAddGrad"
+  input_arg {
+    name: "backprop_val_grad"
+    description: "1-D with shape `[nnz(sum)]`.  The gradient with respect to\nthe non-empty values of the sum."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_indices"
+    description: "2-D.  The `indices` of the `SparseTensor` A, size `[nnz(A), ndims]`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_indices"
+    description: "2-D.  The `indices` of the `SparseTensor` B, size `[nnz(B), ndims]`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sum_indices"
+    description: "2-D.  The `indices` of the sum `SparseTensor`, size\n`[nnz(sum), ndims]`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "a_val_grad"
+    description: "1-D with shape `[nnz(A)]`. The gradient with respect to the\nnon-empty values of A."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "b_val_grad"
+    description: "1-D with shape `[nnz(B)]`. The gradient with respect to the\nnon-empty values of B."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "The gradient operator for the SparseAdd op."
+  description: "The SparseAdd op calculates A + B, where A, B, and the sum are all represented\nas `SparseTensor` objects.  This op takes in the upstream gradient w.r.t.\nnon-empty values of the sum, and outputs the gradients w.r.t. the non-empty\nvalues of A and B."
 }
 op {
   name: "SparseApplyAdadelta"
@@ -9689,7 +9780,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update relevant entries in \'*var\' and \'*accum\' according to the adagrad scheme."
   description: "That is for rows we have grad for, we update var and accum as follows:\naccum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
@@ -9788,7 +9879,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update relevant entries in \'*var\' according to the Ftrl-proximal scheme."
   description: "That is for rows we have grad for, we update var, accum and linear as follows:\naccum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
@@ -9871,7 +9962,7 @@ op {
     default_value {
       b: false
     }
-    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update relevant entries in \'*var\' and \'*accum\' according to the momentum scheme."
   description: "That is for rows we have grad for, we update var and accum as follows:\n\naccum = accum * momentum + grad\nvar -= lr * accum"

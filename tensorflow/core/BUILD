@@ -46,6 +46,7 @@ package(default_visibility = ["//tensorflow:internal"])
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -70,39 +71,6 @@ load(
 # -----------------------------------------------------------------------------
 # Public targets
 
-config_setting(
-    name = "ios_armv7",
-    values = {
-        "ios_cpu": "armv7",
-    },
-)
-
-config_setting(
-    name = "ios_armv7s",
-    values = {
-        "ios_cpu": "armv7s",
-    },
-)
-
-config_setting(
-    name = "ios_arm64",
-    values = {
-        "ios_cpu": "arm64",
-    },
-)
-
-IOS_ARM_TF_COPTS = [
-    "-DOS_IOS",
-    "-miphoneos-version-min=7.0",
-    "-arch armv7",
-    "-arch armv7s",
-    "-arch arm64",
-    "-D__thread=",
-    "-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS9.2.sdk/",
-    "-DPLATFORM_POSIX_IOS=1",
-    "-femit-all-decls",
-]
-
 tf_proto_library(
     name = "protos_all",
     srcs = glob(
@@ -118,12 +86,7 @@ tf_proto_library(
     go_api_version = 2,
     java_api_version = 2,
     py_api_version = 2,
-    copts = select({
-        ":ios_armv7": IOS_ARM_TF_COPTS,
-        ":ios_armv7s": IOS_ARM_TF_COPTS,
-        ":ios_arm64": IOS_ARM_TF_COPTS,
-        "//conditions:default": [],
-    }),
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
 )
 
@@ -415,7 +378,10 @@ cc_library(
 
 cc_library(
     name = "math_grad",
-    srcs = ["ops/math_grad.cc"],
+    srcs = [
+        "ops/math_grad.cc",
+        "ops/random_grad.cc",
+    ],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
@@ -576,6 +542,8 @@ tf_cuda_library(
 
 # Android-specific BUILD targets
 load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources")
+load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources_relative")
+load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_headers")
 
 # List of protos we want on android
 filegroup(
@@ -646,52 +614,38 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Config setting for determining if we are building for Android.
-config_setting(
-    name = "android",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-    },
-)
-
-ANDROID_TF_COPTS = [
-    "-mfpu=neon",
-    "-std=c++11",
-    "-DMIN_LOG_LEVEL=0",
-    "-DTF_LEAN_BINARY",
-    "-O2",
+ANDROID_TF_LITE_HDRS = [
+    "framework/tensor.h",
+    "platform/default/integral_types.h",
+    "platform/env.h",
+    "platform/logging.h",
+    "platform/platform.h",
+    "platform/types.h",
+    "public/session.h",
 ]
 
 # Native library support for Android applications.
 # Does not contain operators, use :android_tensorflow_lib if you want full
 # operator support.
-# Compiles to a trivial library on non-android to prevent irrelevant
-# build errors.
+#
+# Compiles to a trivial library on non-Android to prevent irrelevant
+# build errors. If not building this as part of an android_binary,
+# a command such as the following must be used:
+# bazel build -c opt tensorflow/core:android_tensorflow_lib \
+# --crosstool_top=//third_party/java/android/android_ndk_linux/toolchains:everything \
+# --cpu=armeabi-v7a \
+# --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = select({
-        ":android": ["//tensorflow/core:android_srcs"],
-	":ios_armv7": ["//tensorflow/core:android_srcs"],
-	":ios_armv7s": ["//tensorflow/core:android_srcs"],
-	":ios_arm64": ["//tensorflow/core:android_srcs"],
+        "//tensorflow:android": ["//tensorflow/core:android_srcs"],
+	"//tensorflow:ios_armv7": ["//tensorflow/core:android_srcs"],
+	"//tensorflow:ios_armv7s": ["//tensorflow/core:android_srcs"],
+	"//tensorflow:ios_arm64": ["//tensorflow/core:android_srcs"],
         "//conditions:default": [],
     }),
-    hdrs = [
-        "framework/tensor.h",
-        "platform/default/integral_types.h",
-        "platform/env.h",
-        "platform/logging.h",
-        "platform/platform.h",
-        "platform/types.h",
-        "public/session.h",
-    ],
-    copts = select({
-        ":android": ANDROID_TF_COPTS,
-	":ios_armv7": IOS_ARM_TF_COPTS,
-	":ios_armv7s": IOS_ARM_TF_COPTS,
-	":ios_arm64": IOS_ARM_TF_COPTS,
-        "//conditions:default": [],
-    }),
+    hdrs = ANDROID_TF_LITE_HDRS,
+    copts = tf_copts(),
     tags = [
         "manual",
         "notap",
@@ -701,24 +655,35 @@ cc_library(
         ":protos_cc",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 # Full Tensorflow library with operator support. Use this unless reducing
 # binary size (by packaging a reduced operator set) is a concern.
 cc_library(
     name = "android_tensorflow_lib",
-    srcs = [
-        ":android_op_registrations_and_gradients",
-        "//tensorflow/core/kernels:android_core_ops",
-        "//tensorflow/core/kernels:android_extended_ops",
-    ],
-    copts = select({
-        ":android": ANDROID_TF_COPTS,
-	":ios_armv7": IOS_ARM_TF_COPTS,
-	":ios_armv7s": IOS_ARM_TF_COPTS,
-	":ios_arm64": IOS_ARM_TF_COPTS,
+    srcs = select({
+        "//tensorflow:android": [
+            ":android_op_registrations_and_gradients",
+        ],
+        "//tensorflow:ios_armv7": [
+            ":android_op_registrations_and_gradients",
+	     "//tensorflow/core/kernels:android_core_ops",
+             "//tensorflow/core/kernels:android_extended_ops",
+        ],
+        "//tensorflow:ios_armv7s": [
+            ":android_op_registrations_and_gradients",
+	     "//tensorflow/core/kernels:android_core_ops",
+             "//tensorflow/core/kernels:android_extended_ops",
+        ],
+        "//tensorflow:ios_arm64": [
+            ":android_op_registrations_and_gradients",
+	     "//tensorflow/core/kernels:android_core_ops",
+             "//tensorflow/core/kernels:android_extended_ops",
+        ],
         "//conditions:default": [],
     }),
+    copts = tf_copts(),
     tags = [
         "manual",
         "notap",
@@ -728,8 +693,10 @@ cc_library(
         "@re2//:re2",
         ":android_tensorflow_lib_lite",
         ":protos_cc",
+        "//tensorflow/core/kernels:android_tensorflow_kernels",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 filegroup(
@@ -1195,13 +1162,18 @@ tf_cc_tests(
             # TODO(opensource): fix
             "common_runtime/gpu/*_test.cc",
             # Run by tests below
+            "common_runtime/constant_folding_test.cc",
+            "common_runtime/direct_session*_test.cc",
+            "common_runtime/function_test.cc",
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_bfc_allocator_test.cc",
             "common_runtime/gpu/gpu_region_allocator_test.cc",
+            "framework/op_segment_test.cc",
+            "ops/array_grad_test.cc",
+            "ops/math_grad_test.cc",
         ],
     ),
     deps = [
-        ":all_kernels",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -1234,10 +1206,10 @@ tf_cc_tests(
         exclude = [
             # Run by tests below
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
+            "common_runtime/gpu/gpu_stream_util_test.cc",
         ],
     ),
     deps = [
-        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session",
@@ -1255,13 +1227,127 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
+    name = "common_runtime/constant_folding_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:bcast_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/direct_session_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:fifo_queue_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:variable_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/direct_session_with_tracking_alloc_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:fifo_queue_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:variable_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/function_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:shape_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/gpu/gpu_allocator_retry_test.cc",
     size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
-    tests = ["common_runtime/gpu/gpu_allocator_retry_test.cc"],
     deps = [
-        ":all_kernels",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session",
@@ -1275,6 +1361,114 @@ tf_cc_tests(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/gpu/gpu_stream_util_test.cc",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cc_test(
+    name = "framework/op_segment_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "ops/array_grad_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:cwise_op",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "ops/math_grad_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:bcast_ops",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dynamic_stitch_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:reduction_ops",
+        "//tensorflow/core/kernels:reshape_op",
+        "//tensorflow/core/kernels:sequence_ops",
+        "//tensorflow/core/kernels:shape_ops",
+        "//tensorflow/core/kernels:tile_ops",
+        "//third_party/eigen3",
     ],
 )
 

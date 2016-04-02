@@ -24,3 +24,7 @@ pip install psutil
 pip3 install psutil
 pip install py-cpuinfo
 pip3 install py-cpuinfo
+
+# pylint tests require the following:
+pip install pylint
+pip3 install pylint

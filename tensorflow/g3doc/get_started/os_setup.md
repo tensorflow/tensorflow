@@ -531,6 +531,10 @@ directory:
 
 ```bash
 bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+
+# To build with GPU support:
+bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+
 mkdir _python_build
 cd _python_build
 ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/* .
@@ -547,7 +551,7 @@ rules.
 
 Starting from the root of your source tree, run:
 
-```python
+```bash
 $ cd tensorflow/models/image/mnist
 $ python convolutional.py
 Successfully downloaded train-images-idx3-ubyte.gz 9912422 bytes.
@@ -584,6 +588,51 @@ ImportError: libcudart.so.7.0: cannot open shared object file: No such file or d
 Make sure you followed the GPU installation [instructions](#optional-install-cuda-gpus-on-linux).
 If you built from source, and you left the Cuda or cuDNN version empty, try specifying them
 explicitly.
+
+### Protobuf library related issues
+
+TensorFlow pip package depends on protobuf pip package version
+3.0.0b2. Protobuf's pip package downloaded from [PyPI](https://pypi.python.org)
+(when running `pip install protobuf`) is a Python only library, that has
+Python implementations of proto serialization/deserialization which can be 10x-50x
+slower than the C++ implementation. Protobuf also supports a binary extension
+for the Python package that contains fast C++ based proto parsing. This
+extension is not available in the standard Python only PIP package. We have
+created a custom binary pip package for protobuf that contains the binary
+extension. Follow these instructions to install the custom binary protobuf pip
+package :
+
+```bash
+# Ubuntu/Linux 64-bit:
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0b2.post2-cp27-none-linux_x86_64.whl
+
+# Mac OS X:
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/protobuf-3.0.0b2.post2-cp27-none-any.whl
+```
+
+and for Python 3 :
+
+```bash
+# Ubuntu/Linux 64-bit:
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0b2.post2-cp34-none-linux_x86_64.whl
+
+# Mac OS X:
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/protobuf-3.0.0b2.post2-cp35-none-any.whl
+```
+
+Install the above package _after_ you have installed TensorFlow via pip, as the
+standard `pip install tensorflow` would install the python only pip package. The
+above pip package will over-write the existing protobuf package.
+Note that the binary pip package already has support for protobuf larger than
+64MB, that should fix errors such as these :
+
+```bash
+[libprotobuf ERROR google/protobuf/src/google/protobuf/io/coded_stream.cc:207] A
+protocol message was rejected because it was too big (more than 67108864 bytes).
+To increase the limit (or to disable these warnings), see
+CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.
+
+```
 
 ### Pip installation issues
 

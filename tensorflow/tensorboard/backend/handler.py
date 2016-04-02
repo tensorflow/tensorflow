@@ -40,8 +40,8 @@ from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.util import compat
-from tensorflow.tensorboard.backend import float_wrapper
 from tensorflow.tensorboard.backend import process_graph
+from tensorflow.tensorboard.lib.python import json_util
 
 
 DATA_PREFIX = '/data'
@@ -168,7 +168,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       code: The numeric HTTP status code to use.
     """
 
-    output = json.dumps(float_wrapper.WrapSpecialFloats(obj))
+    output = json.dumps(json_util.WrapSpecialFloats(obj))
 
     self.send_response(code)
     self.send_header('Content-Type', 'application/json')

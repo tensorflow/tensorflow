@@ -124,7 +124,7 @@ class UntypedCall : public core::RefCounted {
     }
 
    private:
-    UntypedCall* call_;  // `this` owns one reference.
+    UntypedCall* const call_;  // `this` owns one reference.
     Callback callback_;
   };
 };
@@ -149,30 +149,14 @@ class Call : public UntypedCall<Service> {
       Call<Service, GrpcService, RequestMessage, ResponseMessage>*);
 
   Call(HandleRequestFunction handle_request_function)
-      : handle_request_function_(handle_request_function),
-        responder_(&ctx_),
-        cancel_tag_(new typename UntypedCall<Service>::Tag(
-            this, &UntypedCall<Service>::RequestCancelled)) {
-    // The `ctx_` borrows the `cancel_tag_` until
-    // `this->RequestReceived()` is called.
-    ctx_.AsyncNotifyWhenDone(cancel_tag_.get());
-  }
+      : handle_request_function_(handle_request_function), responder_(&ctx_) {}
 
   virtual ~Call() {}
 
   void RequestReceived(Service* service, bool ok) override {
     if (ok) {
-      // At this point, the `cancel_tag_` becomes owned by the
-      // completion queue.
-      cancel_tag_.release();
-
       this->Ref();
       (service->*handle_request_function_)(this);
-    } else {
-      // `!ok` implies we never received a request for this call, and
-      // the `cancel_tag_` will never be added to the completion
-      // queue, so we free it here.
-      cancel_tag_.reset();
     }
   }
 
@@ -190,6 +174,9 @@ class Call : public UntypedCall<Service> {
         cancel_callback_();
       }
     }
+    // NOTE(mrry): This can be called before or after RequestReceived, so we
+    // release `cancel_tag_` (in order to allow the event loop to free it).
+    cancel_tag_.release();
   }
 
   // Registers `callback` as the function that should be called if and when this
@@ -213,9 +200,13 @@ class Call : public UntypedCall<Service> {
   static void EnqueueRequest(GrpcService* grpc_service,
                              ::grpc::ServerCompletionQueue* cq,
                              EnqueueFunction enqueue_function,
-                             HandleRequestFunction handle_request_function) {
+                             HandleRequestFunction handle_request_function,
+                             bool supports_cancel) {
     auto call = new Call<Service, GrpcService, RequestMessage, ResponseMessage>(
         handle_request_function);
+    if (supports_cancel) {
+      call->RegisterCancellationHandler();
+    }
 
     (grpc_service->*enqueue_function)(
         &call->ctx_, &call->request, &call->responder_, cq, cq,
@@ -228,6 +219,15 @@ class Call : public UntypedCall<Service> {
   ResponseMessage response;
 
  private:
+  // Creates a completion queue tag for handling cancellation by the client.
+  // NOTE: This method must be called before this call is enqueued on a
+  // completion queue.
+  void RegisterCancellationHandler() {
+    cancel_tag_.reset(new typename UntypedCall<Service>::Tag(
+        this, &UntypedCall<Service>::RequestCancelled));
+    ctx_.AsyncNotifyWhenDone(cancel_tag_.get());
+  }
+
   HandleRequestFunction handle_request_function_;
   ::grpc::ServerContext ctx_;
   ::grpc::ServerAsyncResponseWriter<ResponseMessage> responder_;

@@ -6,7 +6,6 @@
 <link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
 <link rel="import" href="../tf-graph-common/tf-graph-common.html">
 <link rel="import" href="tf-graph-scene.html">
-<link rel="import" href="tf-graph-params.html">
 <dom-module id="tf-graph">
 <template>
 <style>
@@ -37,7 +36,6 @@ paper-button {
 }
 </style>
 <div class="container">
-  <tf-graph-params id="graphParams"></tf-graph-params>
   <div class="vertical">
     <h2>[[title]]</h2>
     <tf-graph-scene id="scene" class="auto"
@@ -91,13 +89,6 @@ Polymer({
       readOnly: true,
       notify: true,
     },
-    // internal properties
-    _graphParams: {
-      type: Object,
-      value: function() {
-        return this.$.graphParams;
-      }
-    },
     _renderDepth: {
       type: Number,
       value: 1
@@ -108,9 +99,9 @@ Polymer({
     },
   },
   observers: [
-    '_buildRenderHierarchy(graphHierarchy, _graphParams)'
+    '_buildRenderHierarchy(graphHierarchy)'
   ],
-  _buildRenderHierarchy: function(graphHierarchy, params) {
+  _buildRenderHierarchy: function(graphHierarchy) {
     tf.time('new tf.graph.render.Hierarchy', function() {
       if (graphHierarchy.root.type !== tf.graph.NodeType.META) {
         // root must be metanode but sometimes Polymer's dom-if has not
@@ -118,8 +109,7 @@ Polymer({
         // and thus mistakenly pass non-metanode to this module.
         return;
       }
-      var renderGraph = new tf.graph.render.RenderGraphInfo(graphHierarchy,
-          params);
+      var renderGraph = new tf.graph.render.RenderGraphInfo(graphHierarchy);
       // Producing the 'color by' parameters to be consumed
       // by the tf-graph-controls panel. It contains information about the
       // min and max values and their respective colors, as well as list
@@ -252,7 +242,7 @@ Polymer({
     }
 
     // Rebuild the render hierarchy.
-    this._buildRenderHierarchy(this.graphHierarchy, this._graphParams);
+    this._buildRenderHierarchy(this.graphHierarchy);
   },
   _nodeToggleSeriesGroup: function(event) {
     // Toggle the group setting of the specified node appropriately.
@@ -270,7 +260,7 @@ Polymer({
     tf.graph.hierarchy.build(this.basicGraph, this.hierarchyParams, hierarchyTracker)
     .then(function(graphHierarchy) {
       this.set('graphHierarchy', graphHierarchy);
-      this._buildRenderHierarchy(this.graphHierarchy, this._graphParams);
+      this._buildRenderHierarchy(this.graphHierarchy);
     }.bind(this));
   },
   not: function(x) {

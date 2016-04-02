@@ -1025,7 +1025,6 @@ namespace register_kernel {
 typedef ::tensorflow::KernelDefBuilder Name;
 }  // namespace register_kernel
 
-
 #define REGISTER_KERNEL_BUILDER(kernel_builder, ...) \
   REGISTER_KERNEL_BUILDER_UNIQ_HELPER(__COUNTER__, kernel_builder, __VA_ARGS__)
 
@@ -1035,18 +1034,20 @@ typedef ::tensorflow::KernelDefBuilder Name;
 #define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
   static ::tensorflow::kernel_factory::OpKernelRegistrar              \
       registrar__body__##ctr##__object(                               \
-          SHOULD_REGISTER_OP_KERNEL(__FILE__)                         \
+          SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)                     \
               ? ::tensorflow::register_kernel::kernel_builder.Build() \
               : nullptr,                                              \
+          #__VA_ARGS__,                                               \
           [](::tensorflow::OpKernelConstruction* context)             \
               -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
 
 void* GlobalKernelRegistry();
 
 // If node_def has a corresponding kernel registered on device_type,
-// returns OK and fill in the kernel def.
+// returns OK and fill in the kernel def and kernel_class_name. <def> and
+// <kernel_class_name> may be null.
 Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
-                     const KernelDef** def);
+                     const KernelDef** def, string* kernel_class_name);
 
 // Treats 'registry_ptr' as a pointer to KernelRegistry. For each kernel 'k'
 // registered with the current library's global kernel registry (obtained by
@@ -1058,16 +1059,19 @@ namespace kernel_factory {
 class OpKernelRegistrar {
  public:
   typedef OpKernel* (*Factory)(OpKernelConstruction*);
-  OpKernelRegistrar(const KernelDef* kernel_def, Factory factory) {
+
+  OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
+                    Factory factory) {
     // Perform the check in the header to allow compile-time optimization
     // to a no-op, allowing the linker to remove the kernel symbols.
     if (kernel_def != nullptr) {
-      InitInternal(kernel_def, factory);
+      InitInternal(kernel_def, kernel_class_name, factory);
     }
   }
 
  private:
-  void InitInternal(const KernelDef* kernel_def, Factory factory);
+  void InitInternal(const KernelDef* kernel_def, StringPiece kernel_class_name,
+                    Factory factory);
 };
 
 }  // namespace kernel_factory

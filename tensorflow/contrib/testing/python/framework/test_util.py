@@ -21,7 +21,6 @@ import glob
 import os
 import numpy as np
 from tensorflow.core.framework import summary_pb2
-from tensorflow.python.platform import logging
 from tensorflow.python.training import summary_io
 
 

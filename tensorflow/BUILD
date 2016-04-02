@@ -13,9 +13,42 @@ exports_files([
 
 # open source marker; do not remove
 
+# Config setting for determining if we are building for Android.
+config_setting(
+    name = "android",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+    },
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "darwin",
-    values = {"cpu": "darwin"},
+    values = {"cpu": "darwin_x86_64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "ios_armv7",
+    values = {
+        "ios_cpu": "armv7",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "ios_armv7s",
+    values = {
+        "ios_cpu": "armv7s",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "ios_arm64",
+    values = {
+        "ios_cpu": "arm64",
+    },
     visibility = ["//visibility:public"],
 )
 

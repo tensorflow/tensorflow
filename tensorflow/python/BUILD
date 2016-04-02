@@ -51,7 +51,10 @@ py_library(
         "platform/googletest.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":platform"],
+    deps = [
+        ":platform",
+        ":timeline",
+    ],
 )
 
 py_tests(
@@ -704,6 +707,7 @@ tf_gen_op_wrapper_py(
         "SerializeManySparse",
         "SerializeSparse",
         "SparseAdd",
+        "SparseAddGrad",
         "SparseConcat",
         "SparseSplit",
         "SparseSelectLastK",
@@ -1012,6 +1016,15 @@ py_test(
     ],
 )
 
+py_library(
+    name = "timeline",
+    srcs = ["client/timeline.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":platform",
+    ],
+)
+
 # Just used by tests.
 tf_cuda_library(
     name = "construction_fails_op",
@@ -1035,6 +1048,17 @@ py_test(
         ":framework",
         ":framework_test_lib",
         ":session",
+    ],
+)
+
+py_test(
+    name = "timeline_test",
+    size = "small",
+    srcs = ["client/timeline_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":timeline",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1064,7 +1088,6 @@ medium_kernel_test_list = glob([
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",
-    "kernel_tests/transpose_op_test.py",
 ])
 
 sharded_kernel_test_list = glob([

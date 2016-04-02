@@ -1292,11 +1292,13 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self.assertAllClose(y.eval(), y_np, atol=1e-5)
 
   def testNoConvert(self):
-    # Make sure converting to the same data type creates no ops
+    # Make sure converting to the same data type creates only an identity op
     with self.test_session():
       image = constant_op.constant([1], dtype=dtypes.uint8)
+      image_ops.convert_image_dtype(image, dtypes.uint8)
       y = image_ops.convert_image_dtype(image, dtypes.uint8)
-      self.assertEquals(image, y)
+      self.assertEquals(y.op.type, 'Identity')
+      self.assertEquals(y.op.inputs[0], image)
 
   def testConvertBetweenInteger(self):
     # Make sure converting to between integer types scales appropriately

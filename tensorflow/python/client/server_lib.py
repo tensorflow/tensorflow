@@ -111,42 +111,64 @@ class GrpcServer(object):
     return GrpcServer(server_def, start)
 
 
-def make_cluster_def(cluster_spec):
-  """Returns a `tf.ClusterDef` based on the given `cluster_spec`.
+class ClusterSpec(object):
+  """A class for representing a Cluster."""
 
-  Args:
-    cluster_spec: A dictionary mapping one or more job names to lists
-      of network addresses.
+  def __init__(self, cluster):
+    """Creates a `ClusterSpec`.
 
-  Returns:
-    A `tf.ClusterDef` protocol buffer.
+    Args:
+      cluster: A dictionary mapping one or more job names to lists of network
+        addresses, or a `tf.ClusterDef` protocol buffer.
 
-  Raises:
-    TypeError: If `cluster_spec` is not a dictionary mapping strings to lists
-      of strings.
-  """
-  if not isinstance(cluster_spec, dict):
-    raise TypeError("`cluster_spec` must be a dictionary mapping one or more "
-                    "job names to lists of network addresses")
+    Raises:
+      TypeError: If `cluster` is not a dictionary mapping strings to lists
+        of strings, and not a `ClusterDef` proto buf.
+    """
+    if isinstance(cluster, dict):
+      self._cluster_spec = cluster
+      self._make_cluster_def()
+    elif isinstance(cluster, tensorflow_server_pb2.ClusterDef):
+      self._cluster_def = cluster
+      self._cluster_spec = {}
+      for job_def in self._cluster_def.job:
+        self._cluster_spec[job_def.name] = [t for t in job_def.tasks.values()]
+    else:
+      raise TypeError("`cluster` must be a dictionary mapping one or more "
+                      "job names to lists of network addresses, or a "
+                      "`ClusterDef` protocol buffer")
 
-  cluster_def = tensorflow_server_pb2.ClusterDef()
+  def as_cluster_spec(self):
+    """Returns a dictionary from job names to list of network addresses."""
+    return self._cluster_spec
 
-  # NOTE(mrry): Sort by job_name to produce deterministic protobufs.
-  for job_name, task_list in sorted(cluster_spec.items()):
-    try:
-      job_name = compat.as_bytes(job_name)
-    except TypeError:
-      raise TypeError("Job name %r must be bytes or unicode" % job_name)
+  def as_cluster_def(self):
+    """Returns a `tf.ClusterDef` protocol buffer."""
+    return self._cluster_def
 
-    job_def = cluster_def.job.add()
-    job_def.name = job_name
+  def _make_cluster_def(self):
+    """Creates a `tf.ClusterDef` based on the given `cluster_spec`.
 
-    for i, task_address in enumerate(task_list):
+    Raises:
+      TypeError: If `cluster_spec` is not a dictionary mapping strings to lists
+        of strings.
+    """
+    self._cluster_def = tensorflow_server_pb2.ClusterDef()
+
+    # NOTE(mrry): Sort by job_name to produce deterministic protobufs.
+    for job_name, task_list in sorted(self._cluster_spec.items()):
       try:
-        task_address = compat.as_bytes(task_address)
+        job_name = compat.as_bytes(job_name)
       except TypeError:
-        raise TypeError(
-            "Task address %r must be bytes or unicode" % task_address)
-      job_def.tasks[i] = task_address
+        raise TypeError("Job name %r must be bytes or unicode" % job_name)
 
-  return cluster_def
+      job_def = self._cluster_def.job.add()
+      job_def.name = job_name
+
+      for i, task_address in enumerate(task_list):
+        try:
+          task_address = compat.as_bytes(task_address)
+        except TypeError:
+          raise TypeError(
+              "Task address %r must be bytes or unicode" % task_address)
+        job_def.tasks[i] = task_address

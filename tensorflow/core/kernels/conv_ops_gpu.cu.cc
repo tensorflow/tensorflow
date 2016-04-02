@@ -31,10 +31,10 @@ template <typename T>
 struct SpatialConvolution<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T, 4>::Tensor output,
                   typename TTypes<T, 4>::ConstTensor input,
-                  typename TTypes<T, 4>::ConstTensor filter, int stride,
-                  const Eigen::PaddingType& padding) {
+                  typename TTypes<T, 4>::ConstTensor filter, int row_stride,
+                  int col_stride, const Eigen::PaddingType& padding) {
     SpatialConvolutionFunc(d, To32Bit(output), To32Bit(input), To32Bit(filter),
-                           stride, padding);
+                           row_stride, col_stride, padding);
   }
 };
 

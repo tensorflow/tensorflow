@@ -12,11 +12,11 @@ py_library(
     srcs = ["handler.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":float_wrapper",
         ":process_graph",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
         "//tensorflow/python:util",
+        "//tensorflow/tensorboard/lib/python:json_util",
     ],
 )
 
@@ -35,26 +35,8 @@ py_library(
     name = "process_graph",
     srcs = ["process_graph.py"],
     srcs_version = "PY2AND3",
-    # Used by mldash and potentially other projects
     visibility = ["//visibility:public"],
     deps = [],
-)
-
-py_library(
-    name = "float_wrapper",
-    srcs = ["float_wrapper.py"],
-    srcs_version = "PY2AND3",
-)
-
-py_test(
-    name = "float_wrapper_test",
-    size = "small",
-    srcs = ["float_wrapper_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":float_wrapper",
-        "//tensorflow/python:platform_test",
-    ],
 )
 
 py_library(
