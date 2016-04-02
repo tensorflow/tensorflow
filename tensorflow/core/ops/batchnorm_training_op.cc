@@ -24,6 +24,8 @@ REGISTER_OP("BatchNormTraining")
     .Input("running_mean: Ref(T)")
     .Input("running_inv_var: Ref(T)")
     .Output("out: T")
+    .Output("save_mean: T")
+    .Output("save_inv_var: T")
     .Attr("T: {float}")
     .Attr("epsilon: float")
     .Doc(R"doc(

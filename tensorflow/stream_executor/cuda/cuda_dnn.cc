@@ -1358,7 +1358,9 @@ bool CudnnSupport::DoBatchNormForwardTraining(
     const dnn::BatchDescriptor& output_dimensions,
     DeviceMemory<float>* output_data,
     DeviceMemory<float>* running_mean,
-    DeviceMemory<float>* running_inv_var) {
+    DeviceMemory<float>* running_inv_var,
+    DeviceMemory<float>* save_mean,
+    DeviceMemory<float>* save_inv_var) {
 
   mutex_lock lock{dnn_handle_mutex_};
   auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),

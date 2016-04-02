@@ -63,7 +63,9 @@ class CudnnSupport : public dnn::DnnSupport {
                     const dnn::BatchDescriptor& output_dimensions,
                     DeviceMemory<float>* output_data,
                     DeviceMemory<float>* running_mean,
-                    DeviceMemory<float>* running_inv_var) override;
+                    DeviceMemory<float>* running_inv_var,
+                    DeviceMemory<float>* save_mean,
+                    DeviceMemory<float>* save_inv_var) override;
 
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
                   const DeviceMemory<double>& input_data,

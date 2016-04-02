@@ -610,7 +610,9 @@ Stream &Stream::ThenBatchNormalizeTraining(
                     const dnn::BatchDescriptor& output_dimensions,
                     DeviceMemory<float>* output_data,
                     DeviceMemory<float>* running_mean,
-                    DeviceMemory<float>* running_inv_var) {
+                    DeviceMemory<float>* running_inv_var,
+                    DeviceMemory<float>* save_mean,
+                    DeviceMemory<float>* save_inv_var) {
     VLOG_CALL(PARAM(input_dimensions),
               PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
 
@@ -623,7 +625,9 @@ Stream &Stream::ThenBatchNormalizeTraining(
                                       output_dimensions,
                                       output_data,
                                       running_mean,
-                                      running_inv_var
+                                      running_inv_var,
+                                      save_mean,
+                                      save_inv_var
                                       ));
       } else {
         SetError();

@@ -835,7 +835,9 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data,
       DeviceMemory<float>* running_mean,
-      DeviceMemory<float>* running_inv_var) = 0;
+      DeviceMemory<float>* running_inv_var,
+      DeviceMemory<float>* save_mean,
+      DeviceMemory<float>* save_inv_var) = 0;
 
   // Applies an activation function (see ActivationMode) to all of the values
   // held on the device in 'input_data', whose dimensions are described by

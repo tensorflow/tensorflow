@@ -63,11 +63,12 @@ struct LaunchBatchNormTraining<GPUDevice, T> {
                      const Tensor& scale_param, const Tensor& bias_param,
                      Tensor* output,
                      Tensor* running_mean,
-                     Tensor* running_inv_var) {
+                     Tensor* running_inv_var,
+                     Tensor* save_mean,
+                     Tensor* save_inv_var) {
     std::cout << "Launched the BatchNormKernel??" << std::endl;
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream avalible"));
-
 
     TensorFormat data_format = FORMAT_NCHW;
     const int64 in_batch= GetTensorDim(input, data_format, 'N');
@@ -104,6 +105,11 @@ struct LaunchBatchNormTraining<GPUDevice, T> {
     auto running_inv_var_ptr = AsDeviceMemory(running_inv_var->template flat<T>().data(),
                                     running_inv_var->template flat<T>().size());
 
+    auto save_mean_ptr = AsDeviceMemory(save_mean->template flat<T>().data(),
+                                        save_mean->template flat<T>().size());
+    auto save_inv_var_ptr = AsDeviceMemory(save_inv_var->template flat<T>().data(),
+                                        save_inv_var->template flat<T>().size());
+
     bool cudnn_launch_status =
       stream
         ->ThenBatchNormalizeTraining(input_desc,
@@ -114,7 +120,9 @@ struct LaunchBatchNormTraining<GPUDevice, T> {
                                     input_desc,
                                     &output_ptr,
                                     &running_mean_ptr,
-                                    &running_inv_var_ptr)
+                                    &running_inv_var_ptr,
+                                    &save_mean_ptr,
+                                    &save_inv_var_ptr)
         .ok();
 
       if (!cudnn_launch_status) {
@@ -131,7 +139,7 @@ class BatchNormTrainingOp : public OpKernel {
     explicit BatchNormTrainingOp(OpKernelConstruction* context) : OpKernel(context) {
       const DataType dt = DataTypeToEnum<T>::v();
       const DataType dt_ref = DataTypeToEnum<T>::ref();
-      OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt, dt_ref, dt_ref}, {dt}));
+      OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt, dt_ref, dt_ref}, {dt, dt, dt}));
 
       //Do some type checking here
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon_));
@@ -150,12 +158,20 @@ class BatchNormTrainingOp : public OpKernel {
       TensorShape out_shape = input.shape();
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
+      TensorShape save_mean_var_shape = input.shape();
+
+      Tensor* save_mean = nullptr;
+      OP_REQUIRES_OK(context, context->allocate_output(1, out_shape, &save_mean));
+      Tensor* save_inv_var = nullptr;
+      OP_REQUIRES_OK(context, context->allocate_output(2, save_mean_var_shape, &save_inv_var));
+
       //TODO support other dimentions
       OP_REQUIRES(context, input.dims() == 4,
                   errors::InvalidArgument("input must be 4-dimentional", input.shape().DebugString()));
 
       LaunchBatchNormTraining<Device, T>::launch(
-          context, input, scale, bias, output, &running_mean, &running_inv_var);
+          context, input, scale, bias, output,
+          &running_mean, &running_inv_var, save_mean, save_inv_var);
     }
 
   private:
