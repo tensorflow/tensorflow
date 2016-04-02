@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2015 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,19 @@
 
 set -e
 
-mkdir -p build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Release ../tensorflow/contrib/cmake
-make all
+# Select bazel version.
+PROTOBUF_VERSION="3.0.0-beta-2"
+
+# Install protobuf3.
+mkdir /protobuf
+cd /protobuf
+curl -fSsL -O https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-cpp-$PROTOBUF_VERSION.tar.gz
+tar zxf protobuf-cpp-$PROTOBUF_VERSION.tar.gz
+cd protobuf-$PROTOBUF_VERSION
+./autogen.sh
+./configure
+make
+make install
+make clean
+ldconfig
+cd /; rm -rf /protobuf
