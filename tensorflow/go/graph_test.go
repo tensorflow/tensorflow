@@ -129,3 +129,55 @@ func TestGraphConstant(t *testing.T) {
 		}
 	}
 }
+
+func TestGraphScalarConstant(t *testing.T) {
+	graph := tf.NewGraph()
+	testString := "this is a test..."
+	testFloat := float64(123.123)
+
+	_, err := graph.Constant("output1", testString)
+	if err != nil {
+		t.Error("Problem trying add a scalar constant to the graph, Error:", err)
+		t.FailNow()
+	}
+
+	_, err = graph.Constant("output2", testFloat)
+	if err != nil {
+		t.Error("Problem trying add a scalar constant to the graph, Error:", err)
+		t.FailNow()
+	}
+
+	s, err := tf.NewSession()
+	if err := s.ExtendGraph(graph); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := s.Run(nil, []string{"output1", "output2"}, nil)
+	if err != nil {
+		t.Error("Problem trying to run the graph, Error:", err)
+		t.FailNow()
+	}
+
+	if len(out) != 2 {
+		t.Errorf("Expected two outpur tensors, but: %d received", len(out))
+		t.FailNow()
+	}
+
+	outStr, err := out[0].AsStr()
+	if err != nil {
+		t.Error("Problem trying to read the output, Error:", err)
+	} else {
+		if string(outStr[0]) != testString {
+			t.Error("The returned string: \"%s\" is not the input string: \"%s\"", testString, outStr[0])
+		}
+	}
+
+	outFloat, err := out[1].AsFloat64()
+	if err != nil {
+		t.Error("Problem trying to read the output, Error:", err)
+	} else {
+		if outFloat[0] != testFloat {
+			t.Error("The returned float: \"%f\" is not the input one: \"%f\"", outFloat[0], testFloat)
+		}
+	}
+}

@@ -19,6 +19,7 @@ import "C"
 const (
 	cBellByte = 7
 	cAckByte  = 6
+	cDc1      = 17
 
 	cBytesFloat32   = 4
 	cBytesFloat64   = 8
@@ -152,7 +153,8 @@ func (t *Tensor) AsStr() (res [][]byte, err error) {
 				resultBytes = append(resultBytes, byte(b))
 			}
 		} else {
-			if b == cAckByte || b == cBellByte {
+			// TODO: Must be any better way to parse the strings...
+			if b == cAckByte || b == cBellByte || b == cDc1 {
 				inStr = true
 			}
 		}
@@ -429,66 +431,97 @@ func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
 //    {1, 2, 3, 4},
 //    {5, 6, 7, 8},
 //  })
-func NewTensor(data interface{}) (*Tensor, error) {
+func NewTensor(data interface{}) (tensor *Tensor, err error) {
 	var dataPtr uintptr
+	var dataSer []interface{}
+	var dims [][]int64
+	var dataType DataType
+	var dataSize int64
 
 	v := reflect.ValueOf(data)
-	dataType, _ := getDataTypeFromReflect(v.Type().Elem().Kind(), 1)
-	if dataType == DtString {
-		strings := make([]string, v.Len())
-		for i := 0; i < v.Len(); i++ {
-			strings[i] = v.Index(i).String()
+	if v.Kind() == reflect.Slice {
+		dataType, _ = getDataTypeFromReflect(v.Type().Elem().Kind(), 1)
+		if dataType == DtString {
+			strings := make([]string, v.Len())
+			for i := 0; i < v.Len(); i++ {
+				strings[i] = v.Index(i).String()
+			}
+			buf := encodeStrings(strings)
+			t, err := newTensor(DtString, TensorShape{{int64(len(strings))}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
+			if err != nil {
+				return nil, err
+			}
+			return t, nil
 		}
-		buf := encodeStrings(strings)
-		t, err := newTensor(DtString, TensorShape{{int64(len(strings))}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
-		if err != nil {
-			return nil, err
-		}
-		return t, nil
-	}
 
-	dataSer, dims, dataType, dataSize, err := serialize(data, 0, [][]int64{})
-	if err != nil {
-		return nil, err
+		dataSer, dims, dataType, dataSize, err = serialize(data, 0, [][]int64{})
+		if err != nil {
+			return
+		}
+	} else {
+		// Scalar tensor
+		dataSer = []interface{}{data}
+		dims = [][]int64{}
+		dataSize = int64(v.Type().Size())
+		if dataType, err = getDataTypeFromReflect(v.Kind(), dataSize); err != nil {
+			return
+		}
 	}
 	ts := TensorShape(dims)
 
+	auxTensor := new(Tensor)
 	switch dataType {
 	case DtFloat:
-		res := make([]float32, len(dataSer))
+		auxTensor.FloatVal = make([]float32, len(dataSer))
 		for i, v := range dataSer {
-			res[i] = v.(float32)
+			auxTensor.FloatVal[i] = v.(float32)
 		}
-		dataPtr = reflect.ValueOf(res).Pointer()
+		dataPtr = reflect.ValueOf(auxTensor.FloatVal).Pointer()
 	case DtDouble:
-		res := make([]float64, len(dataSer))
+		auxTensor.DoubleVal = make([]float64, len(dataSer))
 		for i, v := range dataSer {
-			res[i] = v.(float64)
+			auxTensor.DoubleVal[i] = v.(float64)
 		}
-		dataPtr = reflect.ValueOf(res).Pointer()
+		dataPtr = reflect.ValueOf(auxTensor.DoubleVal).Pointer()
 	case DtInt8, DtInt16, DtInt32, DtUint8:
-		res := make([]int32, len(dataSer))
+		auxTensor.IntVal = make([]int32, len(dataSer))
 		for i, v := range dataSer {
-			res[i] = v.(int32)
+			auxTensor.IntVal[i] = int32(reflect.ValueOf(v).Int())
 		}
-		dataPtr = reflect.ValueOf(res).Pointer()
+		dataPtr = reflect.ValueOf(auxTensor.IntVal).Pointer()
 	case DtInt64:
-		res := make([]int64, len(dataSer))
+		auxTensor.Int64Val = make([]int64, len(dataSer))
 		for i, v := range dataSer {
-			res[i] = v.(int64)
+			auxTensor.Int64Val[i] = reflect.ValueOf(v).Int()
 		}
-		dataPtr = reflect.ValueOf(res).Pointer()
+		dataPtr = reflect.ValueOf(auxTensor.Int64Val).Pointer()
 	case DtBool:
-		res := make([]bool, len(dataSer))
+		auxTensor.BoolVal = make([]bool, len(dataSer))
 		for i, v := range dataSer {
-			res[i] = v.(bool)
+			auxTensor.BoolVal[i] = v.(bool)
 		}
-		dataPtr = reflect.ValueOf(res).Pointer()
+		dataPtr = reflect.ValueOf(auxTensor.BoolVal).Pointer()
+	case DtString:
+		auxTensor.StringVal = make([][]byte, len(dataSer))
+		for i, v := range dataSer {
+			auxTensor.StringVal[i] = []byte(v.(string))
+		}
+		dataPtr = reflect.ValueOf(auxTensor.StringVal).Pointer()
 	default:
 		return nil, ErrTensorTypeNotSupported
 	}
 
-	return newTensor(dataType, ts, unsafe.Pointer(dataPtr), int64(len(dataSer))*dataSize)
+	tensor, err = newTensor(dataType, ts, unsafe.Pointer(dataPtr), int64(len(dataSer))*dataSize)
+
+	tensor.FloatVal = auxTensor.FloatVal
+	tensor.DoubleVal = auxTensor.DoubleVal
+	tensor.IntVal = auxTensor.IntVal
+	tensor.StringVal = auxTensor.StringVal
+	tensor.ScomplexVal = auxTensor.ScomplexVal
+	tensor.Int64Val = auxTensor.Int64Val
+	tensor.BoolVal = auxTensor.BoolVal
+
+	return
 }
 
 func serialize(data interface{}, deep int, dimsIn [][]int64) (ser []interface{}, dims [][]int64, dataType DataType, dataSize int64, err error) {
@@ -558,18 +591,23 @@ func getDataTypeFromReflect(refType reflect.Kind, dataSize int64) (dataType Data
 }
 
 func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size int64) (*Tensor, error) {
+	var dims *int64
+
 	// Move the data to C allocated memory
 	shapes := 0
 	for _, v := range shape {
 		shapes += len(v)
 	}
-	llDims := make([]C.longlong, shapes)
-	i := 0
-	for _, v := range shape {
-		for _, s := range v {
-			llDims[i] = C.longlong(s)
+	if len(shape) != 0 {
+		llDims := make([]C.longlong, shapes)
+		i := 0
+		for _, v := range shape {
+			for _, s := range v {
+				llDims[i] = C.longlong(s)
+			}
+			i++
 		}
-		i++
+		dims = (*int64)(unsafe.Pointer(&llDims[0]))
 	}
 
 	dataLen := C.size_t(size)
@@ -577,7 +615,7 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 	C.memcpy(cData, data, dataLen)
 
 	t := &Tensor{
-		tensor: TF_NewTensor_wrapper(TF_DataType(dataType), (*int64)(unsafe.Pointer(&llDims[0])), len(llDims), uintptr(cData), size),
+		tensor: TF_NewTensor_wrapper(TF_DataType(dataType), dims, len(shape), uintptr(cData), size),
 	}
 	t.Dtype = dataType
 	t.TensorShape = &TensorShapeProto{
