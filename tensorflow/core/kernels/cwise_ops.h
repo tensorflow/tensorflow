@@ -586,7 +586,7 @@ struct BinaryFunctor {
              typename Functor::tscalar_type scalar);
 
   // Computes on device "d":
-  //   out = Functor(in0.broadcast(bcast0), in1.broadcast(bcast01))
+  //   out = Functor(in0.broadcast(bcast0), in1.broadcast(bcast1))
   //
   // TODO(zhifengc): makes BCast a template member function on NDIMS
   // instead making BinaryFunctor templates on NDIMS.
