@@ -57,13 +57,13 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
-
 # pylint: enable=wildcard-import
+
+
 # pylint: disable=protected-access
-
-
 def sparse_concat(concat_dim, sp_inputs, name=None):
   """Concatenates a list of `SparseTensor` along the specified dimension.
 

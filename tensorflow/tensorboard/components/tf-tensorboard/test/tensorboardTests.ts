@@ -11,7 +11,7 @@ describe("end-to-end test", () => {
 
     // In case we move the tabs to a different place in the DOM
     // and the query selector above becomes incorrect.
-    assert.isTrue(tabNames.length >= 4);
+    assert.isTrue(tabNames.length >= 4, "at least four tabs were found");
 
     function testTab(tabIndex: number) {
       it(`selecting ${tabNames[tabIndex]} tab`, done => {

@@ -77,21 +77,14 @@ for ARG in $@; do
 done
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
+GPU_FLAG=""
 if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
   bazel build -c opt ${PIP_BUILD_TARGET} || die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   bazel build -c opt --config=cuda ${PIP_BUILD_TARGET} || die "Build failed."
+  GPU_FLAG="--gpu"
 else
   die "Unrecognized container type: \"${CONTAINER_TYPE}\""
-fi
-
-echo "PY_TEST_WHITELIST: ${PY_TEST_WHITELIST}"
-echo "PY_TEST_BLACKLIST: ${PY_TEST_BLACKLIST}"
-echo "PY_TEST_GPU_BLACKLIST: ${PY_TEST_GPU_BLACKLIST}"
-
-# Append GPU-only test blacklist
-if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
-  PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:${PY_TEST_GPU_BLACKLIST}"
 fi
 
 # If still in a virtualenv, deactivate it first
@@ -191,7 +184,7 @@ fi
 # Call test_installation.sh to perform test-on-install
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-"${DIR}/test_installation.sh" --virtualenv || \
+"${DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} || \
     die "PIP tests-on-install FAILED"
 
 # Optional: Run the tutorial tests

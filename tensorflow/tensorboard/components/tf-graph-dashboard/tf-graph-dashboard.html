@@ -2,7 +2,8 @@
 <link rel="import" href="../tf-graph-loader/tf-graph-loader.html">
 <link rel="import" href="../tf-graph-board/tf-graph-board.html">
 <link rel="import" href="../tf-graph/tf-graph-controls.html">
-<link rel="import" href="../tf-dashboard-common/warning-style.html">
+<link rel="import" href="../tf-dashboard-common/tf-no-data-warning.html">
+<link rel="import" href="../tf-backend/tf-backend.html">
 
 <!--
 tf-graph-dashboard displays a graph from a TensorFlow run.
@@ -17,32 +18,10 @@ by default. The user can select a different run from a dropdown menu.
 
 <dom-module id="tf-graph-dashboard">
 <template>
-<div id="plumbing">
-  <tf-url-generator
-      router="[[router]]"
-      out-runs-url="{{_runsUrl}}"
-      out-graph-url-generator="{{_graphUrlGen}}"
-      id="urlGenerator"
-  ></tf-url-generator>
-  <tf-run-generator
-      id="runGenerator"
-      url="[[_runsUrl]]"
-      out-runs-with-graph="{{_runsWithGraph}}"
-  ></tf-run-generator>
-</div>
-<template is="dom-if" if="[[_datasetsEmpty(_datasets)]]">
-<div class="warning">
-  <p>
-    No graph definition files were found.
-  </p>
-  <p>
-    To store a graph, create a
-    <code>tf.train.SummaryWriter</code>
-    and pass the graph either via the constructor, or by calling its
-    <code>add_graph()</code> method.
-  </p>
-</div>
-</template>
+<tf-no-data-warning
+  data-type="graph"
+  show-warning="[[_datasetsEmpty(_datasets)]]"
+></tf-no-data-warning>
 <template is="dom-if" if="[[!_datasetsEmpty(_datasets)]]">
 <tf-dashboard-layout>
 <div class="sidebar">
@@ -92,7 +71,6 @@ by default. The user can select a different run from a dropdown menu.
 }
 
 </style>
-<style include="warning-style"></style>
 </template>
 </dom-module>
 
@@ -101,21 +79,25 @@ by default. The user can select a different run from a dropdown menu.
 Polymer({
   is: 'tf-graph-dashboard',
   properties: {
-    _runsWithGraph: Array,
     _datasets: {
       type: Object,
-      computed: '_getDatasets(_runsWithGraph, _graphUrlGen)'
+      computed: '_getDatasets(runs.*, router)'
     },
-    router: {
-      type: Object,
-      value: TF.Urls.productionRouter(),
-    },
+    backend: {type: Object, observer: 'reload'},
+    router: {type: Object},
+    runs: Array,
   },
-  _getDatasets: function(runsWithGraph, graphUrlGen) {
-    return _.map(runsWithGraph, function(runName) {
+  reload: function() {
+    var _this = this;
+    this.backend.graphRuns().then(function(x) {
+      _this.runs = x;
+    });
+  },
+  _getDatasets: function(runs, router) {
+    return _.map(this.runs, function(runName) {
       return {
         name: runName,
-        path: graphUrlGen(runName, tf.graph.LIMIT_ATTR_SIZE,
+        path: router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
             tf.graph.LARGE_ATTRS_KEY)
       };
     });

@@ -7,7 +7,7 @@
     <title>Image Dashboard Demo</title>
     <style>
       #container{
-        width: 500px;
+        width: 1000px;
         height: 800px;
         border: 2px solid grey;
       }
@@ -17,9 +17,29 @@
     </style>
   </head>
   <body>
-    <p>This demo is currently broken.</p>
+    <dom-module id="image-dash-demo">
+      <template>
+        <tf-image-dashboard id="demo" backend="[[backend]]"/>
+        </tf-image-dashboard>
+      </template>
+      <script>
+        Polymer({
+          is: "image-dash-demo",
+          properties: {
+            backend: {
+              type: Object,
+              value: function() {
+                var path = "/demo/data";
+                var router = new TF.Backend.router(path, true);
+                return new TF.Backend.Backend(router);
+              },
+            },
+          },
+        });
+      </script>
+    </dom-module>
     <div id="container">
-      <tf-image-dashboard id="demo"></tf-image-dashboard>
+      <image-dash-demo></image-dash-demo>
     </div>
   </body>
 </html>

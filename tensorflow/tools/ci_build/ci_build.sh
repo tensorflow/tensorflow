@@ -65,6 +65,10 @@ if [ "${CONTAINER_TYPE}" == "gpu" ]; then
   devices=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
   libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
   GPU_EXTRA_PARAMS="${devices} ${libs}"
+
+  # GPU pip tests-on-install should avoid using concurrent jobs due to GPU
+  # resource contention
+  GPU_EXTRA_PARAMS="${GPU_EXTRA_PARAMS} -e TF_BUILD_SERIAL_INSTALL_TESTS=1"
 else
   GPU_EXTRA_PARAMS=""
 fi
