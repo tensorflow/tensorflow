@@ -15,6 +15,11 @@ type Graph struct {
 	availableOps map[string]*OpDef
 }
 
+type GraphNode struct {
+	def          *NodeDef
+	outDataTypes map[string]DataType
+}
+
 var (
 	ErrOperationNotFound              = errors.New("Operation not found")
 	ErrInvalidAmounthOfInputs         = errors.New("The number of inputs doesn't corresponds with the expected for this operation")
@@ -68,7 +73,7 @@ func (gr *Graph) LoadAvailableOps() (err error) {
 	return
 }
 
-func (gr *Graph) AddOp(opName string, name string, input []string, device string, attrs map[string]interface{}) (err error) {
+func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
 	// Just to test the ops parsing...
 	err = gr.LoadAvailableOps()
 	if err != nil {
@@ -80,23 +85,56 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 			err = ErrInvalidAmounthOfInputs
 			return
 		}
-		node := &NodeDef{
-			Name:   name,
-			Op:     opName,
-			Input:  input,
-			Device: device,
-			Attr:   make(map[string]*AttrValue),
+		inputs := make([]string, len(input))
+		for i, inNode := range input {
+			inputs[i] = inNode.def.Name
+		}
+		node = &GraphNode{
+			def: &NodeDef{
+				Name:   name,
+				Op:     opName,
+				Input:  inputs,
+				Device: device,
+				Attr:   make(map[string]*AttrValue),
+			},
+			outDataTypes: make(map[string]DataType),
+		}
+
+		if len(op.OutputArg) == 1 {
+			node.outDataTypes[name] = op.OutputArg[0].Type
+		} else {
+			for _, out := range op.OutputArg {
+				node.outDataTypes[out.Name] = out.Type
+			}
 		}
 
 		for _, attr := range op.Attr {
-			if v, ok := attrs[attr.Name]; ok {
+			// Check if the attribute is specified, if it is not
+			// and is mandatory, try to deduct the possible value
+			// from one of the previous outputs
+			v, ok := attrs[attr.Name]
+			if !ok && attr.DefaultValue == nil {
+			searchInput:
+				for i, arg := range op.InputArg {
+					if arg.TypeAttr == attr.Name {
+						// This input node must have only one output, this output
+						// is the one who defined the datatype to use
+						if outType, dtDefined := input[i].outDataTypes[input[i].def.Name]; dtDefined {
+							v = outType
+							ok = true
+						}
+						break searchInput
+					}
+				}
+			}
+			if ok {
 				switch attr.Type {
 				case "type":
 					dt, ok := v.(DataType)
 					if !ok {
-						return ErrInvalidAttrValue
+						return nil, ErrInvalidAttrValue
 					}
-					node.Attr[attr.Name] = &AttrValue{
+					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_Type{
 							Type: dt,
 						},
@@ -104,9 +142,9 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 				case "string":
 					st, ok := v.(string)
 					if !ok {
-						return ErrInvalidAttrValue
+						return nil, ErrInvalidAttrValue
 					}
-					node.Attr[attr.Name] = &AttrValue{
+					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_S{
 							S: []byte(st),
 						},
@@ -114,7 +152,7 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 				case "tensor":
 					t, ok := v.(*Tensor)
 					if !ok {
-						return ErrInvalidAttrValue
+						return nil, ErrInvalidAttrValue
 					}
 
 					tp := &TensorProto{
@@ -140,7 +178,7 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 						return
 					}
 
-					node.Attr[attr.Name] = &AttrValue{
+					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_Tensor{
 							Tensor: tp,
 						},
@@ -148,9 +186,9 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 				case "func":
 					f, ok := v.(*NameAttrList)
 					if !ok {
-						return ErrInvalidAttrValue
+						return nil, ErrInvalidAttrValue
 					}
-					node.Attr[attr.Name] = &AttrValue{
+					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_Func{
 							Func: f,
 						},
@@ -158,9 +196,9 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 				case "int":
 					i, ok := v.(int64)
 					if !ok {
-						return ErrInvalidAttrValue
+						return nil, ErrInvalidAttrValue
 					}
-					node.Attr[attr.Name] = &AttrValue{
+					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_I{
 							I: i,
 						},
@@ -168,9 +206,9 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 				case "bool":
 					b, ok := v.(bool)
 					if !ok {
-						return ErrInvalidAttrValue
+						return nil, ErrInvalidAttrValue
 					}
-					node.Attr[attr.Name] = &AttrValue{
+					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_B{
 							B: b,
 						},
@@ -178,9 +216,9 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 				case "float":
 					f, ok := v.(float32)
 					if !ok {
-						return ErrInvalidAttrValue
+						return nil, ErrInvalidAttrValue
 					}
-					node.Attr[attr.Name] = &AttrValue{
+					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_F{
 							F: f,
 						},
@@ -188,9 +226,9 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 				case "shape":
 					s, ok := v.(*TensorShapeProto)
 					if !ok {
-						return ErrInvalidAttrValue
+						return nil, ErrInvalidAttrValue
 					}
-					node.Attr[attr.Name] = &AttrValue{
+					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_Shape{
 							Shape: s,
 						},
@@ -201,9 +239,9 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 				case "list(float)":
 					lv, ok := v.(*AttrValue_ListValue)
 					if !ok {
-						return ErrInvalidAttrValue
+						return nil, ErrInvalidAttrValue
 					}
-					node.Attr[attr.Name] = &AttrValue{
+					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_List{
 							List: lv,
 						},
@@ -211,12 +249,12 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 				}
 			} else {
 				if attr.DefaultValue == nil {
-					return ErrMandatoryAttributeNotSpecified
+					return nil, ErrMandatoryAttributeNotSpecified
 				}
 			}
 		}
 
-		gr.def.Node = append(gr.def.Node, node)
+		gr.def.Node = append(gr.def.Node, node.def)
 	} else {
 		err = ErrOperationNotFound
 		return
@@ -225,13 +263,13 @@ func (gr *Graph) AddOp(opName string, name string, input []string, device string
 	return
 }
 
-func (gr *Graph) Constant(name string, data interface{}) (ts *Tensor, err error) {
-	ts, err = NewTensor(data)
+func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error) {
+	ts, err := NewTensor(data)
 	if err != nil {
 		return
 	}
 
-	err = gr.AddOp("Const", name, nil, "", map[string]interface{}{
+	op, err = gr.AddOp("Const", name, nil, "", map[string]interface{}{
 		"dtype": ts.DataType(),
 		"value": ts,
 	})
@@ -239,13 +277,18 @@ func (gr *Graph) Constant(name string, data interface{}) (ts *Tensor, err error)
 	return
 }
 
-func (gr *Graph) AddPlaceholder(name string, dataType DataType, dims []int64, dimNames []string) {
-	newNode := &NodeDef{
-		Name: name,
-		Op:   "Placeholder",
-		Attr: make(map[string]*AttrValue),
+func (gr *Graph) AddPlaceholder(name string, dataType DataType, dims []int64, dimNames []string) (op *GraphNode) {
+	op = &GraphNode{
+		outDataTypes: map[string]DataType{
+			name: dataType,
+		},
+		def: &NodeDef{
+			Name: name,
+			Op:   "Placeholder",
+			Attr: make(map[string]*AttrValue),
+		},
 	}
-	newNode.Attr["dtype"] = &AttrValue{
+	op.def.Attr["dtype"] = &AttrValue{
 		Value: &AttrValue_Type{
 			Type: dataType,
 		},
@@ -265,13 +308,15 @@ func (gr *Graph) AddPlaceholder(name string, dataType DataType, dims []int64, di
 		}
 	}
 
-	newNode.Attr["shape"] = &AttrValue{
+	op.def.Attr["shape"] = &AttrValue{
 		Value: &AttrValue_Shape{
 			Shape: shape,
 		},
 	}
 
-	gr.def.Node = append(gr.def.Node, newNode)
+	gr.def.Node = append(gr.def.Node, op.def)
+
+	return
 }
 
 func (gr *Graph) AsStr() string {

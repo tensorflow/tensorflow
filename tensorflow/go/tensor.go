@@ -284,7 +284,7 @@ func (t *Tensor) AsInt64() (res []int64, err error) {
 // AsComplex64 returns the content of the tensor as a slice of complex64 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error
 /*func (t *Tensor) AsComplex64() (res []float32, err error) {
-	if TF_DataType(TF_COMPLEX) != TF_TensorType(t.tensor) {
+	if DtComplex != TF_TensorType(t.tensor) {
 		err = ErrInvalidTensorType
 		return
 	}
@@ -432,10 +432,15 @@ func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
 func NewTensor(data interface{}) (*Tensor, error) {
 	var dataPtr uintptr
 
-	switch v := data.(type) {
-	case string:
-		buf := encodeStrings([]string{v})
-		t, err := newTensor(DataType_DT_STRING, TensorShape{{1}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
+	v := reflect.ValueOf(data)
+	dataType, _ := getDataTypeFromReflect(v.Type().Elem().Kind(), 1)
+	if dataType == DtString {
+		strings := make([]string, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			strings[i] = v.Index(i).String()
+		}
+		buf := encodeStrings(strings)
+		t, err := newTensor(DtString, TensorShape{{int64(len(strings))}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
 		if err != nil {
 			return nil, err
 		}
@@ -449,37 +454,36 @@ func NewTensor(data interface{}) (*Tensor, error) {
 	ts := TensorShape(dims)
 
 	switch dataType {
-	case DataType(TF_FLOAT):
+	case DtFloat:
 		res := make([]float32, len(dataSer))
 		for i, v := range dataSer {
 			res[i] = v.(float32)
 		}
 		dataPtr = reflect.ValueOf(res).Pointer()
-	case DataType(TF_DOUBLE):
+	case DtDouble:
 		res := make([]float64, len(dataSer))
 		for i, v := range dataSer {
 			res[i] = v.(float64)
 		}
 		dataPtr = reflect.ValueOf(res).Pointer()
-	case DataType(TF_INT8), DataType(TF_INT16), DataType(TF_INT32), DataType(TF_UINT8):
+	case DtInt8, DtInt16, DtInt32, DtUint8:
 		res := make([]int32, len(dataSer))
 		for i, v := range dataSer {
 			res[i] = v.(int32)
 		}
 		dataPtr = reflect.ValueOf(res).Pointer()
-	case DataType(TF_INT64):
+	case DtInt64:
 		res := make([]int64, len(dataSer))
 		for i, v := range dataSer {
 			res[i] = v.(int64)
 		}
 		dataPtr = reflect.ValueOf(res).Pointer()
-	case DataType(TF_BOOL):
+	case DtBool:
 		res := make([]bool, len(dataSer))
 		for i, v := range dataSer {
 			res[i] = v.(bool)
 		}
 		dataPtr = reflect.ValueOf(res).Pointer()
-	//case DtString:
 	default:
 		return nil, ErrTensorTypeNotSupported
 	}
@@ -524,26 +528,28 @@ func getDataTypeFromReflect(refType reflect.Kind, dataSize int64) (dataType Data
 	switch refType {
 	case reflect.Int:
 		if cBytesInt32 == dataSize {
-			dataType = DataType(TF_INT32)
+			dataType = DtInt32
 		} else {
-			dataType = DataType(TF_INT64)
+			dataType = DtInt64
 		}
 	case reflect.Int8:
-		dataType = DataType(TF_INT8)
+		dataType = DtInt8
 	case reflect.Int16:
-		dataType = DataType(TF_INT16)
+		dataType = DtInt16
 	case reflect.Int32:
-		dataType = DataType(TF_INT32)
+		dataType = DtInt32
 	case reflect.Int64:
-		dataType = DataType(TF_INT64)
+		dataType = DtInt64
 	case reflect.Uint8:
-		dataType = DataType(TF_UINT8)
+		dataType = DtUint8
 	case reflect.Uint16:
-		dataType = DataType(TF_UINT16)
+		dataType = DtUint16
 	case reflect.Float32:
-		dataType = DataType(TF_FLOAT)
+		dataType = DtFloat
 	case reflect.Float64:
-		dataType = DataType(TF_DOUBLE)
+		dataType = DtDouble
+	case reflect.String:
+		dataType = DtString
 	default:
 		return 0, ErrDataTypeNotSupported
 	}

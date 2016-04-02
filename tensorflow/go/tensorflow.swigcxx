@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/public/tensor_c_api.h"
 #include "tensorflow/core/public/version.h"
 #include "tf_tensor_helper.h"
-#include "tf_ops_helper.h"
 #include "tf_session_helper.h"
 %}
 
@@ -41,6 +40,5 @@ namespace std {
 %include "tensorflow/core/public/version.h"
 %include "tensorflow/core/public/tensor_c_api.h"
 %include "tf_tensor_helper.h"
-%include "tf_ops_helper.h"
 %include "tf_session_helper.h"
 

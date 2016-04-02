@@ -3,33 +3,26 @@ package tensorflow_test
 import (
 	"testing"
 
-	"github.com/tensorflow/tensorflow/tensorflow/go"
+	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 func TestGraphGeneration(t *testing.T) {
-	graph := tensorflow.NewGraph()
-	graph.AddPlaceholder("input1", tensorflow.DtInt32, []int64{3}, []string{})
-	graph.AddPlaceholder("input2", tensorflow.DtInt32, []int64{3}, []string{})
-	err := graph.AddOp("Add", "output", []string{"input1", "input2"}, "", map[string]interface{}{
-		"T": tensorflow.DtInt32,
-	})
+	graph := tf.NewGraph()
+	input1 := graph.AddPlaceholder("input1", tf.DtInt32, []int64{3}, []string{})
+	input2 := graph.AddPlaceholder("input2", tf.DtInt32, []int64{3}, []string{})
+	_, err := graph.AddOp("Add", "output", []*tf.GraphNode{input1, input2}, "", nil)
 	if err != nil {
 		t.Error("Problem trying add two tensord, Error:", err)
 		t.FailNow()
 	}
 
-	err = graph.AddOp("Add", "output", []string{"input1", "input2"}, "", map[string]interface{}{})
-	if err == nil {
-		t.Error("An operation with a mandatory attribute was added without specify this parameter")
-	}
-
-	err = graph.AddOp("Add", "output", []string{"input2"}, "", map[string]interface{}{
-		"T": tensorflow.DtInt32,
+	_, err = graph.AddOp("Add", "output", []*tf.GraphNode{input2}, "", map[string]interface{}{
+		"T": tf.DtInt32,
 	})
 	if err == nil {
 		t.Error("An with two mandatory parameters was added after specify just one")
 	}
-	err = graph.AddOp("Aajajajajdd", "output", []string{"input2"}, "", map[string]interface{}{})
+	_, err = graph.AddOp("Aajajajajdd", "output", []*tf.GraphNode{input2}, "", map[string]interface{}{})
 	if err == nil {
 		t.Error("An undefined operation was added to the graph")
 	}
@@ -37,24 +30,24 @@ func TestGraphGeneration(t *testing.T) {
 	inputSlice1 := []int32{1, 2, 3}
 	inputSlice2 := []int32{3, 4, 5}
 
-	t1, err := tensorflow.NewTensor(inputSlice1)
+	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
 	}
 
-	t2, err := tensorflow.NewTensor(inputSlice2)
+	t2, err := tf.NewTensor(inputSlice2)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
 	}
 
-	s, err := tensorflow.NewSession()
+	s, err := tf.NewSession()
 	if err := s.ExtendGraph(graph); err != nil {
 		t.Fatal(err)
 	}
 
-	input := map[string]*tensorflow.Tensor{
+	input := map[string]*tf.Tensor{
 		"input1": t1,
 		"input2": t2,
 	}
@@ -85,40 +78,33 @@ func TestGraphConstant(t *testing.T) {
 	inputSlice1 := []int32{1, 2, 3}
 	inputSlice2 := []int32{3, 4, 5}
 
-	graph := tensorflow.NewGraph()
-	graph.AddPlaceholder("input1", tensorflow.DtInt32, []int64{3}, []string{})
+	graph := tf.NewGraph()
+	input1 := graph.AddPlaceholder("input1", tf.DtInt32, []int64{3}, []string{})
 
-	_, err := graph.Constant("input2", inputSlice2)
+	input2, err := graph.Constant("input2", inputSlice2)
 	if err != nil {
 		t.Error("Problem trying add a constant to the graph, Error:", err)
 		t.FailNow()
 	}
 
-	err = graph.AddOp("Add", "output", []string{"input1", "input2"}, "", map[string]interface{}{
-		"T": tensorflow.DtInt32,
-	})
+	_, err = graph.AddOp("Add", "output", []*tf.GraphNode{input1, input2}, "", map[string]interface{}{})
 	if err != nil {
-		t.Error("Problem trying add two tensord, Error:", err)
+		t.Error("Problem trying add two tensors, Error:", err)
 		t.FailNow()
 	}
 
-	err = graph.AddOp("Add", "output", []string{"input1", "input2"}, "", map[string]interface{}{})
-	if err == nil {
-		t.Error("An operation with a mandatory attribute was added without specify this parameter")
-	}
-
-	t1, err := tensorflow.NewTensor(inputSlice1)
+	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
 	}
 
-	s, err := tensorflow.NewSession()
+	s, err := tf.NewSession()
 	if err := s.ExtendGraph(graph); err != nil {
 		t.Fatal(err)
 	}
 
-	input := map[string]*tensorflow.Tensor{
+	input := map[string]*tf.Tensor{
 		"input1": t1,
 	}
 	out, err := s.Run(input, []string{"output"}, nil)
