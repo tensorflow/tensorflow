@@ -21,7 +21,7 @@ func NewSession() (*Session, error) {
 			TF_NewSessionOptions(),
 			status,
 		),
-	}, statusToError(status)
+	}, StatusToError(status)
 }
 
 // Run Runs the operations on the target nodes, or all the operations if not
@@ -58,7 +58,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 		})
 	}
 
-	return result, statusToError(status)
+	return result, StatusToError(status)
 }
 
 // ExtendGraph Loads the graph definition on the session
@@ -70,10 +70,10 @@ func (s *Session) ExtendGraph(graph *Graph) error {
 	}
 	TF_ExtendGraph(s.session, buf, status)
 
-	return statusToError(status)
+	return StatusToError(status)
 }
 
-func statusToError(status TF_Status) error {
+func StatusToError(status TF_Status) error {
 	code := TF_GetCode(status)
 	message := TF_Message(status)
 

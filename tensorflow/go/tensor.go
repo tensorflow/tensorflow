@@ -394,7 +394,7 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 	return
 }
 
-// NewTensor returns a new tensor with teh specified type, shape and data.
+// NewTensorWithShape returns a new tensor with teh specified type, shape and data.
 // The supported  data types are:
 //  - int
 //  - int8
@@ -405,7 +405,7 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 //  - uint16
 //  - float32
 //  - float64
-func NewTensor(shape TensorShape, data interface{}) (*Tensor, error) {
+func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
 	v := reflect.ValueOf(data)
 	if v.Kind() != reflect.Slice {
 		return nil, ErrSliceExpected
@@ -422,14 +422,14 @@ func NewTensor(shape TensorShape, data interface{}) (*Tensor, error) {
 	return newTensor(dataType, shape, unsafe.Pointer(dataPtr), dataSize)
 }
 
-// Constant Initializes a tensor based on the slice passed by parameter, the
+// NewTensor Initializes a tensor based on the slice passed by parameter, the
 // data type and shape is deducted from the data parameter
 // Example:
-//  Constant([][]int64{
+//  NewTensor([][]int64{
 //    {1, 2, 3, 4},
 //    {5, 6, 7, 8},
 //  })
-func Constant(data interface{}) (*Tensor, error) {
+func NewTensor(data interface{}) (*Tensor, error) {
 	var dataPtr uintptr
 
 	switch v := data.(type) {
@@ -572,6 +572,15 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 
 	t := &Tensor{
 		tensor: TF_NewTensor_wrapper(TF_DataType(dataType), (*int64)(unsafe.Pointer(&llDims[0])), len(llDims), uintptr(cData), size),
+	}
+	t.Dtype = dataType
+	t.TensorShape = &TensorShapeProto{
+		Dim: make([]*TensorShapeProto_Dim, len(shape)),
+	}
+	for i, s := range shape {
+		t.TensorShape.Dim[i] = &TensorShapeProto_Dim{
+			Size: s[0],
+		}
 	}
 
 	return t, nil

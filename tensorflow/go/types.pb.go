@@ -37,6 +37,7 @@ const (
 	DataType_DT_BFLOAT16  DataType = 14
 	DataType_DT_QINT16    DataType = 15
 	DataType_DT_QUINT16   DataType = 16
+	DataType_DT_UINT16    DataType = 17
 	// Do not use!  These are only for parameters.  Every enum above
 	// should have a corresponding value below (verified by types_test).
 	DataType_DT_FLOAT_REF     DataType = 101
@@ -55,6 +56,7 @@ const (
 	DataType_DT_BFLOAT16_REF  DataType = 114
 	DataType_DT_QINT16_REF    DataType = 115
 	DataType_DT_QUINT16_REF   DataType = 116
+	DataType_DT_UINT16_REF    DataType = 117
 )
 
 var DataType_name = map[int32]string{
@@ -75,6 +77,7 @@ var DataType_name = map[int32]string{
 	14:  "DT_BFLOAT16",
 	15:  "DT_QINT16",
 	16:  "DT_QUINT16",
+	17:  "DT_UINT16",
 	101: "DT_FLOAT_REF",
 	102: "DT_DOUBLE_REF",
 	103: "DT_INT32_REF",
@@ -91,6 +94,7 @@ var DataType_name = map[int32]string{
 	114: "DT_BFLOAT16_REF",
 	115: "DT_QINT16_REF",
 	116: "DT_QUINT16_REF",
+	117: "DT_UINT16_REF",
 }
 var DataType_value = map[string]int32{
 	"DT_INVALID":       0,
@@ -110,6 +114,7 @@ var DataType_value = map[string]int32{
 	"DT_BFLOAT16":      14,
 	"DT_QINT16":        15,
 	"DT_QUINT16":       16,
+	"DT_UINT16":        5,
 	"DT_FLOAT_REF":     101,
 	"DT_DOUBLE_REF":    102,
 	"DT_INT32_REF":     103,
@@ -126,6 +131,7 @@ var DataType_value = map[string]int32{
 	"DT_BFLOAT16_REF":  114,
 	"DT_QINT16_REF":    115,
 	"DT_QUINT16_REF":   116,
+	"DT_UINT16_REF":    117,
 }
 
 func (x DataType) String() string {

@@ -59,12 +59,12 @@ func main() {
 
 	// Create the two tensors, the data type is recognized automatically as
 	// also the tensor shape from the input slice
-	t1, err := tensorflow.Constant(inputSlice1)
+	t1, err := tensorflow.NewTensor(inputSlice1)
 	if err != nil {
 		log.Fatal("Problem trying create a new tensor, Error:", err)
 	}
 
-	t2, err := tensorflow.Constant(inputSlice2)
+	t2, err := tensorflow.NewTensor(inputSlice2)
 	if err != nil {
 		log.Fatal("Problem trying create a new tensor, Error:", err)
 	}

@@ -561,8 +561,8 @@ func TestBool(t *testing.T) {
 	}
 }
 
-func TestConstant(t *testing.T) {
-	tensor, err := tensorflow.Constant([][][]int64{
+func TestTensor(t *testing.T) {
+	tensor, err := tensorflow.NewTensor([][][]int64{
 		{
 			{10, 12},
 			{14, 16},
@@ -573,7 +573,7 @@ func TestConstant(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Error("Problem trying to instance the Constant, Error:", err)
+		t.Error("Problem trying to instance the Tensor, Error:", err)
 		t.FailNow()
 	}
 

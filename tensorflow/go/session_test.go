@@ -34,13 +34,13 @@ func TestInputParams(t *testing.T) {
 	inputSlice1 := []int64{1, 2, 3}
 	inputSlice2 := []int64{3, 4, 5}
 
-	t1, err := tensorflow.Constant(inputSlice1)
+	t1, err := tensorflow.NewTensor(inputSlice1)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
 	}
 
-	t2, err := tensorflow.NewTensor([][]int64{{3}}, inputSlice2)
+	t2, err := tensorflow.NewTensorWithShape([][]int64{{3}}, inputSlice2)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
@@ -104,13 +104,13 @@ func TestInputMultDimParams(t *testing.T) {
 		},
 	}
 
-	t1, err := tensorflow.Constant(inputSlice1)
+	t1, err := tensorflow.NewTensor(inputSlice1)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
 	}
 
-	t2, err := tensorflow.Constant(inputSlice2)
+	t2, err := tensorflow.NewTensor(inputSlice2)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
