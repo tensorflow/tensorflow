@@ -93,9 +93,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_state_ops
-# pylint: disable=wildcard-import,undefined-variable
-# undefined-variable is needed because the assign function from
-# gen_state_ops is used later.
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_state_ops import *
 # pylint: enable=wildcard-import
 
@@ -178,10 +177,10 @@ def init_variable(v, init, name="init"):
           # tf.TensorShape objects).
           value = init(v.get_shape().as_list(), v.dtype.base_dtype)
           value = ops.convert_to_tensor(value, name="value")
-          return assign(v, value, name=scope)
+          return gen_state_ops.assign(v, value, name=scope)
         else:
           init = ops.convert_to_tensor(init, name="init")
-          return assign(v, init, name=scope)
+          return gen_state_ops.assign(v, init, name=scope)
 
 
 @ops.RegisterShape("Assign")

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,unused-import,g-bad-import-order,line-too-long
+# pylint: disable=line-too-long
 """This library provides a set of classes and functions that helps train models.
 
 ## Optimizers
@@ -123,6 +123,7 @@ overview of summaries, event files, and visualization in TensorBoard.
 @@write_graph
 
 """
+# pylint: enable=line-too-long
 
 # Optimizers.
 from __future__ import absolute_import
@@ -131,6 +132,7 @@ from __future__ import print_function
 
 import sys
 
+# pylint: disable=g-bad-import-order,unused-import
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
@@ -149,6 +151,8 @@ from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptim
 # Utility classes for training.
 from tensorflow.python.training.coordinator import Coordinator
 from tensorflow.python.training.coordinator import LooperThread
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
 from tensorflow.python.training.queue_runner import *
 
 # For the module level doc.

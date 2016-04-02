@@ -81,6 +81,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import logging_ops
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.ops.constant_op import constant
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
 # pylint: enable=wildcard-import
