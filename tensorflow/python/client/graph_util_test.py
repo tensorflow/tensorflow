@@ -24,41 +24,28 @@ from tensorflow.python.client import graph_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
 
 
-class DeviceFunctionsTest(tf.test.TestCase):
+# Utility device function to use for testing
+def test_device_func_pin_variable_to_cpu(op):
+  if op.device:
+    return op.device
+  return "/cpu:0" if op.node_def.op == "Variable" else op.device
 
-  def testPinRequiredOpsOnCPU(self):
-    with ops.Graph().as_default() as g, g.device(
-        graph_util.pin_variables_on_cpu):
-      const_a = constant_op.constant(5.0)
-      const_b = constant_op.constant(10.0)
-      add_c = const_a + const_b
-      var_v = state_ops.variable_op([], dtype=dtypes.float32)
-      assign_c_to_v = state_ops.assign(var_v, add_c)
-      dynamic_stitch_int_result = data_flow_ops.dynamic_stitch(
-          [[0, 1, 2], [2, 3]], [[12, 23, 34], [1, 2]])
-      dynamic_stitch_float_result = data_flow_ops.dynamic_stitch(
-          [[0, 1, 2], [2, 3]], [[12.0, 23.0, 34.0], [1.0, 2.0]])
-      # Non-variable ops shuld not specify a device
-      self.assertDeviceEqual(const_a.device, None)
-      self.assertDeviceEqual(const_b.device, None)
-      self.assertDeviceEqual(add_c.device, None)
-      # Variable ops specify a device
-      self.assertDeviceEqual(var_v.device, "/device:CPU:0")
-      self.assertDeviceEqual(assign_c_to_v.device, "/device:CPU:0")
+
+class DeviceFunctionsTest(tf.test.TestCase):
 
   def testTwoDeviceFunctions(self):
     with ops.Graph().as_default() as g:
       var_0 = state_ops.variable_op([1], dtype=dtypes.float32)
-      with g.device(graph_util.pin_variables_on_cpu):
+
+      with g.device(test_device_func_pin_variable_to_cpu):
         var_1 = state_ops.variable_op([1], dtype=dtypes.float32)
       var_2 = state_ops.variable_op([1], dtype=dtypes.float32)
       var_3 = state_ops.variable_op([1], dtype=dtypes.float32)
-      with g.device(graph_util.pin_variables_on_cpu):
+      with g.device(test_device_func_pin_variable_to_cpu):
         var_4 = state_ops.variable_op([1], dtype=dtypes.float32)
         with g.device("/device:GPU:0"):
           var_5 = state_ops.variable_op([1], dtype=dtypes.float32)
@@ -75,7 +62,7 @@ class DeviceFunctionsTest(tf.test.TestCase):
   def testNestedDeviceFunctions(self):
     with tf.Graph().as_default():
       var_0 = tf.Variable(0)
-      with tf.device(graph_util.pin_variables_on_cpu):
+      with tf.device(test_device_func_pin_variable_to_cpu):
         var_1 = tf.Variable(1)
         with tf.device(lambda op: "/gpu:0"):
           var_2 = tf.Variable(2)
@@ -110,7 +97,7 @@ class DeviceFunctionsTest(tf.test.TestCase):
 
   def testDefaultDevice(self):
     with ops.Graph().as_default() as g, g.device(
-        graph_util.pin_variables_on_cpu):
+        test_device_func_pin_variable_to_cpu):
       with g.device("/job:ps"):
         const_0 = constant_op.constant(5.0)
       with g.device("/device:GPU:0"):

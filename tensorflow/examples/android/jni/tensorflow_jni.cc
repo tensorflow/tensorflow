@@ -99,6 +99,8 @@ TENSORFLOW_METHOD(initializeTensorflow)(
     return 0;
   }
 
+  const int64 start_time = CurrentThreadTimeUs();
+
   const char* const model_cstr = env->GetStringUTFChars(model, NULL);
   const char* const labels_cstr = env->GetStringUTFChars(labels, NULL);
 
@@ -141,6 +143,10 @@ TENSORFLOW_METHOD(initializeTensorflow)(
   LOG(INFO) << g_label_strings.size() << " label strings loaded from: "
             << labels_cstr;
   g_compute_graph_initialized = true;
+
+  const int64 end_time = CurrentThreadTimeUs();
+  LOG(INFO) << "Initialization done in " << (end_time - start_time) / 1000
+            << "ms";
 
   return 0;
 }

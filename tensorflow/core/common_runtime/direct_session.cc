@@ -692,14 +692,14 @@ Status DirectSession::GetOrCreateExecutors(
   const auto& optimizer_opts =
       options_.config.graph_options().optimizer_options();
   GraphOptimizer optimizer(optimizer_opts);
-  for (const auto& graph : graphs) {
-    const string& partition_name = graph.first;
-    Graph* partition_graph = graph.second;
+  for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
+    const string& partition_name = iter->first;
+    Graph* partition_graph = iter->second;
     const int graph_def_version = partition_graph->versions().producer();
 
     Device* device;
     s = device_mgr_->LookupDevice(partition_name, &device);
-    TF_RETURN_IF_ERROR(s);
+    if (!s.ok()) break;
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
@@ -736,14 +736,19 @@ Status DirectSession::GetOrCreateExecutors(
     optimizer.Optimize(lib, &partition_graph);
     s = ValidateMemoryTypes(DeviceType(device->device_type()), partition_graph);
     if (!s.ok()) {
-      delete partition_graph;
-      return s;
+      break;
     }
     // NewLocalExecutor takes ownership of *partition_graph.
+    iter->second = nullptr;
+    item->executor = nullptr;
     s = NewLocalExecutor(params, partition_graph, &item->executor);
     if (!s.ok()) {
-      return s;
+      break;
     }
+  }
+  if (!s.ok()) {
+    gtl::STLDeleteValues(&graphs);
+    return s;
   }
 
   // Compute the rendezvous keys to avoid recomputing them every time.
@@ -876,6 +881,7 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
     }
   }
 
+  Status s;
   for (auto&& partition : partitions) {
     const string& partition_name = partition.first;
 
@@ -885,14 +891,18 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
 
     // Give the device an opportunity to rewrite its subgraph.
     Device* d;
-    TF_RETURN_IF_ERROR(device_mgr_->LookupDevice(partition_name, &d));
+    s = device_mgr_->LookupDevice(partition_name, &d);
+    if (!s.ok()) break;
     {
       mutex_lock l(graph_def_lock_);
       // TODO(pbar) The library is currently shared and immutable. There
       // may be possible use cases where a device may want to modify
       // function definitions - in which case the library would need to be
       // replicated per device.
-      TF_RETURN_IF_ERROR(d->MaybeRewriteGraph(graph_def_.library(), graph_def));
+      s = d->MaybeRewriteGraph(graph_def_.library(), graph_def);
+      if (!s.ok()) {
+        break;
+      }
     }
     Graph* device_graph = new Graph(fdefs.get());
     GraphConstructorOptions device_opts;
@@ -903,11 +913,14 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
     Status s = ConvertGraphDefToGraph(device_opts, *graph_def, device_graph);
     if (!s.ok()) {
       delete device_graph;
-      // Also delete other graphs created during the loop.
-      gtl::STLDeleteValues(outputs);
-      return s;
+      break;
     }
     outputs->insert(std::make_pair(partition_name, device_graph));
+  }
+  if (!s.ok()) {
+    // Also delete other graphs created during the loop.
+    gtl::STLDeleteValues(outputs);
+    return s;
   }
   *func_defs = fdefs.release();
   return Status::OK();

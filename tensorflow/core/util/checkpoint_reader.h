@@ -40,9 +40,15 @@ class CheckpointReader {
 
   const TensorSliceReader::VarToShapeMap& GetVariableToShapeMap() const;
 
- private:
+  Status GetTensor(const string& name,
+                   std::unique_ptr<tensorflow::Tensor>* out_tensor) const {
+    return reader_->GetTensor(name, out_tensor);
+  }
+
+ protected:
   CheckpointReader(const string& filepattern, tensorflow::Status*);
 
+ private:
   TensorSliceReader* reader_;                               // Owned
   TensorSliceReader::VarToShapeMap* var_to_shape_map_ptr_;  // Owned
 

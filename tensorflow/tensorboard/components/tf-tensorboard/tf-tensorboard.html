@@ -8,6 +8,8 @@
 <link rel="import" href="../tf-image-dashboard/tf-image-dashboard.html">
 <link rel="import" href="../tf-graph-dashboard/tf-graph-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+<link rel="import" href="../tf-backend/tf-backend.html">
+
 <!--
 tf-tensorboard is the frontend entry point for TensorBoard.
 
@@ -32,6 +34,7 @@ allows the user to toggle between various dashboards.
         <template is="dom-if" if="[[eventDashboard(mode)]]">
           <tf-event-dashboard
             id="eventDash"
+            backend="[[_backend]]"
             router="[[router]]"
           ></tf-event-dashboard>
         </template>
@@ -39,13 +42,14 @@ allows the user to toggle between various dashboards.
         <template is="dom-if" if="[[imageDashboard(mode)]]">
           <tf-image-dashboard
             id="imageDash"
-            router="[[router]]"
+            backend="[[_backend]]"
           ></tf-image-dashboard>
         </template>
 
         <template is="dom-if" if="[[graphDashboard(mode)]]">
           <tf-graph-dashboard
             id="graphDash"
+            backend="[[_backend]]"
             router="[[router]]"
           ></tf-graph-dashboard>
         </template>
@@ -53,7 +57,7 @@ allows the user to toggle between various dashboards.
         <template is="dom-if" if="[[histogramDashboard(mode)]]">
           <tf-histogram-dashboard
             id="histogramDash"
-            router="[[router]]"
+            backend="[[_backend]]"
           ></tf-histogram-dashboard>
         </template>
       </div>
@@ -109,7 +113,11 @@ allows the user to toggle between various dashboards.
       properties: {
         router: {
           type: Object,
-          value: TF.Urls.productionRouter(),
+          value: function() {return TF.Backend.router()},
+        },
+        _backend: {
+          type: Object,
+          computed: "_makeBackend(router)",
         },
         // Which tab is selected (events, graph, images etc).
         mode: {
@@ -129,6 +137,9 @@ allows the user to toggle between various dashboards.
           window.location.hash = mode;
         }
         return mode;
+      },
+      _makeBackend: function(router) {
+        return new TF.Backend.Backend(router);
       },
       eventDashboard: function(mode) {
         return mode === "events";

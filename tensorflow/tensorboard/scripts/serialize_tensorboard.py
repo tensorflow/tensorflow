@@ -25,10 +25,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gzip
 import json
 import os
 import os.path
 import shutil
+import StringIO
 import threading
 import urllib
 
@@ -83,15 +85,23 @@ class TensorBoardStaticSerializer(object):
     EnsureDirectoryExists(os.path.join(target_path, 'data'))
     self.path = target_path
 
-  def GetAndSave(self, url):
+  def GetAndSave(self, url, unzip=False):
     """GET the given url. Serialize the result at clean path version of url."""
-    self.connection.request('GET', '/data/' + url)
+    self.connection.request('GET',
+                            '/data/' + url,
+                            headers={'content-type': 'text/plain'})
     response = self.connection.getresponse()
     destination = self.path + '/data/' + Clean(url)
 
     if response.status != 200:
       raise IOError(url)
-    content = response.read()
+
+    if unzip:
+      s = StringIO.StringIO(response.read())
+      content = gzip.GzipFile(fileobj=s).read()
+    else:
+      content = response.read()
+
     with open(destination, 'w') as f:
       f.write(content)
     return content
@@ -116,7 +126,8 @@ class TensorBoardStaticSerializer(object):
           if tag_type == 'graph':
             # in this case, tags is a bool which specifies if graph is present.
             if tags:
-              self.GetRouteAndSave('graph', {run: run})
+              url = Url('graph', {'run': run})
+              self.GetAndSave(url, unzip=True)
           elif tag_type == 'images':
             for t in tags:
               images = self.GetRouteAndSave('images', {'run': run, 'tag': t})

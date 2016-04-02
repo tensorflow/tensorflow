@@ -402,6 +402,22 @@ Returns a `Variable` object created from `variable_def`.
 
 - - -
 
+#### `tf.Variable.initial_value` {#Variable.initial_value}
+
+Returns the Tensor used as the initial value for the variable.
+
+Note that this is different from `initialized_value()` which runs
+the op that initializes the variable before returning its value.
+This method returns the tensor that is used by the op that initializes
+the variable.
+
+##### Returns:
+
+  A `Tensor`.
+
+
+- - -
+
 #### `tf.Variable.ref()` {#Variable.ref}
 
 Returns a reference to this variable.
