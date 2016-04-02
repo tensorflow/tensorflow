@@ -58,7 +58,6 @@ TEST(MemoryTypeChecker, MemoryTypeForOutput) {
   Tensor vi(DT_INT32, {});
   Tensor vf(DT_FLOAT, {});
   auto pred = test::graph::Constant(g, vb);
-  auto si = test::graph::Switch(g, test::graph::Constant(g, vi), pred);
   auto sf = test::graph::Switch(g, test::graph::Constant(g, vf), pred);
   MemoryType memory_type;
 
@@ -66,6 +65,7 @@ TEST(MemoryTypeChecker, MemoryTypeForOutput) {
   // float Switch's output on CPU doesn't have HOST_MEMORY constraint.
   EXPECT_EQ(memory_type, DEVICE_MEMORY);
 #if GOOGLE_CUDA
+  auto si = test::graph::Switch(g, test::graph::Constant(g, vi), pred);
   TF_EXPECT_OK(MemoryTypeForOutput(DEVICE_GPU, g, si, 0, &memory_type));
   // int Switch's output on GPU has HOST_MEMORY constraint.
   EXPECT_EQ(memory_type, HOST_MEMORY);
