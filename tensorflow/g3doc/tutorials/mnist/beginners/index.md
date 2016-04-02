@@ -311,12 +311,14 @@ y_ = tf.placeholder(tf.float32, [None, 10])
 Then we can implement the cross-entropy, \\(-\sum y'\log(y)\\):
 
 ```python
-cross_entropy = -tf.reduce_sum(y_*tf.log(y))
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
 ```
 
 First, `tf.log` computes the logarithm of each element of `y`. Next, we multiply
-each element of `y_` with the corresponding element of `tf.log(y)`. Finally,
-`tf.reduce_sum` adds all the elements of the tensor.
+each element of `y_` with the corresponding element of `tf.log(y)`. Then 
+`tf.reduce_sum` adds the elements in the second dimension of y, due to the 
+`reduction_indices=[1]` parameter. Finally,  `tf.reduce_mean` computes the mean
+over all the examples in the batch.
 
 Note that this isn't just the cross-entropy of the truth with a single
 prediction, but the sum of the cross-entropies for all the images we looked at.
@@ -334,11 +336,11 @@ minimize. Then it can apply your choice of optimization algorithm to modify the
 variables and reduce the cost.
 
 ```python
-train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
+train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 ```
 
 In this case, we ask TensorFlow to minimize `cross_entropy` using the gradient
-descent algorithm with a learning rate of 0.01. Gradient descent is a simple
+descent algorithm with a learning rate of 0.5. Gradient descent is a simple
 procedure, where TensorFlow simply shifts each variable a little bit in the
 direction that reduces the cost. But TensorFlow also provides
 [many other optimization algorithms]
