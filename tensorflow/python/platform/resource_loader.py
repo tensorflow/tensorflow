@@ -60,3 +60,16 @@ def get_data_files_path():
     and py_binary are store.
   """
   return os.path.dirname(inspect.getfile(sys._getframe(1)))
+
+
+def get_resource_path(subdir, path):
+  """Get the path to the specified resource relative to tensorflow/<subdir>/.
+
+  Args:
+    subdir: a string subdirectory relative to tensorflow/
+    path: a string resource path relative to tensorflow/<subdir>
+
+  Returns:
+    The path to that resource.
+  """
+  return os.path.join(os.path.abspath(subdir), path)
