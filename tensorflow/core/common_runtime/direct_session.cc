@@ -733,7 +733,7 @@ Status DirectSession::GetOrCreateExecutors(
       }
     };
 
-    optimizer.Optimize(lib, &partition_graph);
+    optimizer.Optimize(lib, device, &partition_graph);
     s = ValidateMemoryTypes(DeviceType(device->device_type()), partition_graph);
     if (!s.ok()) {
       break;
