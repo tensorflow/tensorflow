@@ -38,6 +38,19 @@ limitations under the License.
 
 namespace tensorflow {
 
+#if GOOGLE_CUDA
+namespace {
+template <typename T>
+perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
+                                                    uint64 size) {
+  perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory),
+                                                size * sizeof(T));
+  perftools::gputools::DeviceMemory<T> typed(wrapped);
+  return typed;
+}
+}  // namespace
+#endif  // GOOGLE_CUDA
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -46,21 +59,69 @@ struct LaunchBatchNormTraining;
 
 template <typename T>
 struct LaunchBatchNormTraining<GPUDevice, T> {
-  static void launch(OpKernelContext* ctx, const Tensor& input_param,
+  static void launch(OpKernelContext* ctx, const Tensor& input,
                      const Tensor& scale_param, const Tensor& bias_param,
-                     Tensor* output) {
+                     Tensor* output,
+                     Tensor* running_mean,
+                     Tensor* running_inv_var) {
     std::cout << "Launched the BatchNormKernel??" << std::endl;
+    auto* stream = ctx->op_device_context()->stream();
+    OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream avalible"));
 
-  }
-};
 
-template <typename T>
-struct LaunchBatchNormTraining<CPUDevice, T> {
-  static void launch(OpKernelContext* ctx, const Tensor& input_param,
-                     const Tensor& scale_param, const Tensor& bias_param,
-                     Tensor* output) {
-    std::cout << "Launched the BatchNormKernel??" << std::endl;
+    TensorFormat data_format = FORMAT_NCHW;
+    const int64 in_batch= GetTensorDim(input, data_format, 'N');
+    const int64 in_depths = GetTensorDim(input, data_format, 'C');
+    const int64 in_cols = GetTensorDim(input, data_format, 'H');
+    const int64 in_rows = GetTensorDim(input, data_format, 'W');
 
+    perftools::gputools::dnn::BatchDescriptor input_desc;
+    input_desc.set_count(in_batch)
+      .set_feature_map_count(in_depths)
+      .set_height(in_rows)
+      .set_width(in_cols)
+      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+
+    perftools::gputools::dnn::BatchDescriptor scale_bias_mean_var_desc;
+    scale_bias_mean_var_desc.set_count(1)
+      .set_feature_map_count(in_depths)
+      .set_height(1)
+      .set_width(1)
+      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+
+    auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                    input.template flat<T>().size());
+    auto output_ptr = AsDeviceMemory(output->template flat<T>().data(),
+                                     output->template flat<T>().size());
+    auto scale_ptr = AsDeviceMemory(scale_param.template flat<T>().data(),
+                                    scale_param.template flat<T>().size());
+    auto bias_ptr = AsDeviceMemory(bias_param.template flat<T>().data(),
+                                    bias_param.template flat<T>().size());
+
+    auto running_mean_ptr = AsDeviceMemory(running_mean->template flat<T>().data(),
+                                    running_mean->template flat<T>().size());
+
+    auto running_inv_var_ptr = AsDeviceMemory(running_inv_var->template flat<T>().data(),
+                                    running_inv_var->template flat<T>().size());
+
+    bool cudnn_launch_status =
+      stream
+        ->ThenBatchNormalizeTraining(input_desc,
+                                    input_ptr,
+                                    scale_bias_mean_var_desc,
+                                    scale_ptr,
+                                    bias_ptr,
+                                    input_desc,
+                                    &output_ptr,
+                                    &running_mean_ptr,
+                                    &running_inv_var_ptr)
+        .ok();
+
+      if (!cudnn_launch_status) {
+        ctx->SetStatus(errors::Internal(
+            "cuDNN launch failure : input shape(", input.shape().DebugString(),
+            ")"));
+      }
   }
 };
 
@@ -69,7 +130,8 @@ class BatchNormTrainingOp : public OpKernel {
   public:
     explicit BatchNormTrainingOp(OpKernelConstruction* context) : OpKernel(context) {
       const DataType dt = DataTypeToEnum<T>::v();
-      OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt}, {dt}));
+      const DataType dt_ref = DataTypeToEnum<T>::ref();
+      OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt, dt_ref, dt_ref}, {dt}));
 
       //Do some type checking here
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon_));
@@ -81,6 +143,9 @@ class BatchNormTrainingOp : public OpKernel {
       const Tensor& scale = context->input(1);
       const Tensor& bias = context->input(2);
 
+      Tensor running_mean = context->mutable_input(3, true);
+      Tensor running_inv_var = context->mutable_input(4, true);
+
       Tensor* output = nullptr;
       TensorShape out_shape = input.shape();
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
@@ -90,7 +155,7 @@ class BatchNormTrainingOp : public OpKernel {
                   errors::InvalidArgument("input must be 4-dimentional", input.shape().DebugString()));
 
       LaunchBatchNormTraining<Device, T>::launch(
-          context, input, scale, bias, output);
+          context, input, scale, bias, output, &running_mean, &running_inv_var);
     }
 
   private:
@@ -106,9 +171,5 @@ REGISTER_KERNEL_BUILDER(
     BatchNormTrainingOp<GPUDevice, float>);
 
 #endif // GOOGLE_CUDA
-
-REGISTER_KERNEL_BUILDER(
-    Name("BatchNormTraining").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    BatchNormTrainingOp<CPUDevice, float>);
 
 } // namespace tensorflow
