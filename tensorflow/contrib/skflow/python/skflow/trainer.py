@@ -30,100 +30,36 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.contrib.layers import optimizers
 
 
-class TensorFlowTrainer(object):
-    """General trainer class.
+def train(session, train, loss, global_step, feed_dict_fn, steps, monitor,
+          summary_writer=None, summaries=None,
+          feed_params_fn=None):
+    """Trains a model for given number of steps, given feed_dict function.
 
-    Attributes:
-      model: Model object.
-      gradients: Gradients tensor.
+    Args:
+        session: Session object.
+        train: Tensor, trains model.
+        loss: Tensor, loss value.
+        global_step: Tensor, global step of the model.
+        feed_dict_fn: Function that will return a feed dictionary.
+        summary_writer: SummaryWriter object to use for writing summaries.
+        steps: Number of steps to run.
+        monitor: Monitor object to track training progress and induce early stopping
+        summaries: Joined object of all summaries that should be ran.
     """
+    for step in xrange(steps):
+        feed_dict = feed_dict_fn()
+        if summaries is not None:
+            global_step_value, loss_value, summ, _ = session.run(
+                [global_step, loss, summaries, train],
+                feed_dict=feed_dict)
+        else:
+            global_step_value, loss_value, _ = session.run(
+                [global_step, loss, train],
+                feed_dict=feed_dict)
+        monitor.update(step, global_step_value, loss_value, session,
+                       feed_params_fn, loss_expression_tensor=loss)
+        if summaries is not None and summary_writer and summ is not None:
+            summary_writer.add_summary(summ, global_step_value)
+        if monitor.monitor_inducing_stop():
+            break
 
-    def __init__(self, loss, global_step, optimizer,
-                 learning_rate, clip_gradients=5.0):
-        """Build a trainer part of graph.
-
-        Args:
-          loss: Tensor that evaluates to model's loss.
-          global_step: Tensor with global step of the model.
-          optimizer: Name of the optimizer class (SGD, Adam, Adagrad) or class.
-          learning_rate: If this is constant float value, no decay function is used.
-                         Instead, a customized decay function can be passed that accepts
-                         global_step as parameter and returns a Tensor.
-                         e.g. exponential decay function:
-                         def exp_decay(global_step):
-                            return tf.train.exponential_decay(
-                                learning_rate=0.1, global_step=global_step,
-                                decay_steps=2, decay_rate=0.001)
-        Raises:
-            ValueError: if learning_rate is not a float or a callable.
-        """
-        self.loss = loss
-        self.global_step = global_step
-
-        if callable(learning_rate):
-            learning_rate = learning_rate(global_step)
-        if callable(optimizer):
-            optimizer = optimizer(learning_rate)
-        self.trainer = optimizers.optimize_loss(loss, global_step,
-            learning_rate=learning_rate,
-            optimizer=optimizer,
-            clip_gradients=clip_gradients)
-        # Update ops during training, e.g. batch_norm_ops
-        self.trainer = control_flow_ops.group(self.trainer, *ops.get_collection('update_ops'))
-        # Get all initializers for all trainable variables.
-        self._initializers = variables.initialize_all_variables()
-
-    def initialize(self, sess):
-        """Initalizes all variables.
-
-        Args:
-            sess: Session object.
-
-        Returns:
-            Values of initializers.
-        """
-        return sess.run(self._initializers)
-
-    def train(self, sess, feed_dict_fn, steps, monitor,
-              summary_writer=None, summaries=None,
-              feed_params_fn=None):
-        """Trains a model for given number of steps, given feed_dict function.
-
-        Args:
-            sess: Session object.
-            feed_dict_fn: Function that will return a feed dictionary.
-            summary_writer: SummaryWriter object to use for writing summaries.
-            steps: Number of steps to run.
-            monitor: Monitor object to track training progress and induce early stopping
-            summaries: Joined object of all summaries that should be ran.
-
-        Returns:
-            List of losses for each step.
-        """
-        for step in xrange(steps):
-            feed_dict = feed_dict_fn()
-            if summaries is not None:
-                global_step, loss, summ, _ = sess.run(
-                    [self.global_step, self.loss, summaries, self.trainer],
-                    feed_dict=feed_dict)
-            else:
-                global_step, loss, _ = sess.run(
-                    [self.global_step, self.loss, self.trainer],
-                    feed_dict=feed_dict)
-            monitor.update(step, global_step, loss, sess,
-                           feed_params_fn, loss_expression_tensor=self.loss)
-            if summaries is not None and summary_writer and summ is not None:
-                summary_writer.add_summary(summ, global_step)
-            if monitor.monitor_inducing_stop():
-                break
-        return
-
-
-class RestoredTrainer(TensorFlowTrainer):
-    """Trainer class  that takes already existing graph."""
-
-    # pylint: disable=super-init-not-called
-    def __init__(self, loss, global_step, trainer):
-        self.global_step = global_step
-        self.loss = loss
-        self.trainer = trainer

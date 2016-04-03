@@ -36,4 +36,3 @@ from tensorflow.contrib.skflow.python.skflow.estimators import *
 from tensorflow.contrib.skflow.python.skflow import ops
 from tensorflow.contrib.skflow.python.skflow import preprocessing
 from tensorflow.contrib.skflow.python.skflow import models
-from tensorflow.contrib.skflow.python.skflow.trainer import TensorFlowTrainer

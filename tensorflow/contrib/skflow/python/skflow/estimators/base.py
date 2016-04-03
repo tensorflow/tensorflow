@@ -33,11 +33,15 @@ try:
 except ImportError:
     from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
 
-from ..trainer import TensorFlowTrainer, RestoredTrainer
-from ..io.data_feeder import setup_train_data_feeder
-from ..io.data_feeder import setup_predict_data_feeder
-from ..ops.dropout_ops import DROPOUTS
-from .. import monitors
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.contrib.layers import optimizers
+from tensorflow.contrib.skflow.python.skflow import trainer
+from tensorflow.contrib.skflow.python.skflow.io.data_feeder import setup_train_data_feeder
+from tensorflow.contrib.skflow.python.skflow.io.data_feeder import setup_predict_data_feeder
+from tensorflow.contrib.skflow.python.skflow.ops.dropout_ops import DROPOUTS
+from tensorflow.contrib.skflow.python.skflow import monitors
 
 from tensorflow.contrib.skflow.python.skflow.estimators.run_config import RunConfig
 
@@ -68,6 +72,8 @@ class TensorFlowEstimator(BaseEstimator):
                 return tf.train.exponential_decay(
                     learning_rate=0.1, global_step,
                     decay_steps=2, decay_rate=0.001)
+        clip_gradients: Clip norm of the gradients to this value to stop
+                        gradient explosion.
         class_weight: None or list of n_classes floats. Weight associated with
                      classes for loss computation. If not given, all classes are suppose to have
                      weight one.
@@ -89,18 +95,19 @@ class TensorFlowEstimator(BaseEstimator):
 
     def __init__(self, model_fn, n_classes, batch_size=32,
                  steps=200, optimizer="SGD",
-                 learning_rate=0.1, class_weight=None,
+                 learning_rate=0.1, clip_gradients=5.0, class_weight=None,
                  continue_training=False,
                  config=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
+        self.model_fn = model_fn
         self.n_classes = n_classes
         self.batch_size = batch_size
         self.steps = steps
         self.verbose = verbose
         self.optimizer = optimizer
         self.learning_rate = learning_rate
-        self.model_fn = model_fn
+        self.clip_gradients = clip_gradients
         self.continue_training = continue_training
         self._initialized = False
         self.max_to_keep = max_to_keep
@@ -147,17 +154,26 @@ class TensorFlowEstimator(BaseEstimator):
             self._model_predictions, self._model_loss = self.model_fn(
                 self._inp, self._out)
 
-            # Create summary to monitor loss
-            tf.scalar_summary("loss", self._model_loss)
-
             # Set up a single operator to merge all the summaries
             self._summaries = tf.merge_all_summaries()
 
             # Create trainer and augment graph with gradients and optimizer.
             # Additionally creates initialization ops.
-            self._trainer = TensorFlowTrainer(
-                loss=self._model_loss, global_step=self._global_step,
-                optimizer=self.optimizer, learning_rate=self.learning_rate)
+            learning_rate = self.learning_rate
+            optimizer = self.optimizer
+            if callable(learning_rate):
+                learning_rate = learning_rate(self._global_step)
+            if callable(optimizer):
+                optimizer = optimizer(learning_rate)
+            self._train = optimizers.optimize_loss(self._model_loss, self._global_step,
+                learning_rate=learning_rate,
+                optimizer=optimizer, clip_gradients=self.clip_gradients)
+
+            # Update ops during training, e.g. batch_norm_ops
+            self._train = control_flow_ops.group(self._train, *ops.get_collection('update_ops'))
+
+            # Get all initializers for all trainable variables.
+            self._initializers = variables.initialize_all_variables()
 
             # Create model's saver capturing all the nodes created up until now.
             self._saver = tf.train.Saver(
@@ -169,6 +185,9 @@ class TensorFlowEstimator(BaseEstimator):
 
             # Create session to run model with.
             self._session = tf.Session(self._config.tf_master, config=self._config.tf_config)
+
+            # Run parameter initializers.
+            self._session.run(self._initializers)
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
@@ -213,8 +232,6 @@ class TensorFlowEstimator(BaseEstimator):
         if not self.continue_training or not self._initialized:
             # Sets up model and trainer.
             self._setup_training()
-            # Initialize model parameters.
-            self._trainer.initialize(self._session)
             self._initialized = True
 
         # Sets up summary writer for later optional visualization.
@@ -231,14 +248,15 @@ class TensorFlowEstimator(BaseEstimator):
             self._summary_writer = None
 
         # Train model for given number of steps.
-        self._trainer.train(self._session,
-                            self._data_feeder.get_feed_dict_fn(
-                                self._inp, self._out),
-                            self.steps,
-                            self._monitor,
-                            self._summary_writer,
-                            self._summaries,
-                            feed_params_fn=self._data_feeder.get_feed_params)
+        trainer.train(
+            self._session, self._train, 
+            self._model_loss, self._global_step,
+            self._data_feeder.get_feed_dict_fn(self._inp, self._out),
+            steps=self.steps,
+            monitor=self._monitor,
+            summary_writer=self._summary_writer,
+            summaries=self._summaries,
+            feed_params_fn=self._data_feeder.get_feed_params)
         return self
 
     def partial_fit(self, X, y):
@@ -436,9 +454,7 @@ class TensorFlowEstimator(BaseEstimator):
 
             # Restore trainer
             self._global_step = self._graph.get_tensor_by_name('global_step:0')
-            trainer_op = self._graph.get_operation_by_name('train')
-            self._trainer = RestoredTrainer(
-                self._model_loss, self._global_step, trainer_op)
+            self._train = self._graph.get_operation_by_name('train')
 
             # Restore summaries.
             self._summaries = self._graph.get_operation_by_name('MergeSummary/MergeSummary')
