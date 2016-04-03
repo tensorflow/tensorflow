@@ -2,6 +2,7 @@ package tensorflow
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"strings"
 
@@ -25,6 +26,7 @@ var (
 	ErrInvalidAmounthOfInputs         = errors.New("The number of inputs doesn't corresponds with the expected for this operation")
 	ErrMandatoryAttributeNotSpecified = errors.New("A mandatory attribute for this operation was not specified")
 	ErrInvalidAttrValue               = errors.New("The data type of the value for this attribute is not valid")
+	ErrInputOutputDataTypeMismatch    = errors.New("The output data type doesn't match with the input one")
 )
 
 // NewGraph Returns an initialized instance of the Graph struct
@@ -113,60 +115,15 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 			outDataTypes: make(map[string]DataType),
 		}
 
-		if len(op.OutputArg) == 1 {
-			if op.OutputArg[0].TypeAttr != "" {
-				keyName := op.OutputArg[0].TypeAttr
-				// Search for attribs with this TypeAttr
-				for _, attr := range op.Attr {
-					if attr.Name == keyName {
-						if v, ok := attrs[attr.Name]; ok {
-							node.outDataTypes[name] = v.(DataType)
-						}
-						break
-					}
-				}
-
-				if _, ok := node.outDataTypes[name]; !ok {
-					// Search for input params with this TypeAttr
-				outTypeInputSearch:
-					for i, arg := range op.InputArg {
-						if arg.TypeAttr == keyName {
-							if outType, dtDefined := input[i].outDataTypes[input[i].def.Name]; dtDefined {
-								node.outDataTypes[name] = outType
-								break outTypeInputSearch
-							}
-						}
-					}
-				}
-			} else {
-				node.outDataTypes[name] = op.OutputArg[0].Type
-			}
-		} else {
-			for _, out := range op.OutputArg {
-				node.outDataTypes[out.Name] = out.Type
-			}
+		if attrs == nil {
+			attrs = make(map[string]interface{})
 		}
+		gr.matchTypes(input, node, attrs, op)
 
 		for _, attr := range op.Attr {
 			// Check if the attribute is specified, if it is not
-			// and is mandatory, try to deduct the possible value
-			// from one of the previous outputs
-			v, ok := attrs[attr.Name]
-			if !ok && attr.DefaultValue == nil {
-			searchInput:
-				for i, arg := range op.InputArg {
-					if arg.TypeAttr == attr.Name {
-						// This input node must have only one output, this output
-						// is the one who defined the datatype to use
-						if outType, dtDefined := input[i].outDataTypes[input[i].def.Name]; dtDefined {
-							v = outType
-							ok = true
-						}
-						break searchInput
-					}
-				}
-			}
-			if ok {
+			// and don't have a default value, return an error
+			if v, ok := attrs[attr.Name]; ok {
 				switch attr.Type {
 				case "type":
 					dt, ok := v.(DataType)
@@ -362,4 +319,60 @@ func (gr *Graph) AsStr() string {
 	result, _ := proto.Marshal(gr.def)
 
 	return string(result)
+}
+
+func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *OpDef) (err error) {
+	// Associate the data type tags with the input data types
+	for i, arg := range op.InputArg {
+		if arg.TypeAttr != "" {
+			if inType, ok := input[i].outDataTypes[input[i].def.Name]; ok && inType != DtInvalid {
+				attrs[arg.TypeAttr] = inType
+			}
+		}
+	}
+	for _, arg := range op.OutputArg {
+		if arg.TypeAttr != "" && arg.Type != DtInvalid {
+			if inType, defined := attrs[arg.TypeAttr]; defined && inType.(DataType) != arg.Type {
+				return ErrInputOutputDataTypeMismatch
+			}
+			attrs[arg.TypeAttr] = arg.Type
+		}
+	}
+
+	for _, attr := range op.Attr {
+		if attr.Type == "type" {
+			if _, isTypeProvided := attrs[attr.Name]; !isTypeProvided {
+				// Try to get the type form inputs/outputs
+				if inOutDt, inOutDef := attrs[attr.Name]; inOutDef {
+					attrs[attr.Name] = inOutDt
+				} else {
+					if attr.DefaultValue != nil {
+						attrs[attr.Name] = attr.DefaultValue.GetType()
+					}
+				}
+			}
+		}
+	}
+
+	// Assign the corresonding data types to the output params
+	for i, arg := range op.OutputArg {
+		var outDt DataType
+
+		if arg.Type != DtInvalid {
+			outDt = arg.Type
+		} else {
+			if arg.TypeAttr != "" {
+				if dT, definedDt := attrs[arg.TypeAttr]; definedDt {
+					outDt = dT.(DataType)
+				}
+			}
+		}
+		if len(op.OutputArg) == 1 {
+			outNode.outDataTypes[outNode.def.Name] = outDt
+		} else {
+			outNode.outDataTypes[fmt.Sprintf("%s:%d", outNode.def.Name, i)] = outDt
+		}
+	}
+
+	return
 }

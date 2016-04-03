@@ -27,14 +27,24 @@ func readTensorFromImageFile(filePath string) *tf.Tensor {
 		log.Fatal("Problem adding ReadFile operation, Error:", err)
 	}
 
-	jpegReader, err := graph.AddOp("DecodeJpeg", "jpeg_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
-		"channels": int64(3),
-	})
-	if err != nil {
-		log.Fatal("Problem adding DecodeJpeg operation, Error:", err)
+	var imageReader *tf.GraphNode
+	if filePath[len(filePath)-4:] == ".png" {
+		imageReader, err = graph.AddOp("DecodePng", "png_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
+			"channels": int64(3),
+		})
+		if err != nil {
+			log.Fatal("Problem adding DecodeJpeg operation, Error:", err)
+		}
+	} else {
+		imageReader, err = graph.AddOp("DecodeJpeg", "jpeg_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
+			"channels": int64(3),
+		})
+		if err != nil {
+			log.Fatal("Problem adding DecodeJpeg operation, Error:", err)
+		}
 	}
 
-	floatCaster, err := graph.AddOp("Cast", "float_caster", []*tf.GraphNode{jpegReader}, "", map[string]interface{}{
+	floatCaster, err := graph.AddOp("Cast", "float_caster", []*tf.GraphNode{imageReader}, "", map[string]interface{}{
 		"DstT": tf.DtFloat,
 	})
 	if err != nil {

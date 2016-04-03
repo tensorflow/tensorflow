@@ -47,6 +47,7 @@ var (
 	// ErrSliceExpected The argument must be an Slice
 	ErrSliceExpected = errors.New("The argument must be an Slice")
 
+	DtInvalid = DataType(0)
 	DtBfloat  = DataType(TF_BFLOAT16)
 	DtBool    = DataType(TF_BOOL)
 	DtComplex = DataType(TF_COMPLEX)
