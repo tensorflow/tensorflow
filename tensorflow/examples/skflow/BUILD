@@ -147,8 +147,8 @@ py_binary(
 )
 
 py_binary(
-    name = "neural_translation_gpu",
-    srcs = ["neural_translation_gpu.py"],
+    name = "neural_translation_word",
+    srcs = ["neural_translation_word.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
