@@ -27,7 +27,7 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
 
     def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=200, optimizer="SGD",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
-                 config_addon=None, verbose=1,
+                 config=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         super(TensorFlowLinearRegressor, self).__init__(
@@ -35,7 +35,7 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
-            continue_training=continue_training, config_addon=config_addon,
+            continue_training=continue_training, config=config,
             verbose=verbose, max_to_keep=max_to_keep,
             keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
@@ -55,7 +55,7 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
 
     def __init__(self, n_classes, tf_master="", batch_size=32, steps=200, optimizer="SGD",
                  learning_rate=0.1, class_weight=None,
-                 tf_random_seed=42, continue_training=False, config_addon=None,
+                 tf_random_seed=42, continue_training=False, config=None,
                  verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         super(TensorFlowLinearClassifier, self).__init__(
@@ -64,7 +64,7 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, class_weight=class_weight,
             tf_random_seed=tf_random_seed,
-            continue_training=continue_training, config_addon=config_addon,
+            continue_training=continue_training, config=config,
             verbose=verbose, max_to_keep=max_to_keep,
             keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 

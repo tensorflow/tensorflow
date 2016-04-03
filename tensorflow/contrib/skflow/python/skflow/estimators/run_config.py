@@ -1,4 +1,4 @@
-"""Configuration Addon."""
+"""Run Config."""
 #  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +18,12 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-class ConfigAddon(object):
-    """This class specifies the specific configurations for a session.
+
+class RunConfig(object):
+    """This class specifies the specific configurations for the run.
 
     Parameters:
+        tf_master: Tensorflow master.
         num_cores: Number of cores to be used. (default: 4)
         verbose: Controls the verbosity, possible values:
                  0: the algorithm and debug information is muted.
@@ -31,7 +33,8 @@ class ConfigAddon(object):
             each GPU uniformly on the same machine.
    """
 
-    def __init__(self, num_cores=4, verbose=1, gpu_memory_fraction=1):
+    def __init__(self, tf_master='', num_cores=4, verbose=1, gpu_memory_fraction=1):
+        self.tf_master = tf_master
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_memory_fraction)
         self.config = tf.ConfigProto(log_device_placement=(verbose > 1),
                                      inter_op_parallelism_threads=num_cores,

@@ -63,7 +63,8 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
-        num_cores: Number of cores to be used. (default: 4)
+        config: RunConfig object that controls the configurations of the session,
+            e.g. num_cores, gpu_memory_fraction, etc.
         max_to_keep: The maximum number of recent checkpoint files to keep.
             As new files are created, older files are deleted.
             If None or 0, all checkpoint files are kept.
@@ -79,7 +80,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  class_weight=None,
                  tf_random_seed=42, continue_training=False,
-                 config_addon=None, verbose=1,
+                 config=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         self.rnn_size = rnn_size
@@ -95,7 +96,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, class_weight=class_weight,
             tf_random_seed=tf_random_seed,
-            continue_training=continue_training, config_addon=config_addon,
+            continue_training=continue_training, config=config,
             verbose=verbose,
             max_to_keep=max_to_keep,
             keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
@@ -151,7 +152,8 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
-        num_cores: Number of cores to be used. (default: 4)
+        config: RunConfig object that controls the configurations of the session,
+            e.g. num_cores, gpu_memory_fraction, etc.
         verbose: Controls the verbosity, possible values:
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
@@ -170,7 +172,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
                  n_classes=0, tf_master="", batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
-                 config_addon=None, verbose=1,
+                 config=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         self.rnn_size = rnn_size
@@ -185,7 +187,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
             n_classes=n_classes, tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
-            continue_training=continue_training, config_addon=config_addon,
+            continue_training=continue_training, config=config,
             verbose=verbose, max_to_keep=max_to_keep,
             keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 

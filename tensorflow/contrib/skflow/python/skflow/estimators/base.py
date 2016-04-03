@@ -39,7 +39,7 @@ from ..io.data_feeder import setup_predict_data_feeder
 from ..ops.dropout_ops import DROPOUTS
 from .. import monitors
 
-from ..addons.config_addon import ConfigAddon
+from tensorflow.contrib.skflow.python.skflow.estimators.run_config import RunConfig
 
 
 def _write_with_backup(filename, content):
@@ -76,7 +76,7 @@ class TensorFlowEstimator(BaseEstimator):
             Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
-        config_addon: ConfigAddon object that controls the configurations of the session,
+        config: RunConfig object that controls the configurations of the session,
             e.g. num_cores, gpu_memory_fraction, etc.
         verbose: Controls the verbosity, possible values:
                  0: the algorithm and debug information is muted.
@@ -94,7 +94,7 @@ class TensorFlowEstimator(BaseEstimator):
                  steps=200, optimizer="SGD",
                  learning_rate=0.1, class_weight=None,
                  tf_random_seed=42, continue_training=False,
-                 config_addon=None, verbose=1,
+                 config=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         self.n_classes = n_classes
@@ -111,7 +111,7 @@ class TensorFlowEstimator(BaseEstimator):
         self.max_to_keep = max_to_keep
         self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
         self.class_weight = class_weight
-        self.config_addon = config_addon
+        self._config = config
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
@@ -169,9 +169,9 @@ class TensorFlowEstimator(BaseEstimator):
             self._monitor.create_val_feed_dict(self._inp, self._out)
 
             # Create session to run model with.
-            if self.config_addon is None:
-                self.config_addon = ConfigAddon(verbose=self.verbose)
-            self._session = tf.Session(self.tf_master, config=self.config_addon.config)
+            if self._config is None:
+                self._config = RunConfig(verbose=self.verbose)
+            self._session = tf.Session(self.tf_master, config=self._config.config)
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
@@ -447,11 +447,11 @@ class TensorFlowEstimator(BaseEstimator):
             self._summaries = self._graph.get_operation_by_name('MergeSummary/MergeSummary')
 
             # Restore session.
-            if not isinstance(self.config_addon, ConfigAddon):
-                self.config_addon = ConfigAddon(verbose=self.verbose)
+            if not isinstance(self._config, RunConfig):
+                self._config = RunConfig(verbose=self.verbose)
             self._session = tf.Session(
                 self.tf_master,
-                config=self.config_addon.config)
+                config=self._config.config)
             checkpoint_path = tf.train.latest_checkpoint(path)
             if checkpoint_path is None:
                 raise ValueError("Missing checkpoint files in the %s. Please "
@@ -465,12 +465,12 @@ class TensorFlowEstimator(BaseEstimator):
 
     # pylint: disable=unused-argument
     @classmethod
-    def restore(cls, path, config_addon=None):
+    def restore(cls, path, config=None):
         """Restores model from give path.
 
         Args:
             path: Path to the checkpoints and other model information.
-            config_addon: ConfigAddon object that controls the configurations of the session,
+            config: RunConfig object that controls the configurations of the session,
                 e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
         Returns:
@@ -480,7 +480,8 @@ class TensorFlowEstimator(BaseEstimator):
         if not os.path.exists(model_def_filename):
             raise ValueError("Restore folder doesn't contain model definition.")
         # list of parameters that are allowed to be reconfigured
-        reconfigurable_params = ['config_addon']
+        reconfigurable_params = ['_config']
+        _config = config
         with open(model_def_filename) as fmodel:
             model_def = json.loads(fmodel.read())
             # TensorFlow binding requires parameters to be strings not unicode.
@@ -490,9 +491,9 @@ class TensorFlowEstimator(BaseEstimator):
                         not isinstance(value, str)):
                     model_def[key] = str(value)
                 if key in reconfigurable_params:
-                    newValue = locals()[key]
-                    if newValue is not None:
-                        model_def[key] = newValue
+                    new_value = locals()[key]
+                    if new_value is not None:
+                        model_def[key] = new_value
         class_name = model_def.pop('class_name')
         if class_name == 'TensorFlowEstimator':
             custom_estimator = TensorFlowEstimator(model_fn=None, **model_def)
@@ -506,3 +507,4 @@ class TensorFlowEstimator(BaseEstimator):
         estimator = getattr(estimators, class_name)(**model_def)
         estimator._restore(path)
         return estimator
+
