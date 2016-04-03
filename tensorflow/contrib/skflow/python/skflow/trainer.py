@@ -62,6 +62,8 @@ class TensorFlowTrainer(object):
 
         if callable(learning_rate):
             learning_rate = learning_rate(global_step)
+        if callable(optimizer):
+            optimizer = optimizer(learning_rate)
         self.trainer = optimizers.optimize_loss(loss, global_step,
             learning_rate=learning_rate,
             optimizer=optimizer,
