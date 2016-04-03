@@ -231,14 +231,23 @@ CUDNN_DNN_ROUTINE_EACH_R2(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
   __macro(cudnnConvolutionBackwardData_v3)                    \
   __macro(cudnnConvolutionBackwardFilter_v3)                  \
   __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)       \
-  __macro(cudnnBatchNormalizationForwardInference)            \
-  __macro(cudnnBatchNormalizationForwardTraining)             \
   __macro(cudnnDeriveBNTensorDescriptor)
 // clang-format on
 
 CUDNN_DNN_ROUTINE_EACH_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_R3
 #endif
+
+// clang-format off
+#if CUDNN_VERSION >= 4007
+#define CUDNN_DNN_ROUTINE_EACH_R4(__macro)                    \
+  __macro(cudnnBatchNormalizationForwardTraining)             \
+  __macro(cudnnBatchNormalizationBackward)                    \
+// clang-format off
+CUDNN_DNN_ROUTINE_EACH_R4(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+#undef CUDNN_DNN_ROUTINE_EACH_R4
+#endif
+
 #undef CUDNN_DNN_ROUTINE_EACH
 
 }  // namespace dynload
@@ -510,9 +519,6 @@ class ScopedPoolingDescriptor {
 
   SE_DISALLOW_COPY_AND_ASSIGN(ScopedPoolingDescriptor);
 };
-
-// TODO
-// class ScopedBatchnormDescriptor {}
 
 bool CudnnSupport::DoConvolve(
     Stream* stream, const BatchDescriptor& batch_descriptor,
@@ -1393,8 +1399,8 @@ bool CudnnSupport::DoBatchNormForwardTraining(
       running_mean->opaque(),
       running_inv_var->opaque(),
       epsilon,
-      nullptr, // TODO fill in these
-      nullptr);
+      save_mean->opaque(),
+      save_inv_var->opaque());
 
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to enqueue forward pooling on stream: "
@@ -1402,7 +1408,62 @@ bool CudnnSupport::DoBatchNormForwardTraining(
     return false;
   }
   return true;
+}
 
+bool CudnnSupport::DoBatchNormBackwardTraining(
+    Stream* stream,
+    const dnn::BatchDescriptor& input_dimensions,
+    const DeviceMemory<float>& input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    const DeviceMemory<float>& output_data,
+    const DeviceMemory<float>& output_grad_data,
+    const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+    const DeviceMemory<float>& scale_data,
+    const DeviceMemory<float>& saved_mean,
+    const DeviceMemory<float>& saved_inv_var,
+    DeviceMemory<float>* input_grad_data,
+    DeviceMemory<float>* scale_grad_data,
+    DeviceMemory<float>* bias_grad_data) {
+
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+                                        AsCUDAStreamValue(stream));
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
+    return false;
+  }
+
+  ScopedTensorDescriptor input_desc{parent_, input_dimensions, CUDNN_DATA_FLOAT};
+  ScopedTensorDescriptor output_desc{parent_, output_dimensions,
+                                   CUDNN_DATA_FLOAT};
+  ScopedTensorDescriptor scale_bias_desc{parent_, scale_bias_mean_var_dimentions,
+                                                  CUDNN_DATA_FLOAT};
+
+
+  cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
+  double epsilon = 0.0001;
+  float alpha = 1.0;
+  float beta = 0.0;
+
+  status = dynload::cudnnBatchNormalizationBackward(
+      parent_, ToHandle(dnn_handle_), mode,
+      &alpha, &beta,
+      &alpha, &beta,
+      input_desc.handle(), input_data.opaque(),
+      output_desc.handle(), output_grad_data.opaque(),
+      input_desc.handle(), input_grad_data->opaque(),
+      scale_bias_desc.handle(), scale_data.opaque(),
+      scale_grad_data->opaque(), bias_grad_data->opaque(),
+      epsilon,
+      saved_mean.opaque(), // TODO fill in these
+      saved_inv_var.opaque());
+
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to enqueue batchnorm backward on stream: "
+               << ToString(status);
+    return false;
+  }
+  return true;
 }
 
 bool CudnnSupport::DeriveOutputBatchDescriptor(

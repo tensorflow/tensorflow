@@ -604,7 +604,7 @@ Stream &Stream::ThenNormalize(
 Stream &Stream::ThenBatchNormalizeTraining(
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
-                    const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+                    const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
                     const DeviceMemory<float>& scale_data,
                     const DeviceMemory<float>& bias_data,
                     const dnn::BatchDescriptor& output_dimensions,
@@ -620,7 +620,7 @@ Stream &Stream::ThenBatchNormalizeTraining(
       if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
         CheckError(dnn->DoBatchNormForwardTraining(this,
                                       input_dimensions, input_data,
-                                      scale_bias_mean_var_dimentions,
+                                      scale_bias_mean_var_dimensions,
                                       scale_data, bias_data,
                                       output_dimensions,
                                       output_data,
@@ -637,7 +637,45 @@ Stream &Stream::ThenBatchNormalizeTraining(
       }
     }
     return *this;
+}
 
+Stream &Stream::ThenBatchNormalizeBackwardTraining(
+                    const dnn::BatchDescriptor& input_dimensions,
+                    const DeviceMemory<float>& input_data,
+                    const dnn::BatchDescriptor& output_dimensions,
+                    const DeviceMemory<float>& output_data,
+                    const DeviceMemory<float>& output_grad_data,
+                    const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
+                    const DeviceMemory<float>& scale_data,
+                    const DeviceMemory<float>& saved_mean,
+                    const DeviceMemory<float>& saved_inv_var,
+                    DeviceMemory<float>* input_grad_data,
+                    DeviceMemory<float>* scale_grad_data,
+                    DeviceMemory<float>* bias_grad_data) {
+    VLOG_CALL(PARAM(input_dimensions),
+              PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+
+    if (ok()) {
+      if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+        CheckError(dnn->DoBatchNormBackwardTraining(this,
+                                      input_dimensions, input_data,
+                                      output_dimensions, output_data,
+                                      output_grad_data,
+                                      scale_bias_mean_var_dimensions,
+                                      scale_data,
+                                      saved_mean,
+                                      saved_inv_var,
+                                      input_grad_data,
+                                      scale_grad_data,
+                                      bias_grad_data));
+      } else {
+        SetError();
+        LOG(WARNING)
+            << "attempting to perform DNN operation using StreamExecutor "
+               "without DNN support";
+      }
+    }
+    return *this;
 }
 
 Stream &Stream::ThenActivate(dnn::ActivationMode activation_mode,

@@ -29,6 +29,21 @@ REGISTER_OP("BatchNormTraining")
     .Attr("T: {float}")
     .Attr("epsilon: float")
     .Doc(R"doc(
-      Some docs go here 
+      TODO
+)doc");
+
+REGISTER_OP("BatchNormTrainingGrad")
+    .Input("inp: T")
+    .Input("output_grad: T")
+    .Input("scale: T")
+    .Input("saved_mean: T")
+    .Input("saved_var: T")
+    .Output("input_grad: T")
+    .Output("scale_grad: T")
+    .Output("bias_grad: T")
+    .Attr("T: {float}")
+    .Attr("epsilon: float")
+    .Doc(R"doc(
+      TODO
 )doc");
 }  // namespace tensorflow

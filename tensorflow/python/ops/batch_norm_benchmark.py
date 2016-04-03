@@ -54,7 +54,6 @@ def batch_norm_slow(tensor, mean, variance, beta, gamma, scale):
     batch_norm *= gamma
   return batch_norm + beta
 
-
 def build_graph(device, input_shape, axes, num_layers, mode, scale, train):
   """Build a graph containing a sequence of batch normalizations.
 

@@ -824,7 +824,7 @@ class DnnSupport {
                            const DeviceMemory<float>& input_data,
                            DeviceMemory<float>* output_data) = 0;
 
-  // TODO docs
+  // Perform batch normalization in training mode with running mean and varience
   virtual bool DoBatchNormForwardTraining(
       Stream* stream,
       const dnn::BatchDescriptor& input_dimensions,
@@ -838,6 +838,22 @@ class DnnSupport {
       DeviceMemory<float>* running_inv_var,
       DeviceMemory<float>* save_mean,
       DeviceMemory<float>* save_inv_var) = 0;
+
+  virtual bool DoBatchNormBackwardTraining(
+      Stream* stream,
+      const dnn::BatchDescriptor& input_dimensions,
+      const DeviceMemory<float>& input_data,
+      const dnn::BatchDescriptor& output_dimentions,
+      const DeviceMemory<float>& output_data,
+      const DeviceMemory<float>& output_data_grad,
+      const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& saved_mean,
+      const DeviceMemory<float>& saved_inv_var,
+      DeviceMemory<float>* input_data_grad,
+      DeviceMemory<float>* scale_grad,
+      DeviceMemory<float>* bias_grad
+  ) = 0;
 
   // Applies an activation function (see ActivationMode) to all of the values
   // held on the device in 'input_data', whose dimensions are described by
