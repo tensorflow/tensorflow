@@ -643,7 +643,6 @@ Stream &Stream::ThenBatchNormalizeBackwardTraining(
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
                     const dnn::BatchDescriptor& output_dimensions,
-                    const DeviceMemory<float>& output_data,
                     const DeviceMemory<float>& output_grad_data,
                     const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
                     const DeviceMemory<float>& scale_data,
@@ -653,13 +652,13 @@ Stream &Stream::ThenBatchNormalizeBackwardTraining(
                     DeviceMemory<float>* scale_grad_data,
                     DeviceMemory<float>* bias_grad_data) {
     VLOG_CALL(PARAM(input_dimensions),
-              PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+              PARAM(input_data), PARAM(output_dimensions));
 
     if (ok()) {
       if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
         CheckError(dnn->DoBatchNormBackwardTraining(this,
                                       input_dimensions, input_data,
-                                      output_dimensions, output_data,
+                                      output_dimensions,
                                       output_grad_data,
                                       scale_bias_mean_var_dimensions,
                                       scale_data,

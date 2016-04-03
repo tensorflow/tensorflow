@@ -66,12 +66,11 @@ struct LaunchBatchNormTraining<GPUDevice, T> {
                      Tensor* running_inv_var,
                      Tensor* save_mean,
                      Tensor* save_inv_var) {
-    std::cout << "Launched the BatchNormKernel??" << std::endl;
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream avalible"));
 
     TensorFormat data_format = FORMAT_NCHW;
-    const int64 in_batch= GetTensorDim(input, data_format, 'N');
+    const int64 in_batch = GetTensorDim(input, data_format, 'N');
     const int64 in_depths = GetTensorDim(input, data_format, 'C');
     const int64 in_cols = GetTensorDim(input, data_format, 'H');
     const int64 in_rows = GetTensorDim(input, data_format, 'W');
@@ -158,10 +157,12 @@ class BatchNormTrainingOp : public OpKernel {
       TensorShape out_shape = input.shape();
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
-      TensorShape save_mean_var_shape = input.shape();
+      TensorFormat data_format = FORMAT_NCHW;
+      const int64 in_depths = GetTensorDim(input, data_format, 'C');
+      TensorShape save_mean_var_shape = TensorShape({in_depths});
 
       Tensor* save_mean = nullptr;
-      OP_REQUIRES_OK(context, context->allocate_output(1, out_shape, &save_mean));
+      OP_REQUIRES_OK(context, context->allocate_output(1, save_mean_var_shape, &save_mean));
       Tensor* save_inv_var = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(2, save_mean_var_shape, &save_inv_var));
 
@@ -180,11 +181,136 @@ class BatchNormTrainingOp : public OpKernel {
     TF_DISALLOW_COPY_AND_ASSIGN(BatchNormTrainingOp);
 };
 
+template <typename Device, typename T>
+struct LaunchBatchNormBackwardTraining;
+
+template <typename T>
+struct LaunchBatchNormBackwardTraining<GPUDevice, T> {
+  static void launch(OpKernelContext* ctx, const Tensor& input,
+                     const Tensor& output_grad, const Tensor& scale_param,
+                     const Tensor& saved_mean, const Tensor& saved_inv_var,
+                     Tensor* input_grad,
+                     Tensor* scale_grad,
+                     Tensor* bias_grad) {
+    auto* stream = ctx->op_device_context()->stream();
+    OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream avalible"));
+
+    TensorFormat data_format = FORMAT_NCHW;
+    const int64 in_batch = GetTensorDim(input, data_format, 'N');
+    const int64 in_depths = GetTensorDim(input, data_format, 'C');
+    const int64 in_cols = GetTensorDim(input, data_format, 'H');
+    const int64 in_rows = GetTensorDim(input, data_format, 'W');
+
+    perftools::gputools::dnn::BatchDescriptor input_desc;
+    input_desc.set_count(in_batch)
+      .set_feature_map_count(in_depths)
+      .set_height(in_rows)
+      .set_width(in_cols)
+      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+
+    perftools::gputools::dnn::BatchDescriptor output_desc = input_desc;
+
+    perftools::gputools::dnn::BatchDescriptor scale_bias_mean_var_desc;
+    scale_bias_mean_var_desc.set_count(1)
+      .set_feature_map_count(in_depths)
+      .set_height(1)
+      .set_width(1)
+      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+
+    auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                    input.template flat<T>().size());
+    auto output_grad_ptr = AsDeviceMemory(output_grad.template flat<T>().data(),
+                                     output_grad.template flat<T>().size());
+    auto scale_ptr = AsDeviceMemory(scale_param.template flat<T>().data(),
+                                    scale_param.template flat<T>().size());
+    auto saved_mean_ptr = AsDeviceMemory(saved_mean.template flat<T>().data(),
+                                         saved_mean.template flat<T>().size());
+    auto saved_inv_var_ptr = AsDeviceMemory(saved_inv_var.template flat<T>().data(),
+                                         saved_inv_var.template flat<T>().size());
+
+    auto input_grad_ptr = AsDeviceMemory(input_grad->template flat<T>().data(),
+                                         input_grad->template flat<T>().size());
+    auto scale_grad_ptr = AsDeviceMemory(scale_grad->template flat<T>().data(),
+                                         scale_grad->template flat<T>().size());
+    auto bias_grad_ptr = AsDeviceMemory(bias_grad->template flat<T>().data(),
+                                        bias_grad->template flat<T>().size());
+    bool cudnn_launch_status =
+      stream
+        ->ThenBatchNormalizeBackwardTraining(input_desc,
+                                    input_ptr,
+                                    output_desc,
+                                    output_grad_ptr,
+                                    scale_bias_mean_var_desc,
+                                    scale_ptr,
+                                    saved_mean_ptr,
+                                    saved_inv_var_ptr,
+                                    &input_grad_ptr,
+                                    &scale_grad_ptr,
+                                    &bias_grad_ptr)
+        .ok();
+
+      if (!cudnn_launch_status) {
+        ctx->SetStatus(errors::Internal(
+            "cuDNN launch failure : input shape(", input.shape().DebugString(),
+            ")"));
+      }
+  }
+};
+
+template <typename Device, typename T>
+class BatchNormBackwardTrainingOp : public OpKernel {
+  public:
+    explicit BatchNormBackwardTrainingOp(OpKernelConstruction* context) : OpKernel(context) {
+      const DataType dt = DataTypeToEnum<T>::v();
+      OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt, dt, dt}, {dt, dt, dt}));
+
+      //Do some type checking here
+      OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon_));
+    }
+
+    void Compute(OpKernelContext* context) override {
+      //TODO a whole bunch of error checking
+      const Tensor& input = context->input(0);
+      const Tensor& output_grad = context->input(1);
+      const Tensor& scale = context->input(2);
+      const Tensor& saved_mean = context->input(3);
+      const Tensor& saved_inv_var = context->input(4);
+
+      Tensor* input_grad = nullptr;
+      TensorShape input_shape = input.shape();
+      OP_REQUIRES_OK(context, context->allocate_output(0, input_shape, &input_grad));
+
+      TensorShape scale_bias_shape = scale.shape();
+      Tensor* scale_grad = nullptr;
+      OP_REQUIRES_OK(context, context->allocate_output(1, scale_bias_shape, &scale_grad));
+
+      Tensor* bias_grad = nullptr;
+      OP_REQUIRES_OK(context, context->allocate_output(2, scale_bias_shape, &bias_grad));
+
+      //TODO support other dimentions
+      OP_REQUIRES(context, input.dims() == 4,
+                  errors::InvalidArgument("input must be 4-dimentional", input.shape().DebugString()));
+
+      LaunchBatchNormBackwardTraining<Device, T>::launch(
+          context, input, output_grad, scale, saved_mean, saved_inv_var,
+          input_grad, scale_grad, bias_grad);
+    }
+
+  private:
+    float epsilon_;
+
+    TF_DISALLOW_COPY_AND_ASSIGN(BatchNormBackwardTrainingOp);
+};
+
 #if GOOGLE_CUDA
 
 REGISTER_KERNEL_BUILDER(
     Name("BatchNormTraining").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     BatchNormTrainingOp<GPUDevice, float>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("BatchNormTrainingGrad").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    BatchNormBackwardTrainingOp<GPUDevice, float>);
 
 #endif // GOOGLE_CUDA
 

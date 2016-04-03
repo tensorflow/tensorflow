@@ -72,7 +72,6 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<float>& input_data,
       const dnn::BatchDescriptor& output_dimentions,
-      const DeviceMemory<float>& output_data,
       const DeviceMemory<float>& output_data_grad,
       const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
       const DeviceMemory<float>& scale_data,

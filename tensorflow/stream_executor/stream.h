@@ -336,7 +336,6 @@ class Stream {
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
                     const dnn::BatchDescriptor& output_dimensions,
-                    const DeviceMemory<float>& output_data,
                     const DeviceMemory<float>& output_grad_data,
                     const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
                     const DeviceMemory<float>& scale_data,
