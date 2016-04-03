@@ -39,7 +39,20 @@ func NewGraph() *Graph {
 // the provided graph string
 func NewGraphFromText(graphStr string) (gr *Graph, err error) {
 	gr = NewGraph()
-	proto.UnmarshalText(graphStr, gr.def)
+	err = proto.UnmarshalText(graphStr, gr.def)
+
+	return
+}
+
+// LoadGraphFromFile Loads a Graph from the file on the specified path.
+func LoadGraphFromFile(path string) (gr *Graph, err error) {
+	graphStr, err := ioutil.ReadFile(path)
+	if err != nil {
+		return
+	}
+
+	gr = NewGraph()
+	err = proto.Unmarshal(graphStr, gr.def)
 
 	return
 }
@@ -101,7 +114,33 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 		}
 
 		if len(op.OutputArg) == 1 {
-			node.outDataTypes[name] = op.OutputArg[0].Type
+			if op.OutputArg[0].TypeAttr != "" {
+				keyName := op.OutputArg[0].TypeAttr
+				// Search for attribs with this TypeAttr
+				for _, attr := range op.Attr {
+					if attr.Name == keyName {
+						if v, ok := attrs[attr.Name]; ok {
+							node.outDataTypes[name] = v.(DataType)
+						}
+						break
+					}
+				}
+
+				if _, ok := node.outDataTypes[name]; !ok {
+					// Search for input params with this TypeAttr
+				outTypeInputSearch:
+					for i, arg := range op.InputArg {
+						if arg.TypeAttr == keyName {
+							if outType, dtDefined := input[i].outDataTypes[input[i].def.Name]; dtDefined {
+								node.outDataTypes[name] = outType
+								break outTypeInputSearch
+							}
+						}
+					}
+				}
+			} else {
+				node.outDataTypes[name] = op.OutputArg[0].Type
+			}
 		} else {
 			for _, out := range op.OutputArg {
 				node.outDataTypes[out.Name] = out.Type
