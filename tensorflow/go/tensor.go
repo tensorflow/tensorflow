@@ -90,24 +90,42 @@ func (e *ErrDataTypeNotSupported) Error() string {
 }
 
 var (
+	// DtInvalid Invalid tensor DataType
 	DtInvalid = DataType(0)
-	DtBfloat  = DataType(TF_BFLOAT16)
-	DtBool    = DataType(TF_BOOL)
+	// DtBfloat corresponds to TF_BFLOAT16
+	DtBfloat = DataType(TF_BFLOAT16)
+	// DtBool corresponds to TF_BOOL
+	DtBool = DataType(TF_BOOL)
+	// DtComplex corresponds to TF_COMPLEX
 	DtComplex = DataType(TF_COMPLEX)
-	DtDouble  = DataType(TF_DOUBLE)
-	DtFloat   = DataType(TF_FLOAT)
-	DtInt16   = DataType(TF_INT16)
-	DtInt32   = DataType(TF_INT32)
-	DtInt64   = DataType(TF_INT64)
-	DtInt8    = DataType(TF_INT8)
-	DtQint16  = DataType(TF_QINT16)
+	// DtDouble corresponds to TF_DOUBLE
+	DtDouble = DataType(TF_DOUBLE)
+	// DtFloat corresponds to TF_FLOAT
+	DtFloat = DataType(TF_FLOAT)
+	// DtInt16 corresponds to TF_INT16
+	DtInt16 = DataType(TF_INT16)
+	// DtInt32 corresponds to TF_INT32
+	DtInt32 = DataType(TF_INT32)
+	// DtInt64 corresponds to TF_INT64
+	DtInt64 = DataType(TF_INT64)
+	// DtInt8 corresponds to TF_INT8
+	DtInt8 = DataType(TF_INT8)
+	// DtQint16 corresponds to TF_QINT16
+	DtQint16 = DataType(TF_QINT16)
+	// DtQuint16 corresponds to TF_QUINT16
 	DtQuint16 = DataType(TF_QUINT16)
+	// DtQuint32 corresponds to TF_QINT32
 	DtQuint32 = DataType(TF_QINT32)
-	DtQint8   = DataType(TF_QINT8)
-	DtQuint8  = DataType(TF_QUINT8)
-	DtString  = DataType(TF_STRING)
-	DtUint16  = DataType(TF_UINT16)
-	DtUint8   = DataType(TF_UINT8)
+	// DtQint8 corresponds to TF_QINT8
+	DtQint8 = DataType(TF_QINT8)
+	// DtQuint8 corresponds to TF_QUINT8
+	DtQuint8 = DataType(TF_QUINT8)
+	// DtString corresponds to TF_STRING
+	DtString = DataType(TF_STRING)
+	// DtUint16 corresponds to TF_UINT16
+	DtUint16 = DataType(TF_UINT16)
+	// DtUint8 corresponds to TF_UINT8
+	DtUint8 = DataType(TF_UINT8)
 )
 
 // TensorInt Interface to be implemented by the tensors.

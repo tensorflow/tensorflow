@@ -23,15 +23,18 @@ func (e *ErrStatusTf) Error() string {
 }
 
 // NewSession initializes a new TensorFlow session.
-func NewSession() (*Session, error) {
+func NewSession() (s *Session, err error) {
 	status := TF_NewStatus()
 
-	return &Session{
+	s = &Session{
 		session: TF_NewSession(
 			TF_NewSessionOptions(),
 			status,
 		),
-	}, StatusToError(status)
+	}
+	err = s.statusToError(status)
+
+	return
 }
 
 // Run Runs the operations on the target nodes, or all the operations if not
@@ -68,7 +71,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 		})
 	}
 
-	return result, StatusToError(status)
+	return result, s.statusToError(status)
 }
 
 // ExtendGraph Loads the graph definition on the session
@@ -80,10 +83,11 @@ func (s *Session) ExtendGraph(graph *Graph) error {
 	}
 	TF_ExtendGraph(s.session, buf, status)
 
-	return StatusToError(status)
+	return s.statusToError(status)
 }
 
-func StatusToError(status TF_Status) error {
+// statusToError Converts a TF_Status returned by a C execution into a Go Error
+func (s *Session) statusToError(status TF_Status) error {
 	code := TF_GetCode(status)
 	message := TF_Message(status)
 

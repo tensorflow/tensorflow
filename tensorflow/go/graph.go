@@ -8,6 +8,10 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
+const (
+	cOpsProtobufDefsPath = "/usr/local/tensorlow/ops.pbtxt"
+)
+
 // Graph Representation of the computation graph
 type Graph struct {
 	def *GraphDef
@@ -15,6 +19,9 @@ type Graph struct {
 	availableOps map[string]*OpDef
 }
 
+// GraphNode Representation of one of the nodes of the TensorFlow Graph a
+// node takes zero or more Tensors, performs some computation, and
+// produces zero or more Tensors
 type GraphNode struct {
 	def          *NodeDef
 	outDataTypes map[string]DataType
@@ -116,28 +123,12 @@ func LoadGraphFromTextFile(path string) (gr *Graph, err error) {
 	return NewGraphFromText(string(graphStr))
 }
 
-func (gr *Graph) LoadAvailableOps() (err error) {
-	if len(gr.availableOps) != 0 {
-		return
-	}
-	opsStr, err := ioutil.ReadFile("/usr/local/tensorlow/ops.pbtxt")
-	if err != nil {
-		return
-	}
-
-	ops := new(OpList)
-	err = proto.UnmarshalText(string(opsStr), ops)
-	for _, op := range ops.Op {
-		gr.availableOps[strings.ToLower(op.Name)] = op
-	}
-
-	return
-}
-
+// AddOp Adds a new Node to the Graph with the specified operation, this
+// operation perfoms some internal check of the specified and expercted
+// attributes for the operation and try to deduct the corresponding DataTypes
+// in case of they are not specified
 func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
-	// Just to test the ops parsing...
-	err = gr.LoadAvailableOps()
-	if err != nil {
+	if err = gr.loadAvailableOps(); err != nil {
 		return
 	}
 
@@ -305,10 +296,7 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 							Shape: s,
 						},
 					}
-				case "list(type)":
-				case "list(int)":
-				case "list(shape)":
-				case "list(float)":
+				case "list(type)", "list(int)", "list(shape)", "list(float)":
 					lv, ok := v.(*AttrValue_ListValue)
 					if !ok {
 						return nil, &ErrInvalidAttrValue{
@@ -343,6 +331,8 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 	return
 }
 
+// Constant Creates a tensor that is added as a constant to the Graph with the
+// specified name
 func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error) {
 	ts, err := NewTensor(data)
 	if err != nil {
@@ -357,6 +347,8 @@ func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err err
 	return
 }
 
+// AddPlaceholder Adds a placegolder to the Graph, a placeholder is an
+// operation that must be fed with data on execution
 func (gr *Graph) AddPlaceholder(name string, dataType DataType, dims []int64, dimNames []string) (op *GraphNode) {
 	op = &GraphNode{
 		outDataTypes: map[string]DataType{
@@ -399,12 +391,18 @@ func (gr *Graph) AddPlaceholder(name string, dataType DataType, dims []int64, di
 	return
 }
 
-func (gr *Graph) AsStr() string {
+// AsStr Returns the current graph serialized so it can be exported
+func (gr *Graph) AsStr() []byte {
 	result, _ := proto.Marshal(gr.def)
 
-	return string(result)
+	return result
 }
 
+// matchTypes Matches all the input/output parameters with their corresponding
+// data types specified on the attribues or deducting the data type from other
+// parameters, this method can return an error in case of the matching is not
+// possible, for instance if two input paramters mas have the same data type
+// but one is int and the other float
 func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *OpDef) (err error) {
 	// Associate the data type tags with the input data types
 	for i, arg := range op.InputArg {
@@ -459,6 +457,26 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 		} else {
 			outNode.outDataTypes[fmt.Sprintf("%s:%d", outNode.def.Name, i)] = outDt
 		}
+	}
+
+	return
+}
+
+// loadAvailableOps Loads all the available operation definitions from local
+// protobuf file on the system specified on the constant cOpsProtobufDefsPath
+func (gr *Graph) loadAvailableOps() (err error) {
+	if len(gr.availableOps) != 0 {
+		return
+	}
+	opsStr, err := ioutil.ReadFile(cOpsProtobufDefsPath)
+	if err != nil {
+		return
+	}
+
+	ops := new(OpList)
+	err = proto.UnmarshalText(string(opsStr), ops)
+	for _, op := range ops.Op {
+		gr.availableOps[strings.ToLower(op.Name)] = op
 	}
 
 	return

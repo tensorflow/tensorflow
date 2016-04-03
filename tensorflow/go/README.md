@@ -6,9 +6,11 @@ It is not an immediate goal to support Graph generation via this package.
 
 A higher level API is presented in the 'github.com/tensorflow/tensorflow/tensorflow/go' package.
 
-## Practical Example
+## Practical Examples
 
-This is just an example in order to show how to interact with the provided API
+### Python Graph generated and executed on Go
+
+This is just an example that shows how to interact with the provided API
 
 In order to generate a valid Graph you can use the next Python code
 
@@ -122,11 +124,22 @@ func main() {
 }
 ```
 
-As you can see the previous code creates two Tensors to be processed by the previously generated Graph, after the execution returns the Tensor with the result.
+As you can see fro the previous code creates two Tensors to be processed by the
+previously generated Graph, after the execution returns the Tensor with the
+result.
+
+### Image Recognition
+
+This is a really complete code example that shows how to generate Graphs from
+Go and execute them:
+
+(Image Recognition)[https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/g3doc/tutorials/image_recognition/index.md#usage-with-the-go-api]
+
+(Code)[https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/examples/label_image_go/main.go]
 
 ## Troubleshooting
 
-```ld: library not found for -ltensorflow```
+### ld: library not found for -ltensorflow
 
 This package expects the linker to find the 'libtensorflow' shared library. 
 
