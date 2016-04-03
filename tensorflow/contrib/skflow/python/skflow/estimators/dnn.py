@@ -28,7 +28,6 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
     Parameters:
         hidden_units: List of hidden units per layer.
         n_classes: Number of classes in the target.
-        tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -44,8 +43,6 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
         class_weight: None or list of n_classes floats. Weight associated with
                      classes for loss computation. If not given, all classes are suppose to have
                      weight one.
-        tf_random_seed: Random seed for TensorFlow initializers.
-            Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
         config: RunConfig object that controls the configurations of the session,
@@ -58,19 +55,18 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             to be saved. The default value of 10,000 hours effectively disables the feature.
      """
 
-    def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
+    def __init__(self, hidden_units, n_classes, batch_size=32,
                  steps=200, optimizer="SGD", learning_rate=0.1,
                  class_weight=None,
-                 tf_random_seed=42, continue_training=False, config=None,
+                 continue_training=False, config=None,
                  verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         self.hidden_units = hidden_units
         super(TensorFlowDNNClassifier, self).__init__(
             model_fn=self._model_fn,
-            n_classes=n_classes, tf_master=tf_master,
+            n_classes=n_classes, 
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, class_weight=class_weight,
-            tf_random_seed=tf_random_seed,
             continue_training=continue_training,
             config=config, verbose=verbose,
             max_to_keep=max_to_keep,
@@ -104,7 +100,6 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
 
     Parameters:
         hidden_units: List of hidden units per layer.
-        tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -117,8 +112,6 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
                 return tf.train.exponential_decay(
                     learning_rate=0.1, global_step,
                     decay_steps=2, decay_rate=0.001)
-        tf_random_seed: Random seed for TensorFlow initializers.
-            Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
         config: RunConfig object that controls the configurations of the session,
@@ -135,17 +128,17 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             to be saved. The default value of 10,000 hours effectively disables the feature.
    """
 
-    def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
+    def __init__(self, hidden_units, n_classes=0, batch_size=32,
                  steps=200, optimizer="SGD", learning_rate=0.1,
-                 tf_random_seed=42, continue_training=False, config=None,
+                 continue_training=False, config=None,
                  verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         self.hidden_units = hidden_units
         super(TensorFlowDNNRegressor, self).__init__(
             model_fn=self._model_fn,
-            n_classes=n_classes, tf_master=tf_master,
+            n_classes=n_classes,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, tf_random_seed=tf_random_seed,
+            learning_rate=learning_rate,
             continue_training=continue_training,
             config=config, verbose=verbose,
             max_to_keep=max_to_keep,

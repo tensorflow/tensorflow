@@ -56,7 +56,6 @@ class TensorFlowEstimator(BaseEstimator):
         model_fn: Model function, that takes input X, y tensors and outputs
                   prediction and loss tensors.
         n_classes: Number of classes in the target.
-        tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -72,8 +71,6 @@ class TensorFlowEstimator(BaseEstimator):
         class_weight: None or list of n_classes floats. Weight associated with
                      classes for loss computation. If not given, all classes are suppose to have
                      weight one.
-        tf_random_seed: Random seed for TensorFlow initializers.
-            Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
         config: RunConfig object that controls the configurations of the session,
@@ -90,21 +87,19 @@ class TensorFlowEstimator(BaseEstimator):
             to be saved. The default value of 10,000 hours effectively disables the feature.
     """
 
-    def __init__(self, model_fn, n_classes, tf_master="", batch_size=32,
+    def __init__(self, model_fn, n_classes, batch_size=32,
                  steps=200, optimizer="SGD",
                  learning_rate=0.1, class_weight=None,
-                 tf_random_seed=42, continue_training=False,
+                 continue_training=False,
                  config=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         self.n_classes = n_classes
-        self.tf_master = tf_master
         self.batch_size = batch_size
         self.steps = steps
         self.verbose = verbose
         self.optimizer = optimizer
         self.learning_rate = learning_rate
-        self.tf_random_seed = tf_random_seed
         self.model_fn = model_fn
         self.continue_training = continue_training
         self._initialized = False
@@ -115,10 +110,14 @@ class TensorFlowEstimator(BaseEstimator):
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
+        # Create config if not given.
+        if self._config is None:
+            self._config = RunConfig(verbose=self.verbose)
+        # Create new graph.
         self._graph = tf.Graph()
         self._graph.add_to_collection("IS_TRAINING", True)
         with self._graph.as_default():
-            tf.set_random_seed(self.tf_random_seed)
+            tf.set_random_seed(self._config.tf_random_seed)
             self._global_step = tf.Variable(
                 0, name="global_step", trainable=False)
 
@@ -169,9 +168,7 @@ class TensorFlowEstimator(BaseEstimator):
             self._monitor.create_val_feed_dict(self._inp, self._out)
 
             # Create session to run model with.
-            if self._config is None:
-                self._config = RunConfig(verbose=self.verbose)
-            self._session = tf.Session(self.tf_master, config=self._config.config)
+            self._session = tf.Session(self._config.tf_master, config=self._config.tf_config)
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
@@ -450,8 +447,8 @@ class TensorFlowEstimator(BaseEstimator):
             if not isinstance(self._config, RunConfig):
                 self._config = RunConfig(verbose=self.verbose)
             self._session = tf.Session(
-                self.tf_master,
-                config=self._config.config)
+                self._config.tf_master,
+                config=self._config.tf_config)
             checkpoint_path = tf.train.latest_checkpoint(path)
             if checkpoint_path is None:
                 raise ValueError("Missing checkpoint files in the %s. Please "

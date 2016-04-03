@@ -23,7 +23,7 @@ class RunConfig(object):
     """This class specifies the specific configurations for the run.
 
     Parameters:
-        tf_master: Tensorflow master.
+        tf_master: TensorFlow master. Empty string is default for local.
         num_cores: Number of cores to be used. (default: 4)
         verbose: Controls the verbosity, possible values:
                  0: the algorithm and debug information is muted.
@@ -31,13 +31,22 @@ class RunConfig(object):
                  2: log device placement is printed.
         gpu_memory_fraction: Fraction of GPU memory used by the process on
             each GPU uniformly on the same machine.
-   """
+        tf_random_seed: Random seed for TensorFlow initializers.
+            Setting this value, allows consistency between reruns.
 
-    def __init__(self, tf_master='', num_cores=4, verbose=1, gpu_memory_fraction=1):
+    Attributes:
+        tf_master: Tensorflow master.
+        tf_config: Tensorflow Session Config proto.
+        tf_random_seed: Tensorflow random seed.
+    """
+
+    def __init__(self, tf_master='', num_cores=4, verbose=1,
+                 gpu_memory_fraction=1, tf_random_seed=42):
         self.tf_master = tf_master
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_memory_fraction)
-        self.config = tf.ConfigProto(log_device_placement=(verbose > 1),
-                                     inter_op_parallelism_threads=num_cores,
-                                     intra_op_parallelism_threads=num_cores,
-                                     gpu_options=gpu_options)
+        self.tf_config = tf.ConfigProto(log_device_placement=(verbose > 1),
+                                        inter_op_parallelism_threads=num_cores,
+                                        intra_op_parallelism_threads=num_cores,
+                                        gpu_options=gpu_options)
+        self.tf_random_seed = tf_random_seed
     

@@ -43,7 +43,6 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         initial_state: An initial state for the RNN. This must be a tensor of appropriate type
                        and shape [batch_size x cell.state_size].
         n_classes: Number of classes in the target.
-        tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -59,8 +58,6 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         class_weight: None or list of n_classes floats. Weight associated with
                      classes for loss computation. If not given, all classes are suppose to have
                      weight one.
-        tf_random_seed: Random seed for TensorFlow initializers.
-            Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
         config: RunConfig object that controls the configurations of the session,
@@ -76,10 +73,10 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
     def __init__(self, rnn_size, n_classes, cell_type='gru', num_layers=1,
                  input_op_fn=null_input_op_fn,
                  initial_state=None, bidirectional=False,
-                 sequence_length=None, tf_master="", batch_size=32,
+                 sequence_length=None, batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
                  class_weight=None,
-                 tf_random_seed=42, continue_training=False,
+                 continue_training=False,
                  config=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
@@ -92,10 +89,9 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         self.initial_state = initial_state
         super(TensorFlowRNNClassifier, self).__init__(
             model_fn=self._model_fn,
-            n_classes=n_classes, tf_master=tf_master,
+            n_classes=n_classes,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, class_weight=class_weight,
-            tf_random_seed=tf_random_seed,
             continue_training=continue_training, config=config,
             verbose=verbose,
             max_to_keep=max_to_keep,
@@ -135,7 +131,6 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
                  This saves computational time when unrolling past max sequence length.
         initial_state: An initial state for the RNN. This must be a tensor of appropriate type
                        and shape [batch_size x cell.state_size].
-        tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -148,8 +143,6 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
                 return tf.train.exponential_decay(
                     learning_rate=0.1, global_step,
                     decay_steps=2, decay_rate=0.001)
-        tf_random_seed: Random seed for TensorFlow initializers.
-            Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
         config: RunConfig object that controls the configurations of the session,
@@ -169,9 +162,9 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
     def __init__(self, rnn_size, cell_type='gru', num_layers=1,
                  input_op_fn=null_input_op_fn, initial_state=None,
                  bidirectional=False, sequence_length=None,
-                 n_classes=0, tf_master="", batch_size=32,
+                 n_classes=0, batch_size=32,
                  steps=50, optimizer="SGD", learning_rate=0.1,
-                 tf_random_seed=42, continue_training=False,
+                 continue_training=False,
                  config=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
@@ -184,9 +177,9 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
         self.initial_state = initial_state
         super(TensorFlowRNNRegressor, self).__init__(
             model_fn=self._model_fn,
-            n_classes=n_classes, tf_master=tf_master,
+            n_classes=n_classes,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, tf_random_seed=tf_random_seed,
+            learning_rate=learning_rate,
             continue_training=continue_training, config=config,
             verbose=verbose, max_to_keep=max_to_keep,
             keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
