@@ -149,7 +149,7 @@ func main() {
 
 	resizedTensor := readTensorFromImageFile(imagePath)
 
-	graph, err := tf.LoadGraphFromTextFile("data/tensorflow_inception_graph.pb")
+	graph, err := tf.LoadGraphFromFile("data/tensorflow_inception_graph.pb")
 	if err != nil {
 		log.Fatal("Problem trying read the graph from the origin file, Error:", err)
 	}
@@ -179,6 +179,6 @@ func main() {
 	for i := 0; i < cLabelsToShow; i++ {
 		index, _ := indexTens.GetVal(0, i)
 		score, _ := scoresTens.GetVal(0, i)
-		fmt.Println("Index:", index.(int32), labels[index.(int32)], ":", score)
+		fmt.Println(labels[index.(int32)], ":", score)
 	}
 }
