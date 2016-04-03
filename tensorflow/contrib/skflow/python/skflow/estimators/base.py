@@ -25,14 +25,14 @@ from six import string_types
 import numpy as np
 import tensorflow as tf
 
-from google.protobuf import text_format
 
-from sklearn.base import BaseEstimator
+import sklearn.base as sklearn_base
 try:
     from sklearn.exceptions import NotFittedError
 except ImportError:
     from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
 
+from google.protobuf import text_format
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import control_flow_ops
@@ -53,7 +53,7 @@ def _write_with_backup(filename, content):
         f.write(content)
 
 
-class TensorFlowEstimator(BaseEstimator):
+class TensorFlowEstimator(sklearn_base.BaseEstimator):
     """Base class for all TensorFlow estimators.
 
     Parameters:
@@ -119,15 +119,8 @@ class TensorFlowEstimator(BaseEstimator):
             self._global_step = tf.Variable(
                 0, name="global_step", trainable=False)
 
-            # Setting up input and output placeholders.
-            input_shape = [None] + self._data_feeder.input_shape[1:]
-            output_shape = [None] + self._data_feeder.output_shape[1:]
-            self._inp = tf.placeholder(
-                tf.as_dtype(self._data_feeder.input_dtype), input_shape,
-                name="input")
-            self._out = tf.placeholder(
-                tf.as_dtype(self._data_feeder.output_dtype), output_shape,
-                name="output")
+            # Setting up inputs and outputs.
+            self._inp, self._out = self._data_feeder.input_builder()
 
             # If class weights are provided, add them to the graph.
             # Different loss functions can use this tensor by name.
@@ -224,6 +217,8 @@ class TensorFlowEstimator(BaseEstimator):
             # Sets up model and trainer.
             self._setup_training()
             self._initialized = True
+        else:
+            self._data_feeder.set_placeholders(self._inp, self._out)
 
         # Sets up summary writer for later optional visualization.
         # Due to not able to setup _summary_writer in __init__ as it's not a
@@ -242,7 +237,7 @@ class TensorFlowEstimator(BaseEstimator):
         trainer.train(
             self._session, self._train, 
             self._model_loss, self._global_step,
-            self._data_feeder.get_feed_dict_fn(self._inp, self._out),
+            self._data_feeder.get_feed_dict_fn(),
             steps=self.steps,
             monitor=self._monitor,
             summary_writer=self._summary_writer,

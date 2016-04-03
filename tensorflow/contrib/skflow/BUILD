@@ -102,7 +102,7 @@ py_test(
 
 py_test(
     name = "test_nonlinear",
-    size = "small",
+    size = "medium",
     srcs = ["python/skflow/tests/test_nonlinear.py"],
     srcs_version = "PY2AND3",
     deps = [

@@ -36,35 +36,32 @@ class DataFeederTest(tf.test.TestCase):
         X = np.matrix([[1, 2], [3, 4]])
         y = np.array([1, 2])
         df = data_feeder.DataFeeder(X, y, n_classes=0, batch_size=3)
-        feed_dict_fn = df.get_feed_dict_fn(
-            MockPlaceholder(name='input'),
-            MockPlaceholder(name='output'))
+        inp, out = df.input_builder()
+        feed_dict_fn = df.get_feed_dict_fn()
         feed_dict = feed_dict_fn()
 
-        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
-        self.assertAllClose(feed_dict['output'], [2, 1])
+        self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict[out.name], [2, 1])
 
     def test_data_feeder_multioutput_regression(self):
         X = np.matrix([[1, 2], [3, 4]])
         y = np.array([[1, 2], [3, 4]])
         df = data_feeder.DataFeeder(X, y, n_classes=0, batch_size=2)
-        feed_dict_fn = df.get_feed_dict_fn(
-            MockPlaceholder(name='input'),
-            MockPlaceholder(name='output'))
+        inp, out = df.input_builder()
+        feed_dict_fn = df.get_feed_dict_fn()
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
-        self.assertAllClose(feed_dict['output'], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict[out.name], [[3, 4], [1, 2]])
 
     def test_data_feeder_multioutput_classification(self):
         X = np.matrix([[1, 2], [3, 4]])
         y = np.array([[0, 1, 2], [2, 3, 4]])
         df = data_feeder.DataFeeder(X, y, n_classes=5, batch_size=2)
-        feed_dict_fn = df.get_feed_dict_fn(
-            MockPlaceholder(name='input'),
-            MockPlaceholder(name='output'))
+        inp, out = df.input_builder()
+        feed_dict_fn = df.get_feed_dict_fn()
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[3, 4], [1, 2]])
-        self.assertAllClose(feed_dict['output'], [[[0, 0, 1, 0, 0],
+        self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
+        self.assertAllClose(feed_dict[out.name], [[[0, 0, 1, 0, 0],
                                                    [0, 0, 0, 1, 0],
                                                    [0, 0, 0, 0, 1]],
                                                   [[1, 0, 0, 0, 0],
@@ -81,12 +78,11 @@ class DataFeederTest(tf.test.TestCase):
             yield np.array([2])
         df = data_feeder.StreamingDataFeeder(X_iter(), y_iter(), n_classes=0,
                                              batch_size=2)
-        feed_dict_fn = df.get_feed_dict_fn(
-            MockPlaceholder(name='input'),
-            MockPlaceholder(name='output'))
+        inp, out = df.input_builder()
+        feed_dict_fn = df.get_feed_dict_fn()
         feed_dict = feed_dict_fn()
-        self.assertAllClose(feed_dict['input'], [[1, 2], [3, 4]])
-        self.assertAllClose(feed_dict['output'], [1, 2])
+        self.assertAllClose(feed_dict[inp.name], [[1, 2], [3, 4]])
+        self.assertAllClose(feed_dict[out.name], [1, 2])
 
     def test_dask_data_feeder(self):
         if HAS_PANDAS and HAS_DASK:
@@ -98,13 +94,12 @@ class DataFeederTest(tf.test.TestCase):
             # X = extract_dask_data(X)
             # y = extract_dask_labels(y)
             df = data_feeder.DaskDataFeeder(X, y, n_classes=2, batch_size=2)
-            feed_dict_fn = df.get_feed_dict_fn(
-                MockPlaceholder(name='input'),
-                MockPlaceholder(name='output'))
+            inp, out = df.input_builder()
+            feed_dict_fn = df.get_feed_dict_fn()
             feed_dict = feed_dict_fn()
-            self.assertAllClose(feed_dict['input'], [[ 0.40000001, 0.1],
+            self.assertAllClose(feed_dict[inp.name], [[ 0.40000001, 0.1],
                                                      [ 0.60000002, 0.2]])
-            self.assertAllClose(feed_dict['output'], [[ 0., 0., 1.],
+            self.assertAllClose(feed_dict[out.name], [[ 0., 0., 1.],
                                                      [ 0., 1., 0.]])
 
 
