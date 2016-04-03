@@ -36,9 +36,11 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts,
 typedef std::pair<Node*, int> NodeAndOutput;
 
 // Replaces the identified Tensor in 'graph' by a 'Const' node with
-// the value supplied in 'constant'.
-void ReplaceTensorWithConstant(Graph* graph, NodeAndOutput tensor,
-                               const Tensor& constant);
+// the value supplied in 'constant'. 'partition_device', if non-null
+// is the device where the graph executes. Returns true if the
+// replacement was successful, false otherwise.
+bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
+                               NodeAndOutput tensor, const Tensor& constant);
 
 }  // namespace tensorflow
 
