@@ -1,7 +1,6 @@
 package tensorflow
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -21,13 +20,60 @@ type GraphNode struct {
 	outDataTypes map[string]DataType
 }
 
-var (
-	ErrOperationNotFound              = errors.New("Operation not found")
-	ErrInvalidAmounthOfInputs         = errors.New("The number of inputs doesn't corresponds with the expected for this operation")
-	ErrMandatoryAttributeNotSpecified = errors.New("A mandatory attribute for this operation was not specified")
-	ErrInvalidAttrValue               = errors.New("The data type of the value for this attribute is not valid")
-	ErrInputOutputDataTypeMismatch    = errors.New("The output data type doesn't match with the input one")
-)
+// ErrOperationNotFound The specified operation is not defined
+type ErrOperationNotFound struct {
+	op string
+}
+
+func (e *ErrOperationNotFound) Error() string {
+	return fmt.Sprintf("Operation '%s' not defined", e.op)
+}
+
+// ErrInvalidAmounthOfInputs The number of inputs doesn't corresponds with the
+// expected for this operation
+type ErrInvalidAmounthOfInputs struct {
+	operation  string
+	opInputs   int
+	specInputs int
+}
+
+func (e *ErrInvalidAmounthOfInputs) Error() string {
+	return fmt.Sprintf("Inputs required for operation '%s': %d, but %d provided",
+		e.operation, e.opInputs, e.specInputs)
+}
+
+// ErrMandatoryAttributeNotSpecified A mandatory attribute for this operation was not specified
+type ErrMandatoryAttributeNotSpecified struct {
+	operation  string
+	attribName string
+}
+
+func (e *ErrMandatoryAttributeNotSpecified) Error() string {
+	return fmt.Sprintf("The attribute '%s' is mandatory for the operation: '%s'",
+		e.attribName, e.operation)
+}
+
+// ErrInvalidAttrValue The data type of the value for this attribute is not valid
+type ErrInvalidAttrValue struct {
+	operation  string
+	attribName string
+}
+
+func (e *ErrInvalidAttrValue) Error() string {
+	return fmt.Sprintf("The attribute '%s' value provided for operation: '%s' is not valid",
+		e.attribName, e.operation)
+}
+
+// ErrInputOutputDataTypeMismatch The output data type doesn't match with the input one
+type ErrInputOutputDataTypeMismatch struct {
+	outDt DataType
+	inDt  DataType
+}
+
+func (e *ErrInputOutputDataTypeMismatch) Error() string {
+	return fmt.Sprintf("The output datatype '%s' doesn't correspond with the input data type '%s'",
+		e.outDt, e.inDt)
+}
 
 // NewGraph Returns an initialized instance of the Graph struct
 func NewGraph() *Graph {
@@ -97,7 +143,11 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 
 	if op, ok := gr.availableOps[strings.ToLower(opName)]; ok {
 		if len(op.InputArg) != len(input) {
-			err = ErrInvalidAmounthOfInputs
+			err = &ErrInvalidAmounthOfInputs{
+				operation:  opName,
+				opInputs:   len(op.InputArg),
+				specInputs: len(input),
+			}
 			return
 		}
 		inputs := make([]string, len(input))
@@ -128,7 +178,10 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				case "type":
 					dt, ok := v.(DataType)
 					if !ok {
-						return nil, ErrInvalidAttrValue
+						return nil, &ErrInvalidAttrValue{
+							operation:  opName,
+							attribName: attr.Name,
+						}
 					}
 					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_Type{
@@ -138,7 +191,10 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				case "string":
 					st, ok := v.(string)
 					if !ok {
-						return nil, ErrInvalidAttrValue
+						return nil, &ErrInvalidAttrValue{
+							operation:  opName,
+							attribName: attr.Name,
+						}
 					}
 					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_S{
@@ -148,7 +204,10 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				case "tensor":
 					t, ok := v.(*Tensor)
 					if !ok {
-						return nil, ErrInvalidAttrValue
+						return nil, &ErrInvalidAttrValue{
+							operation:  opName,
+							attribName: attr.Name,
+						}
 					}
 
 					tp := &TensorProto{
@@ -170,7 +229,9 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 					case DtString:
 						tp.StringVal, _ = t.AsStr()
 					default:
-						err = ErrTensorTypeNotSupported
+						err = &ErrTensorTypeNotSupported{
+							tensotType: t.DataType(),
+						}
 						return
 					}
 
@@ -182,7 +243,10 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				case "func":
 					f, ok := v.(*NameAttrList)
 					if !ok {
-						return nil, ErrInvalidAttrValue
+						return nil, &ErrInvalidAttrValue{
+							operation:  opName,
+							attribName: attr.Name,
+						}
 					}
 					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_Func{
@@ -192,7 +256,10 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				case "int":
 					i, ok := v.(int64)
 					if !ok {
-						return nil, ErrInvalidAttrValue
+						return nil, &ErrInvalidAttrValue{
+							operation:  opName,
+							attribName: attr.Name,
+						}
 					}
 					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_I{
@@ -202,7 +269,10 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				case "bool":
 					b, ok := v.(bool)
 					if !ok {
-						return nil, ErrInvalidAttrValue
+						return nil, &ErrInvalidAttrValue{
+							operation:  opName,
+							attribName: attr.Name,
+						}
 					}
 					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_B{
@@ -212,7 +282,10 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				case "float":
 					f, ok := v.(float32)
 					if !ok {
-						return nil, ErrInvalidAttrValue
+						return nil, &ErrInvalidAttrValue{
+							operation:  opName,
+							attribName: attr.Name,
+						}
 					}
 					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_F{
@@ -222,7 +295,10 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				case "shape":
 					s, ok := v.(*TensorShapeProto)
 					if !ok {
-						return nil, ErrInvalidAttrValue
+						return nil, &ErrInvalidAttrValue{
+							operation:  opName,
+							attribName: attr.Name,
+						}
 					}
 					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_Shape{
@@ -235,7 +311,10 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				case "list(float)":
 					lv, ok := v.(*AttrValue_ListValue)
 					if !ok {
-						return nil, ErrInvalidAttrValue
+						return nil, &ErrInvalidAttrValue{
+							operation:  opName,
+							attribName: attr.Name,
+						}
 					}
 					node.def.Attr[attr.Name] = &AttrValue{
 						Value: &AttrValue_List{
@@ -245,14 +324,19 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 				}
 			} else {
 				if attr.DefaultValue == nil {
-					return nil, ErrMandatoryAttributeNotSpecified
+					return nil, &ErrMandatoryAttributeNotSpecified{
+						operation:  opName,
+						attribName: attr.Name,
+					}
 				}
 			}
 		}
 
 		gr.def.Node = append(gr.def.Node, node.def)
 	} else {
-		err = ErrOperationNotFound
+		err = &ErrOperationNotFound{
+			op: opName,
+		}
 		return
 	}
 
@@ -333,7 +417,10 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 	for _, arg := range op.OutputArg {
 		if arg.TypeAttr != "" && arg.Type != DtInvalid {
 			if inType, defined := attrs[arg.TypeAttr]; defined && inType.(DataType) != arg.Type {
-				return ErrInputOutputDataTypeMismatch
+				return &ErrInputOutputDataTypeMismatch{
+					outDt: arg.Type,
+					inDt:  inType.(DataType),
+				}
 			}
 			attrs[arg.TypeAttr] = arg.Type
 		}
