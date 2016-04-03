@@ -85,7 +85,8 @@ Polymer({
     _progress: Object
   },
   _updateGraph: function() {
-    this.$.loader._parseAndConstructHierarchicalGraph(null, this.pbtxt);
+    var blob = new Blob([this.pbtxt]);
+    this.$.loader._parseAndConstructHierarchicalGraph(null, blob);
   }
 });
 })();

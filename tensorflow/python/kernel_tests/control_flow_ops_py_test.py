@@ -20,17 +20,16 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import sys
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import logging_ops
-from tensorflow.python.pywrap_tensorflow import StatusNotOK
 
 def check_op_order(graph):
   """Sanity check on the ordering of op id."""
@@ -136,7 +135,8 @@ class ControlFlowTest(tf.test.TestCase):
       dead_branch = tf.identity(switch_op[0])
 
       with self.assertRaisesWithPredicateMatch(
-          StatusNotOK, lambda e: "The tensor returned for" in str(e)):
+          tf.errors.InvalidArgumentError,
+          lambda e: "The tensor returned for" in str(e)):
         dead_branch.eval()
 
   def testSwitchMergeLess(self):
@@ -425,6 +425,21 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertAllEqual(42.0, grad.eval(feed_dict={c: 1}))
       self.assertAllEqual(3.0, grad.eval(feed_dict={c: 3}))
 
+  def testNestedCond_Simple(self):
+    with self.test_session():
+      x = tf.constant(0., name="X")
+      y = tf.cond(tf.constant(True),
+                  lambda: x,
+                  lambda: tf.cond(x < 1., lambda: x, lambda: x))
+      result = tf.gradients(y, x)[0]
+      self.assertEqual(1.0, result.eval())
+
+      z = tf.cond(tf.constant(False),
+                  lambda: x,
+                  lambda: tf.cond(x < 1., lambda: x, lambda: x))
+      result = tf.gradients(z, x)[0]
+      self.assertEqual(1.0, result.eval())
+
   def testCondGrad_Gather(self):
     with self.test_session() as sess:
       v1 = tf.Variable([1.0, 42.0])
@@ -653,8 +668,11 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(10, name="n")
       one = tf.convert_to_tensor(1, name="one")
       c = lambda x: tf.less(x, n)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: tf.cond(
           tf.constant(True), lambda: tf.add(x, one), lambda: tf.sub(x, one))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [i])
       self.assertAllEqual(10, r.eval())
 
@@ -670,8 +688,11 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
       n = tf.convert_to_tensor(0)
       c = lambda x: tf.less(x, 10)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: tf.cond(tf.less(0, 1), lambda: tf.add(x, 1),
                             lambda: tf.sub(x, 1))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [n])
       self.assertAllEqual(10, r.eval())
 
@@ -887,6 +908,19 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(r, v)[0]
       self.assertAllClose(1024.0, r.eval())
 
+  def testWhileGrad_Shape(self):
+    with self.test_session():
+      x = tf.placeholder(tf.float32, shape=[None])
+      v = tf.constant(2.0, name="v")
+      n = tf.constant(0, name="n")
+      c = lambda i, v: tf.less(i, 5)
+      b = lambda i, v: [i + 1, tf.mul(x, v)]
+      r = control_flow_ops.While(c, b, [n, v], parallel_iterations=1)
+
+      r = tf.gradients(r[1], x)[0]
+      self.assertEqual(r.get_shape(), tensor_shape.unknown_shape())
+      self.assertAllClose([810.0, 2560.0], r.eval(feed_dict={x: [3.0, 4.0]}))
+
   def testWhileGrad_MultipleUses(self):
     with self.test_session():
       v = tf.constant(2.0, name="v")
@@ -1086,9 +1120,12 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(100.0, name="n")
       one = tf.convert_to_tensor(1.0, name="one")
       c = lambda x: tf.less(x, n)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: control_flow_ops.cond(tf.constant(True),
                                           lambda: tf.square(x),
                                           lambda: tf.sub(x, one))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [v])
       r = tf.gradients(r, v)[0]
       self.assertAllClose(1024.0, r.eval())
@@ -1103,9 +1140,12 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.convert_to_tensor(100.0, name="n")
       one = tf.convert_to_tensor(1.0, name="one")
       c = lambda x: tf.less(x, n)
+      # pylint: disable=undefined-variable
+      # for OSS build
       b = lambda x: control_flow_ops.cond(tf.constant(True),
                                           lambda: tf.square(x),
                                           lambda: tf.sub(x, one))
+      # pylint: enable=undefined-variable
       r = control_flow_ops.While(c, b, [v])
       r = tf.gradients(r, v)[0]
       r = sess.run(r, feed_dict={v: 2.0})
@@ -1141,53 +1181,6 @@ class ControlFlowTest(tf.test.TestCase):
     self.assertEqual(0, value_x)
     self.assertEqual(73, value_x_grad)
 
-  def testFoldl_Simple(self):
-    with self.test_session():
-      elems = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-
-      r = control_flow_ops.foldl(
-          lambda a, x: tf.mul(tf.add(a, x), 2), elems)
-      self.assertAllEqual(208, r.eval())
-
-      r = control_flow_ops.foldl(
-          lambda a, x: tf.mul(tf.add(a, x), 2), elems, initializer=10)
-      self.assertAllEqual(880, r.eval())
-
-  def testFoldr_Simple(self):
-    with self.test_session():
-      elems = tf.constant([1, 2, 3, 4, 5, 6], name="data")
-
-      r = control_flow_ops.foldr(
-          lambda a, x: tf.mul(tf.add(a, x), 2), elems)
-      self.assertAllEqual(450, r.eval())
-
-      r = control_flow_ops.foldr(
-          lambda a, x: tf.mul(tf.add(a, x), 2), elems, initializer=10)
-      self.assertAllEqual(1282, r.eval())
-
-  def testFold_Grad(self):
-    with self.test_session():
-      elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
-      v = tf.constant(2.0, name="v")
-
-      r = control_flow_ops.foldl(
-          lambda a, x: tf.mul(a, x), elems, initializer=v)
-      r = tf.gradients(r, v)[0]
-      self.assertAllEqual(720.0, r.eval())
-
-      r = control_flow_ops.foldr(
-          lambda a, x: tf.mul(a, x), elems, initializer=v)
-      r = tf.gradients(r, v)[0]
-      self.assertAllEqual(720.0, r.eval())
-
-  def testMap_Simple(self):
-    with self.test_session():
-      nums = [1, 2, 3, 4, 5, 6]
-      elems = tf.constant(nums, name="data")
-      r = control_flow_ops.map(
-          lambda x: tf.mul(tf.add(x, 3), 2), elems)
-      self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
-
   def testOneValueCond(self):
     with self.test_session():
       c = tf.placeholder(tf.int32, shape=[])
@@ -1217,6 +1210,50 @@ class ControlFlowTest(tf.test.TestCase):
       i = tf.cond(tf.equal(d, 2), l2, l1)
       self.assertAllClose(4.0, i.eval(feed_dict={d: 1}))
       self.assertAllClose(2.0 * math.sqrt(2), i.eval(feed_dict={d: 2}))
+
+  def testCase(self):
+    with self.test_session():
+      x = tf.constant(1)
+      y = tf.constant(2)
+      z = tf.constant(3)
+      f1 = lambda: tf.constant(17)
+      f2 = lambda: tf.constant(23)
+      f3 = lambda: tf.constant(-1)
+
+      r1 = tf.case({x < y: f1, x > z: f2}, default=f3, exclusive=True)
+      self.assertAllEqual(r1.eval(), 17)
+
+      r2 = tf.case([(y > z, f1), (y > x, f2)], default=f3)
+      self.assertAllEqual(r2.eval(), 23)
+
+      # Duplicate events can happen, first one is selected
+      r3 = tf.case([(x < y, f1), (x < y, f2)], default=f3)
+      self.assertAllEqual(r3.eval(), 17)
+
+      # Duplicate events cause an error if exclusive = True
+      r4 = tf.case([(x < y, f1), (x < y, f2)], default=f3, exclusive=True)
+      with self.assertRaisesOpError(
+          "More than one condition evaluated as True but exclusive=True."):
+        r4.eval()
+
+      # Check that the default is called if none of the others are
+      r5 = tf.case({x > y: f1}, default=f3)
+      self.assertAllEqual(r5.eval(), -1)
+
+      ran_once = [False, False, False]
+
+      def break_run_twice(ix):
+        def _break():
+          assert not ran_once[ix]
+          ran_once[ix] = True
+          return tf.constant(ix)
+        return _break
+
+      # Should not fail - each conditional gets called exactly once
+      r6 = tf.case([(x < y, break_run_twice(0)), (x > y, break_run_twice(1))],
+                   default=break_run_twice(2))
+
+      self.assertAllEqual(r6.eval(), 0)
 
   def testOneOpCond(self):
     with self.test_session():
@@ -1333,11 +1370,14 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertDeviceEqual(None, with_vnod_dep.device)
 
       # device set on tensor, default device on graph => default device on dep.
-      vdef = tf.Variable([0.0])
+      vdef = tf.Variable([0.0], name="vdef")
       with tf.device("/job:worker/gpu:1"):
         with_vdef_dep = control_flow_ops.with_dependencies([vdef.initializer],
                                                            vdef)
-        self.assertDeviceEqual("/job:worker/gpu:1", with_vdef_dep.device)
+        # The device is empty, but the colocation constraint is set.
+        self.assertDeviceEqual("", with_vdef_dep.device)
+        self.assertEqual([b"loc:@vdef"],
+                         with_vdef_dep.op.colocation_groups())
 
   def testGroup(self):
     with self.test_session() as sess:
@@ -1357,6 +1397,11 @@ class ControlFlowTest(tf.test.TestCase):
     # Ensure that v1 and v2 are initialized
     self.assertAllClose([0.0], v1_val)
     self.assertAllClose([1.0], v2_val)
+
+  def testGroupEmpty(self):
+    op = tf.group()
+    self.assertEqual(op.type, "NoOp")
+    self.assertEqual(op.control_inputs, [])
 
   def testMergeShapes(self):
     # All inputs unknown.

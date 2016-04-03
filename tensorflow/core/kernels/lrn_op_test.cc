@@ -36,7 +36,7 @@ static const float tol_ = 1e-4;
 
 class LRNFloatTest : public OpsTestBase {
  protected:
-  LRNFloatTest() : philox_(123, 17), rand_(&philox_) { RequireDefaultOps(); }
+  LRNFloatTest() : philox_(123, 17), rand_(&philox_) {}
 
   int GetIntAttr(const string& name) {
     int value;

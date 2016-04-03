@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -88,8 +89,8 @@ class ProcessState {
   //
   // REQUIRES: gpu_id must be a valid ordinal for a GPU available in the
   // current system environment.  Otherwise returns nullptr.
-  Allocator* GetGPUAllocator(int gpu_id, size_t total_bytes,
-                             const string& allocator_type);
+  Allocator* GetGPUAllocator(const GPUOptions& options, int gpu_id,
+                             size_t total_bytes);
 
   Allocator* GetCUDAHostAllocator(int numa_node);
 
@@ -116,10 +117,10 @@ class ProcessState {
 
   mutex mu_;
 
-  std::vector<PoolAllocator*> cpu_allocators_ GUARDED_BY(mu_);
+  std::vector<Allocator*> cpu_allocators_ GUARDED_BY(mu_);
   std::vector<VisitableAllocator*> gpu_allocators_ GUARDED_BY(mu_);
   std::vector<std::vector<AllocVisitor>> gpu_visitors_ GUARDED_BY(mu_);
-  std::vector<PoolAllocator*> cuda_host_allocators_ GUARDED_BY(mu_);
+  std::vector<Allocator*> cuda_host_allocators_ GUARDED_BY(mu_);
 
   virtual ~ProcessState();
 
@@ -154,6 +155,7 @@ class RecordingAllocator : public Allocator {
   bool TracksAllocationSizes() override { return a_->TracksAllocationSizes(); }
   size_t RequestedSize(void* p) override { return a_->RequestedSize(p); }
   size_t AllocatedSize(void* p) override { return a_->AllocatedSize(p); }
+  void GetStats(AllocatorStats* stats) override { return a_->GetStats(stats); }
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned
   ProcessState::MemDesc md_;

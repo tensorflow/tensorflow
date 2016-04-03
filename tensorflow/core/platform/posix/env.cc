@@ -17,6 +17,7 @@ limitations under the License.
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -256,6 +257,19 @@ class PosixWritableFile : public WritableFile {
   }
 };
 
+class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
+ public:
+  PosixReadOnlyMemoryRegion(const void* address, uint64 length)
+      : address_(address), length_(length) {}
+  ~PosixReadOnlyMemoryRegion() { munmap(const_cast<void*>(address_), length_); }
+  const void* data() override { return address_; }
+  uint64 length() override { return length_; }
+
+ private:
+  const void* const address_;
+  const uint64 length_;
+};
+
 class StdThread : public Thread {
  public:
   // name and thread_options are both ignored.
@@ -308,6 +322,28 @@ class PosixEnv : public Env {
       s = IOError(fname, errno);
     } else {
       *result = new PosixWritableFile(fname, f);
+    }
+    return s;
+  }
+
+  Status NewReadOnlyMemoryRegionFromFile(
+      const string& fname, ReadOnlyMemoryRegion** result) override {
+    *result = nullptr;
+    Status s = Status::OK();
+    int fd = open(fname.c_str(), O_RDONLY);
+    if (fd < 0) {
+      s = IOError(fname, errno);
+    } else {
+      struct stat st;
+      ::fstat(fd, &st);
+      const void* address =
+          mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+      if (address == MAP_FAILED) {
+        s = IOError(fname, errno);
+      } else {
+        *result = new PosixReadOnlyMemoryRegion(address, st.st_size);
+      }
+      close(fd);
     }
     return s;
   }
@@ -391,13 +427,21 @@ class PosixEnv : public Env {
   }
 
   void SchedClosure(std::function<void()> closure) override {
-    // TODO(mrry): Replace with a threadpool.
-    CHECK(false) << "PosixEnv::SchedClosure not implemented.";
+    // TODO(b/27290852): Spawning a new thread here is wasteful, but
+    // needed to deal with the fact that many `closure` functions are
+    // blocking in the current codebase.
+    std::thread closure_thread(closure);
+    closure_thread.detach();
   }
 
   void SchedClosureAfter(int micros, std::function<void()> closure) override {
-    // TODO(mrry): Replace with a non-blocking timer mechanism and threadpool.
-    CHECK(false) << "PosixEnv::SchedClosureAfter not implemented.";
+    // TODO(b/27290852): Consuming a thread here is wasteful, but this
+    // code is (currently) only used in the case where a step fails
+    // (AbortStep). This could be replaced by a timer thread
+    SchedClosure([this, micros, closure]() {
+      SleepForMicroseconds(micros);
+      closure();
+    });
   }
 
   Status LoadLibrary(const char* library_filename, void** handle) override {

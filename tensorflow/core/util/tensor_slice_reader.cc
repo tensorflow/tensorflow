@@ -95,6 +95,10 @@ Status OpenTableTensorSliceReader(const string& fname,
   return s;
 }
 
+TensorSliceReader::TensorSliceReader(const string& filepattern)
+    : TensorSliceReader(filepattern, OpenTableTensorSliceReader,
+                        kLoadAllShards) {}
+
 TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      OpenTableFunction open_function)
     : TensorSliceReader(filepattern, open_function, kLoadAllShards) {}
@@ -245,6 +249,58 @@ bool TensorSliceReader::HasTensor(const string& name, TensorShape* shape,
   } else {
     return false;
   }
+}
+
+Status TensorSliceReader::GetTensor(
+    const string& name, std::unique_ptr<tensorflow::Tensor>* out_tensor) const {
+  DataType type;
+  TensorShape shape;
+  TensorSlice slice;
+  {
+    mutex_lock l(mu_);
+    const TensorSliceSet* tss = gtl::FindPtrOrNull(tensors_, name);
+    if (tss == nullptr) {
+      return errors::NotFound(name, " not found in checkpoint file");
+    }
+
+    if (tss->Slices().size() > 1) {
+      // TODO(sherrym): Support multi-slice checkpoints.
+      return errors::Unimplemented("Sliced checkpoints are not supported");
+    }
+
+    type = tss->type();
+    shape = tss->shape();
+    slice = tss->Slices().begin()->second.slice;
+  }
+  std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor(type, shape));
+  if (!CopySliceData(name, slice, t->flat<float>().data())) {
+    return errors::NotFound(name, " not found in checkpoint file");
+  }
+  std::swap(*out_tensor, t);
+
+  return Status::OK();
+}
+
+TensorSliceReader::VarToShapeMap TensorSliceReader::GetVariableToShapeMap()
+    const {
+  VarToShapeMap name_to_shape;
+  if (status().ok()) {
+    for (auto e : Tensors()) {
+      name_to_shape[e.first] = e.second->shape();
+    }
+  }
+  return name_to_shape;
+}
+
+const string TensorSliceReader::DebugString() const {
+  string shape_str;
+  if (status().ok()) {
+    for (auto e : Tensors()) {
+      strings::StrAppend(&shape_str, e.first, " ",
+                         e.second->shape().DebugString(), "\n");
+    }
+  }
+  return shape_str;
 }
 
 }  // namespace checkpoint

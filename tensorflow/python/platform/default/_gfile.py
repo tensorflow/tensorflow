@@ -248,7 +248,7 @@ class _Nulllocker(object):
 
 
 def Exists(path):   # pylint: disable=invalid-name
-  """Retruns True iff "path" exists (as a dir, file, non-broken symlink)."""
+  """Returns True iff "path" exists (as a dir, file, non-broken symlink)."""
   return os.path.exists(path)
 
 

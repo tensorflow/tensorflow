@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright 2015 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -133,8 +133,10 @@ if test -e ${CUDNN_INSTALL_PATH}/cudnn.h; then
   CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}
 elif test -e ${CUDNN_INSTALL_PATH}/include/cudnn.h; then
   CUDNN_HEADER_PATH=${CUDNN_INSTALL_PATH}/include
+elif test -e /usr/include/cudnn.h; then
+  CUDNN_HEADER_PATH=/usr/include
 else
-  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH}"
+  CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_PATH} or /usr/include"
 fi
 
 # Locate libcudnn.so.${$TF_CUDNN_VERSION}

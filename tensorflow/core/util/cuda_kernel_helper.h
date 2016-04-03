@@ -104,6 +104,11 @@ CUDA_ATOMIC_WRAPPER(Add, double) {
   return __longlong_as_double(old);
 }
 
+template <typename T>
+__global__ void SetZero(const int nthreads, T* bottom_diff) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) { *(bottom_diff + index) = T(0); }
+}
+
 // For atomicSub.
 
 // Custom implementation for sub by just negating the value.
@@ -122,6 +127,16 @@ WRAPPED_ATOMIC_SUB(double);
 
 #undef USE_CUDA_ATOMIC
 #undef CUDA_ATOMIC_WRAPPER
+
+template <typename T>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T tf_min(const T& x, const T& y) {
+  return x > y ? y : x;
+}
+
+template <typename T>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T tf_max(const T& x, const T& y) {
+  return x < y ? y : x;
+}
 
 }  // namespace tensorflow
 

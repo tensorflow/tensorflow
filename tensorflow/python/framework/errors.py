@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Exception types for TensorFlow errors."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -38,7 +38,8 @@ class OpError(Exception):
     """Creates a new `OpError` indicating that a particular op failed.
 
     Args:
-      node_def: The `graph_pb2.NodeDef` proto representing the op that failed.
+      node_def: The `graph_pb2.NodeDef` proto representing the op that failed,
+        if known; otherwise None.
       op: The `ops.Operation` that failed, if known; otherwise None.
       message: The message string describing the failure.
       error_code: The `error_codes_pb2.Code` describing the error.
@@ -432,3 +433,24 @@ def _make_specific_exception(node_def, op, message, error_code):
   except KeyError:
     warnings.warn("Unknown error code: %d" % error_code)
     return UnknownError(node_def, op, message, error_code)
+
+
+# These are documented in client/client_lib.py.
+__all__ = [
+    "AbortedError",
+    "AlreadyExistsError",
+    "CancelledError",
+    "DataLossError",
+    "DeadlineExceededError",
+    "FailedPreconditionError",
+    "InternalError",
+    "InvalidArgumentError",
+    "NotFoundError",
+    "OutOfRangeError",
+    "PermissionDeniedError",
+    "ResourceExhaustedError",
+    "UnauthenticatedError",
+    "UnavailableError",
+    "UnimplementedError",
+    "UnknownError",
+]

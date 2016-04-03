@@ -39,7 +39,6 @@ namespace {
 template <typename T>
 static void SliceHelper(int iters, int size) {
   testing::StopTiming();
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
   DataType dt = DataTypeToEnum<T>::v();
   int kDim = 100;

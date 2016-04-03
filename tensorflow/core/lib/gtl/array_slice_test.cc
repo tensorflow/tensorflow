@@ -655,6 +655,10 @@ TEST(MutableCharSlice, StringConversion) {
   // since in that case both overloads would be feasible.
   string str;
   EXPECT_TRUE(TestMutableOverload(&str));
+
+  // Avoid warning "unused function 'TestMutableOverload'"
+  int a[1];
+  EXPECT_FALSE(TestMutableOverload(a));
 }
 
 }  // namespace

@@ -121,10 +121,7 @@ class SparseToDense : public OpKernel {
                             order);
 
     if (validate_indices_) {
-      OP_REQUIRES(c, st.IndicesValid(),
-                  errors::InvalidArgument("Indices are not valid: not "
-                                          "lexicographically sorted or "
-                                          "containing repeats."));
+      OP_REQUIRES_OK(c, st.IndicesValid());
     }
 
     output->flat<T>().setConstant(default_value.scalar<T>()());

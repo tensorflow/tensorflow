@@ -22,8 +22,7 @@ limitations under the License.
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
-#include "tensorflow/core/platform/default/thread_annotations.h"
-
+#include "tensorflow/core/platform/thread_annotations.h"
 namespace tensorflow {
 
 enum LinkerInitialized { LINKER_INITIALIZED };
@@ -44,6 +43,8 @@ class LOCKABLE mutex : public std::mutex {
 class SCOPED_LOCKABLE mutex_lock : public std::unique_lock<std::mutex> {
  public:
   mutex_lock(class mutex& m) ACQUIRE(m) : std::unique_lock<std::mutex>(m) {}
+  mutex_lock(mutex_lock&& ml) noexcept
+      : std::unique_lock<std::mutex>(std::move(ml)) {}
   ~mutex_lock() RELEASE() {}
 };
 

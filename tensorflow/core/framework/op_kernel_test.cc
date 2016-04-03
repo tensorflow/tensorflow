@@ -422,6 +422,27 @@ class OpKernelBuilderTest : public ::testing::Test {
       }
     }
   }
+
+  string GetKernelClassName(const string& op_type, DeviceType device_type,
+                            const std::vector<string>& attrs,
+                            DataTypeSlice input_types = {}) {
+    NodeDef def = CreateNodeDef(op_type, attrs);
+    for (size_t i = 0; i < input_types.size(); ++i) {
+      def.add_input("a:0");
+    }
+
+    const KernelDef* kernel_def = nullptr;
+    string kernel_class_name;
+    const Status status =
+        FindKernelDef(device_type, def, &kernel_def, &kernel_class_name);
+    if (status.ok()) {
+      return kernel_class_name;
+    } else if (errors::IsNotFound(status)) {
+      return "not found";
+    } else {
+      return status.ToString();
+    }
+  }
 };
 
 REGISTER_OP("BuildCPU");
@@ -429,7 +450,9 @@ REGISTER_KERNEL_BUILDER(Name("BuildCPU").Device(DEVICE_CPU), DummyKernel);
 
 TEST_F(OpKernelBuilderTest, BuilderCPU) {
   ExpectSuccess("BuildCPU", DEVICE_CPU, {});
+  EXPECT_EQ("DummyKernel", GetKernelClassName("BuildCPU", DEVICE_CPU, {}));
   ExpectFailure("BuildCPU", DEVICE_GPU, {}, error::NOT_FOUND);
+  EXPECT_EQ("not found", GetKernelClassName("BuildCPU", DEVICE_GPU, {}));
 }
 
 REGISTER_OP("BuildGPU");
@@ -472,12 +495,26 @@ REGISTER_KERNEL_BUILDER(Name("BuildTypeListAttr")
 
 TEST_F(OpKernelBuilderTest, BuilderTypeListAttr) {
   ExpectSuccess("BuildTypeListAttr", DEVICE_CPU, {"T|list(type)|[]"});
+  EXPECT_EQ("DummyKernel", GetKernelClassName("BuildTypeListAttr", DEVICE_CPU,
+                                              {"T|list(type)|[]"}));
+
   ExpectSuccess("BuildTypeListAttr", DEVICE_CPU, {"T|list(type)|[DT_BOOL]"});
+  EXPECT_EQ("DummyKernel", GetKernelClassName("BuildTypeListAttr", DEVICE_CPU,
+                                              {"T|list(type)|[]"}));
+
   ExpectSuccess("BuildTypeListAttr", DEVICE_CPU,
                 {"T|list(type)|[DT_BOOL, DT_BOOL]"});
+
   ExpectFailure("BuildTypeListAttr", DEVICE_CPU, {"T|list(type)|[DT_FLOAT]"},
                 error::NOT_FOUND);
+  EXPECT_EQ("not found", GetKernelClassName("BuildTypeListAttr", DEVICE_CPU,
+                                            {"T|list(type)|[DT_FLOAT]"}));
+
   ExpectFailure("BuildTypeListAttr", DEVICE_CPU, {}, error::INVALID_ARGUMENT);
+  EXPECT_TRUE(
+      StringPiece(GetKernelClassName("BuildTypeListAttr", DEVICE_CPU, {}))
+          .contains("Invalid argument: "));
+
   ExpectFailure("BuildTypeListAttr", DEVICE_CPU, {"T|int|7"},
                 error::INVALID_ARGUMENT);
 }
@@ -776,6 +813,9 @@ TEST_F(LabelTest, Default) {
       ExpectSuccess("LabeledKernel", DEVICE_CPU, {});
   auto* get_labeled_kernel = static_cast<BaseKernel*>(op_kernel.get());
   EXPECT_EQ(0, get_labeled_kernel->Which());
+
+  EXPECT_EQ("LabeledKernel<0>",
+            GetKernelClassName("LabeledKernel", DEVICE_CPU, {}));
 }
 
 TEST_F(LabelTest, Specified) {
@@ -783,6 +823,8 @@ TEST_F(LabelTest, Specified) {
       ExpectSuccess("LabeledKernel", DEVICE_CPU, {"_kernel|string|'one'"});
   auto* get_labeled_kernel = static_cast<BaseKernel*>(op_kernel.get());
   EXPECT_EQ(1, get_labeled_kernel->Which());
+  EXPECT_EQ("LabeledKernel<1>", GetKernelClassName("LabeledKernel", DEVICE_CPU,
+                                                   {"_kernel|string|'one'"}));
 }
 
 TEST_F(LabelTest, Duplicate) {

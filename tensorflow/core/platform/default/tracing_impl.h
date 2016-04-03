@@ -51,8 +51,7 @@ inline void Tracing::RecordEvent(EventCategory category, uint64 arg) {
 }
 
 inline Tracing::ScopedActivity::ScopedActivity(EventCategory category,
-                                               uint64 arg)
-    : enabled_(false), region_id_(category_id_[category]) {}
+                                               uint64 arg) {}
 
 inline Tracing::ScopedActivity::~ScopedActivity() {}
 

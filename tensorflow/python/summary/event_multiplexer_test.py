@@ -77,8 +77,14 @@ class _FakeAccumulator(object):
     self.reload_called = True
 
 
-def _GetFakeAccumulator(path, size_guidance):  # pylint: disable=unused-argument
+# pylint: disable=unused-argument
+def _GetFakeAccumulator(
+    path,
+    size_guidance=None,
+    compression_bps=None,
+    purge_orphaned_data=None):
   return _FakeAccumulator(path)
+# pylint: enable=unused-argument
 
 
 class EventMultiplexerTest(test_util.TensorFlowTestCase):
@@ -155,15 +161,15 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     _AddEvents(path2)
     x.AddRunsFromDirectory(realdir)
     self.assertItemsEqual(x.Runs(), ['path1', 'path2'])
-    self.assertEqual(x._GetAccumulator('path1'), loader1,
-                     'loader1 not regenerated')
+    self.assertEqual(
+        x._GetAccumulator('path1'), loader1, 'loader1 not regenerated')
 
     path2_2 = join(path2, 'path2')
     _AddEvents(path2_2)
     x.AddRunsFromDirectory(realdir)
     self.assertItemsEqual(x.Runs(), ['path1', 'path2', 'path2/path2'])
-    self.assertEqual(x._GetAccumulator('path2/path2')._path, path2_2,
-                     'loader2 path correct')
+    self.assertEqual(
+        x._GetAccumulator('path2/path2')._path, path2_2, 'loader2 path correct')
 
   def testAddRunsFromDirectoryThatContainsEvents(self):
     x = event_multiplexer.EventMultiplexer()
@@ -220,8 +226,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     _AddEvents(sub1_1)
     x.AddRunsFromDirectory(realdir)
 
-    self.assertItemsEqual(x.Runs(), ['.',
-                                     'subdirectory/1', 'subdirectory/2',
+    self.assertItemsEqual(x.Runs(), ['.', 'subdirectory/1', 'subdirectory/2',
                                      'subdirectory/1/1'])
 
   def testAddRunsFromDirectoryThrowsException(self):
@@ -258,6 +263,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     x.AddRun('run2')
     self.assertTrue(x._GetAccumulator('run1').reload_called)
     self.assertTrue(x._GetAccumulator('run2').reload_called)
+
 
 if __name__ == '__main__':
   googletest.main()

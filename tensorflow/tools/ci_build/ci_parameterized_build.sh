@@ -21,7 +21,7 @@
 #   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3)
 #   TF_BUILD_IS_OPT:           (NO_OPT | OPT)
-#   TF_BUILD_IS_PIP:           (NO_PIP | PIP)
+#   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
 # Note: certain combinations of parameter values are regarded
 # as invalid and will cause the script to exit with code 0. For example:
@@ -49,6 +49,15 @@
 #                      (i.e., bazel test --job=1), potentially useful for
 #                      builds where the tests cannot be run in parallel due to
 #                      resource contention (e.g., for GPU builds)
+#   TF_BUILD_TEST_TUTORIALS:
+#                      If set to any non-empty and non-0 value, will perform
+#                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
+#                      PIP or BOTH).
+#                      See builds/test_tutorials.sh
+#   TF_BUILD_RUN_BENCHMARKS:
+#                      If set to any non-empty and non-0 value, will perform
+#                      the benchmark tests (see *_logged_benchmark targets in
+#                      tools/test/BUILD)
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -60,6 +69,12 @@ to_lower () {
 # Helper function: Strip leading and trailing whitespaces
 str_strip () {
   echo -e "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# Helper function: Exit on failure
+die () {
+  echo $@
+  exit 1
 }
 
 
@@ -84,11 +99,14 @@ BAZEL_CLEAN_CMD="bazel clean"
 BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
+PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
+
+BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
 BAZEL_TARGET="//tensorflow/..."
 
-
+TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
 
 ##########################################################
 
@@ -116,6 +134,8 @@ echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
 echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
 echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
+echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
+echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
 
 # Process container type
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
@@ -127,9 +147,8 @@ elif [[ ${CTYPE} == "gpu" ]]; then
 elif [[ ${CTYPE} == "android" ]]; then
   :
 else
-  echo "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
+  die "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
 "\"${TF_BUILD_CONTAINER_TYPE}\""
-  exit 1
 fi
 
 EXTRA_PARAMS=""
@@ -147,6 +166,13 @@ if [[ -z "$(which docker)" ]]; then
 
 fi
 
+# Determine if this is a benchmarks job
+RUN_BENCHMARKS=0
+if [[ ! -z "${TF_BUILD_RUN_BENCHMARKS}" ]] &&
+   [[ "${TF_BUILD_RUN_BENCHMARKS}" != "0" ]]; then
+  RUN_BENCHMARKS=1
+fi
+
 # Process Bazel "-c opt" flag
 if [[ ${TF_BUILD_IS_OPT} == "no_opt" ]]; then
   # PIP builds are done only with the -c opt flag
@@ -159,15 +185,34 @@ if [[ ${TF_BUILD_IS_OPT} == "no_opt" ]]; then
 elif [[ ${TF_BUILD_IS_OPT} == "opt" ]]; then
   OPT_FLAG="${OPT_FLAG} -c opt"
 else
-  echo "Unrecognized value in TF_BUILD_IS_OPT: \"${TF_BUILD_IS_OPT}\""
-  exit 1
+  die "Unrecognized value in TF_BUILD_IS_OPT: \"${TF_BUILD_IS_OPT}\""
 fi
 
 # Strip whitespaces from OPT_FLAG
 OPT_FLAG=$(str_strip "${OPT_FLAG}")
 
+
+# Filter out benchmark tests if this is not a benchmarks job
+EXTRA_ARGS=""
+if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
+  ITEMS=(${TF_BUILD_APPEND_ARGUMENTS})
+
+  for ITEM in "${ITEMS[@]}"; do
+    if [[ ${ITEM} == *"--test_tag_filters="* ]] &&
+      [[ ${ITEM} != *"benchmark-test"* ]]; then
+      EXTRA_ARGS="${EXTRA_ARGS} ${ITEM},-benchmark-test"
+    else
+      EXTRA_ARGS="${EXTRA_ARGS} ${ITEM}"
+    fi
+  done
+else
+  EXTRA_ARGS="${EXTRA_ARGS} --test_tag_filters=-benchmark-test"
+fi
+
+
 # Process PIP install-test option
-if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
+if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
+   [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
   # Process optional bazel target override
   if [[ ! -z "${TF_BUILD_BAZEL_TARGET}" ]]; then
     BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}
@@ -175,9 +220,9 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
 
   if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "gpu" ]]; then
     # Run Bazel
-    MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
-"${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
-    MAIN_CMD=$(str_strip "${MAIN_CMD}")
+    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
+"${EXTRA_ARGS} ${BAZEL_TARGET}"
+    NO_PIP_MAIN_CMD=$(str_strip "${NO_PIP_MAIN_CMD}")
 
     if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
        [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
@@ -186,18 +231,22 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
       # But the 2nd (test) step will be done serially.
 
       BUILD_ONLY_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG} "\
-"${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
+"${EXTRA_ARGS} ${BAZEL_TARGET}"
       echo "Build-only command: ${BUILD_ONLY_CMD}"
 
-      MAIN_CMD="${BUILD_ONLY_CMD} && "\
+      NO_PIP_MAIN_CMD="${BUILD_ONLY_CMD} && "\
 "${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
-"${TF_BUILD_APPEND_ARGUMENTS} ${BAZEL_TARGET}"
-      echo "Parallel-build + serial-test command: ${MAIN_CMD}"
+"${EXTRA_ARGS} ${BAZEL_TARGET}"
+      echo "Parallel-build + serial-test command: ${NO_PIP_MAIN_CMD}"
     fi
   elif [[ ${CTYPE} == "android" ]]; then
-    MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
+    NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
   fi
-elif [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
+
+fi
+
+if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
+   [[ ${TF_BUILD_IS_PIP} == "both"  ]]; then
   # Android builds conflict with PIP builds
   if [[ ${CTYPE} == "android" ]]; then
     echo "Skipping parameter combination: ${TF_BUILD_IS_PIP} & "\
@@ -205,11 +254,35 @@ elif [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
     exit 0
   fi
 
-  MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} "\
-"${TF_BUILD_APPEND_ARGUMENTS}"
+  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_AGRS}"
+
+  # Add command for tutorial test
+  if [[ ! -z "${TF_BUILD_TEST_TUTORIALS}" ]] &&
+     [[ "${TF_BUILD_TEST_TUTORIALS}" != "0" ]]; then
+    PIP_MAIN_CMD="${PIP_MAIN_CMD} ${PIP_TEST_TUTORIALS_FLAG}"
+
+    # Prepare data directory for tutorial tests
+    mkdir -p "${TUT_TEST_DATA_DIR}" ||
+    die "FAILED to create data directory for tutorial tests: "\
+        "${TUT_TEST_DATA_DIR}"
+
+    if [[ "${DO_DOCKER}" == "1" ]]; then
+      EXTRA_PARAMS="${EXTRA_PARAMS} -v ${TUT_TEST_DATA_DIR}:${TUT_TEST_DATA_DIR}"
+    fi
+  fi
+fi
+
+
+if [[ ${RUN_BENCHMARKS} == "1" ]]; then
+  MAIN_CMD="${BENCHMARK_CMD} ${OPT_FLAG}"
+elif [[ ${TF_BUILD_IS_PIP} == "no_pip" ]]; then
+  MAIN_CMD="${NO_PIP_MAIN_CMD}"
+elif [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
+  MAIN_CMD="${PIP_MAIN_CMD}"
+elif [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
+  MAIN_CMD="${NO_PIP_MAIN_CMD} && ${PIP_MAIN_CMD}"
 else
-  echo "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
-  exit 1
+  die "Unrecognized value in TF_BUILD_IS_PIP: \"${TF_BUILD_IS_PIP}\""
 fi
 
 # Process Python version
@@ -223,8 +296,7 @@ elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
     # Determine the path to python3
     PYTHON3_PATH=$(which python3 | head -1)
     if [[ -z "${PYTHON3_PATH}" ]]; then
-      echo "ERROR: Failed to locate python3 binary on the system"
-      exit 1
+      die "ERROR: Failed to locate python3 binary on the system"
     else
       echo "Found python3 binary at: ${PYTHON3_PATH}"
     fi
@@ -233,9 +305,8 @@ elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
   fi
 
 else
-  echo "Unrecognized value in TF_BUILD_PYTHON_VERSION: "\
+  die "Unrecognized value in TF_BUILD_PYTHON_VERSION: "\
 "\"${TF_BUILD_PYTHON_VERSION}\""
-  exit 1
 fi
 
 # Append additional Docker extra parameters
@@ -247,12 +318,20 @@ EXTRA_PARAMS="${EXTRA_PARAMS} ${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
 # TF_BUILD_SERIAL_TESTS=1), are written to a bash script, which is
 # then called. The name of the script is randomized to make concurrent
 # builds on the node possible.
-RAND_STR=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 8 | head -n 1)
-TMP_SCRIPT=/tmp/ci_parameterized_build_${RAND_STR}.sh
+TMP_SCRIPT="$(mktemp)_ci_parameterized_build.sh"
 
 if [[ "${DO_DOCKER}" == "1" ]]; then
   # Map the tmp script into the Docker container
   EXTRA_PARAMS="${EXTRA_PARAMS} -v ${TMP_SCRIPT}:/tmp/tf_build.sh"
+
+  if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] &&
+     [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]] &&
+     [[ "${TF_BUILD_IS_PIP}" != "both" ]]; then
+    # For TF_BUILD_IS_PIP == both, "bazel clean" will have already
+    # been performed before the "bazel test" step
+    EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_BAZEL_CLEAN=1"
+  fi
+
   EXTRA_PARAMS=$(str_strip "${EXTRA_PARAMS}")
 
   echo "Exporting CI_DOCKER_EXTRA_PARAMS: ${EXTRA_PARAMS}"
@@ -260,7 +339,7 @@ if [[ "${DO_DOCKER}" == "1" ]]; then
 fi
 
 # Write to the tmp script
-echo "#!/bin/bash" > ${TMP_SCRIPT}
+echo "#!/usr/bin/env bash" > ${TMP_SCRIPT}
 if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] &&
    [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]]; then
   echo ${BAZEL_CLEAN_CMD} >> ${TMP_SCRIPT}
@@ -275,6 +354,7 @@ echo ""
 
 chmod +x ${TMP_SCRIPT}
 
+FAILURE=0
 if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
   # Do a dry run: just print the final command
   echo "*** This is a DRY RUN ***"
@@ -285,7 +365,12 @@ else
   else
     ${TMP_SCRIPT}
   fi
-fi && FAILURE=0 || FAILURE=1
+
+  if [[ $? != "0" ]]; then
+    FAILURE=1
+  fi
+fi
+
 [[ ${FAILURE} == "0" ]] && RESULT="SUCCESS" || RESULT="FAILURE"
 
 rm -f ${TMP_SCRIPT}

@@ -12,13 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="../graph.ts" />
-/// <reference path="../render.ts" />
-/// <reference path="scene.ts" />
-/// <reference path="edge.ts" />
-/// <reference path="contextmenu.ts" />
-
 module tf.graph.scene.annotation {
 
 /**
@@ -39,11 +32,11 @@ module tf.graph.scene.annotation {
  * @param container selection of the container.
  * @param annotationData node.{in|out}Annotations
  * @param d node to build group for.
- * @param sceneBehavior polymer scene element.
+ * @param sceneElement <tf-graph-scene> polymer element.
  * @return selection of appended objects
  */
 export function buildGroup(container, annotationData: render.AnnotationList,
-  d: render.RenderNodeInfo, sceneBehavior) {
+  d: render.RenderNodeInfo, sceneElement) {
   // Select all children and join with data.
   let annotationGroups = container.selectAll(function() {
        // using d3's selector function
@@ -60,7 +53,7 @@ export function buildGroup(container, annotationData: render.AnnotationList,
       let aGroup = d3.select(this);
 
       // Add annotation to the index in the scene
-      sceneBehavior.addAnnotationGroup(a, d, aGroup);
+      sceneElement.addAnnotationGroup(a, d, aGroup);
       // Append annotation edge
       let edgeType = Class.Annotation.EDGE;
       let metaedge = a.renderMetaedgeInfo && a.renderMetaedgeInfo.metaedge;
@@ -71,11 +64,11 @@ export function buildGroup(container, annotationData: render.AnnotationList,
       if (metaedge && metaedge.numRefEdges) {
         edgeType += " " + Class.Edge.REF_LINE;
       }
-      edge.appendEdge(aGroup, a, sceneBehavior, edgeType);
+      edge.appendEdge(aGroup, a, sceneElement, edgeType);
 
-      if (a.annotationType !== tf.graph.render.AnnotationType.ELLIPSIS) {
+      if (a.annotationType !== render.AnnotationType.ELLIPSIS) {
         addAnnotationLabelFromNode(aGroup, a);
-        buildShape(aGroup, a, sceneBehavior);
+        buildShape(aGroup, a);
       } else {
         addAnnotationLabel(aGroup, a.node.name, a, Class.Annotation.ELLIPSIS);
       }
@@ -89,9 +82,9 @@ export function buildGroup(container, annotationData: render.AnnotationList,
     })
     .each(function(a) {
       let aGroup = d3.select(this);
-      update(aGroup, d, a, sceneBehavior);
-      if (a.annotationType !== tf.graph.render.AnnotationType.ELLIPSIS) {
-        addInteraction(aGroup, d, a, sceneBehavior);
+      update(aGroup, d, a, sceneElement);
+      if (a.annotationType !== render.AnnotationType.ELLIPSIS) {
+        addInteraction(aGroup, d, a, sceneElement);
       }
     });
 
@@ -100,7 +93,7 @@ export function buildGroup(container, annotationData: render.AnnotationList,
       let aGroup = d3.select(this);
 
       // Remove annotation from the index in the scene
-      sceneBehavior.removeAnnotationGroup(a, d, aGroup);
+      sceneElement.removeAnnotationGroup(a, d, aGroup);
     })
     .remove();
   return annotationGroups;
@@ -110,13 +103,13 @@ export function buildGroup(container, annotationData: render.AnnotationList,
  * Maps an annotation enum to a class name used in css rules.
  */
 function annotationToClassName(annotationType: render.AnnotationType) {
-  return (tf.graph.render.AnnotationType[annotationType] || "")
+  return (render.AnnotationType[annotationType] || "")
       .toLowerCase() || null;
 }
 
-function buildShape(aGroup, a: render.Annotation, sceneBehavior) {
-  if (a.annotationType === tf.graph.render.AnnotationType.SUMMARY) {
-    let summary = scene.selectOrCreateChild(aGroup, "use");
+function buildShape(aGroup, a: render.Annotation) {
+  if (a.annotationType === render.AnnotationType.SUMMARY) {
+    let summary = selectOrCreateChild(aGroup, "use");
     summary.attr({
       "class": "summary",
       "xlink:href": "#summary-icon",
@@ -125,7 +118,7 @@ function buildShape(aGroup, a: render.Annotation, sceneBehavior) {
   } else {
     let shape = node.buildShape(aGroup, a, Class.Annotation.NODE);
     // add title tag to get native tooltips
-    scene.selectOrCreateChild(shape, "title").text(a.node.name);
+    selectOrCreateChild(shape, "title").text(a.node.name);
   }
 }
 
@@ -152,16 +145,16 @@ function addAnnotationLabel(aGroup, label, a, additionalClassNames,
 }
 
 function addInteraction(selection, d: render.RenderNodeInfo,
-    annotation: tf.graph.render.Annotation, sceneBehavior) {
+    annotation: render.Annotation, sceneElement) {
   selection
     .on("mouseover", a => {
-      sceneBehavior.fire("annotation-highlight", {
+      sceneElement.fire("annotation-highlight", {
         name: a.node.name,
         hostName: d.node.name
       });
     })
     .on("mouseout", a => {
-      sceneBehavior.fire("annotation-unhighlight", {
+      sceneElement.fire("annotation-unhighlight", {
         name: a.node.name,
         hostName: d.node.name
       });
@@ -170,15 +163,15 @@ function addInteraction(selection, d: render.RenderNodeInfo,
       // Stop this event"s propagation so that it isn't also considered a
       // graph-select.
       (<Event>d3.event).stopPropagation();
-      sceneBehavior.fire("annotation-select", {
+      sceneElement.fire("annotation-select", {
         name: a.node.name,
         hostName: d.node.name
       });
     });
-  if (annotation.annotationType !== tf.graph.render.AnnotationType.SUMMARY &&
-      annotation.annotationType !== tf.graph.render.AnnotationType.CONSTANT) {
-    selection.on("contextmenu", tf.graph.scene.contextmenu.getMenu(
-      tf.graph.scene.node.getContextMenu(annotation.node, sceneBehavior)));
+  if (annotation.annotationType !== render.AnnotationType.SUMMARY &&
+      annotation.annotationType !== render.AnnotationType.CONSTANT) {
+    selection.on("contextmenu", contextmenu.getMenu(
+      node.getContextMenu(annotation.node, sceneElement)));
   }
 };
 
@@ -188,21 +181,21 @@ function addInteraction(selection, d: render.RenderNodeInfo,
  * @param aGroup selection of a "g.annotation" element.
  * @param d Host node data.
  * @param a annotation node data.
- * @param scene Polymer scene element.
+ * @param scene <tf-graph-scene> polymer element.
  */
 function update(aGroup, d: render.RenderNodeInfo, a: render.Annotation,
-    sceneBehavior) {
+    sceneElement) {
   let cx = layout.computeCXPositionOfNodeShape(d);
   // Annotations that point to embedded nodes (constants,summary)
   // don't have a render information attached so we don't stylize these.
   // Also we don't stylize ellipsis annotations (the string "... and X more").
   if (a.renderNodeInfo &&
-      a.annotationType !== tf.graph.render.AnnotationType.ELLIPSIS) {
-    node.stylize(aGroup, a.renderNodeInfo, sceneBehavior,
+      a.annotationType !== render.AnnotationType.ELLIPSIS) {
+    node.stylize(aGroup, a.renderNodeInfo, sceneElement,
       Class.Annotation.NODE);
   }
 
-  if (a.annotationType === tf.graph.render.AnnotationType.SUMMARY) {
+  if (a.annotationType === render.AnnotationType.SUMMARY) {
     // Update the width of the annotation to give space for the image.
     a.width += 10;
   }
@@ -214,7 +207,7 @@ function update(aGroup, d: render.RenderNodeInfo, a: render.Annotation,
   });
 
   // Some annotations (such as summary) are represented using a 12x12 image tag.
-  // Purposely ommited units (e.g. pixels) since the images are vector graphics.
+  // Purposely omitted units (e.g. pixels) since the images are vector graphics.
   // If there is an image, we adjust the location of the image to be vertically
   // centered with the node and horizontally centered between the arrow and the
   // text label.
@@ -224,11 +217,11 @@ function update(aGroup, d: render.RenderNodeInfo, a: render.Annotation,
   });
 
   // Node position (only one of the shape selection will be non-empty.)
-  scene.positionEllipse(aGroup.select("." + Class.Annotation.NODE + " ellipse"),
+  positionEllipse(aGroup.select("." + Class.Annotation.NODE + " ellipse"),
                         cx + a.dx, d.y + a.dy, a.width, a.height);
-  scene.positionRect(aGroup.select("." + Class.Annotation.NODE + " rect"),
+  positionRect(aGroup.select("." + Class.Annotation.NODE + " rect"),
                      cx + a.dx, d.y + a.dy, a.width, a.height);
-  scene.positionRect(aGroup.select("." + Class.Annotation.NODE + " use"),
+  positionRect(aGroup.select("." + Class.Annotation.NODE + " use"),
                      cx + a.dx, d.y + a.dy, a.width, a.height);
 
   // Edge position

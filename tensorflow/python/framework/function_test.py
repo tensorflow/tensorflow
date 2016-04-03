@@ -28,6 +28,18 @@ from tensorflow.python.framework import function
 from tensorflow.python.ops import functional_ops
 
 
+def _OptimizerOptions():
+  for cse in [False, True]:
+    for inline in [False, True]:
+      for cfold in [False, True]:
+        yield tf.ConfigProto(
+            graph_options=tf.GraphOptions(optimizer_options=tf.OptimizerOptions(
+                opt_level=tf.OptimizerOptions.L0,
+                do_common_subexpression_elimination=cse,
+                do_function_inlining=inline,
+                do_constant_folding=cfold)))
+
+
 class FunctionTest(tf.test.TestCase):
 
   def _mat(self, x):
@@ -131,7 +143,7 @@ class FunctionTest(tf.test.TestCase):
   def testTanhSymGrad(self):
     g = tf.Graph()
     with g.as_default():
-      @function.Defun(x=tf.float32)
+      @function.Defun(tf.float32)
       def Forward(x):
         return tf.reduce_sum(tf.tanh(x))
       x = tf.placeholder(tf.float32)
@@ -148,6 +160,61 @@ class FunctionTest(tf.test.TestCase):
     with tf.Session(graph=g, config=cfg) as sess:
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
+
+  def testCustomGradient(self):
+    g = tf.Graph()
+    dtype = tf.float32
+    with g.as_default():
+
+      @function.Defun(dtype, dtype, dtype)
+      def XentLossGrad(logits, labels, dloss):
+        dlogits = tf.reshape(dloss, [-1, 1]) * (tf.nn.softmax(logits) - labels)
+        dlabels = tf.zeros_like(labels)
+        # Takes exp(dlogits) to differentiate it from the "correct" gradient.
+        return tf.exp(dlogits), dlabels
+
+      @function.Defun(dtype, dtype, grad_func="XentLossGrad")
+      def XentLoss(logits, labels):
+        return tf.reduce_sum(labels * tf.log(tf.nn.softmax(logits)), 1)
+
+      logits = tf.placeholder(dtype)
+      labels = tf.placeholder(dtype)
+      loss = XentLoss(logits, labels)
+      dlogits = tf.gradients([loss], [logits])
+
+    x = np.random.uniform(-10., 10., size=(4, 9)).astype(np.float32)
+    prob = np.exp(x) / np.sum(np.exp(x), 1, keepdims=1)
+    y = np.random.uniform(-10., 10., size=(4, 9)).astype(np.float32)
+    for cfg in _OptimizerOptions():
+      print("cfg = ", cfg)
+      with tf.Session(graph=g, config=cfg) as sess:
+        out, = sess.run(dlogits, {logits: x, labels: y})
+      self.assertAllClose(out, np.exp(prob - y))
+
+  def testCustomGradientError(self):
+    g = tf.Graph()
+    dtype = tf.float32
+    with g.as_default():
+
+      @function.Defun(dtype, dtype, dtype)
+      def Grad(x, dy, dz):
+        # Should have returned 1 result.
+        return x, dy + dz
+
+      @function.Defun(dtype, grad_func="Grad")
+      def Forward(x):
+        return x, x
+
+      inp = tf.placeholder(dtype)
+      out = tf.add_n(Forward(inp))
+      dinp = tf.gradients(out, [inp])
+
+    x = np.random.uniform(-10., 10., size=(4, 9)).astype(np.float32)
+    with tf.Session(graph=g) as sess:
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError,
+          "SymGrad expects to return 1.*but get 2.*instead"):
+        _ = sess.run(dinp, {inp: x})
 
   def testSymGradShape(self):
     g = tf.Graph()
@@ -200,9 +267,6 @@ class FunctionTest(tf.test.TestCase):
     def NoResult():
       pass
 
-    def VarArgs(*unused_b):
-      return tf.constant([1])
-
     def DefaultArg(unused_a=12):
       return tf.constant([1])
 
@@ -215,11 +279,9 @@ class FunctionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "return at least one tensor"):
         function.define_function(NoResult, {})
-      with self.assertRaisesRegexp(ValueError, "plain arglists are supported"):
-        function.define_function(VarArgs, {})
-      with self.assertRaisesRegexp(ValueError, "plain arglists are supported"):
+      with self.assertRaisesRegexp(ValueError, "are not supported"):
         function.define_function(DefaultArg, {})
-      with self.assertRaisesRegexp(ValueError, "plain arglists are supported"):
+      with self.assertRaisesRegexp(ValueError, "are not supported"):
         function.define_function(KwArgs, {})
       with self.assertRaisesRegexp(ValueError, "specified input types"):
         function.define_function(PlusMinus, {})
@@ -278,7 +340,7 @@ class FunctionTest(tf.test.TestCase):
 
     with tf.Graph().as_default():
 
-      @function.Defun(b=tf.float32)
+      @function.Defun(tf.float32)
       def Minus1(b):
         return b - 1.0
 
@@ -296,11 +358,11 @@ class FunctionTest(tf.test.TestCase):
   def testNestedFunction(self):
     with tf.Graph().as_default():
 
-      @function.Defun(x=tf.float32)
+      @function.Defun(tf.float32)
       def Cube(x):
         return x * x * x
 
-      @function.Defun(x=tf.float32, y=tf.float32)
+      @function.Defun(tf.float32, tf.float32)
       def CubeXPlusY(x, y):
         return Cube(x) + y
 
@@ -358,7 +420,7 @@ class UnrollLSTMTest(tf.test.TestCase):
 
     if mode == "loop":
       # Wraps the whole loop as a function.
-      @function.Defun(w=tf.float32, i=tf.float32)
+      @function.Defun(tf.float32, tf.float32)
       def LSTMLoop(w, i):
         return Loop(cell, w, i)
 
@@ -368,27 +430,15 @@ class UnrollLSTMTest(tf.test.TestCase):
       # Wraps 10 lstm steps into one function, and the whole loop
       # into another calling the formers.
 
-      # Groups 10 steps at a time):
-      # TODO(zhifengc): Any way to make the syntax less hideous?
-      @function.Defun(m=tf.float32,
-                      c=tf.float32,
-                      w=tf.float32,
-                      x0=tf.float32,
-                      x1=tf.float32,
-                      x2=tf.float32,
-                      x3=tf.float32,
-                      x4=tf.float32,
-                      x5=tf.float32,
-                      x6=tf.float32,
-                      x7=tf.float32,
-                      x8=tf.float32,
-                      x9=tf.float32)
-      def Loop10(w, m, c, x0, x1, x2, x3, x4, x5, x6, x7, x8, x9):
-        for x in [x0, x1, x2, x3, x4, x5, x6, x7, x8, x9]:
+      # Groups 10 steps at a time.
+      @function.Defun(tf.float32, tf.float32, tf.float32,
+                      *([tf.float32] * 10))
+      def Loop10(w, m, c, *args):
+        for x in args:
           m, c = cell(x, m, c, w)
         return m, c
 
-      @function.Defun(weights=tf.float32, inp=tf.float32)
+      @function.Defun(tf.float32, tf.float32)
       def LSTMLoop10(weights, inp):
         x = tf.unpack(inp, self.NUM_UNROLL)
         m = tf.zeros_like(x[0])
@@ -399,19 +449,6 @@ class UnrollLSTMTest(tf.test.TestCase):
         return m
 
       return LSTMLoop10(weights, inp)
-
-  def _OptimizerOptions(self):
-    ret = []
-    for cse in [False, True]:
-      for inline in [False, True]:
-        for cfold in [False, True]:
-          ret.append(tf.ConfigProto(graph_options=tf.GraphOptions(
-              optimizer_options=tf.OptimizerOptions(
-                  opt_level=tf.OptimizerOptions.L0,
-                  do_common_subexpression_elimination=cse,
-                  do_function_inlining=inline,
-                  do_constant_folding=cfold))))
-    return ret
 
   def testUnrollLSTM(self):
     # Run one step of the unrolled lstm graph.
@@ -431,7 +468,7 @@ class UnrollLSTMTest(tf.test.TestCase):
         return sess.run(m)
 
     mv0 = RunForward("complete")
-    for cfg in self._OptimizerOptions():
+    for cfg in _OptimizerOptions():
       print("cfg = ", cfg)
       mv1 = RunForward("cell", cfg)
       mv2 = RunForward("loop", cfg)
@@ -460,7 +497,7 @@ class UnrollLSTMTest(tf.test.TestCase):
         return sess.run(dw)
 
     d0 = RunForwardBackward("complete")
-    for cfg in self._OptimizerOptions():
+    for cfg in _OptimizerOptions():
       print("cfg = ", cfg)
       d1 = RunForwardBackward("cell", cfg)
       d2 = RunForwardBackward("loop", cfg)
@@ -468,6 +505,45 @@ class UnrollLSTMTest(tf.test.TestCase):
       self.assertAllClose(d0, d1, rtol=1e-4)
       self.assertAllClose(d0, d2, rtol=1e-4)
       self.assertAllClose(d0, d3, rtol=1e-4)
+
+
+class FunctionInlineControlTest(tf.test.TestCase):
+
+  def testFoo(self):
+    dtype = tf.float32
+    cfg = tf.ConfigProto(
+        graph_options=tf.GraphOptions(optimizer_options=tf.OptimizerOptions(
+            opt_level=tf.OptimizerOptions.L0,
+            do_common_subexpression_elimination=True,
+            do_function_inlining=True,
+            do_constant_folding=True)))
+    for noinline in [False, True]:
+      g = tf.Graph()
+      with g.as_default():
+
+        @function.Defun(dtype)
+        def Cell(v):
+          # If v is a vector [n, 1], x is a big square matrix.
+          x = tf.tanh(v + tf.transpose(v, [1, 0]))
+          return tf.reduce_sum(x, 1, keep_dims=True)
+
+        @function.Defun(dtype)
+        def Forward(x):
+          for _ in range(10):
+            x = Cell(x, noinline=noinline)
+          return tf.reduce_sum(x, [0, 1])
+
+        x = tf.placeholder(dtype)
+        y = Forward(x)
+        dx, = tf.gradients([y], [x])
+
+      np.random.seed(321)
+      inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
+      with tf.Session(graph=g, config=cfg) as sess:
+        ans = sess.run([y, dx], {x: inp})
+        print(ans[0], np.sum(ans[1]))
+        self.assertAllClose(ans[0], 255.971, rtol=1e-3)
+        self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
 
 
 if __name__ == "__main__":

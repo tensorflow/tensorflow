@@ -56,11 +56,13 @@ def _GetGradSource(op_or_tensor):
   Raises:
     ValueError: If not called within a gradients calculation.
   """
-  if not op_or_tensor.name.startswith("gradients"):
+  name_tokens = op_or_tensor.name.split("/")
+  grad_pos = [i for i, x in enumerate(name_tokens) if x.startswith("gradients")]
+  if not grad_pos:
     raise ValueError(
-        "Expected op/tensor name to start with gradients, got: %s"
-        % op_or_tensor.name)
-  return op_or_tensor.name.split("/")[0]
+        "Expected op/tensor name to start with gradients (excluding scope)"
+        ", got: %s" % op_or_tensor.name)
+  return "/".join(name_tokens[:grad_pos[0] + 1])
 
 
 @ops.RegisterGradient("TensorArrayRead")

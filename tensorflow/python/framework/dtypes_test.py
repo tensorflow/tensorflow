@@ -71,11 +71,19 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertIs(tf.int16, tf.as_dtype(np.int16))
     self.assertIs(tf.int8, tf.as_dtype(np.int8))
     self.assertIs(tf.complex64, tf.as_dtype(np.complex64))
+    self.assertIs(tf.complex128, tf.as_dtype(np.complex128))
     self.assertIs(tf.string, tf.as_dtype(np.object))
     self.assertIs(tf.string, tf.as_dtype(np.array(["foo", "bar"]).dtype))
     self.assertIs(tf.bool, tf.as_dtype(np.bool))
     with self.assertRaises(TypeError):
       tf.as_dtype(np.dtype([("f1", np.uint), ("f2", np.int32)]))
+
+  def testRealDtype(self):
+    for dtype in [tf.float32, tf.float64, tf.bool, tf.uint8, tf.int8, tf.int16,
+                  tf.int32, tf.int64]:
+      self.assertIs(dtype.real_dtype, dtype)
+    self.assertIs(tf.complex64.real_dtype, tf.float32)
+    self.assertIs(tf.complex128.real_dtype, tf.float64)
 
   def testStringConversion(self):
     self.assertIs(tf.float32, tf.as_dtype("float32"))
@@ -87,6 +95,7 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertIs(tf.int8, tf.as_dtype("int8"))
     self.assertIs(tf.string, tf.as_dtype("string"))
     self.assertIs(tf.complex64, tf.as_dtype("complex64"))
+    self.assertIs(tf.complex128, tf.as_dtype("complex128"))
     self.assertIs(tf.int64, tf.as_dtype("int64"))
     self.assertIs(tf.bool, tf.as_dtype("bool"))
     self.assertIs(tf.qint8, tf.as_dtype("qint8"))
@@ -101,6 +110,7 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertIs(tf.int8_ref, tf.as_dtype("int8_ref"))
     self.assertIs(tf.string_ref, tf.as_dtype("string_ref"))
     self.assertIs(tf.complex64_ref, tf.as_dtype("complex64_ref"))
+    self.assertIs(tf.complex128_ref, tf.as_dtype("complex128_ref"))
     self.assertIs(tf.int64_ref, tf.as_dtype("int64_ref"))
     self.assertIs(tf.bool_ref, tf.as_dtype("bool_ref"))
     self.assertIs(tf.qint8_ref, tf.as_dtype("qint8_ref"))
@@ -129,6 +139,7 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(tf.as_dtype("uint8").is_integer, True)
     self.assertEqual(tf.as_dtype("uint16").is_integer, True)
     self.assertEqual(tf.as_dtype("complex64").is_integer, False)
+    self.assertEqual(tf.as_dtype("complex128").is_integer, False)
     self.assertEqual(tf.as_dtype("float").is_integer, False)
     self.assertEqual(tf.as_dtype("double").is_integer, False)
     self.assertEqual(tf.as_dtype("string").is_integer, False)
@@ -142,10 +153,25 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(tf.as_dtype("uint8").is_floating, False)
     self.assertEqual(tf.as_dtype("uint16").is_floating, False)
     self.assertEqual(tf.as_dtype("complex64").is_floating, False)
+    self.assertEqual(tf.as_dtype("complex128").is_floating, False)
     self.assertEqual(tf.as_dtype("float32").is_floating, True)
     self.assertEqual(tf.as_dtype("float64").is_floating, True)
     self.assertEqual(tf.as_dtype("string").is_floating, False)
     self.assertEqual(tf.as_dtype("bool").is_floating, False)
+
+  def testIsComplex(self):
+    self.assertEqual(tf.as_dtype("int8").is_complex, False)
+    self.assertEqual(tf.as_dtype("int16").is_complex, False)
+    self.assertEqual(tf.as_dtype("int32").is_complex, False)
+    self.assertEqual(tf.as_dtype("int64").is_complex, False)
+    self.assertEqual(tf.as_dtype("uint8").is_complex, False)
+    self.assertEqual(tf.as_dtype("uint16").is_complex, False)
+    self.assertEqual(tf.as_dtype("complex64").is_complex, True)
+    self.assertEqual(tf.as_dtype("complex128").is_complex, True)
+    self.assertEqual(tf.as_dtype("float32").is_complex, False)
+    self.assertEqual(tf.as_dtype("float64").is_complex, False)
+    self.assertEqual(tf.as_dtype("string").is_complex, False)
+    self.assertEqual(tf.as_dtype("bool").is_complex, False)
 
   def testIsUnsigned(self):
     self.assertEqual(tf.as_dtype("int8").is_unsigned, False)
@@ -159,6 +185,7 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(tf.as_dtype("bool").is_unsigned, False)
     self.assertEqual(tf.as_dtype("string").is_unsigned, False)
     self.assertEqual(tf.as_dtype("complex64").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("complex128").is_unsigned, False)
 
   def testMinMax(self):
     # make sure min/max evaluates for all data types that have min/max
@@ -173,7 +200,8 @@ class TypesTest(test_util.TensorFlowTestCase):
       if (dtype.is_quantized or
           dtype.base_dtype == tf.bool or
           dtype.base_dtype == tf.string or
-          dtype.base_dtype == tf.complex64):
+          dtype.base_dtype == tf.complex64 or
+          dtype.base_dtype == tf.complex128):
         continue
 
       print("%s: %s - %s" % (dtype, dtype.min, dtype.max))

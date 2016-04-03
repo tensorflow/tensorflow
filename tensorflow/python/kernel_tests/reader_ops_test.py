@@ -19,7 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
+import threading
 import tensorflow as tf
 
 
@@ -378,6 +380,46 @@ class TFRecordReaderTest(tf.test.TestCase):
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
+
+
+class AsyncReaderTest(tf.test.TestCase):
+
+  def testNoDeadlockFromQueue(self):
+    """Tests that reading does not block main execution threads."""
+    config = tf.ConfigProto(inter_op_parallelism_threads=1,
+                            intra_op_parallelism_threads=1)
+    with self.test_session(config=config) as sess:
+      thread_data_t = collections.namedtuple("thread_data_t",
+                                             ["thread", "queue", "output"])
+      thread_data = []
+
+      # Create different readers, each with its own queue.
+      for i in range(3):
+        queue = tf.FIFOQueue(99, [tf.string], shapes=())
+        reader = tf.TextLineReader()
+        _, line = reader.read(queue)
+        output = []
+        t = threading.Thread(target=AsyncReaderTest._RunSessionAndSave,
+                             args=(sess, [line], output))
+        thread_data.append(thread_data_t(t, queue, output))
+
+      # Start all readers. They are all blocked waiting for queue entries.
+      sess.run(tf.initialize_all_variables())
+      for d in thread_data:
+        d.thread.start()
+
+      # Unblock the readers.
+      for i, d in enumerate(reversed(thread_data)):
+        fname = os.path.join(self.get_temp_dir(), "deadlock.%s.txt" % i)
+        with open(fname, "wb") as f:
+          f.write(("file-%s" % i).encode())
+        d.queue.enqueue_many([[fname]]).run()
+        d.thread.join()
+        self.assertEqual([[("file-%s" % i).encode()]], d.output)
+
+  @staticmethod
+  def _RunSessionAndSave(sess, args, output):
+    output.append(sess.run(args))
 
 
 if __name__ == "__main__":

@@ -170,7 +170,7 @@ or negative weight. Softmax then normalizes these weights, so that they add up
 to one, forming a valid probability distribution. (To get more intuition about
 the softmax function, check out the
 [section](http://neuralnetworksanddeeplearning.com/chap3.html#softmax)
-on it in Michael Nieslen's book, complete with an interactive visualization.)
+on it in Michael Nielsen's book, complete with an interactive visualization.)
 
 
 You can picture our softmax regression as looking something like the following,
@@ -329,9 +329,9 @@ train it to do so.
 Because TensorFlow knows the entire graph of your computations, it
 can automatically use the [backpropagation
 algorithm](http://colah.github.io/posts/2015-08-Backprop/)
-to efficiently determine how your variables affect the cost you ask it minimize.
-Then it can apply your choice of optimization algorithm to modify the variables
-and reduce the cost.
+to efficiently determine how your variables affect the cost you ask it to
+minimize. Then it can apply your choice of optimization algorithm to modify the
+variables and reduce the cost.
 
 ```python
 train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)

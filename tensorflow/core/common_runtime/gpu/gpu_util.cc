@@ -154,6 +154,11 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
     port::Tracing::ScopedAnnotation annotation("SetProtoFromGPU");
     alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
     buf = alloc->Allocate<char>(total_bytes);
+    if (LogMemory::IsEnabled()) {
+      LogMemory::RecordRawAllocation("SetProtoFromGPU",
+                                     LogMemory::PROTO_BUFFER_STEP_ID,
+                                     total_bytes, buf, alloc);
+    }
     void* src_ptr = GetBase(&tensor);
     DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
     send_device_to_host_stream->ThenMemcpy(buf, gpu_src_ptr, total_bytes);
@@ -170,6 +175,11 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
         if (total_bytes > 0) {
           port::CopyFromArray(proto->mutable_tensor_content(), buf,
                               total_bytes);
+          if (LogMemory::IsEnabled()) {
+            LogMemory::RecordRawDeallocation("SetProtoFromGPU",
+                                             LogMemory::PROTO_BUFFER_STEP_ID,
+                                             buf, alloc, false);
+          }
           alloc->Deallocate<char>(buf, total_bytes);
         }
         done(Status::OK());
@@ -378,7 +388,7 @@ string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
       string buf;
       buf.resize(num_bytes);
       DeviceMemoryBase gpu_ptr(ptr, num_bytes);
-      Status s = dev_info->stream->parent()->SynchronousMemcpyD2H(
+      auto s = dev_info->stream->parent()->SynchronousMemcpyD2H(
           gpu_ptr, num_bytes, gtl::string_as_array(&buf));
       strings::StrAppend(&ret,
                          PrintMemory(gtl::string_as_array(&buf), num_bytes));

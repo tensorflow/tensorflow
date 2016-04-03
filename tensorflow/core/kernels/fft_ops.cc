@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
@@ -43,16 +42,23 @@ perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
 }
 }  // end namespace
 
-class FFT2DGPUBase : public OpKernel {
+class FFTGPUBase : public OpKernel {
  public:
-  explicit FFT2DGPUBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit FFTGPUBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in = ctx->input(0);
     const TensorShape& shape = in.shape();
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(shape),
-                errors::InvalidArgument("Input is not a matrix: ",
-                                        shape.DebugString()));
+    if (IsBatched()) {
+      OP_REQUIRES(
+          ctx, shape.dims() >= Rank(),
+          errors::InvalidArgument("Input must have rank of at least ", Rank(),
+                                  " but got: ", shape.DebugString()));
+    } else {
+      OP_REQUIRES(ctx, shape.dims() == Rank(),
+                  errors::InvalidArgument("Input must be of rank ", Rank(),
+                                          " but got: ", shape.DebugString()));
+    }
     Tensor* out;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &out));
     if (shape.num_elements() == 0) {
@@ -62,46 +68,95 @@ class FFT2DGPUBase : public OpKernel {
   }
 
  protected:
-  virtual bool IsForward() = 0;
+  virtual int Rank() const = 0;
+  virtual bool IsForward() const = 0;
+  virtual bool IsBatched() const = 0;
 
  private:
   void DoFFT(OpKernelContext* ctx, const Tensor& in, Tensor* out) {
-    auto* stream = ctx->op_device_context<GPUDeviceContext>()->stream();
+    auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
     const TensorShape& shape = in.shape();
-    auto n0 = shape.dim_size(0);
-    auto n1 = shape.dim_size(1);
     auto src = AsDeviceMemory<complex64>(in.flat<complex64>().data());
     auto dst = AsDeviceMemory<complex64>(out->flat<complex64>().data());
 
-    auto plan = stream->parent()->AsFft()->Create2dPlan(
-        stream, n0, n1,
+    const int rank = Rank();
+    int batch_size = 1;
+    for (int i = 0; i < shape.dims() - rank; ++i) {
+      batch_size *= shape.dim_size(i);
+    }
+    uint64 data_length = 1;
+    uint64 data_dims[3];
+    for (int i = 0; i < rank; ++i) {
+      auto dim = shape.dim_size(shape.dims() - rank + i);
+      data_length *= dim;
+      data_dims[i] = dim;
+    }
+
+    constexpr uint64* kInputEmbed = nullptr;
+    constexpr uint64 kInputStride = 1;
+    constexpr uint64 kInputDistance = 1;
+    constexpr uint64* kOutputEmbed = nullptr;
+    constexpr uint64 kOutputStride = 1;
+    constexpr uint64 kOutputDistance = 1;
+    constexpr bool kInPlaceFft = false;
+
+    auto plan = stream->parent()->AsFft()->CreateBatchedPlan(
+        stream, rank, data_dims, kInputEmbed, kInputStride, kInputDistance,
+        kOutputEmbed, kOutputStride, kOutputDistance,
         IsForward() ? perftools::gputools::fft::Type::kC2CForward
                     : perftools::gputools::fft::Type::kC2CInverse,
-        false /* not inplace */);
+        kInPlaceFft, batch_size);
+
     OP_REQUIRES(
         ctx, stream->ThenFft(plan.get(), src, &dst).ok(),
         errors::Internal("c2c fft failed : in.shape=", shape.DebugString()));
     if (!IsForward()) {
-      auto alpha = complex64(1.f / (n0 * n1));
+      auto alpha = complex64(1.f / data_length);
       OP_REQUIRES(
-          ctx, stream->ThenBlasScal(n0 * n1, alpha, &dst, 1).ok(),
+          ctx, stream->ThenBlasScal(shape.num_elements(), alpha, &dst, 1).ok(),
           errors::Internal("BlasScal failed : in.shape=", shape.DebugString()));
     }
   }
 };
 
-template <bool forward>
-class FFT2DGPU : public FFT2DGPUBase {
+template <bool Forward, bool Batched, int FFTRank>
+class FFTGPU : public FFTGPUBase {
  public:
-  explicit FFT2DGPU(OpKernelConstruction* ctx) : FFT2DGPUBase(ctx) {}
+  static_assert(FFTRank >= 1 && FFTRank <= 3,
+                "Only 1D, 2D and 3D FFTs supported.");
+  explicit FFTGPU(OpKernelConstruction* ctx) : FFTGPUBase(ctx) {}
 
  protected:
-  bool IsForward() override { return forward; }
+  int Rank() const override { return FFTRank; }
+  bool IsForward() const override { return Forward; }
+  bool IsBatched() const override { return Batched; }
 };
-REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_GPU), FFT2DGPU<true>);
-REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_GPU), FFT2DGPU<false>);
+
+REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_GPU), FFTGPU<true, false, 1>);
+REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_GPU),
+                        FFTGPU<false, false, 1>);
+REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_GPU),
+                        FFTGPU<true, false, 2>);
+REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_GPU),
+                        FFTGPU<false, false, 2>);
+REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_GPU),
+                        FFTGPU<true, false, 3>);
+REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_GPU),
+                        FFTGPU<false, false, 3>);
+REGISTER_KERNEL_BUILDER(Name("BatchFFT").Device(DEVICE_GPU),
+                        FFTGPU<true, true, 1>);
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT").Device(DEVICE_GPU),
+                        FFTGPU<false, true, 1>);
+REGISTER_KERNEL_BUILDER(Name("BatchFFT2D").Device(DEVICE_GPU),
+                        FFTGPU<true, true, 2>);
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT2D").Device(DEVICE_GPU),
+                        FFTGPU<false, true, 2>);
+REGISTER_KERNEL_BUILDER(Name("BatchFFT3D").Device(DEVICE_GPU),
+                        FFTGPU<true, true, 3>);
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT3D").Device(DEVICE_GPU),
+                        FFTGPU<false, true, 3>);
 
 }  // end namespace tensorflow
 

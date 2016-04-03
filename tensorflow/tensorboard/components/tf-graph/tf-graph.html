@@ -6,7 +6,6 @@
 <link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
 <link rel="import" href="../tf-graph-common/tf-graph-common.html">
 <link rel="import" href="tf-graph-scene.html">
-<link rel="import" href="tf-graph-params.html">
 <dom-module id="tf-graph">
 <template>
 <style>
@@ -37,7 +36,6 @@ paper-button {
 }
 </style>
 <div class="container">
-  <tf-graph-params id="graphParams"></tf-graph-params>
   <div class="vertical">
     <h2>[[title]]</h2>
     <tf-graph-scene id="scene" class="auto"
@@ -64,6 +62,12 @@ Polymer({
       notify: true,
       observer: '_graphChanged'
     },
+    basicGraph: Object,
+    hierarchyParams: Object,
+    progress: {
+      type: Object,
+      notify: true,
+    },
     title: String,
     selectedNode: {
       type: String,
@@ -85,13 +89,6 @@ Polymer({
       readOnly: true,
       notify: true,
     },
-    // internal properties
-    _graphParams: {
-      type: Object,
-      value: function() {
-        return this.$.graphParams;
-      }
-    },
     _renderDepth: {
       type: Number,
       value: 1
@@ -99,12 +96,12 @@ Polymer({
     _allowGraphSelect: {
       type: Boolean,
       value: true
-    }
+    },
   },
   observers: [
-    '_buildRenderHierarchy(graphHierarchy, _graphParams)'
+    '_buildRenderHierarchy(graphHierarchy)'
   ],
-  _buildRenderHierarchy: function(graphHierarchy, params) {
+  _buildRenderHierarchy: function(graphHierarchy) {
     tf.time('new tf.graph.render.Hierarchy', function() {
       if (graphHierarchy.root.type !== tf.graph.NodeType.META) {
         // root must be metanode but sometimes Polymer's dom-if has not
@@ -112,8 +109,7 @@ Polymer({
         // and thus mistakenly pass non-metanode to this module.
         return;
       }
-      var renderGraph = new tf.graph.render.RenderGraphInfo(graphHierarchy,
-          params);
+      var renderGraph = new tf.graph.render.RenderGraphInfo(graphHierarchy);
       // Producing the 'color by' parameters to be consumed
       // by the tf-graph-controls panel. It contains information about the
       // min and max values and their respective colors, as well as list
@@ -140,6 +136,9 @@ Polymer({
         })
       });
       this._setRenderHierarchy(renderGraph);
+      this.async(function() {
+        this.fire("rendered");
+      });
     }.bind(this));
   },
   _getVisible: function(name) {
@@ -158,6 +157,7 @@ Polymer({
     'node-highlight': '_nodeHighlighted',
     'node-unhighlight': '_nodeUnhighlighted',
     'node-toggle-extract': '_nodeToggleExtract',
+    'node-toggle-seriesgroup': '_nodeToggleSeriesGroup',
 
     // Annotations
 
@@ -207,6 +207,10 @@ Polymer({
     this.set('highlightedNode', null);
   },
   _nodeToggleExpand: function(event) {
+    // Immediately select the node that is about to be expanded.
+    this._nodeSelected(event);
+
+    // Compute the sub-hierarchy scene.
     var nodeName = event.detail.name;
     var renderNode = this.renderHierarchy.getRenderNodeByName(nodeName);
     // Op nodes are not expandable.
@@ -215,9 +219,13 @@ Polymer({
     }
     this.renderHierarchy.buildSubhierarchy(nodeName);
     renderNode.expanded = !renderNode.expanded;
-    this.querySelector('#scene').setNodeExpanded(renderNode);
-    // Also select the expanded node.
-    this._nodeSelected(event);
+
+    // Expand the node with some delay so that the user can immediately see
+    // the visual effect of selecting that node, before the expansion is
+    // done.
+    this.async(function() {
+      this.querySelector('#scene').setNodeExpanded(renderNode);
+    }, 75);
   },
   _nodeToggleExtract: function(event) {
     // Toggle the include setting of the specified node appropriately.
@@ -234,7 +242,26 @@ Polymer({
     }
 
     // Rebuild the render hierarchy.
-    this._buildRenderHierarchy(this.graphHierarchy, this._graphParams);
+    this._buildRenderHierarchy(this.graphHierarchy);
+  },
+  _nodeToggleSeriesGroup: function(event) {
+    // Toggle the group setting of the specified node appropriately.
+    var nodeName = event.detail.name;
+    tf.graph.toggleNodeSeriesGroup(this.hierarchyParams.seriesMap, nodeName);
+
+    // Rebuild the render hierarchy with the updated series grouping map.
+    this.set('progress', {
+      value: 0,
+      msg: ''
+    });
+    var tracker = tf.getTracker(this);
+    var hierarchyTracker = tf.getSubtaskTracker(tracker, 100,
+          'Namespace hierarchy');
+    tf.graph.hierarchy.build(this.basicGraph, this.hierarchyParams, hierarchyTracker)
+    .then(function(graphHierarchy) {
+      this.set('graphHierarchy', graphHierarchy);
+      this._buildRenderHierarchy(this.graphHierarchy);
+    }.bind(this));
   },
   not: function(x) {
     return !x;

@@ -23,7 +23,9 @@ File | Purpose
 
 Simply run the `fully_connected_feed.py` file directly to start training:
 
-`python fully_connected_feed.py`
+```bash
+python fully_connected_feed.py
+```
 
 ## Prepare the Data
 
@@ -385,8 +387,7 @@ may be instantiated to write the events files, which
 contain both the graph itself and the values of the summaries.
 
 ```python
-summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                        graph_def=sess.graph_def)
+summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 ```
 
 Lastly, the events file will be updated with new summary values every time the

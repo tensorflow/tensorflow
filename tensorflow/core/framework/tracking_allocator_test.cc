@@ -43,6 +43,7 @@ class TestableSizeTrackingAllocator : public Allocator {
     EXPECT_NE(size_map_.end(), iter);
     return iter->second;
   }
+  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
 
  private:
   std::unordered_map<void*, size_t> size_map_;
@@ -56,6 +57,7 @@ class NoMemoryAllocator : public Allocator {
   }
   void DeallocateRaw(void* ptr) override {}
   bool TracksAllocationSizes() override { return true; }
+  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
 };
 
 TEST(TrackingAllocatorTest, SimpleNoTracking) {
@@ -63,7 +65,10 @@ TEST(TrackingAllocatorTest, SimpleNoTracking) {
 
   EXPECT_FALSE(a->TracksAllocationSizes());
 
-  TrackingAllocator* ta = new TrackingAllocator(a);
+  // Don't enable the tracking inside the tracking allocator. Since
+  // the cpu_allocator doesn't track allocations itself the tracking
+  // will be partial
+  TrackingAllocator* ta = new TrackingAllocator(a, false);
 
   void* p1 = ta->AllocateRaw(4, 4);
   ta->DeallocateRaw(p1);
@@ -75,6 +80,26 @@ TEST(TrackingAllocatorTest, SimpleNoTracking) {
   EXPECT_EQ(0, sizes.second);
 
   ta->DeallocateRaw(p2);
+
+  // This time enable the tracking inside the tracking allocator
+  ta = new TrackingAllocator(a, true);
+  p1 = ta->AllocateRaw(4, 4);
+  EXPECT_EQ(4, ta->RequestedSize(p1));
+  EXPECT_LE(4, ta->AllocatedSize(p1));
+  EXPECT_EQ(1, ta->AllocationId(p1));
+
+  ta->DeallocateRaw(p1);
+  p2 = ta->AllocateRaw(4, 12);
+  EXPECT_EQ(12, ta->RequestedSize(p2));
+  EXPECT_LE(12, ta->AllocatedSize(p2));
+  EXPECT_EQ(2, ta->AllocationId(p2));
+
+  sizes = ta->GetSizesAndUnRef();
+
+  EXPECT_LE(16, sizes.first);
+  EXPECT_LE(12, sizes.second);
+
+  ta->DeallocateRaw(p2);
 }
 
 TEST(TrackingAllocatorTest, SimpleTracking) {
@@ -82,7 +107,7 @@ TEST(TrackingAllocatorTest, SimpleTracking) {
 
   EXPECT_TRUE(a.TracksAllocationSizes());
 
-  TrackingAllocator* ta = new TrackingAllocator(&a);
+  TrackingAllocator* ta = new TrackingAllocator(&a, false);
 
   void* p1 = ta->AllocateRaw(4, 12);
   ta->DeallocateRaw(p1);
@@ -101,7 +126,7 @@ TEST(TrackingAllocatorTest, OutOfMemory) {
 
   EXPECT_TRUE(a.TracksAllocationSizes());
 
-  TrackingAllocator* ta = new TrackingAllocator(&a);
+  TrackingAllocator* ta = new TrackingAllocator(&a, false);
 
   void* p1 = ta->AllocateRaw(4, 12);
   EXPECT_EQ(nullptr, p1);
@@ -117,7 +142,7 @@ TEST(TrackingAllocatorTest, FreeNullPtr) {
 
   EXPECT_TRUE(a.TracksAllocationSizes());
 
-  TrackingAllocator* ta = new TrackingAllocator(&a);
+  TrackingAllocator* ta = new TrackingAllocator(&a, false);
 
   ta->DeallocateRaw(nullptr);
 

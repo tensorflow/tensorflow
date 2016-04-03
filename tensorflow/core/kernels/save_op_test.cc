@@ -38,7 +38,6 @@ namespace {
 class SaveOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
-    RequireDefaultOps();
     TF_ASSERT_OK(
         NodeDefBuilder("myop", "Save")
             .Input(FakeInput())
@@ -343,7 +342,6 @@ TEST_F(SaveOpTest, Simple) {
 class SaveSlicesOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
                      .Input(FakeInput())
                      .Input(FakeInput())
@@ -503,7 +501,6 @@ TEST_F(SaveSlicesOpTest, Slices) {
 class SaveOpSlices2Test : public OpsTestBase {
  protected:
   void MakeOp() {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
                      .Input(FakeInput())
                      .Input(FakeInput())

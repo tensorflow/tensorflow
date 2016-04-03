@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -38,6 +39,8 @@ static const char* const kArgOp = "_Arg";
 static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
+static const char* const kFuncAttr = "f";
+static const char* const kNoinlineAttr = "noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -123,62 +126,6 @@ static Node* AddRet(Graph* g, Endpoint input, int index) {
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
   g->AddEdge(input.node, input.index, ret, 0);
-  return ret;
-}
-
-static Node* AddZerosLike(Graph* g, Endpoint input) {
-  DCHECK_LT(0, input.dtype());
-  DCHECK_LT(input.dtype(), DT_FLOAT_REF);
-  NodeDef ndef;
-  ndef.set_name(g->NewName(kNodeLabel));
-  ndef.set_op("ZerosLike");
-  ndef.add_input(input.name());
-  AddNodeAttr("T", input.dtype(), &ndef);
-  Status s;
-  Node* ret = g->AddNode(ndef, &s);
-  TF_CHECK_OK(s);
-  g->AddEdge(input.node, input.index, ret, 0);
-  return ret;
-}
-
-static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<Endpoint> grads) {
-  const int num_x = n->num_inputs();
-  const int num_y = n->num_outputs();
-  CHECK_EQ(num_y, grads.size());
-
-  NodeDef ndef;
-  ndef.set_name(g->NewName(kNodeLabel));
-  ndef.set_op(kGradientOp);
-
-  // The gradient node should have num_x + num_y inputs.
-  std::vector<Endpoint> n_inputs(num_x);
-  for (const Edge* e : n->in_edges()) {
-    if (e->IsControlEdge()) continue;
-    n_inputs[e->dst_input()] = {e->src(), e->src_output()};
-  }
-  DataTypeVector in_types;
-  for (const Endpoint& ep : n_inputs) {
-    ndef.add_input(ep.name());
-    in_types.push_back(ep.dtype());
-  }
-  for (const Endpoint& ep : grads) {
-    ndef.add_input(ep.name());
-    in_types.push_back(ep.dtype());
-  }
-  CHECK_EQ(ndef.input_size(), num_x + num_y);
-
-  AddNodeAttr("Tin", in_types, &ndef);
-
-  // The gradient node's outputs have the same types as the node 'n's
-  // inputs.
-  AddNodeAttr("Tout", n->input_types(), &ndef);
-  NameAttrList func;
-  func.set_name(n->type_string());
-  *(func.mutable_attr()) = n->def().attr();
-  AddNodeAttr("f", func, &ndef);
-  Status s;
-  Node* ret = g->AddNode(ndef, &s);
-  TF_CHECK_OK(s);
   return ret;
 }
 
@@ -316,7 +263,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                            FunctionBody** fbody);
   Status CreateItem(Handle handle, Item** item);
   Status GetOrCreateItem(Handle handle, Item** item);
-  Status InstantiateSymbolicGradient(const InstantiateAttrValueMap& attrs,
+  Status InstantiateSymbolicGradient(const NameAttrList& func,
                                      FunctionBody** g_body);
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryRuntimeImpl);
@@ -362,6 +309,7 @@ class CallOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts;
+    opts.step_id = ctx->step_id();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -406,6 +354,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
         ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
 
     FunctionLibraryRuntime::Options opts;
+    opts.step_id = ctx->step_id();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -416,8 +365,12 @@ class SymbolicGradientOp : public AsyncOpKernel {
              [ctx, done, rets](const Status& status) {
                if (!status.ok()) {
                  ctx->SetStatus(status);
+               } else if (rets->size() != ctx->num_outputs()) {
+                 ctx->SetStatus(errors::InvalidArgument(
+                     "SymGrad expects to return ", ctx->num_outputs(),
+                     " tensor(s), but get ", rets->size(),
+                     " tensor(s) instead."));
                } else {
-                 CHECK_EQ(rets->size(), ctx->num_outputs());
                  for (size_t i = 0; i < rets->size(); ++i) {
                    ctx->set_output(i, (*rets)[i]);
                  }
@@ -508,12 +461,7 @@ Status FunctionLibraryRuntimeImpl::FunctionDefToBody(
 }
 
 Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
-    const InstantiateAttrValueMap& attrs, FunctionBody** g_body) {
-  const AttrValue* f = gtl::FindOrNull(attrs, "f");
-  if (f == nullptr) {
-    return errors::InvalidArgument("SymbolicGradient is missing attr: f");
-  }
-  const auto& func = f->func();
+    const NameAttrList& func, FunctionBody** g_body) {
   const FunctionDef* fdef = lib_def_->Find(func.name());
   if (fdef == nullptr) {
     // f is a primitive op.
@@ -552,7 +500,19 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   Status s;
   FunctionBody* fbody = nullptr;
   if (function_name == kGradientOp) {
-    TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(attrs, &fbody));
+    const AttrValue* f = gtl::FindOrNull(attrs, kFuncAttr);
+    if (f == nullptr) {
+      return errors::InvalidArgument("SymbolicGradient is missing attr: f");
+    }
+    const auto& func = f->func();
+    if (func.name() == kGradientOp) {
+      return errors::InvalidArgument("Can't take gradient of SymbolicGradient");
+    }
+    const string grad = lib_def_->FindGradient(func.name());
+    if (!grad.empty()) {
+      return Instantiate(grad, func.attr(), handle);
+    }
+    TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(func, &fbody));
   } else {
     const FunctionDef* fdef = lib_def_->Find(function_name);
     if (fdef == nullptr) {
@@ -671,6 +631,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return done(s);
   }
   Executor::Args exec_args;
+  // Inherit the step_id from the caller.
+  exec_args.step_id = opts.step_id;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = runner_;
@@ -1028,10 +990,49 @@ static void InlineFunctionBody(Graph* g, Node* caller,
   g->RemoveNode(caller);  // 'caller' is replaced with inlined nodes.
 }
 
+// Given a node's NodeDef, returns false iff the node explicitly
+// specified noinline. This gives ExpandInlineFunctions a heuristic to
+// decide whether to inline the function.
+bool ShouldInline(const NodeDef& ndef) {
+  bool noinline = false;
+  if (GetNodeAttr(ndef, kNoinlineAttr, &noinline).ok()) {
+    // If the node specifies attribute 'noinlne', returns accordingly.
+    return !noinline;
+  }
+  if (ndef.op() != kGradientOp) {
+    // If the op is not SymbolicGradient, we should be free to decide
+    // whether to inline or not.
+    return true;
+  }
+  // If the node is a SymbolicGradient, we use the the forward
+  // function's attribute 'noinline' instead.
+  const NameAttrList* forward_func_attrs;
+  Status s =
+      GetNodeAttr(AttrSlice(&ndef.attr()), kFuncAttr, &forward_func_attrs);
+  if (!s.ok()) {
+    // The node def is malformed (missing attribute 'f'), we'll just
+    // continue and the runtime will error out.
+    return false;
+  }
+  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), kNoinlineAttr,
+                  &noinline);
+  if (!s.ok()) {
+    // The forward function doesn't specify 'noinline' attr, we should
+    // be free to decide.
+    return true;
+  }
+  // Otherwise, make inline decision according to the attr.
+  return !noinline;
+}
+
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
+    if (!ShouldInline(node->def())) {
+      VLOG(3) << "noinline: " << node->DebugString();
+      continue;
+    }
     FunctionLibraryRuntime::Handle handle;
     Status s =
         lib->Instantiate(node->type_string(), node->def().attr(), &handle);
@@ -1169,40 +1170,8 @@ class SymbolicGradientHelper {
   const FunctionBody* fbody_;
   FunctionBody* gbody_ = nullptr;
 
-  // A vector of output endpoints which represents backpropagated
-  // gradients
-  typedef std::vector<Endpoint> BackpropedGradients;
-
-  // backprops_ is a map from an output endpoint to its accumulated
-  // gradients.  When an output endpoint has accumulated all its
-  // gradients, we add a node which sums them up.
-  std::unordered_map<Endpoint, BackpropedGradients, EndpointHash, EndpointEq>
-      backprops_;
-
-  // pending[i] is count-down counter for i-th node's expected
-  // backprops.  When pending[i] becomes zero, we collected all
-  // backprop gradients for all output endpoint of the ith-node.
-  std::vector<int> pending_;
-
-  // 'ready' keeps track of nodes that have been completely
-  // backpropped. Initially, for every output y of the function f, we
-  // add dy as an input of the gradient function.
-  std::deque<Node*> ready_;
-
   // Makes a copy of fbody_ in gbody_.
   void Copy();
-
-  // Initialize pending_ and ready_.
-  void InitBackprop();
-
-  // In the original function body, there is a forward edge from 'src'
-  // to 'dst', when the backprop algorithm constructs the node
-  // 'dst_grad' which computes the gradient, we need to propagate it
-  // to 'src'.
-  void BackpropAlongEdge(const Endpoint& dst_grad, const Endpoint& src);
-  void BackpropZerosAlongEdge(const Endpoint& src);
-
-  Endpoint SumGradients(const Endpoint& src);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientHelper);
 };
@@ -1245,127 +1214,6 @@ void SymbolicGradientHelper::Copy() {
   }
 }
 
-void SymbolicGradientHelper::BackpropAlongEdge(const Endpoint& dst_grad,
-                                               const Endpoint& src) {
-  CHECK_NOTNULL(src.node);
-  auto iter = backprops_.find(src);
-  if (iter != backprops_.end()) {
-    auto* grads = &iter->second;
-    grads->push_back(dst_grad);
-    if (--pending_[src.node->id()] == 0) {
-      ready_.push_back(src.node);
-    }
-  }
-}
-
-void SymbolicGradientHelper::BackpropZerosAlongEdge(const Endpoint& src) {
-  CHECK_NOTNULL(src.node);
-  auto iter = backprops_.find(src);
-  if (iter != backprops_.end()) {
-    if (--pending_[src.node->id()] == 0) {
-      ready_.push_back(src.node);
-    }
-  }
-}
-
-void SymbolicGradientHelper::InitBackprop() {
-  Graph* g = gbody_->graph;
-  pending_.resize(g->num_node_ids(), 0);
-  {
-    backprops_.clear();
-    std::unordered_set<Node*> visited;
-    std::deque<Node*> queue;
-    for (Node* n : gbody_->arg_nodes) {
-      queue.push_back(n);
-    }
-
-    // Going forward to figure out which endpoints need backprop-ed.
-    // A node's endpoints need to be backprop-ed only if one of the
-    // arg node can reach the node via data edges.
-    while (!queue.empty()) {
-      Node* n = queue.front();
-      queue.pop_front();
-      visited.insert(n);
-      for (int i = 0; i < n->num_outputs(); ++i) {
-        backprops_[{n, i}].clear();
-      }
-      int num_expected_backprops = 0;
-      for (const Edge* e : n->out_edges()) {
-        if (e->IsControlEdge()) continue;
-        ++num_expected_backprops;
-        if (visited.find(e->dst()) == visited.end()) {
-          queue.push_back(e->dst());
-        }
-      }
-      pending_[n->id()] = num_expected_backprops;
-    }
-  }
-
-  {
-    const int num_y = gbody_->ret_nodes.size();
-    for (int i = 0; i < num_y; ++i) {
-      Node* y = gbody_->ret_nodes[i];
-      DCHECK_EQ(y->type_string(), kRetOp);
-      const DataType dtype = y->input_type(0);
-      const int index = gbody_->arg_nodes.size();
-      Node* dy = AddArg(g, dtype, index);
-      gbody_->arg_types.push_back(dtype);
-      gbody_->arg_nodes.push_back(dy);
-
-      // What's the input to y?
-      Endpoint y_in{nullptr, 0};
-      for (const Edge* e : y->in_edges()) {
-        if (!e->IsControlEdge()) {
-          y_in = {e->src(), e->src_output()};
-          break;
-        }
-      }
-      CHECK_NOTNULL(y_in.node);
-      BackpropAlongEdge({dy, 0}, y_in);
-    }
-  }
-}
-
-Endpoint SymbolicGradientHelper::SumGradients(const Endpoint& src) {
-  Graph* g = gbody_->graph;
-  const DataType dtype = src.dtype();
-  auto iter = backprops_.find(src);
-  CHECK(iter != backprops_.end());
-  const auto& grads = iter->second;
-  if (grads.empty()) {
-    // Nothing propagated back. The best we can come up is zeros.
-    Node* zero_like = AddZerosLike(g, src);
-    return {zero_like, 0};
-  }
-  if (grads.size() == 1) {
-    // Just one backprop edge.
-    return grads[0];
-  }
-  // Otherwise, adds backprop-ed gradients.
-  NodeDef ndef;
-  ndef.set_name(g->NewName(kNodeLabel));
-  ndef.set_op("AddN");  // N-way Add
-  for (const Endpoint& ep : grads) {
-    ndef.add_input(ep.name());
-  }
-  AddNodeAttr("N", static_cast<int64>(grads.size()), &ndef);
-  AddNodeAttr("T", dtype, &ndef);
-  Status s;
-  Node* add = gbody_->graph->AddNode(ndef, &s);
-  TF_CHECK_OK(s);
-  for (size_t i = 0; i < grads.size(); ++i) {
-    const Endpoint& ep = grads[i];
-    g->AddEdge(ep.node, ep.index, add, i);
-  }
-  return {add, 0};
-}
-
-static bool IsPrimitiveOpWithNoGrad(const string& func) {
-  gradient::Creator creator;
-  Status s = gradient::GetOpGradientCreator(func, &creator);
-  return s.ok() && (creator == nullptr);
-}
-
 FunctionBody* SymbolicGradientHelper::Compute() {
   CHECK(gbody_ == nullptr);
   gbody_ = new FunctionBody;
@@ -1373,69 +1221,56 @@ FunctionBody* SymbolicGradientHelper::Compute() {
   // Copy fbody_ into gbody_.
   Copy();
 
-  // Initialize backprops.
-  InitBackprop();
-
-  // Backward propagation.
-  gtl::InlinedVector<Endpoint, 8> dy;
   Graph* g = gbody_->graph;
-  while (!ready_.empty()) {
-    // n has collected all gradients.
-    Node* n = ready_.front();
-    ready_.pop_front();
 
-    if (n->type_string() == kArgOp) {
-      // We'll handle the _Arg node after backprop is done.
-      continue;
-    }
+  const int num_y = gbody_->ret_nodes.size();
 
-    // "n" has num_x inputs and num_y outputs.
-    const int num_x = n->num_inputs();
-    const int num_y = n->num_outputs();
-
-    // dy[i] is the sum of i-th output's backpropped gradients.
-    dy.clear();
-    dy.resize(num_y, {nullptr, 0});
-    for (int i = 0; i < num_y; ++i) {
-      dy[i] = SumGradients({n, i});
-    }
-
-    if (IsPrimitiveOpWithNoGrad(n->type_string())) {
-      // No grad defined for this op.  Backprops zeros along the in
-      // edges.
-      for (const Edge* e : n->in_edges()) {
-        if (e->IsControlEdge()) continue;
-        BackpropZerosAlongEdge({e->src(), e->src_output()});
-      }
-      continue;
-    }
-
-    // Adds a gradient node with num_x + num_y inputs and num_x
-    // outputs.
-    Node* grad = AddSymGrad(g, n, dy);
-    for (const Edge* e : n->in_edges()) {
-      if (e->IsControlEdge()) continue;
-      g->AddEdge(e->src(), e->src_output(), grad, e->dst_input());
-    }
-    for (int i = 0; i < num_y; ++i) {
-      g->AddEdge(dy[i].node, dy[i].index, grad, num_x + i);
-    }
-
-    // Backprops along the in edges.
-    for (const Edge* e : n->in_edges()) {
-      if (e->IsControlEdge()) continue;
-      BackpropAlongEdge({grad, e->dst_input()}, {e->src(), e->src_output()});
-    }
+  // Populate 'y_node_outputs_' with node function body outputs.
+  // Populate 'y_grad_nodes' with initial gradient nodes for each return node of
+  // the original function body (these will be 'arg' nodes in the function
+  // gradient body).
+  std::vector<NodeOut> y_node_outputs;
+  y_node_outputs.reserve(num_y);
+  std::vector<NodeOut> y_grad_node_outputs;
+  y_grad_node_outputs.reserve(num_y);
+  for (int i = 0; i < num_y; ++i) {
+    Node* y = gbody_->ret_nodes[i];
+    y_node_outputs.push_back({y, 0});
+    DCHECK_EQ(y->type_string(), kRetOp);
+    const DataType dtype = y->input_type(0);
+    const int index = gbody_->arg_nodes.size();
+    Node* dy = AddArg(g, dtype, index);
+    gbody_->arg_types.push_back(dtype);
+    gbody_->arg_nodes.push_back(dy);
+    y_grad_node_outputs.push_back({dy, 0});
   }
 
-  // The gradient's retval nodes.
+  // Populate 'x_nodes' with function args (excluding 'y_grad_node_outputs').
+  const int num_x = fbody_->arg_nodes.size();
+  std::vector<NodeOut> x_node_outputs;
+  x_node_outputs.reserve(num_x);
+  for (size_t i = 0; i < fbody_->arg_nodes.size(); ++i) {
+    x_node_outputs.push_back({gbody_->arg_nodes[i], 0});
+  }
+
+  // Call AddSymbolicGradients which will add nodes to graph 'g' that
+  // compute the function gradient (adding an entry in 'x_grad_node_outputs' for
+  // each node in 'x_node_outputs').
+  std::vector<NodeOut> x_grad_node_outputs;
+  TF_CHECK_OK(AddSymbolicGradients(y_node_outputs, x_node_outputs,
+                                   y_grad_node_outputs, &x_grad_node_outputs,
+                                   g));
+
+  // Remove the old return nodes from the function body.
   for (Node* n : gbody_->ret_nodes) {
     g->RemoveNode(n);
   }
   gbody_->ret_types = fbody_->arg_types;
   gbody_->ret_nodes.clear();
+  // Add new return nodes to the function gradient body for each node
+  // in 'x_grad_nodes'.
   for (size_t i = 0; i < fbody_->arg_types.size(); ++i) {
-    Endpoint grad = SumGradients({gbody_->arg_nodes[i], 0});
+    Endpoint grad = {x_grad_node_outputs[i].node, x_grad_node_outputs[i].index};
     Node* ret = AddRet(g, grad, i);
     gbody_->ret_nodes.push_back(ret);
   }

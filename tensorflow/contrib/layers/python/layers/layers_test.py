@@ -28,10 +28,20 @@ class FullyConnectedTest(tf.test.TestCase):
     tf.test.TestCase.setUp(self)
     tf.set_random_seed(1234)
     self.input = tf.constant([[1., 2., 3.], [-4., 15., -6.]])
+    self.input_3_dim_arr = [[[1., 1.1, 1.2],
+                             [2., 2.1, 2.2],
+                             [3., 3.1, 3.2],
+                             [4., 4.1, 4.2]],
+                            [[5., 5.1, 5.2],
+                             [6., 6.1, 6.2],
+                             [7., 7.1, 7.2],
+                             [8., 8.1, 8.2]]]
+    self.input_3_dim = tf.constant(self.input_3_dim_arr)
+
     assert not tf.get_collection(tf.GraphKeys.SUMMARIES)
 
-  def test_fully_connected_basic_use(self):
-    output = tf.contrib.layers.fully_connected(self.input, 8,
+  def _fully_connected_basic_use(self, x, num_output_units, expected_shape):
+    output = tf.contrib.layers.fully_connected(x, num_output_units,
                                                activation_fn=tf.nn.relu)
 
     with tf.Session() as sess:
@@ -39,9 +49,10 @@ class FullyConnectedTest(tf.test.TestCase):
         sess.run(output)
 
       tf.initialize_all_variables().run()
-      out_value = sess.run(output)
+      out_value, shape_value = sess.run([output, tf.shape(output)])
 
-    self.assertEqual(output.get_shape().as_list(), [2, 8])
+    self.assertAllClose(shape_value, expected_shape)
+    self.assertEquals(output.get_shape().as_list(), expected_shape)
     self.assertTrue(np.all(out_value >= 0),
                     'Relu should have all values >= 0.')
 
@@ -49,6 +60,15 @@ class FullyConnectedTest(tf.test.TestCase):
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
     self.assertEqual(0,
                      len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
+
+  def test_fully_connected_basic_use(self):
+    self._fully_connected_basic_use(self.input, 8, [2, 8])
+
+  def test_fully_connected_basic_use_multi_dim(self):
+    for last_dim in [1, 3]:
+      self.setUp()
+      self._fully_connected_basic_use(
+          self.input_3_dim, last_dim, [2, 4, last_dim])
 
   def test_relu_layer_basic_use(self):
     output = tf.contrib.layers.relu(self.input, 8)
@@ -117,8 +137,8 @@ class FullyConnectedTest(tf.test.TestCase):
       out_value1, out_value2 = sess.run([output1, output2])
     self.assertAllClose(out_value1, out_value2)
 
-  def test_custom_initializers(self):
-    output = tf.contrib.layers.relu(self.input, 2,
+  def _custom_initializers(self, x, num_output_units, expected_outputs):
+    output = tf.contrib.layers.relu(x, num_output_units,
                                     weight_init=tf.constant_initializer(2.0),
                                     bias_init=tf.constant_initializer(1.0))
 
@@ -126,7 +146,23 @@ class FullyConnectedTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       out_value = sess.run(output)
 
-    self.assertAllClose(np.array([[13.0, 13.0], [11.0, 11.0]]), out_value)
+    self.assertAllClose(np.array(expected_outputs), out_value)
+
+  def test_custom_initializers(self):
+    self._custom_initializers(
+        self.input, 2, [[13.0, 13.0], [11.0, 11.0]])
+
+  def test_custom_initializers_multi_dim(self):
+    self._custom_initializers(self.input_3_dim,
+                              2,
+                              [[[7.6, 7.6],
+                                [13.6, 13.6],
+                                [19.6, 19.6],
+                                [25.6, 25.6]],
+                               [[31.6, 31.6],
+                                [37.6, 37.6],
+                                [43.6, 43.6],
+                                [49.6, 49.6]]])
 
   def test_custom_collections(self):
     tf.contrib.layers.relu(self.input, 2,
@@ -175,6 +211,91 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertEqual([tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
     self.assertEqual(1, cnt[0])
+
+  def test_regularizer_with_multiple_variables(self):
+    cnt = [0]
+    tensor = tf.constant(5.0)
+    def test_fn(_):
+      cnt[0] += 1
+      return tensor
+
+    tf.contrib.layers.fully_connected(self.input, 2,
+                                      weight_regularizer=test_fn)
+    tf.contrib.layers.fully_connected(self.input, 2,
+                                      weight_regularizer=test_fn)
+
+    self.assertEqual([tensor, tensor],
+                     tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+    self.assertEqual(2, cnt[0])
+
+  def test_regularizer_with_variable_reuse(self):
+    cnt = [0]
+    tensor = tf.constant(5.0)
+    def test_fn(_):
+      cnt[0] += 1
+      return tensor
+
+    with tf.variable_scope('test') as vs:
+      tf.contrib.layers.fully_connected(self.input, 2,
+                                        weight_regularizer=test_fn)
+
+    with tf.variable_scope(vs, reuse=True):
+      tf.contrib.layers.fully_connected(self.input, 2,
+                                        weight_regularizer=test_fn)
+
+    self.assertEqual([tensor],
+                     tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+    self.assertEqual(1, cnt[0])
+
+  def test_empty_x_results_in_empty_output(self):
+    # Empty x is common if someone masks their input with tf.boolean_mask in
+    # order to drop missing entries, and in a particular batch all entries are
+    # missing.
+    with self.test_session():
+      x = tf.constant([[]], shape=[0, 3])
+      self.assertEqual(0, tf.size(x).eval())
+      y = tf.contrib.layers.fully_connected(x, 2, activation_fn=tf.nn.softmax)
+      tf.initialize_all_variables().run()
+      expected_y = np.array([]).reshape(0, 2)
+      np.testing.assert_array_equal(expected_y, y.eval())
+
+  def test_shapes_variable_first_dim(self):
+    # first dimension is not known statically.
+    x = tf.placeholder(tf.float32, shape=[None, 4, 3])
+    y = tf.contrib.layers.fully_connected(x, 1)
+    # in the output we still only know the 2nd and 3rd dimensions statically.
+    self.assertEquals(y.get_shape().as_list(), [None, 4, 1])
+    with self.test_session() as sess:
+      tf.initialize_all_variables().run()
+      # we can feed in input with first dimension 2
+      shape_value = sess.run(tf.shape(y), feed_dict={x: self.input_3_dim_arr})
+      self.assertAllClose(shape_value, [2, 4, 1])
+      # we can feed in input with first dimension 1
+      shape_value = sess.run(tf.shape(y),
+                             feed_dict={x: [self.input_3_dim_arr[0]]})
+      self.assertAllClose(shape_value, [1, 4, 1])
+      # we cannot feed in input with inconsistent dimensions
+      with self.assertRaises(ValueError):
+        sess.run(tf.shape(y), feed_dict={x: [[[]]]})
+
+  def _unknown_dim_invalid_input(self, last_dim):
+    x = tf.placeholder(tf.float32, shape=[3, last_dim])
+    tf.contrib.layers.fully_connected(x, 2, activation_fn=None)
+
+  def test_known_dim_valid_input(self):
+    self._unknown_dim_invalid_input(last_dim=3)
+
+  def test_unknown_dim_invalid_input(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'last dimension of x must be known but is None'):
+      self._unknown_dim_invalid_input(last_dim=None)
+
+  def test_1d_invalid_input(self):
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError,
+                                   'rank of x must be at least 2 not: 1'):
+        x = tf.constant([[]], shape=[0])
+        tf.contrib.layers.fully_connected(x, 2, activation_fn=tf.nn.softmax)
 
 
 class Convolution2dTest(tf.test.TestCase):

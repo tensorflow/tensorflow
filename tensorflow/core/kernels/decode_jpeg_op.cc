@@ -65,7 +65,7 @@ class DecodeJpegOp : public OpKernel {
     OP_REQUIRES(
         context,
         jpeg::Uncompress(
-            input.data(), input.size(), flags_, NULL,
+            input.data(), input.size(), flags_, nullptr /* nwarn */,
             [=, &output](int width, int height, int channels) -> uint8* {
               Status status(context->allocate_output(
                   0, TensorShape({height, width, channels}), &output));

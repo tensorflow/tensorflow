@@ -81,7 +81,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
     np = len(params)  # Number of partitions
     params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     if np == 1:
-      with ops.device(params[0].device):
+      with ops.colocate_with(params[0]):
         return array_ops.gather(params[0], ids, name=name,
                                 validate_indices=validate_indices)
     else:
@@ -105,8 +105,11 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
         else:
           dim_0_sizes = []
           for p in xrange(np):
-            with ops.device(params[p].device):
-              dim_0_sizes.append(array_ops.shape(params[p])[0])
+            if params[p].get_shape()[0].value is not None:
+              dim_0_sizes.append(params[p].get_shape()[0].value)
+            else:
+              with ops.colocate_with(params[p]):
+                dim_0_sizes.append(array_ops.shape(params[p])[0])
           num_total_ids = math_ops.reduce_sum(
               math_ops.cast(array_ops.pack(dim_0_sizes), flat_ids.dtype))
         ids_per_partition = num_total_ids // np
@@ -139,7 +142,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       # Do np separate lookups, finding embeddings for plist[p] in params[p]
       partitioned_result = []
       for p in xrange(np):
-        with ops.device(params[p].device):
+        with ops.colocate_with(params[p]):
           partitioned_result.append(array_ops.gather(
               params[p], gather_ids[p],
               validate_indices=validate_indices))
@@ -147,18 +150,22 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       ret = data_flow_ops.dynamic_stitch(pindices, partitioned_result,
                                          name=name)
       # Reshape to reverse the flattening of ids.
-      # It's important that we compute params[0].shape on the right device
-      # to avoid data motion.
-      with ops.device(params[0].device):
-        params_shape = array_ops.shape(params[0])
-      ret = array_ops.reshape(ret, array_ops.concat(0, [
-          array_ops.shape(ids), array_ops.slice(params_shape, [1], [-1])]))
-      # output shape = ids.shape + params[*].shape[1:]
-      # Normally the reshape is sufficient, but setting shape explicitly
-      # teaches shape inference that params[1:].get_shape() matters.
       element_shape = params[0].get_shape()[1:]
       for p in params[1:]:
         element_shape = element_shape.merge_with(p.get_shape()[1:])
+      if element_shape.is_fully_defined():
+        ret = array_ops.reshape(ret, array_ops.concat(0, [
+            array_ops.shape(ids), element_shape]))
+      else:
+        # It's important that we compute params[0].shape on the right device
+        # to avoid data motion.
+        with ops.colocate_with(params[0]):
+          params_shape = array_ops.shape(params[0])
+        ret = array_ops.reshape(ret, array_ops.concat(0, [
+            array_ops.shape(ids), array_ops.slice(params_shape, [1], [-1])]))
+      # output shape = ids.shape + params[*].shape[1:]
+      # Normally the reshape is sufficient, but setting shape explicitly
+      # teaches shape inference that params[1:].get_shape() matters.
       ret.set_shape(ids.get_shape().concatenate(element_shape))
       return ret
 

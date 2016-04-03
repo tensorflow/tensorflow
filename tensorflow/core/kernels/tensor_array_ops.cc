@@ -27,10 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/aggregate_ops.h"
-#include "tensorflow/core/kernels/aggregate_ops_cpu.h"
-#include "tensorflow/core/kernels/concat_op.h"
-#include "tensorflow/core/kernels/split_op.h"
+#include "tensorflow/core/kernels/concat_lib.h"
+#include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/kernels/tensor_array.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -579,7 +577,7 @@ class TensorArrayConcatOp : public OpKernel {
     ConstMatrixVector input_tensors_flat;
     input_tensors_flat.reserve(values.size());
 
-    for (int i = 0; i < values.size(); ++i) {
+    for (size_t i = 0; i < values.size(); ++i) {
       const Tensor* value_t = value_tensors[i];
       if (value_t->NumElements() > 0) {
         input_tensors_flat.emplace_back(new ConstMatrix(

@@ -99,50 +99,15 @@ Status TfDTypeToNpDType(const DataType& tf, int* np) {
     case DT_COMPLEX64:
       *np = NPY_COMPLEX64;
       break;
+    case DT_COMPLEX128:
+      *np = NPY_COMPLEX128;
+      break;
     case DT_STRING:
       *np = NPY_OBJECT;
       break;
     default:
       return errors::Unimplemented("Unsupported tf type ", DataTypeString(tf));
   }
-  return Status::OK();
-}
-
-// Creates a numpy array in 'ret' and copies the content of tensor 't'
-// into 'ret'.
-Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
-  int typenum = -1;
-  TF_RETURN_IF_ERROR(TfDTypeToNpDType(t.dtype(), &typenum));
-  PyArray_Descr* descr = PyArray_DescrFromType(typenum);
-  CHECK(descr);
-  std::vector<npy_intp> dims;
-  for (int i = 0; i < t.dims(); ++i) {
-    dims.push_back(t.dim_size(i));
-  }
-  PyObject* obj = PyArray_Empty(dims.size(), dims.data(), descr, 0);
-  if (obj == nullptr) {
-    return errors::Internal("Failed to allocate np array: ",
-                            t.shape().DebugString());
-  }
-  PyArrayObject* np_array = reinterpret_cast<PyArrayObject*>(obj);
-  if (typenum == NPY_OBJECT) {
-    CHECK_EQ(DT_STRING, t.dtype());
-    auto tflat = t.flat<string>();
-    PyObject** out = reinterpret_cast<PyObject**>(np_array->data);
-    for (int i = 0; i < tflat.dimension(0); ++i) {
-      const string& el = tflat(i);
-      out[i] = PyBytes_FromStringAndSize(el.data(), el.size());
-      if (out[i] == nullptr) {
-        Py_DECREF(obj);
-        return errors::Internal("Failed to allocate a copy of string ", i);
-      }
-    }
-  } else {
-    CHECK(DataTypeCanUseMemcpy(t.dtype()));
-    StringPiece p = t.tensor_data();
-    memcpy(np_array->data, p.data(), p.size());
-  }
-  *ret = PyArray_Return(np_array);
   return Status::OK();
 }
 
@@ -209,6 +174,9 @@ Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
       break;
     case NPY_COMPLEX64:
       *tf = DT_COMPLEX64;
+      break;
+    case NPY_COMPLEX128:
+      *tf = DT_COMPLEX128;
       break;
     default:
       return errors::Unimplemented("Unsupported numpy type ", np);
@@ -334,6 +302,48 @@ void CallPyFunc(PyCall* call, std::function<void(Status)> done) {
 }
 
 }  // end namespace
+
+// Creates a numpy array in 'ret' and copies the content of tensor 't'
+// into 'ret'.
+Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
+  InitIfNeeded();
+  int typenum = -1;
+  TF_RETURN_IF_ERROR(TfDTypeToNpDType(t.dtype(), &typenum));
+  PyArray_Descr* descr = PyArray_DescrFromType(typenum);
+  CHECK(descr);
+  std::vector<npy_intp> dims;
+  for (int i = 0; i < t.dims(); ++i) {
+    dims.push_back(t.dim_size(i));
+  }
+  PyObject* obj = PyArray_Empty(dims.size(), dims.data(), descr, 0);
+  if (obj == nullptr) {
+    return errors::Internal("Failed to allocate np array: ",
+                            t.shape().DebugString());
+  }
+  PyArrayObject* np_array = reinterpret_cast<PyArrayObject*>(obj);
+  if (typenum == NPY_OBJECT) {
+    CHECK_EQ(DT_STRING, t.dtype());
+    auto tflat = t.flat<string>();
+    PyObject** out = reinterpret_cast<PyObject**>(np_array->data);
+    for (int i = 0; i < tflat.dimension(0); ++i) {
+      const string& el = tflat(i);
+      out[i] = PyBytes_FromStringAndSize(el.data(), el.size());
+      if (out[i] == nullptr) {
+        for (int j = 0; j < i; ++j) {
+          Py_DECREF(out[j]);
+        }
+        Py_DECREF(obj);
+        return errors::Internal("Failed to allocate a copy of string ", i);
+      }
+    }
+  } else {
+    CHECK(DataTypeCanUseMemcpy(t.dtype()));
+    StringPiece p = t.tensor_data();
+    memcpy(np_array->data, p.data(), p.size());
+  }
+  *ret = PyArray_Return(np_array);
+  return Status::OK();
+}
 
 void InitializePyTrampoline(PyObject* trampoline) {
   mutex_lock l(mu);

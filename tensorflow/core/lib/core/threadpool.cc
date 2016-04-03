@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/threadpool.h"
 
+#include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -90,6 +91,9 @@ void ThreadPool::Schedule(std::function<void()> fn) {
 }
 
 void ThreadPool::WorkerLoop() {
+  // Set the processor flag to flush denormals to zero
+  port::ScopedFlushDenormal flush;
+
   port::Tracing::RegisterCurrentThread(name_.c_str());
   mutex_lock l(mu_);
   Waiter w;

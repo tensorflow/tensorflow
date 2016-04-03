@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_TEST_H_
 #define TENSORFLOW_PLATFORM_TEST_H_
 
+#include <memory>
+#include <vector>
+
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -31,9 +35,45 @@ namespace testing {
 // Return a temporary directory suitable for temporary testing files.
 string TmpDir();
 
+// Returns the path to TensorFlow in the directory containing data
+// dependencies.
+string TensorFlowSrcRoot();
+
 // Return a random number generator seed to use in randomized tests.
 // Returns the same value for the lifetime of the process.
 int RandomSeed();
+
+// Supports spawning and killing child processes, for use in
+// multi-process testing.
+class SubProcess {
+ public:
+  virtual ~SubProcess() {}
+
+  // Starts the subprocess. Returns true on success, otherwise false.
+  // NOTE: This method is not thread-safe.
+  virtual bool Start() = 0;
+
+  // Kills the subprocess with the given signal number. Returns true
+  // on success, otherwise false.
+  // NOTE: This method is not thread-safe.
+  virtual bool Kill(int signal) = 0;
+
+ protected:
+  SubProcess() {}
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(SubProcess);
+};
+
+// Returns an object that represents a child process that will be
+// launched with the given command-line arguments `argv`. The process
+// must be explicitly started by calling the Start() method on the
+// returned object.
+std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv);
+
+// Returns an unused port number, for use in multi-process testing.
+// NOTE: This function is not thread-safe.
+int PickUnusedPortOrDie();
 
 }  // namespace testing
 }  // namespace tensorflow

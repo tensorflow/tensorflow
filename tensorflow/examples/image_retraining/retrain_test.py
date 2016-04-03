@@ -38,11 +38,6 @@ class ImageRetrainingTest(test_util.TensorFlowTestCase):
                           'testing': ['image_three.jpg', 'image_four.jpg'],
                           'validation': ['image_five.jpg', 'image_six.jpg']}}
 
-  def testEnsureNameHasPort(self):
-    self.assertEqual('name:0', retrain.ensure_name_has_port('name'))
-    self.assertEqual('name:0', retrain.ensure_name_has_port('name:0'))
-    self.assertEqual('name:1', retrain.ensure_name_has_port('name:1'))
-
   def testGetImagePath(self):
     image_lists = self.dummyImageLists()
     self.assertEqual('image_dir/somedir/image_one.jpg', retrain.get_image_path(
@@ -68,26 +63,24 @@ class ImageRetrainingTest(test_util.TensorFlowTestCase):
   def testAddInputDistortions(self):
     with tf.Graph().as_default():
       with tf.Session() as sess:
-        retrain.add_input_distortions(True, 10, 10, 10, 'jpeg', 'distort')
-        self.assertIsNotNone(sess.graph.get_tensor_by_name('jpeg:0'))
-        self.assertIsNotNone(sess.graph.get_tensor_by_name('distort:0'))
+        retrain.add_input_distortions(True, 10, 10, 10)
+        self.assertIsNotNone(sess.graph.get_tensor_by_name('DistortJPGInput:0'))
+        self.assertIsNotNone(sess.graph.get_tensor_by_name('DistortResult:0'))
 
   def testAddFinalTrainingOps(self):
     with tf.Graph().as_default():
       with tf.Session() as sess:
-        tf.placeholder(tf.float32, [1, retrain.BOTTLENECK_TENSOR_SIZE],
-                       name=retrain.BOTTLENECK_TENSOR_NAME)
-        retrain.add_final_training_ops(sess.graph, 5, 'final', 'gt')
+        bottleneck = tf.placeholder(tf.float32,
+                                    [1, retrain.BOTTLENECK_TENSOR_SIZE],
+                                    name=retrain.BOTTLENECK_TENSOR_NAME)
+        retrain.add_final_training_ops(5, 'final', bottleneck)
         self.assertIsNotNone(sess.graph.get_tensor_by_name('final:0'))
-        self.assertIsNotNone(sess.graph.get_tensor_by_name('gt:0'))
 
   def testAddEvaluationStep(self):
     with tf.Graph().as_default():
-      with tf.Session() as sess:
-        tf.placeholder(tf.float32, [1], name='final')
-        tf.placeholder(tf.float32, [1], name='gt')
-        self.assertIsNotNone(retrain.add_evaluation_step(sess.graph, 'final',
-                                                         'gt'))
+      final = tf.placeholder(tf.float32, [1], name='final')
+      gt = tf.placeholder(tf.float32, [1], name='gt')
+      self.assertIsNotNone(retrain.add_evaluation_step(final, gt))
 
 if __name__ == '__main__':
   tf.test.main()

@@ -1,0 +1,1 @@
+{"run2": {"histograms": ["histo1", "histo2"], "images": ["im1/image/0"], "graph": true, "compressedHistograms": ["histo1", "histo2"], "scalars": ["foo/square", "bar/square", "foo/cos"]}, "run1": {"histograms": ["histo1"], "images": ["im2/image/0", "im1/image/0"], "graph": true, "compressedHistograms": ["histo1"], "scalars": ["foo/square", "bar/square", "foo/cos", "foo/sin"]}}

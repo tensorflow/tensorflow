@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 namespace tensorflow {
 
 // --------------------------------------------------------------------------
@@ -26,6 +27,7 @@ REGISTER_OP("AvgPool")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {float, double}")
     .Doc(R"doc(
 Performs average pooling on the input.
@@ -37,6 +39,11 @@ value: 4-D with shape `[batch, height, width, channels]`.
 ksize: The size of the sliding window for each dimension of `value`.
 strides: The stride of the sliding window for each dimension of `value`.
 padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 output: The average pooled output tensor.
 )doc");
 
@@ -47,6 +54,7 @@ REGISTER_OP("AvgPoolGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {float, double}")
     .Doc(R"doc(
 Computes gradients of the average pooling function.
@@ -57,6 +65,11 @@ grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t.
 ksize: The size of the sliding window for each dimension of the input.
 strides: The stride of the sliding window for each dimension of the input.
 padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 output: 4-D.  Gradients w.r.t. the input of `avg_pool`.
 )doc");
 
@@ -74,6 +87,8 @@ REGISTER_OP("BatchNormWithGlobalNormalization")
     .Attr("scale_after_normalization: bool")
     .Doc(R"doc(
 Batch normalization.
+
+This op is deprecated. Prefer `tf.nn.batch_normalization`.
 
 t: A 4D input Tensor.
 m: A 1D mean Tensor with size matching the last dimension of t.
@@ -109,6 +124,8 @@ REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
     .Doc(R"doc(
 Gradients for batch normalization.
 
+This op is deprecated. See `tf.nn.batch_normalization`.
+
 t: A 4D input Tensor.
 m: A 1D mean Tensor with size matching the last dimension of t.
   This is the first output from tf.nn.moments,
@@ -137,9 +154,60 @@ REGISTER_OP("BiasAdd")
     .Attr("T: numbertype")
     .Input("value: T")
     .Input("bias: T")
+    .Attr(GetConvnetDataFormatAttrString())
     .Output("output: T")
     .Doc(R"doc(
 Adds `bias` to `value`.
+
+This is a special case of `tf.add` where `bias` is restricted to be 1-D.
+Broadcasting is supported, so `value` may have any number of dimensions.
+
+value: Any number of dimensions.
+bias: 1-D with size the last dimension of `value`.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the bias tensor will be added to the last dimension
+    of the value tensor.
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+    The tensor will be added to "in_channels", the third-to-the-last
+        dimension.
+output: Broadcasted sum of `value` and `bias`.
+)doc");
+// --------------------------------------------------------------------------
+
+REGISTER_OP("BiasAddGrad")
+    .Attr("T: numbertype")
+    .Input("out_backprop: T")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Output("output: T")
+    .Doc(R"doc(
+The backward operation for "BiasAdd" on the "bias" tensor.
+
+It accumulates all the values from out_backprop into the feature dimension.
+For NHWC data format, the feature dimension is the last. For NCHW data format,
+the feature dimension is the third-to-last.
+
+out_backprop: Any number of dimensions.
+output: 1-D with size the feature dimension of `out_backprop`.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the bias tensor will be added to the last dimension
+    of the value tensor.
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+    The tensor will be added to "in_channels", the third-to-the-last
+        dimension.
+)doc");
+// --------------------------------------------------------------------------
+
+REGISTER_OP("BiasAddV1")
+    .Attr("T: numbertype")
+    .Input("value: T")
+    .Input("bias: T")
+    .Output("output: T")
+    .Doc(R"doc(
+Adds `bias` to `value`.
+
+This is a deprecated version of BiasAdd and will be soon removed.
 
 This is a special case of `tf.add` where `bias` is restricted to be 1-D.
 Broadcasting is supported, so `value` may have any number of dimensions.
@@ -158,6 +226,7 @@ REGISTER_OP("Conv2D")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Doc(R"doc(
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
 
@@ -174,7 +243,7 @@ performs the following:
 3. For each patch, right-multiplies the filter matrix and the image patch
    vector.
 
-In detail,
+In detail, with the default NHWC format,
 
     output[b, i, j, k] =
         sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *
@@ -184,8 +253,13 @@ Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
 horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 
 strides: 1-D of length 4.  The stride of the sliding window for each dimension
-  of `input`.
+  of `input`. Must be in the same order as the dimension specified with format.
 padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 )doc");
 
 REGISTER_OP("Conv2DBackpropInput")
@@ -197,6 +271,7 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Doc(R"doc(
 Computes the gradients of convolution with respect to the input.
 
@@ -207,10 +282,16 @@ filter: 4-D with shape
 out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
   Gradients w.r.t. the output of the convolution.
 strides: The stride of the sliding window for each dimension of the input
-  of the convolution.
+  of the convolution. Must be in the same order as the dimension specified with
+  format.
 padding: The type of padding algorithm to use.
 output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
   w.r.t. the input of the convolution.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 )doc");
 
 // TODO(jeff): Instead of 'use_cudnn_for_gpu', maybe we should have a
@@ -219,12 +300,13 @@ output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
 REGISTER_OP("Conv2DBackpropFilter")
     .Input("input: T")
     .Input("filter_sizes: int32")
-    .Output("output: T")
     .Input("out_backprop: T")
+    .Output("output: T")
     .Attr("T: {float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Doc(R"doc(
 Computes the gradients of convolution with respect to the filter.
 
@@ -232,6 +314,95 @@ input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
 filter_sizes: An integer vector representing the tensor shape of `filter`,
   where `filter` is a 4-D
   `[filter_height, filter_width, in_channels, out_channels]` tensor.
+out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+  Gradients w.r.t. the output of the convolution.
+strides: The stride of the sliding window for each dimension of the input
+  of the convolution. Must be in the same order as the dimension specified with
+  format.
+padding: The type of padding algorithm to use.
+output: 4-D with shape
+  `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+  the `filter` input of the convolution.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("DepthwiseConv2dNative")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
+
+Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
+and a filter / kernel tensor of shape
+`[filter_height, filter_width, in_channels, channel_multiplier]`, containing
+`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies
+a different filter to each input channel (expanding from 1 channel to
+`channel_multiplier` channels for each), then concatenates the results
+together. Thus, the output has `in_channels * channel_multiplier` channels.
+
+for k in 0..in_channels-1
+  for q in 0..channel_multiplier-1
+    output[b, i, j, k * channel_multiplier + q] =
+      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
+                        filter[di, dj, k, q]
+
+Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
+horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+
+strides: 1-D of length 4.  The stride of the sliding window for each dimension
+  of `input`.
+padding: The type of padding algorithm to use.
+)doc");
+
+REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
+    .Input("input_sizes: int32")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes the gradients of depthwise convolution with respect to the input.
+
+input_sizes: An integer vector representing the shape of `input`,
+  where `input` is a 4-D `[batch, height, width, channels]` tensor.
+filter: 4-D with shape
+  `[filter_height, filter_width, in_channels, depthwise_multiplier]`.
+out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+  Gradients w.r.t. the output of the convolution.
+strides: The stride of the sliding window for each dimension of the input
+  of the convolution.
+padding: The type of padding algorithm to use.
+output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
+  w.r.t. the input of the convolution.
+)doc");
+
+REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes the gradients of depthwise convolution with respect to the filter.
+
+input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+filter_sizes: An integer vector representing the tensor shape of `filter`,
+  where `filter` is a 4-D
+  `[filter_height, filter_width, in_channels, depthwise_multiplier]` tensor.
 out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
   Gradients w.r.t. the output of the convolution.
 strides: The stride of the sliding window for each dimension of the input
@@ -278,7 +449,7 @@ each component is divided by the weighted, squared sum of inputs within
 
     sqr_sum[a, b, c, d] =
         sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)
-    output = input / (bias + alpha * sqr_sum ** beta)
+    output = input / (bias + alpha * sqr_sum) ** beta
 
 For details, see [Krizhevsky et al., ImageNet classification with deep
 convolutional neural networks (NIPS 2012)]
@@ -319,6 +490,7 @@ REGISTER_OP("MaxPool")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Input("input: float")
     .Output("output: float")
     .Doc(R"doc(
@@ -328,6 +500,11 @@ ksize: The size of the window for each dimension of the input tensor.
 strides: The stride of the sliding window for each dimension of the
   input tensor.
 padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 input: 4-D input to pool over.
 output: The max pooled output tensor.
 )doc");
@@ -336,6 +513,7 @@ REGISTER_OP("MaxPoolGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .Input("orig_input: float")
     .Input("orig_output: float")
     .Input("grad: float")
@@ -347,6 +525,11 @@ ksize: The size of the window for each dimension of the input tensor.
 strides: The stride of the sliding window for each dimension of the
   input tensor.
 padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 orig_input: The original input tensor.
 orig_output: The original output tensor.
 grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
@@ -532,6 +715,23 @@ softmax: Same shape as `logits`.
 
 // --------------------------------------------------------------------------
 
+REGISTER_OP("LogSoftmax")
+    .Input("logits: T")
+    .Output("logsoftmax: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Computes log softmax activations.
+
+For each batch `i` and class `j` we have
+
+    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))
+
+logits: 2-D with shape `[batch_size, num_classes]`.
+logsoftmax: Same shape as `logits`.
+)doc");
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("SoftmaxCrossEntropyWithLogits")
     .Input("features: T")
     .Input("labels: T")
@@ -553,10 +753,11 @@ backprop: backpropagated gradients (batch_size x num_classes matrix).
 
 REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
     .Input("features: T")
-    .Input("labels: int64")
+    .Input("labels: Tlabels")
     .Output("loss: T")
     .Output("backprop: T")
     .Attr("T: {float, double}")
+    .Attr("Tlabels: {int32, int64} = DT_INT64")
     .Doc(R"doc(
 Computes softmax cross entropy cost and gradients to backpropagate.
 

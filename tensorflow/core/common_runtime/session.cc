@@ -22,25 +22,38 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
-Status GetFactory(const SessionOptions& options, SessionFactory** ret) {
-  string runtime_type = "DIRECT_SESSION";
-  if (!options.target.empty()) {
-    // Use the service based session.
-    runtime_type = "REMOTE_SESSION";
-  }
-  *ret = SessionFactory::GetFactory(runtime_type);
-  if (!*ret) {
-    return errors::NotFound("Could not find session factory for ",
-                            runtime_type);
-  }
-  return Status::OK();
+Session::Session() {}
+
+Session::~Session() {}
+
+Status Session::Run(const RunOptions& run_options,
+                    const std::vector<std::pair<string, Tensor> >& inputs,
+                    const std::vector<string>& output_tensor_names,
+                    const std::vector<string>& target_node_names,
+                    std::vector<Tensor>* outputs, RunMetadata* run_metadata) {
+  return errors::Unimplemented(
+      "Run with options is not supported for this session.");
 }
-}  // end namespace
+
+Status Session::PRunSetup(const std::vector<string>& input_names,
+                          const std::vector<string>& output_names,
+                          const std::vector<string>& target_nodes,
+                          string* handle) {
+  return errors::Unimplemented(
+      "Partial run is not supported for this session.");
+}
+
+Status Session::PRun(const string& handle,
+                     const std::vector<std::pair<string, Tensor> >& inputs,
+                     const std::vector<string>& output_names,
+                     std::vector<Tensor>* outputs) {
+  return errors::Unimplemented(
+      "Partial run is not supported for this session.");
+}
 
 Session* NewSession(const SessionOptions& options) {
   SessionFactory* factory;
-  Status s = GetFactory(options, &factory);
+  Status s = SessionFactory::GetFactory(options, &factory);
   if (!s.ok()) {
     LOG(ERROR) << s;
     return nullptr;
@@ -50,7 +63,7 @@ Session* NewSession(const SessionOptions& options) {
 
 Status NewSession(const SessionOptions& options, Session** out_session) {
   SessionFactory* factory;
-  Status s = GetFactory(options, &factory);
+  Status s = SessionFactory::GetFactory(options, &factory);
   if (!s.ok()) {
     *out_session = nullptr;
     LOG(ERROR) << s;

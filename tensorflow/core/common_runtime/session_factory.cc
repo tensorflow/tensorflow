@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/session_options.h"
 namespace tensorflow {
 namespace {
 
@@ -45,13 +48,59 @@ void SessionFactory::Register(const string& runtime_type,
   }
 }
 
-SessionFactory* SessionFactory::GetFactory(const string& runtime_type) {
-  mutex_lock l(*get_session_factory_lock());  // could use reader lock
-  auto it = session_factories()->find(runtime_type);
-  if (it == session_factories()->end()) {
-    return nullptr;
+namespace {
+const string RegisteredFactoriesErrorMessageLocked() {
+  std::vector<string> factory_types;
+  for (const auto& session_factory : *session_factories()) {
+    factory_types.push_back(session_factory.first);
   }
-  return it->second;
+  return strings::StrCat("Registered factories are {",
+                         str_util::Join(factory_types, ", "), "}.");
+}
+}  // namespace
+
+Status SessionFactory::GetFactory(const SessionOptions& options,
+                                  SessionFactory** out_factory) {
+  mutex_lock l(*get_session_factory_lock());  // could use reader lock
+
+  std::vector<std::pair<string, SessionFactory*>> candidate_factories;
+  for (const auto& session_factory : *session_factories()) {
+    if (session_factory.second->AcceptsOptions(options)) {
+      VLOG(2) << "SessionFactory type " << session_factory.first
+              << " accepts target: " << options.target;
+      candidate_factories.push_back(session_factory);
+    } else {
+      VLOG(2) << "SessionFactory type " << session_factory.first
+              << " does not accept target: " << options.target;
+    }
+  }
+
+  if (candidate_factories.size() == 1) {
+    *out_factory = candidate_factories[0].second;
+    return Status::OK();
+  } else if (candidate_factories.size() > 1) {
+    // NOTE(mrry): This implementation assumes that the domains (in
+    // terms of acceptable SessionOptions) of the registered
+    // SessionFactory implementations do not overlap. This is fine for
+    // now, but we may need an additional way of distinguishing
+    // different runtimes (such as an additional session option) if
+    // the number of sessions grows.
+    // TODO(mrry): Consider providing a system-default fallback option
+    // in this case.
+    std::vector<string> factory_types;
+    for (const auto& candidate_factory : candidate_factories) {
+      factory_types.push_back(candidate_factory.first);
+    }
+    return errors::Internal(
+        "Multiple session factories registered for the given session options. "
+        "Candidate factories are {",
+        str_util::Join(factory_types, ", "), "}. ",
+        RegisteredFactoriesErrorMessageLocked());
+  } else {
+    return errors::NotFound(
+        "No session factory registered for the given session options. ",
+        RegisteredFactoriesErrorMessageLocked());
+  }
 }
 
 }  // namespace tensorflow

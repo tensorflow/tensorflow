@@ -12,10 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-/// <reference path="graph.ts" />
-/// <reference path="render.ts" />
-
 module tf.graph.layout {
 
 /** Set of parameters that define the look and feel of the graph. */
@@ -91,7 +87,7 @@ export const PARAMS = {
        */
       labelHeight: 20,
       /** X-space between each extracted node and the core graph. */
-      extractXOffset: 50,
+      extractXOffset: 15,
       /** Y-space between each extracted node. */
       extractYOffset: 20
     },
@@ -216,8 +212,7 @@ export const PARAMS = {
 };
 
 /** Calculate layout for a scene of a group node. */
-export function layoutScene(renderNodeInfo: render.RenderGroupNodeInfo)
-    : void {
+export function layoutScene(renderNodeInfo: render.RenderGroupNodeInfo): void {
   // Update layout, size, and annotations of its children nodes and edges.
   if (renderNodeInfo.node.isGroupNode) {
     layoutChildren(renderNodeInfo);
@@ -257,8 +252,7 @@ function updateTotalWidthOfNode(renderInfo: render.RenderNodeInfo): void {
 /**
  * Update layout, size, and annotations of its children nodes and edges.
  */
-function layoutChildren(renderNodeInfo: render.RenderGroupNodeInfo)
-    : void {
+function layoutChildren(renderNodeInfo: render.RenderGroupNodeInfo): void {
   let children = renderNodeInfo.coreGraph.nodes().map(n => {
     return renderNodeInfo.coreGraph.node(n);
   }).concat(renderNodeInfo.isolatedInExtract,
@@ -492,9 +486,24 @@ function layoutMetanode(renderNodeInfo: render.RenderGroupNodeInfo): void {
       return height + yOffset + child.height;
     }, 0);
 
+  // Compute the total padding between the core graph, in-extract and
+  // out-extract boxes.
+  let numParts = 0;
+  if (renderNodeInfo.isolatedInExtract.length > 0) {
+    numParts++;
+  }
+  if (renderNodeInfo.isolatedOutExtract.length > 0) {
+    numParts++;
+  }
+  if (renderNodeInfo.coreGraph.nodeCount() > 0) {
+    numParts++;
+  }
+  let offset = PARAMS.subscene.meta.extractXOffset;
+  let padding = numParts <= 1 ? 0 : (numParts  <= 2 ? offset : 2 * offset);
+
   // Add the in-extract and out-extract width to the core box width.
   renderNodeInfo.coreBox.width += renderNodeInfo.inExtractBox.width +
-      renderNodeInfo.outExtractBox.width;
+      renderNodeInfo.outExtractBox.width + padding;
   renderNodeInfo.coreBox.height =
     params.labelHeight +
     Math.max(

@@ -36,7 +36,7 @@ class Env;
 // [0, range)
 class RangeSampler {
  public:
-  explicit RangeSampler(int range) : range_(range) { CHECK_GT(range_, 0); }
+  explicit RangeSampler(int64 range) : range_(range) { CHECK_GT(range_, 0); }
   virtual ~RangeSampler();
 
   // Sample a single value
@@ -128,9 +128,6 @@ class AllSampler : public RangeSampler {
       gtl::ArraySlice<int64> extras,
       gtl::MutableArraySlice<float> extras_expected_count,
       gtl::ArraySlice<int64> avoided_values) const override;
-
- private:
-  const float inv_range_;
 };
 
 class UniformSampler : public RangeSampler {

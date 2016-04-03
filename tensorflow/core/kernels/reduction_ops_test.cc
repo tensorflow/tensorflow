@@ -79,10 +79,9 @@ static void BM_Prod3DToScalarGPU(int iters, int num) {
 }
 BENCHMARK(BM_Prod3DToScalarGPU)->Range(1 << 13, 1 << 20);
 
-// Once Mean is available on GPU, enable this.
-// static void BM_Mean3DToScalarGPU(int iters, int num) {
-//   ReduceToScalar(iters, "gpu", "Mean", num);
-// }
-// BENCHMARK(BM_Mean3DToScalarGPU)->Range(1 << 13, 1 << 20);
+static void BM_Mean3DToScalarGPU(int iters, int num) {
+  ReduceToScalar(iters, "gpu", "Mean", num);
+}
+BENCHMARK(BM_Mean3DToScalarGPU)->Range(1 << 13, 1 << 20);
 
 }  // end namespace tensorflow

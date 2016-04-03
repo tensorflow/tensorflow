@@ -47,7 +47,8 @@ namespace tensorflow {
 // A FeedVector is a vector of tensor name and numpy array pairs. The
 // name is a borrowed C string.
 typedef tensorflow::gtl::InlinedVector<std::pair<const char*, PyArrayObject*>,
-                                       8> FeedVector;
+                                       8>
+    FeedVector;
 
 // A NameVector is a vector of tensor or operation names, as borrowed
 // C strings.
@@ -75,10 +76,10 @@ Safe_PyObjectPtr make_safe(PyObject* o);
 //
 // On failure, out_status contains a tensorflow::Status with an error
 // message.
-void TF_Run_wrapper(TF_Session* session, const FeedVector& inputs,
-                    const NameVector& output_names,
+void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
+                    const FeedVector& inputs, const NameVector& output_names,
                     const NameVector& target_nodes, Status* out_status,
-                    PyObjectVector* out_values);
+                    PyObjectVector* out_values, TF_Buffer* run_outputs);
 
 // Set up the graph with the intended feeds and fetches for partial run.
 // *out_handle is owned by the caller.

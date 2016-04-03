@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright 2015 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@ if [ ! -d ${CUDA_HOME}/lib64 ]; then
   exit 1
 fi
 
-export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda* | \
+export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | \
                     xargs -I{} echo '-v {}:{}')
 export DEVICES=$(\ls /dev/nvidia* | \
                     xargs -I{} echo '--device {}:{}')

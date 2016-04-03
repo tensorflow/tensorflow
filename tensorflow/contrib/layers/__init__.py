@@ -33,6 +33,7 @@ Regularization can help prevent overfitting. These have the signature
 
 @@l1_regularizer
 @@l2_regularizer
+@@sum_regularizer
 
 ## Initializers
 
@@ -45,7 +46,7 @@ size, data type, and purpose.
 ## Summaries
 
 Helper functions to summarize specific variables or ops.
-           
+
 @@summarize_activation
 @@summarize_tensor
 @@summarize_tensors
@@ -56,13 +57,14 @@ The layers module defines convenience functions `summarize_variables`,
 of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
 
 @@summarize_activations
-
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 # pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.layers.python.framework.tensor_util import *
 from tensorflow.contrib.layers.python.layers import *
+from tensorflow.python.util.all_util import make_all

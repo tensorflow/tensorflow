@@ -86,9 +86,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_SWITCH);
 TF_CALL_ALL_TYPES(REGISTER_CPU_REF_SWITCH);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_SWITCH);
-REGISTER_GPU_SWITCH(bool);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_SWITCH);
-REGISTER_GPU_REF_SWITCH(bool);
 
 #undef REGISTER_CPU_SWITCH
 #undef REGISTER_CPU_REF_SWITCH
@@ -120,6 +118,8 @@ REGISTER_GPU_REF_SWITCH(bool);
 
 REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_REF_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(bool);
+REGISTER_GPU_HOST_REF_KERNEL(bool);
 REGISTER_GPU_HOST_KERNEL(string);
 REGISTER_GPU_HOST_REF_KERNEL(string);
 
@@ -219,6 +219,7 @@ REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_CPU), MergeOp);
                               .TypeConstraint<type>("T")  \
                               .HostMemory("value_index"), \
                           MergeOp);
+
 #define REGISTER_GPU_REF_KERNEL(type)                     \
   REGISTER_KERNEL_BUILDER(Name("RefMerge")                \
                               .Device(DEVICE_GPU)         \
@@ -227,7 +228,9 @@ REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_CPU), MergeOp);
                           MergeOp);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_KERNEL);
 REGISTER_GPU_KERNEL(bool);
+REGISTER_GPU_REF_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
@@ -376,7 +379,7 @@ REGISTER_GPU_KERNEL(bool);
                               .HostMemory("data")         \
                               .HostMemory("output")       \
                               .TypeConstraint<type>("T"), \
-                          ExitOp);
+                          ExitOp)
 
 REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_KERNEL(string);
@@ -477,4 +480,21 @@ REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_GPU),
                         ControlTriggerOp);
 
+// When called, abort op will abort the current process. This can be used to
+// abort remote PSs when needed.
+class AbortOp : public OpKernel {
+ public:
+  explicit AbortOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("error_msg", &error_msg_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    CHECK(false) << "Abort_op intentional failure; " << error_msg_;
+  }
+
+ private:
+  string error_msg_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("Abort").Device(DEVICE_CPU), AbortOp);
 }  // namespace tensorflow

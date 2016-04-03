@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -29,6 +30,16 @@ static void AppendTo(const TensorShape& s, gtl::InlinedVector<int64, 8>* vals) {
   for (auto it = s.begin(); it != s.end(); ++it) {
     vals->push_back((*it).size);
   }
+}
+
+void TensorShape::CheckDimsEqual(int NDIMS) const {
+  CHECK_EQ(NDIMS, dims()) << "Asking for tensor of " << NDIMS
+                          << " for a tensor of " << dims() << " dimensions";
+}
+
+void TensorShape::CheckDimsAtLeast(int NDIMS) const {
+  CHECK_GE(NDIMS, dims()) << "Asking for tensor of at least " << NDIMS
+                          << " for a tensor of " << dims() << " dimensions";
 }
 
 bool TensorShape::IsValid(const TensorShapeProto& proto) {
@@ -73,8 +84,8 @@ TensorShape::TensorShape(gtl::ArraySlice<int64> dim_sizes) {
   set_ndims_byte(0);
   set_data_type(DT_INVALID);
   num_elements_ = 1;
-  for (auto s : dim_sizes) {
-    AddDim(s);
+  for (const int64& s : dim_sizes) {
+    AddDim(internal::SubtleMustCopy(s));
   }
 }
 
@@ -83,6 +94,11 @@ TensorShape::TensorShape() {
   set_ndims_byte(0);
   set_data_type(DT_INVALID);
   num_elements_ = 1;
+}
+
+void TensorShape::DestructorOutOfLine() {
+  DCHECK(tag() == REP_OUT_OF_LINE);
+  delete as64()->dims_;
 }
 
 void TensorShape::SlowCopyFrom(const TensorShape& b) {
@@ -106,6 +122,18 @@ void TensorShape::SlowCopyFrom(const TensorShape& b) {
       set_tag(REP_OUT_OF_LINE);
       as64()->dims_ = new gtl::InlinedVector<int64, 4>(*(b.as64()->dims_));
     }
+  }
+}
+
+int64 TensorShape::dim_size(int d) const {
+  DCHECK_GE(d, 0);
+  DCHECK_LT(d, dims());
+  if (tag() == REP16) {
+    return as16()->dims_[d];
+  } else if (tag() == REP32) {
+    return as32()->dims_[d];
+  } else {
+    return (*as64()->dims_)[d];
   }
 }
 
@@ -308,6 +336,40 @@ bool TensorShapeUtils::StartsWith(const TensorShape& shape,
     if (shape.dim_size(i) != prefix.dim_size(i)) return false;
   }
   return true;
+}
+
+template <typename T>
+static inline Status MakeShapeHelper(const T* dims, int n, TensorShape* out) {
+  *out = TensorShape();
+  for (int i = 0; i < n; ++i) {
+    const T dim = internal::SubtleMustCopy(dims[i]);
+    if (dim >= 0) {
+      out->AddDim(dim);
+    } else {
+      return errors::InvalidArgument("Dimension ", dim, " must be >= 0");
+    }
+  }
+  return Status::OK();
+}
+
+#define MAKE_SHAPE(T)                                                          \
+  Status TensorShapeUtils::MakeShape(const T* dims, int n, TensorShape* out) { \
+    return MakeShapeHelper(dims, n, out);                                      \
+  }
+MAKE_SHAPE(int32)
+MAKE_SHAPE(int64)
+#undef MAKE_SHAPE
+
+string TensorShapeUtils::ShapeListString(
+    const gtl::ArraySlice<TensorShape>& shapes) {
+  string result = "[";
+  bool first = true;
+  for (const TensorShape& shape : shapes) {
+    strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
+    first = false;
+  }
+  strings::StrAppend(&result, "]");
+  return result;
 }
 
 }  // namespace tensorflow

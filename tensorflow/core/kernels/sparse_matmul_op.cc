@@ -146,6 +146,10 @@ void SparseSlice::Initialize(const ConstMatrixMap& mat, int col_offset) {
     int num_block_cols = std::min(block_size, num_cols - block_size * i);
     for (int row = 0; row < num_rows; ++row) {
       idx3.m = static_cast<uint8>(row);
+      // Safety note: The following code has a race, since it checks whether
+      // *curr is nonzero and then reads it again on use.  However, the result
+      // of the race is only that some of the "nonzeros" in the resulting sparse
+      // representation may actually be zero, which is harmless.
       const float* start =
           Transpose ? &mat(col_offset, row) : &mat(row, col_offset);
       const float* curr = start;
@@ -520,7 +524,7 @@ class SparseMatMulOp : public OpKernel {
 
  private:
   // Perform matrix multiplication of "left" and "right", and store the result
-  // in *"ouptut".
+  // in *"output".
   static inline void SparseMatMul(
       const ConstMatrixMap& left, const ConstMatrixMap& right,
       bool transpose_left, const DeviceBase::CpuWorkerThreads* thread_pool,
@@ -854,7 +858,7 @@ inline void SparseMatMulOp::SparseMatMul(
   const int right_dim0 = right.dimension(0);
   const int right_dim1 = right.dimension(1);
   // Allocate buffer for storing slices of right matrix.
-  // Note buffer needs enough space to hold atmost a KR * NR matrix since that
+  // Note buffer needs enough space to hold at most a KR * NR matrix since that
   // is the block size per iteration.
   const int buffer_num_rows =
       std::min(KR, right_dim0) * (std::min(NR, right_dim1) + N - 1) / N;

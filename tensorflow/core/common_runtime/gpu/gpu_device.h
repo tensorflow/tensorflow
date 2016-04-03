@@ -74,8 +74,8 @@ class BaseGPUDevice : public LocalDevice {
   // The caller owns the returned device.
   PerOpGpuDevice* MakeGpuDevice() override;
 
-  void ReinitializeGpuDevice(PerOpGpuDevice* device, DeviceContext* dc,
-                             Allocator* allocator) override;
+  void ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
+                             DeviceContext* dc, Allocator* allocator) override;
 
  protected:
   Allocator* gpu_allocator_;  // not owned
@@ -96,8 +96,8 @@ class BaseGPUDevice : public LocalDevice {
   const bool sync_every_op_ = false;
   std::unique_ptr<EventMgr> em_;
 
-  void ReinitializeDevice(PerOpGpuDevice* device, int stream_id,
-                          Allocator* allocator);
+  void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
+                          int stream_id, Allocator* allocator);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {

@@ -102,7 +102,11 @@ class OpDefBuilder {
   // may start the description with an "=" (like name:= <description>)
   // to suppress the automatically-generated type documentation in
   // generated output.
+#ifndef TF_LEAN_BINARY
   OpDefBuilder& Doc(StringPiece text);
+#else
+  OpDefBuilder& Doc(StringPiece text) { return *this; }
+#endif
 
   // Sets *op_def to the requested OpDef, or returns an error.
   // Must be called after all of the above methods.

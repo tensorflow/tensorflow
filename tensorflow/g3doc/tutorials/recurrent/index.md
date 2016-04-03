@@ -49,7 +49,7 @@ to make it easy for the neural network to process.
 
 ### LSTM
 
-The core of the model consists of an LSTM cell that processes one word at the
+The core of the model consists of an LSTM cell that processes one word at a
 time and computes probabilities of the possible continuations of the sentence.
 The memory state of the network is initialized with a vector of zeros and gets
 updated after reading each word. Also, for computational reasons, we will
@@ -92,7 +92,7 @@ lstm = rnn_cell.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
 initial_state = state = tf.zeros([batch_size, lstm.state_size])
 
-for i in range(len(num_steps)):
+for i in range(num_steps):
     # The value of state is updated after processing each batch of words.
     output, state = lstm(words[:, i], state)
 
@@ -159,7 +159,7 @@ lstm = rnn_cell.BasicLSTMCell(lstm_size)
 stacked_lstm = rnn_cell.MultiRNNCell([lstm] * number_of_layers)
 
 initial_state = state = stacked_lstm.zero_state(batch_size, tf.float32)
-for i in range(len(num_steps)):
+for i in range(num_steps):
     # The value of state is updated after processing each batch of words.
     output, state = stacked_lstm(words[:, i], state)
 

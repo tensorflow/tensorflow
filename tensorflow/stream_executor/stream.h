@@ -944,6 +944,34 @@ class Stream {
       std::complex<double> beta,
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c, int ldc,
       int batch_count);
+  Stream &ThenBlasGemmBatchedWithScratch(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha, const port::ArraySlice<DeviceMemory<float> *> &a,
+      int lda, const port::ArraySlice<DeviceMemory<float> *> &b, int ldb,
+      float beta, const port::ArraySlice<DeviceMemory<float> *> &c, int ldc,
+      int batch_count, ScratchAllocator *scratch_allocator);
+  Stream &ThenBlasGemmBatchedWithScratch(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, double alpha, const port::ArraySlice<DeviceMemory<double> *> &a,
+      int lda, const port::ArraySlice<DeviceMemory<double> *> &b, int ldb,
+      double beta, const port::ArraySlice<DeviceMemory<double> *> &c, int ldc,
+      int batch_count, ScratchAllocator *scratch_allocator);
+  Stream &ThenBlasGemmBatchedWithScratch(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<float> alpha,
+      const port::ArraySlice<DeviceMemory<std::complex<float>> *> &a, int lda,
+      const port::ArraySlice<DeviceMemory<std::complex<float>> *> &b, int ldb,
+      std::complex<float> beta,
+      const port::ArraySlice<DeviceMemory<std::complex<float>> *> &c, int ldc,
+      int batch_count, ScratchAllocator *scratch_allocator);
+  Stream &ThenBlasGemmBatchedWithScratch(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<double> alpha,
+      const port::ArraySlice<DeviceMemory<std::complex<double>> *> &a, int lda,
+      const port::ArraySlice<DeviceMemory<std::complex<double>> *> &b, int ldb,
+      std::complex<double> beta,
+      const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c, int ldc,
+      int batch_count, ScratchAllocator *scratch_allocator);
 
   // See BlasSupport::DoBlasHemm.
   Stream &ThenBlasHemm(blas::Side side, blas::UpperLower uplo, uint64 m,

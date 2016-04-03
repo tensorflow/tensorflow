@@ -61,6 +61,7 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Graph** graph) {
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
       if (DoConstantFolding(cf_opts, g)) {
+        RemoveDeadNodes(g);
         DumpGraph("ConstFolding", g);
         changed = true;
       }

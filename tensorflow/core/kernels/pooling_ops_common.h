@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/maxpooling_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -37,7 +37,7 @@ struct PoolParameters {
   // Updates context->status if there is an invalid input.
   PoolParameters(OpKernelContext* context, const std::vector<int32>& ksize,
                  const std::vector<int32>& stride, Padding padding,
-                 const TensorShape& tensor_in_shape);
+                 TensorFormat data_format, const TensorShape& tensor_in_shape);
 
   // Returns the shape of the output for "forward" pooling operations.
   TensorShape forward_output_shape();
@@ -63,6 +63,8 @@ struct PoolParameters {
   int pad_rows;
   int pad_cols;
   int pad_depth;
+
+  TensorFormat data_format;
 };
 
 // An implementation of MaxPooling (forward).
@@ -70,6 +72,17 @@ template <typename Device, typename T>
 class MaxPoolingOp : public OpKernel {
  public:
   explicit MaxPoolingOp(OpKernelConstruction* context) : OpKernel(context) {
+    string data_format;
+    auto status = context->GetAttr("data_format", &data_format);
+    if (status.ok()) {
+      OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                  errors::InvalidArgument("Invalid data format"));
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NHWC,
+          errors::InvalidArgument("Default MaxPoolingOp only supports NHWC."));
+    } else {
+      data_format_ = FORMAT_NHWC;
+    }
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -86,8 +99,8 @@ class MaxPoolingOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
-    PoolParameters params{context, ksize_, stride_, padding_,
-                          tensor_in.shape()};
+    PoolParameters params{context,  ksize_,      stride_,
+                          padding_, FORMAT_NHWC, tensor_in.shape()};
     if (!context->status().ok()) {
       return;
     }
@@ -200,6 +213,7 @@ class MaxPoolingOp : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
+  TensorFormat data_format_;
 };
 
 template <typename Device, typename T>

@@ -50,7 +50,6 @@ static void EXPECT_SummaryMatches(const Summary& actual,
 class SummaryImageOpTest : public OpsTestBase {
  protected:
   void MakeOp(int max_images) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "ImageSummary")
                      .Input(FakeInput())
                      .Input(FakeInput())

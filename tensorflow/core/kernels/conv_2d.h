@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_CONV_2D_H_
 #define TENSORFLOW_KERNELS_CONV_2D_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
+#include "tensorflow/core/kernels/eigen_spatial_convolutions.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 namespace functor {
@@ -51,18 +53,21 @@ struct InflatePadAndShuffle {
 
 template <typename Device, typename Input, typename Filter, typename Output>
 void SpatialConvolutionFunc(const Device& d, Output output, Input input,
-                            Filter filter, int stride,
+                            Filter filter, int row_stride, int col_stride,
                             const Eigen::PaddingType& padding) {
-  output.device(d) = Eigen::SpatialConvolution(input, filter, stride, padding);
+  // Need to swap row/col when calling Eigen.
+  output.device(d) =
+      Eigen::SpatialConvolution(input, filter, col_stride, row_stride, padding);
 }
 
 template <typename Device, typename T>
 struct SpatialConvolution {
   void operator()(const Device& d, typename TTypes<T, 4>::Tensor output,
                   typename TTypes<T, 4>::ConstTensor input,
-                  typename TTypes<T, 4>::ConstTensor filter, int stride,
-                  const Eigen::PaddingType& padding) {
-    SpatialConvolutionFunc(d, output, input, filter, stride, padding);
+                  typename TTypes<T, 4>::ConstTensor filter, int row_stride,
+                  int col_stride, const Eigen::PaddingType& padding) {
+    SpatialConvolutionFunc(d, output, input, filter, row_stride, col_stride,
+                           padding);
   }
 };
 
@@ -71,9 +76,12 @@ struct SpatialConvolutionBackwardInput {
   void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
                   typename TTypes<T, 4>::ConstTensor kernel,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int input_rows, int input_cols, int stride) {
+                  int input_rows, int input_cols, int row_stride,
+                  int col_stride) {
+    // Need to swap row/col when calling Eigen.
     input_backward.device(d) = Eigen::SpatialConvolutionBackwardInput(
-        kernel, output_backward, input_rows, input_cols, stride);
+        kernel, output_backward, input_cols, input_rows, col_stride,
+        row_stride);
   }
 };
 
@@ -83,9 +91,12 @@ struct SpatialConvolutionBackwardKernel {
                   typename TTypes<T, 4>::Tensor kernel_backward,
                   typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int kernel_rows, int kernel_cols, int stride) {
+                  int kernel_rows, int kernel_cols, int row_stride,
+                  int col_stride) {
+    // Need to swap row/col when calling Eigen.
     kernel_backward.device(d) = Eigen::SpatialConvolutionBackwardKernel(
-        input, output_backward, kernel_rows, kernel_cols, stride);
+        input, output_backward, kernel_cols, kernel_rows, col_stride,
+        row_stride);
   }
 };
 
@@ -189,12 +200,15 @@ struct PadInput {
                   typename TTypes<T, 4, IndexType>::ConstTensor in,
                   int padding_rows_left, int padding_rows_right,
                   int padding_cols_left, int padding_cols_right,
-                  typename TTypes<T, 4, IndexType>::Tensor out) {
+                  typename TTypes<T, 4, IndexType>::Tensor out,
+                  TensorFormat format) {
     Eigen::array<std::pair<IndexType, IndexType>, 4> padding;
-    padding[0] = std::make_pair(0, 0);
-    padding[1] = std::make_pair(padding_rows_left, padding_rows_right);
-    padding[2] = std::make_pair(padding_cols_left, padding_cols_right);
-    padding[3] = std::make_pair(0, 0);
+    padding[GetTensorDimIndex(format, 'N')] = std::make_pair(0, 0);
+    padding[GetTensorDimIndex(format, 'H')] =
+        std::make_pair(padding_rows_left, padding_rows_right);
+    padding[GetTensorDimIndex(format, 'W')] =
+        std::make_pair(padding_cols_left, padding_cols_right);
+    padding[GetTensorDimIndex(format, 'C')] = std::make_pair(0, 0);
     out.device(d) = in.pad(padding);
   }
 };

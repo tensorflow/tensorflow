@@ -1,0 +1,194 @@
+/* Copyright 2016 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+option java_outer_classname = "DistributedRuntimeProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.distruntime";
+
+import "tensorflow/core/framework/device_attributes.proto";
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/protobuf/config.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// CreateSession method request/response protos.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message CreateSessionRequest {
+  // The initial graph definition.
+  GraphDef graph_def = 1;
+
+  // Configuration options.
+  ConfigProto config = 2;
+}
+
+message CreateSessionResponse {
+  // The session handle to be used in subsequent calls for the created session.
+  //
+  // The client must arrange to call CloseSession with this returned
+  // session handle to close the session.
+  string session_handle = 1;
+
+  // The initial version number for the graph, to be used in the next call
+  // to ExtendSession.
+  int64 graph_version = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// ExtendSession method request/response protos.
+//
+// The "graph_def" specifies a set of nodes to be added to the session's graph.
+//
+// A typical "graph_def" will contain:
+//
+// * Zero or more new nodes with names that do not exist in the server-side
+//   graph. These will be added to the graph.
+//
+// PRECONDITION: The server-side current version is req.current_version.
+//   None of the names in req.graph_def appeared in previous successful calls to
+//   CreateSession or ExtendSession with the same session_handle.
+// POSTCONDITION: The server-side current version is resp.new_version.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message ExtendSessionRequest {
+  // REQUIRED: session_handle must be returned by a CreateSession call
+  // to the same master service.
+  string session_handle = 1;
+
+  // REQUIRED: The nodes to be added to the session's graph. If any node has
+  // the same name as an existing node, the operation will fail with
+  // ILLEGAL_ARGUMENT.
+  GraphDef graph_def = 2;
+
+  // REQUIRED: The version number of the graph to be extended. This will be
+  // tested against the current server-side version number, and the operation
+  // will fail with FAILED_PRECONDITION if they do not match.
+  int64 current_graph_version = 3;
+}
+
+message ExtendSessionResponse {
+  // TODO(mrry): Return something about the operation?
+
+  // The new version number for the extended graph, to be used in the next call
+  // to ExtendSession.
+  int64 new_graph_version = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// RunStep method request/response protos.
+//
+// The caller should provide the feeds needed by the graph and specify
+// what nodes should be fetched.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// A pair of tensor name and tensor values.
+message NamedTensorProto {
+  // Name of the tensor.
+  string name = 1;
+
+  // The client can populate a TensorProto using a tensorflow::Tensor`, or
+  // directly using the protobuf field accessors.
+  //
+  // The client specifies whether the returned tensor values should be
+  // filled tensor fields (float_val, int_val, etc.) or encoded in a
+  // compact form in tensor.tensor_content.
+  TensorProto tensor = 2;
+}
+
+message RunStepRequest {
+  // REQUIRED: session_handle must be returned by a CreateSession call
+  // to the same master service.
+  string session_handle = 1;
+
+  // Tensors to be fed in the step. Each feed is a named tensor.
+  repeated NamedTensorProto feed = 2;
+
+  // Fetches. A list of tensor names. The caller expects a tensor to
+  // be returned for each fetch[i] (see RunStepResponse.tensor). The
+  // order of specified fetches does not change the execution order.
+  repeated string fetch = 3;
+
+  // Target Nodes. A list of node names. The named nodes will be run
+  // to but their outputs will not be fetched.
+  repeated string target = 4;
+
+  // Options for the run call.
+  RunOptions options = 5;
+}
+
+message RunStepResponse {
+  // NOTE: The order of the returned tensors may or may not match
+  // the fetch order specified in RunStepRequest.
+  repeated NamedTensorProto tensor = 1;
+
+  // Returned metadata if requested in the options.
+  RunMetadata metadata = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// CloseSession method request/response protos.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message CloseSessionRequest {
+  // REQUIRED: session_handle must be returned by a CreateSession call
+  // to the same master service.
+  string session_handle = 1;
+}
+
+message CloseSessionResponse {
+}
+
+message ResetRequest {
+  // A list of container names, which may be empty.
+  //
+  // If 'container' is not empty, releases resoures in the given
+  // containers in all devices.
+  //
+  // If 'container' is empty, releases resources in the default
+  // container in all devices.
+  repeated string container = 1;
+}
+
+message ResetResponse {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// ListDevices method request/response protos.
+//
+// Returns information about the TensorFlow devices that are available
+// to this master.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message ListDevicesRequest {
+}
+
+message ListDevicesResponse {
+  repeated DeviceAttributes local_device = 1;
+  repeated DeviceAttributes remote_device = 2;
+}

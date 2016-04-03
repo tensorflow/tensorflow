@@ -276,5 +276,9 @@ TEST_F(OpsUtilTest, GetBroadcastTest3_3_3_2) {
   }
 }
 
+TEST_F(OpsUtilTest, SanitizeThreadSuffix) {
+  EXPECT_EQ("_aBc123_-___", SanitizeThreadSuffix("/aBc123_-  /"));
+}
+
 }  // namespace
 }  // namespace tensorflow

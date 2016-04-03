@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
@@ -48,41 +49,35 @@ class NodeBuilder {
   // ArraySlice.
   struct NodeOut {
     // For referencing an existing Node.
-    NodeOut(Node* n, int i = 0)  // NOLINT(runtime/explicit)
-        : node(n),
-          error(false),
-          name(node != nullptr ? node->name() : (error = true, "")),
-          index(i),
-          dt(SafeGetOutput(node, i, &error)) {}
+    NodeOut(Node* n, int i = 0);
 
     // For referencing Nodes not in the graph being built. It is
     // useful when preparing a graph for ExtendSession or creating a
     // back edge to a node that hasn't been added to the graph yet,
     // but will be.
-    NodeOut(const string& name, int i, DataType t)
-        : node(nullptr), error(false), name(name), index(i), dt(t) {}
+    NodeOut(StringPiece name, int i, DataType t);
 
     // Default constructor for std::vector<NodeOut>.
-    NodeOut() {}
+    NodeOut();
 
-    Node* node = nullptr;
+    Node* node;
     // error is set to true if:
     // * the NodeOut was default constructed and never overwritten,
     // * a nullptr Node* was passed to the NodeOut constructor, or
     // * an out-of-range index was passed to the NodeOut constructor.
-    bool error = true;
+    bool error;
     string name;
-    int index = 0;
-    DataType dt = DT_FLOAT;
+    int index;
+    DataType dt;
   };
 
   // Specify the name and the Op (either via an OpDef or the name of
   // the Op plus a registry) for the Node.  Other fields are
   // specified by calling the methods below.
   // REQUIRES: The OpDef must satisfy ValidateOpDef().
-  NodeBuilder(const string& name, const string& op_name,
+  NodeBuilder(StringPiece name, StringPiece op_name,
               const OpRegistryInterface* op_registry = OpRegistry::Global());
-  NodeBuilder(const string& name, const OpDef* op_def);
+  NodeBuilder(StringPiece name, const OpDef* op_def);
 
   // You must call one Input() function per input_arg in the Op,
   // *and in the same order as the input_args appear in the OpDef.*
@@ -100,7 +95,7 @@ class NodeBuilder {
 
   // Sets the "requested device spec" in the NodeDef (not the
   // "assigned device" in the Node).
-  NodeBuilder& Device(const string& device_spec);
+  NodeBuilder& Device(StringPiece device_spec);
 
   // Set the value of an attr.  attr_name must match the name of one of
   // attrs defined by the Op, and value must have the corresponding type
@@ -108,9 +103,9 @@ class NodeBuilder {
   // types for value).  Note that attrs will be set automatically if
   // they can be determined by the inputs.
   template <class T>
-  NodeBuilder& Attr(const string& attr_name, T&& value);
+  NodeBuilder& Attr(StringPiece attr_name, T&& value);
   template <class T>
-  NodeBuilder& Attr(const string& attr_name, std::initializer_list<T> value);
+  NodeBuilder& Attr(StringPiece attr_name, std::initializer_list<T> value);
 
   // Validates the described node and adds it to *graph, adding edges
   // for all (non-back) inputs.  If created_node is not nullptr,
@@ -144,13 +139,13 @@ class NodeBuilder {
 // IMPLEMENTATION -------------------------------------------------------------
 
 template <class T>
-inline NodeBuilder& NodeBuilder::Attr(const string& attr_name, T&& value) {
+NodeBuilder& NodeBuilder::Attr(StringPiece attr_name, T&& value) {
   def_builder_.Attr(attr_name, std::forward<T>(value));
   return *this;
 }
 
 template <class T>
-NodeBuilder& NodeBuilder::Attr(const string& attr_name,
+NodeBuilder& NodeBuilder::Attr(StringPiece attr_name,
                                std::initializer_list<T> value) {
   def_builder_.Attr(attr_name, value);
   return *this;

@@ -41,9 +41,10 @@ string Rendezvous::CreateKey(const string& src_device, uint64 src_incarnation,
   //
   // "src_incarnation" is used to distinguish a worker when it
   // restarts.
-  return strings::StrCat(src_device, ";", strings::FpToString(src_incarnation),
-                         ";", dst_device, ";", name, ";", frame_iter.frame_id,
-                         ":", frame_iter.iter_id);
+  char buf[strings::kFastToBufferSize];
+  return strings::StrCat(
+      src_device, ";", strings::Uint64ToHexString(src_incarnation, buf), ";",
+      dst_device, ";", name, ";", frame_iter.frame_id, ":", frame_iter.iter_id);
 }
 
 // Return the prefix of "*s" up to the next occurrence of "delim", or
@@ -73,7 +74,7 @@ Status Rendezvous::ParseKey(const string& key, ParsedKey* out) {
   if (s.empty() &&          // Consumed the whole string
       !parts[4].empty() &&  // Exactly five parts
       DeviceNameUtils::ParseFullName(parts[0], &out->src) &&
-      strings::StringToFp(parts[1].ToString(), &out->src_incarnation) &&
+      strings::HexStringToUint64(parts[1], &out->src_incarnation) &&
       DeviceNameUtils::ParseFullName(parts[2], &out->dst) &&
       !parts[3].empty()) {
     out->src_device.assign(parts[0].data(), parts[0].size());

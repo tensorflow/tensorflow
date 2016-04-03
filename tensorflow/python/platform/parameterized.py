@@ -13,15 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Switch between depending on pyglib.gfile or an OSS replacement."""
+"""Extension to unittest to run parameterized tests."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=g-import-not-at-top
-# pylint: disable=wildcard-import
-from . import control_imports
-if control_imports.USE_OSS and control_imports.OSS_PARAMETERIZED:
-  from tensorflow.python.platform.default._parameterized import *
-else:
-  from tensorflow.python.platform.google._parameterized import *
+raise ImportError("Not implemented yet.")
