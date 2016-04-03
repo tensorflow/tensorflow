@@ -47,19 +47,13 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             model will be continuely trained on every call of fit.
         config: RunConfig object that controls the configurations of the session,
             e.g. num_cores, gpu_memory_fraction, etc.
-        max_to_keep: The maximum number of recent checkpoint files to keep.
-            As new files are created, older files are deleted.
-            If None or 0, all checkpoint files are kept.
-            Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-        keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-            to be saved. The default value of 10,000 hours effectively disables the feature.
      """
 
     def __init__(self, hidden_units, n_classes, batch_size=32,
                  steps=200, optimizer="SGD", learning_rate=0.1,
                  class_weight=None,
                  continue_training=False, config=None,
-                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+                 verbose=1):
 
         self.hidden_units = hidden_units
         super(TensorFlowDNNClassifier, self).__init__(
@@ -68,9 +62,7 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, class_weight=class_weight,
             continue_training=continue_training,
-            config=config, verbose=verbose,
-            max_to_keep=max_to_keep,
-            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
+            config=config, verbose=verbose)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
@@ -120,18 +112,12 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
                  2: log device placement is printed.
-        max_to_keep: The maximum number of recent checkpoint files to keep.
-            As new files are created, older files are deleted.
-            If None or 0, all checkpoint files are kept.
-            Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-        keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-            to be saved. The default value of 10,000 hours effectively disables the feature.
-   """
+    """
 
     def __init__(self, hidden_units, n_classes=0, batch_size=32,
                  steps=200, optimizer="SGD", learning_rate=0.1,
                  continue_training=False, config=None,
-                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+                 verbose=1):
 
         self.hidden_units = hidden_units
         super(TensorFlowDNNRegressor, self).__init__(
@@ -140,9 +126,7 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate,
             continue_training=continue_training,
-            config=config, verbose=verbose,
-            max_to_keep=max_to_keep,
-            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
+            config=config, verbose=verbose)
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,

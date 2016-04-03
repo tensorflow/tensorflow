@@ -27,16 +27,14 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
 
     def __init__(self, n_classes=0, batch_size=32, steps=200, optimizer="SGD",
                  learning_rate=0.1, continue_training=False,
-                 config=None, verbose=1,
-                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+                 config=None, verbose=1):
 
         super(TensorFlowLinearRegressor, self).__init__(
             model_fn=models.linear_regression, n_classes=n_classes,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate,
             continue_training=continue_training, config=config,
-            verbose=verbose, max_to_keep=max_to_keep,
-            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
+            verbose=verbose)
 
     @property
     def weights_(self):
@@ -55,15 +53,14 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
     def __init__(self, n_classes, batch_size=32, steps=200, optimizer="SGD",
                  learning_rate=0.1, class_weight=None,
                  continue_training=False, config=None,
-                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+                 verbose=1):
 
         super(TensorFlowLinearClassifier, self).__init__(
             model_fn=models.logistic_regression, n_classes=n_classes,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, class_weight=class_weight,
             continue_training=continue_training, config=config,
-            verbose=verbose, max_to_keep=max_to_keep,
-            keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
+            verbose=verbose)
 
     @property
     def weights_(self):

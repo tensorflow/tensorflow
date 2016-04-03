@@ -85,20 +85,13 @@ class TensorFlowEstimator(BaseEstimator):
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
                  2: log device placement is printed.
-        max_to_keep: The maximum number of recent checkpoint files to keep.
-            As new files are created, older files are deleted.
-            If None or 0, all checkpoint files are kept.
-            Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-        keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-            to be saved. The default value of 10,000 hours effectively disables the feature.
     """
 
     def __init__(self, model_fn, n_classes, batch_size=32,
                  steps=200, optimizer="SGD",
                  learning_rate=0.1, clip_gradients=5.0, class_weight=None,
                  continue_training=False,
-                 config=None, verbose=1,
-                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+                 config=None, verbose=1):
 
         self.model_fn = model_fn
         self.n_classes = n_classes
@@ -110,8 +103,6 @@ class TensorFlowEstimator(BaseEstimator):
         self.clip_gradients = clip_gradients
         self.continue_training = continue_training
         self._initialized = False
-        self.max_to_keep = max_to_keep
-        self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
         self.class_weight = class_weight
         self._config = config
 
@@ -177,8 +168,8 @@ class TensorFlowEstimator(BaseEstimator):
 
             # Create model's saver capturing all the nodes created up until now.
             self._saver = tf.train.Saver(
-                max_to_keep=self.max_to_keep,
-                keep_checkpoint_every_n_hours=self.keep_checkpoint_every_n_hours)
+                max_to_keep=self._config.keep_checkpoint_max,
+                keep_checkpoint_every_n_hours=self._config.keep_checkpoint_every_n_hours)
 
             # Enable monitor to create validation data dict with appropriate tf placeholders
             self._monitor.create_val_feed_dict(self._inp, self._out)
