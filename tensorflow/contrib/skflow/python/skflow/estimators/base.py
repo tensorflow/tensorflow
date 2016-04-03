@@ -33,6 +33,8 @@ except ImportError:
     from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
 
 from google.protobuf import text_format
+from tensorflow.python.platform.default import _gfile as gfile
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import control_flow_ops
@@ -47,9 +49,9 @@ from tensorflow.contrib.skflow.python.skflow.estimators.run_config import RunCon
 
 
 def _write_with_backup(filename, content):
-    if os.path.exists(filename):
-        shutil.move(filename, filename + '.old')
-    with open(filename, 'w') as f:
+    if gfile.Exists(filename):
+        gfile.Rename(filename, filename + '.old', overwrite=True)
+    with gfile.Open(filename, 'w') as f:
         f.write(content)
 
 
@@ -419,12 +421,12 @@ class TensorFlowEstimator(sklearn_base.BaseEstimator):
             endpoints_filename = os.path.join(path, 'endpoints')
             if not os.path.exists(endpoints_filename):
                 raise ValueError("Restore folder doesn't contain endpoints.")
-            with open(endpoints_filename) as foutputs:
+            with gfile.Open(endpoints_filename) as foutputs:
                 endpoints = foutputs.read().split('\n')
             graph_filename = os.path.join(path, 'graph.pbtxt')
             if not os.path.exists(graph_filename):
                 raise ValueError("Restore folder doesn't contain graph definition.")
-            with open(graph_filename) as fgraph:
+            with gfile.Open(graph_filename) as fgraph:
                 graph_def = tf.GraphDef()
                 text_format.Merge(fgraph.read(), graph_def)
                 (self._inp, self._out,
@@ -433,7 +435,7 @@ class TensorFlowEstimator(sklearn_base.BaseEstimator):
             saver_filename = os.path.join(path, 'saver.pbtxt')
             if not os.path.exists(saver_filename):
                 raise ValueError("Restore folder doesn't contain saver defintion.")
-            with open(saver_filename) as fsaver:
+            with gfile.Open(saver_filename) as fsaver:
                 saver_def = tf.train.SaverDef()
                 text_format.Merge(fsaver.read(), saver_def)
                 self._saver = tf.train.Saver(saver_def=saver_def)
@@ -481,7 +483,7 @@ class TensorFlowEstimator(sklearn_base.BaseEstimator):
         # list of parameters that are allowed to be reconfigured
         reconfigurable_params = ['_config']
         _config = config
-        with open(model_def_filename) as fmodel:
+        with gfile.Open(model_def_filename) as fmodel:
             model_def = json.loads(fmodel.read())
             # TensorFlow binding requires parameters to be strings not unicode.
             # Only issue in Python2.
