@@ -76,7 +76,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
                  input_op_fn=null_input_op_fn,
                  initial_state=None, bidirectional=False,
                  sequence_length=None, tf_master="", batch_size=32,
-                 steps=50, optimizer="SGD", learning_rate=0.1,
+                 steps=50, optimizer="Adagrad", learning_rate=0.1,
                  class_weight=None,
                  tf_random_seed=42, continue_training=False,
                  config_addon=None, verbose=1,
@@ -168,7 +168,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
                  input_op_fn=null_input_op_fn, initial_state=None,
                  bidirectional=False, sequence_length=None,
                  n_classes=0, tf_master="", batch_size=32,
-                 steps=50, optimizer="SGD", learning_rate=0.1,
+                 steps=50, optimizer="Adagrad", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False,
                  config_addon=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):

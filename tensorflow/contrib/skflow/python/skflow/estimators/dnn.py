@@ -56,15 +56,19 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
         keep_checkpoint_every_n_hours: Number of hours between each checkpoint
             to be saved. The default value of 10,000 hours effectively disables the feature.
-     """
+        dropout: When not None, the probability we will drop out a given
+                 coordinate.
+    """
 
     def __init__(self, hidden_units, n_classes, tf_master="", batch_size=32,
-                 steps=200, optimizer="SGD", learning_rate=0.1,
+                 steps=200, optimizer="Adagrad", learning_rate=0.1,
                  class_weight=None,
                  tf_random_seed=42, continue_training=False, config_addon=None,
-                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000,
+                 dropout=None):
 
         self.hidden_units = hidden_units
+        self.dropout = dropout
         super(TensorFlowDNNClassifier, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
@@ -78,7 +82,8 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
-                                    models.logistic_regression)(X, y)
+                                    models.logistic_regression,
+                                    dropout=self.dropout)(X, y)
 
     @property
     def weights_(self):
@@ -133,14 +138,18 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
             Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
         keep_checkpoint_every_n_hours: Number of hours between each checkpoint
             to be saved. The default value of 10,000 hours effectively disables the feature.
+        dropout: When not None, the probability we will drop out a given
+                 coordinate.
    """
 
     def __init__(self, hidden_units, n_classes=0, tf_master="", batch_size=32,
-                 steps=200, optimizer="SGD", learning_rate=0.1,
+                 steps=200, optimizer="Adagrad", learning_rate=0.1,
                  tf_random_seed=42, continue_training=False, config_addon=None,
-                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
+                 verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000,
+                 dropout=None):
 
         self.hidden_units = hidden_units
+        self.dropout = dropout
         super(TensorFlowDNNRegressor, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, tf_master=tf_master,
@@ -153,7 +162,8 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
-                                    models.linear_regression)(X, y)
+                                    models.linear_regression,
+                                    dropout=self.dropout)(X, y)
 
     @property
     def weights_(self):

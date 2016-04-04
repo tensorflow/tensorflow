@@ -21,8 +21,25 @@ import tensorflow as tf
 from .ops import mean_squared_error_regressor, softmax_classifier, dnn
 
 
-def linear_regression(X, y):
-    """Creates linear regression TensorFlow subgraph.
+def linear_regression_zero_init(X, y):
+    """Creates a linear regression TensorFlow subgraph, in which weights and
+    bias terms are initialized to exactly zero.
+
+    Args:
+        X: tensor or placeholder for input features.
+            y: tensor or placeholder for target.
+            init_mean: the mean value to use for initialization.
+            init_stddev: the standard devation to use for initialization.
+
+    Returns:
+        Predictions and loss tensors.
+    """
+    return linear_regression(X, y, init_mean=0.0, init_stddev=0.0)
+
+
+def logistic_regression_zero_init(X, y):
+    """Creates a logistic regression TensorFlow subgraph, in which weights and
+       bias terms are initialized to exactly zero.
 
     Args:
         X: tensor or placeholder for input features.
@@ -30,6 +47,29 @@ def linear_regression(X, y):
 
     Returns:
         Predictions and loss tensors.
+    """
+    return logistic_regression(X, y, init_mean=0.0, init_stddev=0.0)
+
+
+def linear_regression(X, y, init_mean=None, init_stddev=1.0):
+    """Creates linear regression TensorFlow subgraph.
+
+    Args:
+        X: tensor or placeholder for input features.
+        y: tensor or placeholder for target.
+        init_mean: the mean value to use for initialization.
+        init_stddev: the standard devation to use for initialization.
+
+    Returns:
+        Predictions and loss tensors.
+
+    Side effects:
+        The variables linear_regression.weights and linear_regression.bias are
+        initialized as follows.  If init_mean is not None, then initialization
+        will be done using a random normal initializer with the given init_mean
+        and init_stddv.  (These may be set to 0.0 each if a zero initialization
+        is desirable for convex use cases.)  If init_mean is None, then the
+        uniform_unit_scaling_initialzer will be used.
     """
     with tf.variable_scope('linear_regression'):
         tf.histogram_summary('linear_regression.X', X)
@@ -39,14 +79,28 @@ def linear_regression(X, y):
             output_shape = 1
         else:
             output_shape = y_shape[1]
-        weights = tf.get_variable('weights', [X.get_shape()[1], output_shape])
-        bias = tf.get_variable('bias', [output_shape])
+        # Set up the requested initialization.
+        if (init_mean is None):
+            weights = tf.get_variable('weights',
+                                      [X.get_shape()[1], output_shape])
+            bias = tf.get_variable('bias',
+                                   [output_shape])
+        else:
+            weights = tf.get_variable('weights',
+                                      [X.get_shape()[1], output_shape],
+                                      initializer=tf.random_normal_initializer(
+                                          init_mean, init_stddev))
+            bias = tf.get_variable('bias',
+                                   [output_shape],
+                                   initializer=tf.random_normal_initializer(
+                                       init_mean, init_stddev))
         tf.histogram_summary('linear_regression.weights', weights)
         tf.histogram_summary('linear_regression.bias', bias)
         return mean_squared_error_regressor(X, y, weights, bias)
 
 
-def logistic_regression(X, y, class_weight=None):
+def logistic_regression(X, y, class_weight=None, init_mean=None,
+                        init_stddev=1.0):
     """Creates logistic regression TensorFlow subgraph.
 
     Args:
@@ -58,16 +112,38 @@ def logistic_regression(X, y, class_weight=None):
                       it has weight of the class. If not provided
                       will check if graph contains tensor `class_weight:0`.
                       If that is not provided either all ones are used.
+        init_mean: the mean value to use for initialization.
+        init_stddev: the standard devation to use for initialization.
 
     Returns:
         Predictions and loss tensors.
+
+    Side effects:
+        The variables linear_regression.weights and linear_regression.bias are
+        initialized as follows.  If init_mean is not None, then initialization
+        will be done using a random normal initializer with the given init_mean
+        and init_stddv.  (These may be set to 0.0 each if a zero initialization
+        is desirable for convex use cases.)  If init_mean is None, then the
+        uniform_unit_scaling_initialzer will be used.
     """
     with tf.variable_scope('logistic_regression'):
         tf.histogram_summary('logistic_regression.X', X)
         tf.histogram_summary('logistic_regression.y', y)
-        weights = tf.get_variable('weights', [X.get_shape()[1],
-                                              y.get_shape()[-1]])
-        bias = tf.get_variable('bias', [y.get_shape()[-1]])
+        # Set up the requested initialization.
+        if (init_mean is None):
+            weights = tf.get_variable('weights',
+                                      [X.get_shape()[1], y.get_shape()[-1]])
+            bias = tf.get_variable('bias',
+                                   [y.get_shape()[-1]])
+        else:
+            weights = tf.get_variable('weights',
+                                      [X.get_shape()[1], y.get_shape()[-1]],
+                                      initializer=tf.random_normal_initializer(
+                                          init_mean, init_stddev))
+            bias = tf.get_variable('bias',
+                                   [y.get_shape()[-1]],
+                                   initializer=tf.random_normal_initializer(
+                                       init_mean, init_stddev))
         tf.histogram_summary('logistic_regression.weights', weights)
         tf.histogram_summary('logistic_regression.bias', bias)
         # If no class weight provided, try to retrieve one from pre-defined
@@ -77,11 +153,12 @@ def logistic_regression(X, y, class_weight=None):
                 class_weight = tf.get_default_graph().get_tensor_by_name('class_weight:0')
             except KeyError:
                 pass
+
         return softmax_classifier(X, y, weights, bias,
                                   class_weight=class_weight)
 
 
-def get_dnn_model(hidden_units, target_predictor_fn):
+def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
     """Returns a function that creates a DNN TensorFlow subgraph with given
     params.
 
@@ -91,13 +168,14 @@ def get_dnn_model(hidden_units, target_predictor_fn):
                              features. This can be logistic regression,
                              linear regression or any other model,
                              that takes X, y and returns predictions and loss tensors.
-
+        dropout: When not none, causes dropout regularization to be used,
+                 with the specified probability of removing a given coordinate.
     Returns:
         A function that creates the subgraph.
     """
     def dnn_estimator(X, y):
         """DNN estimator with target predictor function on top."""
-        layers = dnn(X, hidden_units)
+        layers = dnn(X, hidden_units, dropout=dropout)
         return target_predictor_fn(layers, y)
     return dnn_estimator
 
