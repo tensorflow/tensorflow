@@ -1,10 +1,8 @@
 # TensorFlow for Go
 
-This package provides a SWIG-based Go package to run Tensorflow graphs in Go programs.
+This is a high-level API to generate and control the execution of a TensorFlow graph from Go.
 
-It is not an immediate goal to support Graph generation via this package.
-
-A higher level API is presented in the 'github.com/tensorflow/tensorflow/tensorflow/go' package.
+TODO: Add link to GoDoc
 
 ## Practical Examples
 
