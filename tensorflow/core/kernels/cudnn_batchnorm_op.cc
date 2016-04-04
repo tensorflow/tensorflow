@@ -166,9 +166,9 @@ class BatchNormTrainingOp : public OpKernel {
       Tensor* save_inv_var = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(2, save_mean_var_shape, &save_inv_var));
 
-      //TODO support other dimentions
+      //TODO support other dimensions
       OP_REQUIRES(context, input.dims() == 4,
-                  errors::InvalidArgument("input must be 4-dimentional", input.shape().DebugString()));
+                  errors::InvalidArgument("input must be 4-dimensional", input.shape().DebugString()));
 
       LaunchBatchNormTraining<Device, T>::launch(
           context, input, scale, bias, output,
@@ -287,9 +287,9 @@ class BatchNormBackwardTrainingOp : public OpKernel {
       Tensor* bias_grad = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(2, scale_bias_shape, &bias_grad));
 
-      //TODO support other dimentions
+      //TODO support other dimensions
       OP_REQUIRES(context, input.dims() == 4,
-                  errors::InvalidArgument("input must be 4-dimentional", input.shape().DebugString()));
+                  errors::InvalidArgument("input must be 4-dimensional", input.shape().DebugString()));
 
       LaunchBatchNormBackwardTraining<Device, T>::launch(
           context, input, output_grad, scale, saved_mean, saved_inv_var,

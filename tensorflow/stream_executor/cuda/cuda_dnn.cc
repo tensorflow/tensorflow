@@ -1358,7 +1358,7 @@ bool CudnnSupport::DoBatchNormForwardTraining(
     Stream* stream,
     const dnn::BatchDescriptor& input_dimensions,
     const DeviceMemory<float>& input_data,
-    const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+    const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
     const DeviceMemory<float>& scale_data,
     const DeviceMemory<float>& bias_data,
     const dnn::BatchDescriptor& output_dimensions,
@@ -1381,7 +1381,7 @@ bool CudnnSupport::DoBatchNormForwardTraining(
   ScopedTensorDescriptor src_desc{parent_, input_dimensions, CUDNN_DATA_FLOAT};
   ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
                                    CUDNN_DATA_FLOAT};
-  ScopedTensorDescriptor scale_bias_mean_var_desc{parent_, scale_bias_mean_var_dimentions,
+  ScopedTensorDescriptor scale_bias_mean_var_desc{parent_, scale_bias_mean_var_dimensions,
                                                   CUDNN_DATA_FLOAT};
 
 
@@ -1416,7 +1416,7 @@ bool CudnnSupport::DoBatchNormBackwardTraining(
     const DeviceMemory<float>& input_data,
     const dnn::BatchDescriptor& output_dimensions,
     const DeviceMemory<float>& output_grad_data,
-    const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+    const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
     const DeviceMemory<float>& scale_data,
     const DeviceMemory<float>& saved_mean,
     const DeviceMemory<float>& saved_inv_var,
@@ -1435,7 +1435,7 @@ bool CudnnSupport::DoBatchNormBackwardTraining(
   ScopedTensorDescriptor input_desc{parent_, input_dimensions, CUDNN_DATA_FLOAT};
   ScopedTensorDescriptor output_desc{parent_, output_dimensions,
                                    CUDNN_DATA_FLOAT};
-  ScopedTensorDescriptor scale_bias_desc{parent_, scale_bias_mean_var_dimentions,
+  ScopedTensorDescriptor scale_bias_desc{parent_, scale_bias_mean_var_dimensions,
                                                   CUDNN_DATA_FLOAT};
 
 

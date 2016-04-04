@@ -322,7 +322,7 @@ class Stream {
   Stream &ThenBatchNormalizeTraining(
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
-                    const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+                    const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
                     const DeviceMemory<float>& bn_scale,
                     const DeviceMemory<float>& bn_bias,
                     const dnn::BatchDescriptor& output_dimensions,
@@ -337,7 +337,7 @@ class Stream {
                     const DeviceMemory<float>& input_data,
                     const dnn::BatchDescriptor& output_dimensions,
                     const DeviceMemory<float>& output_grad_data,
-                    const dnn::BatchDescriptor& scale_bias_mean_var_dimentions,
+                    const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
                     const DeviceMemory<float>& scale_data,
                     const DeviceMemory<float>& saved_mean,
                     const DeviceMemory<float>& saved_inv_var,
