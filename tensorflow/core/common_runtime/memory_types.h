@@ -26,6 +26,11 @@ namespace tensorflow {
 // mismatch for any edge's source and destination.
 Status ValidateMemoryTypes(DeviceType device_type, const Graph* g);
 
+// Get the memory type for 'index'th output of node 'n' in graph 'g', when
+// running on 'device_type'.
+Status MemoryTypeForOutput(DeviceType device_type, const Graph* g,
+                           const Node* n, int index, MemoryType* memory_type);
+
 }  // end namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_

@@ -25,15 +25,14 @@ namespace tensorflow {
 GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
   if (opts_.opt_level() >= OptimizerOptions::L1) {
     opts_.set_do_common_subexpression_elimination(true);
-  }
-  if (opts_.opt_level() >= OptimizerOptions::L2) {
     opts_.set_do_constant_folding(true);
   }
 }
 
 GraphOptimizer::~GraphOptimizer() {}
 
-void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Graph** graph) {
+void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
+                              Graph** graph) {
   Graph* g = *graph;
   for (const Node* n : g->nodes()) {
     if (n->IsControlFlow()) {
@@ -58,14 +57,16 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Graph** graph) {
       DumpGraph("RemoveIdentityNodes", g);
       changed = true;
     }
+
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
-      if (DoConstantFolding(cf_opts, g)) {
+      if (DoConstantFolding(cf_opts, device, g)) {
         RemoveDeadNodes(g);
         DumpGraph("ConstFolding", g);
         changed = true;
       }
     }
+
     if (opts_.do_function_inlining() && FixupSourceAndSinkEdges(g)) {
       DumpGraph("FixupSourceAndSinkEdges", g);
       changed = true;

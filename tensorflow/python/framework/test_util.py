@@ -237,6 +237,9 @@ class TensorFlowTestCase(googletest.TestCase):
       elif force_gpu and config.allow_soft_placement:
         config = config_pb2.ConfigProto().CopyFrom(config)
         config.allow_soft_placement = False
+      # Don't perform optimizations for tests so we don't inadvertently run
+      # gpu ops on cpu
+      config.graph_options.optimizer_options.opt_level = -1
       return config
 
     if graph is None:

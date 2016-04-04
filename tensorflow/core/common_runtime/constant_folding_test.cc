@@ -103,7 +103,7 @@ class ConstantFoldingTest : public ::testing::Test {
 
 TEST_F(ConstantFoldingTest, Basic) {
   SIMPLE_GRAPH;
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, g));
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
 
   // Nodes s1 and s2 now should now have a constant input
   EXPECT_EQ(1, s1->num_inputs());
@@ -119,7 +119,7 @@ TEST_F(ConstantFoldingTest, ConsiderFunction) {
   ConstantFoldingOptions opts;
   // Do not allow constant folding of m2
   opts.consider = [m2](const Node* n) { return m2 != n; };
-  EXPECT_TRUE(DoConstantFolding(opts, g));
+  EXPECT_TRUE(DoConstantFolding(opts, nullptr, g));
 
   // Node s1 now should now have a constant input
   EXPECT_EQ(1, s1->num_inputs());
@@ -148,7 +148,7 @@ TEST_F(ConstantFoldingTest, TwoOutputs) {
   g->AddControlEdge(b0, g->sink_node());
   g->AddControlEdge(b1, g->sink_node());
 
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, g));
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
   EXPECT_EQ(1, b0->num_inputs());
   ExpectNodeEqual<int>(*(b0->in_nodes().begin()), {0, 1}, {2});
   EXPECT_EQ(1, b1->num_inputs());
@@ -174,7 +174,7 @@ TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
 
   ConstantFoldingOptions opts;
   opts.consider = [b1_ident](const Node* n) { return b1_ident != n; };
-  EXPECT_TRUE(DoConstantFolding(opts, g));
+  EXPECT_TRUE(DoConstantFolding(opts, nullptr, g));
   // 0th output of b should have been folded.
   EXPECT_EQ(1, b0->num_inputs());
   ExpectNodeEqual<int>(*(b0->in_nodes().begin()), {0, 1}, {2});
