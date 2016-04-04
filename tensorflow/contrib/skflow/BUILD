@@ -53,6 +53,18 @@ py_test(
 )
 
 py_test(
+    name = "test_early_stopping",
+    size = "small",
+    srcs = ["python/skflow/tests/test_early_stopping.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":skflow",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "test_estimators",
     size = "small",
     srcs = ["python/skflow/tests/test_estimators.py"],
