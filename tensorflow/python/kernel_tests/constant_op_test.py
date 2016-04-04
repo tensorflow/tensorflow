@@ -328,6 +328,19 @@ class ZerosLikeTest(tf.test.TestCase):
     z = tf.zeros_like(d)
     self.assertEqual(d.get_shape().as_list(), z.get_shape().as_list())
 
+  def testZerosLikeDtype(self):
+    # Make sure zeros_like works even for dtypes that cannot be cast between
+    with self.test_session():
+      shape = (3, 5)
+      dtypes = np.float32, np.complex64
+      for in_type in dtypes:
+        x = np.arange(15).astype(in_type).reshape(*shape)
+        for out_type in dtypes:
+          y = tf.zeros_like(x, dtype=out_type).eval()
+          self.assertEqual(y.dtype, out_type)
+          self.assertEqual(y.shape, shape)
+          self.assertAllEqual(y, np.zeros(shape, dtype=out_type))
+
 
 class OnesTest(tf.test.TestCase):
 
@@ -546,6 +559,40 @@ class PlaceholderTest(tf.test.TestCase):
     self.assertEqual(
         "<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>",
         repr(c))
+
+
+class PlaceholderWithDefaultTest(tf.test.TestCase):
+
+  def testFullShape(self):
+    with self.test_session():
+      p = tf.placeholder_with_default([[2, 2], [2, 2]], shape=[2, 2])
+      a = tf.identity(p)
+      self.assertAllEqual([[2, 2], [2, 2]], a.eval())
+      self.assertAllEqual([[3, 3], [3, 3]],
+                          a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
+
+      with self.assertRaises(ValueError):
+        a.eval(feed_dict={p: [[6, 6, 6], [6, 6, 6]]})
+
+  def testPartialShape(self):
+    with self.test_session():
+      p = tf.placeholder_with_default([1, 2, 3], shape=[None])
+      a = tf.identity(p)
+      self.assertAllEqual([1, 2, 3], a.eval())
+      self.assertAllEqual([3, 37], a.eval(feed_dict={p: [3, 37]}))
+
+      with self.assertRaises(ValueError):
+        a.eval(feed_dict={p: [[2, 2], [2, 2]]})
+
+  def testNoShape(self):
+    with self.test_session():
+      p = tf.placeholder_with_default([17], shape=None)
+      a = tf.identity(p)
+      self.assertAllEqual([17], a.eval())
+      self.assertAllEqual([3, 37], a.eval(feed_dict={p: [3, 37]}))
+      self.assertAllEqual([[3, 3], [3, 3]],
+                          a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
+
 
 if __name__ == "__main__":
   tf.test.main()

@@ -30,7 +30,8 @@ limitations under the License.
 // RunGraph on workers.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
 
-#include "external/grpc/include/grpc++/server_builder.h"
+#include "grpc++/alarm.h"
+#include "grpc++/server_builder.h"
 
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
@@ -46,14 +47,34 @@ namespace tensorflow {
 class GrpcMasterService : public AsyncServiceInterface {
  public:
   GrpcMasterService(MasterEnv* env, ::grpc::ServerBuilder* builder)
-      : master_impl_(new Master(env, 0.0)) {
+      : master_impl_(new Master(env, 0.0)), is_shutdown_(false) {
     builder->RegisterService(&master_service_);
     cq_ = builder->AddCompletionQueue().release();
   }
 
   ~GrpcMasterService() {
+    delete shutdown_alarm_;
     delete cq_;
     delete master_impl_;
+  }
+
+  void Shutdown() override {
+    bool did_shutdown = false;
+    {
+      mutex_lock l(mu_);
+      if (!is_shutdown_) {
+        LOG(INFO) << "Shutting down GrpcMasterService.";
+        is_shutdown_ = true;
+        did_shutdown = true;
+      }
+    }
+    if (did_shutdown) {
+      // NOTE(mrry): This enqueues a special event (with a null tag)
+      // that causes the completion queue to be shut down on the
+      // polling thread.
+      shutdown_alarm_ =
+          new ::grpc::Alarm(cq_, gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
+    }
   }
 
 // This macro creates a new request for the given RPC method name
@@ -67,33 +88,42 @@ class GrpcMasterService : public AsyncServiceInterface {
 // The implementation of the request handler for each RPC method
 // must ensure that it calls ENQUEUE_REQUEST() for that RPC method,
 // to keep accepting new requests.
-#define ENQUEUE_REQUEST(method)                                             \
-  do {                                                                      \
-    Call<GrpcMasterService, grpc::MasterService::AsyncService,              \
-         method##Request, method##Response>::                               \
-        EnqueueRequest(&master_service_, cq_,                               \
-                       &grpc::MasterService::AsyncService::Request##method, \
-                       &GrpcMasterService::method##Handler);                \
+#define ENQUEUE_REQUEST(method, supports_cancel)                              \
+  do {                                                                        \
+    mutex_lock l(mu_);                                                        \
+    if (!is_shutdown_) {                                                      \
+      Call<GrpcMasterService, grpc::MasterService::AsyncService,              \
+           method##Request, method##Response>::                               \
+          EnqueueRequest(&master_service_, cq_,                               \
+                         &grpc::MasterService::AsyncService::Request##method, \
+                         &GrpcMasterService::method##Handler,                 \
+                         (supports_cancel));                                  \
+    }                                                                         \
   } while (0)
 
   void HandleRPCsLoop() {
-    ENQUEUE_REQUEST(CreateSession);
-    ENQUEUE_REQUEST(ExtendSession);
+    ENQUEUE_REQUEST(CreateSession, true);
+    ENQUEUE_REQUEST(ExtendSession, false);
     for (int i = 0; i < 100; ++i) {
-      ENQUEUE_REQUEST(RunStep);
+      ENQUEUE_REQUEST(RunStep, true);
     }
-    ENQUEUE_REQUEST(CloseSession);
-    ENQUEUE_REQUEST(ListDevices);
-    ENQUEUE_REQUEST(Reset);
+    ENQUEUE_REQUEST(CloseSession, false);
+    ENQUEUE_REQUEST(ListDevices, false);
+    ENQUEUE_REQUEST(Reset, false);
 
     void* tag;
     bool ok;
     while (cq_->Next(&tag, &ok)) {
-      CHECK(ok);
       UntypedCall<GrpcMasterService>::Tag* callback_tag =
           static_cast<UntypedCall<GrpcMasterService>::Tag*>(tag);
-      callback_tag->OnCompleted(this, ok);
-      delete callback_tag;
+      if (callback_tag) {
+        callback_tag->OnCompleted(this, ok);
+        delete callback_tag;
+      } else {
+        // NOTE(mrry): A null `callback_tag` indicates that this is
+        // the shutdown alarm.
+        cq_->Shutdown();
+      }
     }
   }
 
@@ -101,6 +131,10 @@ class GrpcMasterService : public AsyncServiceInterface {
   Master* master_impl_;                // Owned.
   ::grpc::ServerCompletionQueue* cq_;  // Owned.
   grpc::MasterService::AsyncService master_service_;
+
+  mutex mu_;
+  bool is_shutdown_ GUARDED_BY(mu_);
+  ::grpc::Alarm* shutdown_alarm_;
 
   template <class RequestMessage, class ResponseMessage>
   using MasterCall = Call<GrpcMasterService, grpc::MasterService::AsyncService,
@@ -113,7 +147,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                                 [call](const Status& status) {
                                   call->SendResponse(ToGrpcStatus(status));
                                 });
-    ENQUEUE_REQUEST(CreateSession);
+    ENQUEUE_REQUEST(CreateSession, true);
   }
 
   // RPC handler for extending a session.
@@ -123,7 +157,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                                 [call](const Status& status) {
                                   call->SendResponse(ToGrpcStatus(status));
                                 });
-    ENQUEUE_REQUEST(ExtendSession);
+    ENQUEUE_REQUEST(ExtendSession, false);
   }
 
   // RPC handler for running one step in a session.
@@ -136,7 +170,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                             delete call_opts;
                             call->SendResponse(ToGrpcStatus(status));
                           });
-    ENQUEUE_REQUEST(RunStep);
+    ENQUEUE_REQUEST(RunStep, true);
   }
 
   // RPC handler for deleting a session.
@@ -146,7 +180,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                                [call](const Status& status) {
                                  call->SendResponse(ToGrpcStatus(status));
                                });
-    ENQUEUE_REQUEST(CloseSession);
+    ENQUEUE_REQUEST(CloseSession, false);
   }
 
   // RPC handler for listing devices.
@@ -156,7 +190,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                               [call](const Status& status) {
                                 call->SendResponse(ToGrpcStatus(status));
                               });
-    ENQUEUE_REQUEST(ListDevices);
+    ENQUEUE_REQUEST(ListDevices, false);
   }
 
   // RPC handler for resetting all sessions.
@@ -165,7 +199,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                         [call](const Status& status) {
                           call->SendResponse(ToGrpcStatus(status));
                         });
-    ENQUEUE_REQUEST(Reset);
+    ENQUEUE_REQUEST(Reset, false);
   }
 #undef ENQUEUE_REQUEST
 

@@ -38,8 +38,7 @@ is high)
         <div class="noshrink" id="paddingCell"></div>
         <template
           is="dom-repeat"
-          items="[[_runs]]"
-          sort="_sort"
+          items="[[runs]]"
           as="run"
         >
         <div class="run-name-cell noshrink">
@@ -50,8 +49,7 @@ is high)
       <div id="bottomContainer" class="container">
         <template
           is="dom-repeat"
-          items="[[_tags]]"
-          sort="_sort"
+          items="[[tags]]"
           as="tag"
         >
           <div class="image-row container noshrink">
@@ -60,8 +58,7 @@ is high)
             </div>
             <template
               is="dom-repeat"
-              items="[[_runs]]"
-              sort="_sort"
+              items="[[runs]]"
               as="run"
             >
               <div class="image-cell noshrink">
@@ -71,7 +68,6 @@ is high)
                     run="[[run]]"
                     tag="[[tag]]"
                     images-generator="[[imagesGenerator]]"
-                    individual-image-generator="[[individualImageGenerator]]"
                   >
                   </tf-image-loader>
                 </template>
@@ -110,6 +106,7 @@ is high)
       }
       .image-row {
         flex-direction: row;
+        padding-top: 5px;
       }
       .image-cell {
         width: 300px;
@@ -147,24 +144,12 @@ is high)
       is: "tf-image-grid",
       properties: {
         runToImages: Object,
-        _tags: {type: Array, computed: "_getTags(runToImages.*)"},
-        _runs: {type: Array, computed: "_getRuns(runToImages.*)"},
+        tags: Array,
+        runs: Array,
         imagesGenerator: Function,
-        individualImageGenerator: Function,
       },
-      _getTags: function(runToImages) {
-        return _.chain(runToImages.base).values().flatten().union().value();
-      },
-      _getRuns: function(runToImages) {
-        var r2i = runToImages.base;
-        return _.keys(r2i).filter(function(x) {return r2i[x].length > 0;});
-      },
-      _exists: function (run, tag, runToImages) {
-        runToImages = runToImages.base;
-        return runToImages[run].indexOf(tag) !== -1;
-      },
-      _sort: function(a, b) {
-        return a > b;
+      _exists: function (run, tag) {
+        return this.runToImages[run].indexOf(tag) !== -1;
       },
     });
   </script>

@@ -85,6 +85,73 @@ class SigmoidCrossEntropyWithLogitsTest(tf.test.TestCase):
     print("logistic loss gradient err = ", err)
     self.assertLess(err, 1e-7)
 
+  def testShapeError(self):
+    with self.assertRaisesRegexp(ValueError, "must have the same shape"):
+      tf.nn.sigmoid_cross_entropy_with_logits([[2, 1]], [1, 2, 3])
+
+
+class WeightedCrossEntropyTest(tf.test.TestCase):
+
+  def _WeightedCrossEntropy(self, logits, targets, pos_coeff):
+    assert len(logits) == len(targets)
+    pred = [1 / (1 + exp(-x)) for x in logits]
+    eps = 0.0001
+    pred = [min(max(p, eps), 1 - eps) for p in pred]
+    return [-z * pos_coeff * log(y) - (1 - z) * log(1 - y)
+            for y, z in zip(pred, targets)]
+
+  def _Inputs(self, x=None, y=None, q=3.0, dtype=tf.float64, sizes=None):
+    x = [-100, -2, -2, 0, 2, 2, 2, 100] if x is None else x
+    y = [0, 0, 1, 0, 0, 1, 0.5, 1] if y is None else y
+    assert len(x) == len(y)
+    sizes = sizes if sizes else [len(x)]
+    logits = tf.constant(x, shape=sizes, dtype=dtype, name="logits")
+    targets = tf.constant(y, shape=sizes, dtype=dtype, name="targets")
+    losses = np.array(self._WeightedCrossEntropy(x, y, q)).reshape(*sizes)
+    return logits, targets, q, losses
+
+  def testConstructionNamed(self):
+    with self.test_session():
+      logits, targets, pos_weight, _ = self._Inputs()
+      loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
+                                                      pos_weight, name="mybce")
+    self.assertEqual("mybce", loss.op.name)
+
+  def testOutput(self):
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        logits, targets, pos_weight, losses = self._Inputs(dtype=tf.float32)
+        loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
+                                                        pos_weight)
+        np_loss = np.array(losses).astype(np.float32)
+        tf_loss = loss.eval()
+      self.assertAllClose(np_loss, tf_loss, atol=0.001)
+
+  def testOutputMultiDim(self):
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        logits, targets, pos_weight, losses = self._Inputs(dtype=tf.float32,
+                                                           sizes=[2, 2, 2])
+        loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
+                                                        pos_weight)
+        np_loss = np.array(losses).astype(np.float32)
+        tf_loss = loss.eval()
+      self.assertAllClose(np_loss, tf_loss, atol=0.001)
+
+  def testGradient(self):
+    sizes = [4, 2]
+    with self.test_session():
+      logits, targets, pos_weight, _ = self._Inputs(sizes=sizes)
+      loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
+                                                      pos_weight)
+      err = tf.test.compute_gradient_error(logits, sizes, loss, sizes)
+    print("logistic loss gradient err = ", err)
+    self.assertLess(err, 1e-7)
+
+  def testShapeError(self):
+    with self.assertRaisesRegexp(ValueError, "must have the same shape"):
+      tf.nn.weighted_cross_entropy_with_logits([[2, 1]], [1, 2, 3], 2.0)
+
 
 class ZeroFractionTest(tf.test.TestCase):
 
@@ -547,15 +614,15 @@ class BatchNormalizationTest(tf.test.TestCase):
                 scale_after_normalization, shift_after_normalization)
             tf_bn_v2, tf_bn_v1bw, tf_bn_v1, ops_bn = sess.run(
                 [bn2, bn1bw, bn1, on])
-            self.assertAllClose(np_bn, ops_bn, atol=0.000001)
-            self.assertAllClose(np_bn, tf_bn_v2, atol=0.000001)
-            self.assertAllClose(tf_bn_v2, ops_bn, atol=0.000001)
+            self.assertAllClose(np_bn, ops_bn, atol=0.00001)
+            self.assertAllClose(np_bn, tf_bn_v2, atol=0.00001)
+            self.assertAllClose(tf_bn_v2, ops_bn, atol=0.00001)
             # shift_after_normalization=False is not supported in v1.
             if shift_after_normalization:
-              self.assertAllClose(np_bn, tf_bn_v1bw, atol=0.000001)
-              self.assertAllClose(np_bn, tf_bn_v1, atol=0.000001)
-              self.assertAllClose(tf_bn_v1, ops_bn, atol=0.000001)
-              self.assertAllClose(tf_bn_v1bw, ops_bn, atol=0.000001)
+              self.assertAllClose(np_bn, tf_bn_v1bw, atol=0.00001)
+              self.assertAllClose(np_bn, tf_bn_v1, atol=0.00001)
+              self.assertAllClose(tf_bn_v1, ops_bn, atol=0.00001)
+              self.assertAllClose(tf_bn_v1bw, ops_bn, atol=0.00001)
 
   def _testBatchNormGradient(self, param_index, tag, scale_after_normalization,
                              shift_after_normalization, version,
@@ -584,7 +651,7 @@ class BatchNormalizationTest(tf.test.TestCase):
             shift_after_normalization)
       else:
         print("Invalid version", version)
-        raise
+        raise ValueError()
       all_params = [x, m, v, beta, gamma]
       all_shapes = [x_shape, param_shape, param_shape, param_shape, param_shape]
       err = tf.test.compute_gradient_error(
@@ -718,7 +785,7 @@ class BatchNormalizationTest(tf.test.TestCase):
             self.assertAllClose(
                 tf_batch_norm, keep_dims_tf_batch_norm, atol=0.000001)
 
-  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.000001):
+  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.0001):
     x_val = np.random.random_sample(x_shape).astype(np.float32)
     m_val = np.random.random_sample(param_shape).astype(np.float32)
     v_val = np.random.random_sample(param_shape).astype(np.float32)

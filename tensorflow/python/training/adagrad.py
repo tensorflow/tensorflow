@@ -58,7 +58,7 @@ class AdagradOptimizer(optimizer.Optimizer):
 
   def _create_slots(self, var_list):
     for v in var_list:
-      with ops.device(v.device):
+      with ops.colocate_with(v):
         val = constant_op.constant(self._initial_accumulator_value,
                                    shape=v.get_shape())
       self._get_or_make_slot(v, val, "accumulator", self._name)

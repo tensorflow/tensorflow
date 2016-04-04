@@ -15,7 +15,7 @@ A step-by-step walk through of the details of using TensorFlow infrastructure
 to train models at scale, using MNIST handwritten digit recognition as a toy
 example.
 
-[View Tutorial](mnist/tf/index.md)
+[View Tutorial](../tutorials/mnist/tf/index.md)
 
 
 ## TensorBoard: Visualizing Learning

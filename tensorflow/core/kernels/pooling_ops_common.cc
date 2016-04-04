@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
@@ -201,7 +200,7 @@ void DnnPoolingOp<T>::Compute(
       AsDeviceMemory(transformed_output.template flat<T>().data(),
                      transformed_output.template flat<T>().size());
 
-  auto* stream = context->op_device_context<GPUDeviceContext>()->stream();
+  auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
   bool status = stream
@@ -347,7 +346,7 @@ void DnnPoolingGradOp<T>::Compute(
       AsDeviceMemory(transformed_input_backprop.template flat<T>().data(),
                      transformed_input_backprop.template flat<T>().size());
 
-  auto* stream = context->op_device_context<GPUDeviceContext>()->stream();
+  auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
   bool status =

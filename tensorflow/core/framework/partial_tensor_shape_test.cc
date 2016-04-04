@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -215,6 +216,26 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
+}
+
+TEST(PartialTensorShapeTest, MakePartialShapeEmpty) {
+  // Empty made partial shapes should still be fully defined
+  const int64 dims[0] = {};
+  PartialTensorShape shape;
+  EXPECT_FALSE(shape.IsFullyDefined());
+  TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 0, &shape));
+  EXPECT_TRUE(shape.IsFullyDefined());
+}
+
+TEST(PartialTensorShapeTest, MakePartialShapeFull) {
+  // Check that arrays are copied through correctly
+  const int64 dims[3] = {7, -1, 2};
+  PartialTensorShape shape;
+  TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 3, &shape));
+  ASSERT_EQ(shape.dims(), 3);
+  for (int i = 0; i < 3; i++) {
+    EXPECT_EQ(shape.dim_size(i), dims[i]);
+  }
 }
 
 }  // namespace

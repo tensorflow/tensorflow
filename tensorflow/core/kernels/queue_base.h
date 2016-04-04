@@ -100,11 +100,11 @@ class QueueBase : public QueueInterface {
 
   // Copies the index^th slice (in the first dimension) of parent into element.
   static Status CopySliceToElement(const Tensor& parent, Tensor* element,
-                                   int index);
+                                   int64 index);
 
   // Copies element into the index^th slice (in the first dimension) of parent.
   static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                   int index);
+                                   int64 index);
 
   void Cancel(Action action, CancellationManager* cancellation_manager,
               CancellationToken token);
@@ -120,7 +120,7 @@ class QueueBase : public QueueInterface {
   // of the *_attempts_ queues.
   void FlushUnlocked();
 
-  ~QueueBase() override {}
+  ~QueueBase() override;
 
   // Helpers for implementing MatchesNodeDef().
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);

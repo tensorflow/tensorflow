@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.training import gen_training_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.training.gen_training_ops import *
 # pylint: enable=wildcard-import
@@ -46,6 +47,18 @@ def _AssertInputIsScalar(op, index):
   """Raises ValueError if `op.inputs[index]` is not scalar."""
   op.inputs[index].get_shape().assert_is_compatible_with(tensor_shape.scalar())
 
+
+@ops.RegisterShape("ApplyAdadelta")
+def _ApplyAdadeltaShape(op):
+  """Shape function for the ApplyAdadelta op."""
+  var_shape = op.inputs[0].get_shape()
+  accum_shape = op.inputs[1].get_shape().merge_with(var_shape)
+  accum_update_shape = op.inputs[2].get_shape().merge_with(var_shape)
+  _AssertInputIsScalar(op, 3)  # lr
+  _AssertInputIsScalar(op, 4)  # rho
+  _AssertInputIsScalar(op, 5)  # epsilon
+  grad_shape = op.inputs[6].get_shape().merge_with(accum_shape)
+  return [grad_shape]
 
 @ops.RegisterShape("ApplyAdagrad")
 def _ApplyAdagradShape(op):
@@ -120,6 +133,20 @@ def _ApplyGradientDescentShape(op):
   delta_shape = op.inputs[2].get_shape().merge_with(var_shape)
   return [delta_shape]
 
+@ops.RegisterShape("SparseApplyAdadelta")
+def _SparseApplyAdadeltaShape(op):
+   """Shape function for the SparseApplyAdadelta op."""
+   var_shape = op.inputs[0].get_shape()
+   accum_grad_shape = op.inputs[1].get_shape().merge_with(var_shape)
+   accum_update_shape = op.inputs[2].get_shape().merge_with(accum_grad_shape)
+   _AssertInputIsScalar(op, 3)  # lr
+   _AssertInputIsScalar(op, 4)  # decay_rate
+   _AssertInputIsScalar(op, 5)  # epsilon
+   grad_shape = op.inputs[6].get_shape().merge_with(
+       tensor_shape.TensorShape([None]).concatenate(accum_update_shape[1:]))
+   unused_indices_shape = op.inputs[7].get_shape().merge_with(
+       tensor_shape.vector(grad_shape[0]))
+   return [accum_update_shape]
 
 @ops.RegisterShape("SparseApplyAdagrad")
 def _SparseApplyAdagradShape(op):

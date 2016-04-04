@@ -150,7 +150,7 @@ def main(argv=None):  # pylint: disable=unused-argument
       shape=(EVAL_BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
   # The variables below hold all the trainable weights. They are passed an
-  # initial value which will be assigned when when we call:
+  # initial value which will be assigned when we call:
   # {tf.initialize_all_variables().run()}
   conv1_weights = tf.Variable(
       tf.truncated_normal([5, 5, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
@@ -285,7 +285,7 @@ def main(argv=None):  # pylint: disable=unused-argument
       batch_data = train_data[offset:(offset + BATCH_SIZE), ...]
       batch_labels = train_labels[offset:(offset + BATCH_SIZE)]
       # This dictionary maps the batch data (as a numpy array) to the
-      # node in the graph is should be fed to.
+      # node in the graph it should be fed to.
       feed_dict = {train_data_node: batch_data,
                    train_labels_node: batch_labels}
       # Run the graph and fetch some of the nodes.

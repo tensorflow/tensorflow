@@ -57,7 +57,7 @@ Polymer({
   observers: [
     '_selectedDatasetChanged(selectedDataset, datasets)'
   ],
-  _parseAndConstructHierarchicalGraph: function(dataset, pbTxtContent) {
+  _parseAndConstructHierarchicalGraph: function(dataset, pbTxtFile) {
     // Reset the progress bar to 0.
     this.set('progress', {
       value: 0,
@@ -78,7 +78,7 @@ Polymer({
     this._setOutHierarchyParams(hierarchyParams);
     var statsJson;
     var dataTracker = tf.getSubtaskTracker(tracker, 30, 'Data');
-    tf.graph.parser.readAndParseData(dataset, pbTxtContent, dataTracker)
+    tf.graph.parser.readAndParseData(dataset, pbTxtFile, dataTracker)
     .then(function(result) {
       // Build the flat graph (consists only of Op nodes).
       var nodes = result.nodes;
@@ -153,13 +153,7 @@ Polymer({
     // selects the same file, we'll re-read it.
     e.target.value = '';
 
-    var reader = new FileReader();
-
-    reader.onload = function(e) {
-      this._parseAndConstructHierarchicalGraph(null, e.target.result);
-    }.bind(this);
-
-    reader.readAsText(file);
+    this._parseAndConstructHierarchicalGraph(null, file);
   }
 });
 </script>

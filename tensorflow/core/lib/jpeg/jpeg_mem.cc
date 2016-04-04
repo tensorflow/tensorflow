@@ -47,13 +47,13 @@ enum JPEGErrors {
 // arguments in a struct struct.
 class FewerArgsForCompiler {
  public:
-  FewerArgsForCompiler(int datasize, const UncompressFlags& flags, int* nwarn,
+  FewerArgsForCompiler(int datasize, const UncompressFlags& flags, int64* nwarn,
                        std::function<uint8*(int, int, int)> allocate_output)
       : datasize_(datasize),
         flags_(flags),
         pnwarn_(nwarn),
         allocate_output_(allocate_output),
-        fraction_read_(0.),
+        height_read_(0),
         height_(0),
         stride_(0) {
     if (pnwarn_ != nullptr) *pnwarn_ = 0;
@@ -61,9 +61,9 @@ class FewerArgsForCompiler {
 
   const int datasize_;
   const UncompressFlags flags_;
-  int* const pnwarn_;
+  int64* const pnwarn_;
   std::function<uint8*(int, int, int)> allocate_output_;
-  float fraction_read_;  // fraction of scanline lines successfully read
+  int height_read_;  // number of scanline lines successfully read
   int height_;
   int stride_;
 };
@@ -75,7 +75,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   const int ratio = flags.ratio;
   int components = flags.components;
   int stride = flags.stride;            // may be 0
-  int* const nwarn = argball->pnwarn_;  // may be NULL
+  int64* const nwarn = argball->pnwarn_;  // may be NULL
 
   // Can't decode if the ratio is not recognized by libjpeg
   if ((ratio != 1) && (ratio != 2) && (ratio != 4) && (ratio != 8)) {
@@ -141,6 +141,21 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
 
   jpeg_start_decompress(&cinfo);
 
+  int64 total_size = static_cast<int64>(cinfo.output_height) *
+                     static_cast<int64>(cinfo.output_width);
+  // Some of the internal routines do not gracefully handle ridiculously
+  // large images, so fail fast.
+  if (cinfo.output_width <= 0 || cinfo.output_height <= 0) {
+    LOG(ERROR) << "Invalid image size: " << cinfo.output_width << " x "
+               << cinfo.output_height;
+    return nullptr;
+  }
+  if (total_size >= (1LL << 29)) {
+    LOG(ERROR) << "Image too large: " << total_size;
+    jpeg_destroy_decompress(&cinfo);
+    return nullptr;
+  }
+
   // check for compatible stride
   const int min_stride = cinfo.output_width * components * sizeof(JSAMPLE);
   if (stride == 0) {
@@ -169,7 +184,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
 
   // If there is an error reading a line, this aborts the reading.
   // Save the fraction of the image that has been read.
-  argball->fraction_read_ = 1.0;
+  argball->height_read_ = cinfo.output_height;
   while (cinfo.output_scanline < cinfo.output_height) {
     int num_lines_read = 0;
     if (cinfo.out_color_space == JCS_CMYK) {
@@ -202,8 +217,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
       LOG(ERROR) << "Premature end of JPEG data. Stopped at line "
                  << cinfo.output_scanline << "/" << cinfo.output_height;
       if (!flags.try_recover_truncated_jpeg) {
-        argball->fraction_read_ =
-            static_cast<float>(cinfo.output_scanline) / cinfo.output_height;
+        argball->height_read_ = cinfo.output_scanline;
         error = JPEGERRORS_UNEXPECTED_END_OF_DATA;
       } else {
         for (size_t line = cinfo.output_scanline; line < cinfo.output_height;
@@ -217,7 +231,8 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
           }
           output_line += stride;
         }
-        argball->fraction_read_ = 1.0;  // consider all lines as read
+        argball->height_read_ =
+            cinfo.output_height;  // consider all lines as read
         // prevent error-on-exit in libjpeg:
         cinfo.output_scanline = cinfo.output_height;
       }
@@ -234,8 +249,8 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   // RGBRGBRGB... --> RGBARGBARGBA...
   if (components == 4) {
     // Start on the last line.
-    JSAMPLE* scanlineptr =
-        static_cast<JSAMPLE*>(dstdata + (cinfo.output_height - 1) * stride);
+    JSAMPLE* scanlineptr = static_cast<JSAMPLE*>(
+        dstdata + static_cast<int64>(cinfo.output_height - 1) * stride);
     const JSAMPLE kOpaque = -1;  // All ones appropriate for JSAMPLE.
     const int right_rgb = (cinfo.output_width - 1) * 3;
     const int right_rgba = (cinfo.output_width - 1) * 4;
@@ -316,11 +331,15 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
 //  parameters won't get clobbered by the longjmp.  So we help
 //  it out a little.
 uint8* Uncompress(const void* srcdata, int datasize,
-                  const UncompressFlags& flags, int* nwarn,
+                  const UncompressFlags& flags, int64* nwarn,
                   std::function<uint8*(int, int, int)> allocate_output) {
   FewerArgsForCompiler argball(datasize, flags, nwarn, allocate_output);
   uint8* const dstdata = UncompressLow(srcdata, &argball);
-  const float fraction_read = argball.fraction_read_;
+
+  const float fraction_read =
+      argball.height_ == 0
+          ? 1.0
+          : (static_cast<float>(argball.height_read_) / argball.height_);
   if (dstdata == NULL ||
       fraction_read < std::min(1.0f, flags.min_acceptable_fraction)) {
     // Major failure, none or too-partial read returned; get out
@@ -329,9 +348,8 @@ uint8* Uncompress(const void* srcdata, int datasize,
 
   // If there was an error in reading the jpeg data,
   // set the unread pixels to black
-  if (fraction_read < 1.0) {
-    const int first_bad_line =
-        static_cast<int>(fraction_read * argball.height_);
+  if (argball.height_read_ != argball.height_) {
+    const int first_bad_line = argball.height_read_;
     uint8* start = dstdata + first_bad_line * argball.stride_;
     const int nbytes = (argball.height_ - first_bad_line) * argball.stride_;
     memset(static_cast<void*>(start), 0, nbytes);
@@ -342,7 +360,7 @@ uint8* Uncompress(const void* srcdata, int datasize,
 
 uint8* Uncompress(const void* srcdata, int datasize,
                   const UncompressFlags& flags, int* pwidth, int* pheight,
-                  int* pcomponents, int* nwarn) {
+                  int* pcomponents, int64* nwarn) {
   uint8* buffer = NULL;
   uint8* result =
       Uncompress(srcdata, datasize, flags, nwarn,
@@ -405,6 +423,19 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
                       const CompressFlags& flags, string* output) {
   output->clear();
   const int components = (static_cast<int>(flags.format) & 0xff);
+
+  int64 total_size = static_cast<int64>(width) * static_cast<int64>(height);
+  // Some of the internal routines do not gracefully handle ridiculously
+  // large images, so fail fast.
+  if (width <= 0 || height <= 0) {
+    LOG(ERROR) << "Invalid image size: " << width << " x " << height;
+    return false;
+  }
+  if (total_size >= (1LL << 29)) {
+    LOG(ERROR) << "Image too large: " << total_size;
+    return false;
+  }
+
   int in_stride = flags.stride;
   if (in_stride == 0) {
     in_stride = width * (static_cast<int>(flags.format) & 0xff);

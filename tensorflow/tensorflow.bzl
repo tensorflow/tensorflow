@@ -1,36 +1,74 @@
 # -*- Python -*-
 
+# Parse the bazel version string from `native.bazel_version`.
+def _parse_bazel_version(bazel_version):
+  # Remove commit from version.
+  version = bazel_version.split(" ", 1)[0]
+
+  # Split into (release, date) parts and only return the release
+  # as a tuple of integers.
+  parts = version.split('-', 1)
+
+  # Turn "release" into a tuple of integers
+  version_tuple = ()
+  for number in parts[0].split('.'):
+    version_tuple += (int(number),)
+  return version_tuple
+
+
+# Check that a specific bazel version is being used.
+def check_version(bazel_version):
+  if "bazel_version" in dir(native) and native.bazel_version:
+    current_bazel_version = _parse_bazel_version(native.bazel_version)
+    minimum_bazel_version = _parse_bazel_version(bazel_version)
+    if minimum_bazel_version > current_bazel_version:
+      fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
+          native.bazel_version, bazel_version))
+  pass
+
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
-
 load("//tensorflow/core:platform/default/build_config_root.bzl",
      "tf_cuda_tests_tags")
 
 # List of proto files for android builds
 def tf_android_core_proto_sources():
+  return ["//tensorflow/core:" + p
+          for p in tf_android_core_proto_sources_relative()]
+
+# As tf_android_core_proto_sources, but paths relative to
+# //third_party/tensorflow/core.
+def tf_android_core_proto_sources_relative():
     return [
-        "//tensorflow/core:example/example.proto",
-        "//tensorflow/core:example/feature.proto",
-        "//tensorflow/core:framework/allocation_description.proto",
-        "//tensorflow/core:framework/attr_value.proto",
-        "//tensorflow/core:framework/config.proto",
-        "//tensorflow/core:framework/device_attributes.proto",
-        "//tensorflow/core:framework/function.proto",
-        "//tensorflow/core:framework/graph.proto",
-        "//tensorflow/core:framework/kernel_def.proto",
-        "//tensorflow/core:framework/op_def.proto",
-        "//tensorflow/core:framework/step_stats.proto",
-        "//tensorflow/core:framework/summary.proto",
-        "//tensorflow/core:framework/tensor.proto",
-        "//tensorflow/core:framework/tensor_description.proto",
-        "//tensorflow/core:framework/tensor_shape.proto",
-        "//tensorflow/core:framework/tensor_slice.proto",
-        "//tensorflow/core:framework/types.proto",
-        "//tensorflow/core:framework/versions.proto",
-        "//tensorflow/core:lib/core/error_codes.proto",
-        "//tensorflow/core:protobuf/saver.proto",
-        "//tensorflow/core:util/saved_tensor_slice.proto"
+        "example/example.proto",
+        "example/feature.proto",
+        "framework/allocation_description.proto",
+        "framework/attr_value.proto",
+        "framework/device_attributes.proto",
+        "framework/function.proto",
+        "framework/graph.proto",
+        "framework/kernel_def.proto",
+        "framework/log_memory.proto",
+        "framework/op_def.proto",
+        "framework/step_stats.proto",
+        "framework/summary.proto",
+        "framework/tensor.proto",
+        "framework/tensor_description.proto",
+        "framework/tensor_shape.proto",
+        "framework/tensor_slice.proto",
+        "framework/types.proto",
+        "framework/versions.proto",
+        "lib/core/error_codes.proto",
+        "protobuf/config.proto",
+        "protobuf/saver.proto",
+        "util/saved_tensor_slice.proto",
   ]
+
+# Returns the list of pb.h headers that are generated for
+# tf_android_core_proto_sources().
+def tf_android_core_proto_headers():
+  return ["//tensorflow/core/" + p.replace(".proto", ".pb.h")
+          for p in tf_android_core_proto_sources_relative()]
 
 
 def if_cuda(a, b=[]):
@@ -43,7 +81,14 @@ def if_cuda(a, b=[]):
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
-          select({"//tensorflow:darwin": [],
+          select({"//tensorflow:android": [
+                    "-mfpu=neon",
+                    "-std=c++11",
+                    "-DMIN_LOG_LEVEL=0",
+                    "-DTF_LEAN_BINARY",
+                    "-O2",
+                  ],
+                  "//tensorflow:darwin": [],
                   "//conditions:default": ["-pthread"]}))
 
 
@@ -166,9 +211,11 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
-def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[]):
+def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
+               suffix=""):
   name = name.replace(".cc", "")
-  native.cc_test(name="%s" % (name.replace("/", "_")),
+  native.cc_test(name="%s%s" % (name.replace("/", "_"), suffix),
+                 size=size,
                  srcs=["%s.cc" % (name)],
                  copts=tf_copts(),
                  data=data,
@@ -178,10 +225,28 @@ def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[]):
                  tags=tags,)
 
 
+def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium"):
+  tf_cc_test(name=name,
+             deps=deps,
+             tags=tags + ["manual"],
+             data=data,
+             size=size)
+  tf_cc_test(name=name,
+             suffix="_gpu",
+             deps=deps + if_cuda(["//tensorflow/core:gpu_runtime"]),
+             linkstatic=if_cuda(1, 0),
+             tags=tags + tf_cuda_tests_tags(),
+             data=data,
+             size=size)
+
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(tests, deps, linkstatic=0, tags=[]):
+def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium"):
   for t in tests:
-    tf_cc_test(t, deps, linkstatic, tags=tags)
+    tf_cc_test(t, deps, linkstatic, tags=tags, size=size)
+
+def tf_cuda_cc_tests(tests, deps, tags=[], size="medium"):
+  for t in tests:
+    tf_cuda_cc_test(t, deps, tags=tags, size=size)
 
 # Build defs for TensorFlow kernels
 
@@ -198,8 +263,9 @@ def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
       hdrs = hdrs,
       copts = copts + if_cuda(cuda_copts),
       deps = deps + if_cuda([
-          "//tensorflow/core:stream_executor",
-      ]) + ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+          "//tensorflow/core:cuda",
+          "//tensorflow/core:gpu_lib",
+      ]),
       alwayslink=1,
       **kwargs)
 
@@ -227,8 +293,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
     copts = []
 
   native.cc_library(
-      deps = deps + if_cuda(cuda_deps) +
-          ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+      deps = deps + if_cuda(cuda_deps + ["//tensorflow/core:cuda"]),
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
 
@@ -261,7 +326,6 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     hdrs = []
   if not deps:
     deps = []
-  gpu_deps = deps + ["//tensorflow/core:cuda"]
 
   if prefix:
     if native.glob([prefix + "*.cu.cc"], exclude = ["*test*"]):
@@ -278,7 +342,7 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     tf_gpu_kernel_library(
         name = name + "_gpu",
         srcs = gpu_srcs,
-        deps = gpu_deps,
+        deps = deps,
         **kwargs)
     cuda_deps.extend([":" + name + "_gpu"])
   tf_cuda_library(
@@ -287,7 +351,7 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
       hdrs = hdrs,
       copts = tf_copts(),
       cuda_deps = cuda_deps,
-      linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+      linkstatic = 1,   # Needed since alwayslink is broken in bazel b/27630669
       alwayslink = alwayslink,
       deps = deps,
       **kwargs)
@@ -377,6 +441,55 @@ def transitive_hdrs(name, deps=[], **kwargs):
   native.filegroup(name=name,
                    srcs=[":" + name + "_gather"])
 
+
+# Create a header only library that includes all the headers exported by
+# the libraries in deps.
+def cc_header_only_library(name, deps=[], **kwargs):
+  _transitive_hdrs(name=name + "_gather",
+                   deps=deps)
+  native.cc_library(name=name,
+                    hdrs=[":" + name + "_gather"],
+                    **kwargs)
+
+
+# Helper to build a dynamic library (.so) from the sources containing
+# implementations of custom ops and kernels.
+def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
+  cuda_deps = [
+      "//tensorflow/core:stream_executor_headers_lib",
+      "//third_party/gpus/cuda:cudart_static",
+  ]
+  deps = deps + [
+      "//third_party/eigen3",
+      "//tensorflow/core:framework_headers_lib",
+  ]
+  if gpu_srcs:
+    basename = name.split(".")[0]
+    cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
+                  "-nvcc_options=relaxed-constexpr", "-nvcc_options=ftz=true",
+                  "--gcudacc_flag=-ftz=true"]
+
+    native.cc_library(
+        name = basename + "_gpu",
+        srcs = gpu_srcs,
+        copts = if_cuda(cuda_copts),
+        deps = deps + if_cuda(cuda_deps))
+    cuda_deps.extend([":" + basename + "_gpu"])
+
+  native.cc_binary(name=name,
+                   srcs=srcs,
+                   deps=deps + if_cuda(cuda_deps),
+                   linkshared=1,
+                   linkopts = select({
+                       "//conditions:default": [
+                           "-Wl,-Bsymbolic",
+                           "-lm",
+                       ],
+                       "//tensorflow:darwin": [],
+                   }),
+  )
+
+
 def tf_extension_linkopts():
   return []  # No extension link opts
 
@@ -410,8 +523,41 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                     data=[":" + cc_library_name])
 
 
+def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
+               tags=[], shard_count=1, additional_deps=[]):
+  native.py_test(
+      name=name,
+      size=size,
+      srcs=srcs,
+      main=main,
+      args=args,
+      tags=tags,
+      visibility=["//tensorflow:internal"],
+      shard_count=shard_count,
+      data=data,
+      deps=[
+          "//tensorflow/python:extra_py_tests_deps",
+          "//tensorflow/python:kernel_tests/gradient_checker",
+      ] + additional_deps,
+      srcs_version="PY2AND3")
+
+
+def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
+                 shard_count=1, additional_deps=[]):
+  test_tags = tf_cuda_tests_tags()
+  tf_py_test(name=name,
+             size=size,
+             srcs=srcs,
+             data=data,
+             main=main,
+             args=args,
+             tags=test_tags,
+             shard_count=shard_count,
+             additional_deps=additional_deps)
+
 def py_tests(name,
              srcs,
+             size="medium",
              additional_deps=[],
              data=[],
              tags=[],
@@ -421,20 +567,17 @@ def py_tests(name,
     test_name = src.split("/")[-1].split(".")[0]
     if prefix:
       test_name = "%s_%s" % (prefix, test_name)
-    native.py_test(name=test_name,
-                   srcs=[src],
-                   main=src,
-                   tags=tags,
-                   visibility=["//tensorflow:internal"],
-                   shard_count=shard_count,
-                   data=data,
-                   deps=[
-                       "//tensorflow/python:extra_py_tests_deps",
-                       "//tensorflow/python:kernel_tests/gradient_checker",
-                   ] + additional_deps,
-                   srcs_version="PY2AND3")
+    tf_py_test(name=test_name,
+               size=size,
+               srcs=[src],
+               main=src,
+               tags=tags,
+               shard_count=shard_count,
+               data=data,
+               additional_deps=additional_deps)
 
 
-def cuda_py_tests(name, srcs, additional_deps=[], data=[], shard_count=1):
+def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[], shard_count=1):
   test_tags = tf_cuda_tests_tags()
-  py_tests(name, srcs, additional_deps, data, test_tags, shard_count)
+  py_tests(name=name, size=size, srcs=srcs, additional_deps=additional_deps,
+           data=data, tags=test_tags, shard_count=shard_count)

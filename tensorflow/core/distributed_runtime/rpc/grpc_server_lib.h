@@ -16,37 +16,89 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERVER_LIB_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERVER_LIB_H_
 
+#include <memory>
+
+#include "grpc++/grpc++.h"
+#include "grpc++/security/credentials.h"
+
+#include "tensorflow/core/distributed_runtime/master_env.h"
+#include "tensorflow/core/distributed_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
-// Defines the configuration for a single task (typically a process)
-// that is part of a gRPC-based TensorFlow cluster.
-struct GrpcServerOptions {
-  // This identity of the job to which this task belongs.  The names
-  // of the devices in this task will be prefixed with
-  // "/job:<job_name>/task:<task_index>"
-  string job_name;
-  int32 task_index = 0;
+class GrpcServer : public ServerInterface {
+ protected:
+  GrpcServer(const ServerDef& server_def, Env* env);
 
-  // A channel specification, which defines (i) the set of jobs that
-  // comprise the cluster, and (ii) within each job, the endpoints
-  // exposed by each task. NOTE: This spec also defines the endpoint
-  // on which this task will listen.
-  GrpcChannelSpec channel_spec;
+ public:
+  static Status Create(const ServerDef& server_def, Env* env,
+                       std::unique_ptr<ServerInterface>* out_server);
 
-  // SessionOptions that will be used as defaults when configuring
-  // sessions in this task. `default_session_options.target` is
-  // ignored.
-  SessionOptions default_session_options;
+  virtual ~GrpcServer();
+
+  // Implementations of ServerInterface methods.
+  Status Start() override;
+  Status Stop() override;
+  Status Join() override;
+  const string target() const override;
+
+ protected:
+  Status Init();
+
+  // A subclass can override this method to support secure credentials.
+  virtual std::shared_ptr<::grpc::ServerCredentials> GetServerCredentials(
+      const ServerDef& server_def) const;
+
+  virtual ChannelCreationFunction GetChannelCreationFunction(
+      const ServerDef& server_def) const;
+
+  // Returns the port to which this server is bound.
+  // This method may only be called after `this->Init()` returns successfully.
+  int bound_port() const { return bound_port_; }
+
+ private:
+  // The overall server configuration.
+  const ServerDef server_def_;
+  Env* env_;
+
+  // The port requested for this server.
+  int requested_port_;
+  // The port to which this server is bound.
+  int bound_port_ = 0;
+
+  // Guards state transitions.
+  mutex mu_;
+
+  // Represents the current state of the server, which changes as follows:
+  //
+  //                 Join()            Join()
+  //                  ___               ___
+  //      Start()     \ /    Stop()     \ /
+  // NEW ---------> STARTED --------> STOPPED
+  //   \                          /
+  //    \________________________/
+  //            Stop(), Join()
+  enum State { NEW, STARTED, STOPPED };
+  State state_ GUARDED_BY(mu_);
+
+  // Implementation of a TensorFlow master, and RPC polling thread.
+  MasterEnv master_env_;
+  AsyncServiceInterface* master_service_;
+  std::unique_ptr<Thread> master_thread_ GUARDED_BY(mu_);
+
+  // Implementation of a TensorFlow worker, and RPC polling thread.
+  WorkerEnv worker_env_;
+  AsyncServiceInterface* worker_service_;
+  std::unique_ptr<Thread> worker_thread_ GUARDED_BY(mu_);
+
+  std::unique_ptr<::grpc::Server> server_ GUARDED_BY(mu_);
 };
-
-// Starts a gRPC-based TensorFlow server with the given options.
-// This function will not return.
-void StartTensorFlowServer(const GrpcServerOptions& options);
 
 }  // namespace tensorflow
 

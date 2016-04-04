@@ -20,11 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-import sys
 import threading
 
 import numpy as np
-import six
 
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import errors
@@ -46,7 +44,7 @@ class SessionInterface(object):
     """The TensorFlow process to which this session will connect."""
     raise NotImplementedError('sess_str')
 
-  def run(self, fetches, feed_dict=None):
+  def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Runs operations in the session. See `Session.run()` for details."""
     raise NotImplementedError('run')
 
@@ -256,7 +254,7 @@ class BaseSession(SessionInterface):
        lambda feed: [feed])]
   # pylint: enable=g-long-lambda
 
-  def run(self, fetches, feed_dict=None):
+  def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Runs the operations and evaluates the tensors in `fetches`.
 
     This method runs one "step" of TensorFlow computation, by
@@ -295,11 +293,22 @@ class BaseSession(SessionInterface):
       the value should be a
       [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
 
+    The optional `options` argument expects a [`RunOptions`] proto. The options
+    allow controlling the behavior of this particular step (e.g. turning tracing
+    on).
+
+    The optional `run_metadata` argument expects a [`RunMetadata`] proto. When
+    appropriate, the non-Tensor output of this step will be collected there. For
+    example, when users turn on tracing in `options`, the profiled info will be
+    collected into this argument and passed back.
+
     Args:
       fetches: A single graph element, or a list of graph elements
         (described above).
       feed_dict: A dictionary that maps graph elements to values
         (described above).
+      options: A [`RunOptions`] protocol buffer
+      run_metadata: A [`RunMetadata`] protocol buffer
 
     Returns:
       Either a single value if `fetches` is a single graph element, or
@@ -312,7 +321,24 @@ class BaseSession(SessionInterface):
       ValueError: If `fetches` or `feed_dict` keys are invalid or refer to a
         `Tensor` that doesn't exist.
     """
-    return self._run(None, fetches, feed_dict)
+    run_metadata_ptr = tf_session.TF_NewBuffer()
+    if options:
+      options_ptr = tf_session.TF_NewBufferFromString(
+          compat.as_bytes(options.SerializeToString()))
+    else:
+      options_ptr = None
+
+    try:
+      result = self._run(None, fetches, feed_dict, options_ptr,
+                         run_metadata_ptr)
+      if run_metadata:
+        proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
+        run_metadata.ParseFromString(compat.as_bytes(proto_data))
+    finally:
+      tf_session.TF_DeleteBuffer(run_metadata_ptr)
+      if options:
+        tf_session.TF_DeleteBuffer(options_ptr)
+    return result
 
   def partial_run(self, handle, fetches, feed_dict=None):
     """Continues the execution with more feeds and fetches.
@@ -347,7 +373,7 @@ class BaseSession(SessionInterface):
       Either a single value if `fetches` is a single graph element, or
       a list of values if `fetches` is a list (described above).
     """
-    return self._run(handle, fetches, feed_dict)
+    return self._run(handle, fetches, feed_dict, None, None)
 
   def partial_run_setup(self, fetches, feeds=None):
     """Sets up a graph with feeds and fetches for partial run.
@@ -459,7 +485,7 @@ class BaseSession(SessionInterface):
     unique_fetch_targets = list(unique_fetch_targets)
     return unique_fetch_targets, target_list, fetch_info
 
-  def _run(self, handle, fetches, feed_dict):
+  def _run(self, handle, fetches, feed_dict, options, run_metadata):
     """Perform either run or partial_run, depending the exitence of `handle`."""
     def _feed_fn(feed, feed_val):
       for tensor_type, _, feed_fn, _ in BaseSession._REGISTERED_EXPANSIONS:
@@ -498,17 +524,18 @@ class BaseSession(SessionInterface):
                             'strings, lists, or numpy ndarrays.')
 
           np_val = np.array(subfeed_val, dtype=subfeed_t.dtype.as_numpy_dtype)
-          if subfeed_t.op.type == 'Placeholder':
-            if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
-              raise ValueError(
-                  'Cannot feed value of shape %r for Tensor %r, '
-                  'which has shape %r'
-                  % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
+          if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
+            raise ValueError(
+                'Cannot feed value of shape %r for Tensor %r, '
+                'which has shape %r'
+                % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
+          if not self.graph.is_feedable(subfeed_t):
+            raise ValueError('Tensor %s may not be fed.' % subfeed_t)
           feed_dict_string[compat.as_bytes(subfeed_t.name)] = np_val
 
     # Run request and get response.
     results = self._do_run(handle, target_list, unique_fetches,
-                           feed_dict_string)
+                           feed_dict_string, options, run_metadata)
 
     # User may have fetched the same tensor multiple times, but we
     # only fetch them from the runtime once.  Furthermore, they may
@@ -531,7 +558,8 @@ class BaseSession(SessionInterface):
   # Captures the name of a node in an error status.
   _NODEDEF_NAME_RE = re.compile(r'\[\[Node: ([^ ]*?) =')
 
-  def _do_run(self, handle, target_list, fetch_list, feed_dict):
+  def _do_run(self, handle, target_list, fetch_list, feed_dict,
+              options, run_metadata):
     """Runs a step based on the given fetches and feeds.
 
     Args:
@@ -542,6 +570,8 @@ class BaseSession(SessionInterface):
         be fetched and operations to be run.
       feed_dict: A dictionary that maps tensor names (as byte arrays) to
         numpy ndarrays.
+      options: A (pointer to a) [`RunOptions`] protocol buffer, or None
+      run_metadata: A (pointer to a) [`RunMetadata`] protocol buffer, or None
 
     Returns:
       A list of numpy ndarrays, corresponding to the elements of
@@ -549,10 +579,17 @@ class BaseSession(SessionInterface):
       name of an operation, the first Tensor output of that operation
       will be returned for that element.
     """
-    def _run_fn(session, feed_dict, fetch_list, target_list):
+    def _run_fn(session, feed_dict, fetch_list, target_list, options,
+                run_metadata):
       # Ensure any changes to the graph are reflected in the runtime.
       self._extend_graph()
-      return tf_session.TF_Run(session, feed_dict, fetch_list, target_list)
+      if options:
+        return tf_session.TF_Run(session, options,
+                                 feed_dict, fetch_list, target_list,
+                                 run_metadata)
+      else:
+        return tf_session.TF_Run(
+            session, None, feed_dict, fetch_list, target_list, None)
 
     def _prun_fn(session, handle, feed_dict, fetch_list):
       if target_list:
@@ -561,7 +598,7 @@ class BaseSession(SessionInterface):
 
     if handle is None:
       return self._do_call(_run_fn, self._session, feed_dict, fetch_list,
-                           target_list)
+                           target_list, options, run_metadata)
     else:
       return self._do_call(_prun_fn, self._session, handle, feed_dict,
                            fetch_list)
@@ -570,22 +607,21 @@ class BaseSession(SessionInterface):
     try:
       return fn(*args)
     except tf_session.StatusNotOK as e:
-      e_type, e_value, e_traceback = sys.exc_info()
       error_message = compat.as_text(e.error_message)
       m = BaseSession._NODEDEF_NAME_RE.search(error_message)
+      node_def = None
+      op = None
       if m is not None:
         node_name = m.group(1)
-        node_def = None
         try:
           op = self._graph.get_operation_by_name(node_name)
           node_def = op.node_def
         except KeyError:
-          op = None
-        # pylint: disable=protected-access
-        raise errors._make_specific_exception(node_def, op, error_message,
-                                              e.code)
-        # pylint: enable=protected-access
-      six.reraise(e_type, e_value, e_traceback)
+          pass
+      # pylint: disable=protected-access
+      raise errors._make_specific_exception(node_def, op, error_message,
+                                            e.code)
+      # pylint: enable=protected-access
 
   def _extend_graph(self):
     # Ensure any changes to the graph are reflected in the runtime.
@@ -647,7 +683,7 @@ class Session(BaseSession):
   ```
 
   The [`ConfigProto`]
-  (https://www.tensorflow.org/code/tensorflow/core/framework/config.proto)
+  (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
   protocol buffer exposes various configuration options for a
   session. For example, to create a session that uses soft constraints
   for device placement, and log the resulting placement decisions,
@@ -686,7 +722,7 @@ class Session(BaseSession):
         Defaults to using an in-process engine. At present, no value
         other than the empty string is supported.
       graph: (Optional.) The `Graph` to be launched (described above).
-      config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/framework/config.proto)
+      config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
         protocol buffer with configuration options for the session.
 
     """

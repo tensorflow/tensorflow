@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MASTER_INTERFACE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MASTER_INTERFACE_H_
 
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
@@ -28,22 +29,27 @@ namespace tensorflow {
 class MasterInterface {
  public:
   virtual ~MasterInterface() {}
-  virtual Status CreateSession(const CreateSessionRequest* request,
+  virtual Status CreateSession(CallOptions* call_options,
+                               const CreateSessionRequest* request,
                                CreateSessionResponse* response) = 0;
 
-  virtual Status ExtendSession(const ExtendSessionRequest* request,
+  virtual Status ExtendSession(CallOptions* call_options,
+                               const ExtendSessionRequest* request,
                                ExtendSessionResponse* response) = 0;
 
-  virtual Status RunStep(const RunStepRequest* request,
+  virtual Status RunStep(CallOptions* call_options,
+                         const RunStepRequest* request,
                          RunStepResponse* response) = 0;
 
-  virtual Status CloseSession(const CloseSessionRequest* request,
+  virtual Status CloseSession(CallOptions* call_options,
+                              const CloseSessionRequest* request,
                               CloseSessionResponse* response) = 0;
 
-  virtual Status ListDevices(const ListDevicesRequest* request,
+  virtual Status ListDevices(CallOptions* call_options,
+                             const ListDevicesRequest* request,
                              ListDevicesResponse* response) = 0;
 
-  virtual Status Reset(const ResetRequest* request,
+  virtual Status Reset(CallOptions* call_options, const ResetRequest* request,
                        ResetResponse* response) = 0;
 };
 

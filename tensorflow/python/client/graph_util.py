@@ -115,49 +115,6 @@ def must_run_on_cpu(node, pin_variables_on_cpu=False):
 ################################################################################
 
 
-def pin_variables_on_cpu(op):
-  """Returns a CPU device for Variable nodes if the device is not specified.
-
-  Args:
-    op: The ops.Operation object describing the node for which a device
-      should be chosen. The op.device field is respected.
-
-  Returns:
-    A device containing "/device:CPU:0" if the node is related to a variable.
-  """
-  device = op.device if op.device is not None else ""
-  dev = pydev.from_string(device)
-
-  # If a device type exists already, do not override.
-  if dev.device_type:
-    return device
-
-  if isinstance(op, ops.Operation):
-    node_def = op.node_def
-  else:
-    assert isinstance(op, graph_pb2.NodeDef)
-    node_def = op
-
-  if _is_variable_op(node_def.op):
-    return set_cpu0(device)
-  return device
-
-
-def pin_to_cpu(op):
-  """Returns a CPU device for the given node."""
-  device = op.device if op.device is not None else ""
-  dev = pydev.from_string(device)
-
-  if not dev.device_type:
-    return set_cpu0(device)
-  if dev.device_type == "CPU":
-    return device
-
-  logging.info("Operation %s has been assigned to a non-CPU (%s), so "
-               "it will not be pinned to the CPU.", op.name, dev.device_type)
-  return device
-
-
 def _node_name(n):
   if n.startswith("^"):
     return n[1:]
@@ -250,10 +207,16 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names):
     GraphDef containing a simplified version of the original.
   """
   found_variables = {}
+  variable_names = []
+  variable_dict_names = []
   for node in input_graph_def.node:
     if node.op == "Assign":
       variable_name = node.input[0]
-      found_variables[variable_name] = sess.run(variable_name + ":0")
+      variable_dict_names.append(variable_name)
+      variable_names.append(variable_name + ":0")
+  returned_variables = sess.run(variable_names)
+  found_variables = dict(zip(variable_dict_names, returned_variables))
+  logging.info("Frozen %d variables." % len(returned_variables))
 
   # This graph only includes the nodes needed to evaluate the output nodes, and
   # removes unneeded nodes like those involved in saving and assignment.

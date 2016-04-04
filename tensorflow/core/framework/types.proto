@@ -30,10 +30,11 @@ enum DataType {
   DT_QINT16 = 15;    // Quantized int16
   DT_QUINT16 = 16;   // Quantized uint16
   DT_UINT16 = 17;
+  DT_COMPLEX128 = 18;  // Double-precision complex
+  DT_HALF = 19;
 
   // TODO(josh11b): DT_GENERIC_PROTO = ??;
   // TODO(jeff,josh11b): DT_UINT64?  DT_UINT32?
-  // TODO(zhifengc): DT_COMPLEX128 (double-precision complex)?
 
   // Do not use!  These are only for parameters.  Every enum above
   // should have a corresponding value below (verified by types_test).
@@ -54,4 +55,6 @@ enum DataType {
   DT_QINT16_REF = 115;
   DT_QUINT16_REF = 116;
   DT_UINT16_REF = 117;
+  DT_COMPLEX128_REF = 118;
+  DT_HALF_REF = 119;
 }

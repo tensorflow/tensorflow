@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/platform/macros.h"
 
-#include "external/grpc/include/grpc++/grpc++.h"
-#include "external/grpc/include/grpc++/server_builder.h"
+#include "grpc++/grpc++.h"
+#include "grpc++/server_builder.h"
 
 namespace tensorflow {
 
@@ -124,7 +124,7 @@ class UntypedCall : public core::RefCounted {
     }
 
    private:
-    UntypedCall* call_;  // `this` owns one reference.
+    UntypedCall* const call_;  // `this` owns one reference.
     Callback callback_;
   };
 };
@@ -174,6 +174,9 @@ class Call : public UntypedCall<Service> {
         cancel_callback_();
       }
     }
+    // NOTE(mrry): This can be called before or after RequestReceived, so we
+    // release `cancel_tag_` (in order to allow the event loop to free it).
+    cancel_tag_.release();
   }
 
   // Registers `callback` as the function that should be called if and when this
@@ -197,12 +200,13 @@ class Call : public UntypedCall<Service> {
   static void EnqueueRequest(GrpcService* grpc_service,
                              ::grpc::ServerCompletionQueue* cq,
                              EnqueueFunction enqueue_function,
-                             HandleRequestFunction handle_request_function) {
+                             HandleRequestFunction handle_request_function,
+                             bool supports_cancel) {
     auto call = new Call<Service, GrpcService, RequestMessage, ResponseMessage>(
         handle_request_function);
-
-    call->ctx_.AsyncNotifyWhenDone(new typename UntypedCall<Service>::Tag(
-        call, &UntypedCall<Service>::RequestCancelled));
+    if (supports_cancel) {
+      call->RegisterCancellationHandler();
+    }
 
     (grpc_service->*enqueue_function)(
         &call->ctx_, &call->request, &call->responder_, cq, cq,
@@ -215,11 +219,26 @@ class Call : public UntypedCall<Service> {
   ResponseMessage response;
 
  private:
+  // Creates a completion queue tag for handling cancellation by the client.
+  // NOTE: This method must be called before this call is enqueued on a
+  // completion queue.
+  void RegisterCancellationHandler() {
+    cancel_tag_.reset(new typename UntypedCall<Service>::Tag(
+        this, &UntypedCall<Service>::RequestCancelled));
+    ctx_.AsyncNotifyWhenDone(cancel_tag_.get());
+  }
+
   HandleRequestFunction handle_request_function_;
   ::grpc::ServerContext ctx_;
   ::grpc::ServerAsyncResponseWriter<ResponseMessage> responder_;
   mutex mu_;
   std::function<void()> cancel_callback_ GUARDED_BY(mu_);
+
+  // This tag is initially owned by `*this` and borrowed by
+  // `ctx_->AsyncNotifyWhenDone()`. Ownership is transferred to the
+  // appropriate service's completion queue after
+  // `this->RequestReceived(..., true)` is called.
+  std::unique_ptr<typename UntypedCall<Service>::Tag> cancel_tag_;
 };
 
 }  // namespace tensorflow

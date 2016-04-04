@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
 import bisect
 import math
 import os
@@ -27,6 +26,7 @@ import os.path
 import random
 import shutil
 
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -108,34 +108,60 @@ def WriteHistogramSeries(writer, tag, mu_sigma_tuples, n=20):
 def WriteImageSeries(writer, tag, n_images=1):
   """Write a few dummy images to writer."""
   # 1x1 transparent GIF.
-  encoded_image = base64.b64decode(
-      "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
-  image_value = tf.Summary.Image(height=1,
-                                 width=1,
-                                 colorspace=1,
-                                 encoded_image_string=encoded_image)
   step = 0
-  wall_time = _start_time
+  session = tf.Session()
+  p = tf.placeholder("uint8", (1, 4, 4, 3))
+  s = tf.image_summary(tag, p)
   for _ in xrange(n_images):
-    value = tf.Summary.Value(tag=tag, image=image_value)
-    event = tf.Event(wall_time=wall_time,
-                     step=step,
-                     summary=tf.Summary(value=[value]))
-    writer.add_event(event)
+    im = np.random.random_integers(0, 255, (1, 4, 4, 3))
+    summ = session.run(s, feed_dict={p: im})
+    writer.add_summary(summ, step)
     step += 20
-    wall_time += 200
 
 
 def GenerateTestData(path):
   """Generates the test data directory."""
   run1_path = os.path.join(path, "run1")
   os.makedirs(run1_path)
-  writer = tf.train.SummaryWriter(run1_path)
-  WriteScalarSeries(writer, "cross_entropy (1)", lambda x: x*x)
-  WriteHistogramSeries(writer, "histo1", [[0, 1], [0.3, 1], [0.5, 1], [0.7, 1],
-                                          [1, 1]])
-  WriteImageSeries(writer, "im1")
-  writer.close()
+  writer1 = tf.train.SummaryWriter(run1_path)
+  WriteScalarSeries(writer1, "foo/square", lambda x: x * x)
+  WriteScalarSeries(writer1, "bar/square", lambda x: x * x)
+  WriteScalarSeries(writer1, "foo/sin", math.sin)
+  WriteScalarSeries(writer1, "foo/cos", math.cos)
+  WriteHistogramSeries(writer1, "histo1", [[0, 1], [0.3, 1], [0.5, 1], [0.7, 1],
+                                           [1, 1]])
+  WriteImageSeries(writer1, "im1")
+  WriteImageSeries(writer1, "im2")
+
+  run2_path = os.path.join(path, "run2")
+  os.makedirs(run2_path)
+  writer2 = tf.train.SummaryWriter(run2_path)
+  WriteScalarSeries(writer2, "foo/square", lambda x: x * x * 2)
+  WriteScalarSeries(writer2, "bar/square", lambda x: x * x * 3)
+  WriteScalarSeries(writer2, "foo/cos", lambda x: math.cos(x) * 2)
+  WriteHistogramSeries(writer2, "histo1", [[0, 2], [0.3, 2], [0.5, 2], [0.7, 2],
+                                           [1, 2]])
+  WriteHistogramSeries(writer2, "histo2", [[0, 1], [0.3, 1], [0.5, 1], [0.7, 1],
+                                           [1, 1]])
+  WriteImageSeries(writer2, "im1")
+
+  graph_def = tf.GraphDef()
+  node1 = graph_def.node.add()
+  node1.name = "a"
+  node1.op = "matmul"
+  node2 = graph_def.node.add()
+  node2.name = "b"
+  node2.op = "matmul"
+  node2.input.extend(["a:0"])
+
+  writer1.add_graph(graph_def)
+  node3 = graph_def.node.add()
+  node3.name = "c"
+  node3.op = "matmul"
+  node3.input.extend(["a:0", "b:0"])
+  writer2.add_graph(graph_def)
+  writer1.close()
+  writer2.close()
 
 
 def main(unused_argv=None):

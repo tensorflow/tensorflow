@@ -110,6 +110,29 @@ class GradientCheckerTest(tf.test.TestCase):
     tf.logging.info("nested gather error = %f", error)
     assert error < 1e-4
 
+  def testComplexMul(self):
+    with self.test_session():
+      size = ()
+      c = tf.constant(5 + 7j, dtype=tf.complex64)
+      x = tf.constant(11 - 13j, dtype=tf.complex64)
+      y = c * x
+      analytical, numerical = tf.test.compute_gradient(x, size, y, size)
+      correct = np.array([[5, 7], [-7, 5]])
+      self.assertAllEqual(correct, analytical)
+      self.assertAllClose(correct, numerical, rtol=1e-4)
+      self.assertLess(tf.test.compute_gradient_error(x, size, y, size), 2e-4)
+
+  def testComplexConj(self):
+    with self.test_session():
+      size = ()
+      x = tf.constant(11 - 13j, dtype=tf.complex64)
+      y = tf.conj(x)
+      analytical, numerical = tf.test.compute_gradient(x, size, y, size)
+      correct = np.array([[1, 0], [0, -1]])
+      self.assertAllEqual(correct, analytical)
+      self.assertAllClose(correct, numerical, rtol=3e-6)
+      self.assertLess(tf.test.compute_gradient_error(x, size, y, size), 2e-5)
+
 
 # Gradient checker for MNIST.
 def BuildAndTestMiniMNIST(param_index, tag):

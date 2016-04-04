@@ -34,7 +34,7 @@ struct Softsign {
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
     activations.device(d) =
-        features / (features.abs() + features.constant(1.0f));
+        features / (features.abs() + features.constant(T(1)));
   }
 };
 
@@ -50,7 +50,7 @@ struct SoftsignGrad {
                   typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor backprops) {
     backprops.device(d) =
-        gradients / (features.abs() + features.constant(1.0f)).square();
+        gradients / (features.abs() + features.constant(T(1))).square();
   }
 };
 

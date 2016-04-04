@@ -66,7 +66,9 @@ Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
 
   SessionOptions options_copy(options);
   options_copy.target = strings::StrCat("grpc://", ret->targets_[0]);
-  std::unique_ptr<GrpcSession> session(new GrpcSession(options_copy));
+
+  std::unique_ptr<GrpcSession> session;
+  TF_RETURN_IF_ERROR(GrpcSession::Create(options_copy, &session));
   std::vector<DeviceAttributes> device_attributes;
   ret->devices_ = session->ListDevices();
 

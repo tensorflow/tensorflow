@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
 # pylint: enable=wildcard-import
@@ -218,7 +219,7 @@ class QueueBase(object):
       return gen_data_flow_ops._queue_enqueue(self._queue_ref, vals, name=scope)
 
   def enqueue_many(self, vals, name=None):
-    """Enqueues zero or elements to this queue.
+    """Enqueues zero or more elements to this queue.
 
     This operation slices each component tensor along the 0th dimension to
     make multiple queue elements. All of the tensors in `vals` must have the

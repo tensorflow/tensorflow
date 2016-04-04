@@ -30,10 +30,9 @@ import six
 
 from google.protobuf import text_format
 
-from tensorflow.core.framework import config_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
@@ -166,9 +165,8 @@ class TensorFlowTestCase(googletest.TestCase):
       text_format.Merge(expected_message_maybe_ascii, expected_message)
       self._AssertProtoEquals(expected_message, message)
     else:
-      assert False, ("Can't compare protos of type " +
-                     type(expected_message_maybe_ascii) + " and " +
-                     type(message))
+      assert False, ("Can't compare protos of type %s and %s" %
+                     (type(expected_message_maybe_ascii), type(message)))
 
   def assertProtoEqualsVersion(
       self, expected, actual, producer=versions.GRAPH_DEF_VERSION,
@@ -239,6 +237,9 @@ class TensorFlowTestCase(googletest.TestCase):
       elif force_gpu and config.allow_soft_placement:
         config = config_pb2.ConfigProto().CopyFrom(config)
         config.allow_soft_placement = False
+      # Don't perform optimizations for tests so we don't inadvertently run
+      # gpu ops on cpu
+      config.graph_options.optimizer_options.opt_level = -1
       return config
 
     if graph is None:
@@ -253,7 +254,7 @@ class TensorFlowTestCase(googletest.TestCase):
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device(graph_util.pin_to_cpu):
+          with sess.graph.device("/cpu:0"):
             yield sess
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
@@ -263,7 +264,7 @@ class TensorFlowTestCase(googletest.TestCase):
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device(graph_util.pin_to_cpu):
+          with sess.graph.device("/cpu:0"):
             yield sess
   # pylint: enable=g-doc-return-or-yield
 
@@ -295,9 +296,7 @@ class TensorFlowTestCase(googletest.TestCase):
       """Target for the wrapper thread. Sets self._exception on failure."""
       try:
         self._target(*self._args, **self._kwargs)
-# pylint: disable=broad-except
-      except Exception as e:
-        # pylint: enable=broad-except
+      except Exception as e:  # pylint: disable=broad-except
         self._exception = e
 
     def start(self):
@@ -352,18 +351,21 @@ class TensorFlowTestCase(googletest.TestCase):
     return ret
 # pylint: enable=invalid-name
 
-  def assertNear(self, f1, f2, err):
+  def assertNear(self, f1, f2, err, msg=None):
     """Asserts that two floats are near each other.
 
     Checks that |f1 - f2| < err and asserts a test failure
     if not.
 
     Args:
-      f1: a float value.
-      f2: a float value.
-      err: a float value.
+      f1: A float value.
+      f2: A float value.
+      err: A float value.
+      msg: An optional string message to append to the failure message.
     """
-    self.assertTrue(math.fabs(f1 - f2) < err)
+    self.assertTrue(math.fabs(f1 - f2) <= err,
+                    "%f != %f +/- %f%s" % (
+                        f1, f2, err, " (%s)" % msg if msg is not None else ""))
 
   def assertArrayNear(self, farray1, farray2, err):
     """Asserts that two float arrays are near each other.
@@ -376,8 +378,9 @@ class TensorFlowTestCase(googletest.TestCase):
       farray2: a list of float values.
       err: a float value.
     """
+    self.assertEqual(len(farray1), len(farray2))
     for f1, f2 in zip(farray1, farray2):
-      self.assertNear(f1, f2, err)
+      self.assertNear(float(f1), float(f2), err)
 
   def _NDArrayNear(self, ndarray1, ndarray2, err):
     return np.linalg.norm(ndarray1 - ndarray2) < err
@@ -496,9 +499,7 @@ class TensorFlowTestCase(googletest.TestCase):
     try:
       yield
       self.fail(exception_type.__name__ + " not raised")
-# pylint: disable=broad-except
-    except Exception as e:
-      # pylint: enable=broad-except
+    except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
         raise AssertionError(e)
   # pylint: enable=g-doc-return-or-yield

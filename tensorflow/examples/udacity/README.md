@@ -6,7 +6,7 @@ Course information can be found at https://www.udacity.com/course/deep-learning-
 Running the Docker container from the Google Cloud repository
 -------------------------------------------------------------
 
-    docker run -p 8888:8888 -it --rm b.gcr.io/tensorflow-udacity/assignments
+    docker run -p 8888:8888 -it --rm b.gcr.io/tensorflow-udacity/assignments:0.5.0
 
 Accessing the Notebooks
 -----------------------
@@ -34,6 +34,23 @@ has two good suggestions; we recommend using 8G.
 In addition, you may need to pass `--memory=8g` as an extra argument to
 `docker run`.
 
+* **I want to create a new virtual machine instead of the default one.**
+
+`docker-machine` is a tool to provision and manage docker hosts, it supports multiple platform (ex. aws, gce, azure, virtualbox, ...). To create a new virtual machine locally with built-in docker engine, you can use
+
+    docker-machine create -d virtualbox --virtualbox-memory 8196 tensorflow
+    
+`-d` means the driver for the cloud platform, supported drivers listed [here](https://docs.docker.com/machine/drivers/). Here we use virtualbox to create a new virtual machine locally. `tensorflow` means the name of the virtual machine, feel free to use whatever you like. You can use
+
+    docker-machine ip tensorflow
+    
+to get the ip of the new virtual machine. To switch from default virtual machine to a new one (here we use tensorflow), type
+
+    eval $(docker-machine env tensorflow)
+    
+Note that `docker-machine env tensorflow` outputs some environment variables such like `DOCKER_HOST`. Then your docker client is now connected to the docker host in virtual machine `tensorflow`
+
+
 Notes for anyone needing to build their own containers (mostly instructors)
 ===========================================================================
 
@@ -41,7 +58,7 @@ Building a local Docker container
 ---------------------------------
 
     cd tensorflow/examples/udacity
-    docker build -t $USER/assignments .
+    docker build --pull -t $USER/assignments .
 
 Running the local container
 ---------------------------
@@ -61,9 +78,10 @@ This will allow you to save work and have access to generated files on the host 
 Pushing a Google Cloud release
 ------------------------------
 
-    V=0.2.0
+    V=0.5.0
     docker tag $USER/assignments b.gcr.io/tensorflow-udacity/assignments:$V
-    docker tag $USER/assignments b.gcr.io/tensorflow-udacity/assignments:latest
+    gcloud docker push b.gcr.io/tensorflow-udacity/assignments
+    docker tag -f $USER/assignments b.gcr.io/tensorflow-udacity/assignments:latest
     gcloud docker push b.gcr.io/tensorflow-udacity/assignments
 
 History
@@ -71,3 +89,6 @@ History
 
 * 0.1.0: Initial release.
 * 0.2.0: Many fixes, including lower memory footprint and support for Python 3.
+* 0.3.0: Use 0.7.1 release.
+* 0.4.0: Move notMMNIST data for Google Cloud.
+* 0.5.0: Actually use 0.7.1 release.

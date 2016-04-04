@@ -80,12 +80,6 @@ class Executor {
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
   struct Args {
-    // Executors are sometimes instantiated for initialization work
-    // like constant folding that is logically outside any computation
-    // step, and SpecialStepIds lists the ids used for those steps.
-    enum SpecialStepIds {
-      CONSTANT_FOLDING_STEP_ID = -1,
-    };
     int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
     StepStatsCollector* stats_collector = nullptr;
@@ -173,6 +167,7 @@ class ExecutorBarrier {
 
   void WhenDone(const Status& s) {
     bool error = false;
+    Rendezvous* error_rendez = nullptr;
     StatusCallback done = nullptr;
     Status status;
     {
@@ -182,6 +177,8 @@ class ExecutorBarrier {
       // object by this thread only.
       if (status_.ok() && !s.ok()) {
         error = true;
+        error_rendez = rendez_;
+        error_rendez->Ref();
         status_ = s;
       }
 
@@ -192,10 +189,13 @@ class ExecutorBarrier {
         done = done_cb_;
         done_cb_ = nullptr;
       }
+
       status = status_;
     }
+
     if (error) {
-      rendez_->StartAbort(status);
+      error_rendez->StartAbort(status);
+      error_rendez->Unref();
     }
     if (done != nullptr) {
       delete this;

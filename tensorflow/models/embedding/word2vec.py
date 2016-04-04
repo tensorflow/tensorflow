@@ -87,10 +87,10 @@ flags.DEFINE_integer("statistics_interval", 5,
                      "Print statistics every n seconds.")
 flags.DEFINE_integer("summary_interval", 5,
                      "Save training summary to file every n seconds (rounded "
-                     "up to statistics interval.")
+                     "up to statistics interval).")
 flags.DEFINE_integer("checkpoint_interval", 600,
                      "Checkpoint the model (i.e. save the parameters) every n "
-                     "seconds (rounded up to statistics interval.")
+                     "seconds (rounded up to statistics interval).")
 
 FLAGS = flags.FLAGS
 
@@ -395,8 +395,7 @@ class Word2Vec(object):
     initial_epoch, initial_words = self._session.run([self._epoch, self._words])
 
     summary_op = tf.merge_all_summaries()
-    summary_writer = tf.train.SummaryWriter(opts.save_path,
-                                            graph_def=self._session.graph_def)
+    summary_writer = tf.train.SummaryWriter(opts.save_path, self._session.graph)
     workers = []
     for _ in xrange(opts.concurrent_steps):
       t = threading.Thread(target=self._train_thread_body)

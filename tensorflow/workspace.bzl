@@ -1,17 +1,20 @@
-# Tensorflow external dependencies that can be loaded in WORKSPACE files.
+# TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
-def tf_workspace(path_prefix = ""):
+# If TensorFlow is linked as a submodule, path_prefix is TensorFlow's directory
+# within the workspace (e.g. "tensorflow/"), and tf_repo_name is the name of the
+# local_repository rule (e.g. "@tf").
+def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
     name = "gmock_archive",
-    url = "https://googlemock.googlecode.com/files/gmock-1.7.0.zip",
+    url = "https://archive.openswitch.net/gmock-1.7.0.zip",
     sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
     build_file = path_prefix + "google/protobuf/gmock.BUILD",
   )
 
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/ed4c9730b545.tar.gz",
-    sha256 = "3d9eceb8a2add299e37b1f32759157cc2574f7684936c151552a5ae3f33aebd5",
+    url = "https://bitbucket.org/eigen/eigen/get/3d9f227afae2.tar.gz",
+    sha256 = "bf2638b7e1085de0b430b000c07e090dc71c83dd7f5b934a06f68b7db02676bf",
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -40,8 +43,8 @@ def tf_workspace(path_prefix = ""):
 
   native.new_http_archive(
     name = "png_archive",
-    url = "https://storage.googleapis.com/libpng-public-archive/libpng-1.2.53.tar.gz",
-    sha256 = "e05c9056d7f323088fd7824d8c6acc03a4a758c4b4916715924edc5dd3223a72",
+    url = "https://github.com/glennrp/libpng/archive/v1.2.53.zip",
+    sha256 = "c35bcc6387495ee6e757507a68ba036d38ad05b415c2553b3debe2a57647a692",
     build_file = path_prefix + "png.BUILD",
   )
 
@@ -55,4 +58,35 @@ def tf_workspace(path_prefix = ""):
   native.bind(
     name = "six",
     actual = "@six_archive//:six",
+  )
+
+  # grpc expects //external:protobuf_clib and //external:protobuf_compiler
+  # to point to the protobuf's compiler library.
+  native.bind(
+    name = "protobuf_clib",
+    actual = tf_repo_name + "//google/protobuf:protoc_lib",
+  )
+
+  native.bind(
+    name = "protobuf_compiler",
+    actual = tf_repo_name + "//google/protobuf:protoc_lib",
+  )
+
+  native.git_repository(
+    name = "grpc",
+    commit = "3d62fc6",
+    init_submodules = True,
+    remote = "https://github.com/grpc/grpc.git",
+  )
+
+  # protobuf expects //external:grpc_cpp_plugin to point to grpc's
+  # C++ plugin code generator.
+  native.bind(
+    name = "grpc_cpp_plugin",
+    actual = "@grpc//:grpc_cpp_plugin",
+  )
+
+  native.bind(
+    name = "grpc_lib",
+    actual = "@grpc//:grpc++_unsecure",
   )

@@ -9,8 +9,6 @@ CIFAR-10 classification is a common benchmark problem in machine learning.  The
 problem is to classify RGB 32x32 pixel images across 10 categories:
 ```airplane, automobile, bird, cat, deer, dog, frog, horse, ship, and truck.```
 
-![CIFAR-10 Samples](../../images/cifar_samples.png "CIFAR-10 Samples, from http://www.cs.toronto.edu/~kriz/cifar.html")
-
 For more details refer to the [CIFAR-10 page](http://www.cs.toronto.edu/~kriz/cifar.html)
 and a [Tech Report](http://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
 by Alex Krizhevsky.
@@ -168,7 +166,7 @@ Here is a graph generated from TensorBoard describing the inference operation:
 </div>
 
 > **EXERCISE**: The output of `inference` are un-normalized logits. Try editing
-the network architecture to return normalized predictions using [`tf.softmax()`]
+the network architecture to return normalized predictions using [`tf.nn.softmax()`]
 (../../api_docs/python/nn.md#softmax).
 
 The `inputs()` and `inference()` functions provide all the components

@@ -96,7 +96,7 @@ sess = tf.Session()
 # All inputs needed by the op are run automatically by the session.  They
 # typically are run in parallel.
 #
-# The call 'run(product)' thus causes the execution of threes ops in the
+# The call 'run(product)' thus causes the execution of three ops in the
 # graph: the two constants and matmul.
 #
 # The output of the op is returned in 'result' as a numpy `ndarray` object.
@@ -145,6 +145,35 @@ Devices are specified with strings.  The currently supported devices are:
 
 See [Using GPUs](../how_tos/using_gpu/index.md) for more information about GPUs
 and TensorFlow.
+
+### Launching the graph in a distributed session
+
+To create a TensorFlow cluster, launch a TensorFlow server on each of the
+machines in the cluster. When you instantiate a Session in your client, you
+pass it the network location of one of the machines in the cluster:
+
+```python
+with tf.Session("grpc://example.org:2222") as sess:
+  # Calls to sess.run(...) will be executed on the cluster.
+  ...
+```
+
+This machine becomes the master for the session. The master distributes the
+graph across other machines in the cluster (workers), much as the local
+implementation distributes the graph across available compute resources within
+a machine.
+
+You can use "with tf.device():" statements to directly specify workers for
+particular parts of the graph:
+
+```python
+with tf.device("/job:ps/task:0"):
+  weights = tf.Variable(...)
+  biases = tf.Variable(...)
+```
+
+See the [Distributed TensorFlow How To](../how_tos/distributed/) for more
+information about distributed sessions and clusters.
 
 ## Interactive Usage
 

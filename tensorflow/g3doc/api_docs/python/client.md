@@ -53,7 +53,7 @@ with tf.Session() as sess:
 ```
 
 The [`ConfigProto`]
-(https://www.tensorflow.org/code/tensorflow/core/framework/config.proto)
+(https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
 protocol buffer exposes various configuration options for a
 session. For example, to create a session that uses soft constraints
 for device placement, and log the resulting placement decisions,
@@ -87,13 +87,13 @@ the session constructor.
     Defaults to using an in-process engine. At present, no value
     other than the empty string is supported.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
-*  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/framework/config.proto)
+*  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
     protocol buffer with configuration options for the session.
 
 
 - - -
 
-#### `tf.Session.run(fetches, feed_dict=None)` {#Session.run}
+#### `tf.Session.run(fetches, feed_dict=None, options=None, run_metadata=None)` {#Session.run}
 
 Runs the operations and evaluates the tensors in `fetches`.
 
@@ -133,6 +133,15 @@ one of the following types:
   the value should be a
   [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
 
+The optional `options` argument expects a [`RunOptions`] proto. The options
+allow controlling the behavior of this particular step (e.g. turning tracing
+on).
+
+The optional `run_metadata` argument expects a [`RunMetadata`] proto. When
+appropriate, the non-Tensor output of this step will be collected there. For
+example, when users turn on tracing in `options`, the profiled info will be
+collected into this argument and passed back.
+
 ##### Args:
 
 
@@ -140,6 +149,8 @@ one of the following types:
     (described above).
 *  <b>`feed_dict`</b>: A dictionary that maps graph elements to values
     (described above).
+*  <b>`options`</b>: A [`RunOptions`] protocol buffer
+*  <b>`run_metadata`</b>: A [`RunMetadata`] protocol buffer
 
 ##### Returns:
 
@@ -375,7 +386,8 @@ Creates a new `OpError` indicating that a particular op failed.
 ##### Args:
 
 
-*  <b>`node_def`</b>: The `graph_pb2.NodeDef` proto representing the op that failed.
+*  <b>`node_def`</b>: The `graph_pb2.NodeDef` proto representing the op that failed,
+    if known; otherwise None.
 *  <b>`op`</b>: The `ops.Operation` that failed, if known; otherwise None.
 *  <b>`message`</b>: The message string describing the failure.
 *  <b>`error_code`</b>: The `error_codes_pb2.Code` describing the error.
@@ -692,6 +704,47 @@ operation, if the file is truncated while it is being read.
 #### `tf.errors.DataLossError.__init__(node_def, op, message)` {#DataLossError.__init__}
 
 Creates a `DataLossError`.
+
+
+
+
+## Other Functions and Classes
+- - -
+
+### `class tf.ClusterSpec` {#ClusterSpec}
+
+A class for representing a Cluster.
+- - -
+
+#### `tf.ClusterSpec.__init__(cluster)` {#ClusterSpec.__init__}
+
+Creates a `ClusterSpec`.
+
+##### Args:
+
+
+*  <b>`cluster`</b>: A dictionary mapping one or more job names to lists of network
+    addresses, or a `tf.ClusterDef` protocol buffer.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cluster` is not a dictionary mapping strings to lists
+    of strings, and not a `ClusterDef` proto buf.
+
+
+- - -
+
+#### `tf.ClusterSpec.as_cluster_def()` {#ClusterSpec.as_cluster_def}
+
+Returns a `tf.ClusterDef` protocol buffer.
+
+
+- - -
+
+#### `tf.ClusterSpec.as_cluster_spec()` {#ClusterSpec.as_cluster_spec}
+
+Returns a dictionary from job names to list of network addresses.
 
 
 

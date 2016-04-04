@@ -27,6 +27,7 @@ py_library(
 
 py_test(
     name = "reader_test",
+    size = "small",
     srcs = ["reader_test.py"],
     srcs_version = "PY2AND3",
     deps = [

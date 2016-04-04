@@ -82,7 +82,7 @@ See also `tuple` and `with_dependencies`.
 ##### Args:
 
 
-*  <b>`*inputs`</b>: One or more tensors to group.
+*  <b>`*inputs`</b>: Zero or more tensors to group.
 *  <b>`**kwargs`</b>: Optional parameters to pass when constructing the NodeDef.
 *  <b>`name`</b>: A name for this operation (optional).
 
@@ -93,8 +93,7 @@ See also `tuple` and `with_dependencies`.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If an unknown keyword argument is provided, or if there are
-              no inputs.
+*  <b>`ValueError`</b>: If an unknown keyword argument is provided.
 
 
 - - -
@@ -152,13 +151,13 @@ the same non-zero number and type of outputs.
 
 
 *  <b>`pred`</b>: A scalar determining whether to return the result of `fn1` or `fn2`.
-*  <b>`fn1`</b>: The function to be performed if pred is true.
-*  <b>`fn2`</b>: The function to be performed if pref is false.
+*  <b>`fn1`</b>: The callable to be performed if pred is true.
+*  <b>`fn2`</b>: The callable to be performed if pref is false.
 *  <b>`name`</b>: Optional name prefix for the returned tensors.
 
 ##### Returns:
 
-  Tensors returned by the call to either `fn1` or `fn2`. If the functions
+  Tensors returned by the call to either `fn1` or `fn2`. If the callables
   return a singleton list, the element is extracted from the list.
 
 ##### Raises:
@@ -190,10 +189,10 @@ Create a case operation.
 
 The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
 Each pair contains a boolean scalar tensor and a python callable that
-creates the tensors to be returned if the boolean evaluates to True. `default`
-is a callable generating a list of tensors. All the callables in
-`pred_fn_pairs` as well as `default` should return the same number and types
-of tensors.
+creates the tensors to be returned if the boolean evaluates to True.
+`default` is a callable generating a list of tensors. All the callables
+in `pred_fn_pairs` as well as `default` should return the same number
+and types of tensors.
 
 If `exclusive==True`, all predicates are evaluated, and a logging operation
 with an error is returned if more than one of the predicates evaluates to
@@ -377,7 +376,7 @@ Returns the truth value of (x < y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -395,7 +394,7 @@ Returns the truth value of (x <= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -413,7 +412,7 @@ Returns the truth value of (x > y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -431,7 +430,7 @@ Returns the truth value of (x >= y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 

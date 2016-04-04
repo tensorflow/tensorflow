@@ -1,0 +1,171 @@
+// Protocol messages for describing the results of benchmarks and unit tests.
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+
+// option cc_enable_arenas = true;
+option java_outer_classname = "TestLogProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.util.testlog";
+
+package tensorflow;
+
+message EntryValue {
+  oneof kind {
+    double double_value = 1;
+    string string_value = 2;
+  }
+};
+
+// Each unit test or benchmark in a test or benchmark run provides
+// some set of information.  Here we provide some reasonable keys
+// one would expect to see, with optional key/value pairs for things
+// we haven't considered.
+//
+// This BenchmarkEntry should be emitted by each unit test or benchmark
+// reporter.
+message BenchmarkEntry {
+  // The name of the specific benchmark or test
+  // (e.g. BM_AdjustContrast_gpu_B_W_H)
+  string name = 1;
+
+  // If a benchmark, how many iterations it was run for
+  int64 iters = 2;
+
+  // Total cpu time used for all iterations (in seconds)
+  double cpu_time = 3;
+
+  // Total wall time used for all iterations (in seconds)
+  double wall_time = 4;
+
+  // Throughput (in MB/s)
+  double throughput = 5;
+
+  // Generic map from result key to value.
+  map<string, EntryValue> extras = 6;
+};
+
+message BenchmarkEntries {
+  repeated BenchmarkEntry entry = 1;
+}
+
+message BuildConfiguration {
+  string mode = 1;               // opt, dbg, etc
+  repeated string cc_flags = 2;  // CC compiler flags, if known
+  repeated string opts = 3;      // Bazel compilation options, if known
+};
+
+message CommitId {
+  oneof kind {
+    int64 changelist = 1;
+    string hash = 2;
+  }
+  // Hash of intermediate change between hash/changelist and what was tested.
+  // Not used if the build is from a commit without modifications.
+  string snapshot = 3;
+};
+
+message CPUInfo {
+  int64 num_cores = 1;
+
+  int64 num_cores_allowed = 2;
+
+  // How fast are these cpus?
+  double mhz_per_cpu = 3;
+
+  // Additional cpu information. For example,
+  // Intel Ivybridge with HyperThreading (24 cores) dL1:32KB dL2:256KB dL3:30MB
+  string cpu_info = 4;
+
+  // What kind of cpu scaling is enabled on the host.
+  // Examples include "performance", "ondemand", "conservative", "mixed".
+  string cpu_governor = 5;
+
+  // Cache sizes (in bytes), e.g. "L2": 262144 (for 256KB)
+  map<string, int64> cache_size = 6;
+};
+
+message MemoryInfo {
+  int64 total = 1;      // Total virtual memory in bytes
+  int64 available = 2;  // Immediately available memory in bytes
+}
+
+message GPUInfo {
+  string model = 1;  // e.g. "Tesla K40c"
+  string uuid = 2;   // Final entry in output of "nvidia-smi -L"
+  string bus_id = 3;  // e.g. "0000:04:00.0"
+};
+
+message PlatformInfo {
+  string bits = 1;       // e.g. '64bit'
+  string linkage = 2;    // e.g. 'ELF'
+  string machine = 3;    // e.g. 'i386'
+  string release = 4;    // e.g. '3.13.0-76-generic'
+  string system = 5;     // e.g. 'Linux'
+  string version = 6;    // e.g. '#120-Ubuntu SMP Mon Jan 18 15:59:10 UTC 2016'
+};
+
+message AvailableDeviceInfo {       // Matches DeviceAttributes
+  string name = 1;                  // Device name.
+  string type = 2;                  // Device type, e.g. 'CPU' or 'GPU'.
+  int64 memory_limit = 3;           // Memory capacity in bytes.
+  string physical_description = 4;  // The physical description of this device.
+};
+
+message MachineConfiguration {
+  // Host name of machine that ran the benchmark.
+  string hostname = 1;
+
+  // Additional platform information.
+  PlatformInfo platform_info = 2;
+
+  // CPU Information.
+  CPUInfo cpu_info = 3;
+
+  // Other devices that are attached and relevant (e.g. GPUInfo).
+  repeated google.protobuf.Any device_info = 4;
+
+  // Devices accessible to the test (e.g. as given by list_local_devices).
+  repeated AvailableDeviceInfo available_device_info = 5;
+
+  MemoryInfo memory_info = 6;
+};
+
+// Run-specific items such as arguments to the test / benchmark.
+message RunConfiguration {
+  repeated string argument = 1;
+}
+
+// The output of one benchmark / test run.  Each run contains a list of
+// tests or benchmarks, stored as BenchmarkEntry messages.
+//
+// This message should be emitted by the reporter (which runs the
+// test / BM in a subprocess and then reads the emitted BenchmarkEntry messages;
+// usually from a serialized json file, finally collecting them along
+// with additional information about the test run.
+message TestResults {
+  // The target of the run, e.g.:
+  //  //tensorflow/core:kernels_adjust_contrast_op_benchmark_test
+  string target = 1;
+
+  // The list of tests or benchmarks in this run.
+  BenchmarkEntries entries = 2;
+
+  // The configuration of the build (compiled opt? with cuda? any copts?)
+  BuildConfiguration build_configuration = 3;
+
+  // The commit id (git hash or changelist)
+  CommitId commit_id = 4;
+
+  // The time the run started (in seconds of UTC time since Unix epoch)
+  int64 start_time = 5;
+
+  // The amount of time the total run took (wall time in seconds)
+  double run_time = 6;
+
+  // Machine-specific parameters (Platform and CPU info)
+  MachineConfiguration machine_configuration = 7;
+
+  // Run-specific parameters (arguments, etc)
+  RunConfiguration run_configuration = 8;
+};

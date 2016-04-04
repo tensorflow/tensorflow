@@ -17,16 +17,32 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
 namespace lookup {
+namespace {
+
+// Ensure that the compiler cannot elide a copy into a local, for
+// bounds checking on source tensors that might be updated asynchronously for
+// integral types. However strings variables are not allowed and therefore the
+// local copy is unnecessary.
+template <typename T>
+T SubtleMustCopyUnlessString(const T& value) {
+  return internal::SubtleMustCopy(value);
+}
+
+const string& SubtleMustCopyUnlessString(const string& value) { return value; }
+
+}  // namespace
 
 // Lookup table that wraps an unordered_map, where the key and value data type
 // is specified.
@@ -51,7 +67,14 @@ namespace lookup {
 template <class K, class V>
 class HashTable : public InitializableLookupTable {
  public:
-  size_t size() const override { return table_ ? table_->size() : 0; }
+  size_t size() const override {
+    // return the size of the table only if it's initialized, otherwise 0.
+    if (!is_initialized_) {
+      return 0;
+    }
+    std::atomic_thread_fence(std::memory_order_acquire);
+    return table_ ? table_->size() : 0;
+  }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
 
@@ -77,8 +100,8 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
     for (int i = 0; i < key_values.size(); ++i) {
-      const K& key = key_values(i);
-      const V& value = value_values(i);
+      const K key = SubtleMustCopyUnlessString(key_values(i));
+      const V value = SubtleMustCopyUnlessString(value_values(i));
       const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
       if (previous_value != value) {
         return errors::FailedPrecondition(
@@ -96,8 +119,8 @@ class HashTable : public InitializableLookupTable {
     auto value_values = value->flat<V>();
 
     for (int i = 0; i < key_values.size(); ++i) {
-      value_values(i) =
-          gtl::FindWithDefault(*table_, key_values(i), default_val);
+      value_values(i) = gtl::FindWithDefault(
+          *table_, SubtleMustCopyUnlessString(key_values(i)), default_val);
     }
     return Status::OK();
   }

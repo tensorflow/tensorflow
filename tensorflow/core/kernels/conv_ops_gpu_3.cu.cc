@@ -269,7 +269,7 @@ __global__ void PadInputCustomKernelNHWC(int nthreads, const T* input,
       int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
       output[output_index] = input[input_index];
     } else {
-      output[output_index] = 0;
+      output[output_index] = T(0);
     }
   }
 }
@@ -295,7 +295,7 @@ __global__ void PadInputCustomKernelNCHW(int nthreads, const T* input,
       int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
       output[output_index] = input[input_index];
     } else {
-      output[output_index] = 0;
+      output[output_index] = T(0);
     }
   }
 }

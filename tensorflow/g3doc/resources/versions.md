@@ -39,7 +39,7 @@ versions.  The public API consists of
 
 * The following protocol buffer files:
   [`attr_value`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/attr_value.proto),
-  [`config`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/config.proto),
+  [`config`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/config.proto),
   [`event`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/event.proto),
   [`graph`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/graph.proto),
   [`op_def`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op_def.proto),

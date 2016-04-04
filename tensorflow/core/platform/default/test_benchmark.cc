@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/platform/test_benchmark.h"
 
+#include <cstdio>
+#include <cstdlib>
+
 #include <vector>
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/util/reporter.h"
 
 namespace tensorflow {
 namespace testing {
@@ -112,6 +116,24 @@ void Benchmark::Run(const char* pattern) {
       }
       printf("%-*s %10.0f %10d\t%s\n", width, name.c_str(),
              seconds * 1e9 / iters, iters, full_label.c_str());
+
+      TestReporter reporter(name);
+      Status s = reporter.Initialize();
+      if (!s.ok()) {
+        LOG(ERROR) << s.ToString();
+        exit(EXIT_FAILURE);
+      }
+      s = reporter.Benchmark(iters, 0.0, seconds,
+                             items_processed * 1e-6 / seconds);
+      if (!s.ok()) {
+        LOG(ERROR) << s.ToString();
+        exit(EXIT_FAILURE);
+      }
+      s = reporter.Close();
+      if (!s.ok()) {
+        LOG(ERROR) << s.ToString();
+        exit(EXIT_FAILURE);
+      }
     }
   }
 }

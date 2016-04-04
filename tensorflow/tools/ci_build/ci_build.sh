@@ -20,10 +20,15 @@ CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 shift 1
 COMMAND=("$@")
 
+# Figure out the directory where this script is.
+SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+
 # Validate command line arguments.
-if [ "$#" -lt 1 ] || [[ ! "${CONTAINER_TYPE}" =~ ^(cpu|gpu|android)$ ]]; then
+if [ "$#" -lt 1 ] || [ ! -e "${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE}" ]; then
+  supported_container_types=$( ls -1 ${SCRIPT_DIR}/Dockerfile.* | \
+      sed -n 's/.*Dockerfile\.\([^\/]*\)/\1/p' | tr '\n' ' ' )
   >&2 echo "Usage: $(basename $0) CONTAINER_TYPE COMMAND"
-  >&2 echo "       CONTAINER_TYPE can be 'CPU' or 'GPU'"
+  >&2 echo "       CONTAINER_TYPE can be one of [ ${supported_container_types}]"
   >&2 echo "       COMMAND is a command (with arguments) to run inside"
   >&2 echo "               the container."
   >&2 echo ""
@@ -38,11 +43,9 @@ fi
 if [[ "${CI_DOCKER_EXTRA_PARAMS}" != *"--rm"* ]]; then
   CI_DOCKER_EXTRA_PARAMS="--rm ${CI_DOCKER_EXTRA_PARAMS}"
 fi
-CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-tensorflow/tools/ci_build/builds/with_the_same_user tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
+CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
+CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user ${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
-
-# Figure out the directory where this script is.
-SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
 
 # Helper function to traverse directories up until given file is found.
 function upsearch () {
@@ -62,6 +65,10 @@ if [ "${CONTAINER_TYPE}" == "gpu" ]; then
   devices=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
   libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
   GPU_EXTRA_PARAMS="${devices} ${libs}"
+
+  # GPU pip tests-on-install should avoid using concurrent jobs due to GPU
+  # resource contention
+  GPU_EXTRA_PARAMS="${GPU_EXTRA_PARAMS} -e TF_BUILD_SERIAL_INSTALL_TESTS=1"
 else
   GPU_EXTRA_PARAMS=""
 fi
@@ -98,12 +105,13 @@ mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 docker run \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
-    -e "CI_BUILD_USER=${USER}" \
-    -e "CI_BUILD_UID=$(id -u $USER)" \
-    -e "CI_BUILD_GROUP=$(id -g --name $USER)" \
-    -e "CI_BUILD_GID=$(id -g $USER)" \
-    -v ${WORKSPACE}:/tensorflow \
-    -w /tensorflow \
+    -e "CI_BUILD_USER=$(id -u --name)" \
+    -e "CI_BUILD_UID=$(id -u)" \
+    -e "CI_BUILD_GROUP=$(id -g --name)" \
+    -e "CI_BUILD_GID=$(id -g)" \
+    -e "CI_TENSORFLOW_SUBMODULE_PATH=${CI_TENSORFLOW_SUBMODULE_PATH}" \
+    -v ${WORKSPACE}:/workspace \
+    -w /workspace \
     ${GPU_EXTRA_PARAMS} \
     ${CI_DOCKER_EXTRA_PARAMS[@]} \
     "${DOCKER_IMG_NAME}" \

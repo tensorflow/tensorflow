@@ -1,5 +1,11 @@
-For bugs/issues, please fill in the following.  The more information you
-provide, the more likely we can help you.
+GitHub issues are for bugs / installation problems / feature requests.  
+For general support from the community, see [StackOverflow](https://stackoverflow.com/questions/tagged/tensorflow).
+To make bugs and feature requests more easy to find and organize, we close issues that are deemed
+out of scope for GitHub Issues and point people to StackOverflow.
+
+For bugs or installation issues, please provide the following information.
+The more information you provide, the more easily we will be able to offer
+help and advice.
 
 ### Environment info
 Operating System:

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 
-#include "tensorflow/core/framework/config.pb.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace gpu = ::perftools::gputools;
 
@@ -57,6 +57,11 @@ EventMgr::~EventMgr() {
       delete ue->mem;
     }
     if (ue->bufrec.buf) {
+      if (LogMemory::IsEnabled()) {
+        LogMemory::RecordRawDeallocation(ue->bufrec.operation,
+                                         ue->bufrec.step_id, ue->bufrec.buf,
+                                         ue->bufrec.alloc, false);
+      }
       ue->bufrec.alloc->DeallocateRaw(ue->bufrec.buf);
     }
     if (ue->func != nullptr) threadpool_.Schedule(ue->func);

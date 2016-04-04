@@ -124,8 +124,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
               static_cast<int64>(filter_rows * filter_cols) *
               static_cast<int64>(out_rows * out_cols) * 2;
   } else {
-    // Backward computation: both input and filter backprop take the same
-    // amount of computation:
+    // Backward computation:
     // BATCH x IN_ROW X IN_COL X IN_DEPTH X PATCH_ROW X PATCH_COL X OUT_DEPTH
     // We multiply by two since there are multiplications and additions.
     num_ops = static_cast<int64>(batch * in_depth * out_depth) *
@@ -403,6 +402,198 @@ BM_ConvFloatBkFGPU(128, 64, 64, 64, 128, 9, 9, "convnet-layer2");
 BM_ConvFloatBkFGPU(128, 32, 32, 128, 128, 9, 9, "convnet-layer3");
 BM_ConvFloatBkFGPU(128, 16, 16, 128, 128, 7, 7, "convnet-layer4");
 BM_ConvFloatBkFGPU(128, 13, 13, 384, 384, 3, 3, "convnet-layer5");
+
+namespace {
+
+enum DEPTHWISE_CONV_OP {
+  DEPTHWISE_CONV_OP_FWD = 0,
+  DEPTHWISE_CONV_OP_BACKPROP_INPUT = 1,
+  DEPTHWISE_CONV_OP_BACKPROP_FILTER = 2
+};
+
+}  // namespace
+
+static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
+                                  int in_depth, int depth_multiplier,
+                                  int out_depth, int filter_rows,
+                                  int filter_cols, DEPTHWISE_CONV_OP op,
+                                  int num_threads, int stride, Padding padding,
+                                  bool use_gpu, const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    testing::SetLabel(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    return;
+  }
+  testing::SetLabel(label);
+
+  // Set the number of threads
+  SessionOptions options;
+  options.config.set_intra_op_parallelism_threads(num_threads);
+
+  // We set up a graph for computing convolution.
+  GraphDef graph;
+
+  // For this, we need an input tensor and a filter tensor.
+  // Compute the output size.
+  int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+  TF_CHECK_OK(Get2dOutputSize(rows, cols, filter_rows, filter_cols, stride,
+                              stride, padding, &out_rows, &out_cols, &pad_rows,
+                              &pad_cols));
+
+  int64 num_ops = 0;
+  if (op == DEPTHWISE_CONV_OP_FWD) {
+    // Counting the number of floating point operations (both MUL and ADD)
+    // Forward computation:
+    // BATCH x OUT_ROW X OUT_COL X FLTR_ROW X FLTR_COL X DEPTH_MULT X IN_DEPTH
+    // We multiply by two since there are multiplications and additions.
+    num_ops = static_cast<int64>(batch * out_rows * out_cols) *
+              static_cast<int64>(filter_rows * filter_cols) *
+              static_cast<int64>(in_depth * depth_multiplier) * 2;
+  } else {
+    // Backward computation: both input and filter backprop take the same
+    // amount of computation:
+    // BATCH x IN_ROW X IN_COL X FLTR_ROW X FLTR_COL X DEPTH_MULT X IN_DEPTH
+    // We multiply by two since there are multiplications and additions.
+    // We divide by stride squared to approximate the affect of decreasing
+    // number of bprop output points per bprop input point with increasing
+    // stride.
+    num_ops = (static_cast<int64>(batch * rows * cols) *
+               static_cast<int64>(filter_rows * filter_cols) *
+               static_cast<int64>(in_depth * depth_multiplier) * 2) /
+              (stride * stride);
+  }
+
+  SetConstOp("input", {batch, rows, cols, in_depth}, graph.add_node());
+  SetConstOp("depthwise_filter",
+             {filter_rows, filter_cols, in_depth, depth_multiplier},
+             graph.add_node());
+  SetConstOp("output_backprop", {batch, out_rows, out_cols, out_depth},
+             graph.add_node());
+  SetConstSizesOp("input_sizes",
+                  std::vector<int32>({batch, rows, cols, in_depth}),
+                  graph.add_node());
+
+  // Now add the convolution op
+  NodeDef* conv = graph.add_node();
+  switch (op) {
+    case DEPTHWISE_CONV_OP_FWD:
+      TF_CHECK_OK(NodeDefBuilder("depthwise_conv2d", "DepthwiseConv2dNative")
+                      .Input("input", 0, DT_FLOAT)
+                      .Input("depthwise_filter", 0, DT_FLOAT)
+                      .Attr("strides", {1, stride, stride, 1})
+                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
+                      .Finalize(conv));
+      break;
+    case DEPTHWISE_CONV_OP_BACKPROP_INPUT:
+      TF_CHECK_OK(NodeDefBuilder("depthwise_conv2d_backprop_input",
+                                 "DepthwiseConv2dNativeBackpropInput")
+                      .Input("input_sizes", 0, DT_INT32)
+                      .Input("depthwise_filter", 0, DT_FLOAT)
+                      .Input("output_backprop", 0, DT_FLOAT)
+                      .Attr("strides", {1, stride, stride, 1})
+                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
+                      .Finalize(conv));
+      break;
+    case DEPTHWISE_CONV_OP_BACKPROP_FILTER:
+      // TODO(andydavis,jmchen) Implement backprop filter.
+      break;
+  }
+  Graph* g = new Graph(OpRegistry::Global());
+  GraphConstructorOptions opts;
+  TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph, g));
+
+  string device = use_gpu ? "gpu" : "cpu";
+  test::Benchmark(device, g, &options).Run(iters);
+  testing::ItemsProcessed(num_ops * iters);
+}
+
+// BS: batch_size
+// R: tensor_in_rows
+// C: tensor_in_cols
+// ID: input_depth
+// DM: depth_multiplier
+// OD: output_depth
+// KR: kernel_rows
+// KC: kernel_cols
+// STR: stride
+// PAD: padding
+
+#define BM_ConvFloatDepthwiseFwd(BS, R, C, ID, DM, OD, KR, KC, STR, PAD,    \
+                                 LABEL)                                     \
+  static void BM_ConvFloatDepthwiseFwdCPU1_##LABEL(int iters) {             \
+    BM_ConvFloatDepthwise(                                                  \
+        iters, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_FWD, 1, STR, \
+        PAD, false,                                                         \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_", \
+                        KR, "_", KC, "_", STR, "_", PAD, "_cpu1"));         \
+  }                                                                         \
+  static void BM_ConvFloatDepthwiseFwdCPU4_##LABEL(int iters) {             \
+    BM_ConvFloatDepthwise(                                                  \
+        iters, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_FWD, 4, STR, \
+        PAD, false,                                                         \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_", \
+                        KR, "_", KC, "_", STR, "_", PAD, "_cpu4"));         \
+  }                                                                         \
+  static void BM_ConvFloatDepthwiseFwdGPU_##LABEL(int iters) {              \
+    BM_ConvFloatDepthwise(                                                  \
+        iters, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_FWD, 1, STR, \
+        PAD, true,                                                          \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_", \
+                        KR, "_", KC, "_", STR, "_", PAD, "_gpu"));          \
+  }                                                                         \
+  BENCHMARK(BM_ConvFloatDepthwiseFwdCPU1_##LABEL);                          \
+  BENCHMARK(BM_ConvFloatDepthwiseFwdCPU4_##LABEL);                          \
+  BENCHMARK(BM_ConvFloatDepthwiseFwdGPU_##LABEL);
+
+// The configurations below are mostly from mobilenet models.
+BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv0);
+BM_ConvFloatDepthwiseFwd(32, 112, 112, 64, 1, 64, 3, 3, 1, SAME, conv1);
+BM_ConvFloatDepthwiseFwd(32, 56, 56, 128, 1, 128, 3, 3, 1, SAME, conv2);
+BM_ConvFloatDepthwiseFwd(32, 56, 56, 128, 1, 128, 3, 3, 2, SAME, conv3);
+BM_ConvFloatDepthwiseFwd(32, 28, 28, 128, 1, 128, 3, 3, 1, SAME, conv4);
+BM_ConvFloatDepthwiseFwd(32, 14, 14, 512, 1, 512, 3, 3, 1, SAME, conv5);
+BM_ConvFloatDepthwiseFwd(32, 7, 7, 1024, 1, 1024, 3, 3, 1, SAME, conv6);
+// Benchmarks with different stride and padding options.
+BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 2, SAME, conv7);
+BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 2, VALID, conv8);
+
+#define BM_ConvFloatDepthwiseBk(BS, R, C, ID, DM, OD, KR, KC, STR, PAD, LABEL) \
+  static void BM_ConvFloatDepthwiseBkInCPU1_##LABEL(int iters) {               \
+    BM_ConvFloatDepthwise(                                                     \
+        iters, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_BACKPROP_INPUT, \
+        1, STR, PAD, false,                                                    \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
+                        KR, "_", KC, "_", STR, "_", PAD, "_cpu1"));            \
+  }                                                                            \
+  static void BM_ConvFloatDepthwiseBkInCPU4_##LABEL(int iters) {               \
+    BM_ConvFloatDepthwise(                                                     \
+        iters, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_BACKPROP_INPUT, \
+        4, STR, PAD, false,                                                    \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
+                        KR, "_", KC, "_", STR, "_", PAD, "_cpu4"));            \
+  }                                                                            \
+  static void BM_ConvFloatDepthwiseBkInGPU_##LABEL(int iters) {                \
+    BM_ConvFloatDepthwise(                                                     \
+        iters, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_BACKPROP_INPUT, \
+        4, STR, PAD, true,                                                     \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
+                        KR, "_", KC, "_", STR, "_", PAD, "_gpu"));             \
+  }                                                                            \
+  BENCHMARK(BM_ConvFloatDepthwiseBkInCPU1_##LABEL);                            \
+  BENCHMARK(BM_ConvFloatDepthwiseBkInCPU4_##LABEL);                            \
+  BENCHMARK(BM_ConvFloatDepthwiseBkInGPU_##LABEL);
+
+// The configurations below are mostly from mobilenet models.
+BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv0);
+BM_ConvFloatDepthwiseBk(32, 112, 112, 64, 1, 64, 3, 3, 1, SAME, conv1);
+BM_ConvFloatDepthwiseBk(32, 56, 56, 128, 1, 128, 3, 3, 1, SAME, conv2);
+BM_ConvFloatDepthwiseBk(32, 56, 56, 128, 1, 128, 3, 3, 2, SAME, conv3);
+BM_ConvFloatDepthwiseBk(32, 28, 28, 128, 1, 128, 3, 3, 1, SAME, conv4);
+BM_ConvFloatDepthwiseBk(32, 14, 14, 512, 1, 512, 3, 3, 1, SAME, conv5);
+BM_ConvFloatDepthwiseBk(32, 7, 7, 1024, 1, 1024, 3, 3, 1, SAME, conv6);
+// Benchmarks with different stride and padding options.
+BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 2, SAME, conv7);
+BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 2, VALID, conv8);
 
 static void BM_LRNFloat(int iters, int depth, int cols, int rows,
                         int batch_size, int range, int num_threads,

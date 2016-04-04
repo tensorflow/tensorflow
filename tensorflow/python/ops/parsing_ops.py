@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_parsing_ops import *
 # pylint: enable=wildcard-import,undefined-variable

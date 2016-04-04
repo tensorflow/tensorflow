@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 
+#include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -45,9 +47,14 @@ Allocator::~Allocator() {}
 
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
+// If true, cpu allocator collects detailed stats.
+static bool cpu_allocator_collect_detailed_stats = false;
 
 void EnableCPUAllocatorStats(bool enable) {
   cpu_allocator_collect_stats = enable;
+}
+void EnableCPUAllocatorDetailedStats(bool enable) {
+  cpu_allocator_collect_detailed_stats = enable;
 }
 
 class CPUAllocator : public Allocator {
@@ -99,8 +106,18 @@ class CPUAllocator : public Allocator {
   TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
 };
 
+namespace {
+Allocator* MakeCpuAllocator() {
+  Allocator* allocator = new CPUAllocator;
+  if (cpu_allocator_collect_detailed_stats || LogMemory::IsEnabled()) {
+    allocator = new TrackingAllocator(allocator, true);
+  }
+  return allocator;
+}
+}  // namespace
+
 Allocator* cpu_allocator() {
-  static CPUAllocator* cpu_alloc = new CPUAllocator;
+  static Allocator* cpu_alloc = MakeCpuAllocator();
   return cpu_alloc;
 }
 

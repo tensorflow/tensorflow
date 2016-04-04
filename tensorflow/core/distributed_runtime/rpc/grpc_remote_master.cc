@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
 
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -33,43 +34,60 @@ class GrpcRemoteMaster : public MasterInterface {
 
   ~GrpcRemoteMaster() override {}
 
-  Status CreateSession(const CreateSessionRequest* request,
+  Status CreateSession(CallOptions* call_options,
+                       const CreateSessionRequest* request,
                        CreateSessionResponse* response) override {
     ::grpc::ClientContext ctx;
+    SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->CreateSession(&ctx, *request, response));
   }
 
-  Status ExtendSession(const ExtendSessionRequest* request,
+  Status ExtendSession(CallOptions* call_options,
+                       const ExtendSessionRequest* request,
                        ExtendSessionResponse* response) override {
     ::grpc::ClientContext ctx;
+    SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->ExtendSession(&ctx, *request, response));
   }
 
-  Status RunStep(const RunStepRequest* request,
+  Status RunStep(CallOptions* call_options, const RunStepRequest* request,
                  RunStepResponse* response) override {
     ::grpc::ClientContext ctx;
+    SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->RunStep(&ctx, *request, response));
   }
 
-  Status CloseSession(const CloseSessionRequest* request,
+  Status CloseSession(CallOptions* call_options,
+                      const CloseSessionRequest* request,
                       CloseSessionResponse* response) override {
     ::grpc::ClientContext ctx;
+    SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->CloseSession(&ctx, *request, response));
   }
 
-  Status ListDevices(const ListDevicesRequest* request,
+  Status ListDevices(CallOptions* call_options,
+                     const ListDevicesRequest* request,
                      ListDevicesResponse* response) override {
     ::grpc::ClientContext ctx;
+    SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->ListDevices(&ctx, *request, response));
   }
 
-  Status Reset(const ResetRequest* request, ResetResponse* response) override {
+  Status Reset(CallOptions* call_options, const ResetRequest* request,
+               ResetResponse* response) override {
     ::grpc::ClientContext ctx;
+    SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->Reset(&ctx, *request, response));
   }
 
  private:
   std::unique_ptr<grpc::MasterService::Stub> stub_;
+
+  void SetDeadline(::grpc::ClientContext* ctx, int64 time_in_ms) {
+    if (time_in_ms > 0) {
+      ctx->set_deadline(gpr_time_from_millis(time_in_ms, GPR_TIMESPAN));
+    }
+  }
 };
 
 MasterInterface* NewGrpcMaster(SharedGrpcChannelPtr channel) {

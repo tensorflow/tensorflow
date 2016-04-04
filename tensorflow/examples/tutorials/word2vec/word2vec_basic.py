@@ -46,12 +46,12 @@ def maybe_download(filename, expected_bytes):
 filename = maybe_download('text8.zip', 31344016)
 
 
-# Read the data into a string.
+# Read the data into a list of strings.
 def read_data(filename):
-  f = zipfile.ZipFile(filename)
-  for name in f.namelist():
-    return f.read(name).split()
-  f.close()
+  """Extract the first file enclosed in a zip file as a list of words"""
+  with zipfile.ZipFile(filename) as f:
+    data = f.read(f.namelist()[0]).split()
+  return data
 
 words = read_data(filename)
 print('Data size', len(words))
@@ -128,7 +128,7 @@ num_skips = 2         # How many times to reuse an input to generate a label.
 # construction are also the most frequent.
 valid_size = 16     # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
-valid_examples = np.array(random.sample(np.arange(valid_window), valid_size))
+valid_examples = np.random.choice(valid_window, valid_size, replace=False)
 num_sampled = 64    # Number of negative examples to sample.
 
 graph = tf.Graph()

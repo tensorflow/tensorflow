@@ -54,6 +54,7 @@ REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
   REGISTER_KERNEL_BUILDER(                                            \
       Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
+REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
@@ -119,6 +120,7 @@ struct SetZeroFunctor<CPUDevice, T> {
 };
 
 #define DEFINE_SETZERO_CPU(T) template struct SetZeroFunctor<CPUDevice, T>
+DEFINE_SETZERO_CPU(Eigen::half);
 DEFINE_SETZERO_CPU(float);
 DEFINE_SETZERO_CPU(double);
 DEFINE_SETZERO_CPU(int32);
@@ -172,6 +174,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
@@ -218,6 +221,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")

@@ -19,10 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os.path
 import time
 
-import numpy
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -163,8 +161,7 @@ def run_training():
     sess.run(init)
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                            graph_def=sess.graph_def)
+    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 
     # And then after everything is built, start the training loop.
     for step in xrange(FLAGS.max_steps):
@@ -193,6 +190,7 @@ def run_training():
         # Update the events file.
         summary_str = sess.run(summary_op, feed_dict=feed_dict)
         summary_writer.add_summary(summary_str, step)
+        summary_writer.flush()
 
       # Save a checkpoint and evaluate the model periodically.
       if (step + 1) % 1000 == 0 or (step + 1) == FLAGS.max_steps:

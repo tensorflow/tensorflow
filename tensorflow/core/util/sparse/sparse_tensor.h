@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -177,14 +178,22 @@ class SparseTensor {
         if (!different && diff < 0) increasing = false;
       }
     }
-    if (!valid) {
-      return errors::InvalidArgument("Index ", n, " is out of bounds.");
-    }
-    if (!increasing) {
-      return errors::InvalidArgument("Index ", n, " is out of order.");
-    }
-    if (!different) {
-      return errors::InvalidArgument("Index ", n, " is repeated.");
+    if (TF_PREDICT_FALSE(!valid || !increasing || !different)) {
+      string index = strings::StrCat("indices[", n, "] = [");
+      for (int di = 0; di < dims_; ++di) {
+        strings::StrAppend(&index, ix_t(n, di), di < dims_ - 1 ? "," : "]");
+      }
+      if (!valid) {
+        return errors::InvalidArgument(index,
+                                       " is out of bounds: need 0 <= index < ",
+                                       shape_.DebugString());
+      }
+      if (!increasing) {
+        return errors::InvalidArgument(index, " is out of order");
+      }
+      if (!different) {
+        return errors::InvalidArgument(index, " is repeated");
+      }
     }
     return Status::OK();
   }
@@ -334,8 +343,8 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
     bool invalid_dims = false;
     int64 ix = 0;
     for (int d = 0; d < dims_; ++d) {
-      const int64 ix_n_d = ix_t(n, d);
-      if (ix_n_d < 0 || ix_n_d >= out_shape.dim_size(d)) {
+      const int64 ix_n_d = internal::SubtleMustCopy(ix_t(n, d));
+      if (!FastBoundsCheck(ix_n_d, out_shape.dim_size(d))) {
         invalid_dims = true;
       }
       ix += strides[d] * ix_n_d;

@@ -19,35 +19,29 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
+#include "tensorflow/contrib/linear_optimizer/kernels/loss.h"
+#include "tensorflow/core/lib/core/errors.h"
+
 namespace tensorflow {
-struct logistic_loss {
+
+class LogisticLossUpdater : public DualLossUpdater {
+ public:
   // Use an approximate step that is guaranteed to decrease the dual loss.
   // Derivation of this is available in  Page 14 Eq 16 of
   // http://arxiv.org/pdf/1211.2717v1.pdf
-  inline static double ComputeUpdatedDual(const double label,
-                                          const double example_weight,
-                                          const double current_dual,
-                                          const double wx,
-                                          const double weighted_example_norm,
-                                          const double primal_loss,
-                                          const double dual_loss) {
-    const double ywx = label * wx;
-    // To avoid overflow, we compute derivative of logistic loss with respect to
-    // log-odds as follows.
-    double inverse_exp_term = 0;
-    if (ywx > 0) {
-      const double exp_minus_ywx = exp(-ywx);
-      inverse_exp_term = exp_minus_ywx / (1 + exp_minus_ywx);
-    } else {
-      inverse_exp_term = 1 / (1 + exp(ywx));
-    }
+  double ComputeUpdatedDual(const double label, const double example_weight,
+                            const double current_dual, const double wx,
+                            const double weighted_example_norm,
+                            const double primal_loss,
+                            const double dual_loss) const final {
+    const double partial_derivative_loss =
+        PartialDerivativeLogisticLoss(label, wx);
     // f(a) = sup (a*x  - f(x)) then a = f'(x), where a is the aproximate dual.
-    const double approximate_dual = inverse_exp_term * label;
-    const double delta_dual = approximate_dual - current_dual;
-    // Upper bound on the smoothness constant of log loss. This is 0.25 i.e.
-    // when log-odds is zero.
+    const double approximate_dual = partial_derivative_loss * label;
+    // Dual loss is gamma-strongly convex.
     const double gamma =
-        (wx == 0) ? 0.25 : (1 - 2 * inverse_exp_term) / (2 * ywx);
+        1 / SmoothnessConstantLogisticLoss(partial_derivative_loss, label, wx);
+    const double delta_dual = approximate_dual - current_dual;
     const double wx_dual = wx * current_dual * example_weight;
     const double delta_dual_squared = delta_dual * delta_dual;
     const double smooth_delta_dual_squared = delta_dual_squared * gamma * 0.5;
@@ -64,9 +58,8 @@ struct logistic_loss {
 
   // Dual of logisitic loss function.
   // https://en.wikipedia.org/wiki/Convex_conjugate
-  inline static double ComputeDualLoss(const double current_dual,
-                                       const double example_label,
-                                       const double example_weight) {
+  double ComputeDualLoss(const double current_dual, const double example_label,
+                         const double example_weight) const final {
     // Dual of the logistic loss function is
     // ay * log(ay) + (1-ay) * log (1-ay), where a is the dual variable.
     const double ay = current_dual * example_label;
@@ -78,9 +71,8 @@ struct logistic_loss {
 
   // Logistic loss for binary classification.
   // https://en.wikipedia.org/wiki/Loss_functions_for_classification
-  inline static double ComputePrimalLoss(const double wx,
-                                         const double example_label,
-                                         const double example_weight) {
+  double ComputePrimalLoss(const double wx, const double example_label,
+                           const double example_weight) const final {
     // Logistic loss:
     //   log(1 + e^(-ywx))
     //   log(e^0 + e^(-ywx))
@@ -97,7 +89,48 @@ struct logistic_loss {
     // log(1 + e^(ywx)) - ywx
     return (log(1 + exp(y_wx)) - y_wx) * example_weight;
   }
+
+  // Converts binary example labels from 0.0 or 1.0 to -1.0 or 1.0 respectively
+  // as expected by logistic regression.
+  Status ConvertLabel(float* const example_label) const final {
+    if (*example_label == 0.0) {
+      *example_label = -1;
+      return Status::OK();
+    }
+    if (*example_label == 1.0) {
+      return Status::OK();
+    }
+    return errors::InvalidArgument(
+        "Only labels of 0.0 or 1.0 are supported right now. "
+        "Found example with label: ",
+        *example_label);
+  }
+
+ private:
+  // Partial derivative of the logistic loss w.r.t (1 + exp(-ywx)).
+  static inline double PartialDerivativeLogisticLoss(const double wx,
+                                                     const double label) {
+    // To avoid overflow, we compute partial derivative of logistic loss as
+    // follows.
+    const double ywx = label * wx;
+    if (ywx > 0) {
+      const double exp_minus_ywx = exp(-ywx);
+      return exp_minus_ywx / (1 + exp_minus_ywx);
+    }
+    return 1 / (1 + exp(ywx));
+  }
+
+  // Smoothness constant for the logistic loss.
+  static inline double SmoothnessConstantLogisticLoss(
+      const double partial_derivative_loss, const double wx,
+      const double label) {
+    // Upper bound on the smoothness constant of log loss. This is 0.25 i.e.
+    // when log-odds is zero.
+    return (wx == 0) ? 0.25
+                     : (1 - 2 * partial_derivative_loss) / (2 * label * wx);
+  }
 };
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_LOGISTIC_LOSS_H_
