@@ -21,7 +21,7 @@ namespace tensorflow {
 
 REGISTER_OP("KernelLabel").Output("result: string");
 
-REGISTER_OP("GraphDefVersion").Output("version: int32");
+REGISTER_OP("GraphDefVersion").Output("version: int32").SetIsStateful();
 
 namespace {
 enum KernelLabel { DEFAULT_LABEL, OVERLOAD_1_LABEL, OVERLOAD_2_LABEL };

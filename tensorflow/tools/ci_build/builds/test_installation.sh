@@ -76,7 +76,8 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 
 # Test blacklist: GPU-only
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
-"tensorflow/python/framework/function_test.py"
+"tensorflow/python/framework/function_test.py:"\
+"tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"
 
 # Tests that should be run in the exclusive mode (i.e., not parallel with
 # other tests)
