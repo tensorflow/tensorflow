@@ -10,6 +10,7 @@ filegroup(
         "@es6_promise//:es6_promise",
         "@font_roboto//:font_roboto",
         "@graphlib//:graphlib",
+        "@iron_a11y_announcer//:iron_a11y_announcer",
         "@iron_a11y_keys_behavior//:iron_a11y_keys_behavior",
         "@iron_ajax//:iron_ajax",
         "@iron_autogrow_textarea//:iron_autogrow_textarea",

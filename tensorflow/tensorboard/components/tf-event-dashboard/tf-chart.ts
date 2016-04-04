@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 module TF {
-  type TFDatum = [number, number, number];
   type tooltipMap = {[run: string]: string};
+  export type DataFn = (run: string, tag: string) => Promise<Array<Backend.Datum>>;
   export type TooltipUpdater = (tooltipMap, xValue, closestRun) => void;
 
   let Y_TOOLTIP_FORMATTER_PRECISION = 4;
@@ -22,9 +22,10 @@ module TF {
   let Y_AXIS_FORMATTER_PRECISION = 3;
 
   export class BaseChart {
-    protected dataCoordinator: TF.DataCoordinator;
+    protected dataFn: DataFn;
     protected tag: string;
     protected tooltipUpdater: TooltipUpdater;
+    private datasets: {[run: string]: Plottable.Dataset};
 
     protected xAccessor: Plottable.Accessor<number | Date>;
     protected xScale: Plottable.QuantitativeScale<number | Date>;
@@ -40,12 +41,13 @@ module TF {
     protected xTooltipFormatter: (d: number) => string;
     constructor(
         tag: string,
-        dataCoordinator: TF.DataCoordinator,
+        dataFn: DataFn,
         tooltipUpdater: TooltipUpdater,
         xType: string,
         colorScale: Plottable.Scales.Color
       ) {
-      this.dataCoordinator = dataCoordinator;
+      this.dataFn = dataFn;
+      this.datasets = {};
       this.tag = tag;
       this.colorScale = colorScale;
       this.tooltipUpdater = tooltipUpdater;
@@ -54,6 +56,14 @@ module TF {
 
     public changeRuns(runs: string[]) {
       throw new Error("Abstract method not implemented");
+    }
+
+    public getDataset(run: string) {
+      if (this.datasets[run] === undefined) {
+        this.datasets[run] = new Plottable.Dataset([], {run: run, tag: this.tag});
+      }
+      this.dataFn(this.tag, run).then((x) => this.datasets[run].data(x));
+      return this.datasets[run];
     }
 
     protected addCrosshairs(plot: Plottable.XYPlot<number | Date, number>, yAccessor): Plottable.Components.Group {
@@ -76,7 +86,7 @@ module TF {
         let yValueForCrosshairs: number = p.y;
         plot.datasets().forEach((dataset) => {
           let run: string = dataset.metadata().run;
-          let data: TFDatum[] = dataset.data();
+          let data: Backend.Datum[] = dataset.data();
           let xs: number[] = data.map((d, i) => this.xAccessor(d, i, dataset).valueOf());
           let idx: number = _.sortedIndex(xs, x);
           if (idx === 0 || idx === data.length) {
@@ -175,35 +185,36 @@ module TF {
   export class LineChart extends BaseChart {
     private plot: Plottable.Plots.Line<number | Date>;
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
-      var yAccessor = accessorize("2");
+      var yAccessor = (d: Backend.ScalarDatum) => d.scalar;
       var plot = new Plottable.Plots.Line<number | Date>();
       plot.x(xAccessor, xScale);
       plot.y(yAccessor, yScale);
-      plot.attr("stroke", (d: any, i: number, m: any) => m.run, this.colorScale);
+      plot.attr("stroke",
+        (d: Backend.Datum, i: number, dataset: Plottable.Dataset) => dataset.metadata().run,
+        this.colorScale);
       this.plot = plot;
       var group = this.addCrosshairs(plot, yAccessor);
       return group;
     }
 
     public changeRuns(runs: string[]) {
-      var datasets = this.dataCoordinator.getDatasets(this.tag, runs);
+      var datasets = runs.map((r) => this.getDataset(r));
       this.plot.datasets(datasets);
     }
-
   }
 
   export class HistogramChart extends BaseChart {
     private plots: Plottable.XYPlot<number | Date, number>[];
 
     public changeRuns(runs: string[]) {
-      var datasets = this.dataCoordinator.getDatasets(this.tag, runs);
+      var datasets = runs.map((r) => this.getDataset(r));
       this.plots.forEach((p) => p.datasets(datasets));
     }
 
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
       var percents =  [0, 228, 1587, 3085, 5000, 6915, 8413, 9772, 10000];
       var opacities = _.range(percents.length - 1).map((i) => (percents[i + 1] - percents[i]) / 2500);
-      var accessors = percents.map((p, i) => (datum) => datum[2][i][1]);
+      var accessors = percents.map((p, i) => (datum) => datum[i][1]);
       var median = 4;
       var medianAccessor = accessors[median];
 
@@ -215,8 +226,14 @@ module TF {
         var y  = i > median ? accessors[i + 1] : accessors[i];
         p.y(y, yScale);
         p.y0(y0);
-        p.attr("fill", (d: any, i: number, m: any) => m.run, this.colorScale);
-        p.attr("stroke", (d: any, i: number, m: any) => m.run, this.colorScale);
+        p.attr("fill",
+          (d: any, i: number, dataset: Plottable.Dataset) =>
+            dataset.metadata().run,
+          this.colorScale);
+        p.attr("stroke",
+          (d: any, i: number, dataset: Plottable.Dataset) =>
+            dataset.metadata().run,
+          this.colorScale);
         p.attr("stroke-weight", (d: any, i: number, m: any) => "0.5px");
         p.attr("stroke-opacity", () => opacities[i]);
         p.attr("fill-opacity", () => opacities[i]);
@@ -278,7 +295,7 @@ module TF {
     return {
       scale: scale,
       axis: axis,
-      accessor: accessorize("1"),
+      accessor: (d: Backend.Datum) => d.step,
       tooltipFormatter: formatter,
     };
   }
@@ -289,9 +306,7 @@ module TF {
     return {
       scale: scale,
       axis: new Plottable.Axes.Time(scale, "bottom"),
-      accessor: (d: any, index: number, dataset: Plottable.Dataset) => {
-        return d[0] * 1000; // convert seconds to ms
-      },
+      accessor: (d: Backend.Datum) => d.wall_time,
       tooltipFormatter: (d: number) => formatter(new Date(d)),
     };
   }
@@ -313,12 +328,12 @@ module TF {
     return {
       scale: scale,
       axis: new Plottable.Axes.Numeric(scale, "bottom"),
-      accessor: (d: any, index: number, dataset: Plottable.Dataset) => {
-        var data = dataset && dataset.data();
+      accessor: (d: Backend.Datum, index: number, dataset: Plottable.Dataset) => {
+        var data = dataset.data();
         // I can't imagine how this function would be called when the data is empty
         // (after all, it iterates over the data), but lets guard just to be safe.
-        var first = data.length > 0 ? data[0][0] : 0;
-        return (d[0] - first) / (60 * 60); // convert seconds to hours
+        var first = data.length > 0 ? +data[0].wall_time : 0;
+        return (+d.wall_time - first) / (60 * 60 * 1000); // ms to hours
       },
       tooltipFormatter: formatter,
     };

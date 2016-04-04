@@ -41,6 +41,14 @@ filegroup(
 )
 
 filegroup(
+    name = "iron_a11y_announcer",
+    srcs = [
+        "index.html",
+        "iron-a11y-announcer.html",
+    ],
+)
+
+filegroup(
     name = "iron_a11y_keys_behavior",
     srcs = [
         "index.html",

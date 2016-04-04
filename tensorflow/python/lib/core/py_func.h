@@ -42,6 +42,10 @@ namespace tensorflow {
 // TODO(zhifengc): Support distributed runtime.
 void InitializePyTrampoline(PyObject* trampoline);
 
+// Creates a numpy array in 'ret' and copies the content of tensor 't'
+// into 'ret'.
+Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_PY_FUNC_H_

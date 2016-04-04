@@ -98,6 +98,9 @@ TEST(ImmutableConstantOpTest, Simple) {
   std::unique_ptr<Env> env_ptr(new TestEnvironment(Env::Default()));
   SessionOptions session_options;
   session_options.env = env_ptr.get();
+  session_options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions_Level_L0);
   std::unique_ptr<Session> session(NewSession(session_options));
   ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";
@@ -166,6 +169,9 @@ TEST(ImmutableConstantOpTest, FromFile) {
   GraphDef graph_def;
   TF_ASSERT_OK(b.ToGraphDef(&graph_def));
   SessionOptions session_options;
+  session_options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions_Level_L0);
   std::unique_ptr<Session> session(NewSession(session_options));
   ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";
