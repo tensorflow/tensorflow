@@ -58,7 +58,7 @@ class ForestHParams(object):
   """A base class for holding hyperparameters and calculating good defaults."""
 
   def __init__(self, **kwargs):
-    for name, value in kwargs.iteritems():
+    for name, value in kwargs.items():
       setattr(self, name, value)
 
   def values(self):
