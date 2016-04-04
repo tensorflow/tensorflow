@@ -169,27 +169,12 @@ Finally, the `logits` tensor that will contain the output is returned.
 The `loss()` function further builds the graph by adding the required loss
 ops.
 
-First, the values from the `labels_placeholder` are encoded as a tensor of 1-hot
-values. For example, if the class identifier is '3' the value is converted to:
-<br>`[0, 0, 0, 1, 0, 0, 0, 0, 0, 0]`
+First, the values from the `labels_placeholder` are converted to 64-bit integers. Then, a [`tf.nn.sparse_softmax_cross_entropy_with_logits`](../../../api_docs/python/nn.md#sparse_softmax_cross_entropy_with_logits) op is added to automatically produce 1-hot labels from the `labels_placeholder` and compare the output logits from the `inference()` function with those 1-hot labels.
 
 ```python
-batch_size = tf.size(labels)
-labels = tf.expand_dims(labels, 1)
-indices = tf.expand_dims(tf.range(0, batch_size, 1), 1)
-concated = tf.concat(1, [indices, labels])
-onehot_labels = tf.sparse_to_dense(
-    concated, tf.pack([batch_size, NUM_CLASSES]), 1.0, 0.0)
-```
-
-A [`tf.nn.softmax_cross_entropy_with_logits`](../../../api_docs/python/nn.md#softmax_cross_entropy_with_logits)
-op is then added to compare the output logits from the `inference()` function
-and the 1-hot labels.
-
-```python
-cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits,
-                                                        onehot_labels,
-                                                        name='xentropy')
+labels = tf.to_int64(labels)
+cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+    logits, labels, name='xentropy')
 ```
 
 It then uses [`tf.reduce_mean`](../../../api_docs/python/math_ops.md#reduce_mean)
@@ -465,14 +450,6 @@ do_eval(sess,
 > the data.
 
 ### Build the Eval Graph
-
-Before opening the default Graph, the test data should have been fetched by
-calling the `get_data(train=False)` function with the parameter set to grab
-the test dataset.
-
-```python
-test_all_images, test_all_labels = get_data(train=False)
-```
 
 Before entering the training loop, the Eval op should have been built
 by calling the `evaluation()` function from `mnist.py` with the same
