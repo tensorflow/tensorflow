@@ -27,61 +27,6 @@ type GraphNode struct {
 	outDataTypes map[string]DataType
 }
 
-// ErrOperationNotFound The specified operation is not defined
-type ErrOperationNotFound struct {
-	op string
-}
-
-func (e *ErrOperationNotFound) Error() string {
-	return fmt.Sprintf("Operation '%s' not defined", e.op)
-}
-
-// ErrInvalidAmounthOfInputs The number of inputs doesn't corresponds with the
-// expected for this operation
-type ErrInvalidAmounthOfInputs struct {
-	operation  string
-	opInputs   int
-	specInputs int
-}
-
-func (e *ErrInvalidAmounthOfInputs) Error() string {
-	return fmt.Sprintf("Inputs required for operation '%s': %d, but %d provided",
-		e.operation, e.opInputs, e.specInputs)
-}
-
-// ErrMandatoryAttributeNotSpecified A mandatory attribute for this operation was not specified
-type ErrMandatoryAttributeNotSpecified struct {
-	operation  string
-	attribName string
-}
-
-func (e *ErrMandatoryAttributeNotSpecified) Error() string {
-	return fmt.Sprintf("The attribute '%s' is mandatory for the operation: '%s'",
-		e.attribName, e.operation)
-}
-
-// ErrInvalidAttrValue The data type of the value for this attribute is not valid
-type ErrInvalidAttrValue struct {
-	operation  string
-	attribName string
-}
-
-func (e *ErrInvalidAttrValue) Error() string {
-	return fmt.Sprintf("The attribute '%s' value provided for operation: '%s' is not valid",
-		e.attribName, e.operation)
-}
-
-// ErrInputOutputDataTypeMismatch The output data type doesn't match with the input one
-type ErrInputOutputDataTypeMismatch struct {
-	outDt DataType
-	inDt  DataType
-}
-
-func (e *ErrInputOutputDataTypeMismatch) Error() string {
-	return fmt.Sprintf("The output datatype '%s' doesn't correspond with the input data type '%s'",
-		e.outDt, e.inDt)
-}
-
 // NewGraph Returns an initialized instance of the Graph struct
 func NewGraph() *Graph {
 	return &Graph{
@@ -396,6 +341,61 @@ func (gr *Graph) AsStr() []byte {
 	result, _ := proto.Marshal(gr.def)
 
 	return result
+}
+
+// ErrOperationNotFound The specified operation is not defined
+type ErrOperationNotFound struct {
+	op string
+}
+
+func (e *ErrOperationNotFound) Error() string {
+	return fmt.Sprintf("Operation '%s' not defined", e.op)
+}
+
+// ErrInvalidAmounthOfInputs The number of inputs doesn't corresponds with the
+// expected for this operation
+type ErrInvalidAmounthOfInputs struct {
+	operation  string
+	opInputs   int
+	specInputs int
+}
+
+func (e *ErrInvalidAmounthOfInputs) Error() string {
+	return fmt.Sprintf("Inputs required for operation '%s': %d, but %d provided",
+		e.operation, e.opInputs, e.specInputs)
+}
+
+// ErrMandatoryAttributeNotSpecified A mandatory attribute for this operation was not specified
+type ErrMandatoryAttributeNotSpecified struct {
+	operation  string
+	attribName string
+}
+
+func (e *ErrMandatoryAttributeNotSpecified) Error() string {
+	return fmt.Sprintf("The attribute '%s' is mandatory for the operation: '%s'",
+		e.attribName, e.operation)
+}
+
+// ErrInvalidAttrValue The data type of the value for this attribute is not valid
+type ErrInvalidAttrValue struct {
+	operation  string
+	attribName string
+}
+
+func (e *ErrInvalidAttrValue) Error() string {
+	return fmt.Sprintf("The attribute '%s' value provided for operation: '%s' is not valid",
+		e.attribName, e.operation)
+}
+
+// ErrInputOutputDataTypeMismatch The output data type doesn't match with the input one
+type ErrInputOutputDataTypeMismatch struct {
+	outDt DataType
+	inDt  DataType
+}
+
+func (e *ErrInputOutputDataTypeMismatch) Error() string {
+	return fmt.Sprintf("The output datatype '%s' doesn't correspond with the input data type '%s'",
+		e.outDt, e.inDt)
 }
 
 // matchTypes Matches all the input/output parameters with their corresponding

@@ -12,16 +12,6 @@ type Session struct {
 	session TF_Session
 }
 
-// ErrStatusTf Error message comming out from the TensorFlow C++ libraries
-type ErrStatusTf struct {
-	code    TF_Code
-	message string
-}
-
-func (e *ErrStatusTf) Error() string {
-	return fmt.Sprintf("tensorflow: %d: %v", e.code, e.message)
-}
-
 // NewSession initializes a new TensorFlow session.
 func NewSession() (s *Session, err error) {
 	status := TF_NewStatus()
@@ -84,6 +74,16 @@ func (s *Session) ExtendGraph(graph *Graph) error {
 	TF_ExtendGraph(s.session, buf, status)
 
 	return s.statusToError(status)
+}
+
+// ErrStatusTf Error message comming out from the TensorFlow C++ libraries
+type ErrStatusTf struct {
+	code    TF_Code
+	message string
+}
+
+func (e *ErrStatusTf) Error() string {
+	return fmt.Sprintf("tensorflow: %d: %v", e.code, e.message)
 }
 
 // statusToError Converts a TF_Status returned by a C execution into a Go Error

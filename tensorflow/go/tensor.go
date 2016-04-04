@@ -29,66 +29,6 @@ const (
 	cBytesComplex64 = 8
 )
 
-// ErrInvalidTensorType The data type of the tensor is not compatible
-// with the expected data type on this function.
-type ErrInvalidTensorType struct {
-	tensorType   DataType
-	expectedType DataType
-}
-
-func (e *ErrInvalidTensorType) Error() string {
-	return fmt.Sprintf("Invalid tensor data type, tensor data type: '%s', required data type: '%s'", e.tensorType, e.expectedType)
-}
-
-// ErrTensorTypeNotSupported The tensor type is still not supported.
-type ErrTensorTypeNotSupported struct {
-	tensotType DataType
-}
-
-func (e *ErrTensorTypeNotSupported) Error() string {
-	return fmt.Sprintf("The tensor data type '%s' is still not supported", e.tensotType)
-}
-
-// ErrDimsOutOfTensorRange The number of specified dimensions doesn't
-// match with the tensor dimensions
-type ErrDimsOutOfTensorRange struct {
-	tensorDim int
-	specDims  int
-}
-
-func (e *ErrDimsOutOfTensorRange) Error() string {
-	return fmt.Sprintf("The number of specified dimensions (%d) doesn't match with the tensor dimensions (%d)", e.specDims, e.tensorDim)
-}
-
-// ErrIndexOutOfRange The specified index is out of one of the dimensions range
-type ErrIndexOutOfRange struct {
-	dim       int
-	index     int
-	dimsRange int
-}
-
-func (e *ErrIndexOutOfRange) Error() string {
-	return fmt.Sprintf("The specified index %d is out of the dimension  %d range: %d", e.index, e.dim, e.dimsRange)
-}
-
-// ErrSliceExpected The argument must be an Slice
-type ErrSliceExpected struct {
-	dataType string
-}
-
-func (e *ErrSliceExpected) Error() string {
-	return fmt.Sprintf("The argument must be an Slice, but the data type is: '%s'", e.dataType)
-}
-
-// ErrDataTypeNotSupported The data type is still not suported
-type ErrDataTypeNotSupported struct {
-	dataType string
-}
-
-func (e *ErrDataTypeNotSupported) Error() string {
-	return fmt.Sprintf("The type of the provided data is still not suported: '%s'", e.dataType)
-}
-
 var (
 	// DtInvalid Invalid tensor DataType
 	DtInvalid = DataType(0)
@@ -158,6 +98,138 @@ type Tensor struct {
 
 // TensorShape represents the shapre of a Tensor.
 type TensorShape [][]int64
+
+// NewTensorWithShape returns a new tensor with teh specified type, shape and data.
+// The supported  data types are:
+//  - int
+//  - int8
+//  - int16
+//  - int32
+//  - int64
+//  - uint8
+//  - uint16
+//  - float32
+//  - float64
+func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
+	v := reflect.ValueOf(data)
+	if v.Kind() != reflect.Slice {
+		return nil, &ErrSliceExpected{
+			dataType: v.Kind().String(),
+		}
+	}
+
+	dataType, err := getDataTypeFromReflect(v.Type().Elem().Kind(), int64(v.Type().Elem().Size()))
+	if err != nil {
+		return nil, err
+	}
+
+	dataSize := int64(v.Len()) * int64(v.Type().Elem().Size())
+	dataPtr := v.Pointer()
+
+	return newTensor(dataType, shape, unsafe.Pointer(dataPtr), dataSize)
+}
+
+// NewTensor Initializes a tensor based on the slice passed by parameter, the
+// data type and shape is deducted from the data parameter
+// Example:
+//  NewTensor([][]int64{
+//    {1, 2, 3, 4},
+//    {5, 6, 7, 8},
+//  })
+func NewTensor(data interface{}) (tensor *Tensor, err error) {
+	var dataPtr uintptr
+	var dataSer []interface{}
+	var dims [][]int64
+	var dataType DataType
+	var dataSize int64
+
+	v := reflect.ValueOf(data)
+	if v.Kind() == reflect.Slice {
+		dataType, _ = getDataTypeFromReflect(v.Type().Elem().Kind(), 1)
+		if dataType == DtString {
+			strings := make([]string, v.Len())
+			for i := 0; i < v.Len(); i++ {
+				strings[i] = v.Index(i).String()
+			}
+			buf := encodeStrings(strings)
+			t, err := newTensor(DtString, TensorShape{{int64(len(strings))}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
+			if err != nil {
+				return nil, err
+			}
+			return t, nil
+		}
+
+		dataSer, dims, dataType, dataSize, err = serialize(data, 0, [][]int64{})
+		if err != nil {
+			return
+		}
+	} else {
+		// Scalar tensor
+		dataSer = []interface{}{data}
+		dims = [][]int64{}
+		dataSize = int64(v.Type().Size())
+		if dataType, err = getDataTypeFromReflect(v.Kind(), dataSize); err != nil {
+			return
+		}
+	}
+	ts := TensorShape(dims)
+
+	auxTensor := new(Tensor)
+	switch dataType {
+	case DtFloat:
+		auxTensor.FloatVal = make([]float32, len(dataSer))
+		for i, v := range dataSer {
+			auxTensor.FloatVal[i] = v.(float32)
+		}
+		dataPtr = reflect.ValueOf(auxTensor.FloatVal).Pointer()
+	case DtDouble:
+		auxTensor.DoubleVal = make([]float64, len(dataSer))
+		for i, v := range dataSer {
+			auxTensor.DoubleVal[i] = v.(float64)
+		}
+		dataPtr = reflect.ValueOf(auxTensor.DoubleVal).Pointer()
+	case DtInt8, DtInt16, DtInt32, DtUint8:
+		auxTensor.IntVal = make([]int32, len(dataSer))
+		for i, v := range dataSer {
+			auxTensor.IntVal[i] = int32(reflect.ValueOf(v).Int())
+		}
+		dataPtr = reflect.ValueOf(auxTensor.IntVal).Pointer()
+	case DtInt64:
+		auxTensor.Int64Val = make([]int64, len(dataSer))
+		for i, v := range dataSer {
+			auxTensor.Int64Val[i] = reflect.ValueOf(v).Int()
+		}
+		dataPtr = reflect.ValueOf(auxTensor.Int64Val).Pointer()
+	case DtBool:
+		auxTensor.BoolVal = make([]bool, len(dataSer))
+		for i, v := range dataSer {
+			auxTensor.BoolVal[i] = v.(bool)
+		}
+		dataPtr = reflect.ValueOf(auxTensor.BoolVal).Pointer()
+	case DtString:
+		auxTensor.StringVal = make([][]byte, len(dataSer))
+		for i, v := range dataSer {
+			auxTensor.StringVal[i] = []byte(v.(string))
+		}
+		dataPtr = reflect.ValueOf(auxTensor.StringVal).Pointer()
+	default:
+		return nil, &ErrTensorTypeNotSupported{
+			tensotType: dataType,
+		}
+	}
+
+	tensor, err = newTensor(dataType, ts, unsafe.Pointer(dataPtr), int64(len(dataSer))*dataSize)
+
+	tensor.FloatVal = auxTensor.FloatVal
+	tensor.DoubleVal = auxTensor.DoubleVal
+	tensor.IntVal = auxTensor.IntVal
+	tensor.StringVal = auxTensor.StringVal
+	tensor.ScomplexVal = auxTensor.ScomplexVal
+	tensor.Int64Val = auxTensor.Int64Val
+	tensor.BoolVal = auxTensor.BoolVal
+
+	return
+}
 
 // DataType returns the data type of the elements contained by the tensor.
 func (t *Tensor) DataType() DataType {
@@ -466,136 +538,64 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 	return
 }
 
-// NewTensorWithShape returns a new tensor with teh specified type, shape and data.
-// The supported  data types are:
-//  - int
-//  - int8
-//  - int16
-//  - int32
-//  - int64
-//  - uint8
-//  - uint16
-//  - float32
-//  - float64
-func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
-	v := reflect.ValueOf(data)
-	if v.Kind() != reflect.Slice {
-		return nil, &ErrSliceExpected{
-			dataType: v.Kind().String(),
-		}
-	}
-
-	dataType, err := getDataTypeFromReflect(v.Type().Elem().Kind(), int64(v.Type().Elem().Size()))
-	if err != nil {
-		return nil, err
-	}
-
-	dataSize := int64(v.Len()) * int64(v.Type().Elem().Size())
-	dataPtr := v.Pointer()
-
-	return newTensor(dataType, shape, unsafe.Pointer(dataPtr), dataSize)
+// ErrInvalidTensorType The data type of the tensor is not compatible
+// with the expected data type on this function.
+type ErrInvalidTensorType struct {
+	tensorType   DataType
+	expectedType DataType
 }
 
-// NewTensor Initializes a tensor based on the slice passed by parameter, the
-// data type and shape is deducted from the data parameter
-// Example:
-//  NewTensor([][]int64{
-//    {1, 2, 3, 4},
-//    {5, 6, 7, 8},
-//  })
-func NewTensor(data interface{}) (tensor *Tensor, err error) {
-	var dataPtr uintptr
-	var dataSer []interface{}
-	var dims [][]int64
-	var dataType DataType
-	var dataSize int64
+func (e *ErrInvalidTensorType) Error() string {
+	return fmt.Sprintf("Invalid tensor data type, tensor data type: '%s', required data type: '%s'", e.tensorType, e.expectedType)
+}
 
-	v := reflect.ValueOf(data)
-	if v.Kind() == reflect.Slice {
-		dataType, _ = getDataTypeFromReflect(v.Type().Elem().Kind(), 1)
-		if dataType == DtString {
-			strings := make([]string, v.Len())
-			for i := 0; i < v.Len(); i++ {
-				strings[i] = v.Index(i).String()
-			}
-			buf := encodeStrings(strings)
-			t, err := newTensor(DtString, TensorShape{{int64(len(strings))}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
-			if err != nil {
-				return nil, err
-			}
-			return t, nil
-		}
+// ErrTensorTypeNotSupported The tensor type is still not supported.
+type ErrTensorTypeNotSupported struct {
+	tensotType DataType
+}
 
-		dataSer, dims, dataType, dataSize, err = serialize(data, 0, [][]int64{})
-		if err != nil {
-			return
-		}
-	} else {
-		// Scalar tensor
-		dataSer = []interface{}{data}
-		dims = [][]int64{}
-		dataSize = int64(v.Type().Size())
-		if dataType, err = getDataTypeFromReflect(v.Kind(), dataSize); err != nil {
-			return
-		}
-	}
-	ts := TensorShape(dims)
+func (e *ErrTensorTypeNotSupported) Error() string {
+	return fmt.Sprintf("The tensor data type '%s' is still not supported", e.tensotType)
+}
 
-	auxTensor := new(Tensor)
-	switch dataType {
-	case DtFloat:
-		auxTensor.FloatVal = make([]float32, len(dataSer))
-		for i, v := range dataSer {
-			auxTensor.FloatVal[i] = v.(float32)
-		}
-		dataPtr = reflect.ValueOf(auxTensor.FloatVal).Pointer()
-	case DtDouble:
-		auxTensor.DoubleVal = make([]float64, len(dataSer))
-		for i, v := range dataSer {
-			auxTensor.DoubleVal[i] = v.(float64)
-		}
-		dataPtr = reflect.ValueOf(auxTensor.DoubleVal).Pointer()
-	case DtInt8, DtInt16, DtInt32, DtUint8:
-		auxTensor.IntVal = make([]int32, len(dataSer))
-		for i, v := range dataSer {
-			auxTensor.IntVal[i] = int32(reflect.ValueOf(v).Int())
-		}
-		dataPtr = reflect.ValueOf(auxTensor.IntVal).Pointer()
-	case DtInt64:
-		auxTensor.Int64Val = make([]int64, len(dataSer))
-		for i, v := range dataSer {
-			auxTensor.Int64Val[i] = reflect.ValueOf(v).Int()
-		}
-		dataPtr = reflect.ValueOf(auxTensor.Int64Val).Pointer()
-	case DtBool:
-		auxTensor.BoolVal = make([]bool, len(dataSer))
-		for i, v := range dataSer {
-			auxTensor.BoolVal[i] = v.(bool)
-		}
-		dataPtr = reflect.ValueOf(auxTensor.BoolVal).Pointer()
-	case DtString:
-		auxTensor.StringVal = make([][]byte, len(dataSer))
-		for i, v := range dataSer {
-			auxTensor.StringVal[i] = []byte(v.(string))
-		}
-		dataPtr = reflect.ValueOf(auxTensor.StringVal).Pointer()
-	default:
-		return nil, &ErrTensorTypeNotSupported{
-			tensotType: dataType,
-		}
-	}
+// ErrDimsOutOfTensorRange The number of specified dimensions doesn't
+// match with the tensor dimensions
+type ErrDimsOutOfTensorRange struct {
+	tensorDim int
+	specDims  int
+}
 
-	tensor, err = newTensor(dataType, ts, unsafe.Pointer(dataPtr), int64(len(dataSer))*dataSize)
+func (e *ErrDimsOutOfTensorRange) Error() string {
+	return fmt.Sprintf("The number of specified dimensions (%d) doesn't match with the tensor dimensions (%d)", e.specDims, e.tensorDim)
+}
 
-	tensor.FloatVal = auxTensor.FloatVal
-	tensor.DoubleVal = auxTensor.DoubleVal
-	tensor.IntVal = auxTensor.IntVal
-	tensor.StringVal = auxTensor.StringVal
-	tensor.ScomplexVal = auxTensor.ScomplexVal
-	tensor.Int64Val = auxTensor.Int64Val
-	tensor.BoolVal = auxTensor.BoolVal
+// ErrIndexOutOfRange The specified index is out of one of the dimensions range
+type ErrIndexOutOfRange struct {
+	dim       int
+	index     int
+	dimsRange int
+}
 
-	return
+func (e *ErrIndexOutOfRange) Error() string {
+	return fmt.Sprintf("The specified index %d is out of the dimension  %d range: %d", e.index, e.dim, e.dimsRange)
+}
+
+// ErrSliceExpected The argument must be an Slice
+type ErrSliceExpected struct {
+	dataType string
+}
+
+func (e *ErrSliceExpected) Error() string {
+	return fmt.Sprintf("The argument must be an Slice, but the data type is: '%s'", e.dataType)
+}
+
+// ErrDataTypeNotSupported The data type is still not suported
+type ErrDataTypeNotSupported struct {
+	dataType string
+}
+
+func (e *ErrDataTypeNotSupported) Error() string {
+	return fmt.Sprintf("The type of the provided data is still not suported: '%s'", e.dataType)
 }
 
 func serialize(data interface{}, deep int, dimsIn [][]int64) (ser []interface{}, dims [][]int64, dataType DataType, dataSize int64, err error) {
