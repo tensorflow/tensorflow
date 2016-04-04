@@ -28,29 +28,42 @@ from tensorflow.python.ops import math_ops
 
 
 def known_sigma_posterior(prior, sigma, s, n):
-  """Return the conjugate posterior distribution with known sigma.
+  """Posterior Gaussian distribution with conjugate prior on the mean.
 
-  Accepts a prior Gaussian distribution, having parameters `mu0` and `sigma0`,
-  a known `sigma` of the predictive distribution (also assumed Gaussian),
-  and statistical estimates `s` (the sum of the observations) and
-  `n` (the number of observations).
+  This model assumes that `n` observations (with sum `s`) come from a
+  Gaussian with unknown mean `mu` (described by the Gaussian `prior`)
+  and known variance `sigma^2`.  The "known sigma posterior" is
+  the distribution of the unknown `mu`.
+
+  Accepts a prior Gaussian distribution object, having parameters
+  `mu0` and `sigma0`, as well as known `sigma` values of the predictive
+  distribution(s) (also assumed Gaussian),
+  and statistical estimates `s` (the sum(s) of the observations) and
+  `n` (the number(s) of observations).
 
   Returns a posterior (also Gaussian) distribution object, with parameters
   `(mu', sigma'^2)`, where:
+
   ```
+  mu ~ N(mu', sigma'^2)
   sigma'^2 = 1/(1/sigma0^2 + n/sigma^2),
   mu' = (mu0/sigma0^2 + s/sigma^2) * sigma'^2.
   ```
 
+  Distribution parameters from `prior`, as well as `sigma`, `s`, and `n`.
+  will broadcast in the case of multidimensional sets of parameters.
+
   Args:
-    prior: `Normal` object of type `dtype`, the prior distribution having
-      parameters `(mu0, sigma0)`.
-    sigma: Scalar of type `dtype`, `sigma > 0`.  The known stddev parameter.
-    s: Scalar, of type `dtype`, the sum of observations.
-    n: Scalar int, the number of observations.
+    prior: `Gaussian` object of type `dtype`:
+      the prior distribution having parameters `(mu0, sigma0)`.
+    sigma: tensor of type `dtype`, taking values `sigma > 0`.
+      The known stddev parameter(s).
+    s: Tensor of type `dtype`.  The sum(s) of observations.
+    n: Tensor of type `int`.  The number(s) of observations.
 
   Returns:
-    A new Gaussian posterior distribution.
+    A new Gaussian posterior distribution object for the unknown observation
+    mean `mu`.
 
   Raises:
     TypeError: if dtype of `s` does not match `dtype`, or `prior` is not a
@@ -74,36 +87,49 @@ def known_sigma_posterior(prior, sigma, s, n):
 
 
 def known_sigma_predictive(prior, sigma, s, n):
-  """Return the posterior predictive distribution with known sigma.
+  """Posterior predictive Gaussian distribution w. conjugate prior on the mean.
 
-  Accepts a prior Gaussian distribution, having parameters `mu0` and `sigma0`,
-  a known `sigma` of the predictive distribution (also assumed Gaussian),
-  and statistical estimates `s` (the sum of the observations) and
-  `n` (the number of observations).
+  This model assumes that `n` observations (with sum `s`) come from a
+  Gaussian with unknown mean `mu` (described by the Gaussian `prior`)
+  and known variance `sigma^2`.  The "known sigma predictive"
+  is the distribution of new observations, conditioned on the existing
+  observations and our prior.
 
-  Calculates the Gaussian distribution p(x | sigma):
+  Accepts a prior Gaussian distribution object, having parameters
+  `mu0` and `sigma0`, as well as known `sigma` values of the predictive
+  distribution(s) (also assumed Gaussian),
+  and statistical estimates `s` (the sum(s) of the observations) and
+  `n` (the number(s) of observations).
+
+  Calculates the Gaussian distribution(s) `p(x | sigma^2)`:
+
   ```
-    p(x | sigma) = int N(x | mu, sigma^2) N(mu | prior.mu, prior.sigma^2) dmu
-                 = N(x | prior.mu, 1/(sigma^2 + prior.sigma^2))
+    p(x | sigma^2) = int N(x | mu, sigma^2) N(mu | prior.mu, prior.sigma^2) dmu
+                   = N(x | prior.mu, 1/(sigma^2 + prior.sigma^2))
   ```
 
   Returns the predictive posterior distribution object, with parameters
   `(mu', sigma'^2)`, where:
+
   ```
   sigma_n^2 = 1/(1/sigma0^2 + n/sigma^2),
   mu' = (mu0/sigma0^2 + s/sigma^2) * sigma_n^2.
   sigma'^2 = sigma_n^2 + sigma^2,
   ```
 
+  Distribution parameters from `prior`, as well as `sigma`, `s`, and `n`.
+  will broadcast in the case of multidimensional sets of parameters.
+
   Args:
-    prior: `Normal` object of type `dtype`, the prior distribution having
-      parameters `(mu0, sigma0)`.
-    sigma: Scalar of type `dtype`, `sigma > 0`.  The known stddev parameter.
-    s: Scalar, of type `dtype`, the sum of observations.
-    n: Scalar int, the number of observations.
+    prior: `Gaussian` object of type `dtype`:
+      the prior distribution having parameters `(mu0, sigma0)`.
+    sigma: tensor of type `dtype`, taking values `sigma > 0`.
+      The known stddev parameter(s).
+    s: Tensor of type `dtype`.  The sum(s) of observations.
+    n: Tensor of type `int`.  The number(s) of observations.
 
   Returns:
-    A new Gaussian posterior distribution.
+    A new Gaussian predictive distribution object.
 
   Raises:
     TypeError: if dtype of `s` does not match `dtype`, or `prior` is not a
