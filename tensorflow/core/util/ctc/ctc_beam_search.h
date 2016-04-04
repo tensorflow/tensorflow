@@ -102,6 +102,14 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   // Retrieve the beam scorer instance used during decoding.
   CTCBeamScorer* GetBeamScorer() { return beam_scorer_.get(); }
 
+  // Set label selection parameters for faster decoding.
+  // See comments for label_selection_size_ and label_selection_margin_.
+  void SetLabelSelectionParameters(int label_selection_size,
+                                   float label_selection_margin) {
+    label_selection_size_ = label_selection_size;
+    label_selection_margin_ = label_selection_margin;
+  }
+
   // Reset the beam search
   void Reset();
 
@@ -111,6 +119,19 @@ class CTCBeamSearchDecoder : public CTCDecoder {
 
  private:
   int beam_width_;
+
+  // Label selection is designed to avoid possibly very expensive scorer calls,
+  // by pruning the hypotheses based on the input alone.
+  // Label selection size controls how many items in each beam are passed
+  // through to the beam scorer. Only items with top N input scores are
+  // considered.
+  // Label selection margin controls the difference between minimal input score
+  // (versus the best scoring label) for an item to be passed to the beam
+  // scorer. This margin is expressed in terms of log-probability.
+  // Default is to do no label selection.
+  // For more detail: https://research.google.com/pubs/pub44823.html
+  int label_selection_size_ = 0;       // zero means unlimited
+  float label_selection_margin_ = -1;  // -1 means unlimited.
 
   gtl::TopN<BeamEntry*, CTCBeamComparer> leaves_;
   std::unique_ptr<BeamEntry> beam_root_;
@@ -169,6 +190,21 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamScorer, CTCBeamComparer>::Step(
   Eigen::ArrayXf input = raw_input;
   // Remove the max for stability when performing log-prob calculations.
   input -= input.maxCoeff();
+
+  // Minimum allowed input value for label selection:
+  float label_selection_input_min = -std::numeric_limits<float>::infinity();
+  if (label_selection_size_ > 0 && label_selection_size_ < input.size()) {
+    std::vector<float> input_copy(input.data(), input.data() + input.size());
+    std::nth_element(input_copy.begin(),
+                     input_copy.begin() + label_selection_size_ - 1,
+                     input_copy.end(), [](float a, float b) { return a > b; });
+    label_selection_input_min = input_copy[label_selection_size_ - 1];
+  }
+  if (label_selection_margin_ >= 0) {
+    // max element is 0, per normalization above
+    label_selection_input_min =
+        std::max(label_selection_input_min, -label_selection_margin_);
+  };
 
   // Extract the beams sorted in decreasing new probability
   CHECK_EQ(num_classes_, input.size());
@@ -236,6 +272,11 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamScorer, CTCBeamComparer>::Step(
 
     for (BeamEntry& c : *b->Children()) {
       if (!c.Active()) {
+        // Perform label selection: if input for this label looks very
+        // unpromising, never evaluate it with a scorer.
+        if (input(c.label) < label_selection_input_min) {
+          continue;
+        }
         //   Pblank(l=abcd @ t=6) = 0
         c.newp.blank = kLogZero;
         // If new child label is identical to beam label:
