@@ -26,9 +26,9 @@ should have everything you need to run this example installed already.
 If you still don't have the Go libraries installed you can execute:
 
 ```bash
-$ go generate github.com/tensorflow/tensorflow/tensorflow/go
+$ go generate github.com/tensorflow/tensorflow/tensorflow/contrib/go
 
-$ go get github.com/tensorflow/tensorflow/tensorflow/go
+$ go get github.com/tensorflow/tensorflow/tensorflow/contrib/go
 ```
 
 Once extracted, see the labels file in the data directory for the possible

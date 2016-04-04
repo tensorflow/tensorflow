@@ -33,7 +33,7 @@ package main
 import (
 	"log"
 
-	"github.com/tensorflow/tensorflow/tensorflow/go"
+	"github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
 func main() {
@@ -144,7 +144,7 @@ This package expects the linker to find the 'libtensorflow' shared library.
 To generate this file run:
 
 ```sh
-$ go generate github.com/tensorflow/tensorflow/tensorflow/go
+$ go generate github.com/tensorflow/tensorflow/tensorflow/contrib/go
 ```
 
 `libtensorflow.so` will end up at `${GOPATH}/src/github.com/tensorflow/bazel-bin/tensorflow/libtensorflow.so`.

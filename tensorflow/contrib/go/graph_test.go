@@ -3,7 +3,7 @@ package tensorflow_test
 import (
 	"testing"
 
-	tf "github.com/tensorflow/tensorflow/tensorflow/go"
+	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
 func TestGraphGeneration(t *testing.T) {

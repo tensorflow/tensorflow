@@ -41,7 +41,7 @@ import (
 	"os"
 	"strings"
 
-	tf "github.com/tensorflow/tensorflow/tensorflow/go"
+	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
 const (

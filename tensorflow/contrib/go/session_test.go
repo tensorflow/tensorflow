@@ -3,15 +3,15 @@ package tensorflow_test
 import (
 	"testing"
 
-	"github.com/tensorflow/tensorflow/tensorflow/go"
+	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
 func TestNewSession(t *testing.T) {
-	graph, err := tensorflow.LoadGraphFromTextFile("test_data/tests_constants_outputs.pb")
+	graph, err := tf.LoadGraphFromTextFile("test_data/tests_constants_outputs.pb")
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := tensorflow.NewSession()
+	s, err := tf.NewSession()
 	if err := s.ExtendGraph(graph); err != nil {
 		t.Fatal(err)
 	}
@@ -34,30 +34,30 @@ func TestInputParams(t *testing.T) {
 	inputSlice1 := []int64{1, 2, 3}
 	inputSlice2 := []int64{3, 4, 5}
 
-	t1, err := tensorflow.NewTensor(inputSlice1)
+	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
 	}
 
-	t2, err := tensorflow.NewTensorWithShape([][]int64{{3}}, inputSlice2)
+	t2, err := tf.NewTensorWithShape([][]int64{{3}}, inputSlice2)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
 	}
 
-	graph, err := tensorflow.LoadGraphFromTextFile("test_data/add_three_dim_graph.pb")
+	graph, err := tf.LoadGraphFromTextFile("test_data/add_three_dim_graph.pb")
 	if err != nil {
 		t.Error("Problem trying read the graph from the origin file, Error:", err)
 		t.FailNow()
 	}
 
-	s, err := tensorflow.NewSession()
+	s, err := tf.NewSession()
 	if err := s.ExtendGraph(graph); err != nil {
 		t.Fatal(err)
 	}
 
-	input := map[string]*tensorflow.Tensor{
+	input := map[string]*tf.Tensor{
 		"input1": t1,
 		"input2": t2,
 	}
@@ -104,30 +104,30 @@ func TestInputMultDimParams(t *testing.T) {
 		},
 	}
 
-	t1, err := tensorflow.NewTensor(inputSlice1)
+	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
 	}
 
-	t2, err := tensorflow.NewTensor(inputSlice2)
+	t2, err := tf.NewTensor(inputSlice2)
 	if err != nil {
 		t.Error("Problem trying create a new tensor, Error:", err)
 		t.FailNow()
 	}
 
-	graph, err := tensorflow.LoadGraphFromTextFile("test_data/test_graph_multi_dim.pb")
+	graph, err := tf.LoadGraphFromTextFile("test_data/test_graph_multi_dim.pb")
 	if err != nil {
 		t.Error("Problem trying read the graph from the origin file, Error:", err)
 		t.FailNow()
 	}
 
-	s, err := tensorflow.NewSession()
+	s, err := tf.NewSession()
 	if err := s.ExtendGraph(graph); err != nil {
 		t.Fatal(err)
 	}
 
-	input := map[string]*tensorflow.Tensor{
+	input := map[string]*tf.Tensor{
 		"input1": t1,
 		"input2": t2,
 	}

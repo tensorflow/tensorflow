@@ -5,15 +5,15 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/tensorflow/tensorflow/tensorflow/go"
+	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
-func getTensorFromGraph(t *testing.T, graphStr string) *tensorflow.Tensor {
-	graph, err := tensorflow.NewGraphFromText(graphStr)
+func getTensorFromGraph(t *testing.T, graphStr string) *tf.Tensor {
+	graph, err := tf.NewGraphFromText(graphStr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := tensorflow.NewSession()
+	s, err := tf.NewSession()
 	if err := s.ExtendGraph(graph); err != nil {
 		t.Fatal(err)
 	}
@@ -562,7 +562,7 @@ func TestBool(t *testing.T) {
 }
 
 func TestTensor(t *testing.T) {
-	tensor, err := tensorflow.NewTensor([][][]int64{
+	tensor, err := tf.NewTensor([][][]int64{
 		{
 			{10, 12},
 			{14, 16},
