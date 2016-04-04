@@ -61,14 +61,5 @@ def one_hot_matrix(tensor_in, num_classes, on_value=1.0, off_value=0.0):
         Tensor of shape [N1, N2, num_classes] with 1.0 for each id in original
         tensor.
     """
-    tensor_in = tf.convert_to_tensor(tensor_in)
-    sparse_values = tf.to_int64(tf.reshape(tensor_in, [-1, 1]))
-    size = tf.shape(sparse_values)[0]
-    dims = tf.shape(tensor_in)
-    indices = tf.to_int64(tf.reshape(tf.range(0, size), [-1, 1]))
-    indices_values = tf.concat(1, [indices, sparse_values])
-    outshape = tf.to_int64(expand_concat(0, [size, num_classes]))
-    one_hot_vector = tf.sparse_to_dense(indices_values, outshape, on_value, off_value)
-    ret = tf.reshape(one_hot_vector, tf.concat(0, [dims, [num_classes]]))
-    ret.set_shape(tensor_in.get_shape().concatenate(num_classes))
-    return ret
+    return tf.one_hot(tensor_in, num_classes, on_value, off_value)
+
