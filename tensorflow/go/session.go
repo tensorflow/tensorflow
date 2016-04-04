@@ -52,7 +52,14 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 	outputValues := NewTensorVector()
 	status := TF_NewStatus()
 
-	TF_Run_wrapper(s.session, inputNames, inputValues, outputNames, outputValues, targetNames, status)
+	TF_Run_wrapper(
+		s.session,
+		inputNames,
+		inputValues,
+		outputNames,
+		outputValues,
+		targetNames,
+		status)
 
 	result := make([]*Tensor, 0, outputValues.Size())
 	for i := int64(0); i < outputValues.Size(); i++ {

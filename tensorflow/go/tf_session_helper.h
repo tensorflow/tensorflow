@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-void TF_Run_wrapper(TF_Session*,
+void TF_Run_wrapper(TF_Session* session,
                    // Input tensors
                    std::vector<std::string> input_tensor_names, std::vector<TF_Tensor*> inputs,
                    // Output tensors
@@ -31,7 +31,7 @@ void TF_Run_wrapper(TF_Session*,
                    // Target nodes
                    std::vector<std::string> target_node_names,
                    // Output status
-                   TF_Status*);
+                   TF_Status* out_status);
 
 }  // namespace tensorflow
 

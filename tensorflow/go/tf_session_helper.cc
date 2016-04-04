@@ -30,7 +30,7 @@ void TF_Run_wrapper(TF_Session* session,
                    std::vector<std::string> target_node_names,
                    // Output status
                    TF_Status* out_status) {
-  
+ 
   std::vector<const char*> cstring_input_tensor_names;
   std::vector<const char*> cstring_output_tensor_names;
   std::vector<const char*> cstring_target_node_names;
@@ -44,10 +44,15 @@ void TF_Run_wrapper(TF_Session* session,
   
   outputs = std::vector<TF_Tensor*>(output_tensor_names.size());
 
-  TF_Run(session, cstring_input_tensor_names.data(), inputs.data(), input_tensor_names.size(),
+  const TF_Buffer* run_options = TF_NewBuffer();
+  TF_Buffer* run_outputs = TF_NewBuffer();
+
+  // TODO: Add run_options and run_outputs
+  TF_Run(session, run_options, cstring_input_tensor_names.data(), inputs.data(), input_tensor_names.size(),
          const_cast<const char**>(cstring_output_tensor_names.data()), outputs.data(),
          output_tensor_names.size(), cstring_target_node_names.data(),
-         target_node_names.size(), out_status);
+         target_node_names.size(), run_outputs, out_status);
+
 }
 
 }  // namespace tensorflow
