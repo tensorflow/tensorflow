@@ -626,10 +626,6 @@ tf_gen_op_wrapper_py(
         "MatMul",
         "Sigmoid",
         "Tanh",
-        "Lgamma",
-        "Digamma",
-        "Erf",
-        "Erfc",
     ],
     require_shape_functions = True,
 )

@@ -91,7 +91,7 @@ class TensorFlowEstimator(BaseEstimator):
     """
 
     def __init__(self, model_fn, n_classes, tf_master="", batch_size=32,
-                 steps=200, optimizer="SGD",
+                 steps=200, optimizer="Adagrad",
                  learning_rate=0.1, class_weight=None,
                  tf_random_seed=42, continue_training=False,
                  config_addon=None, verbose=1,
@@ -209,7 +209,7 @@ class TensorFlowEstimator(BaseEstimator):
                                                     self.batch_size)
 
         if monitor is None:
-            self._monitor = monitors.default_monitor()
+            self._monitor = monitors.default_monitor(verbose=self.verbose)
         else:
             self._monitor = monitor
 
