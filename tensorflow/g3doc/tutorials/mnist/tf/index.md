@@ -69,7 +69,7 @@ rest of the graph and into which the actual training examples will be fed.
 
 ```python
 images_placeholder = tf.placeholder(tf.float32, shape=(batch_size,
-                                                       IMAGE_PIXELS))
+                                                       mnist.IMAGE_PIXELS))
 labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size))
 ```
 
