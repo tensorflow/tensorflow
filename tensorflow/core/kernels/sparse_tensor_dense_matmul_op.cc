@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 
 namespace tensorflow {
@@ -111,9 +112,24 @@ class SparseTensorDenseMatMulOp : public OpKernel {
     }
 
     Tensor scratch;
-    int nnz = a_values->NumElements();
 
     if (std::is_same<Device, GPUDevice>::value) {
+      // The GPU implementation is optimized to use 32 bit indexing, so
+      // give a friendly error to the programmer early on if they exceed.
+      OP_REQUIRES(
+          ctx,
+          FastBoundsCheck(inner_left, std::numeric_limits<int>::max()) &&
+              FastBoundsCheck(inner_right, std::numeric_limits<int>::max()) &&
+              FastBoundsCheck(outer_left, std::numeric_limits<int>::max()) &&
+              FastBoundsCheck(outer_right, std::numeric_limits<int>::max()) &&
+              FastBoundsCheck(b->NumElements(),
+                              std::numeric_limits<int>::max()) &&
+              FastBoundsCheck(out->NumElements(),
+                              std::numeric_limits<int>::max()) &&
+              FastBoundsCheck(a_values->NumElements(),
+                              std::numeric_limits<int>::max()),
+          errors::InvalidArgument("Cannot use GPU for > 2^31 entry inputs"));
+      const int nnz = static_cast<const int>(a_values->NumElements());
       // Need nnz length vec scratch space on the GPU.
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
                                              TensorShape({nnz}), &scratch));
@@ -207,6 +223,7 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, ADJ_A, ADJ_B> {
                                           typename TTypes<T>::Vec scratch) {
     const std::size_t nnz = a_values.size();
     const std::size_t rhs_right = (ADJ_B ? b.dimension(0) : b.dimension(1));
+    const std::size_t lhs_right = (ADJ_B ? b.dimension(1) : b.dimension(0));
     const int lhs_index_a = ADJ_A ? 1 : 0;
     const int rhs_index_a = ADJ_A ? 0 : 1;
 
@@ -220,8 +237,10 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, ADJ_A, ADJ_B> {
       // Disable vectorization if the RHS of output is too small
       auto maybe_adjoint_b = MaybeAdjoint<decltype(b), ADJ_B>(b);
       for (std::size_t i = 0; i < nnz; ++i) {
-        const int64 m = a_indices(i, lhs_index_a);
-        const int64 k = a_indices(i, rhs_index_a);
+        const int64 m = internal::SubtleMustCopy(a_indices(i, lhs_index_a));
+        const int64 k = internal::SubtleMustCopy(a_indices(i, rhs_index_a));
+        CHECK_LT(k, lhs_right);
+        CHECK_LT(m, out.dimension(0));
         const T a_value = ADJ_A ? MaybeConj(a_values(i)) : a_values(i);
         for (std::size_t n = 0; n < rhs_right; ++n) {
           const T b_value = maybe_adjoint_b(k, n);
@@ -230,15 +249,18 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, ADJ_A, ADJ_B> {
       }
     } else {
       for (std::size_t i = 0; i < nnz; ++i) {
-        const int64 m = a_indices(i, lhs_index_a);
-        const int64 k = a_indices(i, rhs_index_a);
+        const int64 m = internal::SubtleMustCopy(a_indices(i, lhs_index_a));
+        const int64 k = internal::SubtleMustCopy(a_indices(i, rhs_index_a));
         const T a_value = (ADJ_A) ? MaybeConj(a_values(i)) : a_values(i);
+        CHECK_LT(m, out.dimension(0));
         if (ADJ_B) {
+          CHECK_LT(k, b.dimension(1));
           out.template chip<0>(m) +=
               b.template chip<1>(k).unaryExpr(
                   Eigen::internal::scalar_conjugate_op<T>()) *
               a_value;
         } else {
+          CHECK_LT(k, b.dimension(0));
           out.template chip<0>(m) += b.template chip<0>(k) * a_value;
         }
       }

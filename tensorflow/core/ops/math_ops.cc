@@ -387,6 +387,52 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ```
 )doc");
 
+REGISTER_OP("Igammac")
+    .Input("a: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Compute the upper regularized incomplete Gamma function `Q(a, x)`.
+
+The upper regularized incomplete Gamma function is defined as:
+
+```
+Q(a, x) = Gamma(a, x) / Gamma(x) = 1 - P(a, x)
+```
+where
+```
+Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt
+```
+is the upper incomplete Gama function.
+
+Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
+Gamma function.
+)doc");
+
+REGISTER_OP("Igamma")
+    .Input("a: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Compute the lower regularized incomplete Gamma function `Q(a, x)`.
+
+The lower regularized incomplete Gamma function is defined as:
+
+```
+P(a, x) = gamma(a, x) / Gamma(x) = 1 - Q(a, x)
+```
+where
+```
+gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt
+```
+is the lower incomplete Gamma function.
+
+Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
+Gamma function.
+)doc");
+
 // --------------------------------------------------------------------------
 
 // Declares cwise binary comparison operations signature: 't, 't -> bool,

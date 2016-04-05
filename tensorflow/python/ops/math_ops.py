@@ -56,6 +56,8 @@ mathematical functions to your graph.
 @@erf
 @@erfc
 @@squared_difference
+@@igamma
+@@igammac
 
 ## Matrix Math Functions
 
@@ -1274,76 +1276,8 @@ def lbeta(x, name="lbeta"):
     x = ops.convert_to_tensor(x, name="x")
     ndims = array_ops.size(array_ops.shape(x))
     return (reduce_sum(
-        lgamma(x), reduction_indices=ndims - 1)
-            - lgamma(reduce_sum(x, reduction_indices=ndims - 1)))
-
-
-# TODO(b/27419586) Change docstring for required dtype of x once int allowed
-def lgamma(x, name=None):
-  """Computes `ln(|gamma(x)|)` element-wise.
-
-  Args:
-    x: A Tensor with type `float`, or `double`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-      the return type is `quint8`.
-  """
-  with ops.op_scope([x], name, "Lgamma") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops._lgamma(x, name=name)
-
-
-# TODO(b/27419586) Change docstring for required dtype of x once int allowed
-def digamma(x, name=None):
-  """Computes Psi, the derivative of lgamma, `ln(|gamma(x)|)`, element-wise.
-
-  Args:
-    x: A Tensor with type `float`, or `double`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-      the return type is `quint8`.
-  """
-  with ops.op_scope([x], name, "Digamma") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops._digamma(x, name=name)
-
-
-def erf(x, name=None):
-  """Computes Gauss error function of `x` element-wise.
-
-  Args:
-    x: A Tensor with type `float`, `double`, `int32`, `int64`,
-      or `qint32`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-      the return type is `quint8`.
-  """
-  with ops.op_scope([x], name, "Erf") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops._erf(x, name=name)
-
-
-def erfc(x, name=None):
-  """Computes complementary error function of `x` element-wise.
-
-  Args:
-    x: A Tensor with type `float`, `double`, `int32`, `int64`,
-      or `qint32`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-      the return type is `quint8`.
-  """
-  with ops.op_scope([x], name, "Erfc") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops._erfc(x, name=name)
+        gen_math_ops.lgamma(x), reduction_indices=ndims - 1)
+            - gen_math_ops.lgamma(reduce_sum(x, reduction_indices=ndims - 1)))
 
 
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
@@ -1395,6 +1329,8 @@ ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
 @ops.RegisterShape("Equal")
 @ops.RegisterShape("Greater")
 @ops.RegisterShape("GreaterEqual")
+@ops.RegisterShape("Igamma")
+@ops.RegisterShape("Igammac")
 @ops.RegisterShape("Less")
 @ops.RegisterShape("LessEqual")
 @ops.RegisterShape("LogicalAnd")

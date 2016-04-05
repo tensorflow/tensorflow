@@ -28,9 +28,17 @@ from tensorflow.contrib.skflow.python.skflow.io.data_feeder import setup_train_d
 # pylint: disable=too-many-arguments
 # pylint: disable=attribute-defined-outside-init
 
-def default_monitor():
-    """returns very simple monitor object to summarize training progress"""
-    return BaseMonitor()
+
+def default_monitor(verbose=1):
+    """Returns very simple monitor object to summarize training progress.
+
+    Args:
+      verbose: Level of verbosity of output.
+
+    Returns:
+      Default monitor object.
+    """
+    return BaseMonitor(verbose=verbose)
 
 
 class BaseMonitor(object):

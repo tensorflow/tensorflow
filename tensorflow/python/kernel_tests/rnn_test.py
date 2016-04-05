@@ -922,9 +922,6 @@ def _static_vs_dynamic_rnn_benchmark_dynamic(inputs_t, sequence_length):
 def graph_creation_static_vs_dynamic_rnn_benchmark(max_time):
   config = tf.ConfigProto()
   config.allow_soft_placement = True
-  # Don't perform optimizations, so we don't run ops on
-  # CPU during constant folding.
-  config.graph_options.optimizer_options.opt_level = -1
 
   # These parameters don't matter
   batch_size = 512
@@ -1002,11 +999,11 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
   with tf.Session(config=config, graph=tf.Graph()) as sess:
     if not use_gpu:
       with tf.device("/cpu:0"):
-        inputs_t = tf.constant(inputs)
+        inputs_t = tf.Variable(inputs)
         ops = _static_vs_dynamic_rnn_benchmark_dynamic(
             inputs_t, sequence_length)
     else:
-      inputs_t = tf.constant(inputs)
+      inputs_t = tf.Variable(inputs)
       ops = _static_vs_dynamic_rnn_benchmark_dynamic(
           inputs_t, sequence_length)
     tf.initialize_all_variables().run()
@@ -1050,7 +1047,7 @@ def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
 
   # No memory swap
   with tf.Session(config=config, graph=tf.Graph()) as sess:
-    inputs_t = tf.constant(inputs)
+    inputs_t = tf.Variable(inputs)
     ops = _dynamic_rnn_swap_memory_benchmark(
         inputs_t, sequence_length, swap_memory=False)
     tf.initialize_all_variables().run()
@@ -1058,7 +1055,7 @@ def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
 
   # Memory swap
   with tf.Session(config=config, graph=tf.Graph()) as sess:
-    inputs_t = tf.constant(inputs)
+    inputs_t = tf.Variable(inputs)
     ops = _dynamic_rnn_swap_memory_benchmark(
         inputs_t, sequence_length, swap_memory=True)
     tf.initialize_all_variables().run()
@@ -1085,7 +1082,7 @@ def rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
   for _ in range(5):
     if dynamic:
       with tf.Session(config=config, graph=tf.Graph()) as sess:
-        inputs_t = tf.constant(inputs)
+        inputs_t = tf.Variable(inputs)
         ops = _dynamic_rnn_swap_memory_benchmark(
             inputs_t, sequence_length, swap_memory=swap_memory)
         tf.initialize_all_variables().run()
