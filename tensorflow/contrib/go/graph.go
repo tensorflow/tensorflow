@@ -12,31 +12,33 @@ const (
 	cOpsProtobufDefsPath = "/usr/local/tensorlow/ops.pbtxt"
 )
 
-// Graph Representation of the computation graph
+// Graph Representation of the computation graph.
 type Graph struct {
 	def *GraphDef
 
 	availableOps map[string]*OpDef
+	constants    map[string]*Tensor
 }
 
 // GraphNode Representation of one of the nodes of the TensorFlow Graph a
 // node takes zero or more Tensors, performs some computation, and
-// produces zero or more Tensors
+// produces zero or more Tensors.
 type GraphNode struct {
 	def          *NodeDef
 	outDataTypes map[string]DataType
 }
 
-// NewGraph Returns an initialized instance of the Graph struct
+// NewGraph Returns an initialized instance of the Graph struct.
 func NewGraph() *Graph {
 	return &Graph{
 		def:          new(GraphDef),
 		availableOps: make(map[string]*OpDef),
+		constants:    make(map[string]*Tensor),
 	}
 }
 
 // NewGraphFromText Returns a new graph populated with the deserialization of
-// the provided graph string
+// the provided graph string.
 func NewGraphFromText(graphStr string) (gr *Graph, err error) {
 	gr = NewGraph()
 	err = proto.UnmarshalText(graphStr, gr.def)
@@ -71,7 +73,7 @@ func LoadGraphFromTextFile(path string) (gr *Graph, err error) {
 // AddOp Adds a new Node to the Graph with the specified operation, this
 // operation perfoms some internal check of the specified and expercted
 // attributes for the operation and try to deduct the corresponding DataTypes
-// in case of they are not specified
+// in case of they are not specified.
 func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
 	if err = gr.loadAvailableOps(); err != nil {
 		return
@@ -277,23 +279,23 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 }
 
 // Constant Creates a tensor that is added as a constant to the Graph with the
-// specified name
+// specified name.
 func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error) {
-	ts, err := NewTensor(data)
+	gr.constants[name], err = NewTensor(data)
 	if err != nil {
 		return
 	}
 
 	op, err = gr.AddOp("Const", name, nil, "", map[string]interface{}{
-		"dtype": ts.DataType(),
-		"value": ts,
+		"dtype": gr.constants[name].DataType(),
+		"value": gr.constants[name],
 	})
 
 	return
 }
 
 // AddPlaceholder Adds a placegolder to the Graph, a placeholder is an
-// operation that must be fed with data on execution
+// operation that must be fed with data on execution.
 func (gr *Graph) AddPlaceholder(name string, dataType DataType, dims []int64, dimNames []string) (op *GraphNode) {
 	op = &GraphNode{
 		outDataTypes: map[string]DataType{
@@ -336,14 +338,14 @@ func (gr *Graph) AddPlaceholder(name string, dataType DataType, dims []int64, di
 	return
 }
 
-// AsStr Returns the current graph serialized so it can be exported
+// AsStr Returns the current graph serialized so it can be exported.
 func (gr *Graph) AsStr() []byte {
 	result, _ := proto.Marshal(gr.def)
 
 	return result
 }
 
-// ErrOperationNotFound The specified operation is not defined
+// ErrOperationNotFound The specified operation is not defined.
 type ErrOperationNotFound struct {
 	op string
 }
@@ -353,7 +355,7 @@ func (e *ErrOperationNotFound) Error() string {
 }
 
 // ErrInvalidAmounthOfInputs The number of inputs doesn't corresponds with the
-// expected for this operation
+// expected for this operation.
 type ErrInvalidAmounthOfInputs struct {
 	operation  string
 	opInputs   int
@@ -365,7 +367,8 @@ func (e *ErrInvalidAmounthOfInputs) Error() string {
 		e.operation, e.opInputs, e.specInputs)
 }
 
-// ErrMandatoryAttributeNotSpecified A mandatory attribute for this operation was not specified
+// ErrMandatoryAttributeNotSpecified A mandatory attribute for this operation
+// was not specified.
 type ErrMandatoryAttributeNotSpecified struct {
 	operation  string
 	attribName string
@@ -376,7 +379,7 @@ func (e *ErrMandatoryAttributeNotSpecified) Error() string {
 		e.attribName, e.operation)
 }
 
-// ErrInvalidAttrValue The data type of the value for this attribute is not valid
+// ErrInvalidAttrValue The data type of the value for this attribute is not valid.
 type ErrInvalidAttrValue struct {
 	operation  string
 	attribName string
@@ -387,7 +390,7 @@ func (e *ErrInvalidAttrValue) Error() string {
 		e.attribName, e.operation)
 }
 
-// ErrInputOutputDataTypeMismatch The output data type doesn't match with the input one
+// ErrInputOutputDataTypeMismatch The output data type doesn't match with the input one.
 type ErrInputOutputDataTypeMismatch struct {
 	outDt DataType
 	inDt  DataType
@@ -402,7 +405,7 @@ func (e *ErrInputOutputDataTypeMismatch) Error() string {
 // data types specified on the attribues or deducting the data type from other
 // parameters, this method can return an error in case of the matching is not
 // possible, for instance if two input paramters mas have the same data type
-// but one is int and the other float
+// but one is int and the other float.
 func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *OpDef) (err error) {
 	// Associate the data type tags with the input data types
 	for i, arg := range op.InputArg {
@@ -463,7 +466,7 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 }
 
 // loadAvailableOps Loads all the available operation definitions from local
-// protobuf file on the system specified on the constant cOpsProtobufDefsPath
+// protobuf file on the system specified on the constant cOpsProtobufDefsPath.
 func (gr *Graph) loadAvailableOps() (err error) {
 	if len(gr.availableOps) != 0 {
 		return

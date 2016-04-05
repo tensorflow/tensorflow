@@ -2,6 +2,7 @@ package tensorflow
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/golang/protobuf/proto"
 )
@@ -9,20 +10,29 @@ import (
 // Session A Session instance lets a caller drive a TensorFlow graph
 // computation.
 type Session struct {
+	ops     TF_SessionOptions
 	session TF_Session
+	status  TF_Status
+	graph   *Graph
 }
 
 // NewSession initializes a new TensorFlow session.
 func NewSession() (s *Session, err error) {
 	status := TF_NewStatus()
-
+	ops := TF_NewSessionOptions()
 	s = &Session{
+		ops:    ops,
+		status: status,
 		session: TF_NewSession(
-			TF_NewSessionOptions(),
+			ops,
 			status,
 		),
 	}
+
 	err = s.statusToError(status)
+
+	// Release the C allocated memory when the instance is destroyed
+	runtime.SetFinalizer(s, (*Session).FreeAllocMem)
 
 	return
 }
@@ -36,6 +46,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 	inputNames := NewStringVector()
 	inputValues := NewTensorVector()
 	for k, v := range inputs {
+		v.SetCMemAsAlreadyRelease()
 		inputValues.Add(v.tensor)
 		inputNames.Add(k)
 	}
@@ -51,6 +62,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 
 	outputValues := NewTensorVector()
 	status := TF_NewStatus()
+	defer TF_DeleteStatus(status)
 
 	TF_Run_wrapper(
 		s.session,
@@ -71,19 +83,29 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 	return result, s.statusToError(status)
 }
 
-// ExtendGraph Loads the graph definition on the session
-func (s *Session) ExtendGraph(graph *Graph) error {
+// ExtendGraph Loads the graph definition on the session.
+func (s *Session) ExtendGraph(graph *Graph) (err error) {
 	status := TF_NewStatus()
+	defer TF_DeleteStatus(status)
 	buf, err := proto.Marshal(graph.def)
 	if err != nil {
 		return err
 	}
 	TF_ExtendGraph(s.session, buf, status)
+	s.graph = graph
 
 	return s.statusToError(status)
 }
 
-// ErrStatusTf Error message comming out from the TensorFlow C++ libraries
+// FreeAllocMem Method defined to be invoked by the Go garbage collector before
+// release this instance releasing the C++ allocated memory.
+func (s *Session) FreeAllocMem() {
+	TF_DeleteSession(s.session, s.status)
+	TF_DeleteStatus(s.status)
+	TF_DeleteSessionOptions(s.ops)
+}
+
+// ErrStatusTf Error message comming out from the TensorFlow C++ libraries.
 type ErrStatusTf struct {
 	code    TF_Code
 	message string
@@ -93,7 +115,7 @@ func (e *ErrStatusTf) Error() string {
 	return fmt.Sprintf("tensorflow: %d: %v", e.code, e.message)
 }
 
-// statusToError Converts a TF_Status returned by a C execution into a Go Error
+// statusToError Converts a TF_Status returned by a C execution into a Go Error.
 func (s *Session) statusToError(status TF_Status) error {
 	code := TF_GetCode(status)
 	message := TF_Message(status)

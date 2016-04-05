@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"runtime"
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
 )
 
-/*
-#include <string.h>
-*/
+// #include <stdlib.h>
+// #include <string.h>
 import "C"
 
 const (
@@ -30,41 +30,41 @@ const (
 )
 
 var (
-	// DtInvalid Invalid tensor DataType
+	// DtInvalid Invalid tensor DataType.
 	DtInvalid = DataType(0)
-	// DtBfloat corresponds to TF_BFLOAT16
+	// DtBfloat corresponds to TF_BFLOAT16.
 	DtBfloat = DataType(TF_BFLOAT16)
-	// DtBool corresponds to TF_BOOL
+	// DtBool corresponds to TF_BOOL.
 	DtBool = DataType(TF_BOOL)
-	// DtComplex corresponds to TF_COMPLEX
+	// DtComplex corresponds to TF_COMPLEX.
 	DtComplex = DataType(TF_COMPLEX)
-	// DtDouble corresponds to TF_DOUBLE
+	// DtDouble corresponds to TF_DOUBLE.
 	DtDouble = DataType(TF_DOUBLE)
-	// DtFloat corresponds to TF_FLOAT
+	// DtFloat corresponds to TF_FLOAT.
 	DtFloat = DataType(TF_FLOAT)
-	// DtInt16 corresponds to TF_INT16
+	// DtInt16 corresponds to TF_INT16.
 	DtInt16 = DataType(TF_INT16)
-	// DtInt32 corresponds to TF_INT32
+	// DtInt32 corresponds to TF_INT32.
 	DtInt32 = DataType(TF_INT32)
-	// DtInt64 corresponds to TF_INT64
+	// DtInt64 corresponds to TF_INT64.
 	DtInt64 = DataType(TF_INT64)
-	// DtInt8 corresponds to TF_INT8
+	// DtInt8 corresponds to TF_INT8.
 	DtInt8 = DataType(TF_INT8)
-	// DtQint16 corresponds to TF_QINT16
+	// DtQint16 corresponds to TF_QINT16.
 	DtQint16 = DataType(TF_QINT16)
-	// DtQuint16 corresponds to TF_QUINT16
+	// DtQuint16 corresponds to TF_QUINT16.
 	DtQuint16 = DataType(TF_QUINT16)
-	// DtQuint32 corresponds to TF_QINT32
+	// DtQuint32 corresponds to TF_QINT32.
 	DtQuint32 = DataType(TF_QINT32)
-	// DtQint8 corresponds to TF_QINT8
+	// DtQint8 corresponds to TF_QINT8.
 	DtQint8 = DataType(TF_QINT8)
-	// DtQuint8 corresponds to TF_QUINT8
+	// DtQuint8 corresponds to TF_QUINT8.
 	DtQuint8 = DataType(TF_QUINT8)
-	// DtString corresponds to TF_STRING
+	// DtString corresponds to TF_STRING.
 	DtString = DataType(TF_STRING)
-	// DtUint16 corresponds to TF_UINT16
+	// DtUint16 corresponds to TF_UINT16.
 	DtUint16 = DataType(TF_UINT16)
-	// DtUint8 corresponds to TF_UINT8
+	// DtUint8 corresponds to TF_UINT8.
 	DtUint8 = DataType(TF_UINT8)
 )
 
@@ -92,8 +92,9 @@ type TensorInt interface {
 type Tensor struct {
 	TensorProto
 
-	tensor     TF_Tensor
-	dimWeights []int
+	tensor      TF_Tensor
+	dimWeights  []int
+	memReleased bool
 }
 
 // TensorShape represents the shapre of a Tensor.
@@ -130,7 +131,7 @@ func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
 }
 
 // NewTensor Initializes a tensor based on the slice passed by parameter, the
-// data type and shape is deducted from the data parameter
+// data type and shape is deducted from the data parameter.
 // Example:
 //  NewTensor([][]int64{
 //    {1, 2, 3, 4},
@@ -152,11 +153,7 @@ func NewTensor(data interface{}) (tensor *Tensor, err error) {
 				strings[i] = v.Index(i).String()
 			}
 			buf := encodeStrings(strings)
-			t, err := newTensor(DtString, TensorShape{{int64(len(strings))}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
-			if err != nil {
-				return nil, err
-			}
-			return t, nil
+			return newTensor(DtString, TensorShape{{int64(len(strings))}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
 		}
 
 		dataSer, dims, dataType, dataSize, err = serialize(data, 0, [][]int64{})
@@ -263,7 +260,7 @@ func (t *Tensor) String() string {
 }
 
 // AsStr returns the content of the tensor as slice of strings if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
+// type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DT_STRING
 func (t *Tensor) AsStr() (res [][]byte, err error) {
@@ -306,7 +303,7 @@ func (t *Tensor) AsStr() (res [][]byte, err error) {
 }
 
 // AsFloat32 returns the content of the tensor as a slice of float32 if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
+// type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DT_FLOAT
 func (t *Tensor) AsFloat32() (res []float32, err error) {
@@ -334,7 +331,7 @@ func (t *Tensor) AsFloat32() (res []float32, err error) {
 }
 
 // AsFloat64 returns the content of the tensor as a slice of float64 if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
+// type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DT_DOUBLE
 func (t *Tensor) AsFloat64() (res []float64, err error) {
@@ -362,7 +359,7 @@ func (t *Tensor) AsFloat64() (res []float64, err error) {
 }
 
 // AsInt32 returns the content of the tensor as a slice of int32 if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
+// type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DT_INT32
 //  - DT_INT16
@@ -405,7 +402,7 @@ func (t *Tensor) AsInt32() (res []int32, err error) {
 }
 
 // AsInt64 returns the content of the tensor as a slice of int64 if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
+// type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DT_INT64
 func (t *Tensor) AsInt64() (res []int64, err error) {
@@ -433,7 +430,7 @@ func (t *Tensor) AsInt64() (res []int64, err error) {
 }
 
 // AsBool returns the content of the tensor as a slice of bool if the tensor
-// type matches, if not returns a ErrInvalidTensorType error
+// type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DT_BOOL
 func (t *Tensor) AsBool() (res []bool, err error) {
@@ -538,6 +535,24 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 	return
 }
 
+// SetCMemAsAlreadyRelease The C allocated memory was already released from C.
+func (t *Tensor) SetCMemAsAlreadyRelease() {
+	t.memReleased = true
+}
+
+// FreeAllocMem Method used telease the C allocated memory for this tensor.
+func (t *Tensor) FreeAllocMem() {
+	// We can't clean the tensor here in case of it had been  used as in
+	// input parameter since on tensorflow/core/client/tensor_c_api.cc the
+	// function TF_Run_Helper is cleaning the input tensors after every
+	// execution what can cause a a double free or corruption error in C++
+	// since there is no way to determine if a tensor had been previously
+	// cleaned.
+	if !t.memReleased {
+		TF_DeleteTensor(t.tensor)
+	}
+}
+
 // ErrInvalidTensorType The data type of the tensor is not compatible
 // with the expected data type on this function.
 type ErrInvalidTensorType struct {
@@ -559,7 +574,7 @@ func (e *ErrTensorTypeNotSupported) Error() string {
 }
 
 // ErrDimsOutOfTensorRange The number of specified dimensions doesn't
-// match with the tensor dimensions
+// match with the tensor dimensions.
 type ErrDimsOutOfTensorRange struct {
 	tensorDim int
 	specDims  int
@@ -569,7 +584,7 @@ func (e *ErrDimsOutOfTensorRange) Error() string {
 	return fmt.Sprintf("The number of specified dimensions (%d) doesn't match with the tensor dimensions (%d)", e.specDims, e.tensorDim)
 }
 
-// ErrIndexOutOfRange The specified index is out of one of the dimensions range
+// ErrIndexOutOfRange The specified index is out of one of the dimensions range.
 type ErrIndexOutOfRange struct {
 	dim       int
 	index     int
@@ -580,7 +595,7 @@ func (e *ErrIndexOutOfRange) Error() string {
 	return fmt.Sprintf("The specified index %d is out of the dimension  %d range: %d", e.index, e.dim, e.dimsRange)
 }
 
-// ErrSliceExpected The argument must be an Slice
+// ErrSliceExpected The argument must be an Slice.
 type ErrSliceExpected struct {
 	dataType string
 }
@@ -589,7 +604,7 @@ func (e *ErrSliceExpected) Error() string {
 	return fmt.Sprintf("The argument must be an Slice, but the data type is: '%s'", e.dataType)
 }
 
-// ErrDataTypeNotSupported The data type is still not suported
+// ErrDataTypeNotSupported The data type is still not suported.
 type ErrDataTypeNotSupported struct {
 	dataType string
 }
@@ -692,8 +707,13 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 	C.memcpy(cData, data, dataLen)
 
 	t := &Tensor{
-		tensor: TF_NewTensor_wrapper(TF_DataType(dataType), dims, len(shape), uintptr(cData), size),
+		memReleased: false,
+		tensor:      TF_NewTensor_wrapper(TF_DataType(dataType), dims, len(shape), uintptr(cData), size),
 	}
+
+	// Release the C allocated memory when the instance is destroyed
+	runtime.SetFinalizer(t, (*Tensor).FreeAllocMem)
+
 	t.Dtype = dataType
 	t.TensorShape = &TensorShapeProto{
 		Dim: make([]*TensorShapeProto_Dim, len(shape)),
