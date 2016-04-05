@@ -161,8 +161,7 @@ cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=
 ```
 
 Note that `tf.reduce_sum` sums across all classes and `tf.reduce_mean` takes 
-the average over these sums. We are computing the cross entropy for the entire
-minibatch.
+the average over these sums.
 
 ## Train the Model
 
@@ -225,7 +224,7 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 ```
 
 Finally, we can evaluate our accuracy on the test data. This should be about
-91% correct.
+92% correct.
 
 ```python
 print(accuracy.eval(feed_dict={x: mnist.test.images, y_: mnist.test.labels}))

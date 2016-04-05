@@ -320,12 +320,6 @@ each element of `y_` with the corresponding element of `tf.log(y)`. Then
 `reduction_indices=[1]` parameter. Finally,  `tf.reduce_mean` computes the mean
 over all the examples in the batch.
 
-Note that this isn't just the cross-entropy of the truth with a single
-prediction, but the sum of the cross-entropies for all the images we looked at.
-In this example, we have 100 images in each batch: how well we are doing on 100
-data points is a much better description of how good our model is than a single
-data point.
-
 Now that we know what we want our model to do, it's very easy to have TensorFlow
 train it to do so.
 Because TensorFlow knows the entire graph of your computations, it
@@ -417,7 +411,7 @@ Finally, we ask for our accuracy on our test data.
 print(sess.run(accuracy, feed_dict={x: mnist.test.images, y_: mnist.test.labels}))
 ```
 
-This should be about 91%.
+This should be about 92%.
 
 Is that good? Well, not really. In fact, it's pretty bad. This is because we're
 using a very simple model. With some small changes, we can get to
