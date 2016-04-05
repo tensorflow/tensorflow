@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,g-bad-import-order
 """Import core names of TensorFlow.
 
 Programs that want to build TensorFlow Ops and Graphs without having to import
@@ -32,7 +31,8 @@ import inspect
 import sys
 import traceback
 
-# pylint: disable=g-import-not-at-top
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
 # pywrap_tensorflow is a SWIG generated python library that dynamically loads
 # _pywrap_tensorflow.so. The default mode for loading keeps all the symbol

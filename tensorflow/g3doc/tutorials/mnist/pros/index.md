@@ -340,7 +340,7 @@ We create a `placeholder` for the probability that a neuron's output is kept
 during dropout. This allows us to turn dropout on during training, and turn it
 off during testing.
 TensorFlow's `tf.nn.dropout` op automatically handles scaling neuron outputs in
-addition to masking them, so dropout just works without any additional scaling.
+addition to masking them, so dropout just works without any additional scaling.<sup id="a1">[1](#f1)</sup>
 
 ```python
 keep_prob = tf.placeholder(tf.float32)
@@ -391,3 +391,5 @@ The final test set accuracy after running this code should be approximately 99.2
 
 We have learned how to quickly and easily build, train, and evaluate a
 fairly sophisticated deep learning model using TensorFlow.
+
+<b id="f1">1</b>: For this small convolutional network, performance is actually nearly identical with and without dropout. Dropout is often very effective at reducing overfitting, but it is most useful when training very large neural networks. [↩](#a1)

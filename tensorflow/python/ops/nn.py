@@ -237,6 +237,7 @@ from tensorflow.python.ops.math_ops import tanh
 from tensorflow.python.util.all_util import make_all
 
 # Bring more nn-associated functionality into this package.
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *

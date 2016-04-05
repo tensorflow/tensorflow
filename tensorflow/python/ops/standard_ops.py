@@ -28,6 +28,7 @@ from tensorflow.python.ops import sparse_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad
 
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.array_ops import *
 from tensorflow.python.ops.clip_ops import *

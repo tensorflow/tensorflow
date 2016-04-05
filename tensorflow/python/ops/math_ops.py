@@ -56,6 +56,8 @@ mathematical functions to your graph.
 @@erf
 @@erfc
 @@squared_difference
+@@igamma
+@@igammac
 
 ## Matrix Math Functions
 
@@ -198,7 +200,8 @@ from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import gen_state_ops
-# pylint: disable=wildcard-import,undefined-variable
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 
@@ -337,7 +340,7 @@ def round(x, name=None):
   if x.dtype.is_integer:
     return x
   else:
-    return floor(x + 0.5, name=name)
+    return gen_math_ops.floor(x + 0.5, name=name)
 
 
 def cast(x, dtype, name=None):
@@ -401,10 +404,10 @@ def saturate_cast(value, dtype, name=None):
     value = ops.convert_to_tensor(value, name="value")
     dtype = dtypes.as_dtype(dtype).base_dtype
     if value.dtype.min < dtype.min:
-      value = maximum(value, ops.convert_to_tensor(
+      value = gen_math_ops.maximum(value, ops.convert_to_tensor(
           dtype.min, dtype=value.dtype, name="min"))
     if value.dtype.max > dtype.max:
-      value = minimum(value, ops.convert_to_tensor(
+      value = gen_math_ops.minimum(value, ops.convert_to_tensor(
           dtype.max, dtype=value.dtype, name="max"))
     return cast(value, dtype, name=name)
 
@@ -489,12 +492,12 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-ops.Tensor._override_operator("__neg__", neg)
+ops.Tensor._override_operator("__neg__", gen_math_ops.neg)
 ops.Tensor._override_operator("__abs__", abs)
 # __invert__ corresponds to the ~ operator.  Here we follow the numpy convention
 # ~ marks an elementwise bit-wise inverse.  This is only implemented for boolean
 # tensors and will throw a TypeError if used on nonboolean arrays
-ops.Tensor._override_operator("__invert__", logical_not)
+ops.Tensor._override_operator("__invert__", gen_math_ops.logical_not)
 
 
 def _OverrideBinaryOperatorHelper(func, op_name):
@@ -577,7 +580,7 @@ def truediv(x, y, name=None):
     if dtype is not None:
       x = cast(x, dtype)
       y = cast(y, dtype)
-    return div(x, y, name=name)
+    return gen_math_ops.div(x, y, name=name)
 
 
 def floordiv(x, y, name=None):
@@ -610,37 +613,39 @@ def floordiv(x, y, name=None):
     x = ops.convert_to_tensor(x, name="x")
     dtype = x.dtype
     if dtype.is_floating:
-      return floor(div(x, y), name=name)
+      return gen_math_ops.floor(gen_math_ops.div(x, y), name=name)
     else:
       if not dtype.is_integer:
         raise TypeError("Expected floating point or integer, got %r" % dtype)
-      return div(x, y, name=name)
+      return gen_math_ops.div(x, y, name=name)
 
 
-_OverrideBinaryOperatorHelper(add, "add")
-_OverrideBinaryOperatorHelper(sub, "sub")
-_OverrideBinaryOperatorHelper(mul, "mul")
-_OverrideBinaryOperatorHelper(div, "div")
+_OverrideBinaryOperatorHelper(gen_math_ops.add, "add")
+_OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
+_OverrideBinaryOperatorHelper(gen_math_ops.mul, "mul")
+_OverrideBinaryOperatorHelper(gen_math_ops.div, "div")
 _OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
-_OverrideBinaryOperatorHelper(mod, "mod")
+_OverrideBinaryOperatorHelper(gen_math_ops.mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
 
 
 def logical_xor(x, y, name="LogicalXor"):
   """x ^ y = (x | y) & ~(x & y)."""
   # TODO(alemi) Make this a cwise op if people end up relying on it.
-  return logical_and(logical_or(x, y), logical_not(logical_and(x, y)),
-                     name=name)
+  return gen_math_ops.logical_and(
+      gen_math_ops.logical_or(x, y),
+      gen_math_ops.logical_not(gen_math_ops.logical_and(x, y)),
+      name=name)
 
-_OverrideBinaryOperatorHelper(logical_and, "and")
-_OverrideBinaryOperatorHelper(logical_or, "or")
+_OverrideBinaryOperatorHelper(gen_math_ops.logical_and, "and")
+_OverrideBinaryOperatorHelper(gen_math_ops.logical_or, "or")
 _OverrideBinaryOperatorHelper(logical_xor, "xor")
 
-ops.Tensor._override_operator("__lt__", less)
-ops.Tensor._override_operator("__le__", less_equal)
-ops.Tensor._override_operator("__gt__", greater)
-ops.Tensor._override_operator("__ge__", greater_equal)
+ops.Tensor._override_operator("__lt__", gen_math_ops.less)
+ops.Tensor._override_operator("__le__", gen_math_ops.less_equal)
+ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
+ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
 def range(start, limit=None, delta=1, name="range"):
@@ -1271,76 +1276,8 @@ def lbeta(x, name="lbeta"):
     x = ops.convert_to_tensor(x, name="x")
     ndims = array_ops.size(array_ops.shape(x))
     return (reduce_sum(
-        lgamma(x), reduction_indices=ndims - 1)
-            - lgamma(reduce_sum(x, reduction_indices=ndims - 1)))
-
-
-# TODO(b/27419586) Change docstring for required dtype of x once int allowed
-def lgamma(x, name=None):
-  """Computes `ln(|gamma(x)|)` element-wise.
-
-  Args:
-    x: A Tensor with type `float`, or `double`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-      the return type is `quint8`.
-  """
-  with ops.op_scope([x], name, "Lgamma") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops._lgamma(x, name=name)
-
-
-# TODO(b/27419586) Change docstring for required dtype of x once int allowed
-def digamma(x, name=None):
-  """Computes Psi, the derivative of lgamma, `ln(|gamma(x)|)`, element-wise.
-
-  Args:
-    x: A Tensor with type `float`, or `double`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-      the return type is `quint8`.
-  """
-  with ops.op_scope([x], name, "Digamma") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops._digamma(x, name=name)
-
-
-def erf(x, name=None):
-  """Computes Gauss error function of `x` element-wise.
-
-  Args:
-    x: A Tensor with type `float`, `double`, `int32`, `int64`,
-      or `qint32`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-      the return type is `quint8`.
-  """
-  with ops.op_scope([x], name, "Erf") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops._erf(x, name=name)
-
-
-def erfc(x, name=None):
-  """Computes complementary error function of `x` element-wise.
-
-  Args:
-    x: A Tensor with type `float`, `double`, `int32`, `int64`,
-      or `qint32`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-      the return type is `quint8`.
-  """
-  with ops.op_scope([x], name, "Erfc") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops._erfc(x, name=name)
+        gen_math_ops.lgamma(x), reduction_indices=ndims - 1)
+            - gen_math_ops.lgamma(reduce_sum(x, reduction_indices=ndims - 1)))
 
 
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
@@ -1392,6 +1329,8 @@ ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
 @ops.RegisterShape("Equal")
 @ops.RegisterShape("Greater")
 @ops.RegisterShape("GreaterEqual")
+@ops.RegisterShape("Igamma")
+@ops.RegisterShape("Igammac")
 @ops.RegisterShape("Less")
 @ops.RegisterShape("LessEqual")
 @ops.RegisterShape("LogicalAnd")

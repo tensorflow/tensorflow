@@ -35,6 +35,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope as vs
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_functional_ops import *
 # pylint: enable=wildcard-import
@@ -82,9 +84,15 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     # sum == 21
     ```
   """
-  with ops.op_scope([elems], name, "foldl") as name:
-    if not callable(fn):
-      raise TypeError("fn must be callable.")
+  if not callable(fn):
+    raise TypeError("fn must be callable.")
+
+  # TODO(ebrevdo): Change to using colocate_with here and in other methods.
+  with vs.variable_op_scope([elems], name, "foldl") as varscope:
+    # Any get_variable calls fn will cache the first call locally
+    # and not issue repeated network I/O requests for each iteration.
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
     n = array_ops.shape(elems)[0]
@@ -147,9 +155,14 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     # sum == 21
     ```
   """
-  with ops.op_scope([elems], name, "foldr") as name:
-    if not callable(fn):
-      raise TypeError("fn must be callable.")
+  if not callable(fn):
+    raise TypeError("fn must be callable.")
+
+  with vs.variable_op_scope([elems], name, "foldr") as varscope:
+    # Any get_variable calls fn will cache the first call locally
+    # and not issue repeated network I/O requests for each iteration.
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
     n = array_ops.shape(elems)[0]
@@ -210,9 +223,15 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     # squares == [1, 4, 9, 16, 25, 36]
     ```
   """
-  with ops.op_scope([elems], name, "map") as name:
-    if not callable(fn):
-      raise TypeError("fn must be callable.")
+  if not callable(fn):
+    raise TypeError("fn must be callable.")
+
+  with vs.variable_op_scope([elems], name, "map") as varscope:
+    # Any get_variable calls fn will cache the first call locally
+    # and not issue repeated network I/O requests for each iteration.
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
+
     dtype = dtype if dtype else elems.dtype
 
     # Convert elems to tensor array.
@@ -272,9 +291,14 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     # sum == [1, 3, 6, 10, 15, 21]
     ```
   """
-  with ops.op_scope([elems], name, "scan") as name:
-    if not callable(fn):
-      raise TypeError("fn must be callable.")
+  if not callable(fn):
+    raise TypeError("fn must be callable.")
+
+  with vs.variable_op_scope([elems], name, "scan") as varscope:
+    # Any get_variable calls fn will cache the first call locally
+    # and not issue repeated network I/O requests for each iteration.
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
     n = array_ops.shape(elems)[0]

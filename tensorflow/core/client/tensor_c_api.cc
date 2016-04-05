@@ -195,9 +195,7 @@ TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len) {
   TF_Buffer* buf = new TF_Buffer;
   buf->data = copy;
   buf->length = proto_len;
-  buf->data_deallocator = [](void* data, size_t length) {
-    delete reinterpret_cast<char*>(data);
-  };
+  buf->data_deallocator = [](void* data, size_t length) { free(data); };
   return buf;
 }
 

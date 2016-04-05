@@ -30,7 +30,10 @@ class GraphOptimizer {
 
   // Applies optimization passes specified in 'opts' to 'graph'.
   // Maybe replace *graph with a new graph object.
-  void Optimize(FunctionLibraryRuntime* runtime, Graph** graph);
+  // 'device' is device on which the 'graph' will execute. It's passed to the
+  // optimizers so that they can respect constraints if any, that should be
+  // respected.
+  void Optimize(FunctionLibraryRuntime* runtime, Device* device, Graph** graph);
 
  private:
   OptimizerOptions opts_;

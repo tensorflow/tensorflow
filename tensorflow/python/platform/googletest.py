@@ -24,6 +24,7 @@ import os
 import sys
 import tempfile
 
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from unittest import *
 # pylint: enable=wildcard-import

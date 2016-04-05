@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
 #define TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
 
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -26,15 +27,20 @@ namespace tensorflow {
 // Looks for nodes in "graph" that can be completely evaluated statically, i.e.,
 // that are only dependent on constants. Evaluates those nodes on a CPU device
 // and replaces those nodes with the result of the evaluation.
+// "partition_device", if non-null, is the device where all the graph nodes are
+// assumed to execute.
 // Returns true if and only if "graph" has been mutated.
-bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph);
+bool DoConstantFolding(const ConstantFoldingOptions& opts,
+                       Device* partition_device, Graph* graph);
 
 typedef std::pair<Node*, int> NodeAndOutput;
 
 // Replaces the identified Tensor in 'graph' by a 'Const' node with
-// the value supplied in 'constant'.
-void ReplaceTensorWithConstant(Graph* graph, NodeAndOutput tensor,
-                               const Tensor& constant);
+// the value supplied in 'constant'. 'partition_device', if non-null
+// is the device where the graph executes. Returns true if the
+// replacement was successful, false otherwise.
+bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
+                               NodeAndOutput tensor, const Tensor& constant);
 
 }  // namespace tensorflow
 
