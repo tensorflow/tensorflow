@@ -24,11 +24,13 @@ module TF.Backend {
 
   class MockedRequestManager extends TF.Backend.RequestManager {
     private resolvers: Function[];
+    private rejectors: Function[];
     public requestsDispatched: number;
 
-    constructor(maxRequests = 10) {
-      super(maxRequests);
+    constructor(maxRequests = 10, maxRetries = 3) {
+      super(maxRequests, maxRetries);
       this.resolvers = [];
+      this.rejectors = [];
       this.requestsDispatched = 0;
     }
 
@@ -40,13 +42,24 @@ module TF.Backend {
           url: url,
           status: 200,
         };
+        var mockFailedRequest: any = {
+          ok: false,
+          url: url,
+          status: 502,
+        };
+        var mockFailure = new RequestNetworkError(mockFailedRequest, url);
         this.resolvers.push(function() { resolve(mockJSON); });
+        this.rejectors.push(function() { reject(mockFailure); });
         this.requestsDispatched++;
       });
     }
 
     public resolveFakeRequest() {
       this.resolvers.pop()();
+    }
+
+    public rejectFakeRequest() {
+      this.rejectors.pop()();
     }
 
     public dispatchAndResolve() {
@@ -89,19 +102,48 @@ module TF.Backend {
       });
 
       it("rejects on bad url", (done) => {
-        var rm = new TF.Backend.RequestManager();
+        var rm = new TF.Backend.RequestManager(5, 0);
         var bad_url = "_bad_url_which_doesnt_exist.json";
         var promise = rm.request(bad_url);
         promise.then(
-          (response) => {
-            throw new Error("the promise should have rejected");
+          (success) => {
+            done(new Error("the promise should have rejected"));
           },
-          (reject) => {
-            assert.instanceOf(reject, Error);
+          (reject: TF.Backend.RequestNetworkError) => {
+            assert.instanceOf(reject, TF.Backend.RequestNetworkError);
             assert.include(reject.message, "404");
             assert.include(reject.message, bad_url);
+            assert.equal(reject.req.status, 404);
             done();
         });
+      });
+
+      it("can retry if requests fail", (done) => {
+        var rm = new MockedRequestManager(3, 5);
+        var r = rm.request("foo");
+        rm.waitForDispatch(1).then(() => {
+          rm.rejectFakeRequest();
+          return rm.waitForDispatch(2);
+        }).then(() => rm.resolveFakeRequest());
+        r.then((success) => done());
+      });
+
+      it("retries at most maxRetries times", (done) => {
+        var MAX_RETRIES = 2;
+        var rm = new MockedRequestManager(3, MAX_RETRIES);
+        var r = rm.request("foo");
+        rm.waitForDispatch(1).then(() => {
+          rm.rejectFakeRequest();
+          return rm.waitForDispatch(2);
+        }).then(() => {
+          rm.rejectFakeRequest();
+          return rm.waitForDispatch(3);
+        }).then(() => {
+          rm.rejectFakeRequest();
+        });
+
+        r.then((success) => done(new Error("The reqest should have failed")),
+               (failure) => done());
       });
 
       it("requestManager only sends maxRequests requests at a time", (done) => {
@@ -131,6 +173,24 @@ module TF.Backend {
           assert.equal(rm.outstandingRequests(), 0, "no requests pending");
           done();
         });
+      });
+
+      it("queue continues after failures", (done) => {
+        var rm = new MockedRequestManager(1, 0);
+        var r0 = rm.request("1");
+        var r1 = rm.request("2");
+        rm.waitForDispatch(1).then(() => {
+          rm.rejectFakeRequest();
+        });
+
+        r0.then((success) => done(new Error("r0 should have failed")),
+                (failure) => "unused_argument")
+          .then(() => rm.resolveFakeRequest());
+
+        // When the first request rejects, it should decrement nActiveRequests
+        // and then launch remaining requests in queue (i.e. this one)
+        r1.then((success) => done(),
+                (failure) => done(new Error(failure)));
       });
 
       it("queue is LIFO", (done) => {
