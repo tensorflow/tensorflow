@@ -69,7 +69,7 @@ rest of the graph and into which the actual training examples will be fed.
 
 ```python
 images_placeholder = tf.placeholder(tf.float32, shape=(batch_size,
-                                                       IMAGE_PIXELS))
+                                                       mnist.IMAGE_PIXELS))
 labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size))
 ```
 
@@ -108,7 +108,7 @@ Each layer is created beneath a unique [`tf.name_scope`](../../../api_docs/pytho
 that acts as a prefix to the items created within that scope.
 
 ```python
-with tf.name_scope('hidden1') as scope:
+with tf.name_scope('hidden1'):
 ```
 
 Within the defined scope, the weights and biases to be used by each of these
@@ -311,7 +311,8 @@ In the `fill_feed_dict()` function, the given `DataSet` is queried for its next
 filled containing the next images and labels.
 
 ```python
-images_feed, labels_feed = data_set.next_batch(FLAGS.batch_size)
+images_feed, labels_feed = data_set.next_batch(FLAGS.batch_size,
+                                               FLAGS.fake_data)
 ```
 
 A python dictionary object is then generated with the placeholders as keys and
@@ -486,7 +487,7 @@ The `true_count` variable simply accumulates all of the predictions that the
 calculated from simply dividing by the total number of examples.
 
 ```python
-precision = float(true_count) / float(num_examples)
-print '  Num examples: %d  Num correct: %d  Precision @ 1: %0.02f' % (
-    num_examples, true_count, precision)
+precision = true_count / num_examples
+print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
+      (num_examples, true_count, precision))
 ```
