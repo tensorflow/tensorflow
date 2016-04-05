@@ -46,16 +46,16 @@ module TF.Backend {
     var backend: Backend;
     var rm: RequestManager;
     var base = "data";
+    var demoRouter = TF.Backend.router(base, true);
     beforeEach(function() {
       // Construct a demo Backend (third param is true)
-      var router = TF.Backend.router(base, true);
-      backend = new Backend(router);
+      backend = new Backend(demoRouter);
       rm = new RequestManager();
     });
 
     it("runs are loaded properly", function(done) {
       var runsResponse = backend.runs();
-      var actualRuns = rm.request(base + "/runs");
+      var actualRuns = rm.request(demoRouter.runs());
       Promise.all([runsResponse, actualRuns]).then((values) => {
         assert.deepEqual(values[0], values[1]);
         done();
@@ -103,8 +103,7 @@ module TF.Backend {
         assert.isNumber(image.width);
         assert.isNumber(image.height);
         var nonDemoQuery = "index=0&tag=im1&run=run1";
-        var nonDemoUrl = "individualImage?" + nonDemoQuery;
-        var expectedUrl = base + "/" + TF.Backend.demoify(nonDemoUrl);
+        var expectedUrl = demoRouter.individualImage(nonDemoQuery);
         assert.equal(image.url, expectedUrl);
         done();
       });
