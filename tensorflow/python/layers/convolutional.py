@@ -970,7 +970,7 @@ def separable_conv2d(inputs,
 
 
 class Conv2DTranspose(Conv2D):
-  """Transposed 2D convolution layer (sometimes called Deconvolution).
+  """Transposed 2D convolution layer (sometimes called 2D Deconvolution).
 
   The need for transposed convolutions generally arises
   from the desire to use a transformation going in the opposite direction
@@ -1083,19 +1083,9 @@ class Conv2DTranspose(Conv2D):
     kernel_h, kernel_w = self.kernel_size
     stride_h, stride_w = self.strides
 
-    def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
-      if isinstance(dim_size, ops.Tensor):
-        dim_size = math_ops.multiply(dim_size, stride_size)
-      elif dim_size is not None:
-        dim_size *= stride_size
-
-      if padding == 'valid' and dim_size is not None:
-        dim_size += max(kernel_size - stride_size, 0)
-      return dim_size
-
     # Infer the dynamic output shape:
-    out_height = get_deconv_dim(height, stride_h, kernel_h, self.padding)
-    out_width = get_deconv_dim(width, stride_w, kernel_w, self.padding)
+    out_height = utils.get_deconv_dim(height, stride_h, kernel_h, self.padding)
+    out_width = utils.get_deconv_dim(width, stride_w, kernel_w, self.padding)
 
     if self.data_format == 'channels_first':
       output_shape = (batch_size, self.filters, out_height, out_width)
@@ -1116,9 +1106,9 @@ class Conv2DTranspose(Conv2D):
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = self.filters
-    out_shape[h_axis] = get_deconv_dim(
+    out_shape[h_axis] = utils.get_deconv_dim(
         out_shape[h_axis], stride_h, kernel_h, self.padding)
-    out_shape[w_axis] = get_deconv_dim(
+    out_shape[w_axis] = utils.get_deconv_dim(
         out_shape[w_axis], stride_w, kernel_w, self.padding)
     outputs.set_shape(out_shape)
 
@@ -1214,14 +1204,7 @@ def conv2d_transpose(inputs,
 
 
 class Conv3DTranspose(Conv3D):
-  """Transposed 3D convolution layer (sometimes called Deconvolution).
-
-  The need for transposed convolutions generally arises
-  from the desire to use a transformation going in the opposite direction
-  of a normal convolution, i.e., from something that has the shape of the
-  output of some convolution to something that has the shape of its input
-  while maintaining a connectivity pattern that is compatible with
-  said convolution.
+  """Transposed 3D convolution layer (sometimes called 3D Deconvolution).
 
   Arguments:
     filters: Integer, the dimensionality of the output space (i.e. the number
@@ -1325,25 +1308,17 @@ class Conv3DTranspose(Conv3D):
     else:
       c_axis, d_axis, h_axis, w_axis = 4, 1, 2, 3
 
-    depth, height, width = inputs_shape[d_axis], inputs_shape[h_axis], \
-        inputs_shape[w_axis]
+    depth = inputs_shape[d_axis]
+    height = inputs_shape[h_axis]
+    width = inputs_shape[w_axis]
+
     kernel_d, kernel_h, kernel_w = self.kernel_size
     stride_d, stride_h, stride_w = self.strides
 
-    def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
-      if isinstance(dim_size, ops.Tensor):
-        dim_size = math_ops.multiply(dim_size, stride_size)
-      elif dim_size is not None:
-        dim_size *= stride_size
-
-      if padding == 'valid' and dim_size is not None:
-        dim_size += max(kernel_size - stride_size, 0)
-      return dim_size
-
     # Infer the dynamic output shape:
-    out_depth = get_deconv_dim(depth, stride_d, kernel_d, self.padding)
-    out_height = get_deconv_dim(height, stride_h, kernel_h, self.padding)
-    out_width = get_deconv_dim(width, stride_w, kernel_w, self.padding)
+    out_depth = utils.get_deconv_dim(depth, stride_d, kernel_d, self.padding)
+    out_height = utils.get_deconv_dim(height, stride_h, kernel_h, self.padding)
+    out_width = utils.get_deconv_dim(width, stride_w, kernel_w, self.padding)
 
     if self.data_format == 'channels_first':
       output_shape = (batch_size, self.filters, out_depth, out_height,
@@ -1366,11 +1341,11 @@ class Conv3DTranspose(Conv3D):
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = self.filters
-    out_shape[d_axis] = get_deconv_dim(
+    out_shape[d_axis] = utils.get_deconv_dim(
         out_shape[d_axis], stride_d, kernel_d, self.padding)
-    out_shape[h_axis] = get_deconv_dim(
+    out_shape[h_axis] = utils.get_deconv_dim(
         out_shape[h_axis], stride_h, kernel_h, self.padding)
-    out_shape[w_axis] = get_deconv_dim(
+    out_shape[w_axis] = utils.get_deconv_dim(
         out_shape[w_axis], stride_w, kernel_w, self.padding)
     outputs.set_shape(out_shape)
 
@@ -1415,12 +1390,6 @@ def conv3d_transpose(inputs,
                      reuse=None):
   """Functional interface for transposed 3D convolution layer (sometimes
   called 3D Deconvolution).
-
-  The need for transposed convolutions generally arises from the desire to
-  use a transformation going in the opposite direction of a normal
-  convolution, i.e., from something that has the shape of the output of some
-  convolution to something that has the shape of its input while maintaining
-  a connectivity pattern that is compatible with said convolution.
 
   Arguments:
     inputs: Input tensor.
