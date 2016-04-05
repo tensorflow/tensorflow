@@ -130,7 +130,7 @@ class Optimizer(object):
   GATE_OP = 1
   GATE_GRAPH = 2
 
-  def __init__(self, use_locking, name):
+  def __init__(self, learning_rate, use_locking, name):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -146,6 +146,9 @@ class Optimizer(object):
     """
     if not name:
       raise ValueError("Must specify the optimizer name")
+    self._learning_rate = learning_rate
+    self._learning_rate_tensor = None
+
     self._use_locking = use_locking
     self._name = name
     # Dictionary of slots.
@@ -288,6 +291,7 @@ class Optimizer(object):
       self._create_slots(var_list)
     update_ops = []
     with ops.op_scope([], name, self._name) as name:
+      self._set_lr()
       self._prepare()
       for grad, var in grads_and_vars:
         if grad is None:
@@ -464,6 +468,9 @@ class Optimizer(object):
     if var not in named_slots:
       named_slots[var] = slot_creator.create_slot(var, val, op_name)
     return named_slots[var]
+
+  def _set_lr(self):
+    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate, name="lr")
 
   def _zeros_slot(self, var, slot_name, op_name):
     """Find or create a slot initialized with 0.0.

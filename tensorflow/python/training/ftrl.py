@@ -57,7 +57,7 @@ class FtrlOptimizer(optimizer.Optimizer):
     Raises:
       ValueError: If one of the arguments is invalid.
     """
-    super(FtrlOptimizer, self).__init__(use_locking, name)
+    super(FtrlOptimizer, self).__init__(learning_rate, use_locking, name)
 
     if initial_accumulator_value <= 0.0:
       raise ValueError("initial_accumulator_value %f needs to be positive" %
@@ -74,12 +74,10 @@ class FtrlOptimizer(optimizer.Optimizer):
           "l2_regularization_strength %f needs to be positive or zero" %
           l2_regularization_strength)
 
-    self._learning_rate = learning_rate
     self._learning_rate_power = learning_rate_power
     self._initial_accumulator_value = initial_accumulator_value
     self._l1_regularization_strength = l1_regularization_strength
     self._l2_regularization_strength = l2_regularization_strength
-    self._learning_rate_tensor = None
     self._learning_rate_power_tensor = None
     self._l1_regularization_strength_tensor = None
     self._l2_regularization_strength_tensor = None
@@ -93,9 +91,6 @@ class FtrlOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "linear", self._name)
 
   def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(
-        self._learning_rate,
-        name="learning_rate")
     self._l1_regularization_strength_tensor = ops.convert_to_tensor(
         self._l1_regularization_strength,
         name="l1_regularization_strength")

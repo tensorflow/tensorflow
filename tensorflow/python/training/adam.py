@@ -75,14 +75,12 @@ class AdamOptimizer(optimizer.Optimizer):
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adam".
     """
-    super(AdamOptimizer, self).__init__(use_locking, name)
-    self._lr = learning_rate
+    super(AdamOptimizer, self).__init__(learning_rate, use_locking, name)
     self._beta1 = beta1
     self._beta2 = beta2
     self._epsilon = epsilon
 
     # Tensor versions of the constructor arguments, created in _prepare().
-    self._lr_t = None
     self._beta1_t = None
     self._beta2_t = None
     self._epsilon_t = None
@@ -115,7 +113,6 @@ class AdamOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "v", self._name)
 
   def _prepare(self):
-    self._lr_t = ops.convert_to_tensor(self._lr, name="learning_rate")
     self._beta1_t = ops.convert_to_tensor(self._beta1, name="beta1")
     self._beta2_t = ops.convert_to_tensor(self._beta2, name="beta2")
     self._epsilon_t = ops.convert_to_tensor(self._epsilon, name="epsilon")
@@ -125,11 +122,11 @@ class AdamOptimizer(optimizer.Optimizer):
     v = self.get_slot(var, "v")
     return training_ops.apply_adam(
         var, m, v, self._beta1_power, self._beta2_power,
-        self._lr_t, self._beta1_t, self._beta2_t,
+        self._learning_rate_tensor, self._beta1_t, self._beta2_t,
         self._epsilon_t, grad, use_locking=self._use_locking).op
 
   def _apply_sparse(self, grad, var):
-    lr = (self._lr_t *
+    lr = (self._learning_rate_tensor *
           math_ops.sqrt(1 - self._beta2_power)
           / (1 - self._beta1_power))
     # m_t = beta1 * m + (1 - beta1) * g_t

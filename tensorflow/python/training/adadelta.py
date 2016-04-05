@@ -25,11 +25,11 @@ from tensorflow.python.training import training_ops
 
 
 class AdadeltaOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the Adadelta algorithm. 
+  """Optimizer that implements the Adadelta algorithm.
 
   See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
   ([pdf](http://arxiv.org/pdf/1212.570.pdf))
- 
+
   @@__init__
   """
 
@@ -46,13 +46,11 @@ class AdadeltaOptimizer(optimizer.Optimizer):
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adadelta".
     """
-    super(AdadeltaOptimizer, self).__init__(use_locking, name)
-    self._lr = learning_rate
+    super(AdadeltaOptimizer, self).__init__(learning_rate, use_locking, name)
     self._rho = rho
     self._epsilon = epsilon
 
     # Tensor versions of the constructor arguments, created in _prepare().
-    self._lr_t = None
     self._rho_t = None
     self._epsilon_t = None
 
@@ -62,7 +60,6 @@ class AdadeltaOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "accum_update", self._name)
 
   def _prepare(self):
-    self._lr_t = ops.convert_to_tensor(self._lr, name="lr")
     self._rho_t = ops.convert_to_tensor(self._rho, name="rho")
     self._epsilon_t = ops.convert_to_tensor(self._epsilon,
                                                   name="epsilon")
@@ -72,13 +69,13 @@ class AdadeltaOptimizer(optimizer.Optimizer):
     accum_update = self.get_slot(var, "accum_update")
     return training_ops.apply_adadelta(
         var, accum, accum_update,
-        self._lr_t, self._rho_t, self._epsilon_t, grad,
+        self._learning_rate_tensor, self._rho_t, self._epsilon_t, grad,
         use_locking=self._use_locking)
 
   def _apply_sparse(self, grad, var):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
     return training_ops.sparse_apply_adadelta(
-        var, accum, accum_update, self._lr_t,
+        var, accum, accum_update, self._learning_rate_tensor,
         self._rho_t, self._epsilon_t, grad.values,
         grad.indices, use_locking=self._use_locking)
