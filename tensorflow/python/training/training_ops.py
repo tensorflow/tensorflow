@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.training import gen_training_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.training.gen_training_ops import *
 # pylint: enable=wildcard-import

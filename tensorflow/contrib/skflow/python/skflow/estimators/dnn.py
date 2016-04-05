@@ -47,15 +47,17 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
             model will be continuely trained on every call of fit.
         config: RunConfig object that controls the configurations of the session,
             e.g. num_cores, gpu_memory_fraction, etc.
+        dropout: When not None, the probability we will drop out a given
+                 coordinate.
      """
 
     def __init__(self, hidden_units, n_classes, batch_size=32,
-                 steps=200, optimizer="SGD", learning_rate=0.1,
+                 steps=200, optimizer="Adagrad", learning_rate=0.1,
                  class_weight=None,
                  continue_training=False, config=None,
-                 verbose=1):
-
+                 verbose=1, dropout=None):
         self.hidden_units = hidden_units
+        self.dropout = dropout
         super(TensorFlowDNNClassifier, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes, 
@@ -66,7 +68,8 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, ClassifierMixin):
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
-                                    models.logistic_regression)(X, y)
+                                    models.logistic_regression,
+                                    dropout=self.dropout)(X, y)
 
     @property
     def weights_(self):
@@ -112,14 +115,16 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
                  2: log device placement is printed.
+        dropout: When not None, the probability we will drop out a given
+                 coordinate.
     """
 
     def __init__(self, hidden_units, n_classes=0, batch_size=32,
-                 steps=200, optimizer="SGD", learning_rate=0.1,
+                 steps=200, optimizer="Adagrad", learning_rate=0.1,
                  continue_training=False, config=None,
-                 verbose=1):
-
+                 verbose=1, dropout=None):
         self.hidden_units = hidden_units
+        self.dropout = dropout
         super(TensorFlowDNNRegressor, self).__init__(
             model_fn=self._model_fn,
             n_classes=n_classes,
@@ -130,7 +135,8 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, RegressorMixin):
 
     def _model_fn(self, X, y):
         return models.get_dnn_model(self.hidden_units,
-                                    models.linear_regression)(X, y)
+                                    models.linear_regression,
+                                    dropout=self.dropout)(X, y)
 
     @property
     def weights_(self):

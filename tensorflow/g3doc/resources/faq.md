@@ -105,11 +105,12 @@ In the second example, the session acts as a
 which has the effect of installing it as the default session for the lifetime of
 the `with` block. The context manager approach can lead to more concise code for
 simple use cases (like unit tests); if your code deals with multiple graphs and
-sessions, it may be more straightforward to explicit calls to `Session.run()`.
+sessions, it may be more straightforward to make explicit calls to
+`Session.run()`.
 
 #### Do Sessions have a lifetime? What about intermediate tensors?
 
-Sessions can own resources, such
+Sessions can own resources, such as
 [variables](../api_docs/python/state_ops.md#Variable),
 [queues](../api_docs/python/io_ops.md#QueueBase), and
 [readers](../api_docs/python/io_ops.md#ReaderBase); and these resources can use
@@ -189,9 +190,9 @@ operation for that variable in a session. It is destroyed when that
 #### How do variables behave when they are concurrently accessed?
 
 Variables allow concurrent read and write operations. The value read from a
-variable may change it is concurrently updated. By default, concurrent assigment
-operations to a variable are allowed to run with no mutual exclusion. To acquire
-a lock when assigning to a variable, pass `use_locking=True` to
+variable may change if it is concurrently updated. By default, concurrent
+assigment operations to a variable are allowed to run with no mutual exclusion.
+To acquire a lock when assigning to a variable, pass `use_locking=True` to
 [`Variable.assign()`](../api_docs/python/state_ops.md#Variable.assign).
 
 ## Tensor shapes

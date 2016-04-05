@@ -447,7 +447,13 @@ Given loss and parameters for optimizer, returns a training op.
 *  <b>`loss`</b>: Tensor, 0 dimensional.
 *  <b>`global_step`</b>: Tensor, step counter for each update.
 *  <b>`learning_rate`</b>: float or Tensor, magnitude of update per each training step.
-*  <b>`optimizer`</b>: string or function, used as optimizer for training.
+*  <b>`optimizer`</b>: string, class or optimizer instance, used as trainer.
+             string should be name of optimizer, like 'SGD',
+               'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
+             class should be sub-class of tf.Optimizer that implements
+               `compute_gradients` and `apply_gradients` functions.
+             optimizer instance should be instantion of tf.Optimizer sub-class
+               and have `compute_gradients` and `apply_gradients` functions.
 *  <b>`clip_gradients`</b>: float or None, clips gradients by this value.
 *  <b>`moving_average_decay`</b>: float or None, takes into account previous loss
                         to make learning smoother due to outliers.

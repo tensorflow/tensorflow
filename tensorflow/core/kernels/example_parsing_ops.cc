@@ -344,8 +344,8 @@ class ExampleParserOp : public OpKernel {
     // the full Example protos.
     std::vector<std::vector<Tensor> > sparse_values_tmp(num_sparse_);
 
+    Example ex;
     for (std::size_t b = 0; b < static_cast<size_t>(batch_size); ++b) {
-      Example ex;
       OP_REQUIRES(
           ctx, ParseProtoUnlimited(&ex, serialized_t(b)),
           errors::InvalidArgument("Could not parse example input, value: '",

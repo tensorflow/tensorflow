@@ -40,6 +40,8 @@ void StepStatsCollector::UpdateCostModel(const NodeExecStats* nt,
     cm = (*it).second;
   }
 
+  cm->RecordMaxExecutionTime(node, Microseconds(nt->op_end_rel_micros()));
+
   for (int i = 0; i < nt->output_size(); ++i) {
     cm->RecordMaxSize(node, i, Bytes(nt->output(i)
                                          .tensor_description()

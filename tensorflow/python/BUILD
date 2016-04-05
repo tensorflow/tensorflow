@@ -626,10 +626,6 @@ tf_gen_op_wrapper_py(
         "MatMul",
         "Sigmoid",
         "Tanh",
-        "Lgamma",
-        "Digamma",
-        "Erf",
-        "Erfc",
     ],
     require_shape_functions = True,
 )
@@ -940,6 +936,18 @@ tf_cuda_library(
     ],
 )
 
+cc_library(
+    name = "py_checkpoint_reader",
+    srcs = ["util/py_checkpoint_reader.cc"],
+    hdrs = [
+        "util/py_checkpoint_reader.h",
+    ],
+    deps = [
+        ":py_func_lib",
+        "//tensorflow/core:framework",
+    ],
+)
+
 tf_py_wrap_cc(
     name = "pywrap_tensorflow",
     srcs = ["tensorflow.i"],
@@ -961,6 +969,7 @@ tf_py_wrap_cc(
         "util/py_checkpoint_reader.i",
     ],
     deps = [
+        ":py_checkpoint_reader",
         ":py_func_lib",
         ":py_record_reader_lib",
         ":py_record_writer_lib",

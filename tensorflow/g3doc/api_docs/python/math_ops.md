@@ -587,74 +587,70 @@ bivariate beta function.
 
 ### `tf.lgamma(x, name=None)` {#lgamma}
 
-Computes `ln(|gamma(x)|)` element-wise.
+Computes the log of the absolute value of `Gamma(x)` element-wise.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, or `double`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-    the return type is `quint8`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
 
 ### `tf.digamma(x, name=None)` {#digamma}
 
-Computes Psi, the derivative of lgamma, `ln(|gamma(x)|)`, element-wise.
+Computes Psi, the derivative of Lgamma (the log of the absolute value of
+
+`Gamma(x)`), element-wise.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, or `double`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-    the return type is `quint8`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
 
 ### `tf.erf(x, name=None)` {#erf}
 
-Computes Gauss error function of `x` element-wise.
+Computes the Gauss error function of `x` element-wise.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
-    or `qint32`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-    the return type is `quint8`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
 
 ### `tf.erfc(x, name=None)` {#erfc}
 
-Computes complementary error function of `x` element-wise.
+Computes the complementary error function of `x` element-wise.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `int64`,
-    or `qint32`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-    the return type is `quint8`.
+  A `Tensor`. Has the same type as `x`.
 
 
 - - -
@@ -673,6 +669,70 @@ Returns (x - y)(x - y) element-wise.
 ##### Returns:
 
   A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.igamma(a, x, name=None)` {#igamma}
+
+Compute the lower regularized incomplete Gamma function `Q(a, x)`.
+
+The lower regularized incomplete Gamma function is defined as:
+
+```
+P(a, x) = gamma(a, x) / Gamma(x) = 1 - Q(a, x)
+```
+where
+```
+gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt
+```
+is the lower incomplete Gamma function.
+
+Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
+Gamma function.
+
+##### Args:
+
+
+*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `a`.
+
+
+- - -
+
+### `tf.igammac(a, x, name=None)` {#igammac}
+
+Compute the upper regularized incomplete Gamma function `Q(a, x)`.
+
+The upper regularized incomplete Gamma function is defined as:
+
+```
+Q(a, x) = Gamma(a, x) / Gamma(x) = 1 - P(a, x)
+```
+where
+```
+Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt
+```
+is the upper incomplete Gama function.
+
+Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
+Gamma function.
+
+##### Args:
+
+
+*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `a`.
 
 
 

@@ -26,7 +26,7 @@ except ImportError:
 
 if sklearn.__version__ < '0.16.0':
     raise ImportError("Your scikit-learn version needs to be at least 0.16. "
-                      "Your current version is %s. " % sklearn.VERSION)
+                      "Your current version is %s. " % sklearn.__version__)
 
 import numpy as np
 import tensorflow as tf

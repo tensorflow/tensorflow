@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include <vector>
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -95,6 +96,11 @@ class TensorSliceReader {
   const std::unordered_map<string, TensorSliceSet*>& Tensors() const {
     return tensors_;
   }
+
+  // Returns value for one tensor. Only single slice checkpoints are supported
+  // at the moment.
+  Status GetTensor(const string& name,
+                   std::unique_ptr<tensorflow::Tensor>* out_tensor) const;
 
   typedef std::unordered_map<string, TensorShape> VarToShapeMap;
   // Returns a map from tensor name to shape.

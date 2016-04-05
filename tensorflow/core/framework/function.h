@@ -280,6 +280,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 // Forward declare. Defined in common_runtime/function.h
 struct FunctionBody;
 
+// Forward declare. Defined in common_runtime/device.h
+class Device;
+
 class FunctionLibraryRuntime {
  public:
   virtual ~FunctionLibraryRuntime() {}
@@ -328,6 +331,9 @@ class FunctionLibraryRuntime {
 
   // Return true iff 'function' is stateful.
   virtual bool IsStateful(const string& function_name) = 0;
+
+  // Return the device on which the function executes.
+  virtual Device* device() = 0;
 };
 
 // To register a gradient function for a builtin op, one should use

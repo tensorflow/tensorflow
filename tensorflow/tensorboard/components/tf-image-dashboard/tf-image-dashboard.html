@@ -1,57 +1,25 @@
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../tf-dashboard-common/tf-run-generator.html">
-<link rel="import" href="../tf-dashboard-common/tf-url-generator.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="tf-image-grid.html">
-<link rel="import" href="../tf-dashboard-common/warning-style.html">
+<link rel="import" href="../tf-dashboard-common/tf-no-data-warning.html">
+<link rel="import" href="../tf-backend/tf-backend.html">
 
 <!--
 tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
-
-Right now it has very simple behavior: Creates a url-generator and run-generator
-to talk to the backend, and then passes the runToImages map and urlGenerators into
-a tf-image-grid for display.
-
-Likely we will add more in the future, e.g. a sidebar like in the event
-dashboard that allows filtering and organizing the tags and runs, and a
-mechanism for loading older images rather than always getting the most recent one.
 -->
 <dom-module id="tf-image-dashboard">
   <template>
-    <div id="plumbing">
-      <tf-url-generator
-        router="[[router]]"
-        out-runs-url="{{runsUrl}}"
-        out-images-url-generator="{{imagesUrlGen}}"
-        out-individual-image-url-generator="{{individualImageUrlGen}}"
-        id="urlGenerator"
-      ></tf-url-generator>
-
-      <tf-run-generator
-        id="runGenerator"
-        url="[[runsUrl]]"
-        out-run-to-images="{{runToImages}}"
-      /></tf-run-generator>
-    </div>
-
     <div class="center">
-      <template is="dom-if" if="[[!_hasImages(runToImages.*)]]">
-        <div class="warning">
-          <p>
-            No image tags were found.
-          </p>
-          <p>
-            Maybe data hasn't loaded yet, or maybe you need
-            to add some <code>tf.image_summary</code> ops to your graph, and
-            serialize them using the <code>tf.train.SummaryWriter</code>.
-          </p>
-        </div>
-      </template>
+      <tf-no-data-warning
+        data-type="image"
+        show-warning="[[dataNotFound]]"
+      ></tf-no-data-warning>
       <tf-image-grid
         id="imageGrid"
-        run-to-images="[[runToImages]]"
-        images-generator="[[imagesUrlGen]]"
-        individual-image-generator="[[individualImageUrlGen]]"
+        run-to-images="[[run2tag]]"
+        images-generator="[[dataProvider]]"
+        tags="[[tags]]"
+        runs="[[runs]]"
       ></tf-image-grid>
     </div>
 
@@ -71,20 +39,14 @@ mechanism for loading older images rather than always getting the most recent on
       }
 
     </style>
-    <style include="warning-style"></style>
   </template>
   <script>
     Polymer({
       is: "tf-image-dashboard",
       properties: {
-        runToImages: Object,
-        imagesUrlGen: Function,
-        individualImageUrlGen: Function,
-        router: {
-          type: Object,
-          value: TF.Urls.productionRouter(),
-        },
+        dataType: {value: "image"},
       },
+      behaviors: [TF.Backend.Behavior],
       attached: function() {
         this.async(function() {
           this.fire("rendered");
