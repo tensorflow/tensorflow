@@ -629,7 +629,7 @@ ANDROID_TF_LITE_HDRS = [
 # build errors. If not building this as part of an android_binary,
 # a command such as the following must be used:
 # bazel build -c opt tensorflow/core:android_tensorflow_lib \
-# --crosstool_top=//third_party/java/android/android_ndk_linux/toolchains:everything \
+# --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
