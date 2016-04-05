@@ -76,6 +76,17 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "inspect_checkpoint",
+    srcs = [
+        "inspect_checkpoint.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

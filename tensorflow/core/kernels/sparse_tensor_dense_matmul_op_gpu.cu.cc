@@ -40,6 +40,7 @@ class SparseTensorDenseMatMulGPUGenerator {
         rhs_index_a_(ADJ_A ? 0 : 1),
         a_indices_(a_indices),
         a_values_(a_values),
+        lhs_right_size(ADJ_B ? b.dimension(1) : b.dimension(0)),
         maybe_adjoint_b_(
             functor::MaybeAdjoint<typename TTypes<const T, 2>::Tensor32Bit,
                                   ADJ_B>(b)) {}
@@ -49,9 +50,21 @@ class SparseTensorDenseMatMulGPUGenerator {
 #ifdef __CUDA_ARCH__
     const int j = j_and_ix[0];
     const int ix = j_and_ix[1];
-    const int m = a_indices_(ix, lhs_index_a_);
-    const int k = a_indices_(ix, rhs_index_a_);
-    const T b_value = maybe_adjoint_b_(k, j);
+    int m = a_indices_(ix, lhs_index_a_);
+    int k = a_indices_(ix, rhs_index_a_);
+    assert(k < lhs_right_size);
+    assert(m < out_.dimension(0));
+    // If asserts are disabled, the caller is violating the sparse
+    // tensor index contract, and so we return invalid results.
+    // Force returning NaNs to try to signal that something is amiss.
+    T b_value;
+    if (k >= lhs_right_size || m >= out_.dimension(0)) {
+      m = 0;
+      k = 0;
+      b_value = std::numeric_limits<T>::quiet_NaN();
+    } else {
+      b_value = maybe_adjoint_b_(k, j);
+    }
     atomicAdd(&out_(m, j), a_values_(ix) * b_value);
 #else
     assert(false && "This should only be run on the device");
@@ -66,6 +79,7 @@ class SparseTensorDenseMatMulGPUGenerator {
   const int rhs_index_a_;
   TTypes<const int64, 2>::Tensor32Bit a_indices_;
   typename TTypes<const T, 1>::Tensor32Bit a_values_;
+  const int lhs_right_size;
   functor::MaybeAdjoint<typename TTypes<const T, 2>::Tensor32Bit, ADJ_B>
       maybe_adjoint_b_;
 };

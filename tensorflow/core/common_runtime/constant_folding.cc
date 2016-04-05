@@ -220,19 +220,28 @@ class SimpleRendezvous : public Rendezvous {
 
 bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
                                NodeAndOutput tensor, const Tensor& constant) {
-  // If the destination tensor is not an int32 tensor, and has been specified to
-  // have HOST_MEMORY constraints, do not replace it. TODO(keveman): Consider
-  // adding a new constant op that has a kernel implementation for all types,
-  // but with HostMemory constraint on it's output.
-  if (partition_device) {
+  // Be conservative when replacing a tensor with a constant, when not
+  // running on CPU.
+  // 1) If the destination tensor is not an int32 tensor, and has HOST_MEMORY
+  // constraint, do not replace it.
+  // 2) If the destination tensor is an int32 tensor, but has DEVICE_MEMORY
+  // constraint, do not replace it.
+  // TODO(keveman): Consider adding a new constant op that has a kernel
+  // implementation for all types, but with HostMemory constraint on it's
+  // output.
+  DeviceType device_type = partition_device
+                               ? DeviceType{partition_device->device_type()}
+                               : DEVICE_CPU;
+  if (partition_device && device_type != DEVICE_CPU) {
     MemoryType memory_type;
-    if (!MemoryTypeForOutput(DeviceType(partition_device->device_type()), graph,
-                             tensor.first, tensor.second, &memory_type)
+    if (!MemoryTypeForOutput(device_type, graph, tensor.first, tensor.second,
+                             &memory_type)
              .ok()) {
       return false;
     }
-    if (memory_type == HOST_MEMORY &&
-        tensor.first->output_type(tensor.second) != DT_INT32) {
+    bool is_int32 = tensor.first->output_type(tensor.second) == DT_INT32;
+    if ((memory_type == HOST_MEMORY && !is_int32) ||
+        (memory_type == DEVICE_MEMORY && is_int32)) {
       return false;
     }
   }

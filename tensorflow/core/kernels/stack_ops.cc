@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -174,6 +175,7 @@ class StackPushOp : public AsyncOpKernel {
     // Get the stack from the handle.
     Stack* stack = nullptr;
     OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));
+    core::ScopedUnref unref(stack);
     OP_REQUIRES(ctx, ctx->input_dtype(1) == stack->ElemType(),
                 errors::InvalidArgument("Must have type ", stack->ElemType(),
                                         " but got ", ctx->input_dtype(1)));
@@ -273,6 +275,7 @@ class StackPopOp : public AsyncOpKernel {
     // Get the stack from the handle.
     Stack* stack = nullptr;
     OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));
+    core::ScopedUnref unref(stack);
 
     // Pop the tensor. Transfer the tensor back to device if it was
     // swapped out to CPU.
@@ -341,6 +344,7 @@ class StackCloseOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     Stack* stack = nullptr;
     OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));
+    core::ScopedUnref unref(stack);
     stack->Close();
   }
 

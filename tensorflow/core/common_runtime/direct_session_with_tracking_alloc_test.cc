@@ -99,6 +99,11 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_LE(8, cm->MaxSize(node, 0));
         EXPECT_EQ(6, cm->Aliases(node, 0));
       }
+      // Check the execution time. Since it's highly variable, we'll
+      // use a large window: anything between 1 and 10000 microseconds is
+      // considered ok.
+      EXPECT_LE(1, cm->MaxExecutionTime(node));
+      EXPECT_GE(10000, cm->MaxExecutionTime(node));
     }
   }
 }

@@ -25,13 +25,13 @@ from .. import models
 class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
     """TensorFlow Linear Regression model."""
 
-    def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=200, optimizer="SGD",
+    def __init__(self, n_classes=0, tf_master="", batch_size=32, steps=200, optimizer="Adagrad",
                  learning_rate=0.1, tf_random_seed=42, continue_training=False,
                  config_addon=None, verbose=1,
                  max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         super(TensorFlowLinearRegressor, self).__init__(
-            model_fn=models.linear_regression, n_classes=n_classes,
+            model_fn=models.linear_regression_zero_init, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, tf_random_seed=tf_random_seed,
@@ -53,13 +53,13 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
 class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
     """TensorFlow Linear Classifier model."""
 
-    def __init__(self, n_classes, tf_master="", batch_size=32, steps=200, optimizer="SGD",
+    def __init__(self, n_classes, tf_master="", batch_size=32, steps=200, optimizer="Adagrad",
                  learning_rate=0.1, class_weight=None,
                  tf_random_seed=42, continue_training=False, config_addon=None,
                  verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000):
 
         super(TensorFlowLinearClassifier, self).__init__(
-            model_fn=models.logistic_regression, n_classes=n_classes,
+            model_fn=models.logistic_regression_zero_init, n_classes=n_classes,
             tf_master=tf_master,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, class_weight=class_weight,

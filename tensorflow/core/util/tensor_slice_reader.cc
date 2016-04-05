@@ -272,8 +272,29 @@ Status TensorSliceReader::GetTensor(
     shape = tss->shape();
     slice = tss->Slices().begin()->second.slice;
   }
+
   std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor(type, shape));
-  if (!CopySliceData(name, slice, t->flat<float>().data())) {
+  bool success = false;
+
+#define READER_COPY(dt)                                                  \
+  case dt:                                                               \
+    success = CopySliceData(name, slice,                                 \
+                            t->flat<EnumToDataType<dt>::Type>().data()); \
+    break;
+
+  switch (type) {
+    READER_COPY(DT_FLOAT);
+    READER_COPY(DT_DOUBLE);
+    READER_COPY(DT_INT32);
+    READER_COPY(DT_UINT8);
+    READER_COPY(DT_INT16);
+    READER_COPY(DT_INT8);
+    READER_COPY(DT_INT64);
+    default:
+      return errors::Unimplemented("Data type not supported");
+  }
+
+  if (!success) {
     return errors::NotFound(name, " not found in checkpoint file");
   }
   std::swap(*out_tensor, t);

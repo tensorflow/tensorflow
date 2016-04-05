@@ -633,7 +633,8 @@ class Supervisor(object):
 
   def prepare_or_wait_for_session(self, master="", config=None,
                                   wait_for_checkpoint=False,
-                                  start_standard_services=True):
+                                  max_wait_secs=7200,
+                                  start_standard_services=True,):
     """Make sure the model is ready to be used.
 
     Create a session on 'master', recovering or initializing the model as
@@ -648,6 +649,7 @@ class Supervisor(object):
         which is passed as-is to create the session.
       wait_for_checkpoint: Whether we should wait for the availability of a
         checkpoint before creating Session. Defaults to False.
+      max_wait_secs: Maximum time to wait for the session to become available.
       start_standard_services: Whether to start the standard services,
         such as checkpoint, summary and step counter.
 
@@ -657,8 +659,8 @@ class Supervisor(object):
     if self._is_chief:
       sess = self._session_manager.prepare_session(
           master, self.init_op, self.saver, self._logdir,
-          wait_for_checkpoint=wait_for_checkpoint, config=config,
-          init_feed_dict=self._init_feed_dict)
+          wait_for_checkpoint=wait_for_checkpoint, max_wait_secs=max_wait_secs,
+          config=config, init_feed_dict=self._init_feed_dict)
       self._write_graph()
       # For users who recreate the session with prepare_or_create_session(), we
       # need to clear the coordinator's stop_event so that threads managed by
@@ -667,7 +669,9 @@ class Supervisor(object):
       if start_standard_services:
         self.start_standard_services(sess)
     else:
-      sess = self._session_manager.wait_for_session(master, config=config)
+      sess = self._session_manager.wait_for_session(master,
+                                                    config=config,
+                                                    max_wait_secs=max_wait_secs)
 
     return sess
 

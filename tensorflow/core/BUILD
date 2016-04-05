@@ -839,6 +839,7 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
+    visibility = ["//visibility:public"],
     deps = [
         ":framework",
     ],

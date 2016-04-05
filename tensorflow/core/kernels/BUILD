@@ -1211,6 +1211,7 @@ tf_kernel_libraries(
         "serialize_sparse_op",
     ],
     deps = [
+        ":bounds_check",
         ":fill_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

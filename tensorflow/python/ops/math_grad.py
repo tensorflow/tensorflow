@@ -299,6 +299,29 @@ def _DigammaGrad(op, grad):  # pylint: disable=unused-argument
   raise NotImplementedError("grad(Digamma) == Polygamma(1) is not implemented")
 
 
+@ops.RegisterGradient("Igamma")
+def _IgammaGrad(op, grad):
+  """Returns gradient of igamma(a, x) with respect to a and x."""
+  # TODO(ebrevdo): Perhaps add the derivative w.r.t. a
+  a = op.inputs[0]
+  x = op.inputs[1]
+  sa = array_ops.shape(a)
+  sx = array_ops.shape(x)
+  unused_ra, rx = gen_array_ops._broadcast_gradient_args(sa, sx)
+
+  # Perform operations in log space before summing, because Gamma(a)
+  # and Gamma'(a) can grow large.
+  partial_x = math_ops.exp(-x + (a-1) * math_ops.log(x) - math_ops.lgamma(a))
+  return (None,
+          array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
+
+
+@ops.RegisterGradient("Igammac")
+def _IgammacGrad(op, grad):
+  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. a and x."""
+  return [-1 * g if g is not None else None for g in _IgammaGrad(op, grad)]
+
+
 @ops.RegisterGradient("Sigmoid")
 def _SigmoidGrad(op, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
@@ -387,7 +410,7 @@ def _DivGrad(op, grad):
   y = op.inputs[1]
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)  # pylint: disable=protected-access
   return (array_ops.reshape(math_ops.reduce_sum(grad / y, rx), sx),
           array_ops.reshape(math_ops.reduce_sum(grad *
                                          (-x / math_ops.square(y)), ry), sy))
