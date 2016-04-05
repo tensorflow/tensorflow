@@ -42,7 +42,7 @@ IMAGE_SIZE = 28
 IMAGE_PIXELS = IMAGE_SIZE * IMAGE_SIZE
 
 
-def inference(images, hidden1_units, hidden2_units):
+def inference(images, hidden1_units, hidden2_units, keep_prob_pl):
   """Build the MNIST model up to where it may be used for inference.
 
   Args:
@@ -62,6 +62,7 @@ def inference(images, hidden1_units, hidden2_units):
     biases = tf.Variable(tf.zeros([hidden1_units]),
                          name='biases')
     hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)
+    hidden1_drop = tf.nn.dropout(hidden1, keep_prob_pl)
   # Hidden 2
   with tf.name_scope('hidden2'):
     weights = tf.Variable(
@@ -70,7 +71,8 @@ def inference(images, hidden1_units, hidden2_units):
         name='weights')
     biases = tf.Variable(tf.zeros([hidden2_units]),
                          name='biases')
-    hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
+    hidden2 = tf.nn.relu(tf.matmul(hidden1_drop, weights) + biases)
+    hidden2_drop = tf.nn.dropout(hidden2, keep_prob_pl)
   # Linear
   with tf.name_scope('softmax_linear'):
     weights = tf.Variable(
@@ -79,7 +81,7 @@ def inference(images, hidden1_units, hidden2_units):
         name='weights')
     biases = tf.Variable(tf.zeros([NUM_CLASSES]),
                          name='biases')
-    logits = tf.matmul(hidden2, weights) + biases
+    logits = tf.matmul(hidden2_drop, weights) + biases
   return logits
 
 
