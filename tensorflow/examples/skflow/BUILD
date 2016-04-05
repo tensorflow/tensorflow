@@ -35,8 +35,8 @@ py_binary(
 
 
 py_binary(
-    name = "iris_config_addon",
-    srcs = ["iris_config_addon.py"],
+    name = "iris_run_config",
+    srcs = ["iris_run_config.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",

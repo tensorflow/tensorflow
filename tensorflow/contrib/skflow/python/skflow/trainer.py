@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from six.moves import xrange   # pylint: disable=redefined-builtin
 
-from tensorflow.python.training import training as train
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import clip_ops
@@ -30,7 +29,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.contrib.layers import optimizers
 
 
-def train(session, train, loss, global_step, feed_dict_fn, steps, monitor,
+def train(session, train_op, loss, global_step, feed_dict_fn, steps, monitor,
           summary_writer=None, summaries=None,
           feed_params_fn=None):
     """Trains a model for given number of steps, given feed_dict function.
@@ -50,11 +49,11 @@ def train(session, train, loss, global_step, feed_dict_fn, steps, monitor,
         feed_dict = feed_dict_fn()
         if summaries is not None:
             global_step_value, loss_value, summ, _ = session.run(
-                [global_step, loss, summaries, train],
+                [global_step, loss, summaries, train_op],
                 feed_dict=feed_dict)
         else:
             global_step_value, loss_value, _ = session.run(
-                [global_step, loss, train],
+                [global_step, loss, train_op],
                 feed_dict=feed_dict)
         monitor.update(step, global_step_value, loss_value, session,
                        feed_params_fn, loss_expression_tensor=loss)
