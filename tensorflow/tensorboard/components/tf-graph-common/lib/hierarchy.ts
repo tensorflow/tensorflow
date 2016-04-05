@@ -428,6 +428,42 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
   });
 };
 
+export function joinAndAggregateStats(h: Hierarchy, stats: StepStats) {
+  // Get all the possible device names.
+  let deviceNames = {};
+  _.each(h.root.leaves(), nodeName => {
+    let leaf = <OpNode> h.node(nodeName);
+    if (leaf.device != null) {
+      deviceNames[leaf.device] = true;
+    }
+  });
+  h.devices = _.keys(deviceNames);
+
+  // Reset stats for each group node.
+  _.each(h.getNodeMap(), (node, nodeName) => {
+    if (node.isGroupNode) {
+      node.stats = new NodeStats(0, 0, null);
+      (<GroupNode>node).deviceHistogram = {};
+    }
+  });
+
+  // Bubble-up the stats and device distribution from leaves to parents.
+  _.each(h.root.leaves(), nodeName => {
+    let leaf = <OpNode> h.node(nodeName);
+    let node = <GroupNode|OpNode> leaf;
+    while (node.parentNode != null) {
+      if (leaf.device != null) {
+        let deviceHistogram = (<GroupNode>node.parentNode).deviceHistogram;
+        deviceHistogram[leaf.device] = (deviceHistogram[leaf.device] || 0) + 1;
+      }
+      if (leaf.stats != null) {
+        node.parentNode.stats.combine(leaf.stats);
+      }
+      node = <GroupNode> node.parentNode;
+    }
+  });
+}
+
 /**
  * Creates the metanodes in the hierarchical graph and assigns parent-child
  * relationship between them.
@@ -446,9 +482,6 @@ function addNodes(h: Hierarchy, graph: SlimGraph) {
       parent.depth = Math.max(parent.depth, path.length - i);
       parent.cardinality += node.cardinality;
       parent.opHistogram[node.op] = (parent.opHistogram[node.op] || 0) + 1;
-      if (node.stats) {
-        parent.stats.combine(node.stats);
-      }
       if (node.device != null) {
         parent.deviceHistogram[node.device] =
             (parent.deviceHistogram[node.device] || 0) + 1;
@@ -623,11 +656,6 @@ function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
       }
       child.parentNode = seriesNode;
       seriesNames[n] = seriesName;
-
-      if (child.stats) {
-        seriesNode.stats.combine(child.stats);
-      }
-
       // Remove now-grouped node from its original parent's metagraph.
       metagraph.removeNode(n);
     });

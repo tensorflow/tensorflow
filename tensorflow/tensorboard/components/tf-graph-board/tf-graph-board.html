@@ -117,11 +117,11 @@ paper-progress {
               basic-graph="[[graph]]"
               hierarchy-params="[[hierarchyParams]]"
               render-hierarchy="{{_renderHierarchy}}"
+              stats="[[stats]]"
               selected-node="{{_selectedNode}}"
               highlighted-node="{{_highlightedNode}}"
               color-by="[[colorBy]]"
               color-by-params="{{colorByParams}}"
-              graph-name="[[graphName]]"
               progress="{{progress}}"
     ></tf-graph>
   </div>
@@ -150,9 +150,7 @@ Polymer({
     // Public API.
     graphHierarchy: Object,
     graph: Object,
-    graphName: String,
-    // True if the graph data has also run-time stats.
-    hasStats: Boolean,
+    stats: Object,
     /**
      * @type {value: number, msg: string}
      *

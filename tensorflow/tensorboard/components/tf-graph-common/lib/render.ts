@@ -167,12 +167,24 @@ export class RenderGraphInfo {
   constructor(hierarchy: hierarchy.Hierarchy) {
     this.hierarchy = hierarchy;
     this.index = {};
+
+    this.computeScales();
+    // Maps node name to whether the rendering hierarchy was already
+    // constructed.
+    this.hasSubhierarchy = {};
+    this.root = new RenderGroupNodeInfo(hierarchy.root);
+    this.index[hierarchy.root.name] = this.root;
+    this.buildSubhierarchy(hierarchy.root.name);
+    this.root.expanded = true;
+  }
+
+  computeScales() {
     this.deviceColorMap = d3.scale.ordinal<string>()
-        .domain(hierarchy.devices)
-        .range(_.map(d3.range(hierarchy.devices.length),
+        .domain(this.hierarchy.devices)
+        .range(_.map(d3.range(this.hierarchy.devices.length),
                      MetanodeColors.DEVICE_PALETTE));
 
-    let topLevelGraph = hierarchy.root.metagraph;
+    let topLevelGraph = this.hierarchy.root.metagraph;
     // Find the maximum and minimum memory usage.
     let memoryExtent = d3.extent(topLevelGraph.nodes(),
         (nodeName, index) => {
@@ -198,14 +210,6 @@ export class RenderGraphInfo {
     this.computeTimeScale = d3.scale.linear<string, string>()
         .domain(computeTimeExtent)
         .range(PARAMS.minMaxColors);
-
-    // Maps node name to whether the rendering hierarchy was already
-    // constructed.
-    this.hasSubhierarchy = {};
-    this.root = new RenderGroupNodeInfo(hierarchy.root);
-    this.index[hierarchy.root.name] = this.root;
-    this.buildSubhierarchy(hierarchy.root.name);
-    this.root.expanded = true;
   }
 
   /**

@@ -27,20 +27,21 @@ by default. The user can select a different run from a dropdown menu.
 <div class="sidebar">
   <tf-graph-controls id="controls"
       color-by-params="[[_colorByParams]]"
-      has-stats="[[_hasStats]]"
+      stats="[[_stats]]"
       color-by="{{_colorBy}}",
       datasets="[[_datasets]]",
       selected-dataset="{{_selectedDataset}}"
       selected-file="{{_selectedFile}}"
+      selected-metadata-tag="{{_selectedMetadataTag}}"
   ></tf-graph-controls>
   <tf-graph-loader id="loader"
           datasets="[[_datasets]]",
           selected-dataset="[[_selectedDataset]]"
+          selected-metadata-tag="[[_selectedMetadataTag]]"
           selected-file="[[_selectedFile]]"
           out-graph-hierarchy="{{_graphHierarchy}}"
           out-graph="{{_graph}}"
-          out-graph-name="{{_graphName}}"
-          has-stats="{{_hasStats}}"
+          out-stats="{{_stats}}"
           progress="{{_progress}}"
           out-hierarchy-params="{{_hierarchyParams}}"
   ></tf-graph-loader>
@@ -49,8 +50,7 @@ by default. The user can select a different run from a dropdown menu.
     <tf-graph-board id="graphboard"
                 graph-hierarchy="[[_graphHierarchy]]"
                 graph="[[_graph]]"
-                has-stats="[[_hasStats]]"
-                graph-name="[[_graphName]]"
+                stats="[[_stats]]"
                 progress="[[_progress]]"
                 color-by="[[_colorBy]]"
                 color-by-params="{{_colorByParams}}"
@@ -79,28 +79,31 @@ by default. The user can select a different run from a dropdown menu.
 Polymer({
   is: 'tf-graph-dashboard',
   properties: {
-    _datasets: {
-      type: Object,
-      computed: '_getDatasets(runs.*, router)'
-    },
+    _datasets: Object,
     backend: {type: Object, observer: 'reload'},
     router: {type: Object},
     runs: Array,
   },
   reload: function() {
-    var _this = this;
-    this.backend.graphRuns().then(function(x) {
-      _this.runs = x;
-    });
-  },
-  _getDatasets: function(runs, router) {
-    return _.map(this.runs, function(runName) {
-      return {
-        name: runName,
-        path: router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
-            tf.graph.LARGE_ATTRS_KEY)
-      };
-    });
+    Promise.all([this.backend.graphRuns(), this.backend.runMetadataRuns()])
+    .then(function(result) {
+      var runsWithGraph = result[0];
+      var runToMetadata = result[1];
+      var datasets = _.map(runsWithGraph, function(runName) {
+        return {
+          name: runName,
+          path: this.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
+            tf.graph.LARGE_ATTRS_KEY),
+          runMetadata: _.map(runToMetadata[runName], function(tag) {
+            return {
+              tag: tag,
+              path: this.router.runMetadata(tag, runName)
+            };
+          }, this)
+        };
+      }, this);
+      this.set('_datasets', datasets);
+    }.bind(this));
   },
   _datasetsEmpty: function(datasets) {
     return !datasets || !datasets.length;
