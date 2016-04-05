@@ -5,13 +5,20 @@ distribute a computation graph across that cluster. We assume that you are
 familiar with the [basic concepts](../../get_started/basic_usage.md) of
 writing TensorFlow programs.
 
-## Quick start
+## Install
 
-The gRPC server is included as part of the nightly PIP packages, which you can
-download from [the continuous integration
-site](http://ci.tensorflow.org/view/Nightly/). Alternatively, you can build an
-up-to-date PIP package by following [these installation instructions]
-(https://www.tensorflow.org/versions/master/get_started/os_setup.html#create-the-pip-package-and-install).
+To use distributed TensorFlow, install a TensorFlow package that includes the
+gRPC server.
+
+1.  Download a nightly PIP package from [the continuous integration
+site](http://ci.tensorflow.org/view/Nightly/).
+1.  Execute `pip uninstall tensorflow` if you have a previous installation.
+1.  Execute `pip install <path-to-downloaded-whl-file>`.
+
+Alternatively, you can build an up-to-date PIP package from source by
+following [these installation instructions]
+(https://www.tensorflow.org/versions/master/get_started/os_setup.html#create-
+the-pip-package-and-install).
 
 Once you have successfully built the distributed TensorFlow components, you can
 test your installation by starting a local server as follows:
@@ -27,54 +34,83 @@ $ python
 'Hello, distributed TensorFlow!'
 ```
 
-## Cluster definition
-
 The `tf.GrpcServer.new_local_server()` method creates a single-process cluster.
-To create a more realistic distributed cluster, you create a `tf.GrpcServer` by
-passing in a `tf.ServerDef` that defines the membership of a TensorFlow cluster,
-and then run multiple processes that each have the same cluster definition.
 
-A `tf.ServerDef` comprises a cluster definition (`tf.ClusterDef`), which is the
-same for all servers in a cluster; and a job name and task index that are unique
-to a particular cluster.
+## Create a cluster
 
-For constructing a `tf.ClusterDef`, the `tf.make_cluster_def()` function enables you to specify the jobs and tasks as a Python dictionary, mapping job names to lists of network addresses. For example:
+To create a cluster with multiple processes or machines:
+
+1.  **Create a cluster specification dictionary**. All servers in the cluster share the
+specification.
+
+1.  **For each process or machine** in the cluster, run a TensorFlow program to:
+
+    1.  **Create a `ClusterSpec`**, passing the dictionary to the constructor. 
+
+    1.  **Create a `tf.ServerDef`** that identifies itself with one of the
+    tasks in the `ClusterSpec`.
+
+    1.  **Create a `tf.GrpcServer`**, passing the `tf.ServerDef` to the
+    constructor.
+
+
+### Create the cluster specification dictionary and `ClusterSpec` instances.
+
+ The cluster specification dictionary maps job names to lists
+ of network adresses. Pass this dictionary to the `tf.ClusterSpec` constructor.
+ For example:
 
 <table>
-  <tr><th><code>tf.ClusterDef</code> construction</th><th>Available tasks</th>
+  <tr><th><code>tf.ClusterSpec</code> construction</th><th>Available tasks</th>
   <tr>
-    <td><code>tf.make_cluster_def({"local": ["localhost:2222", "localhost:2223"]})</code></td><td><code>/job:local/task:0<br/>/job:local/task:1</code></td>
+    <td><pre>
+tf.ClusterSpec({"local": ["localhost:2222", "localhost:2223"]})
+</pre></td>
+<td><code>/job:local/task:0<br/>/job:local/task:1</code></td>
   </tr>
   <tr>
-    <td><code>tf.make_cluster_def({<br/>&nbsp;&nbsp;&nbsp;&nbsp;"worker": ["worker0:2222", "worker1:2222", "worker2:2222"],<br/>&nbsp;&nbsp;&nbsp;&nbsp;"ps": ["ps0:2222", "ps1:2222"]})</code></td><td><code>/job:worker/task:0</code><br/><code>/job:worker/task:1</code><br/><code>/job:worker/task:2</code><br/><code>/job:ps/task:0</code><br/><code>/job:ps/task:1</code></td>
+    <td><pre>
+tf.ClusterSpec({
+    "trainer": [
+        "trainer0.example.com:2222", 
+        "trainer1.example.com:2222",
+        "trainer2.example.com:2222"
+    ],
+    "params": [
+        "params0.example.com:2222",
+        "params1.example.com:2222"
+    ]})
+</pre></td><td><code>/job:trainer/task:0</code><br/><code>/job:trainer/task:1</code><br/><code>/job:trainer/task:2</code><br/><code>/job:params/task:0</code><br/><code>/job:params/task:1</code></td>
   </tr>
 </table>
 
-The `server_def.job_name` and `server_def.task_index` fields select one of the
-defined tasks from the `tf.ClusterDef`. For example, running the following code
-in two different processes:
+### Create `ServerDef` and `GrpcServer` instances
+
+A `ServerDef` stores a job name and task index that uniquely identify one of
+the tasks defined in the `tf.ClusterSpec`. The `GrpcServer` constructor uses
+this information to start a server.
+
+For example, to define and instantiate servers running on `localhost:2222` and
+`localhost:2223`, run the following snippets in different processes:
 
 ```python
 # In task 0:
 server_def = tf.ServerDef(
-    cluster=tf.make_cluster_def({
-        "local": ["localhost:2222", "localhost:2223"]}),
+    cluster=tf.ClusterSpec({
+        "local": ["localhost:2222", "localhost:2223"]}).as_cluster_def(),
     job_name="local", task_index=0)
 server = tf.GrpcServer(server_def)
 ```
 ```python
 # In task 1:
 server_def = tf.ServerDef(
-    cluster=tf.make_cluster_def({
-        "local": ["localhost:2222", "localhost:2223"]}),
+    cluster=tf.ClusterSpec({
+        "local": ["localhost:2222", "localhost:2223"]}).as_cluster_def(),
     job_name="local", task_index=1)
 server = tf.GrpcServer(server_def)
 ```
 
-&hellip;will define and instantiate servers running on `localhost:2222` and
-`localhost:2223`.
-
-**N.B.** Manually specifying these cluster specifications can be tedious,
+**Note:** Manually specifying these cluster specifications can be tedious,
 especially for large clusters. We are working on tools for launching tasks
 programmatically, e.g. using a cluster manager like
 [Kubernetes](http://kubernetes.io). If there are particular cluster managers for
