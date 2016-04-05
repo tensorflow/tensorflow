@@ -1214,6 +1214,7 @@ tf_cc_test(
     name = "common_runtime/constant_folding_test",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":core",
         ":core_cpu",
@@ -1221,6 +1222,7 @@ tf_cc_test(
         ":direct_session_internal",
         ":framework",
         ":framework_internal",
+        ":gpu_runtime",
         ":lib",
         ":lib_internal",
         ":ops",
@@ -1230,6 +1232,7 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:bcast_ops",
+        "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",
