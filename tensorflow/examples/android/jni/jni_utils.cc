@@ -30,6 +30,7 @@ limitations under the License.
 #include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/message_lite.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/examples/android/jni/limiting_file_input_stream.h"
 
 static const char* const ASSET_PREFIX = "file:///android_asset/";
 
@@ -51,6 +52,7 @@ class IfstreamInputStream : public ::google::protobuf::io::CopyingInputStream {
  private:
   std::ifstream ifs_;
 };
+
 }  // namespace
 
 bool PortableReadFileToProto(const std::string& file_name,
@@ -99,11 +101,10 @@ void ReadFileToProto(AAssetManager* const asset_manager,
     // from the APK.
     VLOG(0) << "Opening asset " << asset_filename
             << " from disk with zero-copy.";
-    google::protobuf::io::FileInputStream is(fd);
-    google::protobuf::io::LimitingInputStream lis(&is, start + length);
-    lis.Skip(start);
-    CHECK(message->ParseFromZeroCopyStream(&lis));
-    is.Close();
+    ::tensorflow::android::LimitingFileInputStream is(fd, start + length);
+    google::protobuf::io::CopyingInputStreamAdaptor adaptor(&is);
+    adaptor.Skip(start);
+    CHECK(message->ParseFromZeroCopyStream(&adaptor));
   } else {
     // It may be compressed, in which case we have to uncompress
     // it to memory first.
@@ -161,13 +162,13 @@ void WriteProtoToFile(const char* const filename,
                       const google::protobuf::MessageLite& message) {
   std::fstream outfile;
   outfile.open(filename, std::fstream::binary | std::fstream::out);
+  std::string serialized;
+  message.SerializeToString(&serialized);
+  outfile.write(serialized.c_str(), serialized.size());
+  outfile.close();
   if (outfile.fail()) {
     LOG(WARNING) << "Failed to write proto to " << filename;
     return;
-  } else {
-    google::protobuf::io::OstreamOutputStream raw_out(&outfile);
-    google::protobuf::io::CodedOutputStream coded_out(&raw_out);
-    message.SerializeToCodedStream(&coded_out);
   }
   VLOG(0) << "Wrote proto to " << filename;
 }
