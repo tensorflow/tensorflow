@@ -50,11 +50,9 @@ class AdagradOptimizer(optimizer.Optimizer):
     if initial_accumulator_value <= 0.0:
       raise ValueError("initial_accumulator_value must be positive: %s" %
                        initial_accumulator_value)
-    super(AdagradOptimizer, self).__init__(use_locking, name)
-    self._learning_rate = learning_rate
+    super(AdagradOptimizer, self).__init__(learning_rate, use_locking, name)
     self._initial_accumulator_value = initial_accumulator_value
     # Created in Initialize.
-    self._learning_rate_tensor = None
 
   def _create_slots(self, var_list):
     for v in var_list:
@@ -62,10 +60,6 @@ class AdagradOptimizer(optimizer.Optimizer):
         val = constant_op.constant(self._initial_accumulator_value,
                                    shape=v.get_shape())
       self._get_or_make_slot(v, val, "accumulator", self._name)
-
-  def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
-                                                       name="learning_rate")
 
   def _apply_dense(self, grad, var):
     acc = self.get_slot(var, "accumulator")

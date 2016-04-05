@@ -169,7 +169,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     if total_num_replicas == 0:
       total_num_replicas = replicas_to_aggregate
 
-    super(SyncReplicasOptimizer, self).__init__(use_locking, name)
+    super(SyncReplicasOptimizer, self).__init__(0., use_locking, name)
     logging.info(
         "SyncReplicas enabled: replicas_to_aggregate=%s; total_num_replicas=%s",
         replicas_to_aggregate, total_num_replicas)

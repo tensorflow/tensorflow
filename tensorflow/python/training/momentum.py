@@ -41,8 +41,7 @@ class MomentumOptimizer(optimizer.Optimizer):
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Momentum".
     """
-    super(MomentumOptimizer, self).__init__(use_locking, name)
-    self._learning_rate = learning_rate
+    super(MomentumOptimizer, self).__init__(learning_rate, use_locking, name)
     self._momentum = momentum
 
   def _create_slots(self, var_list):
@@ -50,8 +49,6 @@ class MomentumOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "momentum", self._name)
 
   def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
-                                                       name="learning_rate")
     self._momentum_tensor = ops.convert_to_tensor(self._momentum,
                                                   name="momentum")
 

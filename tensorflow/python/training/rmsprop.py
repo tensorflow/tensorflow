@@ -65,14 +65,12 @@ class RMSPropOptimizer(optimizer.Optimizer):
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "RMSProp".
     """
-    super(RMSPropOptimizer, self).__init__(use_locking, name)
-    self._learning_rate = learning_rate
+    super(RMSPropOptimizer, self).__init__(learning_rate, use_locking, name)
     self._decay = decay
     self._momentum = momentum
     self._epsilon = epsilon
 
     # Tensors for learning rate and momentum.  Created in _prepare.
-    self._learning_rate_tensor = None
     self._decay_tensor = None
     self._momentum_tensor = None
     self._epsilon_tensor = None
@@ -84,8 +82,6 @@ class RMSPropOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "momentum", self._name)
 
   def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
-                                                       name="learning_rate")
     self._decay_tensor = ops.convert_to_tensor(self._decay, name="decay")
     self._momentum_tensor = ops.convert_to_tensor(self._momentum,
                                                   name="momentum")

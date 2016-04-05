@@ -43,8 +43,7 @@ class GradientDescentOptimizer(optimizer.Optimizer):
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "GradientDescent".
     """
-    super(GradientDescentOptimizer, self).__init__(use_locking, name)
-    self._learning_rate = learning_rate
+    super(GradientDescentOptimizer, self).__init__(learning_rate, use_locking, name)
 
   def _apply_dense(self, grad, var):
     return training_ops.apply_gradient_descent(
@@ -57,7 +56,3 @@ class GradientDescentOptimizer(optimizer.Optimizer):
     delta = ops.IndexedSlices(grad.values * self._learning_rate_tensor,
                               grad.indices, grad.dense_shape)
     return var.scatter_sub(delta, use_locking=self._use_locking)
-
-  def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
-                                                       name="learning_rate")
