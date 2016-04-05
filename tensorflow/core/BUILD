@@ -772,6 +772,7 @@ cc_library(
     deps = [
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
+        "//third_party/eigen3",
     ],
 )
 
