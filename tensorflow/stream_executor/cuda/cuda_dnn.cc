@@ -1278,7 +1278,7 @@ bool CudnnSupport::DoActivate(Stream* stream,
   switch (activation_mode) {
     case dnn::ActivationMode::kRelu6:
       // TODO(leary) should probably do a post-pass to clip at 6?
-      LOG(WARNING) << "user requested ReluX, but providing Relu instead";
+      LOG(WARNING) << "user requested Relu6, but providing Relu instead";
       mode = CUDNN_ACTIVATION_RELU;
       break;
     case dnn::ActivationMode::kReluX:
