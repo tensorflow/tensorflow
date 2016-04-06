@@ -177,7 +177,7 @@ class TensorFlowEstimator(BaseEstimator):
         """Sets up the summary writer to prepare for later optional visualization."""
         self._summary_writer = tf.train.SummaryWriter(
             os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
-            graph_def=self._session.graph_def)
+            graph=self._session.graph)
 
     def fit(self, X, y, monitor=None, logdir=None):
         """Builds a neural network model given provided `model_fn` and training
