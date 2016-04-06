@@ -10,7 +10,8 @@ help and advice.
 ### Environment info
 Operating System:
 
-Installed version of CUDA and cuDNN (if any):
+Installed version of CUDA and cuDNN: 
+(please attach the output of `ls -l /path/to/cuda/lib/libcud*`):
 
 If installed from binary pip package, provide:
 
