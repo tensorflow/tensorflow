@@ -93,6 +93,9 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
   int pyarray_type = PyArray_TYPE(array);
   PyArray_Descr* descr = PyArray_DESCR(array);
   switch (pyarray_type) {
+    case NPY_FLOAT16:
+      *out_tf_datatype = TF_HALF;
+      break;
     case NPY_FLOAT32:
       *out_tf_datatype = TF_FLOAT;
       break;
@@ -144,6 +147,9 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
 Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
                                    int* out_pyarray_type) {
   switch (tf_datatype) {
+    case TF_HALF:
+      *out_pyarray_type = NPY_FLOAT16;
+      break;
     case TF_FLOAT:
       *out_pyarray_type = NPY_FLOAT32;
       break;
