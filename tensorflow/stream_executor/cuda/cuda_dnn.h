@@ -53,8 +53,10 @@ class CudnnSupport : public dnn::DnnSupport {
                   DeviceMemory<float>* output_data,
                   ScratchAllocator* scratch_allocator) override;
 
-  bool DoBatchNormForwardTraining(
+  bool DoBatchNormalizeTrainingForward(
                     Stream* stream,
+                    const double epsilon,
+                    const double exponential_average_factor,
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
                     const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
@@ -67,8 +69,9 @@ class CudnnSupport : public dnn::DnnSupport {
                     DeviceMemory<float>* save_mean,
                     DeviceMemory<float>* save_inv_var) override;
 
-  bool DoBatchNormBackwardTraining(
+  bool DoBatchNormalizeTrainingBackward(
       Stream* stream,
+      const double epsilon,
       const dnn::BatchDescriptor& input_dimensions,
       const DeviceMemory<float>& input_data,
       const dnn::BatchDescriptor& output_dimensions,

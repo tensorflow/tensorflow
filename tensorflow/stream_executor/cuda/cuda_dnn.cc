@@ -1354,8 +1354,10 @@ bool CudnnSupport::DoMemcpyH2DQuantized(
   return false;
 }
 
-bool CudnnSupport::DoBatchNormForwardTraining(
+bool CudnnSupport::DoBatchNormalizeTrainingForward(
     Stream* stream,
+    const double epsilon,
+    const double exponential_average_factor,
     const dnn::BatchDescriptor& input_dimensions,
     const DeviceMemory<float>& input_data,
     const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
@@ -1376,8 +1378,6 @@ bool CudnnSupport::DoBatchNormForwardTraining(
     return false;
   }
 
-  double exponential_average_factor = 1.0;
-
   ScopedTensorDescriptor src_desc{parent_, input_dimensions, CUDNN_DATA_FLOAT};
   ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
                                    CUDNN_DATA_FLOAT};
@@ -1386,7 +1386,6 @@ bool CudnnSupport::DoBatchNormForwardTraining(
 
 
   cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
-  double epsilon = 0.0001;
   float alpha = 1.0;
   float beta = 0.0;
 
@@ -1410,8 +1409,9 @@ bool CudnnSupport::DoBatchNormForwardTraining(
   return true;
 }
 
-bool CudnnSupport::DoBatchNormBackwardTraining(
+bool CudnnSupport::DoBatchNormalizeTrainingBackward(
     Stream* stream,
+    const double epsilon,
     const dnn::BatchDescriptor& input_dimensions,
     const DeviceMemory<float>& input_data,
     const dnn::BatchDescriptor& output_dimensions,
@@ -1440,7 +1440,6 @@ bool CudnnSupport::DoBatchNormBackwardTraining(
 
 
   cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
-  double epsilon = 0.0001;
   float alpha = 1.0;
   float beta = 0.0;
 

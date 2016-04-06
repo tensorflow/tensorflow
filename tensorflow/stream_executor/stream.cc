@@ -601,7 +601,9 @@ Stream &Stream::ThenNormalize(
   return *this;
 }
 
-Stream &Stream::ThenBatchNormalizeTraining(
+Stream &Stream::ThenBatchNormalizeTrainingForward(
+                    const double epsilon,
+                    const double exponential_average_factor,
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
                     const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
@@ -618,7 +620,8 @@ Stream &Stream::ThenBatchNormalizeTraining(
 
     if (ok()) {
       if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-        CheckError(dnn->DoBatchNormForwardTraining(this,
+        CheckError(dnn->DoBatchNormalizeTrainingForward(this,
+                                      epsilon, exponential_average_factor,
                                       input_dimensions, input_data,
                                       scale_bias_mean_var_dimensions,
                                       scale_data, bias_data,
@@ -627,8 +630,7 @@ Stream &Stream::ThenBatchNormalizeTraining(
                                       running_mean,
                                       running_inv_var,
                                       save_mean,
-                                      save_inv_var
-                                      ));
+                                      save_inv_var));
       } else {
         SetError();
         LOG(WARNING)
@@ -639,7 +641,8 @@ Stream &Stream::ThenBatchNormalizeTraining(
     return *this;
 }
 
-Stream &Stream::ThenBatchNormalizeBackwardTraining(
+Stream &Stream::ThenBatchNormalizeTrainingBackward(
+                    const double epsilon,
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
                     const dnn::BatchDescriptor& output_dimensions,
@@ -656,7 +659,8 @@ Stream &Stream::ThenBatchNormalizeBackwardTraining(
 
     if (ok()) {
       if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-        CheckError(dnn->DoBatchNormBackwardTraining(this,
+        CheckError(dnn->DoBatchNormalizeTrainingBackward(this,
+                                      epsilon,
                                       input_dimensions, input_data,
                                       output_dimensions,
                                       output_grad_data,
