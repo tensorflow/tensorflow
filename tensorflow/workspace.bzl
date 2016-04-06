@@ -60,6 +60,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@six_archive//:six",
   )
 
+  native.bind(
+    name = "python_headers",
+    actual = "//util/python:python_headers",
+  )
+
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
   # to point to the protobuf's compiler library.
   native.bind(
@@ -90,14 +95,3 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "grpc_lib",
     actual = "@grpc//:grpc++_unsecure",
   )
-
-  native.bind(
-    name = "python_headers",
-    actual = "//util/python:python_headers",
-  )
-
-  native.new_local_repository(
-    name = "python",
-    path = tf_repo_name + "/util/python",
-  )
-
