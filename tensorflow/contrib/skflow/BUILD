@@ -54,7 +54,7 @@ py_test(
 
 py_test(
     name = "test_early_stopping",
-    size = "small",
+    size = "medium",
     srcs = ["python/skflow/tests/test_early_stopping.py"],
     srcs_version = "PY2AND3",
     deps = [
