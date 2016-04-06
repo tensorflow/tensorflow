@@ -406,3 +406,18 @@ new_git_repository(
   remote = "https://github.com/Polymer/webcomponentsjs.git",
   tag = "v0.7.21",
 )
+
+# Uncomment and update the paths in these entries to build the Android demo.
+android_sdk_repository(
+    name = "androidsdk",
+    api_level = 23,
+    build_tools_version = "23.0.1",
+    # Replace with path to Android SDK on your system
+    path = "/usr/local/google/home/andrewharp/android/sdk",
+)
+
+android_ndk_repository(
+    name="androidndk",
+    path="/usr/local/google/home/andrewharp/android/ndk",
+    api_level=21)
+
