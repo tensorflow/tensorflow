@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from six.moves import xrange   # pylint: disable=redefined-builtin
 
-from tensorflow.python.training import training as train
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import clip_ops
@@ -27,124 +26,39 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.contrib.layers import optimizers
 
 
-OPTIMIZER_CLS_NAMES = {
-    "SGD": train.GradientDescentOptimizer,
-    "Adagrad": train.AdagradOptimizer,
-    "Adam": train.AdamOptimizer,
-}
+def train(session, train_op, loss, global_step, feed_dict_fn, steps, monitor,
+          summary_writer=None, summaries=None,
+          feed_params_fn=None):
+    """Trains a model for given number of steps, given feed_dict function.
 
-
-class TensorFlowTrainer(object):
-    """General trainer class.
-
-    Attributes:
-      model: Model object.
-      gradients: Gradients tensor.
+    Args:
+        session: Session object.
+        train: Tensor, trains model.
+        loss: Tensor, loss value.
+        global_step: Tensor, global step of the model.
+        feed_dict_fn: Function that will return a feed dictionary.
+        summary_writer: SummaryWriter object to use for writing summaries.
+        steps: Number of steps to run.
+        monitor: Monitor object to track training progress and induce early stopping
+        summaries: Joined object of all summaries that should be ran.
     """
-
-    def __init__(self, loss, global_step, optimizer,
-                 learning_rate, clip_gradients=5.0):
-        """Build a trainer part of graph.
-
-        Args:
-          loss: Tensor that evaluates to model's loss.
-          global_step: Tensor with global step of the model.
-          optimizer: Name of the optimizer class (SGD, Adam, Adagrad) or class.
-          learning_rate: If this is constant float value, no decay function is used.
-                         Instead, a customized decay function can be passed that accepts
-                         global_step as parameter and returns a Tensor.
-                         e.g. exponential decay function:
-                         def exp_decay(global_step):
-                            return tf.train.exponential_decay(
-                                learning_rate=0.1, global_step=global_step,
-                                decay_steps=2, decay_rate=0.001)
-        Raises:
-            ValueError: if learning_rate is not a float or a callable.
-        """
-        self.loss = loss
-        self.global_step = global_step
-        # pylint: disable=redefined-variable-type
-        if isinstance(learning_rate, float):
-            self._learning_rate = vs.get_variable(
-                "learning_rate",
-                [],
-                initializer=init_ops.constant_initializer(learning_rate))
-        elif callable(learning_rate):
-            self._learning_rate = learning_rate(self.global_step)
+    for step in xrange(steps):
+        feed_dict = feed_dict_fn()
+        if summaries is not None:
+            global_step_value, loss_value, summ, _ = session.run(
+                [global_step, loss, summaries, train_op],
+                feed_dict=feed_dict)
         else:
-            raise ValueError("learning_rate should be a float or a callable function.")
-        params = variables.trainable_variables()
-        self.gradients = gradients.gradients(loss, params)
-        if clip_gradients > 0.0:
-            self.gradients, self.gradients_norm = clip_ops.clip_by_global_norm(
-                self.gradients, clip_gradients)
-        grads_and_vars = zip(self.gradients, params)
-        if isinstance(optimizer, str):
-            self._optimizer = OPTIMIZER_CLS_NAMES[
-                optimizer](self._learning_rate)
-        else:
-            self._optimizer = optimizer(self._learning_rate)
-        self.trainer = self._optimizer.apply_gradients(grads_and_vars,
-                                                       global_step=global_step,
-                                                       name="train")
-        # Update ops during training, e.g. batch_norm_ops
-        self.trainer = control_flow_ops.group(self.trainer, *ops.get_collection('update_ops'))
-        # Get all initializers for all trainable variables.
-        self._initializers = variables.initialize_all_variables()
+            global_step_value, loss_value, _ = session.run(
+                [global_step, loss, train_op],
+                feed_dict=feed_dict)
+        monitor.update(step, global_step_value, loss_value, session,
+                       feed_params_fn, loss_expression_tensor=loss)
+        if summaries is not None and summary_writer and summ is not None:
+            summary_writer.add_summary(summ, global_step_value)
+        if monitor.monitor_inducing_stop():
+            break
 
-    def initialize(self, sess):
-        """Initalizes all variables.
-
-        Args:
-            sess: Session object.
-
-        Returns:
-            Values of initializers.
-        """
-        return sess.run(self._initializers)
-
-    def train(self, sess, feed_dict_fn, steps, monitor,
-              summary_writer=None, summaries=None,
-              feed_params_fn=None):
-        """Trains a model for given number of steps, given feed_dict function.
-
-        Args:
-            sess: Session object.
-            feed_dict_fn: Function that will return a feed dictionary.
-            summary_writer: SummaryWriter object to use for writing summaries.
-            steps: Number of steps to run.
-            monitor: Monitor object to track training progress and induce early stopping
-            summaries: Joined object of all summaries that should be ran.
-
-        Returns:
-            List of losses for each step.
-        """
-        for step in xrange(steps):
-            feed_dict = feed_dict_fn()
-            if summaries is not None:
-                global_step, loss, summ, _ = sess.run(
-                    [self.global_step, self.loss, summaries, self.trainer],
-                    feed_dict=feed_dict)
-            else:
-                global_step, loss, _ = sess.run(
-                    [self.global_step, self.loss, self.trainer],
-                    feed_dict=feed_dict)
-            monitor.update(step, global_step, loss, sess,
-                           feed_params_fn, loss_expression_tensor=self.loss)
-            if summaries is not None and summary_writer and summ is not None:
-                summary_writer.add_summary(summ, global_step)
-            if monitor.monitor_inducing_stop():
-                break
-        return
-
-
-class RestoredTrainer(TensorFlowTrainer):
-    """Trainer class  that takes already existing graph."""
-
-    # pylint: disable=super-init-not-called
-    def __init__(self, loss, global_step, trainer):
-        self.global_step = global_step
-        self.loss = loss
-        self.trainer = trainer

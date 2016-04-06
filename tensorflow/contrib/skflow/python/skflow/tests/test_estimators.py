@@ -40,7 +40,7 @@ class CustomOptimizer(tf.test.TestCase):
             return tf.train.exponential_decay(
                 learning_rate=0.1, global_step=global_step,
                 decay_steps=100, decay_rate=0.001)
-        custom_optimizer = lambda x: tf.train.MomentumOptimizer(x, 0.9)
+        custom_optimizer = lambda learning_rate: tf.train.MomentumOptimizer(learning_rate, 0.9)
         classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                     n_classes=3, steps=800,
                                                     learning_rate=exp_decay,

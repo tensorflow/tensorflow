@@ -26,6 +26,9 @@ from six.moves import xrange   # pylint: disable=redefined-builtin
 import numpy as np
 from sklearn.utils import check_array
 
+from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import dtypes
+
 from .pandas_io import HAS_PANDAS, extract_pandas_data, extract_pandas_matrix, extract_pandas_labels
 from .dask_io import HAS_DASK, extract_dask_data, extract_dask_labels
 
@@ -184,6 +187,20 @@ class DataFeeder(object):
         self.offset = 0
         self.epoch = 0
 
+    def input_builder(self):
+        """Builds inputs in the graph."""
+        input_shape = [None] + self.input_shape[1:]
+        output_shape = [None] + self.output_shape[1:]
+        self._input_placeholder = array_ops.placeholder(dtypes.as_dtype(self.input_dtype), input_shape,
+            name="input")
+        self._output_placeholder = array_ops.placeholder(dtypes.as_dtype(self.output_dtype), output_shape,
+            name="output")
+        return self._input_placeholder, self._output_placeholder
+
+    def set_placeholders(self, input_placeholder, output_placeholder):
+        self._input_placeholder = input_placeholder
+        self._output_placeholder = output_placeholder
+
     def get_feed_params(self):
         """Function returns a dict with data feed params while training.
         Returns:
@@ -195,7 +212,7 @@ class DataFeeder(object):
             'batch_size': self.batch_size
         }
 
-    def get_feed_dict_fn(self, input_placeholder, output_placeholder):
+    def get_feed_dict_fn(self):
         """Returns a function, that will sample data and provide it to given
         placeholders.
 
@@ -206,6 +223,7 @@ class DataFeeder(object):
             A function that when called samples a random subset of batch size
             from X and y.
         """
+        assert self._input_placeholder != None
         def _feed_dict_fn():
             # take random indices
             batch_indices = self.indices[self.offset: self.offset+self.batch_size]
@@ -235,11 +253,11 @@ class DataFeeder(object):
                 self.offset = 0
                 self.epoch += 1
 
-            return {input_placeholder.name: inp, output_placeholder.name: out}
+            return {self._input_placeholder.name: inp, self._output_placeholder.name: out}
         return _feed_dict_fn
 
 
-class StreamingDataFeeder(object):
+class StreamingDataFeeder(DataFeeder):
     """Data feeder for TF trainer that reads data from iterator.
 
     Streaming data feeder allows to read data as it comes it from disk or
@@ -289,7 +307,7 @@ class StreamingDataFeeder(object):
         """
         return {'batch_size': self.batch_size}
 
-    def get_feed_dict_fn(self, input_placeholder, output_placeholder):
+    def get_feed_dict_fn(self):
         """Returns a function, that will sample data and provide it to given
 
         placeholders.
@@ -315,7 +333,7 @@ class StreamingDataFeeder(object):
                             out.itemset(tuple([i, idx, value]), 1.0)
                 else:
                     out[i] = y
-            return {input_placeholder.name: inp, output_placeholder.name: out}
+            return {self._input_placeholder.name: inp, self._output_placeholder.name: out}
         return _feed_dict_fn
 
 

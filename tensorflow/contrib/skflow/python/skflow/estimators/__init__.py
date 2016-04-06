@@ -25,3 +25,4 @@ from tensorflow.contrib.skflow.python.skflow.estimators.dnn import TensorFlowDNN
 from tensorflow.contrib.skflow.python.skflow.estimators.dnn import TensorFlowDNNRegressor
 from tensorflow.contrib.skflow.python.skflow.estimators.rnn import TensorFlowRNNClassifier
 from tensorflow.contrib.skflow.python.skflow.estimators.rnn import TensorFlowRNNRegressor
+from tensorflow.contrib.skflow.python.skflow.estimators.run_config import RunConfig
