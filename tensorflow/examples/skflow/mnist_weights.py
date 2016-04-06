@@ -61,7 +61,7 @@ def conv_model(X, y):
         # reshape tensor into a batch of vectors
         h_pool2_flat = tf.reshape(h_pool2, [-1, 7 * 7 * 64])
     # densely connected layer with 1024 neurons
-    h_fc1 = skflow.ops.dnn(h_pool2_flat, [1024], activation=tf.nn.relu, keep_prob=0.5)
+    h_fc1 = skflow.ops.dnn(h_pool2_flat, [1024], activation=tf.nn.relu, dropout=0.5)
     return skflow.models.logistic_regression(h_fc1, y)
 
 # Training and predicting

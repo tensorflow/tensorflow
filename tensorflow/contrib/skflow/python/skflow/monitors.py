@@ -162,7 +162,8 @@ class ValidationMonitor(BaseMonitor):
 
     def create_val_feed_dict(self, inp, out):
         """Set tensorflow placeholders and create validation data feed"""
-        self.val_dict = self.val_feeder.get_feed_dict_fn(inp, out)()
+        self.val_feeder.set_placeholders(inp, out)
+        self.val_dict = self.val_feeder.get_feed_dict_fn()()
 
     def _set_last_loss_seen(self):
         """Sets self.last_loss_seen to most recent validation loss

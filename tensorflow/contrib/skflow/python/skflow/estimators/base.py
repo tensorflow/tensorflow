@@ -25,38 +25,43 @@ from six import string_types
 import numpy as np
 import tensorflow as tf
 
-from google.protobuf import text_format
 
-from sklearn.base import BaseEstimator
+import sklearn.base as sklearn_base
 try:
     from sklearn.exceptions import NotFittedError
 except ImportError:
     from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
 
-from ..trainer import TensorFlowTrainer, RestoredTrainer
-from ..io.data_feeder import setup_train_data_feeder
-from ..io.data_feeder import setup_predict_data_feeder
-from ..ops.dropout_ops import DROPOUTS
-from .. import monitors
+from google.protobuf import text_format
+from tensorflow.python.platform.default import _gfile as gfile
 
-from ..addons.config_addon import ConfigAddon
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.contrib.layers import optimizers
+from tensorflow.contrib.skflow.python.skflow import trainer
+from tensorflow.contrib.skflow.python.skflow.io.data_feeder import setup_train_data_feeder
+from tensorflow.contrib.skflow.python.skflow.io.data_feeder import setup_predict_data_feeder
+from tensorflow.contrib.skflow.python.skflow.ops.dropout_ops import DROPOUTS
+from tensorflow.contrib.skflow.python.skflow import monitors
+
+from tensorflow.contrib.skflow.python.skflow.estimators.run_config import RunConfig
 
 
 def _write_with_backup(filename, content):
-    if os.path.exists(filename):
-        shutil.move(filename, filename + '.old')
-    with open(filename, 'w') as f:
+    if gfile.Exists(filename):
+        gfile.Rename(filename, filename + '.old', overwrite=True)
+    with gfile.Open(filename, 'w') as f:
         f.write(content)
 
 
-class TensorFlowEstimator(BaseEstimator):
+class TensorFlowEstimator(sklearn_base.BaseEstimator):
     """Base class for all TensorFlow estimators.
 
     Parameters:
         model_fn: Model function, that takes input X, y tensors and outputs
                   prediction and loss tensors.
         n_classes: Number of classes in the target.
-        tf_master: TensorFlow master. Empty string is default for local.
         batch_size: Mini batch size.
         steps: Number of steps to run over data.
         optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -69,68 +74,54 @@ class TensorFlowEstimator(BaseEstimator):
                 return tf.train.exponential_decay(
                     learning_rate=0.1, global_step,
                     decay_steps=2, decay_rate=0.001)
+        clip_gradients: Clip norm of the gradients to this value to stop
+                        gradient explosion.
         class_weight: None or list of n_classes floats. Weight associated with
                      classes for loss computation. If not given, all classes are suppose to have
                      weight one.
-        tf_random_seed: Random seed for TensorFlow initializers.
-            Setting this value, allows consistency between reruns.
         continue_training: when continue_training is True, once initialized
             model will be continuely trained on every call of fit.
-        config_addon: ConfigAddon object that controls the configurations of the session,
+        config: RunConfig object that controls the configurations of the session,
             e.g. num_cores, gpu_memory_fraction, etc.
         verbose: Controls the verbosity, possible values:
                  0: the algorithm and debug information is muted.
                  1: trainer prints the progress.
                  2: log device placement is printed.
-        max_to_keep: The maximum number of recent checkpoint files to keep.
-            As new files are created, older files are deleted.
-            If None or 0, all checkpoint files are kept.
-            Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-        keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-            to be saved. The default value of 10,000 hours effectively disables the feature.
     """
 
-    def __init__(self, model_fn, n_classes, tf_master="", batch_size=32,
+    def __init__(self, model_fn, n_classes, batch_size=32,
                  steps=200, optimizer="Adagrad",
-                 learning_rate=0.1, class_weight=None,
-                 tf_random_seed=42, continue_training=False,
-                 config_addon=None, verbose=1,
-                 max_to_keep=5, keep_checkpoint_every_n_hours=10000):
-
+                 learning_rate=0.1, clip_gradients=5.0, class_weight=None,
+                 continue_training=False,
+                 config=None, verbose=1):
+        self.model_fn = model_fn
         self.n_classes = n_classes
-        self.tf_master = tf_master
         self.batch_size = batch_size
         self.steps = steps
         self.verbose = verbose
         self.optimizer = optimizer
         self.learning_rate = learning_rate
-        self.tf_random_seed = tf_random_seed
-        self.model_fn = model_fn
+        self.clip_gradients = clip_gradients
         self.continue_training = continue_training
         self._initialized = False
-        self.max_to_keep = max_to_keep
-        self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
         self.class_weight = class_weight
-        self.config_addon = config_addon
+        self._config = config
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
+        # Create config if not given.
+        if self._config is None:
+            self._config = RunConfig(verbose=self.verbose)
+        # Create new graph.
         self._graph = tf.Graph()
         self._graph.add_to_collection("IS_TRAINING", True)
         with self._graph.as_default():
-            tf.set_random_seed(self.tf_random_seed)
+            tf.set_random_seed(self._config.tf_random_seed)
             self._global_step = tf.Variable(
                 0, name="global_step", trainable=False)
 
-            # Setting up input and output placeholders.
-            input_shape = [None] + self._data_feeder.input_shape[1:]
-            output_shape = [None] + self._data_feeder.output_shape[1:]
-            self._inp = tf.placeholder(
-                tf.as_dtype(self._data_feeder.input_dtype), input_shape,
-                name="input")
-            self._out = tf.placeholder(
-                tf.as_dtype(self._data_feeder.output_dtype), output_shape,
-                name="output")
+            # Setting up inputs and outputs.
+            self._inp, self._out = self._data_feeder.input_builder()
 
             # If class weights are provided, add them to the graph.
             # Different loss functions can use this tensor by name.
@@ -148,30 +139,40 @@ class TensorFlowEstimator(BaseEstimator):
             self._model_predictions, self._model_loss = self.model_fn(
                 self._inp, self._out)
 
-            # Create summary to monitor loss
-            tf.scalar_summary("loss", self._model_loss)
-
             # Set up a single operator to merge all the summaries
             self._summaries = tf.merge_all_summaries()
 
             # Create trainer and augment graph with gradients and optimizer.
             # Additionally creates initialization ops.
-            self._trainer = TensorFlowTrainer(
-                loss=self._model_loss, global_step=self._global_step,
-                optimizer=self.optimizer, learning_rate=self.learning_rate)
+            learning_rate = self.learning_rate
+            optimizer = self.optimizer
+            if callable(learning_rate):
+                learning_rate = learning_rate(self._global_step)
+            if callable(optimizer):
+                optimizer = optimizer(learning_rate)
+            self._train = optimizers.optimize_loss(self._model_loss, self._global_step,
+                learning_rate=learning_rate,
+                optimizer=optimizer, clip_gradients=self.clip_gradients)
+
+            # Update ops during training, e.g. batch_norm_ops
+            self._train = control_flow_ops.group(self._train, *ops.get_collection('update_ops'))
+
+            # Get all initializers for all trainable variables.
+            self._initializers = variables.initialize_all_variables()
 
             # Create model's saver capturing all the nodes created up until now.
             self._saver = tf.train.Saver(
-                max_to_keep=self.max_to_keep,
-                keep_checkpoint_every_n_hours=self.keep_checkpoint_every_n_hours)
+                max_to_keep=self._config.keep_checkpoint_max,
+                keep_checkpoint_every_n_hours=self._config.keep_checkpoint_every_n_hours)
 
             # Enable monitor to create validation data dict with appropriate tf placeholders
             self._monitor.create_val_feed_dict(self._inp, self._out)
 
             # Create session to run model with.
-            if self.config_addon is None:
-                self.config_addon = ConfigAddon(verbose=self.verbose)
-            self._session = tf.Session(self.tf_master, config=self.config_addon.config)
+            self._session = tf.Session(self._config.tf_master, config=self._config.tf_config)
+
+            # Run parameter initializers.
+            self._session.run(self._initializers)
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
@@ -216,9 +217,9 @@ class TensorFlowEstimator(BaseEstimator):
         if not self.continue_training or not self._initialized:
             # Sets up model and trainer.
             self._setup_training()
-            # Initialize model parameters.
-            self._trainer.initialize(self._session)
             self._initialized = True
+        else:
+            self._data_feeder.set_placeholders(self._inp, self._out)
 
         # Sets up summary writer for later optional visualization.
         # Due to not able to setup _summary_writer in __init__ as it's not a
@@ -234,14 +235,15 @@ class TensorFlowEstimator(BaseEstimator):
             self._summary_writer = None
 
         # Train model for given number of steps.
-        self._trainer.train(self._session,
-                            self._data_feeder.get_feed_dict_fn(
-                                self._inp, self._out),
-                            self.steps,
-                            self._monitor,
-                            self._summary_writer,
-                            self._summaries,
-                            feed_params_fn=self._data_feeder.get_feed_params)
+        trainer.train(
+            self._session, self._train, 
+            self._model_loss, self._global_step,
+            self._data_feeder.get_feed_dict_fn(),
+            steps=self.steps,
+            monitor=self._monitor,
+            summary_writer=self._summary_writer,
+            summaries=self._summaries,
+            feed_params_fn=self._data_feeder.get_feed_params)
         return self
 
     def partial_fit(self, X, y):
@@ -418,12 +420,12 @@ class TensorFlowEstimator(BaseEstimator):
             endpoints_filename = os.path.join(path, 'endpoints')
             if not os.path.exists(endpoints_filename):
                 raise ValueError("Restore folder doesn't contain endpoints.")
-            with open(endpoints_filename) as foutputs:
+            with gfile.Open(endpoints_filename) as foutputs:
                 endpoints = foutputs.read().split('\n')
             graph_filename = os.path.join(path, 'graph.pbtxt')
             if not os.path.exists(graph_filename):
                 raise ValueError("Restore folder doesn't contain graph definition.")
-            with open(graph_filename) as fgraph:
+            with gfile.Open(graph_filename) as fgraph:
                 graph_def = tf.GraphDef()
                 text_format.Merge(fgraph.read(), graph_def)
                 (self._inp, self._out,
@@ -432,26 +434,24 @@ class TensorFlowEstimator(BaseEstimator):
             saver_filename = os.path.join(path, 'saver.pbtxt')
             if not os.path.exists(saver_filename):
                 raise ValueError("Restore folder doesn't contain saver defintion.")
-            with open(saver_filename) as fsaver:
+            with gfile.Open(saver_filename) as fsaver:
                 saver_def = tf.train.SaverDef()
                 text_format.Merge(fsaver.read(), saver_def)
                 self._saver = tf.train.Saver(saver_def=saver_def)
 
             # Restore trainer
             self._global_step = self._graph.get_tensor_by_name('global_step:0')
-            trainer_op = self._graph.get_operation_by_name('train')
-            self._trainer = RestoredTrainer(
-                self._model_loss, self._global_step, trainer_op)
+            self._train = self._graph.get_operation_by_name('train')
 
             # Restore summaries.
             self._summaries = self._graph.get_operation_by_name('MergeSummary/MergeSummary')
 
             # Restore session.
-            if not isinstance(self.config_addon, ConfigAddon):
-                self.config_addon = ConfigAddon(verbose=self.verbose)
+            if not isinstance(self._config, RunConfig):
+                self._config = RunConfig(verbose=self.verbose)
             self._session = tf.Session(
-                self.tf_master,
-                config=self.config_addon.config)
+                self._config.tf_master,
+                config=self._config.tf_config)
             checkpoint_path = tf.train.latest_checkpoint(path)
             if checkpoint_path is None:
                 raise ValueError("Missing checkpoint files in the %s. Please "
@@ -465,12 +465,12 @@ class TensorFlowEstimator(BaseEstimator):
 
     # pylint: disable=unused-argument
     @classmethod
-    def restore(cls, path, config_addon=None):
+    def restore(cls, path, config=None):
         """Restores model from give path.
 
         Args:
             path: Path to the checkpoints and other model information.
-            config_addon: ConfigAddon object that controls the configurations of the session,
+            config: RunConfig object that controls the configurations of the session,
                 e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
         Returns:
@@ -480,8 +480,9 @@ class TensorFlowEstimator(BaseEstimator):
         if not os.path.exists(model_def_filename):
             raise ValueError("Restore folder doesn't contain model definition.")
         # list of parameters that are allowed to be reconfigured
-        reconfigurable_params = ['config_addon']
-        with open(model_def_filename) as fmodel:
+        reconfigurable_params = ['_config']
+        _config = config
+        with gfile.Open(model_def_filename) as fmodel:
             model_def = json.loads(fmodel.read())
             # TensorFlow binding requires parameters to be strings not unicode.
             # Only issue in Python2.
@@ -490,9 +491,9 @@ class TensorFlowEstimator(BaseEstimator):
                         not isinstance(value, str)):
                     model_def[key] = str(value)
                 if key in reconfigurable_params:
-                    newValue = locals()[key]
-                    if newValue is not None:
-                        model_def[key] = newValue
+                    new_value = locals()[key]
+                    if new_value is not None:
+                        model_def[key] = new_value
         class_name = model_def.pop('class_name')
         if class_name == 'TensorFlowEstimator':
             custom_estimator = TensorFlowEstimator(model_fn=None, **model_def)
@@ -506,3 +507,4 @@ class TensorFlowEstimator(BaseEstimator):
         estimator = getattr(estimators, class_name)(**model_def)
         estimator._restore(path)
         return estimator
+
