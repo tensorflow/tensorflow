@@ -258,7 +258,7 @@ class SessionManager(object):
 
     if max_wait_secs is None:
       max_wait_secs = float("Inf")
-    timer = _CountDownTimer(1000 * max_wait_secs)
+    timer = _CountDownTimer(max_wait_secs)
 
     while True:
       sess = session.Session(target, graph=self._graph, config=config)
@@ -272,7 +272,7 @@ class SessionManager(object):
 
       # Do we have enough time left to try again?
       remaining_ms_after_wait = (
-          timer.ms_remaining() - 1000 * self._recovery_wait_secs)
+          timer.secs_remaining() - self._recovery_wait_secs)
       if remaining_ms_after_wait < 0:
         raise errors.DeadlineExceededError(
             None, None,
@@ -356,10 +356,10 @@ class SessionManager(object):
 
 class _CountDownTimer(object):
 
-  def __init__(self, duration_ms):
-    self._start_time_ms = time.time() * 1000
-    self._duration_ms = duration_ms
+  def __init__(self, duration_secs):
+    self._start_time_secs = time.time()
+    self._duration_secs = duration_secs
 
-  def ms_remaining(self):
-    diff = self._duration_ms - (time.time() * 1000 - self._start_time_ms)
+  def secs_remaining(self):
+    diff = self._duration_secs - (time.time() - self._start_time_secs)
     return max(0, diff)
