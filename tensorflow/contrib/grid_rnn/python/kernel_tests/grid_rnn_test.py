@@ -266,8 +266,8 @@ class GridRNNCellTest(tf.test.TestCase):
 
         root_scope.reuse_variables()
 
-        # for 1LSTM, next iterations we will set input is None
-        g2, s2 = cell(None, m)
+        x2 = tf.zeros([0, 0])
+        g2, s2 = cell(x2, m)
         self.assertEqual(g2.get_shape(), (1, 2))
         self.assertEqual(s2.get_shape(), (1, 4))
 
@@ -278,7 +278,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertAllClose(res[0], [[0.9032144, 0.9032144]])
         self.assertAllClose(res[1], [[2.79966092, 2.79966092, 0.9032144, 0.9032144]])
 
-        g3, s3 = cell(None, m)
+        g3, s3 = cell(x2, m)
         self.assertEqual(g3.get_shape(), (1, 2))
         self.assertEqual(s3.get_shape(), (1, 4))
 
@@ -355,6 +355,135 @@ class GridRNNCellTest(tf.test.TestCase):
                                 m: np.array([[0.1, 0.1, 0.1, 0.1]])})
         self.assertEqual(res[0].shape, (0, 0))
         self.assertEqual(res[1].shape, (1, 4))
+
+  """
+  Test with tf.nn.rnn
+  """
+
+  def testGrid2LSTMCellWithRNN(self):
+    batch_size = 3
+    input_size = 5
+    max_length = 6  # unrolled up to this length
+    num_units = 2
+
+    with tf.variable_scope('root', initializer=tf.constant_initializer(0.5)):
+      cell = tf.contrib.grid_rnn.Grid2LSTMCell(num_units=num_units)
+
+      inputs = max_length * [
+        tf.placeholder(tf.float32, shape=(batch_size, input_size))]
+
+      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+
+    self.assertEqual(len(outputs), len(inputs))
+    self.assertEqual(state.get_shape(), (batch_size, 8))
+
+    for out, inp in zip(outputs, inputs):
+      self.assertEqual(out.get_shape()[0], inp.get_shape()[0])
+      self.assertEqual(out.get_shape()[1], num_units)
+      self.assertEqual(out.dtype, inp.dtype)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+
+      input_value = np.ones((batch_size, input_size))
+      values = sess.run(outputs + [state],
+                        feed_dict={inputs[0]: input_value})
+      for v in values:
+        self.assertTrue(np.all(np.isfinite(v)))
+
+  def testGrid2LSTMCellReLUWithRNN(self):
+    batch_size = 3
+    input_size = 5
+    max_length = 6  # unrolled up to this length
+    num_units = 2
+
+    with tf.variable_scope('root', initializer=tf.constant_initializer(0.5)):
+      cell = tf.contrib.grid_rnn.Grid2LSTMCell(num_units=num_units, non_recurrent_fn=tf.nn.relu)
+
+      inputs = max_length * [
+        tf.placeholder(tf.float32, shape=(batch_size, input_size))]
+
+      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+
+    self.assertEqual(len(outputs), len(inputs))
+    self.assertEqual(state.get_shape(), (batch_size, 4))
+
+    for out, inp in zip(outputs, inputs):
+      self.assertEqual(out.get_shape()[0], inp.get_shape()[0])
+      self.assertEqual(out.get_shape()[1], num_units)
+      self.assertEqual(out.dtype, inp.dtype)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+
+      input_value = np.ones((batch_size, input_size))
+      values = sess.run(outputs + [state],
+                        feed_dict={inputs[0]: input_value})
+      for v in values:
+        self.assertTrue(np.all(np.isfinite(v)))
+
+  def testGrid3LSTMCellReLUWithRNN(self):
+    batch_size = 3
+    input_size = 5
+    max_length = 6  # unrolled up to this length
+    num_units = 2
+
+    with tf.variable_scope('root', initializer=tf.constant_initializer(0.5)):
+      cell = tf.contrib.grid_rnn.Grid3LSTMCell(num_units=num_units, non_recurrent_fn=tf.nn.relu)
+
+      inputs = max_length * [
+        tf.placeholder(tf.float32, shape=(batch_size, input_size))]
+
+      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+
+    self.assertEqual(len(outputs), len(inputs))
+    self.assertEqual(state.get_shape(), (batch_size, 8))
+
+    for out, inp in zip(outputs, inputs):
+      self.assertEqual(out.get_shape()[0], inp.get_shape()[0])
+      self.assertEqual(out.get_shape()[1], num_units)
+      self.assertEqual(out.dtype, inp.dtype)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+
+      input_value = np.ones((batch_size, input_size))
+      values = sess.run(outputs + [state],
+                        feed_dict={inputs[0]: input_value})
+      for v in values:
+        self.assertTrue(np.all(np.isfinite(v)))
+
+
+  def testGrid1LSTMCellWithRNN(self):
+    batch_size = 3
+    input_size = 5
+    max_length = 6  # unrolled up to this length
+    num_units = 2
+
+    with tf.variable_scope('root', initializer=tf.constant_initializer(0.5)):
+      cell = tf.contrib.grid_rnn.Grid1LSTMCell(num_units=num_units)
+
+      # for 1-LSTM, we only feed the first step
+      inputs = [tf.placeholder(tf.float32, shape=(batch_size, input_size))] \
+               + (max_length - 1) * [tf.zeros([0, 0])]
+
+      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+
+    self.assertEqual(len(outputs), len(inputs))
+    self.assertEqual(state.get_shape(), (batch_size, 4))
+
+    for out, inp in zip(outputs, inputs):
+      self.assertEqual(out.get_shape(), (3, num_units))
+      self.assertEqual(out.dtype, inp.dtype)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+
+      input_value = np.ones((batch_size, input_size))
+      values = sess.run(outputs + [state],
+                        feed_dict={inputs[0]: input_value})
+      for v in values:
+        self.assertTrue(np.all(np.isfinite(v)))
 
 if __name__ == "__main__":
   tf.test.main()

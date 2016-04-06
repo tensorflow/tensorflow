@@ -137,7 +137,7 @@ class GridRNNCell(rnn_cell.RNNCell):
     with vs.variable_scope(scope or type(self).__name__):  # GridRNNCell
 
       # project input
-      if inputs is not None and len(conf.inputs) > 0:
+      if inputs is not None and sum(inputs.get_shape().as_list()) > 0 and len(conf.inputs) > 0:
         input_splits = array_ops.split(1, len(conf.inputs), inputs)
         input_sz = input_splits[0].get_shape().as_list()[1]
 
@@ -154,11 +154,11 @@ class GridRNNCell(rnn_cell.RNNCell):
       _propagate(conf.priority, conf, self._cell, c_prev, m_prev, new_output, new_state, False)
 
       output_tensors = [new_output[i] for i in self._config.outputs]
-      output = array_ops.zeros([0, 0], inputs.dtype) if len(output_tensors) == 0 else array_ops.concat(1,
+      output = array_ops.zeros([0, 0], dtype) if len(output_tensors) == 0 else array_ops.concat(1,
                                                                                                        output_tensors)
 
       state_tensors = [new_state[i] for i in self._config.recurrents]
-      states = array_ops.zeros([0, 0], inputs.dtype) if len(state_tensors) == 0 else array_ops.concat(1, state_tensors)
+      states = array_ops.zeros([0, 0], dtype) if len(state_tensors) == 0 else array_ops.concat(1, state_tensors)
 
     return output, states
 
