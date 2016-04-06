@@ -1181,8 +1181,8 @@ class CheckpointReaderTest(tf.test.TestCase):
       self.assertTrue(reader.has_tensor("v1"))
       debug_string = reader.debug_string()
       # Verifies that debug string contains the right strings.
-      self.assertTrue(compat.as_bytes("v0 [2,3]") in debug_string)
-      self.assertTrue(compat.as_bytes("v1 [3,2,1]") in debug_string)
+      self.assertTrue(compat.as_bytes("v0 (DT_FLOAT) [2,3]") in debug_string)
+      self.assertTrue(compat.as_bytes("v1 (DT_FLOAT) [3,2,1]") in debug_string)
       # Verifies get_variable_to_shape_map() returns the correct information.
       var_map = reader.get_variable_to_shape_map()
       self.assertEquals([2, 3], var_map["v0"])
