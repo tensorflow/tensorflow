@@ -56,6 +56,8 @@ def tf_proto_library_py(name, srcs=[], deps=[], visibility=[], testonly=0,
                    srcs = srcs,
                    srcs_version = srcs_version,
                    deps = deps,
+                   protoc = "//google/protobuf:protoc",
+                   default_runtime = "//google/protobuf:protobuf_python",
                    visibility = visibility,
                    testonly = testonly)
 
