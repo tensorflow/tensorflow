@@ -258,7 +258,7 @@ class SessionManager(object):
 
     if max_wait_secs is None:
       max_wait_secs = float("Inf")
-    timer = _CountDownTimer(max_wait_secs)
+    timer = _CountDownTimer(1000 * max_wait_secs)
 
     while True:
       sess = session.Session(target, graph=self._graph, config=config)
