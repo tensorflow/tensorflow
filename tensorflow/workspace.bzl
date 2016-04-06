@@ -23,6 +23,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@gmock_archive//:gtest",
   )
 
+
   native.bind(
     name = "gtest_main",
     actual = "@gmock_archive//:gtest_main",
