@@ -5,23 +5,10 @@ distribute a computation graph across that cluster. We assume that you are
 familiar with the [basic concepts](../../get_started/basic_usage.md) of
 writing TensorFlow programs.
 
-## Install
+## Hello distributed TensorFlow!
 
-To use distributed TensorFlow, install a TensorFlow package that includes the
-gRPC server.
-
-1.  Download a nightly PIP package from [the continuous integration
-site](http://ci.tensorflow.org/view/Nightly/).
-1.  Execute `pip uninstall tensorflow` if you have a previous installation.
-1.  Execute `pip install <path-to-downloaded-whl-file>`.
-
-Alternatively, you can build an up-to-date PIP package from source by
-following [these installation instructions]
-(https://www.tensorflow.org/versions/master/get_started/os_setup.html#create-
-the-pip-package-and-install).
-
-Once you have successfully built the distributed TensorFlow components, you can
-test your installation by starting a local server as follows:
+This tutorial assumes that you are using a TensorFlow nightly build. You
+can test your installation by starting a local server as follows:
 
 ```shell
 # Start a TensorFlow server as a single-process "cluster".
