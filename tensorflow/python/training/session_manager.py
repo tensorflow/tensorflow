@@ -228,7 +228,7 @@ class SessionManager(object):
       logging.info("Restored model from %s", ckpt.model_checkpoint_path)
       return sess, True
 
-  def wait_for_session(self, master, config=None):
+  def wait_for_session(self, master, config=None, max_wait_secs=float("Inf")):
     """Creates a new `Session` and waits for model to be ready.
 
     Creates a new `Session` on 'master'.  Waits for the model to be
@@ -238,27 +238,48 @@ class SessionManager(object):
     distributed training configuration where a different thread/process
     is responsible for initializing or recovering the model being trained.
 
+    NB: The amount of time this method waits for the session is bounded
+    by max_wait_secs. By default, this function will wait indefinitely.
+
     Args:
       master: `String` representation of the TensorFlow master to use.
       config: Optional ConfigProto proto used to configure the session.
+      max_wait_secs: Maximum time to wait for the session to become available.
 
     Returns:
-      sess: A `Session`.
+      A `Session`. May be None if the operation exceeds the timeout
+      specified by config.operation_timeout_in_ms.
+
+    Raises:
+      tf.DeadlineExceededError: if the session is not available after
+        max_wait_secs.
     """
     target = self._maybe_launch_in_process_server(master)
-    sess = session.Session(target, graph=self._graph, config=config)
-    if self._local_init_op:
-      sess.run([self._local_init_op])
+
+    if max_wait_secs is None:
+      max_wait_secs = float("Inf")
+    timer = _CountDownTimer(max_wait_secs)
+
     while True:
+      sess = session.Session(target, graph=self._graph, config=config)
+      if self._local_init_op:
+        sess.run([self._local_init_op])
       not_ready = self._model_not_ready(sess)
       if not not_ready:
-        break
+        return sess
+
       self._safe_close(sess)
+
+      # Do we have enough time left to try again?
+      remaining_ms_after_wait = (
+          timer.ms_remaining() - 1000 * self._recovery_wait_secs)
+      if remaining_ms_after_wait < 0:
+        raise errors.DeadlineExceededError(
+            None, None,
+            "Session was not ready after waiting %d secs." % (max_wait_secs,))
+
       logging.info("Waiting for model to be ready: %s", not_ready)
       time.sleep(self._recovery_wait_secs)
-      sess = session.Session(target, graph=self._graph, config=config)
-
-    return sess
 
   def _maybe_launch_in_process_server(self, master):
     """Launches the in-process TensorFlow server if needed.
@@ -331,3 +352,14 @@ class SessionManager(object):
           logging.warning("Model not ready raised: %s", str(e))
           raise  e
         return str(e)
+
+
+class _CountDownTimer(object):
+
+  def __init__(self, duration_ms):
+    self._start_time_ms = time.time() * 1000
+    self._duration_ms = duration_ms
+
+  def ms_remaining(self):
+    diff = self._duration_ms - (time.time() * 1000 - self._start_time_ms)
+    return max(0, diff)

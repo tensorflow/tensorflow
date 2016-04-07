@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -26,6 +28,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as vars_
+from tensorflow.python.training import optimizer as optimizer_
 from tensorflow.python.training import training as train
 
 OPTIMIZER_CLS_NAMES = {
@@ -52,7 +55,13 @@ def optimize_loss(loss,
     loss: Tensor, 0 dimensional.
     global_step: Tensor, step counter for each update.
     learning_rate: float or Tensor, magnitude of update per each training step.
-    optimizer: string or function, used as optimizer for training.
+    optimizer: string, class or optimizer instance, used as trainer.
+               string should be name of optimizer, like 'SGD',
+                 'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
+               class should be sub-class of tf.Optimizer that implements
+                 `compute_gradients` and `apply_gradients` functions.
+               optimizer instance should be instantion of tf.Optimizer sub-class
+                 and have `compute_gradients` and `apply_gradients` functions.
     clip_gradients: float or None, clips gradients by this value.
     moving_average_decay: float or None, takes into account previous loss
                           to make learning smoother due to outliers.
@@ -77,24 +86,35 @@ def optimize_loss(loss,
     logging_ops.scalar_summary("loss/mean", loss_averages.average(loss))
     loss = control_flow_ops.with_dependencies([loss_averages_op], loss)
 
-  # Convert optimizer into the optimizer class.
-  if isinstance(optimizer, str):
-    opt_cls = OPTIMIZER_CLS_NAMES[optimizer]
-  elif callable(optimizer):
-    opt_cls = optimizer
-  else:
-    raise ValueError("Unrecognized optimizer: should be string or function.")
-
   # Learning rate variable, with possible decay.
-  lr = vs.get_variable("learning_rate",
-                       [],
-                       trainable=False,
-                       initializer=init_ops.constant_initializer(learning_rate))
+  if isinstance(learning_rate, ops.Tensor) and len(learning_rate.get_shape()) == 0:
+    lr = learning_rate
+  elif isinstance(learning_rate, float):
+    lr = vs.get_variable("learning_rate",
+                         [],
+                         trainable=False,
+                         initializer=init_ops.constant_initializer(learning_rate))
+  else:
+    raise ValueError("Learning rate should be 0d Tensor or float. Got %s" %
+        str(learning_rate))
   if learning_rate_decay_fn is not None:
     lr = learning_rate_decay_fn(lr, global_step)
 
-  # Create optimizer.
-  opt = opt_cls(learning_rate=lr)
+  # Create optimizer, given specified parameters.
+  if isinstance(optimizer, six.string_types):
+    if optimizer not in OPTIMIZER_CLS_NAMES:
+      raise ValueError("Optimizer name should be one of [%s], you provided %s."
+                       % (", ".join(OPTIMIZER_CLS_NAMES), optimizer))
+    opt = OPTIMIZER_CLS_NAMES[optimizer](learning_rate=lr)
+  elif isinstance(optimizer, type) and issubclass(optimizer,
+                                                  optimizer_.Optimizer):
+    opt = optimizer(learning_rate=lr)
+  elif isinstance(optimizer, optimizer_.Optimizer):
+    opt = optimizer
+  else:
+    raise ValueError("Unrecognized optimizer: should be string, "
+                     "subclass of Optimizer or instance of "
+                     "subclass of Optimizer. Got %s." % str(optimizer))
 
   # All trainable variables, if specific variables are not specified.
   if variables is None:
@@ -103,9 +123,10 @@ def optimize_loss(loss,
   # Compute gradients and clip them if provided.
   gradients = opt.compute_gradients(loss, variables)
   if clip_gradients is not None:
+    gradients, variables = zip(*gradients)
     clipped_gradients, _ = clip_ops.clip_by_global_norm(gradients,
                                                         clip_gradients)
-    gradients = zip(clipped_gradients, variables)
+    gradients = list(zip(clipped_gradients, variables))
 
   # Add scalar summary for loss.
   logging_ops.scalar_summary("loss", loss)
@@ -132,3 +153,4 @@ def optimize_loss(loss,
   train_tensor = control_flow_ops.with_dependencies([grad_updates], final_loss)
 
   return train_tensor
+

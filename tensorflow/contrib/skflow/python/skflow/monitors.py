@@ -28,9 +28,17 @@ from tensorflow.contrib.skflow.python.skflow.io.data_feeder import setup_train_d
 # pylint: disable=too-many-arguments
 # pylint: disable=attribute-defined-outside-init
 
-def default_monitor():
-    """returns very simple monitor object to summarize training progress"""
-    return BaseMonitor()
+
+def default_monitor(verbose=1):
+    """Returns very simple monitor object to summarize training progress.
+
+    Args:
+      verbose: Level of verbosity of output.
+
+    Returns:
+      Default monitor object.
+    """
+    return BaseMonitor(verbose=verbose)
 
 
 class BaseMonitor(object):
@@ -154,7 +162,8 @@ class ValidationMonitor(BaseMonitor):
 
     def create_val_feed_dict(self, inp, out):
         """Set tensorflow placeholders and create validation data feed"""
-        self.val_dict = self.val_feeder.get_feed_dict_fn(inp, out)()
+        self.val_feeder.set_placeholders(inp, out)
+        self.val_dict = self.val_feeder.get_feed_dict_fn()()
 
     def _set_last_loss_seen(self):
         """Sets self.last_loss_seen to most recent validation loss

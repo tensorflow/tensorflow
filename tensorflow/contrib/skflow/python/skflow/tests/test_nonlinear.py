@@ -33,7 +33,7 @@ class NonLinearTest(tf.test.TestCase):
             hidden_units=[10, 20, 10], n_classes=3)
         classifier.fit(iris.data, iris.target)
         score = accuracy_score(iris.target, classifier.predict(iris.data))
-        self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+        self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
         weights = classifier.weights_
         self.assertEqual(weights[0].shape, (4, 10))
         self.assertEqual(weights[1].shape, (10, 20))
@@ -61,6 +61,34 @@ class NonLinearTest(tf.test.TestCase):
         biases = regressor.bias_
         self.assertEqual(len(biases), 4)
 
+    def testDNNDropout0(self):
+        # Dropout prob == 0.
+        iris = datasets.load_iris()
+        classifier = skflow.TensorFlowDNNClassifier(
+            hidden_units=[10, 20, 10], n_classes=3, dropout=0.0)
+        classifier.fit(iris.data, iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
+        self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
+
+    def testDNNDropout0_1(self):
+        # Dropping only a little.
+        iris = datasets.load_iris()
+        classifier = skflow.TensorFlowDNNClassifier(
+            hidden_units=[10, 20, 10], n_classes=3, dropout=0.1)
+        classifier.fit(iris.data, iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
+        self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
+
+    def testDNNDropout0_9(self):
+        # Dropping out most of it.
+        iris = datasets.load_iris()
+        classifier = skflow.TensorFlowDNNClassifier(
+            hidden_units=[10, 20, 10], n_classes=3, dropout=0.9)
+        classifier.fit(iris.data, iris.target)
+        score = accuracy_score(iris.target, classifier.predict(iris.data))
+        self.assertGreater(score, 0.3, "Failed with score = {0}".format(score))
+        self.assertLess(score, 0.4, "Failed with score = {0}".format(score))
+
     def testRNN(self):
         random.seed(42)
         import numpy as np
@@ -84,7 +112,7 @@ class NonLinearTest(tf.test.TestCase):
         classifier.bias_
         predictions = classifier.predict(test_data)
         self.assertAllClose(predictions, np.array([1, 0]))
-        
+
         classifier = skflow.TensorFlowRNNClassifier(
             rnn_size=2, cell_type='rnn', n_classes=2,
             input_op_fn=input_fn, num_layers=2)
@@ -102,7 +130,7 @@ class NonLinearTest(tf.test.TestCase):
         regressor.weights_
         regressor.bias_
         predictions = regressor.predict(test_data)
-    
+
     def testBidirectionalRNN(self):
         random.seed(42)
         import numpy as np
@@ -122,7 +150,7 @@ class NonLinearTest(tf.test.TestCase):
         predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1],
                                                         [2, 3, 4, 5, 6]])))
         self.assertAllClose(predictions, np.array([1, 0]))
-        
+
 
 if __name__ == "__main__":
     tf.test.main()

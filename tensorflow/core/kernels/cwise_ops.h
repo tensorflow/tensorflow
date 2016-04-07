@@ -506,6 +506,12 @@ template <typename T>
 struct minimum : base<T, Eigen::internal::scalar_min_op<T> > {};
 
 template <typename T>
+struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
+
+template <typename T>
+struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};
+
+template <typename T>
 struct squared_difference
     : base<T, Eigen::internal::scalar_compose_op<
                   T, Eigen::internal::scalar_square_op<T>,
