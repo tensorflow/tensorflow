@@ -86,6 +86,7 @@ type TensorInt interface {
 	AsStr() (res [][]byte, err error)
 
 	String() string
+	SetCMemAsAlreadyRelease()
 }
 
 // Tensor Holds a multi-dimensional array of elements of a single data type.
@@ -236,6 +237,21 @@ func (t *Tensor) DataType() DataType {
 // NumDims returns the number of dimensions that this tensor in a tensor.
 func (t *Tensor) NumDims() int {
 	return TF_NumDims(t.tensor)
+}
+
+// Shape returns the shape of the tensor.
+func (t *Tensor) Shape() (shape TensorShape) {
+	if t.NumDims() == 0 {
+		// This is a scalar tensor
+		shape = [][]int64{{1}}
+	} else {
+		shape = make([][]int64, t.NumDims())
+		for i := 0; i < t.NumDims(); i++ {
+			shape[i] = []int64{int64(t.Dim(i))}
+		}
+	}
+
+	return shape
 }
 
 // Dim returns the size of the specified dimension.
@@ -684,6 +700,8 @@ func getDataTypeFromReflect(refType reflect.Kind, dataSize int64) (dataType Data
 
 func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size int64) (*Tensor, error) {
 	var dims *int64
+	var llDims []C.longlong
+	var tensorShape *TensorShapeProto
 
 	// Move the data to C allocated memory
 	shapes := 0
@@ -691,16 +709,32 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 		shapes += len(v)
 	}
 	if len(shape) != 0 {
-		llDims := make([]C.longlong, shapes)
-		i := 0
-		for _, v := range shape {
+		tensorShape = &TensorShapeProto{
+			Dim: make([]*TensorShapeProto_Dim, len(shape)),
+		}
+		llDims = make([]C.longlong, shapes)
+		for i, v := range shape {
+			tensorShape.Dim[i] = &TensorShapeProto_Dim{
+				Size: v[0],
+			}
+
 			for _, s := range v {
 				llDims[i] = C.longlong(s)
 			}
-			i++
 		}
-		dims = (*int64)(unsafe.Pointer(&llDims[0]))
+	} else {
+		tensorShape = &TensorShapeProto{
+			Dim: []*TensorShapeProto_Dim{
+				{
+					Size: 1,
+				},
+			},
+		}
+		llDims = []C.longlong{
+			C.longlong(1),
+		}
 	}
+	dims = (*int64)(unsafe.Pointer(&llDims[0]))
 
 	dataLen := C.size_t(size)
 	cData := C.malloc(dataLen)
@@ -715,14 +749,7 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 	runtime.SetFinalizer(t, (*Tensor).FreeAllocMem)
 
 	t.Dtype = dataType
-	t.TensorShape = &TensorShapeProto{
-		Dim: make([]*TensorShapeProto_Dim, len(shape)),
-	}
-	for i, s := range shape {
-		t.TensorShape.Dim[i] = &TensorShapeProto_Dim{
-			Size: s[0],
-		}
-	}
+	t.TensorShape = tensorShape
 
 	return t, nil
 }

@@ -71,23 +71,23 @@ func readTensorFromImageFile(filePath string) *tf.Tensor {
 	// Load the image file path into the graph as a constant, and read its
 	// content.
 	fileNameNode, _ := graph.Constant("file_name", filePath)
-	fileReader, _ := graph.AddOp("ReadFile", "file_reader", []*tf.GraphNode{fileNameNode}, "", nil)
+	fileReader, _ := graph.Op("ReadFile", "file_reader", []*tf.GraphNode{fileNameNode}, "", nil)
 
 	// Now try to figure out what kind of file it is and decode it.
 	if filePath[len(filePath)-4:] == ".png" {
-		imageReader, _ = graph.AddOp("DecodePng", "png_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
+		imageReader, _ = graph.Op("DecodePng", "png_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
 			"channels": int64(3),
 		})
 	} else {
 		// Assume if it's not a PNG then it must be a JPEG.
-		imageReader, _ = graph.AddOp("DecodeJpeg", "jpeg_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
+		imageReader, _ = graph.Op("DecodeJpeg", "jpeg_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
 			"channels": int64(3),
 		})
 	}
 
 	// Now cast the image data to float so we can do normal math on it. In
 	// the attributes we have to specify the output datatype that we want.
-	floatCaster, _ := graph.AddOp("Cast", "float_caster", []*tf.GraphNode{imageReader}, "", map[string]interface{}{
+	floatCaster, _ := graph.Op("Cast", "float_caster", []*tf.GraphNode{imageReader}, "", map[string]interface{}{
 		"DstT": tf.DtFloat,
 	})
 
@@ -96,22 +96,22 @@ func readTensorFromImageFile(filePath string) *tf.Tensor {
 	// [batch, height, width, channel]. Because we only have a single image, we
 	// have to add a batch dimension of 1 to the start with ExpandDims operation.
 	dimIndex, _ := graph.Constant("dim_index", []int32{0})
-	dimsExpander, _ := graph.AddOp("ExpandDims", "dims_expander", []*tf.GraphNode{floatCaster, dimIndex}, "", map[string]interface{}{
+	dimsExpander, _ := graph.Op("ExpandDims", "dims_expander", []*tf.GraphNode{floatCaster, dimIndex}, "", map[string]interface{}{
 		"T":   tf.DtFloat,
 		"dim": 0,
 	})
 
 	// Bilinearly resize the image to fit the required dimensions.
 	sizeDims, _ := graph.Constant("size_dims", []int32{cInputWidth, cInputHeight})
-	size, _ := graph.AddOp("ResizeBilinear", "size", []*tf.GraphNode{dimsExpander, sizeDims}, "", map[string]interface{}{
+	size, _ := graph.Op("ResizeBilinear", "size", []*tf.GraphNode{dimsExpander, sizeDims}, "", map[string]interface{}{
 		"T": tf.DtFloat,
 	})
 
 	// Subtract the mean and divide by the scale.
 	inputMean, _ := graph.Constant("input_mean", float32(cInputMean))
-	subMean, _ := graph.AddOp("Sub", "sub_mean", []*tf.GraphNode{size, inputMean}, "", nil)
+	subMean, _ := graph.Op("Sub", "sub_mean", []*tf.GraphNode{size, inputMean}, "", nil)
 	inputStd, _ := graph.Constant("input_std", float32(cInputStd))
-	_, _ = graph.AddOp("Div", "normalized", []*tf.GraphNode{subMean, inputStd}, "", nil)
+	_, _ = graph.Op("Div", "normalized", []*tf.GraphNode{subMean, inputStd}, "", nil)
 
 	// Create the session and extend the Graph
 	s, err := tf.NewSession()
@@ -144,7 +144,7 @@ func getTopLabels(outputs *tf.Tensor, labels int32) (indexes, scores *tf.Tensor)
 	for i := 0; i < outputs.NumDims(); i++ {
 		dims[i] = int64(outputs.Dim(i))
 	}
-	normalized := graph.AddPlaceholder("normalized_placeholder", tf.DtFloat, dims, nil)
+	normalized := graph.Placeholder("normalized_placeholder", tf.DtFloat, dims, nil)
 
 	// Here instead of using a placeholder to send and input we are using a
 	// constant that is oing to be part of the graph
@@ -152,7 +152,7 @@ func getTopLabels(outputs *tf.Tensor, labels int32) (indexes, scores *tf.Tensor)
 
 	// The TopK node returns two outputs, the scores and their original indices,
 	// so we have to append :0 and :1 to specify them both.
-	_, _ = graph.AddOp("TopKV2", "normalized", []*tf.GraphNode{normalized, labelsConstant}, "", nil)
+	_, _ = graph.Op("TopKV2", "normalized", []*tf.GraphNode{normalized, labelsConstant}, "", nil)
 
 	input := map[string]*tf.Tensor{
 		"normalized_placeholder": outputs,

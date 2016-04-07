@@ -91,10 +91,26 @@ func (s *Session) ExtendGraph(graph *Graph) (err error) {
 	if err != nil {
 		return err
 	}
+
 	TF_ExtendGraph(s.session, buf, status)
 	s.graph = graph
 
 	return s.statusToError(status)
+}
+
+// ExtendAndInitializeAllVariables Adds the "init" op to the graph in order to
+// initialize all the variables, loads the graph definition on the session
+// and executes the "init" op.
+func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) (err error) {
+	// Extend the initialization graph, and execute the init op, this will
+	// initialize all the variables
+	graph.addInitializationGraphOp()
+	if err = s.ExtendGraph(graph); err != nil {
+		return
+	}
+	_, err = s.Run(nil, nil, []string{"init"})
+
+	return
 }
 
 // FreeAllocMem Method defined to be invoked by the Go garbage collector before

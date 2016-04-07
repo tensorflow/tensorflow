@@ -1,6 +1,7 @@
 package tensorflow
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -18,12 +19,14 @@ type Graph struct {
 
 	availableOps map[string]*OpDef
 	constants    map[string]*Tensor
+	variables    map[string]*Tensor
 }
 
 // GraphNode Representation of one of the nodes of the TensorFlow Graph a
 // node takes zero or more Tensors, performs some computation, and
 // produces zero or more Tensors.
 type GraphNode struct {
+	ref          *NodeDef
 	def          *NodeDef
 	outDataTypes map[string]DataType
 }
@@ -34,6 +37,7 @@ func NewGraph() *Graph {
 		def:          new(GraphDef),
 		availableOps: make(map[string]*OpDef),
 		constants:    make(map[string]*Tensor),
+		variables:    make(map[string]*Tensor),
 	}
 }
 
@@ -70,11 +74,11 @@ func LoadGraphFromTextFile(path string) (gr *Graph, err error) {
 	return NewGraphFromText(string(graphStr))
 }
 
-// AddOp Adds a new Node to the Graph with the specified operation, this
+// Op Adds a new Node to the Graph with the specified operation, this
 // operation perfoms some internal check of the specified and expercted
 // attributes for the operation and try to deduct the corresponding DataTypes
 // in case of they are not specified.
-func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
+func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
 	if err = gr.loadAvailableOps(); err != nil {
 		return
 	}
@@ -90,7 +94,18 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 		}
 		inputs := make([]string, len(input))
 		for i, inNode := range input {
-			inputs[i] = inNode.def.Name
+			if op.InputArg[i].IsRef {
+				if inNode.ref == nil {
+					err = &ErrExpectedVarAsinput{
+						operation: opName,
+						inputPos:  i,
+					}
+					return
+				}
+				inputs[i] = inNode.ref.Name
+			} else {
+				inputs[i] = inNode.def.Name
+			}
 		}
 		node = &GraphNode{
 			def: &NodeDef{
@@ -281,22 +296,110 @@ func (gr *Graph) AddOp(opName string, name string, input []*GraphNode, device st
 // Constant Creates a tensor that is added as a constant to the Graph with the
 // specified name.
 func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error) {
-	gr.constants[name], err = NewTensor(data)
+	ts, err := NewTensor(data)
 	if err != nil {
 		return
 	}
+	gr.constants[name] = ts
 
-	op, err = gr.AddOp("Const", name, nil, "", map[string]interface{}{
-		"dtype": gr.constants[name].DataType(),
-		"value": gr.constants[name],
+	op, err = gr.Op("Const", name, nil, "", map[string]interface{}{
+		"dtype": ts.DataType(),
+		"value": ts,
 	})
 
 	return
 }
 
-// AddPlaceholder Adds a placegolder to the Graph, a placeholder is an
+// Variable Creates a variable operation and adds it to the graph. A variable
+// is a type of tensor that holds state in the form of a tensor that persists
+// across steps.
+func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, err error) {
+	var dims [][]int64
+
+	ts, err := NewTensor(initialData)
+	if err != nil {
+		return
+	}
+	gr.variables[name] = ts
+
+	shape := new(TensorShapeProto)
+	if ts.NumDims() == 0 {
+		dims = [][]int64{{1}}
+	} else {
+		dims = ts.Shape()
+	}
+
+	shape.Dim = make([]*TensorShapeProto_Dim, len(dims))
+	for i, dim := range dims {
+		shape.Dim[i] = &TensorShapeProto_Dim{
+			Size: dim[i],
+		}
+	}
+
+	initVal, err := gr.Op("Const", name+"/initial_value", nil, "", map[string]interface{}{
+		"dtype": ts.DataType(),
+		"value": ts,
+		"shape": shape,
+	})
+	if err != nil {
+		return
+	}
+
+	variable, err := gr.Op("Variable", name, nil, "", map[string]interface{}{
+		"dtype":       ts.DataType(),
+		"shape":       shape,
+		"container":   "",
+		"shared_name": "",
+	})
+	if err != nil {
+		return
+	}
+
+	variable.ref = variable.def
+
+	_, err = gr.Op("Assign", name+"/Assign", []*GraphNode{variable, initVal}, "", map[string]interface{}{
+		"use_locking":    true,
+		"validate_shape": true,
+	})
+	if err != nil {
+		return
+	}
+
+	op, err = gr.Op("Identity", name+"/read", []*GraphNode{variable}, "", nil)
+
+	// For reference this variable, use the variable as it.
+	op.ref = variable.def
+
+	return
+}
+
+func (gr *Graph) String() string {
+	var bufStr bytes.Buffer
+	proto.MarshalText(&bufStr, gr.def)
+
+	return bufStr.String()
+}
+
+// addInitializationGraphOp Add the initialization operation to the graph to
+// cover all the added variables
+func (gr *Graph) addInitializationGraphOp() {
+	inputs := make([]string, len(gr.variables))
+	i := 0
+	for input := range gr.variables {
+		inputs[i] = "^" + input + "/Assign"
+		i++
+	}
+
+	gr.def.Node = append(gr.def.Node, &NodeDef{
+		Name:  "init",
+		Op:    "NoOp",
+		Input: inputs,
+	})
+}
+
+// Placeholder Adds a placegolder to the Graph, a placeholder is an
 // operation that must be fed with data on execution.
-func (gr *Graph) AddPlaceholder(name string, dataType DataType, dims []int64, dimNames []string) (op *GraphNode) {
+func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64, dimNames []string) (op *GraphNode) {
 	op = &GraphNode{
 		outDataTypes: map[string]DataType{
 			name: dataType,
@@ -343,6 +446,18 @@ func (gr *Graph) AsStr() []byte {
 	result, _ := proto.Marshal(gr.def)
 
 	return result
+}
+
+// ErrExpectedVarAsinput The specified operation is not defined.
+type ErrExpectedVarAsinput struct {
+	operation string
+	inputPos  int
+}
+
+func (e *ErrExpectedVarAsinput) Error() string {
+	return fmt.Sprintf(
+		"The expected input value at pos %d for the operation '%s' must be of type Variable",
+		e.inputPos, e.operation)
 }
 
 // ErrOperationNotFound The specified operation is not defined.

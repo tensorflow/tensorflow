@@ -8,21 +8,21 @@ import (
 
 func TestGraphGeneration(t *testing.T) {
 	graph := tf.NewGraph()
-	input1 := graph.AddPlaceholder("input1", tf.DtInt32, []int64{3}, []string{})
-	input2 := graph.AddPlaceholder("input2", tf.DtInt32, []int64{3}, []string{})
-	_, err := graph.AddOp("Add", "output", []*tf.GraphNode{input1, input2}, "", nil)
+	input1 := graph.Placeholder("input1", tf.DtInt32, []int64{3}, []string{})
+	input2 := graph.Placeholder("input2", tf.DtInt32, []int64{3}, []string{})
+	_, err := graph.Op("Add", "output", []*tf.GraphNode{input1, input2}, "", nil)
 	if err != nil {
 		t.Error("Problem trying add two tensord, Error:", err)
 		t.FailNow()
 	}
 
-	_, err = graph.AddOp("Add", "output", []*tf.GraphNode{input2}, "", map[string]interface{}{
+	_, err = graph.Op("Add", "output", []*tf.GraphNode{input2}, "", map[string]interface{}{
 		"T": tf.DtInt32,
 	})
 	if err == nil {
 		t.Error("An with two mandatory parameters was added after specify just one")
 	}
-	_, err = graph.AddOp("Aajajajajdd", "output", []*tf.GraphNode{input2}, "", map[string]interface{}{})
+	_, err = graph.Op("Aajajajajdd", "output", []*tf.GraphNode{input2}, "", map[string]interface{}{})
 	if err == nil {
 		t.Error("An undefined operation was added to the graph")
 	}
@@ -79,7 +79,7 @@ func TestGraphConstant(t *testing.T) {
 	inputSlice2 := []int32{3, 4, 5}
 
 	graph := tf.NewGraph()
-	input1 := graph.AddPlaceholder("input1", tf.DtInt32, []int64{3}, []string{})
+	input1 := graph.Placeholder("input1", tf.DtInt32, []int64{3}, []string{})
 
 	input2, err := graph.Constant("input2", inputSlice2)
 	if err != nil {
@@ -87,7 +87,7 @@ func TestGraphConstant(t *testing.T) {
 		t.FailNow()
 	}
 
-	_, err = graph.AddOp("Add", "output", []*tf.GraphNode{input1, input2}, "", map[string]interface{}{})
+	_, err = graph.Op("Add", "output", []*tf.GraphNode{input1, input2}, "", map[string]interface{}{})
 	if err != nil {
 		t.Error("Problem trying add two tensors, Error:", err)
 		t.FailNow()
@@ -178,6 +178,75 @@ func TestGraphScalarConstant(t *testing.T) {
 	} else {
 		if outFloat[0] != testFloat {
 			t.Error("The returned float: \"%f\" is not the input one: \"%f\"", outFloat[0], testFloat)
+		}
+	}
+}
+
+func TestGraphVariable(t *testing.T) {
+	var out []*tf.Tensor
+
+	additions := 10
+	inputSlice1 := []int32{1, 2, 3, 4}
+	inputSlice2 := []int32{5, 6, 7, 8}
+
+	graph := tf.NewGraph()
+	input1, err := graph.Variable("input1", inputSlice1)
+	if err != nil {
+		t.Error("Problem trying add a variable to the graph, Error:", err)
+		t.FailNow()
+	}
+
+	input2, err := graph.Constant("input2", inputSlice2)
+	if err != nil {
+		t.Error("Problem trying add a constant to the graph, Error:", err)
+		t.FailNow()
+	}
+
+	add, err := graph.Op("Add", "add_tensors", []*tf.GraphNode{input1, input2}, "", map[string]interface{}{})
+	if err != nil {
+		t.Error("Problem trying add two tensors, Error:", err)
+		t.FailNow()
+	}
+
+	_, err = graph.Op("Assign", "assign_inp1", []*tf.GraphNode{input1, add}, "", map[string]interface{}{})
+	if err != nil {
+		t.Error("Problem trying assign the result of the sum to the tensor, Error:", err)
+		t.FailNow()
+	}
+
+	s, err := tf.NewSession()
+	s.ExtendAndInitializeAllVariables(graph)
+	if err != nil {
+		t.Error("Problem trying to initialize the variables in the graph, Error:", err)
+		t.FailNow()
+	}
+
+	for i := 0; i < additions; i++ {
+		out, err = s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
+		if err != nil {
+			t.Error("Problem trying to run the graph, Error:", err)
+			t.FailNow()
+		}
+	}
+	if err != nil {
+		t.Error("Problem trying to run the graph, Error:", err)
+		t.FailNow()
+	}
+
+	if len(out) != 1 {
+		t.Errorf("The expected number of outputs is 1 but: %d returned", len(out))
+		t.FailNow()
+	}
+
+	for i := 0; i < len(inputSlice1); i++ {
+		val, err := out[0].GetVal(i)
+		if err != nil {
+			t.Error("Error trying to read the output tensor, Error:", err)
+			t.FailNow()
+		}
+		if val != inputSlice1[i]+(inputSlice2[i]*int32(additions)) {
+			t.Errorf("The sum of the two elements: %d + (%d*%d) doesn't match with the returned value: %d",
+				inputSlice1[i], inputSlice2[i], additions, val)
 		}
 	}
 }
