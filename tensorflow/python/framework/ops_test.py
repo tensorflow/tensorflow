@@ -59,7 +59,7 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
 
   def testPythonConstruction(self):
     indices = [[1, 2], [2, 0], [3, 4]]
-    values = ["a", "b", "c"]
+    values = [b"a", b"b", b"c"]
     shape = [4, 5]
     sp = ops.SparseTensor(indices, values, shape)
     self.assertEqual(sp.indices.dtype, dtypes.int64)
