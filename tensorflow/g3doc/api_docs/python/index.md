@@ -19,6 +19,7 @@
   * [`Graph`](../../api_docs/python/framework.md#Graph)
   * [`GraphKeys`](../../api_docs/python/framework.md#GraphKeys)
   * [`import_graph_def`](../../api_docs/python/framework.md#import_graph_def)
+  * [`load_file_system_library`](../../api_docs/python/framework.md#load_file_system_library)
   * [`load_op_library`](../../api_docs/python/framework.md#load_op_library)
   * [`name_scope`](../../api_docs/python/framework.md#name_scope)
   * [`NoGradient`](../../api_docs/python/framework.md#NoGradient)
