@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include <limits>
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -54,7 +55,6 @@ class PackOp : public OpKernel {
                       values[0].shape().DebugString(), " != values[", i,
                       "].shape = ", values[i].shape().DebugString()));
     }
-
     TensorShape output_shape(values[0].shape());
     output_shape.InsertDim(0, num);
 
@@ -70,7 +70,7 @@ class PackOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output));
 
-    const int output_size = output->NumElements();
+    const int64 output_size = output->NumElements();
     if (output_size > 0) {
       auto output_flat = output->shaped<T, 2>({1, output_size});
 
@@ -83,7 +83,14 @@ class PackOp : public OpKernel {
             values[i].shaped<T, 2>({1, values[i].NumElements()})));
       }
       if (std::is_same<Device, GPUDevice>::value) {
-        ConcatGPU<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
+        // Switching indexing to int64 might cause performance issues.
+        // Hence, we keep int32 indexing in the GPU kernel unless we need to
+        // switch to int64.
+        if (output_size < std::numeric_limits<int32>::max()) {
+          ConcatGPU32<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
+        } else {
+          ConcatGPU64<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
+        }
       } else {
         ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
       }

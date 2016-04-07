@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include <limits.h>
+#include <limits>
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -440,7 +440,16 @@ class TensorArrayPackOp : public OpKernel {
     }
 
     if (std::is_same<Device, GPUDevice>::value) {
-      ConcatGPU<T>(ctx->eigen_gpu_device(), input_tensors_flat, &output_flat);
+      // Switching indexing to int64 might cause performance issues.
+      // Hence, we keep int32 indexing in the GPU kernel unless we need to
+      // switch to int64.
+      if (output_shape.num_elements() < std::numeric_limits<int32>::max()) {
+        ConcatGPU32<T>(ctx->eigen_gpu_device(), input_tensors_flat,
+                       &output_flat);
+      } else {
+        ConcatGPU64<T>(ctx->eigen_gpu_device(), input_tensors_flat,
+                       &output_flat);
+      }
     } else {
       ConcatCPU<T>(ctx->device(), input_tensors_flat, &output_flat);
     }
@@ -576,7 +585,6 @@ class TensorArrayConcatOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
     ConstMatrixVector input_tensors_flat;
     input_tensors_flat.reserve(values.size());
-
     for (size_t i = 0; i < values.size(); ++i) {
       const Tensor* value_t = value_tensors[i];
       if (value_t->NumElements() > 0) {
@@ -589,7 +597,16 @@ class TensorArrayConcatOp : public OpKernel {
       auto output_flat =
           output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
       if (std::is_same<Device, GPUDevice>::value) {
-        ConcatGPU<T>(ctx->eigen_gpu_device(), input_tensors_flat, &output_flat);
+        // Switching indexing to int64 might cause performance issues.
+        // Hence, we keep int32 indexing in the GPU kernel unless we need to
+        // switch to int64.
+        if (output_shape.num_elements() < std::numeric_limits<int32>::max()) {
+          ConcatGPU32<T>(ctx->eigen_gpu_device(), input_tensors_flat,
+                         &output_flat);
+        } else {
+          ConcatGPU64<T>(ctx->eigen_gpu_device(), input_tensors_flat,
+                         &output_flat);
+        }
       } else {
         ConcatCPU<T>(ctx->device(), input_tensors_flat, &output_flat);
       }
