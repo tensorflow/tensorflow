@@ -68,3 +68,29 @@ def _MatrixDeterminantGrad(op, grad):
   c = op.outputs[0]
   ainv = linalg_ops.matrix_inverse(a)
   return grad * c * array_ops.transpose(ainv)
+
+
+@ops.RegisterGradient("MatrixSolve")
+def _MatrixSolveGrad(op, grad):
+  """Gradients for MatrixSolve."""
+  a = op.inputs[0]
+  c = op.outputs[0]
+  # TODO(rmlarsen): Get rid of explicit transpose after adding
+  # adjoint_a attribute to solver.
+  grad_b = linalg_ops.matrix_solve(array_ops.transpose(a), grad)
+  grad_a = -math_ops.matmul(grad_b, c, transpose_b=True)
+  return (grad_a, grad_b)
+
+
+@ops.RegisterGradient("BatchMatrixSolve")
+def _BatchMatrixSolveGrad(op, grad):
+  """Gradient for BatchMatrixSolve."""
+  a = op.inputs[0]
+  c = op.outputs[0]
+  # TODO(rmlarsen): Replace the following two lines with
+  # a single call to batch_matrix_solve after adding
+  # in an option to solve for A^T X = Y.
+  ainv = linalg_ops.batch_matrix_inverse(a)
+  grad_b = math_ops.batch_matmul(ainv, grad, adj_x=True)
+  grad_a = -math_ops.batch_matmul(grad_b, c, adj_y=True)
+  return (grad_a, grad_b)
