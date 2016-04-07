@@ -158,6 +158,22 @@ class DestroyTemporaryVariableOp : public OpKernel {
   string var_name_;
 };
 
+class IsVariableInitializedOp : public OpKernel {
+ public:
+  IsVariableInitializedOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    // Get a mutable input tensor of the Ref input.
+    const Tensor& input_tensor = context->mutable_input(0, false);
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output));
+    auto output_tensor = output->tensor<bool, 0>();
+    bool result = input_tensor.IsInitialized();
+    output_tensor() = result;
+  }
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_VARIABLE_OPS_H_
