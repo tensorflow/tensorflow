@@ -37,6 +37,7 @@
 @@get_default_graph
 @@reset_default_graph
 @@import_graph_def
+@@load_file_system_library
 @@load_op_library
 
 ## Graph collections

@@ -71,4 +71,49 @@ TEST(EnvTest, FileToReadonlyMemoryRegion) {
   }
 }
 
+TEST(EnvTest, LocalFileSystem) {
+  // Test filename with file:// syntax.
+  Env* env = Env::Default();
+  const string dir = testing::TmpDir();
+  for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
+                           1 << 20, (1 << 20) + 1}) {
+    string filename = io::JoinPath(dir, strings::StrCat("file", length));
+
+    filename = strings::StrCat("file://", filename);
+
+    // Write a file with the given length
+    const string input = CreateTestFile(env, filename, length);
+
+    // Read the file back and check equality
+    string output;
+    TF_CHECK_OK(ReadFileToString(env, filename, &output));
+    CHECK_EQ(length, output.size());
+    CHECK_EQ(input, output);
+  }
+}
+
+class InterPlanetaryFileSystem : public NullFileSystem {
+ public:
+  Status GetChildren(const string& dir, std::vector<string>* result) override {
+    std::vector<string> Planets = {"Mercury", "Venus",  "Earth",  "Mars",
+                                   "Jupiter", "Saturn", "Uranus", "Neptune"};
+    result->insert(result->end(), Planets.begin(), Planets.end());
+    return Status::OK();
+  }
+};
+
+REGISTER_FILE_SYSTEM("ipfs", InterPlanetaryFileSystem);
+
+TEST(EnvTest, IPFS) {
+  Env* env = Env::Default();
+  std::vector<string> planets;
+  TF_CHECK_OK(env->GetChildren("ipfs://solarsystem", &planets));
+  int c = 0;
+  std::vector<string> Planets = {"Mercury", "Venus",  "Earth",  "Mars",
+                                 "Jupiter", "Saturn", "Uranus", "Neptune"};
+  for (auto p : Planets) {
+    EXPECT_EQ(p, planets[c++]);
+  }
+}
+
 }  // namespace tensorflow

@@ -172,6 +172,7 @@ cc_library(
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
         "platform/env.h",
+        "platform/file_system.h",
         "platform/host_info.h",  # TODO(josh11b): make internal
         "platform/init_main.h",
         "platform/logging.h",
@@ -615,6 +616,7 @@ ANDROID_TF_LITE_HDRS = [
     "framework/tensor.h",
     "platform/default/integral_types.h",
     "platform/env.h",
+    "platform/file_system.h",
     "platform/logging.h",
     "platform/platform.h",
     "platform/types.h",
@@ -882,6 +884,7 @@ filegroup(
         "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/env.h",
+        "platform/file_system.h",
         "platform/host_info.h",
         "platform/logging.h",
         "platform/macros.h",
