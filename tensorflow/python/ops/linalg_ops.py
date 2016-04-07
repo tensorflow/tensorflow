@@ -42,6 +42,9 @@ def _BatchCholeskyShape(op):
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
   return [input_shape]
 
+@ops.RegisterShape("CholeskyGrad")
+def _cholesky_grad_shape(op):
+  return [op.inputs[0].get_shape()]
 
 @ops.RegisterShape("MatrixDeterminant")
 def _MatrixDeterminantShape(op):
