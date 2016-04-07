@@ -34,25 +34,30 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
     """Returns shape for input and output of the data feeder."""
     x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
     input_shape = [batch_size] + x_shape
-    y_shape = list(y_shape[1:]) if len(y_shape) > 1 else []
-    # Skip first dimention if it is 1.
-    if y_shape and y_shape[0] == 1:
-        y_shape = y_shape[1:]
-    if n_classes > 1:
-        output_shape = [batch_size] + y_shape + [n_classes]
+    if y_shape is None:
+        return input_shape, None
     else:
-        output_shape = [batch_size] + y_shape
-    return input_shape, output_shape
+        y_shape = list(y_shape[1:]) if len(y_shape) > 1 else []
+        # Skip first dimention if it is 1.
+        if y_shape and y_shape[0] == 1:
+            y_shape = y_shape[1:]
+        if n_classes > 1:
+            output_shape = [batch_size] + y_shape + [n_classes]
+        else:
+            output_shape = [batch_size] + y_shape
+        return input_shape, output_shape
 
 
 def _data_type_filter(X, y):
     """Filter data types into acceptable format"""
     if HAS_DASK:
         X = extract_dask_data(X)
-        y = extract_dask_labels(y)
+        if y is not None:
+            y = extract_dask_labels(y)
     if HAS_PANDAS:
         X = extract_pandas_data(X)
-        y = extract_pandas_labels(y)
+        if y is not None:
+            y = extract_pandas_labels(y)
     return X, y
 
 
@@ -77,7 +82,8 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
     if HAS_DASK:
         import dask.dataframe as dd
         allowed_classes = (dd.Series, dd.DataFrame)
-        if isinstance(X, allowed_classes) and isinstance(y, allowed_classes):
+        if (isinstance(X, allowed_classes) and
+            (y is None or isinstance(y, allowed_classes))):
             data_feeder_cls = DaskDataFeeder
         else:
             data_feeder_cls = DataFeeder
@@ -85,7 +91,7 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
         data_feeder_cls = DataFeeder
 
     if _is_iterable(X):
-        if not _is_iterable(y):
+        if y is not None and not _is_iterable(y):
             raise ValueError("Both X and y should be iterators for "
                              "streaming learning to work.")
         data_feeder_cls = StreamingDataFeeder
@@ -148,7 +154,7 @@ class DataFeeder(object):
         X: feature Nd numpy matrix of shape [n_samples, n_features, ...].
         y: target vector, either floats for regression or class id for
             classification. If matrix, will consider as a sequence
-            of targets.
+            of targets. Can be None for unsupervised setting.
         n_classes: number of classes, 0 and 1 are considered regression.
         batch_size: mini batch size to accumulate.
         random_state: numpy RandomState object to reproduce sampling.
@@ -169,11 +175,15 @@ class DataFeeder(object):
         y_dtype = np.int64 if n_classes > 1 else np.float32
         self.X = check_array(X, ensure_2d=False,
                              allow_nd=True, dtype=x_dtype)
-        self.y = check_array(y, ensure_2d=False, dtype=y_dtype)
+        self.y = (None if y is None
+                  else check_array(y, ensure_2d=False, dtype=y_dtype))
         self.n_classes = n_classes
         self.batch_size = batch_size
         self.input_shape, self.output_shape = _get_in_out_shape(
-            self.X.shape, self.y.shape, n_classes, batch_size)
+            self.X.shape,
+            None if self.y is None else self.y.shape,
+            n_classes,
+            batch_size)
         # Input dtype matches dtype of X.
         self.input_dtype = self.X.dtype
         # Output dtype always float32 (because for classification we use
@@ -195,7 +205,7 @@ class DataFeeder(object):
             'batch_size': self.batch_size
         }
 
-    def get_feed_dict_fn(self, input_placeholder, output_placeholder):
+    def get_feed_dict_fn(self, input_placeholder, output_placeholder=None):
         """Returns a function, that will sample data and provide it to given
         placeholders.
 
@@ -214,28 +224,34 @@ class DataFeeder(object):
             inp = np.array(self.X[batch_indices]).reshape((batch_indices.shape[0], 1)) \
                 if len(self.X.shape) == 1 else self.X[batch_indices]
 
-            # assign labels from random indices
-            self.output_shape[0] = batch_indices.shape[0]
-            out = np.zeros(self.output_shape, dtype=self.output_dtype)
-            for i in xrange(out.shape[0]):
-                sample = batch_indices[i]
-                if self.n_classes > 1:
-                    if len(self.output_shape) == 2:
-                        out.itemset((i, self.y[sample]), 1.0)
-                    else:
-                        for idx, value in enumerate(self.y[sample]):
-                            out.itemset(tuple([i, idx, value]), 1.0)
-                else:
-                    out[i] = self.y[sample]
+            if output_placeholder is None:
+              return {input_placeholder.name: inp}
+            else:
+              assert self.y is not None
+              assert self.output_shape is not None
 
-            # move offset and reset it if necessary
-            self.offset += self.batch_size
-            if self.offset >= self.X.shape[0]:
-                self.indices = self.random_state.permutation(self.X.shape[0])
-                self.offset = 0
-                self.epoch += 1
+              # assign labels from random indices
+              self.output_shape[0] = batch_indices.shape[0]
+              out = np.zeros(self.output_shape, dtype=self.output_dtype)
+              for i in xrange(out.shape[0]):
+                  sample = batch_indices[i]
+                  if self.n_classes > 1:
+                      if len(self.output_shape) == 2:
+                          out.itemset((i, self.y[sample]), 1.0)
+                      else:
+                          for idx, value in enumerate(self.y[sample]):
+                              out.itemset(tuple([i, idx, value]), 1.0)
+                  else:
+                      out[i] = self.y[sample]
 
-            return {input_placeholder.name: inp, output_placeholder.name: out}
+              # move offset and reset it if necessary
+              self.offset += self.batch_size
+              if self.offset >= self.X.shape[0]:
+                  self.indices = self.random_state.permutation(self.X.shape[0])
+                  self.offset = 0
+                  self.epoch += 1
+
+              return {input_placeholder.name: inp, output_placeholder.name: out}
         return _feed_dict_fn
 
 
