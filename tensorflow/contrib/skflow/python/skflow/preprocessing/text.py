@@ -26,6 +26,8 @@ except ImportError:
 
 import numpy as np
 
+from tensorflow.python.platform.default import _gfile as gfile
+
 from .categorical_vocabulary import CategoricalVocabulary
 
 TOKENIZER_RE = re.compile(
@@ -207,7 +209,7 @@ class VocabularyProcessor(object):
         Args:
             filename: Path to output file.
         """
-        with open(filename, 'wb') as f:
+        with gfile.Open(filename, 'wb') as f:
             f.write(pickle.dumps(self))
 
     @classmethod
@@ -220,6 +222,6 @@ class VocabularyProcessor(object):
         Returns:
             VocabularyProcessor object.
         """
-        with open(filename, 'rb') as f:
+        with gfile.Open(filename, 'rb') as f:
             return pickle.loads(f.read())
 

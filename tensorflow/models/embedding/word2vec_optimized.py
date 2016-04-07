@@ -79,7 +79,7 @@ flags.DEFINE_boolean(
     "interactive", False,
     "If true, enters an IPython interactive session to play with the trained "
     "model. E.g., try model.analogy('france', 'paris', 'russia') and "
-    "model.nearby(['proton', 'elephant', 'maxwell']")
+    "model.nearby(['proton', 'elephant', 'maxwell'])")
 
 FLAGS = flags.FLAGS
 

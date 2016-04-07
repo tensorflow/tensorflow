@@ -167,6 +167,8 @@
   * [`ifft`](../../api_docs/python/math_ops.md#ifft)
   * [`ifft2d`](../../api_docs/python/math_ops.md#ifft2d)
   * [`ifft3d`](../../api_docs/python/math_ops.md#ifft3d)
+  * [`igamma`](../../api_docs/python/math_ops.md#igamma)
+  * [`igammac`](../../api_docs/python/math_ops.md#igammac)
   * [`imag`](../../api_docs/python/math_ops.md#imag)
   * [`inv`](../../api_docs/python/math_ops.md#inv)
   * [`invert_permutation`](../../api_docs/python/math_ops.md#invert_permutation)

@@ -14,9 +14,17 @@
 # ==============================================================================
 """Framework utilities.
 
+@@assert_negative
+@@assert_positive
+@@assert_non_negative
+@@assert_non_positive
+@@assert_less
+@@assert_less_equal
 @@assert_same_float_dtype
-@@is_numeric_tensor
 @@assert_scalar_int
+@@is_numeric_tensor
+@@is_non_decreasing
+@@is_strictly_increasing
 @@local_variable
 @@reduce_sum_n
 @@with_shape

@@ -22,6 +22,7 @@ import os
 
 import tensorflow as tf
 
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import gfile
 
 
@@ -114,6 +115,16 @@ class SessionManagerTest(tf.test.TestCase):
                                               checkpoint_dir=checkpoint_dir)
       self.assertTrue(initialized)
       self.assertEquals(1, sess.run(v))
+
+  def testWaitForSessionReturnsNoneAfterTimeout(self):
+    with tf.Graph().as_default():
+      tf.Variable(1, name="v")
+      sm = tf.train.SessionManager(ready_op=tf.assert_variables_initialized(),
+                                   recovery_wait_secs=1)
+
+      # Set max_wait_secs to allow us to try a few times.
+      with self.assertRaises(errors.DeadlineExceededError):
+        sm.wait_for_session(master="", max_wait_secs=3000)
 
 if __name__ == "__main__":
   tf.test.main()
