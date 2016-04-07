@@ -152,11 +152,14 @@ const PARAMS = {
  * for each node in the graph.
  */
 export class RenderGraphInfo {
-  private hierarchy: hierarchy.Hierarchy;
+  hierarchy: hierarchy.Hierarchy;
   private index: {[nodeName: string]: RenderNodeInfo};
   private deviceColorMap: d3.scale.Ordinal<string, string>;
   private memoryUsageScale: d3.scale.Linear<string, string>;
   private computeTimeScale: d3.scale.Linear<string, string>;
+  /** Scale for the thickness of edges when there is no shape information. */
+  edgeWidthScale:
+      d3.scale.Linear<number, number> | d3.scale.Pow<number, number>;
   // Since the rendering information for each node is constructed lazily,
   // upon node's expansion by the user, we keep a map between the node's name
   // and whether the rendering information was already constructed for that
@@ -210,6 +213,12 @@ export class RenderGraphInfo {
     this.computeTimeScale = d3.scale.linear<string, string>()
         .domain(computeTimeExtent)
         .range(PARAMS.minMaxColors);
+
+    this.edgeWidthScale = this.hierarchy.hasShapeInfo ?
+      scene.edge.EDGE_WIDTH_SCALE :
+      d3.scale.linear()
+        .domain([1, this.hierarchy.maxMetaEdgeSize])
+        .range([scene.edge.MIN_EDGE_WIDTH, scene.edge.MAX_EDGE_WIDTH]);
   }
 
   /**

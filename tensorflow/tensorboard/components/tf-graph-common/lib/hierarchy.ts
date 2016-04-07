@@ -30,6 +30,10 @@ export interface Hierarchy {
   templates: {[templateId: string]: string[]};
   /** List of all device names */
   devices: string[];
+  /** True if at least one tensor in the graph has shape information */
+  hasShapeInfo: boolean;
+  /** The maximum size across all meta edges. Used for scaling thickness. */
+  maxMetaEdgeSize: number;
   getNodeMap(): {[nodeName: string]: GroupNode|OpNode};
   node(name: string): GroupNode|OpNode;
   setNode(name: string, node: GroupNode|OpNode): void;
@@ -48,6 +52,8 @@ class HierarchyImpl implements Hierarchy {
   templates: {[templateId: string]: string[]};
   private index: {[nodeName: string]: GroupNode|OpNode};
   devices: string[];
+  hasShapeInfo = false;
+  maxMetaEdgeSize = 1;
   orderings: { [nodeName: string]: { [childName: string]: number } };
 
   constructor() {

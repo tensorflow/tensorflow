@@ -626,6 +626,7 @@ class MetaedgeImpl implements Metaedge {
     // Compute the size of the tensor flowing through this
     // base edge.
     this.totalSize += MetaedgeImpl.computeSizeOfEdge(edge, h);
+    h.maxMetaEdgeSize = Math.max(h.maxMetaEdgeSize, this.totalSize);
   }
 
   private static computeSizeOfEdge(edge: BaseEdge, h: hierarchy.Hierarchy):
@@ -636,6 +637,7 @@ class MetaedgeImpl implements Metaedge {
       // a lower bound for the total size.
       return 1;
     }
+    h.hasShapeInfo = true;
     // Sum the sizes of all output tensors.
     return _(opNode.outputShapes).map(shape => {
       // If the shape is unknown, treat it as 1 when computing
@@ -753,7 +755,7 @@ function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
   }
   // We didn't find OUTPUT_SHAPES_KEY in attributes, so we don't know anything
   // about the output tensors.
-  return result;
+  return null;
 }
 
 /**

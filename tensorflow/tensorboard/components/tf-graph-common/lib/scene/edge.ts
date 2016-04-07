@@ -18,10 +18,10 @@ module tf.graph.scene.edge {
 const TENSOR_SHAPE_DELIM = "×";
 
 /** The minimum stroke width of an edge. */
-const MIN_EDGE_WIDTH = 0.75;
+export const MIN_EDGE_WIDTH = 0.75;
 
 /** The maximum stroke width of an edge. */
-const MAX_EDGE_WIDTH = 12;
+export const MAX_EDGE_WIDTH = 12;
 
 /** The exponent used in the power scale for edge thickness. */
 const EDGE_WIDTH_SCALE_EXPONENT = 0.3;
@@ -29,7 +29,7 @@ const EDGE_WIDTH_SCALE_EXPONENT = 0.3;
 /** The domain (min and max value) for the edge width. */
 const DOMAIN_EDGE_WIDTH_SCALE = [1, 5E6];
 
-let edgeWidthScale = d3.scale.pow()
+export const EDGE_WIDTH_SCALE = d3.scale.pow()
       .exponent(EDGE_WIDTH_SCALE_EXPONENT)
       .domain(DOMAIN_EDGE_WIDTH_SCALE)
       .range([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH])
@@ -229,7 +229,7 @@ export function appendEdge(edgeGroup, d: EdgeData,
   // Give the path a unique id, which will be used to link
   // the textPath (edge label) to this path.
   let pathId = "path_" + getEdgeKey(d);
-  let strokeWidth = edgeWidthScale(size);
+  let strokeWidth = sceneElement.renderHierarchy.edgeWidthScale(size);
 
   let path = edgeGroup.append("path")
     .attr({
