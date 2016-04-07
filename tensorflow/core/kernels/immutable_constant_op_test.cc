@@ -54,17 +54,18 @@ class TestReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   uint64 length_;
 };
 
-// A mock file system and environment class that creates ReadOnlyMemoryRegion
-// from allocated memory.
-class TestFileSystem : public NullFileSystem {
+// A mock environment class that creates ReadOnlyMemoryRegion from allocated
+// memory.
+class TestEnvironment : public EnvWrapper {
  public:
-  ~TestFileSystem() override = default;
+  explicit TestEnvironment(Env* env) : EnvWrapper(env) {}
+  ~TestEnvironment() override = default;
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, ReadOnlyMemoryRegion** result) override {
     float val = 0;
     // For the tests create in-memory regions with float values equal to the
     // first letter of the region name.
-    switch (GetNameFromURI(fname).front()) {
+    switch (fname.front()) {
       case '2':
         val = 2.0f;
         break;
@@ -83,23 +84,20 @@ class TestFileSystem : public NullFileSystem {
   }
 };
 
-REGISTER_FILE_SYSTEM("test", TestFileSystem);
-
 struct ImmutableConstantOpTest {};
 
 TEST(ImmutableConstantOpTest, Simple) {
   const TensorShape kTestTensorShape({4, 1});
   const TensorShape kTestTensorShapeT({1, 4});
   GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  Node* node1 =
-      ops::ImmutableConst(DT_FLOAT, kTestTensorShape, "test://2", b.opts());
-  Node* node2 =
-      ops::ImmutableConst(DT_FLOAT, kTestTensorShapeT, "test://3", b.opts());
+  Node* node1 = ops::ImmutableConst(DT_FLOAT, kTestTensorShape, "2", b.opts());
+  Node* node2 = ops::ImmutableConst(DT_FLOAT, kTestTensorShapeT, "3", b.opts());
   Node* result = ops::MatMul(node1, node2, b.opts());
   GraphDef graph_def;
   TF_ASSERT_OK(b.ToGraphDef(&graph_def));
+  std::unique_ptr<Env> env_ptr(new TestEnvironment(Env::Default()));
   SessionOptions session_options;
-  session_options.env = Env::Default();
+  session_options.env = env_ptr.get();
   session_options.config.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
@@ -122,15 +120,14 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
   const TensorShape kBadTensorShape({40, 100});
   const TensorShape kTestTensorShapeT({1, 4});
   GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  Node* node1 =
-      ops::ImmutableConst(DT_FLOAT, kBadTensorShape, "test://2", b.opts());
-  Node* node2 =
-      ops::ImmutableConst(DT_FLOAT, kTestTensorShapeT, "test://3", b.opts());
+  Node* node1 = ops::ImmutableConst(DT_FLOAT, kBadTensorShape, "2", b.opts());
+  Node* node2 = ops::ImmutableConst(DT_FLOAT, kTestTensorShapeT, "3", b.opts());
   Node* result = ops::MatMul(node1, node2, b.opts());
   GraphDef graph_def;
   TF_ASSERT_OK(b.ToGraphDef(&graph_def));
+  std::unique_ptr<Env> env_ptr(new TestEnvironment(Env::Default()));
   SessionOptions session_options;
-  session_options.env = Env::Default();
+  session_options.env = env_ptr.get();
   std::unique_ptr<Session> session(NewSession(session_options));
   ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";

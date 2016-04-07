@@ -120,36 +120,6 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "framework/test_file_system.so",
-    srcs = ["framework/test_file_system.cc"],
-    linkopts = select({
-        "//conditions:default": [
-            "-Wl,-Bsymbolic",
-            "-lm",
-        ],
-        "//tensorflow:darwin": [],
-    }),
-    linkshared = 1,
-    deps = [
-        "//google/protobuf",
-        "//tensorflow/core:framework_headers_lib",
-    ],
-)
-
-py_test(
-    name = "file_system_test",
-    size = "small",
-    srcs = ["framework/file_system_test.py"],
-    data = [":framework/test_file_system.so"],
-    main = "framework/file_system_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework_test_lib",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
 py_test(
     name = "pywrap_status_test",
     size = "small",
