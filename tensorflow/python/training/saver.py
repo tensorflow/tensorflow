@@ -1247,7 +1247,7 @@ def _as_meta_graph_def(meta_info_def=None, graph_def=None, saver_def=None,
   return meta_graph_def
 
 
-def _read_meta_graph_file(filename):
+def read_meta_graph_file(filename):
   """Reads a file containing `MetaGraphDef` and returns the protocol buffer.
 
   Args:
@@ -1409,7 +1409,7 @@ def import_meta_graph(meta_graph_or_file):
   if isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
     return _import_meta_graph_def(meta_graph_or_file)
   else:
-    return _import_meta_graph_def(_read_meta_graph_file(meta_graph_or_file))
+    return _import_meta_graph_def(read_meta_graph_file(meta_graph_or_file))
 
 
 def export_meta_graph(filename=None, meta_info_def=None, graph_def=None,
