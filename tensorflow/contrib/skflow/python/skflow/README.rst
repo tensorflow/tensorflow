@@ -1,5 +1,4 @@
-|Travis-CI Build Status| |Codecov Status| |License| |PyPI version| |Join the chat at
-https://gitter.im/tensorflow/skflow|
+|License| |Join the chat at https://gitter.im/tensorflow/skflow|
 
 Scikit Flow
 ===========
@@ -27,19 +26,10 @@ Dependencies
 - Scikit learn: 0.16, 0.17, 0.18+ 
 - Tensorflow: 0.7+
 
-First, you need to make sure you have `TensorFlow <https://github.com/tensorflow/tensorflow#installation>`__ and `Scikit Learn <http://scikit-learn.org/stable/install.html>`__ installed. 
+Make sure you have `TensorFlow <https://github.com/tensorflow/tensorflow#installation>`__ and `Scikit Learn <http://scikit-learn.org/stable/install.html>`__ installed. Scikit Flow will be included in the next TensorFlow release but before that, you can install the nightly built binaries of TensorFlow following instruction `here <https://github.com/tensorflow/tensorflow#installation>`__. 
 
-Run the following to install the stable version from PyPI:
+Then you can simply import `skflow` via `from tensorflow.contrib.skflow.python import skflow`.
 
-.. code:: bash
-
-    pip install skflow
-
-Or run the following to install from the development version from Github:
-
-.. code:: bash
-
-    pip install git+git://github.com/tensorflow/skflow.git
 
 Tutorial
 --------
@@ -57,13 +47,13 @@ Community
 ---------
 - Twitter `#skflow <https://twitter.com/search?q=skflow&src=typd>`__.
 - StackOverflow with `skflow tag <http://stackoverflow.com/questions/tagged/skflow>`__ for questions and struggles.
-- Github `issues <https://github.com/tensorflow/skflow/issues>`__ for technical discussions and feature requests. 
+- Github `issues <https://github.com/tensorflow/tensorflow/issues>`__ for technical discussions and feature requests. 
 - `Gitter channel <https://gitter.im/tensorflow/skflow>`__ for non-trivial discussions.
 
 Usage
 -----
 
-Below are few simple examples of the API. For more examples, please see `examples <https://github.com/tensorflow/skflow/tree/master/examples>`__.
+Below are few simple examples of the API. For more examples, please see `examples <https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/skflow>`__.
 
 General tips
 ~~~~~~~~~~~~
@@ -79,7 +69,6 @@ Simple linear classification:
 
 .. code:: python
 
-    import skflow
     from sklearn import datasets, metrics
 
     iris = datasets.load_iris()
@@ -95,7 +84,6 @@ Simple linear regression:
 
 .. code:: python
 
-    import skflow
     from sklearn import datasets, metrics, preprocessing
 
     boston = datasets.load_boston()
@@ -112,7 +100,6 @@ Example of 3 layer network with 10, 20 and 10 hidden units respectively:
 
 .. code:: python
 
-    import skflow
     from sklearn import datasets, metrics
 
     iris = datasets.load_iris()
@@ -128,7 +115,6 @@ Example of how to pass a custom model to the TensorFlowEstimator:
 
 .. code:: python
 
-    import skflow
     from sklearn import datasets, metrics
 
     iris = datasets.load_iris()
@@ -151,8 +137,6 @@ Each estimator has a ``save`` method which takes folder path where all model inf
 Some example code:
 
 .. code:: python
-
-    import skflow
 
     classifier = skflow.TensorFlowLinearRegression()
     classifier.fit(...)
@@ -186,7 +170,7 @@ Loss visualization: |Text classification RNN Loss|
 More examples
 -------------
 
-See examples folder for:
+See `examples folder <https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/skflow>`__ for:
 
 -  Easy way to handle categorical variables - words are just an example of categorical variable.
 -  Text Classification - see examples for RNN, CNN on word and characters.
@@ -194,10 +178,6 @@ See examples folder for:
 -  Images (CNNs) - see example for digit recognition.
 -  More & deeper - different examples showing DNNs and CNNs
 
-.. |Travis-CI Build Status| image:: https://travis-ci.org/tensorflow/skflow.svg?branch=master
-   :target: https://travis-ci.org/tensorflow/skflow
-.. |Codecov Status| image:: https://codecov.io/github/tensorflow/skflow/coverage.svg?precision=2
-   :target: https://codecov.io/github/tensorflow/skflow
 .. |License| image:: https://img.shields.io/badge/license-Apache%202.0-blue.svg
    :target: http://www.apache.org/licenses/LICENSE-2.0.html
 .. |Join the chat at https://gitter.im/tensorflow/skflow| image:: https://badges.gitter.im/Join%20Chat.svg
