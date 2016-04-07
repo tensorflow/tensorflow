@@ -4672,6 +4672,27 @@ op {
   summary: "Returns which elements of x are NaN."
 }
 op {
+  name: "IsVariableInitialized"
+  input_arg {
+    name: "ref"
+    description: "Should be from a `Variable` node. May be uninitialized."
+    type_attr: "dtype"
+    is_ref: true
+  }
+  output_arg {
+    name: "is_initialized"
+    type: DT_BOOL
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of elements in the variable tensor."
+  }
+  summary: "Checks whether a tensor has been initialized."
+  description: "Outputs boolean scalar indicating whether the tensor has been initialized."
+  allows_uninitialized_input: true
+}
+op {
   name: "L2Loss"
   input_arg {
     name: "t"
