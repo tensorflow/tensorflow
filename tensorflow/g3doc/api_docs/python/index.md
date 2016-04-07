@@ -64,6 +64,7 @@
   * [`initialize_all_variables`](../../api_docs/python/state_ops.md#initialize_all_variables)
   * [`initialize_local_variables`](../../api_docs/python/state_ops.md#initialize_local_variables)
   * [`initialize_variables`](../../api_docs/python/state_ops.md#initialize_variables)
+  * [`is_variable_initialized`](../../api_docs/python/state_ops.md#is_variable_initialized)
   * [`latest_checkpoint`](../../api_docs/python/state_ops.md#latest_checkpoint)
   * [`local_variables`](../../api_docs/python/state_ops.md#local_variables)
   * [`make_template`](../../api_docs/python/state_ops.md#make_template)
