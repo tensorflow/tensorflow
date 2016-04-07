@@ -39,7 +39,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
                      'for unit testing.')
 flags.DEFINE_integer('max_steps', 1000, 'Number of steps to run trainer.')
-flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.5, 'Initial learning rate.')
 flags.DEFINE_string('data_dir', '/tmp/data', 'Directory for storing data')
 flags.DEFINE_string('summaries_dir', '/tmp/mnist_logs', 'Summaries directory')
 
@@ -69,7 +69,7 @@ def main(_):
   y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
   # More name scopes will clean up the graph representation
   with tf.name_scope('xent'):
-    cross_entropy = -tf.reduce_sum(y_ * tf.log(y))
+    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
     tf.scalar_summary('cross entropy', cross_entropy)
   with tf.name_scope('train'):
     train_step = tf.train.GradientDescentOptimizer(

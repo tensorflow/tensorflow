@@ -24,13 +24,16 @@ import tensorflow as tf
 from tensorflow.contrib.skflow.python.skflow.io import *
 
 
-class MockPlaceholder(object):
-
-    def __init__(self, name):
-        self.name = name
-
-
 class DataFeederTest(tf.test.TestCase):
+
+    def test_unsupervised(self):
+        data = np.matrix([[1, 2], [2, 3], [3, 4]])
+        feeder = data_feeder.DataFeeder(data, None, n_classes=0, batch_size=1)
+        with self.test_session():
+            inp, out = feeder.input_builder()
+            feed_dict_fn = feeder.get_feed_dict_fn()
+            feed_dict = feed_dict_fn()
+            self.assertAllClose(feed_dict[inp.name], [[1, 2]])
 
     def test_data_feeder_regression(self):
         X = np.matrix([[1, 2], [3, 4]])

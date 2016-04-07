@@ -195,7 +195,7 @@ And the tensor that will then contain the loss value is returned.
 ### Training
 
 The `training()` function adds the operations needed to minimize the loss via
-gradient descent.
+[Gradient Descent](https://en.wikipedia.org/wiki/Gradient_descent).
 
 Firstly, it takes the loss tensor from the `loss()` function and hands it to a
 [`tf.scalar_summary`](../../../api_docs/python/train.md#scalar_summary),
