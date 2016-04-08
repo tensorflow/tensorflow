@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/proto"
+
+	pb "github.com/tensorflow/tensorflow/tensorflow/contrib/go/proto"
 )
 
 const (
@@ -15,9 +17,9 @@ const (
 
 // Graph Representation of the computation graph.
 type Graph struct {
-	def *GraphDef
+	def *pb.GraphDef
 
-	availableOps map[string]*OpDef
+	availableOps map[string]*pb.OpDef
 	constants    map[string]*Tensor
 	variables    map[string]*Tensor
 }
@@ -26,16 +28,16 @@ type Graph struct {
 // node takes zero or more Tensors, performs some computation, and
 // produces zero or more Tensors.
 type GraphNode struct {
-	ref          *NodeDef
-	def          *NodeDef
+	ref          *pb.NodeDef
+	def          *pb.NodeDef
 	outDataTypes map[string]DataType
 }
 
 // NewGraph Returns an initialized instance of the Graph struct.
 func NewGraph() *Graph {
 	return &Graph{
-		def:          new(GraphDef),
-		availableOps: make(map[string]*OpDef),
+		def:          new(pb.GraphDef),
+		availableOps: make(map[string]*pb.OpDef),
 		constants:    make(map[string]*Tensor),
 		variables:    make(map[string]*Tensor),
 	}
@@ -108,12 +110,12 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 			}
 		}
 		node = &GraphNode{
-			def: &NodeDef{
+			def: &pb.NodeDef{
 				Name:   name,
 				Op:     opName,
 				Input:  inputs,
 				Device: device,
-				Attr:   make(map[string]*AttrValue),
+				Attr:   make(map[string]*pb.AttrValue),
 			},
 			outDataTypes: make(map[string]DataType),
 		}
@@ -136,9 +138,9 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 							attribName: attr.Name,
 						}
 					}
-					node.def.Attr[attr.Name] = &AttrValue{
-						Value: &AttrValue_Type{
-							Type: dt,
+					node.def.Attr[attr.Name] = &pb.AttrValue{
+						Value: &pb.AttrValue_Type{
+							Type: pb.DataType(dt),
 						},
 					}
 				case "string":
@@ -149,8 +151,8 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 							attribName: attr.Name,
 						}
 					}
-					node.def.Attr[attr.Name] = &AttrValue{
-						Value: &AttrValue_S{
+					node.def.Attr[attr.Name] = &pb.AttrValue{
+						Value: &pb.AttrValue_S{
 							S: []byte(st),
 						},
 					}
@@ -163,7 +165,7 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 						}
 					}
 
-					tp := &TensorProto{
+					tp := &pb.TensorProto{
 						Dtype:         t.Dtype,
 						TensorShape:   t.TensorShape,
 						TensorContent: t.TensorContent,
@@ -188,21 +190,21 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 						return
 					}
 
-					node.def.Attr[attr.Name] = &AttrValue{
-						Value: &AttrValue_Tensor{
+					node.def.Attr[attr.Name] = &pb.AttrValue{
+						Value: &pb.AttrValue_Tensor{
 							Tensor: tp,
 						},
 					}
 				case "func":
-					f, ok := v.(*NameAttrList)
+					f, ok := v.(*pb.NameAttrList)
 					if !ok {
 						return nil, &ErrInvalidAttrValue{
 							operation:  opName,
 							attribName: attr.Name,
 						}
 					}
-					node.def.Attr[attr.Name] = &AttrValue{
-						Value: &AttrValue_Func{
+					node.def.Attr[attr.Name] = &pb.AttrValue{
+						Value: &pb.AttrValue_Func{
 							Func: f,
 						},
 					}
@@ -214,8 +216,8 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 							attribName: attr.Name,
 						}
 					}
-					node.def.Attr[attr.Name] = &AttrValue{
-						Value: &AttrValue_I{
+					node.def.Attr[attr.Name] = &pb.AttrValue{
+						Value: &pb.AttrValue_I{
 							I: i,
 						},
 					}
@@ -227,8 +229,8 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 							attribName: attr.Name,
 						}
 					}
-					node.def.Attr[attr.Name] = &AttrValue{
-						Value: &AttrValue_B{
+					node.def.Attr[attr.Name] = &pb.AttrValue{
+						Value: &pb.AttrValue_B{
 							B: b,
 						},
 					}
@@ -240,34 +242,34 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 							attribName: attr.Name,
 						}
 					}
-					node.def.Attr[attr.Name] = &AttrValue{
-						Value: &AttrValue_F{
+					node.def.Attr[attr.Name] = &pb.AttrValue{
+						Value: &pb.AttrValue_F{
 							F: f,
 						},
 					}
 				case "shape":
-					s, ok := v.(*TensorShapeProto)
+					s, ok := v.(*pb.TensorShapeProto)
 					if !ok {
 						return nil, &ErrInvalidAttrValue{
 							operation:  opName,
 							attribName: attr.Name,
 						}
 					}
-					node.def.Attr[attr.Name] = &AttrValue{
-						Value: &AttrValue_Shape{
+					node.def.Attr[attr.Name] = &pb.AttrValue{
+						Value: &pb.AttrValue_Shape{
 							Shape: s,
 						},
 					}
 				case "list(type)", "list(int)", "list(shape)", "list(float)":
-					lv, ok := v.(*AttrValue_ListValue)
+					lv, ok := v.(*pb.AttrValue_ListValue)
 					if !ok {
 						return nil, &ErrInvalidAttrValue{
 							operation:  opName,
 							attribName: attr.Name,
 						}
 					}
-					node.def.Attr[attr.Name] = &AttrValue{
-						Value: &AttrValue_List{
+					node.def.Attr[attr.Name] = &pb.AttrValue{
+						Value: &pb.AttrValue_List{
 							List: lv,
 						},
 					}
@@ -322,16 +324,16 @@ func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, 
 	}
 	gr.variables[name] = ts
 
-	shape := new(TensorShapeProto)
+	shape := new(pb.TensorShapeProto)
 	if ts.NumDims() == 0 {
 		dims = [][]int64{{1}}
 	} else {
 		dims = ts.Shape()
 	}
 
-	shape.Dim = make([]*TensorShapeProto_Dim, len(dims))
+	shape.Dim = make([]*pb.TensorShapeProto_Dim, len(dims))
 	for i, dim := range dims {
-		shape.Dim[i] = &TensorShapeProto_Dim{
+		shape.Dim[i] = &pb.TensorShapeProto_Dim{
 			Size: dim[i],
 		}
 	}
@@ -390,7 +392,7 @@ func (gr *Graph) addInitializationGraphOp() {
 		i++
 	}
 
-	gr.def.Node = append(gr.def.Node, &NodeDef{
+	gr.def.Node = append(gr.def.Node, &pb.NodeDef{
 		Name:  "init",
 		Op:    "NoOp",
 		Input: inputs,
@@ -404,24 +406,24 @@ func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64, dimNa
 		outDataTypes: map[string]DataType{
 			name: dataType,
 		},
-		def: &NodeDef{
+		def: &pb.NodeDef{
 			Name: name,
 			Op:   "Placeholder",
-			Attr: make(map[string]*AttrValue),
+			Attr: make(map[string]*pb.AttrValue),
 		},
 	}
-	op.def.Attr["dtype"] = &AttrValue{
-		Value: &AttrValue_Type{
-			Type: dataType,
+	op.def.Attr["dtype"] = &pb.AttrValue{
+		Value: &pb.AttrValue_Type{
+			Type: pb.DataType(dataType),
 		},
 	}
 
-	shape := &TensorShapeProto{
-		Dim: make([]*TensorShapeProto_Dim, len(dims)),
+	shape := &pb.TensorShapeProto{
+		Dim: make([]*pb.TensorShapeProto_Dim, len(dims)),
 	}
 
 	for i, dim := range dims {
-		shape.Dim[i] = &TensorShapeProto_Dim{
+		shape.Dim[i] = &pb.TensorShapeProto_Dim{
 			Size: dim,
 		}
 
@@ -430,8 +432,8 @@ func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64, dimNa
 		}
 	}
 
-	op.def.Attr["shape"] = &AttrValue{
-		Value: &AttrValue_Shape{
+	op.def.Attr["shape"] = &pb.AttrValue{
+		Value: &pb.AttrValue_Shape{
 			Shape: shape,
 		},
 	}
@@ -521,7 +523,7 @@ func (e *ErrInputOutputDataTypeMismatch) Error() string {
 // parameters, this method can return an error in case of the matching is not
 // possible, for instance if two input paramters mas have the same data type
 // but one is int and the other float.
-func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *OpDef) (err error) {
+func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *pb.OpDef) (err error) {
 	// Associate the data type tags with the input data types
 	for i, arg := range op.InputArg {
 		if arg.TypeAttr != "" {
@@ -531,10 +533,11 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 		}
 	}
 	for _, arg := range op.OutputArg {
-		if arg.TypeAttr != "" && arg.Type != DtInvalid {
-			if inType, defined := attrs[arg.TypeAttr]; defined && inType.(DataType) != arg.Type {
+		argType := DataType(arg.Type)
+		if arg.TypeAttr != "" && argType != DtInvalid {
+			if inType, defined := attrs[arg.TypeAttr]; defined && inType.(DataType) != argType {
 				return &ErrInputOutputDataTypeMismatch{
-					outDt: arg.Type,
+					outDt: argType,
 					inDt:  inType.(DataType),
 				}
 			}
@@ -561,8 +564,9 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 	for i, arg := range op.OutputArg {
 		var outDt DataType
 
-		if arg.Type != DtInvalid {
-			outDt = arg.Type
+		argType := DataType(arg.Type)
+		if argType != DtInvalid {
+			outDt = argType
 		} else {
 			if arg.TypeAttr != "" {
 				if dT, definedDt := attrs[arg.TypeAttr]; definedDt {
@@ -591,7 +595,7 @@ func (gr *Graph) loadAvailableOps() (err error) {
 		return
 	}
 
-	ops := new(OpList)
+	ops := new(pb.OpList)
 	err = proto.UnmarshalText(string(opsStr), ops)
 	for _, op := range ops.Op {
 		gr.availableOps[strings.ToLower(op.Name)] = op

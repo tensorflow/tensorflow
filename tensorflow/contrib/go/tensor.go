@@ -9,6 +9,8 @@ import (
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
+
+	pb "github.com/tensorflow/tensorflow/tensorflow/contrib/go/proto"
 )
 
 // #include <stdlib.h>
@@ -28,6 +30,41 @@ const (
 	cBytesInt64     = 8
 	cBytesComplex64 = 8
 )
+
+type DataType pb.DataType
+
+// TensorInt Interface to be implemented by the tensors.
+type TensorInt interface {
+	Data() []byte
+	DataSize() int64
+	DataType() DataType
+	GetVal(d ...int) (val interface{}, err error)
+
+	Dim(n int) int
+	NumDims() int
+
+	AsBool() (res []bool, err error)
+	AsFloat32() (res []float32, err error)
+	AsFloat64() (res []float64, err error)
+	AsInt32() (res []int32, err error)
+	AsInt64() (res []int64, err error)
+	AsStr() (res [][]byte, err error)
+
+	String() string
+	SetCMemAsAlreadyRelease()
+}
+
+// Tensor Holds a multi-dimensional array of elements of a single data type.
+type Tensor struct {
+	pb.TensorProto
+
+	tensor      TF_Tensor
+	dimWeights  []int
+	memReleased bool
+}
+
+// TensorShape represents the shapre of a Tensor.
+type TensorShape [][]int64
 
 var (
 	// DtInvalid Invalid tensor DataType.
@@ -67,39 +104,6 @@ var (
 	// DtUint8 corresponds to TF_UINT8.
 	DtUint8 = DataType(TF_UINT8)
 )
-
-// TensorInt Interface to be implemented by the tensors.
-type TensorInt interface {
-	Data() []byte
-	DataSize() int64
-	DataType() DataType
-	GetVal(d ...int) (val interface{}, err error)
-
-	Dim(n int) int
-	NumDims() int
-
-	AsBool() (res []bool, err error)
-	AsFloat32() (res []float32, err error)
-	AsFloat64() (res []float64, err error)
-	AsInt32() (res []int32, err error)
-	AsInt64() (res []int64, err error)
-	AsStr() (res [][]byte, err error)
-
-	String() string
-	SetCMemAsAlreadyRelease()
-}
-
-// Tensor Holds a multi-dimensional array of elements of a single data type.
-type Tensor struct {
-	TensorProto
-
-	tensor      TF_Tensor
-	dimWeights  []int
-	memReleased bool
-}
-
-// TensorShape represents the shapre of a Tensor.
-type TensorShape [][]int64
 
 // NewTensorWithShape returns a new tensor with teh specified type, shape and data.
 // The supported  data types are:
@@ -243,7 +247,7 @@ func (t *Tensor) NumDims() int {
 func (t *Tensor) Shape() (shape TensorShape) {
 	if t.NumDims() == 0 {
 		// This is a scalar tensor
-		shape = [][]int64{{1}}
+		shape = [][]int64{}
 	} else {
 		shape = make([][]int64, t.NumDims())
 		for i := 0; i < t.NumDims(); i++ {
@@ -313,7 +317,7 @@ func (t *Tensor) AsStr() (res [][]byte, err error) {
 		res = append(res, resultBytes)
 	}
 	t.StringVal = res
-	t.Dtype = DtString
+	t.Dtype = pb.DataType(TF_TensorType(t.tensor))
 
 	return
 }
@@ -341,7 +345,7 @@ func (t *Tensor) AsFloat32() (res []float32, err error) {
 		res[i] = math.Float32frombits(binary.LittleEndian.Uint32(data[i*cBytesFloat32 : (i+1)*cBytesFloat32]))
 	}
 	t.FloatVal = res
-	t.Dtype = DtFloat
+	t.Dtype = pb.DataType(TF_TensorType(t.tensor))
 
 	return
 }
@@ -369,7 +373,7 @@ func (t *Tensor) AsFloat64() (res []float64, err error) {
 		res[i] = math.Float64frombits(binary.LittleEndian.Uint64(data[i*cBytesFloat64 : (i+1)*cBytesFloat64]))
 	}
 	t.DoubleVal = res
-	t.Dtype = DtDouble
+	t.Dtype = pb.DataType(TF_TensorType(t.tensor))
 
 	return
 }
@@ -412,7 +416,7 @@ func (t *Tensor) AsInt32() (res []int32, err error) {
 	}
 
 	t.IntVal = res
-	t.Dtype = DataType(TF_TensorType(t.tensor))
+	t.Dtype = pb.DataType(TF_TensorType(t.tensor))
 
 	return
 }
@@ -440,7 +444,7 @@ func (t *Tensor) AsInt64() (res []int64, err error) {
 		res[i] = int64(binary.LittleEndian.Uint64(data[i*cBytesInt64 : (i+1)*cBytesInt64]))
 	}
 	t.Int64Val = res
-	t.Dtype = DataType_DT_INT64
+	t.Dtype = pb.DataType(TF_TensorType(t.tensor))
 
 	return
 }
@@ -468,7 +472,7 @@ func (t *Tensor) AsBool() (res []bool, err error) {
 		res[i] = v == 1
 	}
 	t.BoolVal = res
-	t.Dtype = DataType_DT_BOOL
+	t.Dtype = pb.DataType(TF_TensorType(t.tensor))
 
 	return
 }
@@ -701,7 +705,7 @@ func getDataTypeFromReflect(refType reflect.Kind, dataSize int64) (dataType Data
 func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size int64) (*Tensor, error) {
 	var dims *int64
 	var llDims []C.longlong
-	var tensorShape *TensorShapeProto
+	var tensorShape *pb.TensorShapeProto
 
 	// Move the data to C allocated memory
 	shapes := 0
@@ -709,12 +713,12 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 		shapes += len(v)
 	}
 	if len(shape) != 0 {
-		tensorShape = &TensorShapeProto{
-			Dim: make([]*TensorShapeProto_Dim, len(shape)),
+		tensorShape = &pb.TensorShapeProto{
+			Dim: make([]*pb.TensorShapeProto_Dim, len(shape)),
 		}
 		llDims = make([]C.longlong, shapes)
 		for i, v := range shape {
-			tensorShape.Dim[i] = &TensorShapeProto_Dim{
+			tensorShape.Dim[i] = &pb.TensorShapeProto_Dim{
 				Size: v[0],
 			}
 
@@ -723,13 +727,8 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 			}
 		}
 	} else {
-		tensorShape = &TensorShapeProto{
-			Dim: []*TensorShapeProto_Dim{
-				{
-					Size: 1,
-				},
-			},
-		}
+		// This is a scalar
+		tensorShape = &pb.TensorShapeProto{}
 		llDims = []C.longlong{
 			C.longlong(1),
 		}
@@ -748,7 +747,7 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 	// Release the C allocated memory when the instance is destroyed
 	runtime.SetFinalizer(t, (*Tensor).FreeAllocMem)
 
-	t.Dtype = dataType
+	t.Dtype = pb.DataType(TF_TensorType(t.tensor))
 	t.TensorShape = tensorShape
 
 	return t, nil
