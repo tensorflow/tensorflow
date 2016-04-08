@@ -78,13 +78,7 @@ module TF.Backend {
       backend.histogram("histo1", "run1").then((histos) => {
         var histo = histos[0];
         assertIsDatum(histo);
-        assert.isNumber(histo.min);
-        assert.isNumber(histo.max);
-        assert.isNumber(histo.sum);
-        assert.isNumber(histo.sumSquares);
-        assert.isNumber(histo.nItems);
-        assert.instanceOf(histo.bucketRightEdges, Array);
-        assert.instanceOf(histo.bucketRightEdges, Array);
+        assert.instanceOf(histo.bins, Array);
         done();
       });
     });
@@ -155,5 +149,72 @@ module TF.Backend {
       assert.deepEqual(getRuns(empty2), ["run1", "run2"]);
       assert.deepEqual(getTags(empty2), []);
     });
+  });
+
+  describe("Verify that the histogram format conversion works.", function() {
+
+    function assertHistogramEquality(h1, h2) {
+      h1.forEach(function(b1, i) {
+        var b2 = h2[i];
+        assert.closeTo(b1.x, b2.x, 1e-10);
+        assert.closeTo(b1.dx, b2.dx, 1e-10);
+        assert.closeTo(b1.y, b2.y, 1e-10);
+      });
+    }
+
+    it("Throws and error if the inputs are of different lengths", function() {
+      assert.throws(function() {
+        convertBins({bucketRightEdges:[0], bucketCounts:[1, 2], min: 1, max: 2});
+      }, "Edges and counts are of different lengths.")
+    });
+
+    it("Handles data with no bins", function() {
+      assert.deepEqual(convertBins({bucketRightEdges: [], bucketCounts: [], min: 0, max: 0}), []);
+    });
+
+    it("Handles data with one bin", function() {
+      var counts = [1];
+      var rightEdges = [1.21e-12];
+      var histogram = [
+        { x: 1.1e-12, dx: 1.21e-12 - 1.1e-12, y: 1 }
+      ];
+      var newHistogram = convertBins({bucketRightEdges: rightEdges, bucketCounts: counts, min: 1.1e-12, max: 1.21e-12});
+      assertHistogramEquality(newHistogram, histogram);
+    });
+
+    it("Handles data with two bins.", function() {
+      var counts = [1, 2];
+      var rightEdges = [1.1e-12, 1.21e-12];
+      var histogram = [
+        { x: 1.0e-12, dx: 1.1e-12 - 1.0e-12, y: 1 },
+        { x: 1.1e-12, dx: 1.21e-12 - 1.1e-12, y: 2 }
+      ];
+      var newHistogram = convertBins({bucketRightEdges: rightEdges, bucketCounts: counts, min: 1.0e-12, max: 1.21e-12});
+      assertHistogramEquality(newHistogram, histogram);
+    });
+
+    it("Handles a domain that crosses zero, but doesn't include zero as an edge.", function() {
+      var counts = [1, 2];
+      var rightEdges = [-1.0e-12, 1.0e-12];
+      var histogram = [
+        { x: -1.1e-12, dx: 1.1e-12 - 1.0e-12, y: 1 },
+        { x: -1.0e-12, dx: 2.0e-12, y: 2 }
+      ];
+      var newHistogram = convertBins({bucketRightEdges: rightEdges, bucketCounts: counts, min: -1.1e-12, max: 1.0e-12});
+      assertHistogramEquality(newHistogram, histogram);
+    });
+
+    it("Handles a right-most right edge that extends to very large number.", function() {
+      var counts = [1, 2, 3];
+      var rightEdges = [0, 1.0e-12, 1.0e14];
+      var histogram = [
+        { x: -1.0e-12, dx: 1.0e-12, y: 1 },
+        { x: 0, dx: 1.0e-12, y: 2 },
+        { x: 1.0e-12, dx: 1.1e-12 - 1.0e-12, y: 3 }
+      ];
+      var newHistogram = convertBins({bucketRightEdges: rightEdges, bucketCounts: counts, min: -1.0e-12, max: 1.1e-12});
+      assertHistogramEquality(newHistogram, histogram);
+    });
+
   });
 }
