@@ -339,6 +339,23 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "example_parsing_ops_test",
+    size = "small",
+    deps = [
+        ":example_parsing_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "gather_op_test",
     size = "small",
