@@ -451,6 +451,12 @@ def cc_header_only_library(name, deps=[], **kwargs):
                     hdrs=[":" + name + "_gather"],
                     **kwargs)
 
+def tf_custom_op_library_additional_deps():
+  return [
+      "//google/protobuf",
+      "//third_party/eigen3",
+      "//tensorflow/core:framework_headers_lib",
+  ]
 
 # Helper to build a dynamic library (.so) from the sources containing
 # implementations of custom ops and kernels.
@@ -459,10 +465,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
       "//tensorflow/core:stream_executor_headers_lib",
       "//third_party/gpus/cuda:cudart_static",
   ]
-  deps = deps + [
-      "//third_party/eigen3",
-      "//tensorflow/core:framework_headers_lib",
-  ]
+  deps = deps + tf_custom_op_library_additional_deps()
   if gpu_srcs:
     basename = name.split(".")[0]
     cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
