@@ -44,6 +44,7 @@ void TensorShape::CheckDimsAtLeast(int NDIMS) const {
 
 bool TensorShape::IsValid(const TensorShapeProto& proto) {
   int64 num_elements = 1;
+  if (proto.dim().size() > MaxDimensions()) return false;
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) return false;
     num_elements *= d.size();
@@ -54,6 +55,10 @@ bool TensorShape::IsValid(const TensorShapeProto& proto) {
 
 Status TensorShape::IsValidShape(const TensorShapeProto& proto) {
   int64 num_elements = 1;
+  if (proto.dim().size() > MaxDimensions()) {
+    return errors::InvalidArgument("Shape ", DebugString(proto),
+                                   " has too many dimensions");
+  }
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
       return errors::InvalidArgument("Shape ", DebugString(proto),
@@ -214,6 +219,7 @@ void TensorShape::InsertDim(int d, int64 size) {
   CHECK_GE(d, 0);
   CHECK_LE(d, dims());
   CHECK_GE(size, 0);
+  CHECK_LT(dims(), MaxDimensions());
   gtl::InlinedVector<int64, 8> vals;
   AppendTo(*this, &vals);
   vals.insert(vals.begin() + d, size);
@@ -341,6 +347,9 @@ bool TensorShapeUtils::StartsWith(const TensorShape& shape,
 template <typename T>
 static inline Status MakeShapeHelper(const T* dims, int n, TensorShape* out) {
   *out = TensorShape();
+  if (n > TensorShape::MaxDimensions()) {
+    return errors::InvalidArgument("Too many dimensions");
+  }
   for (int i = 0; i < n; ++i) {
     const T dim = internal::SubtleMustCopy(dims[i]);
     if (dim >= 0) {

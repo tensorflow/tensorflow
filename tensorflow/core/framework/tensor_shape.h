@@ -280,6 +280,7 @@ template <int NDIMS>
 Eigen::DSizes<Eigen::DenseIndex, NDIMS> TensorShape::AsEigenDSizesWithPadding()
     const {
   CheckDimsAtLeast(NDIMS);
+  static_assert(NDIMS <= TensorShape::MaxDimensions(), "Too many dimensions");
   Eigen::DSizes<Eigen::DenseIndex, NDIMS> dsizes;
   for (int d = 0; d < dims(); d++) {
     dsizes[d] = dim_size(d);
