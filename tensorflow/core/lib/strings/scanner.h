@@ -102,6 +102,7 @@ class Scanner {
   // returned will start at the position at the time this was called.
   Scanner& RestartCapture() {
     capture_start_ = cur_.data();
+    capture_end_ = nullptr;
     return *this;
   }
 

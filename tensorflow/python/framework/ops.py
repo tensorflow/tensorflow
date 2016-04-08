@@ -38,8 +38,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
-from tensorflow.python.util import compat
 from tensorflow.python.platform import logging
+from tensorflow.python.util import compat
 
 
 def _convert_stack(stack):
@@ -954,6 +954,32 @@ class SparseTensor(object):
   def __str__(self):
     return "SparseTensor(indices=%s, values=%s, shape=%s)" % (
         self._indices, self._values, self._shape)
+
+  def eval(self, feed_dict=None, session=None):
+    """Evaluates this sparse tensor in a `Session`.
+
+    Calling this method will execute all preceding operations that
+    produce the inputs needed for the operation that produces this
+    tensor.
+
+    *N.B.* Before invoking `SparseTensor.eval()`, its graph must have been
+    launched in a session, and either a default session must be
+    available, or `session` must be specified explicitly.
+
+    Args:
+      feed_dict: A dictionary that maps `Tensor` objects to feed values.
+        See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
+        description of the valid feed values.
+      session: (Optional.) The `Session` to be used to evaluate this sparse
+        tensor. If none, the default session will be used.
+
+    Returns:
+      A `SparseTensorValue` object.
+
+    """
+    indices, values, shape = _eval_using_default_session(
+        [self.indices, self.values, self.shape], feed_dict, self.graph, session)
+    return SparseTensorValue(indices, values, shape)
 
 
 SparseTensorValue = collections.namedtuple("SparseTensorValue",
@@ -2025,6 +2051,9 @@ class Graph(object):
       grad_function_name: If not None, this specifies the name of a function
                           that shall be used as the gradient function of
                           the function being added.
+
+    Raises:
+      ValueError: if another function is defined with the same name.
     """
     previous_def = self._functions.get(function_def.signature.name, None)
     if previous_def:

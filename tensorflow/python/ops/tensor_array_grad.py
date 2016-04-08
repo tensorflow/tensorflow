@@ -211,4 +211,3 @@ def _TensorArraySplitGrad(op, flow):
   grad = g.concat()
   # handle, value, lengths, flow_in
   return [None, grad, None, flow]
-# pylint: enable=protected-access

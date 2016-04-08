@@ -57,19 +57,25 @@ def get_data_files_path():
 
   Returns:
     The directory where files specified in data attribute of py_test
-    and py_binary are store.
+    and py_binary are stored.
   """
   return os.path.dirname(inspect.getfile(sys._getframe(1)))
 
 
-def get_resource_path(subdir, path):
-  """Get the path to the specified resource relative to tensorflow/<subdir>/.
+def get_path_to_datafile(path):
+  """Get the path to the specified file in the data dependencies.
+
+  The path is relative to tensorflow/
 
   Args:
-    subdir: a string subdirectory relative to tensorflow/
-    path: a string resource path relative to tensorflow/<subdir>
+    path: a string resource path relative to tensorflow/
 
   Returns:
-    The path to that resource.
+    The path to the specified file present in the data attribute of py_test
+    or py_binary.
+
+  Raises:
+    IOError: If the path is not found, or the resource can't be opened.
   """
-  return os.path.join(os.path.abspath(subdir), path)
+  data_files_path = os.path.dirname(inspect.getfile(sys._getframe(1)))
+  return os.path.join(data_files_path, path)

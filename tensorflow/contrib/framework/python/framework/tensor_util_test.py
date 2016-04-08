@@ -282,6 +282,182 @@ class AssertPostiveTest(tf.test.TestCase):
       out.eval()
 
 
+class AssertRankTest(tf.test.TestCase):
+
+  def test_rank_zero_tensor_raises_if_rank_too_small_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant(1, name="my_tensor")
+      desired_rank = 1
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+        with tf.control_dependencies(
+            [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+          tf.identity(tensor).eval()
+
+  def test_rank_zero_tensor_raises_if_rank_too_small_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 1
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+        with self.assertRaisesOpError("my_tensor.*rank"):
+          tf.identity(tensor).eval(feed_dict={tensor: 0})
+
+  def test_rank_zero_tensor_doesnt_raise_if_rank_just_right_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant(1, name="my_tensor")
+      desired_rank = 0
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+        tf.identity(tensor).eval()
+
+  def test_rank_zero_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 0
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+        tf.identity(tensor).eval(feed_dict={tensor: 0})
+
+  def test_rank_one_tensor_raises_if_rank_too_large_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      desired_rank = 0
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+        with tf.control_dependencies(
+            [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+          tf.identity(tensor).eval()
+
+  def test_rank_one_tensor_raises_if_rank_too_large_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 0
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+        with self.assertRaisesOpError("my_tensor.*rank"):
+          tf.identity(tensor).eval(feed_dict={tensor: [1, 2]})
+
+  def test_rank_one_tensor_doesnt_raise_if_rank_just_right_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      desired_rank = 1
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+        tf.identity(tensor).eval()
+
+  def test_rank_one_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 1
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+        tf.identity(tensor).eval(feed_dict={tensor: [1, 2]})
+
+  def test_rank_one_tensor_raises_if_rank_too_small_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      desired_rank = 2
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+        with tf.control_dependencies(
+            [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+          tf.identity(tensor).eval()
+
+  def test_rank_one_tensor_raises_if_rank_too_small_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 2
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank(tensor, desired_rank)]):
+        with self.assertRaisesOpError("my_tensor.*rank"):
+          tf.identity(tensor).eval(feed_dict={tensor: [1, 2]})
+
+
+class AssertRankAtLeastTest(tf.test.TestCase):
+
+  def test_rank_zero_tensor_raises_if_rank_too_small_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant(1, name="my_tensor")
+      desired_rank = 1
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+        with tf.control_dependencies(
+            [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+          tf.identity(tensor).eval()
+
+  def test_rank_zero_tensor_raises_if_rank_too_small_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 1
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+        with self.assertRaisesOpError("my_tensor.*rank"):
+          tf.identity(tensor).eval(feed_dict={tensor: 0})
+
+  def test_rank_zero_tensor_doesnt_raise_if_rank_just_right_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant(1, name="my_tensor")
+      desired_rank = 0
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+        tf.identity(tensor).eval()
+
+  def test_rank_zero_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 0
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+        tf.identity(tensor).eval(feed_dict={tensor: 0})
+
+  def test_rank_one_ten_doesnt_raise_raise_if_rank_too_large_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      desired_rank = 0
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+        tf.identity(tensor).eval()
+
+  def test_rank_one_ten_doesnt_raise_if_rank_too_large_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 0
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+        tf.identity(tensor).eval(feed_dict={tensor: [1, 2]})
+
+  def test_rank_one_tensor_doesnt_raise_if_rank_just_right_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      desired_rank = 1
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+        tf.identity(tensor).eval()
+
+  def test_rank_one_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 1
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+        tf.identity(tensor).eval(feed_dict={tensor: [1, 2]})
+
+  def test_rank_one_tensor_raises_if_rank_too_small_static_rank(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      desired_rank = 2
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+        with tf.control_dependencies(
+            [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+          tf.identity(tensor).eval()
+
+  def test_rank_one_tensor_raises_if_rank_too_small_dynamic_rank(self):
+    with self.test_session():
+      tensor = tf.placeholder(tf.float32, name="my_tensor")
+      desired_rank = 2
+      with tf.control_dependencies(
+          [tf.contrib.framework.assert_rank_at_least(tensor, desired_rank)]):
+        with self.assertRaisesOpError("my_tensor.*rank"):
+          tf.identity(tensor).eval(feed_dict={tensor: [1, 2]})
+
+
 class AssertNonNegativeTest(tf.test.TestCase):
 
   def test_raises_when_negative(self):

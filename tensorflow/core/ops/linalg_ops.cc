@@ -171,32 +171,40 @@ REGISTER_OP("MatrixSolve")
     .Input("matrix: T")
     .Input("rhs: T")
     .Output("output: T")
+    .Attr("adjoint: bool = False")
     .Attr("T: {float, double}")
     .Doc(R"doc(
 Solves a system of linear equations. Checks for invertibility.
 
 matrix: Shape is `[M, M]`.
 rhs: Shape is `[M, K]`.
-output: Shape is `[M, K]` containing the tensor that solves
-matrix * output = rhs.
+output: Shape is `[M, K]`. If `adjoint` is `False` then `output` that solves
+`matrix` * `output` = `rhs`. If `adjoint` is `True` then `output` that solves
+`adjoint(matrix)` * `output` = `rhs`.
+adjoint: Boolean indicating whether to solve with `matrix` or its adjoint.
 )doc");
 
 REGISTER_OP("BatchMatrixSolve")
     .Input("matrix: T")
     .Input("rhs: T")
     .Output("output: T")
+    .Attr("adjoint: bool = False")
     .Attr("T: {float, double}")
     .Doc(R"doc(
 Solves systems of linear equations. Checks for invertibility.
 
 Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. Rhs is a tensor of shape
-`[..., M, K]`. The output is a tensor shape `[..., M, K]` where each output
-matrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :].
+`[..., M, K]`. The output is a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output
+matrix satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `True` then each output
+matrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
 
 matrix: Shape is `[..., M, M]`.
 rhs: Shape is `[..., M, K]`.
 output: Shape is `[..., M, K]`.
+adjoint: Boolean indicating whether to solve with `matrix` or its (block-wise)
+         adjoint.
 )doc");
 
 REGISTER_OP("MatrixTriangularSolve")
@@ -204,25 +212,30 @@ REGISTER_OP("MatrixTriangularSolve")
     .Input("rhs: T")
     .Output("output: T")
     .Attr("lower: bool = True")
+    .Attr("adjoint: bool = False")
     .Attr("T: {float, double}")
     .Doc(R"doc(
 Solves a system of linear equations with an upper or lower triangular matrix by
 backsubstitution.
 
 `matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly
-upper triangular part of `matrix` is ignored. If `lower` is False then the
-strictly lower triangular part of `matrix` is ignored. `rhs` is a matrix of
-shape [M, K]`.
+upper triangular part of `matrix` is assumed to be zero and not accessed.
+If `lower` is False then the strictly lower triangular part of `matrix` is
+assumed to be zero and not accessed.
+`rhs` is a matrix of shape [M, K]`.
 
-The output is a matrix of shape `[M, K]`. If `lower` is `True` then the output
-satisfies \\(\sum_{k=0}^{i}\\) matrix[i, k] * output[k, j] = rhs[i, j].
-If `lower` is false then output satisfies
-\\(\sum_{k=i}^{K-1}\\) matrix[i, k] * output[k, j] = rhs[i, j].
+The output is a matrix of shape `[M, K]`. If `adjoint` is `False` the output
+satisfies the matrix equation `matrix` * `output` = `rhs`.
+If `adjoint` is `False` then `output` satisfies the matrix equation
+`matrix` * `output` = `rhs`.
+If `adjoint` is `True` then `output` satisfies the matrix equation
+`adjoint(matrix)` * `output` = `rhs`.
 
 matrix: Shape is `[M, M]`.
 rhs: Shape is `[M, K]`.
 output: Shape is `[M, K]`.
-lower: Boolean indicating whether matrix is lower or upper triangular.
+lower: Boolean indicating whether `matrix` is lower or upper triangular
+adjoint: Boolean indicating whether to solve with `matrix` or its adjoint.
 )doc");
 
 REGISTER_OP("BatchMatrixTriangularSolve")
@@ -230,6 +243,7 @@ REGISTER_OP("BatchMatrixTriangularSolve")
     .Input("rhs: T")
     .Output("output: T")
     .Attr("lower: bool = True")
+    .Attr("adjoint: bool = False")
     .Attr("T: {float, double}")
     .Doc(R"doc(
 Solves systems of linear equations with upper or lower triangular matrices by
@@ -237,20 +251,25 @@ backsubstitution.
 
 `matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
 square matrices. If `lower` is `True` then the strictly upper triangular part
-of each inner-most matrix is ignored. If `lower` is False then the strictly
-lower triangular part of each inner-most matrix is ignored. `rhs` is a tensor
-of shape [..., M, K]`.
+of each inner-most matrix is assumed to be zero and not accessed.
+If `lower` is False then the strictly lower triangular part of each inner-most
+matrix is assumed to be zero and not accessed.
+`rhs` is a tensor of shape [..., M, K]`.
 
-The output is a tensor of shape `[..., M, K]`. If `lower` is `True` then the
-output satisfies
-\\(\sum_{k=0}^{i}\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].
-If `lower` is false then the strictly then the output satisfies
-\\(sum_{k=i}^{K-1}\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].
+The output is a tensor of shape `[..., M, K]`. If `adjoint` is `True` then the
+innermost matrices in output` satisfy matrix equations
+`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `False` then the strictly then the  innermost matrices in
+`output` satisfy matrix equations
+`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`.
 
 matrix: Shape is `[..., M, M]`.
 rhs: Shape is `[..., M, K]`.
 output: Shape is `[..., M, K]`.
-lower: Boolean indicating whether matrix is lower or upper triangular.
+lower: Boolean indicating whether the innermost matrices in `matrix` are
+       lower or upper triangular.
+adjoint: Boolean indicating whether to solve with `matrix` or its (block-wise)
+         adjoint.
 )doc");
 
 REGISTER_OP("MatrixSolveLs")

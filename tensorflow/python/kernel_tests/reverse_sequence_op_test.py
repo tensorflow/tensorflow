@@ -114,6 +114,12 @@ class ReverseSequenceTest(tf.test.TestCase):
     self.assertLess(err, 1e-8)
 
   def testShapeFunctionEdgeCases(self):
+    t = tf.reverse_sequence(
+        tf.placeholder(tf.float32, shape=None),
+        seq_lengths=tf.placeholder(tf.int64, shape=(32,)),
+        batch_dim=0, seq_dim=1)
+    self.assertIs(t.get_shape().ndims, None)
+
     # Batch size mismatched between input and seq_lengths.
     with self.assertRaises(ValueError):
       tf.reverse_sequence(

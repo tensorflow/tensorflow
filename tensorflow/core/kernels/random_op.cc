@@ -315,6 +315,7 @@ class RandomUniformIntOp : public OpKernel {
                               .TypeConstraint<IntType>("Tout"), \
                           RandomUniformIntOp<CPUDevice, IntType>);
 
+REGISTER(Eigen::half);
 REGISTER(float);
 REGISTER(double);
 REGISTER_INT(int32);
@@ -363,6 +364,7 @@ REGISTER_INT(int64);
                               .TypeConstraint<IntType>("Tout"), \
                           RandomUniformIntOp<GPUDevice, IntType>);
 
+REGISTER(Eigen::half);
 REGISTER(float);
 REGISTER(double);
 REGISTER_INT(int32);

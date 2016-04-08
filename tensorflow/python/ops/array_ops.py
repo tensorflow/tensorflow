@@ -319,12 +319,16 @@ def concat(concat_dim, values, name="concat"):
     values = [values]
   # TODO(mrry): Change to return values?
   if len(values) == 1:  # Degenerate case of one tensor.
-    # Make a throwaway call to make_tensor_proto to make sure
-    # that concat_dim is of the correct type.
-    # TODO(keveman): Extract the type and shape checks out of make_tensor_proto
-    # in to a standalone function.
-    tensor_util.make_tensor_proto(concat_dim, dtype=dtypes.int32, shape=[])
-    return identity(values[0], name=name)
+    # Make a throwaway call to convert_to_tensor to make sure
+    # that concat_dim is of the correct type, and make sure that
+    # the returned tensor is a scalar.
+    # TODO(keveman): Implement a standalone type and shape checker.
+    with ops.name_scope(name) as scope:
+      ops.convert_to_tensor(concat_dim,
+                            name="concat_dim",
+                            dtype=dtypes.int32).get_shape(
+                            ).assert_is_compatible_with(tensor_shape.scalar())
+      return identity(values[0], name=scope)
   return gen_array_ops._concat(concat_dim=concat_dim,
                                values=values,
                                name=name)
@@ -1250,14 +1254,17 @@ def _ReverseSequenceShape(op):
   """
   input_shape = op.inputs[0].get_shape()
   seq_lens_shape = op.inputs[1].get_shape().with_rank(1)
+  if input_shape.ndims is None:
+    return [None]
   seq_dim = op.get_attr("seq_dim")
   batch_dim = op.get_attr("batch_dim")
-  if batch_dim >= input_shape.ndims:
-    raise ValueError("batch_dim must be < input.dims() (%d vs %d)" %
-                     (batch_dim, input_shape.ndims))
-  if seq_dim >= input_shape.ndims:
-    raise ValueError("seq_dim must be < input.dims() (%d vs %d)" %
-                     (seq_dim, input_shape.ndims))
+  if input_shape.ndims is not None:
+    if batch_dim >= input_shape.ndims:
+      raise ValueError("batch_dim must be < input.dims() (%d vs %d)" %
+                       (batch_dim, input_shape.ndims))
+    if seq_dim >= input_shape.ndims:
+      raise ValueError("seq_dim must be < input.dims() (%d vs %d)" %
+                       (seq_dim, input_shape.ndims))
   batch_size = input_shape[batch_dim].merge_with(seq_lens_shape[0])
   input_shape = tensor_shape.TensorShape([
       value if ix != batch_dim else batch_size

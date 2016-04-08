@@ -18,6 +18,7 @@ limitations under the License.
 
 #if defined(PLATFORM_POSIX_ANDROID)
 #include <android/log.h>
+#include <iostream>
 #include <sstream>
 #endif
 
@@ -55,8 +56,13 @@ void LogMessage::GenerateLogMessage() {
   }
 
   std::stringstream ss;
-  ss << fname_ << ":" << line_ << " " << str();
+  const char* const partial_name = strrchr(fname_, '/');
+  ss << (partial_name != nullptr ? partial_name + 1 : fname_) << ":" << line_
+     << " " << str();
   __android_log_write(android_log_level, "native", ss.str().c_str());
+
+  // Also log to stderr (for standalone Android apps).
+  std::cerr << "native : " << ss.str() << std::endl;
 
   // Android logging at level FATAL does not terminate execution, so abort()
   // is still required to stop the program.

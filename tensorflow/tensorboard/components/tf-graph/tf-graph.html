@@ -43,7 +43,6 @@ paper-button {
           highlighted-node="[[_getVisible(highlightedNode)]]"
           selected-node="[[selectedNode]]"
           color-by="[[colorBy]]"
-          name="[[graphName]]"
           progress="[[progress]]"
     ></tf-graph-scene>
   </div>
@@ -63,6 +62,10 @@ Polymer({
       observer: '_graphChanged'
     },
     basicGraph: Object,
+    stats: {
+      type: Object,
+      observer: '_statsChanged'
+    },
     hierarchyParams: Object,
     progress: {
       type: Object,
@@ -101,6 +104,14 @@ Polymer({
   observers: [
     '_buildRenderHierarchy(graphHierarchy)'
   ],
+  _statsChanged: function(stats) {
+    if (stats != null) {
+      tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats);
+      tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
+      // Recompute the rendering information.
+      this._buildRenderHierarchy(this.graphHierarchy);
+    }
+  },
   _buildRenderHierarchy: function(graphHierarchy) {
     tf.time('new tf.graph.render.Hierarchy', function() {
       if (graphHierarchy.root.type !== tf.graph.NodeType.META) {

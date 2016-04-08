@@ -79,6 +79,9 @@ class NodeBuilder {
               const OpRegistryInterface* op_registry = OpRegistry::Global());
   NodeBuilder(StringPiece name, const OpDef* op_def);
 
+  // Create a NodeBuilder from an existing NodeDefBuilder.
+  NodeBuilder(const NodeDefBuilder& def_builder);
+
   // You must call one Input() function per input_arg in the Op,
   // *and in the same order as the input_args appear in the OpDef.*
 

@@ -108,11 +108,13 @@ char SafeFirstChar(StringPiece str) {
   if (str.empty()) return '\0';
   return str[0];
 }
+void SkipSpaces(StringPiece* str) {
+  while (isspace(SafeFirstChar(*str))) str->remove_prefix(1);
+}
 }  // namespace
 
 bool safe_strto64(StringPiece str, int64* value) {
-  // Skip leading space.
-  while (isspace(SafeFirstChar(str))) str.remove_prefix(1);
+  SkipSpaces(&str);
 
   int64 vlimit = kint64max;
   int sign = 1;
@@ -145,9 +147,28 @@ bool safe_strto64(StringPiece str, int64* value) {
     } while (isdigit(SafeFirstChar(str)));
   }
 
-  // Skip trailing space.
-  while (isspace(SafeFirstChar(str))) str.remove_prefix(1);
+  SkipSpaces(&str);
+  if (!str.empty()) return false;
 
+  *value = result;
+  return true;
+}
+
+bool safe_strtou64(StringPiece str, uint64* value) {
+  SkipSpaces(&str);
+  if (!isdigit(SafeFirstChar(str))) return false;
+
+  int64 result = 0;
+  do {
+    int digit = SafeFirstChar(str) - '0';
+    if ((kuint64max - digit) / 10 < result) {
+      return false;
+    }
+    result = result * 10 + digit;
+    str.remove_prefix(1);
+  } while (isdigit(SafeFirstChar(str)));
+
+  SkipSpaces(&str);
   if (!str.empty()) return false;
 
   *value = result;
@@ -155,8 +176,7 @@ bool safe_strto64(StringPiece str, int64* value) {
 }
 
 bool safe_strto32(StringPiece str, int32* value) {
-  // Skip leading space.
-  while (isspace(SafeFirstChar(str))) str.remove_prefix(1);
+  SkipSpaces(&str);
 
   int64 vmax = kint32max;
   int sign = 1;
@@ -177,8 +197,7 @@ bool safe_strto32(StringPiece str, int32* value) {
     str.remove_prefix(1);
   } while (isdigit(SafeFirstChar(str)));
 
-  // Skip trailing space.
-  while (isspace(SafeFirstChar(str))) str.remove_prefix(1);
+  SkipSpaces(&str);
 
   if (!str.empty()) return false;
 
@@ -186,9 +205,40 @@ bool safe_strto32(StringPiece str, int32* value) {
   return true;
 }
 
+bool safe_strtou32(StringPiece str, uint32* value) {
+  SkipSpaces(&str);
+  if (!isdigit(SafeFirstChar(str))) return false;
+
+  int64 result = 0;
+  do {
+    result = result * 10 + SafeFirstChar(str) - '0';
+    if (result > kuint32max) {
+      return false;
+    }
+    str.remove_prefix(1);
+  } while (isdigit(SafeFirstChar(str)));
+
+  SkipSpaces(&str);
+  if (!str.empty()) return false;
+
+  *value = result;
+  return true;
+}
+
 bool safe_strtof(const char* str, float* value) {
   char* endptr;
   *value = strtof(str, &endptr);
+  while (isspace(*endptr)) ++endptr;
+  // Ignore range errors from strtod/strtof.
+  // The values it returns on underflow and
+  // overflow are the right fallback in a
+  // robust setting.
+  return *str != '\0' && *endptr == '\0';
+}
+
+bool safe_strtod(const char* str, double* value) {
+  char* endptr;
+  *value = strtod(str, &endptr);
   while (isspace(*endptr)) ++endptr;
   // Ignore range errors from strtod/strtof.
   // The values it returns on underflow and

@@ -32,13 +32,14 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
-void ConcatGPU(const GPUDevice& d,
-               const std::vector<
-                   std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output) {
+void ConcatGPU32(
+    const GPUDevice& d,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output) {
   Eigen::array<int32, 2> offset{0, 0};
   for (int i = 0; i < inputs.size(); ++i) {
-    Eigen::array<int32_t, 2> size;
+    Eigen::array<int32, 2> size;
     size[0] = inputs[i]->dimension(0);
     size[1] = inputs[i]->dimension(1);
     To32Bit(*output).slice(offset, size).device(d) = To32Bit(*inputs[i]);
@@ -46,16 +47,44 @@ void ConcatGPU(const GPUDevice& d,
   }
 }
 
-#define REGISTER_GPU(T)                                                       \
-  template void ConcatGPU<T>(                                                 \
+template <typename T>
+void ConcatGPU64(
+    const GPUDevice& d,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output) {
+  Eigen::array<int64, 2> offset{0, 0};
+  for (int i = 0; i < inputs.size(); ++i) {
+    Eigen::array<int64, 2> size;
+    size[0] = inputs[i]->dimension(0);
+    size[1] = inputs[i]->dimension(1);
+    output->slice(offset, size).device(d) = *inputs[i];
+    offset[1] += size[1];
+  }
+}
+
+#define REGISTER_GPU32(T)                                                     \
+  template void ConcatGPU32<T>(                                               \
       const GPUDevice& d,                                                     \
       const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& \
           inputs,                                                             \
       typename TTypes<T, 2>::Matrix* output);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-REGISTER_GPU(bfloat16);
-#undef REGISTER_GPU
+#define REGISTER_GPU64(T)                                                     \
+  template void ConcatGPU64<T>(                                               \
+      const GPUDevice& d,                                                     \
+      const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& \
+          inputs,                                                             \
+      typename TTypes<T, 2>::Matrix* output);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU32);
+REGISTER_GPU32(bfloat16);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU64);
+REGISTER_GPU64(bfloat16);
+
+#undef REGISTER_GPU32
+#undef REGISTER_GPU64
 
 }  // end namespace tensorflow
 

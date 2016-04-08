@@ -44,11 +44,21 @@ module TF.Backend {
   export interface Histogram {
     min: number;
     max: number;
-    nItems: number;
-    sum: number;
-    sumSquares: number;
+    nItems?: number;
+    sum?: number;
+    sumSquares?: number;
     bucketRightEdges: number[];
     bucketCounts: number[];
+  }
+
+  export interface HistogramBin {
+    x: number,
+    dx: number,
+    y: number
+  }
+  export type HistogramSeriesDatum = HistogramSeries & Datum;
+  export interface HistogramSeries {
+    bins: HistogramBin[]
   }
 
   export type ImageDatum = Datum & Image
@@ -169,11 +179,20 @@ module TF.Backend {
     /**
      * Return a promise containing HistogramDatums for given run and tag.
      */
-    public histogram(tag: string, run: string): Promise<Array<HistogramDatum>> {
+    public histogram(tag: string, run: string): Promise<Array<HistogramSeriesDatum>> {
       let p: Promise<TupleData<HistogramTuple>[]>;
       let url = this.router.histograms(tag, run);
       p = this.requestManager.request(url);
-      return p.then(map(detupler(createHistogram)));
+      return p.then(map(detupler(createHistogram)))
+              .then(function(histos) {
+                      return histos.map(function(histo, i) {
+                        return {
+                          wall_time: histo.wall_time,
+                          step: histo.step,
+                          bins: convertBins(histo)
+                        };
+                      });
+                    });
     }
 
     /**
@@ -276,6 +295,43 @@ module TF.Backend {
       bucketCounts: x[6],
     };
   };
+
+  /**
+   * Takes histogram data as stored by tensorboard backend and converts it to
+   * the standard d3 histogram data format to make it more compatible and easier to
+   * visualize. When visualizing histograms, having the left edge and width makes
+   * things quite a bit easier.
+   *
+   * @param {histogram} Histogram - A histogram from tensorboard backend.
+   * @return {HistogramBin[]} - Each bin has an x (left edge), a dx (width), and a y (count).
+   *
+   * If given rightedges are inclusive, then these left edges (x) are exclusive.
+   */
+  export function convertBins (histogram: Histogram) {
+    if (histogram.bucketRightEdges.length !== histogram.bucketCounts.length) {
+      throw(new Error("Edges and counts are of different lengths."))
+    }
+
+    var previousRightEdge = histogram.min;
+    return histogram.bucketRightEdges.map(function(rightEdge: number, i: number) {
+
+      // Use the previous bin's rightEdge as the new leftEdge
+      var left = previousRightEdge;
+
+      // We need to clip the rightEdge because right-most edge can be
+      // infinite-sized
+      var right = Math.min(histogram.max, rightEdge);
+
+      // Store rightEdgeValue for next iteration
+      previousRightEdge = rightEdge;
+
+      return {
+        x: left,
+        dx: right - left,
+        y: histogram.bucketCounts[i]
+      };
+    });
+  }
 
   // The following interfaces (TupleData, HistogramTuple, CompressedHistogramTuple,
   // and ImageMetadata) describe how the data is sent over from the backend, and thus

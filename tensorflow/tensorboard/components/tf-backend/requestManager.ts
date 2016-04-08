@@ -26,22 +26,35 @@ module TF.Backend {
 
   export class RequestCancellationError extends Error {
     public name = "RequestCancellationError";
+  }
 
-    constructor(message?: string) {
-      super(message);
+  export class RequestNetworkError extends Error {
+    public name: string;
+    public req: XMLHttpRequest;
+    public url: string;
+
+    constructor(req: XMLHttpRequest, url) {
+      super();
+      this.message = `RequestNetworkError: ${req.status} at ${url}`;
+      this.name = "RequestNetworkError";
+      this.req = req;
+      this.url = url;
     }
   }
 
   export class RequestManager {
     private _queue: ResolveReject[];
+    private _maxRetries: number;
     private _nActiveRequests: number;
     private _nSimultaneousRequests: number;
 
-    constructor(nSimultaneousRequests = 10) {
+    constructor(nSimultaneousRequests = 10, maxRetries = 3) {
       this._queue = [];
       this._nActiveRequests = 0;
       this._nSimultaneousRequests = nSimultaneousRequests;
+      this._maxRetries = maxRetries;
     }
+
     /* Gives a promise that loads assets from given url (respects queuing) */
     public request(url: string): Promise<any> {
       var promise = new Promise((resolve, reject) => {
@@ -49,11 +62,20 @@ module TF.Backend {
         this._queue.push(resolver);
         this.launchRequests();
       }).then(() => {
-        return this._promiseFromUrl(url);
+        return this.promiseWithRetries(url, this._maxRetries);
       }).then((response) => {
+        // Success - Let's free space for another active reqest, and launch it
         this._nActiveRequests--;
-        this.launchRequests(); // since we may have queued responses to launch
+        this.launchRequests();
         return response;
+      }, (rejection) => {
+        if (rejection.name === "RequestNetworkError") {
+          // If we failed due to network error, we should decrement
+          // _nActiveRequests because this request was active
+          this._nActiveRequests--;
+          this.launchRequests();
+        }
+        return Promise.reject(rejection);
       });
       return promise;
     }
@@ -81,6 +103,28 @@ module TF.Backend {
       }
     }
 
+    /**
+     * Try to request a given URL using overwritable _promiseFromUrl method.
+     * If the request fails for any reason, we will retry up to maxRetries
+     * times. In practice, this will help us paper over transient network issues
+     * like "502 Bad Gateway".
+     * By default, Chrome displays network errors in console, so
+     * the user will be able to tell when the requests are failing. I think this
+     * is a feature, if the request failures and retries are causing any
+     * pain to users, they can see it and file issues.
+     */
+    private promiseWithRetries(url, maxRetries) {
+      var success = (x) =>  x;
+      var failure = (x) => {
+        if (maxRetries > 0) {
+          return this.promiseWithRetries(url, maxRetries - 1);
+        } else {
+          return Promise.reject(x);
+        }
+      };
+      return this._promiseFromUrl(url).then(success, failure);
+    }
+
     /* Actually get promise from url using XMLHttpRequest */
     protected _promiseFromUrl(url) {
       return new Promise((resolve, reject) => {
@@ -90,11 +134,11 @@ module TF.Backend {
           if (req.status === 200) {
             resolve(JSON.parse(req.responseText));
           } else {
-            reject(Error("Status: " + req.status + ":" + req.statusText + " at url: " + url));
+            reject(new RequestNetworkError(req, url));
           }
         };
         req.onerror = function() {
-          reject(Error("Network error"));
+          reject(new RequestNetworkError(req, url));
         };
         req.send();
       });
