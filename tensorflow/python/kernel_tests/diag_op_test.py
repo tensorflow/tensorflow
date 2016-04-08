@@ -17,8 +17,116 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy
+import numpy as np
 import tensorflow as tf
+
+
+class BatchMatrixDiagTest(tf.test.TestCase):
+  _use_gpu = False
+
+  def testVector(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v = np.array([1.0, 2.0, 3.0])
+      mat = np.diag(v)
+      v_diag = tf.batch_matrix_diag(v)
+      self.assertEqual((3, 3), v_diag.get_shape())
+      self.assertAllEqual(v_diag.eval(), mat)
+
+  def testBatchVector(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v_batch = np.array([[1.0, 2.0, 3.0],
+                          [4.0, 5.0, 6.0]])
+      mat_batch = np.array(
+          [[[1.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 3.0]],
+           [[4.0, 0.0, 0.0],
+            [0.0, 5.0, 0.0],
+            [0.0, 0.0, 6.0]]])
+      v_batch_diag = tf.batch_matrix_diag(v_batch)
+      self.assertEqual((2, 3, 3), v_batch_diag.get_shape())
+      self.assertAllEqual(v_batch_diag.eval(), mat_batch)
+
+  def testInvalidShape(self):
+    with self.assertRaisesRegexp(ValueError, "must have rank at least 1"):
+      tf.batch_matrix_diag(0)
+
+  def testInvalidShapeAtEval(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v = tf.placeholder(dtype=tf.float32)
+      with self.assertRaisesOpError("input must be at least 1-dim"):
+        tf.batch_matrix_diag(v).eval(feed_dict={v: 0.0})
+
+  def testGrad(self):
+    shapes = ((3,), (18, 4), (1, 9, 4, 8,))
+    with self.test_session(use_gpu=self._use_gpu):
+      for shape in shapes:
+        x = tf.constant(np.random.rand(*shape), np.float32)
+        y = tf.batch_matrix_diag(x)
+        error = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
+                                               y, y.get_shape().as_list())
+        self.assertLess(error, 1e-4)
+
+
+class BatchMatrixDiagGpuTest(BatchMatrixDiagTest):
+  _use_gpu = True
+
+
+class BatchMatrixDiagPartTest(tf.test.TestCase):
+  _use_gpu = False
+
+  def testMatrix(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v = np.array([1.0, 2.0, 3.0])
+      mat = np.diag(v)
+      mat_diag = tf.batch_matrix_diag_part(mat)
+      self.assertEqual((3,), mat_diag.get_shape())
+      self.assertAllEqual(mat_diag.eval(), v)
+
+  def testBatchMatrix(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v_batch = np.array([[1.0, 2.0, 3.0],
+                          [4.0, 5.0, 6.0]])
+      mat_batch = np.array(
+          [[[1.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 3.0]],
+           [[4.0, 0.0, 0.0],
+            [0.0, 5.0, 0.0],
+            [0.0, 0.0, 6.0]]])
+      self.assertEqual(mat_batch.shape, (2, 3, 3))
+      mat_batch_diag = tf.batch_matrix_diag_part(mat_batch)
+      self.assertEqual((2, 3), mat_batch_diag.get_shape())
+      self.assertAllEqual(mat_batch_diag.eval(), v_batch)
+
+  def testInvalidShape(self):
+    with self.assertRaisesRegexp(ValueError, "must have rank at least 2"):
+      tf.batch_matrix_diag_part(0)
+    with self.assertRaisesRegexp(ValueError, r"Dimensions .* not compatible"):
+      tf.batch_matrix_diag_part([[0, 1], [1, 0], [0, 0]])
+
+  def testInvalidShapeAtEval(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v = tf.placeholder(dtype=tf.float32)
+      with self.assertRaisesOpError("input must be at least 2-dim"):
+        tf.batch_matrix_diag_part(v).eval(feed_dict={v: 0.0})
+      with self.assertRaisesOpError("last two dimensions must be equal"):
+        tf.batch_matrix_diag_part(v).eval(
+            feed_dict={v: [[0, 1], [1, 0], [0, 0]]})
+
+  def testGrad(self):
+    shapes = ((3, 3), (18, 3, 3), (1, 9, 4, 3, 5, 5))
+    with self.test_session(use_gpu=self._use_gpu):
+      for shape in shapes:
+        x = tf.constant(np.random.rand(*shape), dtype=np.float32)
+        y = tf.batch_matrix_diag_part(x)
+        error = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
+                                               y, y.get_shape().as_list())
+        self.assertLess(error, 1e-4)
+
+
+class BatchMatrixDiagPartGpuTest(BatchMatrixDiagPartTest):
+  _use_gpu = True
 
 
 class DiagTest(tf.test.TestCase):
@@ -35,56 +143,56 @@ class DiagTest(tf.test.TestCase):
     self.assertShapeEqual(diag, tf_ans_inv)
 
   def testEmptyTensor(self):
-    x = numpy.array([])
-    expected_ans = numpy.empty([0, 0])
-    self.diagOp(x, numpy.int32, expected_ans)
+    x = np.array([])
+    expected_ans = np.empty([0, 0])
+    self.diagOp(x, np.int32, expected_ans)
 
   def testRankOneIntTensor(self):
-    x = numpy.array([1, 2, 3])
-    expected_ans = numpy.array(
+    x = np.array([1, 2, 3])
+    expected_ans = np.array(
         [[1, 0, 0],
          [0, 2, 0],
          [0, 0, 3]])
-    self.diagOp(x, numpy.int32, expected_ans)
-    self.diagOp(x, numpy.int64, expected_ans)
+    self.diagOp(x, np.int32, expected_ans)
+    self.diagOp(x, np.int64, expected_ans)
 
   def testRankOneFloatTensor(self):
-    x = numpy.array([1.1, 2.2, 3.3])
-    expected_ans = numpy.array(
+    x = np.array([1.1, 2.2, 3.3])
+    expected_ans = np.array(
         [[1.1, 0, 0],
          [0, 2.2, 0],
          [0, 0, 3.3]])
-    self.diagOp(x, numpy.float32, expected_ans)
-    self.diagOp(x, numpy.float64, expected_ans)
+    self.diagOp(x, np.float32, expected_ans)
+    self.diagOp(x, np.float64, expected_ans)
 
   def testRankTwoIntTensor(self):
-    x = numpy.array([[1, 2, 3], [4, 5, 6]])
-    expected_ans = numpy.array(
+    x = np.array([[1, 2, 3], [4, 5, 6]])
+    expected_ans = np.array(
         [[[[1, 0, 0], [0, 0, 0]],
           [[0, 2, 0], [0, 0, 0]],
           [[0, 0, 3], [0, 0, 0]]],
          [[[0, 0, 0], [4, 0, 0]],
           [[0, 0, 0], [0, 5, 0]],
           [[0, 0, 0], [0, 0, 6]]]])
-    self.diagOp(x, numpy.int32, expected_ans)
-    self.diagOp(x, numpy.int64, expected_ans)
+    self.diagOp(x, np.int32, expected_ans)
+    self.diagOp(x, np.int64, expected_ans)
 
   def testRankTwoFloatTensor(self):
-    x = numpy.array([[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]])
-    expected_ans = numpy.array(
+    x = np.array([[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]])
+    expected_ans = np.array(
         [[[[1.1, 0, 0], [0, 0, 0]],
           [[0, 2.2, 0], [0, 0, 0]],
           [[0, 0, 3.3], [0, 0, 0]]],
          [[[0, 0, 0], [4.4, 0, 0]],
           [[0, 0, 0], [0, 5.5, 0]],
           [[0, 0, 0], [0, 0, 6.6]]]])
-    self.diagOp(x, numpy.float32, expected_ans)
-    self.diagOp(x, numpy.float64, expected_ans)
+    self.diagOp(x, np.float32, expected_ans)
+    self.diagOp(x, np.float64, expected_ans)
 
   def testRankThreeFloatTensor(self):
-    x = numpy.array([[[1.1, 2.2], [3.3, 4.4]],
-                     [[5.5, 6.6], [7.7, 8.8]]])
-    expected_ans = numpy.array(
+    x = np.array([[[1.1, 2.2], [3.3, 4.4]],
+                  [[5.5, 6.6], [7.7, 8.8]]])
+    expected_ans = np.array(
         [[[[[[1.1, 0], [0, 0]], [[0, 0], [0, 0]]],
            [[[0, 2.2], [0, 0]], [[0, 0], [0, 0]]]],
           [[[[0, 0], [3.3, 0]], [[0, 0], [0, 0]]],
@@ -93,14 +201,14 @@ class DiagTest(tf.test.TestCase):
            [[[0, 0], [0, 0]], [[0, 6.6], [0, 0]]]],
           [[[[0, 0], [0, 0]], [[0, 0], [7.7, 0]]],
            [[[0, 0], [0, 0]], [[0, 0], [0, 8.8]]]]]])
-    self.diagOp(x, numpy.float32, expected_ans)
-    self.diagOp(x, numpy.float64, expected_ans)
+    self.diagOp(x, np.float32, expected_ans)
+    self.diagOp(x, np.float64, expected_ans)
 
 
 class DiagPartOpTest(tf.test.TestCase):
 
   def setUp(self):
-    numpy.random.seed(0)
+    np.random.seed(0)
 
   def diagPartOp(self, tensor, dtpe, expected_ans, use_gpu=False):
     with self.test_session(use_gpu=use_gpu):
@@ -110,64 +218,64 @@ class DiagPartOpTest(tf.test.TestCase):
     self.assertShapeEqual(expected_ans, tf_ans_inv)
 
   def testRankTwoFloatTensor(self):
-    x = numpy.random.rand(3, 3)
-    i = numpy.arange(3)
+    x = np.random.rand(3, 3)
+    i = np.arange(3)
     expected_ans = x[i, i]
-    self.diagPartOp(x, numpy.float32, expected_ans)
-    self.diagPartOp(x, numpy.float64, expected_ans)
+    self.diagPartOp(x, np.float32, expected_ans)
+    self.diagPartOp(x, np.float64, expected_ans)
 
   def testRankFourFloatTensor(self):
-    x = numpy.random.rand(2, 3, 2, 3)
-    i = numpy.arange(2)[:, None]
-    j = numpy.arange(3)
+    x = np.random.rand(2, 3, 2, 3)
+    i = np.arange(2)[:, None]
+    j = np.arange(3)
     expected_ans = x[i, j, i, j]
-    self.diagPartOp(x, numpy.float32, expected_ans)
-    self.diagPartOp(x, numpy.float64, expected_ans)
+    self.diagPartOp(x, np.float32, expected_ans)
+    self.diagPartOp(x, np.float64, expected_ans)
 
   def testRankSixFloatTensor(self):
-    x = numpy.random.rand(2, 2, 2, 2, 2, 2)
-    i = numpy.arange(2)[:, None, None]
-    j = numpy.arange(2)[:, None]
-    k = numpy.arange(2)
+    x = np.random.rand(2, 2, 2, 2, 2, 2)
+    i = np.arange(2)[:, None, None]
+    j = np.arange(2)[:, None]
+    k = np.arange(2)
     expected_ans = x[i, j, k, i, j, k]
-    self.diagPartOp(x, numpy.float32, expected_ans)
-    self.diagPartOp(x, numpy.float64, expected_ans)
+    self.diagPartOp(x, np.float32, expected_ans)
+    self.diagPartOp(x, np.float64, expected_ans)
 
   def testOddRank(self):
-    w = numpy.random.rand(2)
-    x = numpy.random.rand(2, 2, 2)
-    y = numpy.random.rand(2, 2, 2, 2, 2)
-    z = numpy.random.rand(2, 2, 2, 2, 2, 2, 2)
-    self.assertRaises(ValueError, self.diagPartOp, w, numpy.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, x, numpy.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, y, numpy.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, z, numpy.float32, 0)
+    w = np.random.rand(2)
+    x = np.random.rand(2, 2, 2)
+    y = np.random.rand(2, 2, 2, 2, 2)
+    z = np.random.rand(2, 2, 2, 2, 2, 2, 2)
+    self.assertRaises(ValueError, self.diagPartOp, w, np.float32, 0)
+    self.assertRaises(ValueError, self.diagPartOp, x, np.float32, 0)
+    self.assertRaises(ValueError, self.diagPartOp, y, np.float32, 0)
+    self.assertRaises(ValueError, self.diagPartOp, z, np.float32, 0)
 
   def testUnevenDimensions(self):
-    w = numpy.random.rand(2, 5)
-    x = numpy.random.rand(2, 1, 2, 3)
-    y = numpy.random.rand(2, 1, 2, 1, 2, 5)
-    z = numpy.random.rand(2, 2, 2, 2, 2, 2, 2, 2)
-    self.assertRaises(ValueError, self.diagPartOp, w, numpy.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, x, numpy.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, y, numpy.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, z, numpy.float32, 0)
+    w = np.random.rand(2, 5)
+    x = np.random.rand(2, 1, 2, 3)
+    y = np.random.rand(2, 1, 2, 1, 2, 5)
+    z = np.random.rand(2, 2, 2, 2, 2, 2, 2, 2)
+    self.assertRaises(ValueError, self.diagPartOp, w, np.float32, 0)
+    self.assertRaises(ValueError, self.diagPartOp, x, np.float32, 0)
+    self.assertRaises(ValueError, self.diagPartOp, y, np.float32, 0)
+    self.assertRaises(ValueError, self.diagPartOp, z, np.float32, 0)
 
 
 class DiagGradOpTest(tf.test.TestCase):
 
   def testDiagGrad(self):
-    numpy.random.seed(0)
+    np.random.seed(0)
     shapes = ((3,), (3,3), (3,3,3))
     dtypes = (tf.float32, tf.float64)
     with self.test_session(use_gpu=False):
       errors = []
       for shape in shapes:
         for dtype in dtypes:
-          x1 = tf.constant(numpy.random.rand(*shape), dtype=dtype)
+          x1 = tf.constant(np.random.rand(*shape), dtype=dtype)
           y = tf.diag(x1)
-          error = tf.test.compute_gradient_error(x1, x1._shape_as_list(),
-                                                 y, y._shape_as_list())
+          error = tf.test.compute_gradient_error(x1, x1.get_shape().as_list(),
+                                                 y, y.get_shape().as_list())
           tf.logging.info("error = %f", error)
           self.assertLess(error, 1e-4)
 
@@ -175,17 +283,17 @@ class DiagGradOpTest(tf.test.TestCase):
 class DiagGradPartOpTest(tf.test.TestCase):
 
   def testDiagPartGrad(self):
-    numpy.random.seed(0)
+    np.random.seed(0)
     shapes = ((3,3), (3,3,3,3), (3,3,3,3,3,3))
     dtypes = (tf.float32, tf.float64)
     with self.test_session(use_gpu=False):
       errors = []
       for shape in shapes:
         for dtype in dtypes:
-          x1 = tf.constant(numpy.random.rand(*shape), dtype=dtype)
+          x1 = tf.constant(np.random.rand(*shape), dtype=dtype)
           y = tf.diag_part(x1)
-          error = tf.test.compute_gradient_error(x1, x1._shape_as_list(),
-                                                 y, y._shape_as_list())
+          error = tf.test.compute_gradient_error(x1, x1.get_shape().as_list(),
+                                                 y, y.get_shape().as_list())
           tf.logging.info("error = %f", error)
           self.assertLess(error, 1e-4)
 

@@ -918,6 +918,22 @@ def _UniqueWithCountsShape(op):
   return [tensor_shape.vector(None), input_shape, tensor_shape.vector(None)]
 
 
+@ops.RegisterShape("BatchMatrixDiag")
+def _BatchMatrixDiagShape(op):
+  """Shape function for array_ops.batch_matrix_diag."""
+  diag_shape = op.inputs[0].get_shape().with_rank_at_least(1)
+  return [diag_shape.concatenate(diag_shape[-1])]
+
+
+@ops.RegisterShape("BatchMatrixDiagPart")
+def _BatchMatrixDiagPartShape(op):
+  """Shape function for array_ops.batch_matrix_diag_part."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  # Last two dims must match
+  input_shape[-1].assert_is_compatible_with(input_shape[-2])
+  return [input_shape[:-1]]
+
+
 @ops.RegisterShape("Diag")
 def _DiagShape(op):
   """Shape function for array_ops.diag.

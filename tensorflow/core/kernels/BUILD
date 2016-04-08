@@ -261,6 +261,7 @@ tf_kernel_libraries(
         "concat_op",
         "constant_op",
         "diag_op",
+        "batch_matrix_diag_op",
         "edit_distance_op",
         "gather_nd_op",
         "gather_op",
