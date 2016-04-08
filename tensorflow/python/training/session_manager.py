@@ -21,13 +21,13 @@ import threading
 import time
 
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python.client import server_lib
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.training import saver as saver_mod
+from tensorflow.python.training import server_lib
 
 
 class SessionManager(object):
@@ -304,7 +304,7 @@ class SessionManager(object):
           job_def.tasks[0] = "localhost:0"
           server_def.job_name = job_def.name
           server_def.task_index = 0
-          server = server_lib.GrpcServer(server_def)
+          server = server_lib.Server(server_def)
           # Launch tensorflow server.
           SessionManager._TENSORFLOW_LAUNCHED = True
           server.start()
