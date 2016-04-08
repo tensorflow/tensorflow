@@ -173,6 +173,7 @@ cc_library(
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],

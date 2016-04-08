@@ -71,6 +71,9 @@ class TensorShape {
   /// Appends all the dimensions from `shape`.
   void AppendShape(const TensorShape& shape);
 
+  // Maximum number of dimensions in a tensor.
+  static constexpr int MaxDimensions() { return 255; }
+
   /// \brief Insert a dimension somewhere in the `TensorShape`.
   /// REQUIRES: `0 <= d <= dims()`
   /// REQUIRES: `size >= 0`

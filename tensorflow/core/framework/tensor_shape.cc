@@ -165,7 +165,7 @@ void TensorShape::RecomputeNumElements() {
 void TensorShape::AddDim(int64 size) {
   CHECK_GE(size, 0);
   const int nd = ndims_byte();
-  CHECK_LT(nd, 255) << "Too many dimensions in tensor";
+  CHECK_LT(nd, MaxDimensions()) << "Too many dimensions in tensor";
   if (tag() == REP16 && nd < 6 && size < kMaxRep16) {
     as16()->dims_[nd] = static_cast<int16>(size);
   } else if (tag() == REP32 && nd < 3 && size < kMaxRep32) {
