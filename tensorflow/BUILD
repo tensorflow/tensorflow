@@ -21,6 +21,15 @@ config_setting(
 )
 
 config_setting(
+    name = "android_arm",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "android_cpu": "armeabi-v7a",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
