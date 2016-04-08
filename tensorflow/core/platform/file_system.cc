@@ -33,38 +33,6 @@ WritableFile::~WritableFile() {}
 
 FileSystemRegistry::~FileSystemRegistry() {}
 
-class FileSystemRegistryImpl : public FileSystemRegistry {
- public:
-  void Register(const string& scheme, Factory factory) override;
-  FileSystem* Lookup(const string& scheme) override;
-
- private:
-  mutable mutex mu_;
-  mutable std::unordered_map<string, FileSystem*> registry_ GUARDED_BY(mu_);
-};
-
-FileSystemRegistry* GlobalFileSystemRegistry() {
-  static FileSystemRegistry* registry = new FileSystemRegistryImpl;
-  return registry;
-}
-
-void FileSystemRegistryImpl::Register(const string& scheme,
-                                      FileSystemRegistry::Factory factory) {
-  mutex_lock lock(mu_);
-  QCHECK(!gtl::FindOrNull(registry_, scheme)) << "File factory for " << scheme
-                                              << " already registered";
-  registry_[scheme] = factory();
-}
-
-FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
-  mutex_lock lock(mu_);
-  auto fs_ptr = gtl::FindOrNull(registry_, scheme);
-  if (!fs_ptr) {
-    return nullptr;
-  }
-  return *fs_ptr;
-}
-
 string GetSchemeFromURI(const string& name) {
   auto colon_loc = name.find(":");
   // Make sure scheme matches [a-zA-Z][0-9a-zA-Z.]*

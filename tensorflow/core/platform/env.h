@@ -44,7 +44,7 @@ struct ThreadOptions;
 /// multiple threads without any external synchronization.
 class Env {
  public:
-  Env() {}
+  Env();
   virtual ~Env();
 
   /// \brief Returns a default environment suitable for the current operating
@@ -60,6 +60,13 @@ class Env {
   /// specified by 'fname'. The FileSystem object is used as the implementation
   /// for the file system related (non-virtual) functions that follow.
   virtual Status GetFileSystemForFile(const string& fname, FileSystem** result);
+
+  /// \brief Returns the file system schemes registered for this Env.
+  virtual Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes);
+
+  // \brief Register a file system for a scheme.
+  virtual void RegisterFileSystem(const string& scheme,
+                                  FileSystemRegistry::Factory factory);
 
   /// \brief Creates a brand new random access read-only file with the
   /// specified name.
@@ -184,6 +191,8 @@ class Env {
   /// No copying allowed
   Env(const Env&);
   void operator=(const Env&);
+
+  FileSystemRegistry* file_system_registry_;
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.
@@ -202,6 +211,15 @@ class EnvWrapper : public Env {
   Status GetFileSystemForFile(const string& fname,
                               FileSystem** result) override {
     return target_->GetFileSystemForFile(fname, result);
+  }
+
+  Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes) override {
+    return target_->GetRegisteredFileSystemSchemes(schemes);
+  }
+
+  void RegisterFileSystem(const string& scheme,
+                          FileSystemRegistry::Factory factory) override {
+    target_->RegisterFileSystem(scheme, factory);
   }
 
   uint64 NowMicros() override { return target_->NowMicros(); }
@@ -267,6 +285,32 @@ Status WriteStringToFile(Env* env, const string& fname,
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto);
 
+namespace register_file_system {
+
+template <typename Factory>
+struct Register {
+  Register(Env* env, const string& scheme) {
+    env->RegisterFileSystem(scheme,
+                            []() -> FileSystem* { return new Factory; });
+  }
+};
+
+}  // namespace register_file_system
+
 }  // namespace tensorflow
+
+// Register a FileSystem implementation for a scheme. Files with names that have
+// "scheme://" prefixes are routed to use this implementation.
+#define REGISTER_FILE_SYSTEM_ENV(env, scheme, factory) \
+  REGISTER_FILE_SYSTEM_UNIQ_HELPER(__COUNTER__, env, scheme, factory)
+#define REGISTER_FILE_SYSTEM_UNIQ_HELPER(ctr, env, scheme, factory) \
+  REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory)
+#define REGISTER_FILE_SYSTEM_UNIQ(ctr, env, scheme, factory)   \
+  static ::tensorflow::register_file_system::Register<factory> \
+      register_ff##ctr TF_ATTRIBUTE_UNUSED =                   \
+          ::tensorflow::register_file_system::Register<factory>(env, scheme)
+
+#define REGISTER_FILE_SYSTEM(scheme, factory) \
+  REGISTER_FILE_SYSTEM_ENV(Env::Default(), scheme, factory);
 
 #endif  // TENSORFLOW_CORE_PLATFORM_ENV_H_

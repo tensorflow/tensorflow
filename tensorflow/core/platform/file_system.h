@@ -205,21 +205,9 @@ class FileSystemRegistry {
   virtual ~FileSystemRegistry();
   virtual void Register(const string& scheme, Factory factory) = 0;
   virtual FileSystem* Lookup(const string& scheme) = 0;
+  virtual Status GetRegisteredFileSystemSchemes(
+      std::vector<string>* schemes) = 0;
 };
-
-FileSystemRegistry* GlobalFileSystemRegistry();
-
-namespace register_file_system {
-
-template <typename Factory>
-struct Register {
-  Register(const string& scheme) {
-    ::tensorflow::GlobalFileSystemRegistry()->Register(
-        scheme, []() -> FileSystem* { return new Factory; });
-  }
-};
-
-}  // namespace register_file_system
 
 // Given URI of the form [scheme://]<filename>, return 'scheme'.
 string GetSchemeFromURI(const string& name);
@@ -228,16 +216,5 @@ string GetSchemeFromURI(const string& name);
 string GetNameFromURI(const string& name);
 
 }  // namespace tensorflow
-
-// Register a FileSystem implementation for a scheme. Files with names that have
-// "scheme://" prefixes are routed to use this implementation.
-#define REGISTER_FILE_SYSTEM(scheme, factory) \
-  REGISTER_FILE_SYSTEM_UNIQ_HELPER(__COUNTER__, scheme, factory)
-#define REGISTER_FILE_SYSTEM_UNIQ_HELPER(ctr, scheme, factory) \
-  REGISTER_FILE_SYSTEM_UNIQ(ctr, scheme, factory)
-#define REGISTER_FILE_SYSTEM_UNIQ(ctr, scheme, factory)        \
-  static ::tensorflow::register_file_system::Register<factory> \
-      register_ff##ctr TF_ATTRIBUTE_UNUSED =                   \
-          ::tensorflow::register_file_system::Register<factory>(scheme)
 
 #endif  // TENSORFLOW_CORE_PLATFORM_FILE_SYSTEM_H_

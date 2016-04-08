@@ -21,17 +21,65 @@ limitations under the License.
 
 namespace tensorflow {
 
-Env::~Env() {}
+class FileSystemRegistryImpl : public FileSystemRegistry {
+ public:
+  void Register(const string& scheme, Factory factory) override;
+  FileSystem* Lookup(const string& scheme) override;
+  Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes) override;
+
+ private:
+  mutable mutex mu_;
+  mutable std::unordered_map<string, FileSystem*> registry_ GUARDED_BY(mu_);
+};
+
+void FileSystemRegistryImpl::Register(const string& scheme,
+                                      FileSystemRegistry::Factory factory) {
+  mutex_lock lock(mu_);
+  QCHECK(!gtl::FindOrNull(registry_, scheme)) << "File factory for " << scheme
+                                              << " already registered";
+  registry_[scheme] = factory();
+}
+
+FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
+  mutex_lock lock(mu_);
+  auto fs_ptr = gtl::FindOrNull(registry_, scheme);
+  if (!fs_ptr) {
+    return nullptr;
+  }
+  return *fs_ptr;
+}
+
+Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
+    std::vector<string>* schemes) {
+  mutex_lock lock(mu_);
+  for (auto const e : registry_) {
+    schemes->push_back(e.first);
+  }
+  return Status::OK();
+}
+
+Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
+
+Env::~Env() { delete file_system_registry_; }
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   string scheme = GetSchemeFromURI(fname);
-  FileSystem* file_system = GlobalFileSystemRegistry()->Lookup(scheme);
+  FileSystem* file_system = file_system_registry_->Lookup(scheme);
   if (!file_system) {
     return errors::Unimplemented("File system scheme ", scheme,
                                  " not implemented");
   }
   *result = file_system;
   return Status::OK();
+}
+
+Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
+  return file_system_registry_->GetRegisteredFileSystemSchemes(schemes);
+}
+
+void Env::RegisterFileSystem(const string& scheme,
+                             FileSystemRegistry::Factory factory) {
+  file_system_registry_->Register(scheme, factory);
 }
 
 Status Env::NewRandomAccessFile(const string& fname,

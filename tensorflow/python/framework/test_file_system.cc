@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
