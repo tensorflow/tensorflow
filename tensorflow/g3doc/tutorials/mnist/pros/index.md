@@ -157,11 +157,11 @@ easily. Our cost function will be the cross-entropy between the target and the
 model's prediction.
 
 ```python
-cross_entropy = -tf.reduce_sum(y_*tf.log(y))
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
 ```
 
-Note that `tf.reduce_sum` sums across all images in the minibatch, as well as
-all classes. We are computing the cross entropy for the entire minibatch.
+Note that `tf.reduce_sum` sums across all classes and `tf.reduce_mean` takes 
+the average over these sums.
 
 ## Train the Model
 
@@ -174,10 +174,10 @@ TensorFlow has a variety of
 [builtin optimization algorithms]
 (../../../api_docs/python/train.md#optimizers).
 For this example, we will use steepest gradient descent, with a step length of
-0.01, to descend the cross entropy.
+0.5, to descend the cross entropy.
 
 ```python
-train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
+train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 ```
 
 What TensorFlow actually did in that single line was to add new operations to
@@ -224,7 +224,7 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 ```
 
 Finally, we can evaluate our accuracy on the test data. This should be about
-91% correct.
+92% correct.
 
 ```python
 print(accuracy.eval(feed_dict={x: mnist.test.images, y_: mnist.test.labels}))
@@ -370,7 +370,7 @@ additional parameter `keep_prob` in `feed_dict` to control the dropout rate;
 and we will add logging to every 100th iteration in the training process.
 
 ```python
-cross_entropy = -tf.reduce_sum(y_*tf.log(y_conv))
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y_conv), reduction_indices=[1]))
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
