@@ -49,7 +49,7 @@ def copy_variable_to_graph(org_instance, to_graph, scope=""):
     scope: A scope for the new `Variable` (default `""`).
 
     Returns:
-        The copied `Variable`.
+        The copied `Variable` from `to_graph`.
 
     Raises:
         TypeError: If `org_instance` is not a `Variable`.
@@ -100,22 +100,29 @@ def copy_variable_to_graph(org_instance, to_graph, scope=""):
 
 def copy_op_to_graph(org_instance, to_graph, variables,
                      scope=""):
-    """Given an `Operation` instance from one `Graph`,
+    """Given an `Operation` 'org_instance` from one `Graph`,
     initializes and returns a copy of it from another `Graph`,
     under the specified scope (default `""`).
 
-    The copying is done recursively, so any `Placeholder`
+    The copying is done recursively, so any `Operation` whose output
+    is required to evaluate the `org_instance`, is also copied (unless
+    already done).
+
+    Since `Variable` instances are copied separately, those required
+    to evaluate `org_instance` must be provided as input.
 
     Args:
-    org_instance: A `Variable` from some `Graph`.
-    to_graph: The `Graph` to copy the `Variable` to.
+    org_instance: An `Operation` from some `Graph`. Could be a
+        `Placeholder` as well.
+    to_graph: The `Graph` to copy `org_instance` to.
+    variables: An iterable of `Variable` instances to copy `org_instance` to.
     scope: A scope for the new `Variable` (default `""`).
 
     Returns:
-        The copied `Variable`.
+        The copied `Operation` from `to_graph`.
 
     Raises:
-        TypeError: If `org_instance` is not a `Variable`.
+        TypeError: If `org_instance` is not an `Operation` or `Tensor`.
     """
 
     #The name of the new instance
@@ -123,6 +130,9 @@ def copy_op_to_graph(org_instance, to_graph, variables,
         new_name = scope + '/' + org_instance.name
     else:
         new_name = org_instance.name
+
+    #Extract names of variables
+    copied_variables = dict((x.name, x) for x in variables)
  
     #If a variable by the new name already exists, return the
     #correspondng tensor that will act as an input
@@ -157,7 +167,7 @@ def copy_op_to_graph(org_instance, to_graph, variables,
         #op. Therefore, copy the op itself and return the appropriate
         #output.
         op = org_instance.op
-        new_op = copy_to_graph(op, to_graph, copied_variables, scope)
+        new_op = copy_op_to_graph(op, to_graph, variables, scope)
         output_index = op.outputs.index(org_instance)
         new_tensor = new_op.outputs[output_index]
         #Add to collections if any
@@ -172,18 +182,18 @@ def copy_op_to_graph(org_instance, to_graph, variables,
 
         #If it has an original_op parameter, copy it
         if op._original_op is not None:
-            new_original_op = copy_to_graph(op._original_op, to_graph,
-                                            copied_variables, scope)
+            new_original_op = copy_op_to_graph(op._original_op, to_graph,
+                                            variables, scope)
         else:
             new_original_op = None
 
         #If it has control inputs, call this function recursively on each.
-        new_control_inputs = [copy_to_graph(x, to_graph, copied_variables,
+        new_control_inputs = [copy_op_to_graph(x, to_graph, variables,
                                             scope)
                               for x in op.control_inputs]
 
         #If it has inputs, call this function recursively on each.
-        new_inputs = [copy_to_graph(x, to_graph, copied_variables,
+        new_inputs = [copy_op_to_graph(x, to_graph, variables,
                                     scope)
                       for x in op.inputs]
 
@@ -224,23 +234,28 @@ def copy_op_to_graph(org_instance, to_graph, variables,
         raise TypeError("Could not copy instance: " + str(org_instance))
 
 
-def get_copied(original, graph, copied_variables={}, scope=""):
-    """
-    Get a copy of the instance 'original', present in 'graph', under
-    the given 'scope'.
-    'copied_variables' is a dict mapping pertinent variable names to the
-    copy instances.
+def get_copied_op(org_instance, graph, scope=""):
+    """Given an `Operation` instance from some `Graph`, returns
+    its namesake from `graph`, under the specified scope
+    (default `""`).
+
+    If a copy of `org_instance` is present in `graph` under the given
+    `scope`, it will be returned.
+
+    Args:
+    org_instance: An `Operation` from some `Graph`.
+    graph: The `Graph` to be searched for a copr of `org_instance`.
+    scope: The scope `org_instance` is present in.
+
+    Returns:
+        The `Operation` copy from `graph`.
     """
 
     #The name of the copied instance
     if scope != '':
-        new_name = scope + '/' + original.name
+        new_name = scope + '/' + org_instance.name
     else:
-        new_name = original.name
-
-    #If a variable by the name already exists, return it
-    if new_name in copied_variables:
-        return copied_variables[new_name]
+        new_name = org_instance.name
 
     return graph.as_graph_element(new_name, allow_tensor=True,
                                   allow_operation=True)
