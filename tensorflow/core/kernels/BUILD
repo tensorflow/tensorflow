@@ -594,14 +594,16 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "tensor_array",
     srcs = ["tensor_array.cc"],
     hdrs = ["tensor_array.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":aggregate_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 

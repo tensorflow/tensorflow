@@ -433,6 +433,44 @@ class TensorArrayCPUTest(tf.test.TestCase):
           r"dynamically resizeable"):
         ta.split([1.0], [1]).flow.eval()
 
+  def _testTensorArrayWriteGradientAddMultipleAdds(self, dtype):
+    with self.test_session(use_gpu=self._use_gpu):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtype, tensor_array_name="foo", size=3)
+      ta_grad = ta.grad("grad")
+
+      c = lambda x: np.asarray(x, dtype=dtype.as_numpy_dtype)
+
+      w0 = ta.write(2, c(3.0))
+      w1 = w0.write(2, c(4.0))
+
+      w0_grad = ta_grad.write(2, c(3.0))
+      w1_grad = w0_grad.write(2, c(4.0))
+      w2_grad = w1_grad.write(2, c(5.0))
+
+      # Assert that aggregation works correctly
+      self.assertAllEqual(c(12.00), w2_grad.read(2).eval())
+
+      # Assert that if multiple_writes_aggregate is not enabled,
+      # multiple writes raise an exception.
+      with self.assertRaisesOpError(
+          r"TensorArray foo: Could not write to TensorArray index 2 because "
+          r"it has already been written to."):
+        w1.flow.eval()
+
+      # Using differing shapes causes an exception
+      wb0_grad = ta_grad.write(1, c(1.0))
+      wb1_grad = wb0_grad.write(1, c([1.0]))
+
+      with self.assertRaisesOpError(
+          r"Could not aggregate to TensorArray index 1 because the "
+          r"existing shape is \[\] but the new input shape is \[1\]"):
+        wb1_grad.flow.eval()
+
+  def testTensorArrayWriteGradientAddMultipleAdds(self):
+    for dtype in [tf.int32, tf.int64, tf.float32, tf.float64, tf.complex64]:
+      self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
+
   def testMultiTensorArray(self):
     with self.test_session(use_gpu=self._use_gpu):
       h1 = tensor_array_ops.TensorArray(
@@ -473,12 +511,19 @@ class TensorArrayCPUTest(tf.test.TestCase):
       w1 = w0.write(1, value_1)
       r0 = w1.read(0)
       r1 = w1.read(1)
+      r0_2 = w1.read(0)
 
       # Test individual components' gradients
       grad_just_r0 = tf.gradients(
           ys=[r0], xs=[value_0], grad_ys=[c([[2.0, 3.0]])])
       grad_just_r0_vals = session.run(grad_just_r0)
       self.assertAllEqual(c([[2.0, 3.0]]), grad_just_r0_vals[0])
+
+      grad_r0_r0_2 = tf.gradients(
+          ys=[r0, r0_2], xs=[value_0],
+          grad_ys=[c([[2.0, 3.0]]), c([[1.0, -1.0]])])
+      grad_r0_r0_2_vals = session.run(grad_r0_r0_2)
+      self.assertAllEqual(c([[3.0, 2.0]]), grad_r0_r0_2_vals[0])
 
       grad_just_r1 = tf.gradients(
           ys=[r1], xs=[value_1], grad_ys=[c(-2.0)])
@@ -487,35 +532,93 @@ class TensorArrayCPUTest(tf.test.TestCase):
 
       # Test combined gradients
       grad = tf.gradients(
-          ys=[r0, r1], xs=[value_0, value_1],
-          grad_ys=[c(-1.0), c([[2.0, 3.0]])])
+          ys=[r0, r0_2, r1], xs=[value_0, value_1],
+          grad_ys=[c(-1.0), c(-2.0), c([[2.0, 3.0]])])
       grad_vals = session.run(grad)
       self.assertEqual(len(grad_vals), 2)
-      self.assertAllEqual(c(-1.0), grad_vals[0])
+      self.assertAllEqual(c(-3.0), grad_vals[0])
       self.assertAllEqual(c([[2.0, 3.0]]), grad_vals[1])
 
   def testTensorArrayGradientWriteRead(self):
     for dtype in (np.float32, np.float64, np.int32, np.int64, np.complex64):
       self._testTensorArrayGradientWriteReadType(dtype)
 
+  def testTensorArrayGradientWritePackConcatAndRead(self):
+    with self.test_session(use_gpu=self._use_gpu) as sess:
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=2,
+          clear_after_read=False)
+
+      value_0 = tf.constant([-1.0, 1.0])
+      value_1 = tf.constant([-10.0, 10.0])
+
+      w0 = ta.write(0, value_0)
+      w1 = w0.write(1, value_1)
+      p0 = w1.pack()
+      r0 = w1.read(0)
+      s0 = w1.concat()
+
+      # Test gradient accumulation between read(0), pack(), and concat()
+      with tf.control_dependencies([p0, r0, s0]):
+        grad_r = tf.gradients(
+            ys=[p0, r0, s0], xs=[value_0, value_1],
+            grad_ys=[
+                [[2.0, 3.0], [4.0, 5.0]],  # pack gradient
+                [-0.5, 1.5],  # read(0) gradient
+                [20.0, 30.0, 40.0, 50.0]])  # concat gradient
+      grad_vals = sess.run(grad_r)  # 2 + 2 entries
+
+      self.assertAllClose([2.0 - 0.5 + 20.0, 3.0 + 1.5 + 30.0], grad_vals[0])
+      self.assertAllEqual([4.0 + 40.0, 5.0 + 50.0], grad_vals[1])
+
+  def testTensorArrayReadTwice(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      value = tf.constant([[1.0, -1.0], [10.0, -10.0]])
+
+      ta_readonce = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=2)
+
+      w_readonce = ta_readonce.unpack(value)
+      r0_readonce = w_readonce.read(0)
+      with tf.control_dependencies([r0_readonce]):
+        r1_readonce = w_readonce.read(0)
+
+      with self.assertRaisesOpError(
+          r"Could not read index 0 twice because it was cleared after a "
+          r"previous read \(perhaps try setting clear_after_read = false\?\)"):
+        r1_readonce.eval()
+
+      ta_readtwice = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=2,
+          clear_after_read=False)
+      w_readtwice = ta_readtwice.unpack(value)
+      r0_readtwice = w_readtwice.read(0)
+      with tf.control_dependencies([r0_readtwice]):
+        r1_readtwice = w_readtwice.read(0)
+
+      self.assertAllEqual([1.0, -1.0], r1_readtwice.eval())
+
   def testTensorArrayGradientUnpackRead(self):
     with self.test_session(use_gpu=self._use_gpu) as session:
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=2)
+          dtype=tf.float32, tensor_array_name="foo", size=2,
+          clear_after_read=False)
 
       value = tf.constant([[1.0, -1.0], [10.0, -10.0]])
 
       w = ta.unpack(value)
       r0 = w.read(0)
+      r0_1 = w.read(0)
       r1 = w.read(1)
 
       # Test combined gradients + aggregation of read(0)
       grad = tf.gradients(
-          ys=[r0, r1], xs=[value], grad_ys=[[2.0, 3.0], [4.0, 5.0]])
+          ys=[r0, r0_1, r1], xs=[value],
+          grad_ys=[[2.0, 3.0], [-1.5, 1.5], [4.0, 5.0]])
       grad_vals = session.run(grad)
 
       self.assertEqual(len(grad_vals), 1)
-      self.assertAllEqual([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
+      self.assertAllEqual([[2.0 - 1.5, 3.0 + 1.5], [4.0, 5.0]], grad_vals[0])
 
   def testTensorArrayGradientSplitConcat(self):
     with self.test_session(use_gpu=self._use_gpu) as session:
@@ -726,9 +829,9 @@ class TensorArrayCPUTest(tf.test.TestCase):
         "foo/bar/gradients_0",
         self._grad_source_for_name("foo/bar/gradients_0/baz"))
 
-  def testGetGradSource_NestedUsesTompost(self):
+  def testGetGradSource_NestedUsesInnermost(self):
     self.assertEqual(
-        "foo/gradients",
+        "foo/gradients/bar/gradients_0",
         self._grad_source_for_name("foo/gradients/bar/gradients_0/baz"))
 
 
