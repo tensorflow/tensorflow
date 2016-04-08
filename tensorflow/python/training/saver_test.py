@@ -525,6 +525,19 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertEqual([], save2.last_checkpoints)
       self.assertTrue(gfile.Exists(s2))
 
+  def testNoMetaGrap(self):
+    save_dir = _TestDir("no_meta_graph")
+
+    with self.test_session() as sess:
+      v = tf.Variable(10.0, name="v")
+      save = tf.train.Saver({"v": v})
+      tf.initialize_all_variables().run()
+
+      s1 = save.save(sess, os.path.join(save_dir, "s1"),
+                     write_meta_graph=False)
+      self.assertTrue(gfile.Exists(s1))
+      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
+
 
 class KeepCheckpointEveryNHoursTest(tf.test.TestCase):
 
