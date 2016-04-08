@@ -47,6 +47,7 @@ limitations under the License.
 // Call "m" for all number types that support the comparison operations "<" and
 // ">".
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
+  m(Eigen::half);                    \
   m(float);                          \
   m(double);                         \
   m(int64);                          \
@@ -56,6 +57,7 @@ limitations under the License.
   m(int8)
 
 #define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) \
+  m(Eigen::half);                             \
   m(float);                                   \
   m(double);                                  \
   m(int64);                                   \
@@ -85,7 +87,12 @@ limitations under the License.
 
 // Call "m" on all types supported on GPU.
 #define TF_CALL_GPU_NUMBER_TYPES(m) \
+  m(Eigen::half);                   \
   m(float);                         \
+  m(double)
+
+#define TF_CALL_GPU_NUMBER_TYPES_NO_HALF(m) \
+  m(float);                                 \
   m(double)
 
 // Call "m" on all quantized types.
@@ -97,6 +104,7 @@ limitations under the License.
 #elif defined(__ANDROID_TYPES_FULL__)
 
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
+  m(Eigen::half);                    \
   m(float);                          \
   m(int32);                          \
   m(int64)
@@ -104,6 +112,7 @@ limitations under the License.
 #define TF_CALL_NUMBER_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
 
 #define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) \
+  m(Eigen::half);                             \
   m(float);                                   \
   m(int64)
 
@@ -114,7 +123,7 @@ limitations under the License.
 #define TF_CALL_ALL_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
 
 // Maybe we could put an empty macro here for Android?
-#define TF_CALL_GPU_NUMBER_TYPES(m) m(float)
+#define TF_CALL_GPU_NUMBER_TYPES(m) m(float) m(Eigen::half)
 
 // Call "m" on all quantized types.
 #define TF_CALL_QUANTIZED_TYPES(m) \

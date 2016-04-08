@@ -70,7 +70,7 @@ class ZeroOutOp : public OpKernel {
     // Set all the elements of the output tensor to 0
     const int N = input.size();
     for (int i = 0; i < N; i++) {
-      output_flat(i) = 0;
+      output_flat(i) = T(0);
     }
 
     // Preserve the first input value
