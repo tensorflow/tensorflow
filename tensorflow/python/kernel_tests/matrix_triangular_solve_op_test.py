@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.math_ops.matrix_triangular_solve."""
 from __future__ import absolute_import
 from __future__ import division
@@ -24,7 +23,16 @@ import tensorflow as tf
 
 class MatrixTriangularSolveOpTest(tf.test.TestCase):
 
-  def _verifySolve(self, x, y, lower=True, batch_dims=None):
+  def _verifySolveAllWays(self, x, y, batch_dims=None):
+    for lower in True, False:
+      for adjoint in True, False:
+        self._verifySolve(x,
+                          y,
+                          lower=lower,
+                          adjoint=adjoint,
+                          batch_dims=batch_dims)
+
+  def _verifySolve(self, x, y, lower=True, adjoint=False, batch_dims=None):
     for np_type in [np.float32, np.float64]:
       a = x.astype(np_type)
       b = y.astype(np_type)
@@ -36,15 +44,24 @@ class MatrixTriangularSolveOpTest(tf.test.TestCase):
         a_np = np.triu(a)
       else:
         a_np = a
+      if adjoint:
+        a_np = np.conj(np.transpose(a_np))
+
       if batch_dims is not None:
         a = np.tile(a, batch_dims + [1, 1])
         a_np = np.tile(a_np, batch_dims + [1, 1])
         b = np.tile(b, batch_dims + [1, 1])
       with self.test_session():
         if a.ndim == 2:
-          tf_ans = tf.matrix_triangular_solve(a, b, lower=lower).eval()
+          tf_ans = tf.matrix_triangular_solve(a,
+                                              b,
+                                              lower=lower,
+                                              adjoint=adjoint).eval()
         else:
-          tf_ans = tf.batch_matrix_triangular_solve(a, b, lower=lower).eval()
+          tf_ans = tf.batch_matrix_triangular_solve(a,
+                                                    b,
+                                                    lower=lower,
+                                                    adjoint=adjoint).eval()
       np_ans = np.linalg.solve(a_np, b)
       self.assertEqual(np_ans.shape, tf_ans.shape)
       self.assertAllClose(np_ans, tf_ans)
@@ -53,20 +70,18 @@ class MatrixTriangularSolveOpTest(tf.test.TestCase):
     # 2x2 matrices, single right-hand side.
     matrix = np.array([[1., 2.], [3., 4.]])
     rhs0 = np.array([[1.], [1.]])
-    self._verifySolve(matrix, rhs0, lower=True)
-    self._verifySolve(matrix, rhs0, lower=False)
+    self._verifySolveAllWays(matrix, rhs0)
     # 2x2 matrices, 3 right-hand sides.
     rhs1 = np.array([[1., 0., 1.], [0., 1., 1.]])
-    self._verifySolve(matrix, rhs1, lower=True)
-    self._verifySolve(matrix, rhs1, lower=False)
+    self._verifySolveAllWays(matrix, rhs1)
 
   def testSolveBatch(self):
     matrix = np.array([[1., 2.], [3., 4.]])
     rhs = np.array([[1., 0., 1.], [0., 1., 1.]])
     # Batch of 2x3x2x2 matrices, 2x3x2x3 right-hand sides.
-    self._verifySolve(matrix, rhs, lower=True, batch_dims=[2, 3])
+    self._verifySolveAllWays(matrix, rhs, batch_dims=[2, 3])
     # Batch of 3x2x2x2 matrices, 3x2x2x3 right-hand sides.
-    self._verifySolve(matrix, rhs, lower=False, batch_dims=[3, 2])
+    self._verifySolveAllWays(matrix, rhs, batch_dims=[3, 2])
 
   def testNonSquareMatrix(self):
     # A non-square matrix should cause an error.

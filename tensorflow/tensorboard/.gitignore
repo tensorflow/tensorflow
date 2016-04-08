@@ -11,6 +11,7 @@ components/*
 # in gulpfile.js
 !components/tf-*
 !components/index.html
+!components/BUILD
 # Ignore the sample graph files since they are too large to
 # be in the repo.
 components/tf-graph/demo/tf_model_zoo/*

@@ -14,6 +14,7 @@
 # ==============================================================================
 
 """Data Flow Operations."""
+# Mixture of pep8 and non-pep8 names, so disable pylint bad-name
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
 from __future__ import division
@@ -27,6 +28,8 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 
 
+# TensorArray object accesses many of the hidden generated ops, but is
+# in fact built to wrap these methods.
 # pylint: disable=protected-access
 class TensorArray(object):
   """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
@@ -275,4 +278,5 @@ def _TensorArrayUnpackShape(op):
   op.inputs[2].get_shape().merge_with(tensor_shape.scalar())
   # flow_out
   return [tensor_shape.scalar()]
+
 # pylint: enable=protected-access

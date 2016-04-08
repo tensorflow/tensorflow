@@ -29,7 +29,10 @@ DataByExample::~DataByExample() {}
 
 // static
 DataByExample::Key DataByExample::MakeKey(const string& example_id) {
-  // Platform agnostic and collision resistant key-generation function.
+  // Colision resistant key-generation function. It is safe to use a Hash
+  // function (as opposed to a Fingerprint) since the usage of the resource is
+  // single machine and the Keys are never persisted anywhere.
+  //
   // The current probability of at least one collision for 1B example_ids is
   // approximately 10^-11 (ie 2^60 / 2^97).
   //

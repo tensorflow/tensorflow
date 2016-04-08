@@ -137,6 +137,16 @@ echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
 
+# Function that tries to determine CUDA capability, if deviceQuery binary
+# is available on path
+function get_cuda_capability_version() {
+  if [[ ! -z $(which deviceQuery) ]]; then
+    # The first listed device is used
+    echo $(deviceQuery | grep "CUDA Capability .* version" | \
+        head -1 | awk '{print $NF}')
+  fi
+}
+
 # Process container type
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
 OPT_FLAG=""
@@ -144,6 +154,19 @@ if [[ ${CTYPE} == "cpu" ]]; then
   :
 elif [[ ${CTYPE} == "gpu" ]]; then
   OPT_FLAG="--config=cuda"
+
+  # Attempt to determine CUDA capability version and use it
+  if [[ "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}" != \
+        *"TF_CUDA_COMPUTE_CAPABILITIES="* ]]; then
+    CUDA_CAPA_VER=$(get_cuda_capability_version)
+    if [[ ! -z ${CUDA_CAPA_VER} ]]; then
+      echo "TF_CUDA_COMPUTE_CAPABILITIES is not set."
+      echo "Using CUDA capability version from deviceQuery: ${CUDA_CAPA_VER}"
+      TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
+"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e "\
+"TF_CUDA_COMPUTE_CAPABILITIES=${CUDA_CAPA_VER}"
+    fi
+  fi
 elif [[ ${CTYPE} == "android" ]]; then
   :
 else

@@ -239,31 +239,31 @@ export interface TFNode {
 /**
  * TensorFlow stats file definition as defined in the stats proto file.
  */
-export interface TFStats {
-  devStats: {device: string, nodeStats: TFNodeStats[]}[];
+export interface StepStats {
+  dev_stats: {device: string, node_stats: NodeStats[]}[];
 }
 
 /**
  * TensorFlow stats for a node as defined in the stats proto file.
  */
-export interface TFNodeStats {
-  nodeName: string;
+export interface NodeStats {
+  node_name: string;
   // The next 4 properties are currently stored as string in json
   // and must be parsed.
-  allStartMicros: number;
-  opStartRelMicros: number;
-  opEndRelMicros: number;
-  allEndRelMicros: number;
+  all_start_micros: number;
+  op_start_rel_micros: number;
+  op_end_rel_micros: number;
+  all_end_rel_micros: number;
   memory: {
-    allocatorName: string;
-    totalBytes: number; // Stored as string in json and should be parsed.
-    peakBytes: number; // Stored as string in json and should be parsed.
+    allocator_name: string;
+    total_bytes: number; // Stored as string in json and should be parsed.
+    peak_bytes: number; // Stored as string in json and should be parsed.
   }[];
   /** Output sizes recorded for a single execution of a graph node */
   output: TFNodeOutput[];
-  timelineLabel: string;
-  scheduledMicros: string;
-  threadId: string;
+  timeline_label: string;
+  scheduled_micros: string;
+  thread_id: string;
 }
 
 /**
@@ -271,9 +271,7 @@ export interface TFNodeStats {
  */
 export interface TFNodeOutput {
   slot: number; // Stored as string in json and should be parsed.
-  /** Was the tensor allocated by this Op or a previous computation */
-  allocationType: string;
-  tensorDescription: {
+  tensor_description: {
     /** Data type of tensor elements */
     dtype: string;
     /** Shape of the tensor */
@@ -292,15 +290,15 @@ export interface TFNodeOutput {
       }[];
     };
     /** Information about the size and allocator used for the data */
-    allocationDescription: {
+    allocation_description: {
       // The next 2 properties are stored as string in json and
       // should be parsed.
       /** Total number of bytes requested */
-      requestedBytes: number;
+      requested_bytes: number;
       /** Total number of bytes allocated, if known */
-      allocatedBytes?: number;
+      allocated_bytes?: number;
       /** Name of the allocator used */
-      allocatorName: string;
+      allocator_name: string;
     };
   };
 }

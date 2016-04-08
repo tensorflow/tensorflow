@@ -43,6 +43,13 @@ TensorFlow program: Feeding, Reading and Preloading.
 
 [View Tutorial](reading_data/index.md)
 
+## Distributed TensorFlow
+
+This tutorial describes how to execute TensorFlow programs using a cluster of
+TensorFlow servers.
+
+[View Tutorial](distributed/index.md)
+
 
 ## Threading and Queues
 

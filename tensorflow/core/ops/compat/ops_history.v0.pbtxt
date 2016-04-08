@@ -7411,6 +7411,23 @@ op {
   }
 }
 op {
+  name: "IsVariableInitialized"
+  input_arg {
+    name: "ref"
+    type_attr: "dtype"
+    is_ref: true
+  }
+  output_arg {
+    name: "is_initialized"
+    type: DT_BOOL
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  allows_uninitialized_input: true
+}
+op {
   name: "L2Loss"
   input_arg {
     name: "t"

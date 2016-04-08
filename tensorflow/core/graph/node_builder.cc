@@ -41,6 +41,9 @@ NodeBuilder::NodeBuilder(StringPiece name, StringPiece op_name,
 NodeBuilder::NodeBuilder(StringPiece name, const OpDef* op_def)
     : def_builder_(name, op_def) {}
 
+NodeBuilder::NodeBuilder(const NodeDefBuilder& def_builder)
+    : def_builder_(def_builder) {}
+
 NodeBuilder& NodeBuilder::Input(Node* src_node, int src_index) {
   inputs_.emplace_back(src_node, src_index);
   DataType dt;

@@ -488,7 +488,8 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       for (const auto& name : output_names) {
         run_state->pending_outputs.erase(name);
       }
-      done = run_state->pending_outputs.size() == 0;
+      done = (run_state->pending_inputs.size() == 0 &&
+              run_state->pending_outputs.size() == 0);
     }
     if (done) {
       WaitForNotification(run_state, operation_timeout_in_ms_);

@@ -40,12 +40,11 @@ to create a realistic demo directory from your own data files.
 ## Launching TensorBoard with modified source
 
 If you are developing in open source, and have made some changes to TensorBoard
-that you'd like to try out on real data, then you need to overwrite
-`dist/tf-tensorboard.html`. Run `gulp vulcanize`, and you'll get a new file
-called `dist/tf-tensorboard.html.OPENSOURCE`. Overwite
-`dist/tf-tensorboard.html` with that file:
+that you'd like to try out on real data, then you need to regenerate
+`dist/tf-tensorboard.html`.
 
-`mv dist/tf-tensorboard.html.OPENSOURCE dist/tf-tensorboard.html`.
+Run `gulp regenerate`. That will recompile all of the TensorBoard assets, and
+produce a new tf-tensorboard.html with your changes.
 
 Now, you can use `bazel` to launch TensorBoard:
 

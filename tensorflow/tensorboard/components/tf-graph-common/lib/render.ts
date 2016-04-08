@@ -152,11 +152,14 @@ const PARAMS = {
  * for each node in the graph.
  */
 export class RenderGraphInfo {
-  private hierarchy: hierarchy.Hierarchy;
+  hierarchy: hierarchy.Hierarchy;
   private index: {[nodeName: string]: RenderNodeInfo};
   private deviceColorMap: d3.scale.Ordinal<string, string>;
   private memoryUsageScale: d3.scale.Linear<string, string>;
   private computeTimeScale: d3.scale.Linear<string, string>;
+  /** Scale for the thickness of edges when there is no shape information. */
+  edgeWidthScale:
+      d3.scale.Linear<number, number> | d3.scale.Pow<number, number>;
   // Since the rendering information for each node is constructed lazily,
   // upon node's expansion by the user, we keep a map between the node's name
   // and whether the rendering information was already constructed for that
@@ -167,12 +170,24 @@ export class RenderGraphInfo {
   constructor(hierarchy: hierarchy.Hierarchy) {
     this.hierarchy = hierarchy;
     this.index = {};
+
+    this.computeScales();
+    // Maps node name to whether the rendering hierarchy was already
+    // constructed.
+    this.hasSubhierarchy = {};
+    this.root = new RenderGroupNodeInfo(hierarchy.root);
+    this.index[hierarchy.root.name] = this.root;
+    this.buildSubhierarchy(hierarchy.root.name);
+    this.root.expanded = true;
+  }
+
+  computeScales() {
     this.deviceColorMap = d3.scale.ordinal<string>()
-        .domain(hierarchy.devices)
-        .range(_.map(d3.range(hierarchy.devices.length),
+        .domain(this.hierarchy.devices)
+        .range(_.map(d3.range(this.hierarchy.devices.length),
                      MetanodeColors.DEVICE_PALETTE));
 
-    let topLevelGraph = hierarchy.root.metagraph;
+    let topLevelGraph = this.hierarchy.root.metagraph;
     // Find the maximum and minimum memory usage.
     let memoryExtent = d3.extent(topLevelGraph.nodes(),
         (nodeName, index) => {
@@ -199,13 +214,11 @@ export class RenderGraphInfo {
         .domain(computeTimeExtent)
         .range(PARAMS.minMaxColors);
 
-    // Maps node name to whether the rendering hierarchy was already
-    // constructed.
-    this.hasSubhierarchy = {};
-    this.root = new RenderGroupNodeInfo(hierarchy.root);
-    this.index[hierarchy.root.name] = this.root;
-    this.buildSubhierarchy(hierarchy.root.name);
-    this.root.expanded = true;
+    this.edgeWidthScale = this.hierarchy.hasShapeInfo ?
+      scene.edge.EDGE_WIDTH_SCALE :
+      d3.scale.linear()
+        .domain([1, this.hierarchy.maxMetaEdgeSize])
+        .range([scene.edge.MIN_EDGE_WIDTH, scene.edge.MAX_EDGE_WIDTH]);
   }
 
   /**

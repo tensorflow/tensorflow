@@ -84,7 +84,7 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
     if HAS_DASK:
         import dask.dataframe as dd
         allowed_classes = (dd.Series, dd.DataFrame)
-        if (isinstance(X, allowed_classes) and 
+        if (isinstance(X, allowed_classes) and
             (y is None or isinstance(y, allowed_classes))):
             data_feeder_cls = DaskDataFeeder
         else:
