@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/framework/python_op_gen.h"
 
 #include <stdio.h>
+#include <sstream>
 #include <unordered_map>
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -28,8 +29,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -109,20 +112,6 @@ void AppendWithinWidth(string* dest, StringPiece append, int width) {
   } else {
     strings::StrAppend(dest, " ", append);
   }
-}
-
-void RemoveDescriptionsFromOpDef(OpDef* op_def) {
-  for (int i = 0; i < op_def->input_arg_size(); ++i) {
-    op_def->mutable_input_arg(i)->clear_description();
-  }
-  for (int i = 0; i < op_def->output_arg_size(); ++i) {
-    op_def->mutable_output_arg(i)->clear_description();
-  }
-  for (int i = 0; i < op_def->attr_size(); ++i) {
-    op_def->mutable_attr(i)->clear_description();
-  }
-  op_def->clear_summary();
-  op_def->clear_description();
 }
 
 // Like DataTypeString() but uses the Python names for the
@@ -252,18 +241,19 @@ string ArgTypeName(const OpDef& op_def, const OpDef::ArgDef& arg,
   }
 }
 
-void PrintReturns(const OpDef& op_def,
-                  const std::vector<string>& output_type_string) {
+static string GetReturns(const OpDef& op_def,
+                         const std::vector<string>& output_type_string) {
+  string result;
   DCHECK_EQ(op_def.output_arg_size(), output_type_string.size());
   const int num_outs = op_def.output_arg_size();
-  printf("\n  Returns:\n");
+  strings::Appendf(&result, "\n  Returns:\n");
   if (num_outs == 0) {
-    printf("    The created Operation.\n");
+    strings::Appendf(&result, "    The created Operation.\n");
   } else {
     if (num_outs == 1) {
       StringPiece description = op_def.output_arg(0).description();
       if (ConsumeEquals(&description)) {  // Skip the generated type info.
-        printf("%s", Indent(4, 4, description).c_str());
+        strings::Appendf(&result, "%s", Indent(4, 4, description).c_str());
       } else {
         // Special case of one output, don't use the name of the output unless
         // there is no description.
@@ -282,7 +272,7 @@ void PrintReturns(const OpDef& op_def,
         } else if (!description.empty()) {
           AppendWithinWidth(&desc, description, kRightMargin - 4 /* indent */);
         }
-        printf("%s", Indent(4, 4, desc).c_str());
+        strings::Appendf(&result, "%s", Indent(4, 4, desc).c_str());
       }
     } else {
       std::vector<string> out_names(num_outs);
@@ -293,8 +283,8 @@ void PrintReturns(const OpDef& op_def,
           out_names[i] = strings::StrCat("output", i);
         }
       }
-      printf("    A tuple of `Tensor` objects (%s).\n",
-             str_util::Join(out_names, ", ").c_str());
+      strings::Appendf(&result, "    A tuple of `Tensor` objects (%s).\n",
+                       str_util::Join(out_names, ", ").c_str());
       for (int i = 0; i < num_outs; ++i) {
         string desc = strings::StrCat(out_names[i], ": ");
         StringPiece description = op_def.output_arg(i).description();
@@ -317,10 +307,11 @@ void PrintReturns(const OpDef& op_def,
             strings::StrAppend(&desc, type);
           }
         }
-        printf("%s", Indent(4, 6, desc).c_str());
+        strings::Appendf(&result, "%s", Indent(4, 6, desc).c_str());
       }
     }
   }
+  return result;
 }
 
 string StringToPython(const string& str) {
@@ -400,8 +391,8 @@ string AttrValueToPython(const string& type, const AttrValue& value) {
   }
 }
 
-// Requires: ValidateOpDef(op_def).ok()
-void PrintPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
+static string GetPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
+  string result;
   // Map from attr name to the first input arg it is inferred from.
   std::unordered_map<string, string> inferred_attrs;
   // This has all the input args followed by those attrs that don't have
@@ -472,7 +463,8 @@ void PrintPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
   const string def_suffix =
       strings::StrCat(parameters, has_args ? ", " : "", "name=None):");
 
-  printf("%s\n", WordWrap(def_prefix, def_suffix, kRightMargin).c_str());
+  strings::Appendf(&result, "%s\n",
+                   WordWrap(def_prefix, def_suffix, kRightMargin).c_str());
 
   // Format the Op's descriptions so that it can be a Python docstring.
   string comment;
@@ -485,10 +477,7 @@ void PrintPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
     }
   }
 
-  printf(R"(  r"""%s
-  Args:
-)",
-         comment.c_str());
+  strings::Appendf(&result, "  r\"\"\"%s\n  Args:\n", comment.c_str());
 
   // Inputs
   for (int i = 0; i < op_def.input_arg_size(); ++i) {
@@ -504,7 +493,7 @@ void PrintPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
     if (!description.empty()) {
       AppendWithinWidth(&desc, description, kRightMargin - 4 /* indent */);
     }
-    printf("%s", Indent(4, 6, desc).c_str());
+    strings::Appendf(&result, "%s", Indent(4, 6, desc).c_str());
   }
 
   // Attrs
@@ -569,10 +558,10 @@ void PrintPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
       AppendWithinWidth(&desc, attr.description(),
                         kRightMargin - 4 /* indent */);
     }
-    printf("%s", Indent(4, 6, desc).c_str());
+    strings::Appendf(&result, "%s", Indent(4, 6, desc).c_str());
   }
 
-  printf("    name: A name for the operation (optional).\n");
+  strings::Appendf(&result, "    name: A name for the operation (optional).\n");
 
   std::vector<string> output_type_string;
   output_type_string.reserve(op_def.output_arg_size());
@@ -580,7 +569,7 @@ void PrintPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
     output_type_string.push_back(
         ArgTypeName(op_def, op_def.output_arg(i), inferred_attrs, true));
   }
-  PrintReturns(op_def, output_type_string);
+  strings::StrAppend(&result, GetReturns(op_def, output_type_string));
 
   string return_prefix = strings::StrCat("  return _op_def_lib.apply_op(");
   string return_args = strings::StrCat("\"", op_def.name(), "\", ");
@@ -589,13 +578,12 @@ void PrintPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
   }
   strings::StrAppend(&return_args, "name=name)");
 
-  printf(R"(  """
-%s
-)",
-         // Wrap the arguments, and indent to the (.
-         WordWrap(return_prefix, return_args, kRightMargin).c_str());
+  strings::Appendf(&result, "  \"\"\"\n%s\n",
+                   // Wrap the arguments, and indent to the (.
+                   WordWrap(return_prefix, return_args, kRightMargin).c_str());
 
-  printf("\n\n");
+  strings::Appendf(&result, "\n\n");
+  return result;
 }
 
 void GenerateLowerCaseOpName(const string& str, string* result) {
@@ -616,11 +604,12 @@ void GenerateLowerCaseOpName(const string& str, string* result) {
 
 }  // namespace
 
-void PrintPythonOps(const OpList& ops, const string& hidden_ops,
+string GetPythonOps(const OpList& ops, const string& hidden_ops,
                     bool require_shapes) {
+  string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
-  printf(R"("""Python wrappers around Brain.
+  strings::Appendf(&result, R"("""Python wrappers around Brain.
 
 This file is MACHINE GENERATED! Do not edit.
 """
@@ -662,10 +651,12 @@ from tensorflow.python.ops import op_def_library
       continue;
     }
 
-    PrintPythonOp(op_def, is_hidden, lower_case_name);
+    strings::StrAppend(&result,
+                       GetPythonOp(op_def, is_hidden, lower_case_name));
 
     if (!require_shapes) {
-      printf("ops.RegisterShape(\"%s\")(None)\n", op_def.name().c_str());
+      strings::Appendf(&result, "ops.RegisterShape(\"%s\")(None)\n",
+                       op_def.name().c_str());
     }
 
     auto added = out->Add();
@@ -673,7 +664,7 @@ from tensorflow.python.ops import op_def_library
     RemoveDescriptionsFromOpDef(added);
   }
 
-  printf(R"(def _InitOpDefLibrary():
+  strings::Appendf(&result, R"(def _InitOpDefLibrary():
   op_list = op_def_pb2.OpList()
   text_format.Merge(_InitOpDefLibrary.op_list_ascii, op_list)
   op_def_registry.register_op_list(op_list)
@@ -687,7 +678,26 @@ _InitOpDefLibrary.op_list_ascii = """%s"""
 
 _op_def_lib = _InitOpDefLibrary()
 )",
-         cleaned_ops.DebugString().c_str());
+                   cleaned_ops.DebugString().c_str());
+  return result;
+}
+
+void PrintPythonOps(const OpList& ops, const string& hidden_ops,
+                    bool require_shapes) {
+  printf("%s", GetPythonOps(ops, hidden_ops, require_shapes).c_str());
+}
+
+string GetAllPythonOps(const char* hidden, bool require_shapes) {
+  OpList ops;
+  OpRegistry::Global()->Export(false, &ops);
+  return GetPythonOps(ops, hidden, require_shapes);
+}
+
+string GetPythonWrappers(const char* op_wrapper_buf, size_t op_wrapper_len) {
+  string op_list_str(op_wrapper_buf, op_wrapper_len);
+  OpList ops;
+  ops.ParseFromString(op_list_str);
+  return GetPythonOps(ops, "", false);
 }
 
 }  // namespace tensorflow

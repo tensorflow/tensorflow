@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace google {
 namespace protobuf {
@@ -41,5 +41,8 @@ void ReadFileToString(AAssetManager* const asset_manager,
 
 void ReadFileToVector(AAssetManager* const asset_manager,
     const char* const filename, std::vector<std::string>* str_vector);
+
+void WriteProtoToFile(const char* const filename,
+                      const google::protobuf::MessageLite& message);
 
 #endif  // ORG_TENSORFLOW_JNI_JNI_UTILS_H_

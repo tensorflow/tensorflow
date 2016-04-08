@@ -20,8 +20,6 @@ from __future__ import print_function
 import os
 import os.path
 
-import tensorflow.python.platform
-
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
@@ -47,8 +45,6 @@ class _FakeAccumulator(object):
 
   def __init__(self, path):
     self._path = path
-    self.autoupdate_called = False
-    self.autoupdate_interval = None
     self.reload_called = False
 
   def Tags(self):
@@ -77,16 +73,18 @@ class _FakeAccumulator(object):
       raise KeyError
     return ['%s/%s' % (self._path, tag_name)]
 
-  def AutoUpdate(self, interval):
-    self.autoupdate_called = True
-    self.autoupdate_interval = interval
-
   def Reload(self):
     self.reload_called = True
 
 
-def _GetFakeAccumulator(path, size_guidance):  # pylint: disable=unused-argument
+# pylint: disable=unused-argument
+def _GetFakeAccumulator(
+    path,
+    size_guidance=None,
+    compression_bps=None,
+    purge_orphaned_data=None):
   return _FakeAccumulator(path)
+# pylint: enable=unused-argument
 
 
 class EventMultiplexerTest(test_util.TensorFlowTestCase):
@@ -112,14 +110,6 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     x.Reload()
     self.assertTrue(x._GetAccumulator('run1').reload_called)
     self.assertTrue(x._GetAccumulator('run2').reload_called)
-
-  def testAutoUpdate(self):
-    x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
-    x.AutoUpdate(5)
-    self.assertTrue(x._GetAccumulator('run1').autoupdate_called)
-    self.assertEqual(x._GetAccumulator('run1').autoupdate_interval, 5)
-    self.assertTrue(x._GetAccumulator('run2').autoupdate_called)
-    self.assertEqual(x._GetAccumulator('run2').autoupdate_interval, 5)
 
   def testScalars(self):
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
@@ -171,15 +161,15 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     _AddEvents(path2)
     x.AddRunsFromDirectory(realdir)
     self.assertItemsEqual(x.Runs(), ['path1', 'path2'])
-    self.assertEqual(x._GetAccumulator('path1'), loader1,
-                     'loader1 not regenerated')
+    self.assertEqual(
+        x._GetAccumulator('path1'), loader1, 'loader1 not regenerated')
 
     path2_2 = join(path2, 'path2')
     _AddEvents(path2_2)
     x.AddRunsFromDirectory(realdir)
     self.assertItemsEqual(x.Runs(), ['path1', 'path2', 'path2/path2'])
-    self.assertEqual(x._GetAccumulator('path2/path2')._path, path2_2,
-                     'loader2 path correct')
+    self.assertEqual(
+        x._GetAccumulator('path2/path2')._path, path2_2, 'loader2 path correct')
 
   def testAddRunsFromDirectoryThatContainsEvents(self):
     x = event_multiplexer.EventMultiplexer()
@@ -236,8 +226,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     _AddEvents(sub1_1)
     x.AddRunsFromDirectory(realdir)
 
-    self.assertItemsEqual(x.Runs(), ['.',
-                                     'subdirectory/1', 'subdirectory/2',
+    self.assertItemsEqual(x.Runs(), ['.', 'subdirectory/1', 'subdirectory/2',
                                      'subdirectory/1/1'])
 
   def testAddRunsFromDirectoryThrowsException(self):
@@ -275,15 +264,6 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertTrue(x._GetAccumulator('run1').reload_called)
     self.assertTrue(x._GetAccumulator('run2').reload_called)
 
-  def testAddRunMaintainsAutoUpdate(self):
-    x = event_multiplexer.EventMultiplexer()
-    x.AutoUpdate(5)
-    x.AddRun('run1')
-    x.AddRun('run2')
-    self.assertTrue(x._GetAccumulator('run1').autoupdate_called)
-    self.assertTrue(x._GetAccumulator('run2').autoupdate_called)
-    self.assertEqual(x._GetAccumulator('run1').autoupdate_interval, 5)
-    self.assertEqual(x._GetAccumulator('run2').autoupdate_interval, 5)
 
 if __name__ == '__main__':
   googletest.main()

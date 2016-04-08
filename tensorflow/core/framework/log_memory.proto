@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+option java_outer_classname = "LogMemoryProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+import "tensorflow/core/framework/tensor_description.proto";
+
+message MemoryLogStep {
+  // Process-unique step id.
+  int64 step_id = 1;
+
+  // Handle describing the feeds and fetches of the step.
+  string handle = 2;
+};
+
+message MemoryLogTensorAllocation {
+  // Process-unique step id.
+  int64 step_id = 1;
+
+  // Name of the kernel making the allocation as set in GraphDef,
+  // e.g., "affine2/weights/Assign".
+  string kernel_name = 2;
+
+  // Allocated tensor details.
+  TensorDescription tensor = 3;
+};
+
+message MemoryLogTensorDeallocation {
+  // Id of the tensor buffer being deallocated, used to match to a
+  // corresponding allocation.
+  int64 allocation_id = 1;
+
+  // Name of the allocator used.
+  string allocator_name = 2;
+};
+
+message MemoryLogTensorOutput {
+  // Process-unique step id.
+  int64 step_id = 1;
+
+  // Name of the kernel producing an output as set in GraphDef, e.g.,
+  // "affine2/weights/Assign".
+  string kernel_name = 2;
+
+  // Index of the output being set.
+  int32 index = 3;
+
+  // Output tensor details.
+  TensorDescription tensor = 4;
+}
+
+message MemoryLogRawAllocation {
+  // Process-unique step id.
+  int64 step_id = 1;
+
+  // Name of the operation making the allocation.
+  string operation = 2;
+
+  // Number of bytes in the allocation.
+  int64 num_bytes = 3;
+
+  // Address of the allocation.
+  uint64 ptr = 4;
+
+  // Id of the tensor buffer being allocated, used to match to a
+  // corresponding deallocation.
+  int64 allocation_id = 5;
+
+  // Name of the allocator used.
+  string allocator_name = 6;
+};
+
+message MemoryLogRawDeallocation {
+  // Process-unique step id.
+  int64 step_id = 1;
+
+  // Name of the operation making the deallocation.
+  string operation = 2;
+
+  // Id of the tensor buffer being deallocated, used to match to a
+  // corresponding allocation.
+  int64 allocation_id = 3;
+
+  // Name of the allocator used.
+  string allocator_name = 4;
+
+  // True if the deallocation is queued and will be performed later,
+  // e.g. for GPU lazy freeing of buffers.
+  bool deferred = 5;
+};

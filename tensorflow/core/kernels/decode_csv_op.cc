@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/parsing_ops.cc.
+#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -44,7 +45,7 @@ class DecodeCSVOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("records", &records));
     OP_REQUIRES_OK(ctx, ctx->input_list("record_defaults", &record_defaults));
 
-    for (int i = 0; i < record_defaults.size(); ++i) {
+    for (int64 i = 0; i < record_defaults.size(); ++i) {
       OP_REQUIRES(ctx, record_defaults[i].NumElements() < 2,
                   errors::InvalidArgument(
                       "There should only be 1 default per field but field ", i,
@@ -52,7 +53,7 @@ class DecodeCSVOp : public OpKernel {
     }
 
     auto records_t = records->flat<string>();
-    int records_size = records_t.size();
+    int64 records_size = records_t.size();
 
     OpOutputList output;
     OP_REQUIRES_OK(ctx, ctx->output_list("output", &output));
@@ -62,7 +63,7 @@ class DecodeCSVOp : public OpKernel {
       output.allocate(i, records->shape(), &out);
     }
 
-    for (int i = 0; i < records_size; ++i) {
+    for (int64 i = 0; i < records_size; ++i) {
       const StringPiece record(records_t(i));
       std::vector<string> fields;
       ExtractFields(ctx, record, &fields);
@@ -87,7 +88,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<int32>()(i) = record_defaults[f].flat<int32>()(0);
             } else {
               int32 value;
-              OP_REQUIRES(ctx, strings::safe_strto32(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strto32(fields[f], &value),
                           errors::InvalidArgument("Field ", f, " in record ", i,
                                                   " is not a valid int32: ",
                                                   fields[f]));
@@ -107,7 +108,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<int64>()(i) = record_defaults[f].flat<int64>()(0);
             } else {
               int64 value;
-              OP_REQUIRES(ctx, strings::safe_strto64(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strto64(fields[f], &value),
                           errors::InvalidArgument("Field ", f, " in record ", i,
                                                   " is not a valid int64: ",
                                                   fields[f]));
@@ -164,7 +165,7 @@ class DecodeCSVOp : public OpKernel {
 
   void ExtractFields(OpKernelContext* ctx, StringPiece input,
                      std::vector<string>* result) {
-    int current_idx = 0;
+    int64 current_idx = 0;
     if (!input.empty()) {
       while (static_cast<size_t>(current_idx) < input.size()) {
         if (input[current_idx] == '\n' || input[current_idx] == '\r') {
@@ -213,9 +214,10 @@ class DecodeCSVOp : public OpKernel {
           }
 
           OP_REQUIRES(
-              ctx, input[current_idx] == '"' &&
-                       (static_cast<size_t>(current_idx) == input.size() - 1 ||
-                        input[current_idx + 1] == delim_),
+              ctx, (static_cast<size_t>(current_idx) < input.size() &&
+                    input[current_idx] == '"' &&
+                    (static_cast<size_t>(current_idx) == input.size() - 1 ||
+                     input[current_idx + 1] == delim_)),
               errors::InvalidArgument("Quoted field has to end with quote "
                                       "followed by delim or end"));
 

@@ -18,10 +18,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
-class SessionOptions;
+struct SessionOptions;
 
 // This class is shared by ThreadPoolDevice and GPUDevice and
 // initializes a shared Eigen compute device used by both.  This

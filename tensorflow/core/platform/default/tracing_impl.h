@@ -18,10 +18,13 @@ limitations under the License.
 
 // Stub implementations of tracing functionality.
 
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/tracing.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/tracing.h
+
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 namespace port {
@@ -48,8 +51,7 @@ inline void Tracing::RecordEvent(EventCategory category, uint64 arg) {
 }
 
 inline Tracing::ScopedActivity::ScopedActivity(EventCategory category,
-                                               uint64 arg)
-    : enabled_(false), region_id_(category_id_[category]) {}
+                                               uint64 arg) {}
 
 inline Tracing::ScopedActivity::~ScopedActivity() {}
 

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/examples/android/jni/rgb2yuv.h"
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 using namespace tensorflow;
 

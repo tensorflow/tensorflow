@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_allocator_retry.h"
+#include "tensorflow/core/common_runtime/allocator_retry.h"
 
-#include <gtest/gtest.h>
+#include <vector>
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -47,16 +49,13 @@ class FakeAllocator {
   }
 
   void DeallocateRaw(void* ptr) {
-    retry_.DeallocateRaw(
-        [this](void* p) {
-          mutex_lock l(mu_);
-          ++memory_capacity_;
-        },
-        ptr);
+    mutex_lock l(mu_);
+    ++memory_capacity_;
+    retry_.NotifyDealloc();
   }
 
  private:
-  GPUAllocatorRetry retry_;
+  AllocatorRetry retry_;
   void* good_ptr_ = reinterpret_cast<void*>(0xdeadbeef);
   mutex mu_;
   size_t memory_capacity_ GUARDED_BY(mu_);
@@ -142,6 +141,7 @@ TEST_F(GPUAllocatorRetryTest, RetrySuccess) {
   EXPECT_GT(consumer_count_[2], 0);
 }
 
+/* Disabled due to flakiness.  b/24738751
 // Verifies OutOfMemory failure when memory is slightly overcommitted
 // and retry is not allowed.
 TEST_F(GPUAllocatorRetryTest, NoRetryFail) {
@@ -162,6 +162,7 @@ TEST_F(GPUAllocatorRetryTest, NoRetryFail) {
     EXPECT_TRUE(has_failed_);
   }
 }
+*/
 
 // Verifies OutOfMemory failure when retry is allowed but memory capacity
 // is too low even for retry.

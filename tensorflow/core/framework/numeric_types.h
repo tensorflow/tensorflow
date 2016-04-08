@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <complex>
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 // Single precision complex.
 typedef std::complex<float> complex64;
+// Double precision complex.
+typedef std::complex<double> complex128;
 
 }  // end namespace tensorflow
 

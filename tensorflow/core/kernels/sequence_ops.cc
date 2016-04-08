@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -34,15 +34,15 @@ class RangeOp : public OpKernel {
     const Tensor& start_in = context->input(0);
     const Tensor& limit_in = context->input(1);
     const Tensor& delta_in = context->input(2);
-    OP_REQUIRES(context, TensorShapeUtils::IsLegacyScalar(start_in.shape()),
+    OP_REQUIRES(context, IsLegacyScalar(start_in.shape()),
                 errors::InvalidArgument("start must be a scalar, not shape ",
-                                        start_in.shape().ShortDebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsLegacyScalar(limit_in.shape()),
+                                        start_in.shape().DebugString()));
+    OP_REQUIRES(context, IsLegacyScalar(limit_in.shape()),
                 errors::InvalidArgument("limit must be a scalar, not shape ",
-                                        limit_in.shape().ShortDebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsLegacyScalar(delta_in.shape()),
+                                        limit_in.shape().DebugString()));
+    OP_REQUIRES(context, IsLegacyScalar(delta_in.shape()),
                 errors::InvalidArgument("delta must be a scalar, not shape ",
-                                        delta_in.shape().ShortDebugString()));
+                                        delta_in.shape().DebugString()));
     const int32 start = GetValue(start_in.scalar<T>()());
     const int32 limit = GetValue(limit_in.scalar<T>()());
     OP_REQUIRES(context, start <= limit,
@@ -93,13 +93,13 @@ class LinSpaceOp : public OpKernel {
     const Tensor& num_in = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(start_in.shape()),
                 errors::InvalidArgument("start must be a scalar, not shape ",
-                                        start_in.shape().ShortDebugString()));
+                                        start_in.shape().DebugString()));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(stop_in.shape()),
                 errors::InvalidArgument("stop must be a scalar, not shape ",
-                                        stop_in.shape().ShortDebugString()));
+                                        stop_in.shape().DebugString()));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_in.shape()),
                 errors::InvalidArgument("num must be a scalar, not shape ",
-                                        num_in.shape().ShortDebugString()));
+                                        num_in.shape().DebugString()));
     const T start = start_in.scalar<T>()();
     const T stop = stop_in.scalar<T>()();
     const int32 num = num_in.scalar<int32>()();

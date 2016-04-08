@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.test_util import TensorFlowTestCase
@@ -101,6 +99,21 @@ class ShapeTestCase(TensorFlowTestCase):
       self.assertEquals([2],
                         control_flow_ops.with_dependencies(
                             [tf.constant(1.0)], tensor).get_shape())
+
+
+class SwitchTestCase(TensorFlowTestCase):
+
+  def testIndexedSlicesWithDenseShape(self):
+    with self.test_session():
+      data = ops.IndexedSlices(tf.constant([1, 2, 3]),
+                               tf.constant([0, 1]),
+                               dense_shape=tf.constant([3]))
+      zero = tf.constant(0)
+      one = tf.constant(1)
+      less_op = tf.less(zero, one)
+      switch_false, switch_true = control_flow_ops.switch(data, less_op)
+      self.assertAllEqual([1, 2, 3], switch_true.values.eval())
+      self.assertAllEqual([0, 1], switch_true.indices.eval())
 
 
 if __name__ == "__main__":

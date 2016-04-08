@@ -17,10 +17,13 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
 #define TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
 
-#include "tensorflow/core/platform/port.h"
+#include <vector>
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_GOOGLE)
-#include "testing/base/public/benchmark.h"
+#include "tensorflow/core/platform/google/build_config/benchmark.h"
 
 #else
 #define BENCHMARK(n)                                            \
@@ -36,8 +39,11 @@ namespace tensorflow {
 namespace testing {
 
 #if defined(PLATFORM_GOOGLE)
+
 using ::testing::Benchmark;
+
 #else
+
 class Benchmark {
  public:
   Benchmark(const char* name, void (*fn)(int));

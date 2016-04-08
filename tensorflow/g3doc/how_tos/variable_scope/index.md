@@ -38,7 +38,7 @@ this one, and even here we already have 4 different variables: `conv1_weights`,
 
 The problem arises when you want to reuse this model. Assume you want to
 apply your image filter to 2 different images, `image1` and `image2`.
-You want both images processed by the same filer with the same parameters.
+You want both images processed by the same filter with the same parameters.
 You can call `my_image_filter()` twice, but this will create two sets
 of variables:
 
@@ -119,7 +119,7 @@ def conv_relu(input, kernel_shape, bias_shape):
         initializer=tf.random_normal_initializer())
     # Create variable named "biases".
     biases = tf.get_variable("biases", bias_shape,
-        initializer=tf.constant_intializer(0.0))
+        initializer=tf.constant_initializer(0.0))
     conv = tf.nn.conv2d(input, weights,
         strides=[1, 1, 1, 1], padding='SAME')
     return tf.nn.relu(conv + biases)
@@ -184,7 +184,7 @@ In this case, `v` will be a newly created `tf.Variable` with the provided
 shape and data type. The full name of the created variable will be set to
 the current variable scope name + the provided `name` and a check will be
 performed to ensure that no variable with this full name exists yet.
-If a variable with this full name already exists, the funtion will
+If a variable with this full name already exists, the function will
 raise a `ValueError`. If a new variable is created, it will be
 initialized to the value `initializer(shape)`. For example:
 
@@ -343,7 +343,7 @@ with tf.variable_scope("foo"):
 assert x.op.name == "foo/add"
 ```
 
-Name scopes can be openend in addition to a variable scope, and then
+Name scopes can be opened in addition to a variable scope, and then
 they will only affect the names of the ops, but not of variables.
 
 ```python

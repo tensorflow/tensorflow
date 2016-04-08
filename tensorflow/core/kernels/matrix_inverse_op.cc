@@ -20,11 +20,12 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -64,24 +65,13 @@ class MatrixInverseOp
       // By definition, an empty matrix's inverse is an empty matrix.
       return;
     }
-    if (input.isApprox(input.transpose())) {
-      // Matrix is symmetric, compute Cholesky factorization
-      // input = L * L^T.
-      Eigen::LLT<Matrix, Eigen::Lower> cholesky_decomposition(input);
-      if (cholesky_decomposition.info() == Eigen::Success) {
-        // Cholesky succeeded => Matrix was SPD.
-        output->noalias() = cholesky_decomposition.solve(
-            Matrix::Identity(input.rows(), input.cols()));
-        return;
-      }
-    }
     Eigen::PartialPivLU<Matrix> lu_decomposition(input);
-    // While PartialPivLU cannot give strong guarantees on invertability,
+    // TODO(rmlarsen): Add check based on condition number estimation.
+    // PartialPivLU cannot give strong guarantees on invertibility, but
     // we can at least guard against exact zero pivots. This can occur as
     // a result of basic user mistakes, such as providing integer valued
-    // matrices that are exacly singular, or due to underflow if this
+    // matrices that are exactly singular, or due to underflow if this
     // code is run with denormals being flushed to zero.
-    // TODO(rmlarsen): Add check based on condition number estimation.
     const Scalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > Scalar(0),

@@ -38,7 +38,9 @@ def _ResizeNearestNeighborGrad(op, grad):
   """
   # pylint: disable=protected-access
   grads = gen_image_ops._resize_nearest_neighbor_grad(
-      grad, op.inputs[0].get_shape()[1:3])
+      grad,
+      op.inputs[0].get_shape()[1:3],
+      align_corners=op.get_attr("align_corners"))
   # pylint: enable=protected-access
   return [grads, None]
 
@@ -58,7 +60,10 @@ def _ResizeBilinearGrad(op, grad):
   grad0 = None
   if op.inputs[0].dtype in allowed_types:
     # pylint: disable=protected-access
-    grad0 = gen_image_ops._resize_bilinear_grad(grad, op.inputs[0])
+    grad0 = gen_image_ops._resize_bilinear_grad(
+        grad,
+        op.inputs[0],
+        align_corners=op.get_attr("align_corners"))
     # pylint: enable=protected-access
   return [grad0, None]
 
@@ -67,7 +72,7 @@ def _ResizeBilinearGrad(op, grad):
 def _ResizeShape(op):
   """Shape function for the resize grad ops."""
   input_shape = op.inputs[0].get_shape().with_rank(4)
-  size = tensor_util.ConstantValue(op.inputs[1])
+  size = tensor_util.constant_value(op.inputs[1])
   if size is not None:
     height = size[0]
     width = size[1]
@@ -83,4 +88,3 @@ def _ResizeShape(op):
 def _ResizeBilinearGradShape(op):
   """Shape function for ResizeBilinearGrad."""
   return [op.inputs[1].get_shape()]
-

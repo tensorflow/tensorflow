@@ -22,8 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 

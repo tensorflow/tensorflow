@@ -13,6 +13,21 @@ exports_files([
 
 # open source marker; do not remove
 
+# Config setting for determining if we are building for Android.
+config_setting(
+    name = "android",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "darwin",
+    values = {"cpu": "darwin"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],
@@ -44,3 +59,24 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python"],
 )
+
+# -------------------------------------------
+# New rules should be added above this target.
+# -------------------------------------------
+cc_binary(
+    name = "libtensorflow.so",
+    linkshared = 1,
+    deps = [
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_binary(
+    name = "libtensorflow_cc.so",
+    linkshared = 1,
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+

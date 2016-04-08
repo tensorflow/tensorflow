@@ -19,9 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
-import tensorflow.python.platform
-
+import threading
 import tensorflow as tf
 
 
@@ -235,7 +235,7 @@ class TextLineReaderTest(tf.test.TestCase):
   def _LineText(self, f, l):
     return tf.compat.as_bytes("%d: %d" % (f, l))
 
-  def _CreateFiles(self):
+  def _CreateFiles(self, crlf=False):
     filenames = []
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "text_line.%d.txt" % i)
@@ -246,11 +246,10 @@ class TextLineReaderTest(tf.test.TestCase):
         # Always include a newline after the record unless it is
         # at the end of the file, in which case we include it sometimes.
         if j + 1 != self._num_lines or i == 0:
-          f.write(b"\n")
+          f.write(b"\r\n" if crlf else b"\n")
     return filenames
 
-  def testOneEpoch(self):
-    files = self._CreateFiles()
+  def _testOneEpoch(self, files):
     with self.test_session() as sess:
       reader = tf.TextLineReader(name="test_reader")
       queue = tf.FIFOQueue(99, [tf.string], shapes=())
@@ -267,6 +266,12 @@ class TextLineReaderTest(tf.test.TestCase):
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
+
+  def testOneEpochLF(self):
+    self._testOneEpoch(self._CreateFiles(crlf=False))
+
+  def testOneEpochCRLF(self):
+    self._testOneEpoch(self._CreateFiles(crlf=True))
 
   def testSkipHeaderLines(self):
     files = self._CreateFiles()
@@ -375,6 +380,46 @@ class TFRecordReaderTest(tf.test.TestCase):
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
+
+
+class AsyncReaderTest(tf.test.TestCase):
+
+  def testNoDeadlockFromQueue(self):
+    """Tests that reading does not block main execution threads."""
+    config = tf.ConfigProto(inter_op_parallelism_threads=1,
+                            intra_op_parallelism_threads=1)
+    with self.test_session(config=config) as sess:
+      thread_data_t = collections.namedtuple("thread_data_t",
+                                             ["thread", "queue", "output"])
+      thread_data = []
+
+      # Create different readers, each with its own queue.
+      for i in range(3):
+        queue = tf.FIFOQueue(99, [tf.string], shapes=())
+        reader = tf.TextLineReader()
+        _, line = reader.read(queue)
+        output = []
+        t = threading.Thread(target=AsyncReaderTest._RunSessionAndSave,
+                             args=(sess, [line], output))
+        thread_data.append(thread_data_t(t, queue, output))
+
+      # Start all readers. They are all blocked waiting for queue entries.
+      sess.run(tf.initialize_all_variables())
+      for d in thread_data:
+        d.thread.start()
+
+      # Unblock the readers.
+      for i, d in enumerate(reversed(thread_data)):
+        fname = os.path.join(self.get_temp_dir(), "deadlock.%s.txt" % i)
+        with open(fname, "wb") as f:
+          f.write(("file-%s" % i).encode())
+        d.queue.enqueue_many([[fname]]).run()
+        d.thread.join()
+        self.assertEqual([[("file-%s" % i).encode()]], d.output)
+
+  @staticmethod
+  def _RunSessionAndSave(sess, args, output):
+    output.append(sess.run(args))
 
 
 if __name__ == "__main__":

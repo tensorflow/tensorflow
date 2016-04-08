@@ -1,11 +1,12 @@
-# Example Uses
+# TensorFlow Uses
 
 This page describes some of the current uses of the TensorFlow system.
 
 > If you are using TensorFlow for research, for education, or for production
 > usage in some product, we would love to add something about your usage here.
 > Please feel free to email us a brief description of how you're using
-> TensorFlow, or send us a pull request to add an entry to this file.
+> TensorFlow, or even better, send us a pull request to add an entry to this
+> file.
 
 Listed below are some of the many uses of TensorFlow.
 

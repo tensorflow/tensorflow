@@ -17,8 +17,10 @@ limitations under the License.
 #define TENSORFLOW_UTIL_SPARSE_DIM_COMPARATOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace sparse {
@@ -47,7 +49,7 @@ class DimComparator {
   inline DimComparator(const TTypes<int64>::Matrix& ix,
                        const VarDimArray& order, int dims)
       : ix_(ix), order_(order), dims_(dims) {
-    CHECK_GT(order.size(), 0) << "Must order using at least one index";
+    CHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
     CHECK_LE(order.size(), dims_) << "Can only sort up to dims";
     for (size_t d = 0; d < order.size(); ++d) {
       CHECK_GE(order[d], 0);
@@ -62,6 +64,24 @@ class DimComparator {
       if (ix_(i, d) > ix_(j, d)) return false;
     }
     return false;
+  }
+
+  // Compares two indices taken from corresponding index matrices, using the
+  // standard, row-major (or lexicographic) order.  Useful for cases that need
+  // to distinguish between all three orderings (<, ==, >).
+  inline static int cmp(const TTypes<int64>::ConstMatrix& a_idx,
+                        const TTypes<int64>::ConstMatrix& b_idx,
+                        const int64 a_row, const int64 b_row, const int dims) {
+    for (int d = 0; d < dims; ++d) {
+      const int64 a = a_idx(a_row, d);
+      const int64 b = b_idx(b_row, d);
+      if (a < b) {
+        return -1;
+      } else if (a > b) {
+        return 1;
+      }
+    }
+    return 0;
   }
 
   const TTypes<int64>::Matrix ix_;

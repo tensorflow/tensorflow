@@ -22,8 +22,6 @@ import random
 import re
 import time
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -1123,6 +1121,48 @@ class FIFOQueueTest(tf.test.TestCase):
       # Enough enqueued to unblock the dequeue
       thread.join()
       self.assertAllEqual(elem, results)
+
+  def testDtypes(self):
+    with self.test_session() as sess:
+      dtypes = [tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8,
+                tf.int64, tf.bool, tf.complex64]
+      shape = (32, 4, 128)
+      q = tf.FIFOQueue(32, dtypes, [shape[1:]] * len(dtypes))
+
+      input_tuple = []
+      for dtype in dtypes:
+        np_dtype = dtype.as_numpy_dtype
+        np_array = np.random.randint(-10, 10, shape)
+        if dtype == tf.bool:
+          np_array = np_array > 0
+        elif dtype == tf.complex64:
+          np_array = np.sqrt(np_array.astype(np_dtype))
+        else:
+          np_array = np_array.astype(np_dtype)
+        input_tuple.append(np_array)
+
+      q.enqueue_many(input_tuple).run()
+
+      output_tuple_t = q.dequeue_many(32)
+      output_tuple = sess.run(output_tuple_t)
+
+      for (input_elem, output_elem) in zip(input_tuple, output_tuple):
+        self.assertAllEqual(input_elem, output_elem)
+
+
+class FIFOQueueWithTimeoutTest(tf.test.TestCase):
+
+  def testDequeueWithTimeout(self):
+    with self.test_session(
+        config=tf.ConfigProto(operation_timeout_in_ms=20)) as sess:
+      q = tf.FIFOQueue(10, tf.float32)
+      dequeued_t = q.dequeue()
+
+      # Intentionally do not run any enqueue_ops so that dequeue will block
+      # until operation_timeout_in_ms.
+      with self.assertRaisesRegexp(tf.errors.DeadlineExceededError,
+                                   "Timed out waiting for notification"):
+        sess.run(dequeued_t)
 
 
 if __name__ == "__main__":

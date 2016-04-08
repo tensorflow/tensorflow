@@ -35,6 +35,9 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
 #define TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
 
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/thread_annotations.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/thread_annotations.h
+
 #if defined(__clang__) && (!defined(SWIG))
 #define THREAD_ANNOTATION_ATTRIBUTE__(x) __attribute__((x))
 #else
@@ -69,6 +72,15 @@ limitations under the License.
 
 #define ACQUIRED_BEFORE(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(acquired_before(__VA_ARGS__))
+
+#define ACQUIRE(...) \
+  THREAD_ANNOTATION_ATTRIBUTE__(acquire_capability(__VA_ARGS__))
+
+#define ACQUIRE_SHARED(...) \
+  THREAD_ANNOTATION_ATTRIBUTE__(acquire_shared_capability(__VA_ARGS__))
+
+#define RELEASE(...) \
+  THREAD_ANNOTATION_ATTRIBUTE__(release_capability(__VA_ARGS__))
 
 // Document a function that expects a mutex to be held prior to entry.
 // The mutex is expected to be held both on entry to and exit from the

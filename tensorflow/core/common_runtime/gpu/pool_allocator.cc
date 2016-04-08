@@ -21,10 +21,10 @@ limitations under the License.
 
 #include <map>
 
-//#include "prodkernel/api/base/numa.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -39,7 +39,7 @@ PoolAllocator::PoolAllocator(size_t pool_size_limit, bool auto_resize,
       size_rounder_(size_rounder),
       allocation_begun_(false) {
   if (auto_resize) {
-    CHECK_LT(0, pool_size_limit)
+    CHECK_LT(size_t{0}, pool_size_limit)
         << "size limit must be > 0 if auto_resize is true.";
   }
 }
@@ -47,7 +47,7 @@ PoolAllocator::PoolAllocator(size_t pool_size_limit, bool auto_resize,
 PoolAllocator::~PoolAllocator() { Clear(); }
 
 namespace {
-// Pools contain Chunks allocatated from the underlying Allocator.
+// Pools contain Chunks allocated from the underlying Allocator.
 // Chunk alignment is always on kPoolAlignment boundaries.  Each Chunk
 // begins with a descriptor (ChunkPrefix) that gives its size and a
 // pointer to itself.  The pointer returned to the user is just past
@@ -56,7 +56,7 @@ namespace {
 // pointer and also re-write the ChunkPrefix.chunk_ptr value
 // immediately before it.  This way the Chunk address and size can be
 // recovered from the returned user pointer, regardless of alignment.
-// Note that this deferencing of the pointers means that we cannot
+// Note that this dereferencing of the pointers means that we cannot
 // handle GPU memory, only CPU memory.
 struct ChunkPrefix {
   size_t num_bytes;
@@ -233,17 +233,19 @@ void PoolAllocator::EvictOne() {
         evicted_count_ / static_cast<double>(put_count_);
     const int64 alloc_request_count = allocated_count_ + get_from_pool_count_;
     const double alloc_rate =
-        allocated_count_ / static_cast<double>(alloc_request_count);
+        (alloc_request_count == 0)
+            ? 0.0
+            : allocated_count_ / static_cast<double>(alloc_request_count);
     static int log_counter = 0;
     // (counter increment not thread safe but it's just for logging, so we
     // don't care).
     bool should_log = ((log_counter++ % 10) == 0);
     if (should_log) {
-      LOG(WARNING) << "PoolAllocator: After " << alloc_request_count
-                   << " get requests, put_count=" << put_count_
-                   << " evicted_count=" << evicted_count_
-                   << " eviction_rate=" << eviction_rate
-                   << " and unsatisfied allocation rate=" << alloc_rate;
+      LOG(INFO) << "PoolAllocator: After " << alloc_request_count
+                << " get requests, put_count=" << put_count_
+                << " evicted_count=" << evicted_count_
+                << " eviction_rate=" << eviction_rate
+                << " and unsatisfied allocation rate=" << alloc_rate;
     }
     if (auto_resize_ && (eviction_rate > kTolerable) &&
         (alloc_rate > kTolerable)) {

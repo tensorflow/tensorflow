@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_TENSOR_UTIL_H_
 #define TENSORFLOW_FRAMEWORK_TENSOR_UTIL_H_
 
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
+#include <vector>
 namespace tensorflow {
 namespace tensor {
 

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/refcount.h"
 
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace core {
@@ -30,7 +30,7 @@ class MyRef : public RefCounted {
   ~MyRef() override { destroyed++; }
 };
 
-class RefTest : public testing::Test {
+class RefTest : public ::testing::Test {
  public:
   RefTest() {
     constructed = 0;

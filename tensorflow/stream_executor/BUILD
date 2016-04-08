@@ -1,6 +1,6 @@
 licenses(["restricted"])
 
-load("/tensorflow/tensorflow", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_cuda")
 
 cc_library(
     name = "stream_executor",
@@ -8,6 +8,7 @@ cc_library(
         [
             "*.cc",
             "lib/*.cc",
+            "platform/default/*.cc",
         ],
         exclude = [
             "**/*_test.cc",
@@ -21,12 +22,14 @@ cc_library(
         "*.h",
         "cuda/*.h",
         "lib/*.h",
+        "lib/gtl/*.h",
         "platform/**/*.h",
     ]),
     data = [
         "//tensorflow/core:cuda",
         "//third_party/gpus/cuda:cublas",
         "//third_party/gpus/cuda:cudnn",
+        "//third_party/gpus/cuda:cufft",
     ],
     linkopts = [
         "-ldl",

@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/distribution_sampler.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
@@ -29,6 +30,21 @@ namespace tensorflow {
 const int kPrecalc = 3000;
 // Number of words to read into a sentence before processing.
 const int kSentenceSize = 1000;
+
+namespace {
+
+bool ScanWord(StringPiece* input, string* word) {
+  str_util::RemoveLeadingWhitespace(input);
+  StringPiece tmp;
+  if (str_util::ConsumeNonWhitespace(input, &tmp)) {
+    word->assign(tmp.data(), tmp.size());
+    return true;
+  } else {
+    return false;
+  }
+}
+
+}  // end namespace
 
 class SkipgramOp : public OpKernel {
  public:
@@ -117,7 +133,7 @@ class SkipgramOp : public OpKernel {
   int32 label_limit_ GUARDED_BY(mu_);
 
   // {example_pos_, label_pos_} is the cursor for the next example.
-  // example_pos_ wrapps around at the end of corpus_. For each
+  // example_pos_ wraps around at the end of corpus_. For each
   // example, we randomly generate [label_pos_, label_limit) for
   // labels.
   void NextExample(int32* example, int32* label) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -163,12 +179,11 @@ class SkipgramOp : public OpKernel {
   Status Init(Env* env, const string& filename) {
     string data;
     TF_RETURN_IF_ERROR(ReadFileToString(env, filename, &data));
-    RE2 kWord("\\s*(\\S+)");
-    auto input = ToRegexpStringPiece(data);
+    StringPiece input = data;
     string w;
     corpus_size_ = 0;
     std::unordered_map<string, int32> word_freq;
-    while (RE2::Consume(&input, kWord, &w)) {
+    while (ScanWord(&input, &w)) {
       ++(word_freq[w]);
       ++corpus_size_;
     }
@@ -211,8 +226,8 @@ class SkipgramOp : public OpKernel {
     word_ = word;
     freq_ = freq;
     corpus_.reserve(corpus_size_);
-    input = ToRegexpStringPiece(data);
-    while (RE2::Consume(&input, kWord, &w)) {
+    input = data;
+    while (ScanWord(&input, &w)) {
       corpus_.push_back(gtl::FindWithDefault(word_id, w, kUnkId));
     }
     precalc_examples_.resize(kPrecalc);

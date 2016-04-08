@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import itertools
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -148,16 +146,18 @@ def _EmbeddingResult(params, id_vals, num_shards, vocab_size,
     weight_vals.fill(1)
   values = []
   weights = []
+  weights_squared = []
   for ids, wts in zip(id_vals, weight_vals):
-    val_aggr = None
-    wt_aggr = None
+    value_aggregation = None
+    weight_aggregation = None
+    squared_weight_aggregation = None
     if isinstance(ids, tf.compat.integral_types):
       ids = [ids]
       wts = [wts]
-    for i, wt_val in zip(ids, wts):
+    for i, weight_value in zip(ids, wts):
       if partition_strategy == "mod":
         val = np.copy(params[_PName(i % num_shards) + ":0"][
-            i // num_shards, :]) * wt_val
+            i // num_shards, :]) * weight_value
       elif partition_strategy == "div":
         ids_per_partition, extras = divmod(vocab_size, num_shards)
         threshold = extras * (ids_per_partition + 1)
@@ -168,22 +168,28 @@ def _EmbeddingResult(params, id_vals, num_shards, vocab_size,
           partition = extras + (i - threshold) // ids_per_partition
           offset = (i - threshold) % ids_per_partition
         val = np.copy(
-            params[_PName(partition) + ":0"][offset, :]) * wt_val
+            params[_PName(partition) + ":0"][offset, :]) * weight_value
       else:
         assert False
-      if val_aggr is None:
-        assert wt_aggr is None
-        val_aggr = val
-        wt_aggr = wt_val
+      if value_aggregation is None:
+        assert weight_aggregation is None
+        assert squared_weight_aggregation is None
+        value_aggregation = val
+        weight_aggregation = weight_value
+        squared_weight_aggregation = weight_value * weight_value
       else:
-        assert wt_aggr is not None
-        val_aggr += val
-        wt_aggr += wt_val
-    values.append(val_aggr)
-    weights.append(wt_aggr)
+        assert weight_aggregation is not None
+        assert squared_weight_aggregation is not None
+        value_aggregation += val
+        weight_aggregation += weight_value
+        squared_weight_aggregation += weight_value * weight_value
+    values.append(value_aggregation)
+    weights.append(weight_aggregation)
+    weights_squared.append(squared_weight_aggregation)
   values = np.array(values).astype(np.float32)
   weights = np.array(weights).astype(np.float32)
-  return values, weights
+  weights_squared = np.array(weights_squared).astype(np.float32)
+  return values, weights, weights_squared
 
 
 class EmbeddingLookupTest(tf.test.TestCase):
@@ -204,7 +210,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
       embedding = tf.nn.embedding_lookup(p, ids)
 
       tf_result = embedding.eval(feed_dict=feed_dict)
-    np_result, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
+    np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
@@ -226,7 +232,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
 
       embedding = tf.nn.embedding_lookup(p, ids)
       tf_result = embedding.eval(feed_dict=feed_dict)
-    np_result, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
+    np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
@@ -248,7 +254,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
 
       embedding = tf.nn.embedding_lookup(p, ids)
       tf_result = embedding.eval(feed_dict=feed_dict)
-    np_result, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
+    np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
@@ -270,7 +276,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
 
       embedding = tf.nn.embedding_lookup(p, ids, partition_strategy="div")
       tf_result = embedding.eval(feed_dict=feed_dict)
-    np_result, _ = _EmbeddingResult(
+    np_result, _, _ = _EmbeddingResult(
         params, id_vals, num_shards, vocab_size, partition_strategy="div")
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
@@ -293,7 +299,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
 
       embedding = tf.nn.embedding_lookup(p, ids, partition_strategy="div")
       tf_result = embedding.eval(feed_dict=feed_dict)
-    np_result, _ = _EmbeddingResult(
+    np_result, _, _ = _EmbeddingResult(
         params, id_vals, num_shards, vocab_size, partition_strategy="div")
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
@@ -319,7 +325,7 @@ class EmbeddingLookupTest(tf.test.TestCase):
 
       embedding = tf.nn.embedding_lookup(p, ids, partition_strategy="div")
       tf_result = embedding.eval(feed_dict=feed_dict)
-    np_result, _ = _EmbeddingResult(
+    np_result, _, _ = _EmbeddingResult(
         params, id_vals, num_shards, vocab_size, partition_strategy="div")
     self.assertAllEqual(np_result, tf_result)
 
@@ -457,7 +463,7 @@ class EmbeddingLookupSparseTest(tf.test.TestCase):
 
     for num_shards, combiner, dtype, ignore_weights in itertools.product(
         [1, 5],
-        ["sum", "mean"],
+        ["sum", "mean", "sqrtn"],
         [tf.float32, tf.float64],
         [True, False]):
 
@@ -474,12 +480,15 @@ class EmbeddingLookupSparseTest(tf.test.TestCase):
 
         tf_embedding_sum = embedding_sum.eval(feed_dict=feed_dict)
 
-        np_embedding_sum, np_weight_sum = _EmbeddingResult(
+        np_embedding_sum, np_weight_sum, np_weight_sq_sum = _EmbeddingResult(
             params, grouped_ids, num_shards, vocab_size,
             weight_vals=grouped_ignored_weights
             if ignore_weights else grouped_weights)
         if combiner == "mean":
           np_embedding_sum /= np.reshape(np_weight_sum, (batch_size, 1, 1))
+        if combiner == "sqrtn":
+          np_embedding_sum /= np.reshape(
+              np.sqrt(np_weight_sq_sum), (batch_size, 1, 1))
         self.assertAllClose(np_embedding_sum, tf_embedding_sum)
 
   def testGradientsEmbeddingLookupSparse(self):
@@ -491,7 +500,7 @@ class EmbeddingLookupSparseTest(tf.test.TestCase):
 
     for num_shards, combiner, dtype, ignore_weights in itertools.product(
         [1, 3],
-        ["sum", "mean"],
+        ["sum", "mean", "sqrtn"],
         [tf.float32, tf.float64],
         [True, False]):
       with self.test_session():

@@ -17,13 +17,12 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace gpu = ::perftools::gputools;
 
@@ -78,7 +77,7 @@ static void InitGPU() {
 
   int dev_count = platform->VisibleDeviceCount();
 
-  if (dev_count == 0) {
+  if (dev_count <= 0) {
     LOG(INFO) << "No GPU devices available on machine.";
     return;
   }

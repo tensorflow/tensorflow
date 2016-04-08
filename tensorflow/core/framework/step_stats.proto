@@ -2,7 +2,11 @@ syntax = "proto3";
 
 package tensorflow;
 // option cc_enable_arenas = true;
+option java_outer_classname = "StepStatsProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
 
+import "tensorflow/core/framework/allocation_description.proto";
 import "tensorflow/core/framework/tensor_description.proto";
 
 // TODO(tucker): The next 4 message defs are very similar to
@@ -15,18 +19,9 @@ message AllocatorMemoryUsed {
   int64 peak_bytes = 3;
 }
 
-enum AllocationType {
-  AT_NOTUSED = 0;    // tensor was not filled in
-  AT_ALLOCATED = 1;  // tensor was allocated by the Op
-  AT_EXISTING = 2;   // tensor was set to share the value of an existing tensor
-  AT_REF = 3;        // tensor was set to be a reference to an existing tensor
-}
-
 // Output sizes recorded for a single execution of a graph node.
 message NodeOutput {
   int32 slot = 1;
-  // Was the tensor allocated by this Op or a previous computation
-  AllocationType allocation_type = 2;
   TensorDescription tensor_description = 3;
 };
 
@@ -46,6 +41,7 @@ message NodeExecStats {
   string timeline_label = 8;
   int64 scheduled_micros = 9;
   uint32 thread_id = 10;
+  repeated AllocationDescription referenced_tensor = 11;
 };
 
 message DeviceStepStats {

@@ -21,8 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -52,21 +54,24 @@ class ProcessState {
     string DebugString();
   };
 
-  // Records the number of GPUs available in the local process.
-  // It is a fatal error to call this with a value != to the value
-  // in a prior call.
-  void SetGPUCount(int c);
+  // Query whether any GPU device has been created so far.
+  // Disable thread safety analysis since a race is benign here.
+  bool HasGPUDevice() const NO_THREAD_SAFETY_ANALYSIS {
+    return gpu_device_enabled_;
+  }
 
-  // Returns number of GPUs available in local process, as set by
-  // SetGPUCount();  Returns 0 if SetGPUCount has not been called.
-  int GPUCount() const;
+  // Set the flag to indicate a GPU device has been created.
+  // Disable thread safety analysis since a race is benign here.
+  void EnableGPUDevice() NO_THREAD_SAFETY_ANALYSIS {
+    gpu_device_enabled_ = true;
+  }
 
   // Returns what we know about the memory at ptr.
   // If we know nothing, it's called CPU 0 with no other attributes.
   MemDesc PtrType(const void* ptr);
 
   // Returns the one CPUAllocator used for the given numa_node.
-  // TEMPORY: ignores numa_node.
+  // TEMPORARY: ignores numa_node.
   Allocator* GetCPUAllocator(int numa_node);
 
   // Returns the one GPU allocator used for the indexed GPU.
@@ -79,13 +84,13 @@ class ProcessState {
   // used on that first call is used.
   //
   // "Allocator type" describes the type of algorithm to use for the
-  // underlying allocator.  REQURES: Must be a valid type (see
+  // underlying allocator.  REQUIRES: Must be a valid type (see
   // config.proto for the list of supported strings.).
   //
   // REQUIRES: gpu_id must be a valid ordinal for a GPU available in the
   // current system environment.  Otherwise returns nullptr.
-  Allocator* GetGPUAllocator(int gpu_id, size_t total_bytes,
-                             const string& allocator_type);
+  Allocator* GetGPUAllocator(const GPUOptions& options, int gpu_id,
+                             size_t total_bytes);
 
   Allocator* GetCUDAHostAllocator(int numa_node);
 
@@ -97,7 +102,7 @@ class ProcessState {
   // interface to be used for network device memory registration.
   // "bus_id" is platform-specific.  On many platforms it
   // should be 0.  On machines with multiple PCIe buses, it should be
-  // the index of one of the PCIe buses.  If the the bus_id is invalid,
+  // the index of one of the PCIe buses.  If the bus_id is invalid,
   // results are undefined.
   typedef std::function<void(void*, size_t)> AllocVisitor;
   void AddGPUAllocVisitor(int bus_id, AllocVisitor visitor);
@@ -108,14 +113,14 @@ class ProcessState {
   ProcessState();
 
   static ProcessState* instance_;
+  bool gpu_device_enabled_;
 
   mutex mu_;
-  int gpu_count_;
 
-  std::vector<PoolAllocator*> cpu_allocators_ GUARDED_BY(mu_);
+  std::vector<Allocator*> cpu_allocators_ GUARDED_BY(mu_);
   std::vector<VisitableAllocator*> gpu_allocators_ GUARDED_BY(mu_);
   std::vector<std::vector<AllocVisitor>> gpu_visitors_ GUARDED_BY(mu_);
-  std::vector<PoolAllocator*> cuda_host_allocators_ GUARDED_BY(mu_);
+  std::vector<Allocator*> cuda_host_allocators_ GUARDED_BY(mu_);
 
   virtual ~ProcessState();
 
@@ -150,6 +155,7 @@ class RecordingAllocator : public Allocator {
   bool TracksAllocationSizes() override { return a_->TracksAllocationSizes(); }
   size_t RequestedSize(void* p) override { return a_->RequestedSize(p); }
   size_t AllocatedSize(void* p) override { return a_->AllocatedSize(p); }
+  void GetStats(AllocatorStats* stats) override { return a_->GetStats(stats); }
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned
   ProcessState::MemDesc md_;

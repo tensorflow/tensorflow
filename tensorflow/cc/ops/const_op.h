@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_OPS_CONST_OP_H_
 #define TENSORFLOW_CC_OPS_CONST_OP_H_
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 namespace ops {
@@ -42,6 +42,7 @@ namespace ops {
     return Const(gtl::ArraySlice<TYPE>(t), shape, options);                  \
   }
 
+DECLARE_CONST(Eigen::half);
 DECLARE_CONST(float);
 DECLARE_CONST(double);
 DECLARE_CONST(int32);
@@ -49,6 +50,7 @@ DECLARE_CONST(uint8);
 DECLARE_CONST(int16);
 DECLARE_CONST(int8);
 DECLARE_CONST(complex64);
+DECLARE_CONST(complex128);
 DECLARE_CONST(int64);
 DECLARE_CONST(bool);
 

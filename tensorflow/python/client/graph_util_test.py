@@ -18,85 +18,61 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 from tensorflow.python.client import graph_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
-from tensorflow.python.ops import data_flow_ops
-# pylint: disable=unused-import
-from tensorflow.python.ops import math_ops
-# pylint: enable=unused-import
+from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
-from tensorflow.python.platform import googletest
 
 
-class DeviceFunctionsTest(googletest.TestCase):
+# Utility device function to use for testing
+def test_device_func_pin_variable_to_cpu(op):
+  if op.device:
+    return op.device
+  return "/cpu:0" if op.node_def.op == "Variable" else op.device
 
-  def testPinToCpu(self):
-    with ops.Graph().as_default() as g, g.device(graph_util.pin_to_cpu):
-      const_a = constant_op.constant(5.0)
-      const_b = constant_op.constant(10.0)
-      add_c = const_a + const_b
-      var_v = state_ops.variable_op([], dtype=dtypes.float32)
-      assign_c_to_v = state_ops.assign(var_v, add_c)
-      const_string = constant_op.constant("on a cpu")
-      dynamic_stitch_int_result = data_flow_ops.dynamic_stitch(
-          [[0, 1, 2], [2, 3]], [[12, 23, 34], [1, 2]])
-      dynamic_stitch_float_result = data_flow_ops.dynamic_stitch(
-          [[0, 1, 2], [2, 3]], [[12.0, 23.0, 34.0], [1.0, 2.0]])
-    self.assertEqual(const_a.device, "/device:CPU:0")
-    self.assertEqual(const_b.device, "/device:CPU:0")
-    self.assertEqual(add_c.device, "/device:CPU:0")
-    self.assertEqual(var_v.device, "/device:CPU:0")
-    self.assertEqual(assign_c_to_v.device, "/device:CPU:0")
-    self.assertEqual(const_string.device, "/device:CPU:0")
-    self.assertEqual(dynamic_stitch_int_result.device, "/device:CPU:0")
-    self.assertEqual(dynamic_stitch_float_result.device, "/device:CPU:0")
 
-  def testPinRequiredOpsOnCPU(self):
-    with ops.Graph().as_default() as g, g.device(
-        graph_util.pin_variables_on_cpu):
-      const_a = constant_op.constant(5.0)
-      const_b = constant_op.constant(10.0)
-      add_c = const_a + const_b
-      var_v = state_ops.variable_op([], dtype=dtypes.float32)
-      assign_c_to_v = state_ops.assign(var_v, add_c)
-      dynamic_stitch_int_result = data_flow_ops.dynamic_stitch(
-          [[0, 1, 2], [2, 3]], [[12, 23, 34], [1, 2]])
-      dynamic_stitch_float_result = data_flow_ops.dynamic_stitch(
-          [[0, 1, 2], [2, 3]], [[12.0, 23.0, 34.0], [1.0, 2.0]])
-      # Non-variable ops shuld not specify a device
-      self.assertEqual(const_a.device, None)
-      self.assertEqual(const_b.device, None)
-      self.assertEqual(add_c.device, None)
-      # Variable ops specify a device
-      self.assertEqual(var_v.device, "/device:CPU:0")
-      self.assertEqual(assign_c_to_v.device, "/device:CPU:0")
+class DeviceFunctionsTest(tf.test.TestCase):
 
   def testTwoDeviceFunctions(self):
     with ops.Graph().as_default() as g:
       var_0 = state_ops.variable_op([1], dtype=dtypes.float32)
-      with g.device(graph_util.pin_variables_on_cpu):
+
+      with g.device(test_device_func_pin_variable_to_cpu):
         var_1 = state_ops.variable_op([1], dtype=dtypes.float32)
       var_2 = state_ops.variable_op([1], dtype=dtypes.float32)
       var_3 = state_ops.variable_op([1], dtype=dtypes.float32)
-      with g.device(graph_util.pin_variables_on_cpu):
+      with g.device(test_device_func_pin_variable_to_cpu):
         var_4 = state_ops.variable_op([1], dtype=dtypes.float32)
         with g.device("/device:GPU:0"):
           var_5 = state_ops.variable_op([1], dtype=dtypes.float32)
         var_6 = state_ops.variable_op([1], dtype=dtypes.float32)
 
-    self.assertEqual(var_0.device, None)
-    self.assertEqual(var_1.device, "/device:CPU:0")
-    self.assertEqual(var_2.device, None)
-    self.assertEqual(var_3.device, None)
-    self.assertEqual(var_4.device, "/device:CPU:0")
-    self.assertEqual(var_5.device, "/device:GPU:0")
-    self.assertEqual(var_6.device, "/device:CPU:0")
+    self.assertDeviceEqual(var_0.device, None)
+    self.assertDeviceEqual(var_1.device, "/device:CPU:0")
+    self.assertDeviceEqual(var_2.device, None)
+    self.assertDeviceEqual(var_3.device, None)
+    self.assertDeviceEqual(var_4.device, "/device:CPU:0")
+    self.assertDeviceEqual(var_5.device, "/device:GPU:0")
+    self.assertDeviceEqual(var_6.device, "/device:CPU:0")
+
+  def testNestedDeviceFunctions(self):
+    with tf.Graph().as_default():
+      var_0 = tf.Variable(0)
+      with tf.device(test_device_func_pin_variable_to_cpu):
+        var_1 = tf.Variable(1)
+        with tf.device(lambda op: "/gpu:0"):
+          var_2 = tf.Variable(2)
+        with tf.device("/gpu:0"):  # Implicit merging device function.
+          var_3 = tf.Variable(3)
+
+    self.assertDeviceEqual(var_0.device, None)
+    self.assertDeviceEqual(var_1.device, "/device:CPU:0")
+    self.assertDeviceEqual(var_2.device, "/device:GPU:0")
+    self.assertDeviceEqual(var_3.device, "/device:GPU:0")
 
   def testExplicitDevice(self):
     with ops.Graph().as_default() as g:
@@ -112,16 +88,16 @@ class DeviceFunctionsTest(googletest.TestCase):
       with g.device("/job:ps"):
         const_5 = constant_op.constant(5.0)
 
-    self.assertEqual(const_0.device, None)
-    self.assertEqual(const_1.device, "/device:GPU:0")
-    self.assertEqual(const_2.device, "/device:GPU:1")
-    self.assertEqual(const_3.device, "/device:CPU:0")
-    self.assertEqual(const_4.device, "/device:CPU:1")
-    self.assertEqual(const_5.device, "/job:ps")
+    self.assertDeviceEqual(const_0.device, None)
+    self.assertDeviceEqual(const_1.device, "/device:GPU:0")
+    self.assertDeviceEqual(const_2.device, "/device:GPU:1")
+    self.assertDeviceEqual(const_3.device, "/device:CPU:0")
+    self.assertDeviceEqual(const_4.device, "/device:CPU:1")
+    self.assertDeviceEqual(const_5.device, "/job:ps")
 
   def testDefaultDevice(self):
     with ops.Graph().as_default() as g, g.device(
-        graph_util.pin_variables_on_cpu):
+        test_device_func_pin_variable_to_cpu):
       with g.device("/job:ps"):
         const_0 = constant_op.constant(5.0)
       with g.device("/device:GPU:0"):
@@ -135,12 +111,12 @@ class DeviceFunctionsTest(googletest.TestCase):
       with g.device("/replica:0"):
         const_5 = constant_op.constant(5.0)
 
-    self.assertEqual(const_0.device, "/job:ps")
-    self.assertEqual(const_1.device, "/device:GPU:0")
-    self.assertEqual(const_2.device, "/device:GPU:1")
-    self.assertEqual(const_3.device, "/device:CPU:0")
-    self.assertEqual(const_4.device, "/device:CPU:1")
-    self.assertEqual(const_5.device, "/replica:0")
+    self.assertDeviceEqual(const_0.device, "/job:ps")
+    self.assertDeviceEqual(const_1.device, "/device:GPU:0")
+    self.assertDeviceEqual(const_2.device, "/device:GPU:1")
+    self.assertDeviceEqual(const_3.device, "/device:CPU:0")
+    self.assertDeviceEqual(const_4.device, "/device:CPU:1")
+    self.assertDeviceEqual(const_5.device, "/replica:0")
 
   def testExtractSubGraph(self):
     graph_def = tf.GraphDef()
@@ -170,6 +146,30 @@ class DeviceFunctionsTest(googletest.TestCase):
     self.assertEqual("n3", sub_graph.node[2].name)
     self.assertEqual("n5", sub_graph.node[3].name)
 
+  def testConvertVariablesToConsts(self):
+    with tf.Graph().as_default():
+      variable_node = tf.Variable(1.0, name="variable_node")
+      output_node = tf.mul(variable_node, 2.0, name="output_node")
+      with tf.Session() as sess:
+        init = tf.initialize_all_variables()
+        sess.run(init)
+        output = sess.run(output_node)
+        self.assertNear(2.0, output, 0.00001)
+        variable_graph_def = sess.graph.as_graph_def()
+        constant_graph_def = graph_util.convert_variables_to_constants(
+            sess, variable_graph_def, ["output_node"])
+    # Now we make sure the variable is now a constant, and that the graph still
+    # produces the expected result.
+    with tf.Graph().as_default():
+      _ = tf.import_graph_def(constant_graph_def, name="")
+      self.assertEqual(4, len(constant_graph_def.node))
+      for node in constant_graph_def.node:
+        self.assertNotEqual("Variable", node.op)
+      with tf.Session() as sess:
+        output_node = sess.graph.get_tensor_by_name("output_node:0")
+        output = sess.run(output_node)
+        self.assertNear(2.0, output, 0.00001)
+
 
 if __name__ == "__main__":
-  googletest.main()
+  tf.test.main()

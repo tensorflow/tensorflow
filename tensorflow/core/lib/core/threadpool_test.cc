@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <atomic>
 
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace thread {

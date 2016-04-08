@@ -18,16 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
 
 def _SparseToDense(sparse_indices, output_size, sparse_values,
-                   default_value):
+                   default_value, validate_indices=True):
   return tf.sparse_to_dense(sparse_indices, output_size,
-                            sparse_values, default_value)
+                            sparse_values,
+                            default_value=default_value,
+                            validate_indices=validate_indices)
 
 
 class SparseToDenseTest(tf.test.TestCase):
@@ -107,9 +107,51 @@ class SparseToDenseTest(tf.test.TestCase):
 
   def testBadDefault(self):
     with self.test_session():
-      dense = _SparseToDense([1, 3], [5], [1, 2], [1, 2])
+      dense = _SparseToDense([1, 3], [5], [1, 2], [0])
       with self.assertRaisesOpError("default_value should be a scalar"):
         dense.eval()
+
+  def testOutOfBoundsIndicesWithWithoutValidation(self):
+    with self.test_session():
+      dense = _SparseToDense(
+          sparse_indices=[[1], [10]], output_size=[5],
+          sparse_values=[-1.0, 1.0], default_value=0.0)
+      with self.assertRaisesOpError(
+          r"indices\[1\] = \[10\] is out of bounds: need 0 <= index < \[5\]"):
+        dense.eval()
+      # Disable checks, the allocation should still fail.
+      with self.assertRaisesOpError("out of bounds"):
+        dense_without_validation = _SparseToDense(
+            sparse_indices=[[1], [10]], output_size=[5],
+            sparse_values=[-1.0, 1.0], default_value=0.0,
+            validate_indices=False)
+        dense_without_validation.eval()
+
+  def testRepeatingIndicesWithWithoutValidation(self):
+    with self.test_session():
+      dense = _SparseToDense(
+          sparse_indices=[[1], [1]], output_size=[5],
+          sparse_values=[-1.0, 1.0], default_value=0.0)
+      with self.assertRaisesOpError(r"indices\[1\] = \[1\] is repeated"):
+        dense.eval()
+      # Disable checks
+      dense_without_validation = _SparseToDense(
+          sparse_indices=[[1], [1]], output_size=[5],
+          sparse_values=[-1.0, 1.0], default_value=0.0, validate_indices=False)
+      dense_without_validation.eval()
+
+  def testUnsortedIndicesWithWithoutValidation(self):
+    with self.test_session():
+      dense = _SparseToDense(
+          sparse_indices=[[2], [1]], output_size=[5],
+          sparse_values=[-1.0, 1.0], default_value=0.0)
+      with self.assertRaisesOpError(r"indices\[1\] = \[1\] is out of order"):
+        dense.eval()
+      # Disable checks
+      dense_without_validation = _SparseToDense(
+          sparse_indices=[[2], [1]], output_size=[5],
+          sparse_values=[-1.0, 1.0], default_value=0.0, validate_indices=False)
+      dense_without_validation.eval()
 
   def testShapeInferenceKnownShape(self):
     with self.test_session(use_gpu=False):

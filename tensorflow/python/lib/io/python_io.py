@@ -45,4 +45,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
 from tensorflow.python.lib.io.tf_record import *
+# pylint: enable=wildcard-import
+from tensorflow.python.util.all_util import make_all
+
+
+__all__ = make_all(__name__)

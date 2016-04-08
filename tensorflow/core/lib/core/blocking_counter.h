@@ -17,7 +17,8 @@ limitations under the License.
 #define TENSORFLOW_LIB_CORE_BLOCKING_COUNTER_H_
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

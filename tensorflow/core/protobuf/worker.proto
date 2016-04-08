@@ -1,0 +1,311 @@
+/* Copyright 2016 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+option java_outer_classname = "WorkerProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.distruntime";
+
+import "google/protobuf/any.proto";
+import "tensorflow/core/framework/step_stats.proto";
+import "tensorflow/core/framework/device_attributes.proto";
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/protobuf/config.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// GetStatus method request/response messages
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message GetStatusRequest {
+}
+
+message GetStatusResponse {
+  repeated DeviceAttributes device_attributes = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// RegisterGraph method request/response messages
+//
+// For each session, after the master placed every node on a device,
+// it partitions the whole graph into many subgraphs. All the nodes in
+// a subgraph were in the same worker, but potentially on many devices
+// owned by that worker (e.g. cpu0, plus gpu0, gpu1, ..., gpu7). The
+// master registers subgraphs for a worker before running any steps. A
+// successful registration returns a graph handle to be used in latter
+// RunGraph requests.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message RegisterGraphRequest {
+  // Subgraphs are scoped within one session.
+  string session_handle = 1;
+
+  // "graph_def" has the subgraph of nodes for this worker, with each node
+  // having its device_name filled in.
+  GraphDef graph_def = 2;
+
+  // True iff the graph (before partitioning) contains control flow nodes.
+  //
+  // As of 01/11/2015, this is no longer set by clients.
+  bool has_control_flow = 3 [deprecated = true];
+
+  // Configuration options for the session in which this graph was created.
+  GraphOptions graph_options = 4;
+}
+
+message RegisterGraphResponse {
+  // If the registration succeeds, returns an opaque graph_handle to
+  // the master. The master calls RunGraph with graph_handle to
+  // compute different steps.
+  string graph_handle = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// DeregisterGraph method request/response messages
+//
+// The master deregisters the given graph_handle when the graph is no
+// longer needed (e.g., the overall graph is re-scheduled and nodes
+// are re-placed).
+//
+// The worker deregisters a graph_handle automatically according to on
+// a TTL-base policy in case of master restarts.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message DeregisterGraphRequest {
+  // REQUIRED: graph_handle must be returned by a RegisterGraph call
+  // to the same WorkerService.
+  string graph_handle = 1;
+}
+
+message DeregisterGraphResponse {
+  // TODO(mrry): Optionally add summary stats for the graph.
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// CleanupAll method request/response messages
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message CleanupAllRequest {
+  // A list of container names.
+  //
+  // If 'container' is not empty, releases resoures in the given
+  // containers in all devices.
+  //
+  // If 'container' is empty, releases resources in the default
+  // container in all devices.
+  repeated string container = 1;
+}
+
+message CleanupAllResponse {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// RunGraph request / response messages
+//
+// The worker executes all subgraphs registered under graph_handle.
+// RunGraph returns after the execution finishes or an error is
+// encountered.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// A pair of tensor name and tensor values.
+message NamedTensor {
+  // The name of the named tensor.
+  string key = 1;
+
+  // The value of the named tensor.
+  TensorProto val = 2;
+}
+
+// Options specific to the execution of a single step.
+message ExecutorOpts {
+  bool record_costs = 1;
+  bool record_timeline = 3;
+};
+
+message RunGraphRequest {
+  // REQUIRED: graph_handle must be returned by a RegisterGraph call
+  // to the same WorkerService.
+  string graph_handle = 1;
+
+  // A unique ID to distinguish different runs of the same graph.
+  //
+  // The master generates a global unique `step_id` to dinstinguish
+  // different runs of the graph computation. Subgraphs communicate
+  // (e.g., send/recv ops) with each other using `step_id` to
+  // distinguish tensors generated by different runs.
+  int64 step_id = 2;
+
+  // Options for this step.
+  ExecutorOpts exec_opts = 5;
+
+  // Runs the graph.
+  //
+  // Sends the tensors in "send" into the graph before the run and
+  // fetches the keys into `RunGraphResponse.recv` after the run.
+  repeated NamedTensor send = 3;
+  repeated string recv_key = 4;
+}
+
+message RunGraphResponse {
+  // A list of tensors corresponding to those requested by
+  // `RunGraphRequest.recv_key`.
+  repeated NamedTensor recv = 1;
+
+  // If the request asked for execution stats, these are returned here.
+  StepStats step_stats = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// CleanupGraph method request/response messages
+//
+// After the master receives RunGraph responses from all workers, the
+// master instructs every worker to cleanup any remaining state of a
+// step (e.g. tensors buffered by a `Send` op but not picked up by
+// other workers). The master does not necessarily need to wait for
+// completion of CleanupGraph calls.
+//
+// Workers should cleanup step states automatically according to a
+// TTL-based policy in case of master restarts.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message CleanupGraphRequest {
+  int64 step_id = 1;
+}
+
+message CleanupGraphResponse {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// RecvTensor method request/response messages
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message RecvTensorRequest {
+  // The step in which the tensor will be produced.
+  //
+  // REQUIRED: This must eventually correspond to the `step_id` passed
+  // into a RunGraph call on the same WorkerService.
+  int64 step_id = 1;
+
+  // A key that identifies the tensor to be received.
+  string rendezvous_key = 2;
+
+  // If true, use an out-of-band DMA mechanism to transfer the
+  // received tensor.
+  bool dma_ok = 3;
+  // NIC bus preference on the request originator side
+  BusAdjacency client_bus_adjacency = 4;
+  // NIC bus preference on the request receiver side
+  BusAdjacency server_bus_adjacency = 5;
+}
+
+message RecvTensorResponse {
+  // The tensor as a proto.
+  TensorProto tensor = 1;
+
+  // If true, this tensor was the output of a dead node, and the
+  // content is invalid.
+  bool is_dead = 2;
+
+  // The time at which tensor was available and started to be returned.
+  int64 send_start_micros = 3;
+
+  // Optional additional information about how to receive the tensor,
+  // in the event that `RecvTensorRequest.dma_ok` was true.
+  google.protobuf.Any transport_options = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Logging method request/response messages
+//
+// NOTE(mrry): This feature is not supported in the open-source
+// version, and these messages are expected to change.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// Out-of-band request to begin or end logging, or
+// to retrieve logs for particular steps.
+message LoggingRequest {
+  // If true, RPC logging will be activated.
+  bool rpc_logging = 1;
+
+  // If true, discard any saved logging data (for all steps).
+  bool clear = 2;
+
+  // When set, requests all saved log data pertaining to the step.
+  // Any log data retrieved is eliminated from the store and cannot be
+  // retrieved again.
+  repeated int64 fetch_step_id = 3;
+}
+
+message LabeledStepStats {
+  int64 step_id = 1;
+  StepStats step_stats = 2;
+}
+
+message LoggingResponse {
+  repeated LabeledStepStats step = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Tracing method request/response messages
+//
+// NOTE(mrry): This feature is not supported in the open-source
+// version, and these messages are expected to change.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message TraceOpts {
+  // Length of the trace to be taken, in seconds.
+  double duration = 1;
+  // If true, capture step profile locally in each worker. Currently
+  // unimplemented.
+  bool use_step_profiler = 2;
+  // If true, capture kernel events from each worker.
+  bool use_kernel_profiler = 3;
+  // If true, capture extended profiling events from TensorFlow process.
+  bool use_extended_profiler = 4;
+  // If true, capture GPU profiling events locally on each
+  // machine. Currently unimplemented.
+  bool use_gpu_profiler = 5;
+  // If true, collect sampled profile events. Currently unimplemented.
+  bool use_sample_profiler = 6;
+}
+
+// Out-of-band request to configure distributed tracing.
+message TracingRequest {
+  TraceOpts options = 1;
+}
+
+message TracingResponse {
+}

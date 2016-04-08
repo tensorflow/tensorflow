@@ -3,7 +3,7 @@
 # Images
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -11,7 +11,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 TensorFlow provides Ops to decode and encode JPEG and PNG formats.  Encoded
 images are represented by scalar string Tensors, decoded images by 3-D uint8
-tensors of shape `[height, width, channels]`.
+tensors of shape `[height, width, channels]`. (PNG also supports uint16.)
 
 The encode and decode Ops apply to one image at a time.  Their input and output
 are all of variable size.  If you need fixed size images, pass the output of
@@ -122,9 +122,9 @@ in function of the number of channels in `image`:
 
 - - -
 
-### `tf.image.decode_png(contents, channels=None, name=None)` {#decode_png}
+### `tf.image.decode_png(contents, channels=None, dtype=None, name=None)` {#decode_png}
 
-Decode a PNG-encoded image to a uint8 tensor.
+Decode a PNG-encoded image to a uint8 or uint16 tensor.
 
 The attr `channels` indicates the desired number of color channels for the
 decoded image.
@@ -145,11 +145,12 @@ of color channels.
 *  <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The PNG-encoded image.
 *  <b>`channels`</b>: An optional `int`. Defaults to `0`.
     Number of color channels for the decoded image.
+*  <b>`dtype`</b>: An optional `tf.DType` from: `tf.uint8, tf.uint16`. Defaults to `tf.uint8`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `uint8`. 3-D with shape `[height, width, channels]`.
+  A `Tensor` of type `dtype`. 3-D with shape `[height, width, channels]`.
 
 
 - - -
@@ -158,10 +159,11 @@ of color channels.
 
 PNG-encode an image.
 
-`image` is a 3-D uint8 Tensor of shape `[height, width, channels]` where
-`channels` is:
+`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
+where `channels` is:
 
 *   1: for grayscale.
+*   2: for grayscale + alpha.
 *   3: for RGB.
 *   4: for RGBA.
 
@@ -172,7 +174,7 @@ the smallest output, but is slower.
 ##### Args:
 
 
-*  <b>`image`</b>: A `Tensor` of type `uint8`.
+*  <b>`image`</b>: A `Tensor`. Must be one of the following types: `uint8`, `uint16`.
     3-D with shape `[height, width, channels]`.
 *  <b>`compression`</b>: An optional `int`. Defaults to `-1`. Compression level.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -207,7 +209,7 @@ resized_image = tf.image.resize_images(image, 299, 299)
 
 - - -
 
-### `tf.image.resize_images(images, new_height, new_width, method=0)` {#resize_images}
+### `tf.image.resize_images(images, new_height, new_width, method=0, align_corners=False)` {#resize_images}
 
 Resize `images` to `new_width`, `new_height` using the specified `method`.
 
@@ -233,6 +235,8 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 *  <b>`new_height`</b>: integer.
 *  <b>`new_width`</b>: integer.
 *  <b>`method`</b>: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
+*  <b>`align_corners`</b>: bool. If true, exactly align all 4 cornets of the input and
+                 output. Defaults to `false`.
 
 ##### Raises:
 
@@ -252,7 +256,7 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 
 - - -
 
-### `tf.image.resize_area(images, size, name=None)` {#resize_area}
+### `tf.image.resize_area(images, size, align_corners=None, name=None)` {#resize_area}
 
 Resize `images` to `size` using area interpolation.
 
@@ -261,10 +265,14 @@ Input images can be of different types but output images are always float.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `float32`, `float64`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`, `float32`, `float64`.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
     new size for the images.
+*  <b>`align_corners`</b>: An optional `bool`. Defaults to `False`.
+    If true, rescale input by (new_height - 1) / (height - 1), which
+    exactly aligns the 4 corners of images and resized images. If false, rescale
+    by new_height / height. Treat similarly the width dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -275,7 +283,7 @@ Input images can be of different types but output images are always float.
 
 - - -
 
-### `tf.image.resize_bicubic(images, size, name=None)` {#resize_bicubic}
+### `tf.image.resize_bicubic(images, size, align_corners=None, name=None)` {#resize_bicubic}
 
 Resize `images` to `size` using bicubic interpolation.
 
@@ -284,10 +292,14 @@ Input images can be of different types but output images are always float.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `float32`, `float64`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`, `float32`, `float64`.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
     new size for the images.
+*  <b>`align_corners`</b>: An optional `bool`. Defaults to `False`.
+    If true, rescale input by (new_height - 1) / (height - 1), which
+    exactly aligns the 4 corners of images and resized images. If false, rescale
+    by new_height / height. Treat similarly the width dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -298,7 +310,7 @@ Input images can be of different types but output images are always float.
 
 - - -
 
-### `tf.image.resize_bilinear(images, size, name=None)` {#resize_bilinear}
+### `tf.image.resize_bilinear(images, size, align_corners=None, name=None)` {#resize_bilinear}
 
 Resize `images` to `size` using bilinear interpolation.
 
@@ -307,10 +319,14 @@ Input images can be of different types but output images are always float.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `float32`, `float64`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`, `float32`, `float64`.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
     new size for the images.
+*  <b>`align_corners`</b>: An optional `bool`. Defaults to `False`.
+    If true, rescale input by (new_height - 1) / (height - 1), which
+    exactly aligns the 4 corners of images and resized images. If false, rescale
+    by new_height / height. Treat similarly the width dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -321,17 +337,21 @@ Input images can be of different types but output images are always float.
 
 - - -
 
-### `tf.image.resize_nearest_neighbor(images, size, name=None)` {#resize_nearest_neighbor}
+### `tf.image.resize_nearest_neighbor(images, size, align_corners=None, name=None)` {#resize_nearest_neighbor}
 
 Resize `images` to `size` using nearest neighbor interpolation.
 
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `float32`, `float64`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`, `float32`, `float64`.
     4-D with shape `[batch, height, width, channels]`.
 *  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
     new size for the images.
+*  <b>`align_corners`</b>: An optional `bool`. Defaults to `False`.
+    If true, rescale input by (new_height - 1) / (height - 1), which
+    exactly aligns the 4 corners of images and resized images. If false, rescale
+    by new_height / height. Treat similarly the width dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -376,6 +396,39 @@ dimension.
   Cropped and/or padded image of shape
   `[target_height, target_width, channels]`
 
+
+
+- - -
+
+### `tf.image.central_crop(image, central_fraction)` {#central_crop}
+
+Crop the central region of the image.
+
+Remove the outer parts of an image but retain the central region of the image
+along each dimension. If we specify central_fraction = 0.5, this function
+returns the region marked with "X" in the below diagram.
+
+     --------
+    |        |
+    |  XXXX  |
+    |  XXXX  |
+    |        |   where "X" is the central 50% of the image.
+     --------
+
+##### Args:
+
+
+*  <b>`image`</b>: 3-D float Tensor of shape [height, width, depth]
+*  <b>`central_fraction`</b>: float (0, 1], fraction of size to crop
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if central_crop_fraction is not within (0, 1].
+
+##### Returns:
+
+  3-D float Tensor
 
 
 - - -
@@ -446,79 +499,36 @@ lower-right corner is at
 
 - - -
 
-### `tf.image.random_crop(image, size, seed=None, name=None)` {#random_crop}
-
-Randomly crops `image` to size `[target_height, target_width]`.
-
-The offset of the output within `image` is uniformly random. `image` always
-fully contains the result.
-
-##### Args:
-
-
-*  <b>`image`</b>: 3-D tensor of shape `[height, width, channels]`
-*  <b>`size`</b>: 1-D tensor with two elements, specifying target `[height, width]`
-*  <b>`seed`</b>: A Python integer. Used to create a random seed. See
-    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
-    for behavior.
-*  <b>`name`</b>: A name for this operation (optional).
-
-##### Returns:
-
-  A cropped 3-D tensor of shape `[target_height, target_width, channels]`.
-
-
-- - -
-
 ### `tf.image.extract_glimpse(input, size, offsets, centered=None, normalized=None, uniform_noise=None, name=None)` {#extract_glimpse}
 
 Extracts a glimpse from the input tensor.
 
-Returns a set of windows called glimpses extracted at location `offsets`
-from the input tensor. If the windows only partially overlaps the inputs, the
-non overlapping areas will be filled with random noise.
+Returns a set of windows called glimpses extracted at location
+`offsets` from the input tensor. If the windows only partially
+overlaps the inputs, the non overlapping areas will be filled with
+random noise.
 
 The result is a 4-D tensor of shape `[batch_size, glimpse_height,
-glimpse_width, channels]`. The channels and batch dimensions are the same as that
-of the input tensor. The height and width of the output windows are
-specified in the `size` parameter.
+glimpse_width, channels]`. The channels and batch dimensions are the
+same as that of the input tensor. The height and width of the output
+windows are specified in the `size` parameter.
 
-The argument `normalized` and `centered` controls how the windows are built:
-* If the coordinates are normalized but not centered, 0.0 and 1.0
-  correspond to the minimum and maximum of each height and width dimension.
-* If the coordinates are both normalized and centered, they range from -1.0 to
-  1.0. The coordinates (-1.0, -1.0) correspond to the upper left corner, the
-  lower right corner is located at  (1.0, 1.0) and the center is at (0, 0).
-* If the coordinates are not normalized they are interpreted as numbers of pixels.
+The argument `normalized` and `centered` controls how the windows are
 
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor` of type `float32`.
-    A 4-D float tensor of shape `[batch_size, height, width, channels]`.
 *  <b>`size`</b>: A `Tensor` of type `int32`.
-    A 1-D tensor of 2 elements containing the size of the glimpses to extract.
-    The glimpse height must be specified first, following by the glimpse width.
 *  <b>`offsets`</b>: A `Tensor` of type `float32`.
-    A 2-D integer tensor of shape `[batch_size, 2]` containing the x, y
-    locations of the center of each window.
 *  <b>`centered`</b>: An optional `bool`. Defaults to `True`.
-    indicates if the offset coordinates are centered relative to
-    the image, in which case the (0, 0) offset is relative to the center of the
-    input images. If false, the (0,0) offset corresponds to the upper left corner
-    of the input images.
 *  <b>`normalized`</b>: An optional `bool`. Defaults to `True`.
-    indicates if the offset coordinates are normalized.
 *  <b>`uniform_noise`</b>: An optional `bool`. Defaults to `True`.
-    indicates if the noise should be generated using a
-    uniform distribution or a gaussian distribution.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `float32`.
-  A tensor representing the glimpses `[batch_size, glimpse_height,
-  glimpse_width, channels]`.
 
 
 
@@ -683,14 +693,14 @@ Example:
 
 ```python
 # Decode an image and convert it to HSV.
-rgb_image = tf.decode_png(...,  channels=3)
-rgb_image_float = tf.convert_image_dtype(rgb_image, tf.float32)
-hsv_image = tf.hsv_to_rgb(rgb_image)
+rgb_image = tf.image.decode_png(...,  channels=3)
+rgb_image_float = tf.image.convert_image_dtype(rgb_image, tf.float32)
+hsv_image = tf.image.rgb_to_hsv(rgb_image)
 ```
 
 - - -
 
-### `tf.image.rgb_to_grayscale(images)` {#rgb_to_grayscale}
+### `tf.image.rgb_to_grayscale(images, name=None)` {#rgb_to_grayscale}
 
 Converts one or more images from RGB to Grayscale.
 
@@ -703,6 +713,7 @@ pixels.
 
 *  <b>`images`</b>: The RGB tensor to convert. Last dimension must have size 3 and
     should contain RGB values.
+*  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
@@ -711,7 +722,7 @@ pixels.
 
 - - -
 
-### `tf.image.grayscale_to_rgb(images)` {#grayscale_to_rgb}
+### `tf.image.grayscale_to_rgb(images, name=None)` {#grayscale_to_rgb}
 
 Converts one or more images from Grayscale to RGB.
 
@@ -722,6 +733,7 @@ last dimension of the output is 3, containing the RGB value of the pixels.
 
 
 *  <b>`images`</b>: The Grayscale tensor to convert. Last dimension must be size 1.
+*  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
@@ -788,7 +800,7 @@ Convert `image` to `dtype`, scaling its values if needed.
 
 Images that are represented using floating point values are expected to have
 values in the range [0,1). Image data stored in integer data types are
-expected to have values in the range `[0,MAX]`, wbere `MAX` is the largest
+expected to have values in the range `[0,MAX]`, where `MAX` is the largest
 positive representable number for the data type.
 
 This op converts between data types, scaling the values appropriately before
@@ -796,10 +808,11 @@ casting.
 
 Note that converting from floating point inputs to integer types may lead to
 over/underflow problems. Set saturate to `True` to avoid such problem in
-problematic conversions. Saturation will clip the output into the allowed
-range before performing a potentially dangerous cast (i.e. when casting from
-a floating point to an integer type, or when casting from an signed to an
-unsigned type).
+problematic conversions. If enabled, saturation will clip the output into the
+allowed range before performing a potentially dangerous cast (and only before
+performing such a cast, i.e., when casting from a floating point to an integer
+type, and when casting from a signed to an unsigned type; `saturate` has no
+effect on casts between floats, or on casts that increase the type's range).
 
 ##### Args:
 
@@ -912,7 +925,7 @@ channel and then adjusts each component `x` of each pixel to
 
 ##### Returns:
 
-  The constrast-adjusted image or images.
+  The contrast-adjusted image or images.
 
 
 - - -
@@ -921,7 +934,7 @@ channel and then adjusts each component `x` of each pixel to
 
 Adjust the contrast of an image by a random factor.
 
-Equivalent to `adjust_constrast()` but uses a `contrast_factor` randomly
+Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
 picked in the interval `[lower, upper]`.
 
 ##### Args:
@@ -1010,7 +1023,7 @@ picked in the interval `[-max_delta, max_delta]`.
 
 ### `tf.image.adjust_saturation(image, saturation_factor, name=None)` {#adjust_saturation}
 
-Adjust staturation of an RGB image.
+Adjust saturation of an RGB image.
 
 This is a convenience method that converts an RGB image to float
 representation, converts it to HSV, add an offset to the saturation channel,
@@ -1073,7 +1086,7 @@ Linearly scales `image` to have zero mean and unit norm.
 
 This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
 of all values in image, and
-`adjusted_stddev = max(stddev, 1.0/srqt(image.NumElements()))`.
+`adjusted_stddev = max(stddev, 1.0/sqrt(image.NumElements()))`.
 
 `stddev` is the standard deviation of all values in `image`. It is capped
 away from zero to protect against division by 0 when handling uniform images.
@@ -1098,25 +1111,128 @@ Note that this implementation is limited:
 
 
 
-## Other Functions and Classes
+## Working with Bounding Boxes
+
 - - -
 
-### `tf.image.saturate_cast(image, dtype)` {#saturate_cast}
+### `tf.image.draw_bounding_boxes(images, boxes, name=None)` {#draw_bounding_boxes}
 
-Performs a safe cast of image data to `dtype`.
+Draw bounding boxes on a batch of images.
 
-This function casts the data in image to `dtype`, without applying any
-scaling. If there is a danger that image data would over or underflow in the
-cast, this op applies the appropriate clamping before the cast.
+Outputs a copy of `images` but draws on top of the pixels zero or more bounding
+boxes specified by the locations in `boxes`. The coordinates of the each
+bounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The
+bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+height of the underlying image.
+
+For example, if an image is 100 x 200 pixels and the bounding box is
+`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the
+bounding box will be `(10, 40)` to `(50, 180)`.
+
+Parts of the bounding box may fall outside the image.
 
 ##### Args:
 
 
-*  <b>`image`</b>: An image to cast to a different data type.
-*  <b>`dtype`</b>: A `DType` to cast `image` to.
+*  <b>`images`</b>: A `Tensor` of type `float32`.
+    4-D with shape `[batch, height, width, depth]`. A batch of images.
+*  <b>`boxes`</b>: A `Tensor` of type `float32`.
+    3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding
+    boxes.
+*  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  `image`, safely cast to `dtype`.
+  A `Tensor` of type `float32`.
+  4-D with the same shape as `images`. The batch of input images with
+  bounding boxes drawn on the images.
+
+
+- - -
+
+### `tf.image.sample_distorted_bounding_box(image_size, bounding_boxes, seed=None, seed2=None, min_object_covered=None, aspect_ratio_range=None, area_range=None, max_attempts=None, use_image_if_no_bounding_boxes=None, name=None)` {#sample_distorted_bounding_box}
+
+Generate a single randomly distorted bounding box for an image.
+
+Bounding box annotations are often supplied in addition to ground-truth labels
+in image recognition or object localization tasks. A common technique for
+training such a system is to randomly distort an image while preserving
+its content, i.e. *data augmentation*. This Op outputs a randomly distorted
+localization of an object, i.e. bounding box, given an `image_size`,
+`bounding_boxes` and a series of constraints.
+
+The output of this Op is a single bounding box that may be used to crop the
+original image. The output is returned as 3 tensors: `begin`, `size` and
+`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+image. The latter may be supplied to `tf.image.draw_bounding_box` to visualize
+what the bounding box looks like.
+
+Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
+bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+height of the underlying image.
+
+For example,
+
+    # Generate a single distorted bounding box.
+    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+        tf.shape(image),
+        bounding_boxes=bounding_boxes)
+
+    # Draw the bounding box in an image summary.
+    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                  bbox_for_draw)
+    tf.image_summary('images_with_box', image_with_box)
+
+    # Employ the bounding box to distort the image.
+    distorted_image = tf.slice(image, begin, size)
+
+Note that if no bounding box information is available, setting
+`use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+false and no bounding boxes are supplied, an error is raised.
+
+##### Args:
+
+
+*  <b>`image_size`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`.
+    1-D, containing `[height, width, channels]`.
+*  <b>`bounding_boxes`</b>: A `Tensor` of type `float32`.
+    3-D with shape `[batch, N, 4]` describing the N bounding boxes
+    associated with the image.
+*  <b>`seed`</b>: An optional `int`. Defaults to `0`.
+    If either `seed` or `seed2` are set to non-zero, the random number
+    generator is seeded by the given `seed`.  Otherwise, it is seeded by a random
+    seed.
+*  <b>`seed2`</b>: An optional `int`. Defaults to `0`.
+    A second seed to avoid seed collision.
+*  <b>`min_object_covered`</b>: An optional `float`. Defaults to `0.1`.
+    The cropped area of the image must contain at least this
+    fraction of any bounding box supplied.
+*  <b>`aspect_ratio_range`</b>: An optional list of `floats`. Defaults to `[0.75, 1.33]`.
+    The cropped area of the image must have an aspect ratio =
+    width / height within this range.
+*  <b>`area_range`</b>: An optional list of `floats`. Defaults to `[0.05, 1]`.
+    The cropped area of the image must contain a fraction of the
+    supplied image within in this range.
+*  <b>`max_attempts`</b>: An optional `int`. Defaults to `100`.
+    Number of attempts at generating a cropped region of the image
+    of the specified constraints. After `max_attempts` failures, return the entire
+    image.
+*  <b>`use_image_if_no_bounding_boxes`</b>: An optional `bool`. Defaults to `False`.
+    Controls behavior if no bounding boxes supplied.
+    If true, assume an implicit bounding box covering the whole input. If false,
+    raise an error.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (begin, size, bboxes).
+
+*  <b>`begin`</b>: A `Tensor`. Has the same type as `image_size`. 1-D, containing `[offset_height, offset_width, 0]`. Provide as input to
+    `tf.slice`.
+*  <b>`size`</b>: A `Tensor`. Has the same type as `image_size`. 1-D, containing `[target_height, target_width, -1]`. Provide as input to
+    `tf.slice`.
+*  <b>`bboxes`</b>: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
+    Provide as input to `tf.image.draw_bounding_boxes`.
 
 

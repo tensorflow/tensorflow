@@ -15,40 +15,83 @@ limitations under the License.
 
 // See docs in ../ops/state_ops.cc.
 
+#include "tensorflow/core/kernels/scatter_op.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
-enum class UpdateOp { ASSIGN, ADD, SUB };
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
 
-template <UpdateOp Op>
+namespace {
+
+template <scatter_op::UpdateOp Op>
 struct Assign {};
 template <>
-struct Assign<UpdateOp::ASSIGN> {
+struct Assign<scatter_op::UpdateOp::ASSIGN> {
   template <typename Params, typename Update>
   static void Run(Params p, Update u) {
     p = u;
   }
 };
 template <>
-struct Assign<UpdateOp::ADD> {
+struct Assign<scatter_op::UpdateOp::ADD> {
   template <typename Params, typename Update>
   static void Run(Params p, Update u) {
     p += u;
   }
 };
 template <>
-struct Assign<UpdateOp::SUB> {
+struct Assign<scatter_op::UpdateOp::SUB> {
   template <typename Params, typename Update>
   static void Run(Params p, Update u) {
     p -= u;
   }
 };
 
-template <class T, typename Index, UpdateOp op>
+}  // namespace
+
+// Check whether updates.shape = indices.shape + params.shape[1:]
+static bool ValidShapes(const Tensor& params, const Tensor& updates,
+                        const Tensor& indices) {
+  if (updates.dims() != indices.dims() + params.dims() - 1) return false;
+  for (int d = 0; d < indices.dims(); d++) {
+    if (updates.dim_size(d) != indices.dim_size(d)) {
+      return false;
+    }
+  }
+  for (int d = 1; d < params.dims(); d++) {
+    if (params.dim_size(d) != updates.dim_size(d - 1 + indices.dims())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void DoValidationChecking(OpKernelContext* c, const Tensor& params,
+                                 const Tensor& indices, const Tensor& updates) {
+  OP_REQUIRES(c, params.IsInitialized(),
+              errors::FailedPrecondition("Null ref for params"));
+  OP_REQUIRES(c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
+              errors::InvalidArgument("params must be at least 1-D, got shape ",
+                                      params.shape().DebugString()));
+  OP_REQUIRES(
+      c, ValidShapes(params, updates, indices),
+      errors::InvalidArgument(
+          "Must have updates.shape = indices.shape + params.shape[1:], got ",
+          "updates.shape ", updates.shape().DebugString(), ", indices.shape ",
+          indices.shape().DebugString(), ", params.shape ",
+          params.shape().DebugString()));
+}
+
+template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 class ScatterUpdateOp : public OpKernel {
  public:
   //   QUESTION: It'd be nice to support DT_INT16, DT_UINT8,
@@ -73,119 +116,150 @@ class ScatterUpdateOp : public OpKernel {
  private:
   bool use_exclusive_lock_;
 
-  // Check whether updates.shape = indices.shape + params.shape[1:]
-  static bool ValidShapes(const Tensor& params, const Tensor& updates,
-                          const Tensor& indices) {
-    if (updates.dims() != indices.dims() + params.dims() - 1) return false;
-    for (int d = 0; d < indices.dims(); d++) {
-      if (updates.dim_size(d) != indices.dim_size(d)) {
-        return false;
-      }
-    }
-    for (int d = 1; d < params.dims(); d++) {
-      if (params.dim_size(d) != updates.dim_size(d - 1 + indices.dims())) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   void DoCompute(OpKernelContext* c) {
-    Tensor Tparams = c->mutable_input(0, use_exclusive_lock_);
-    OP_REQUIRES(c, Tparams.IsInitialized(),
-                errors::FailedPrecondition("Null ref for params"));
-    const Tensor& Tindices = c->input(1);
-    const Tensor& Tupdates = c->input(2);
+    Tensor params = c->mutable_input(0, use_exclusive_lock_);
+    const Tensor& indices = c->input(1);
+    const Tensor& updates = c->input(2);
+    DoValidationChecking(c, params, indices, updates);
+    if (!c->status().ok()) return;
+
+    // Check that we have enough index space
+    const int64 N_big = indices.NumElements();
+    OP_REQUIRES(c, N_big <= std::numeric_limits<Index>::max(),
+                errors::InvalidArgument(
+                    "indices has too many elements for ",
+                    DataTypeString(DataTypeToEnum<Index>::v()), " indexing: ",
+                    N_big, " > ", std::numeric_limits<Index>::max()));
+    const Index N = indices.NumElements();
     OP_REQUIRES(
-        c, TensorShapeUtils::IsVectorOrHigher(Tparams.shape()),
-        errors::InvalidArgument("params must be at least 1-D, got shape ",
-                                Tparams.shape().ShortDebugString()));
-    OP_REQUIRES(
-        c, ValidShapes(Tparams, Tupdates, Tindices),
-        errors::InvalidArgument(
-            "Must have updates.shape = indices.shape + params.shape[1:], got ",
-            "updates.shape ", Tupdates.shape().ShortDebugString(),
-            ", indices.shape ", Tindices.shape().ShortDebugString(),
-            ", params.shape ", Tparams.shape().ShortDebugString()));
-    const Index N = Tindices.NumElements();
+        c, params.dim_size(0) <= std::numeric_limits<Index>::max(),
+        errors::InvalidArgument("params.shape[0] too large for ",
+                                DataTypeString(DataTypeToEnum<Index>::v()),
+                                " indexing: ", params.dim_size(0), " > ",
+                                std::numeric_limits<Index>::max()));
 
     // We always return the input ref.
     c->forward_ref_input_to_ref_output(0, 0);
 
     if (N > 0) {
-      const Index first_dim_size = Tparams.dim_size(0);
-      // Validate all the indices are in range
-      auto Tindices_vec = Tindices.flat<Index>();
-      for (Index i = 0; i < N; i++) {
-        const Index index = Tindices_vec(i);
-        OP_REQUIRES(c, index >= 0 && index < first_dim_size,
-                    errors::InvalidArgument(
-                        strings::StrCat("Index ", index, " at offset ", i,
-                                        " in indices is out of range")));
-      }
-      auto Tparams_flat = Tparams.flat_outer_dims<T>();
-      auto Tupdates_flat =
-          Tupdates.shaped<T, 2>({N, Tupdates.NumElements() / N});
-      for (Index i = 0; i < N; i++) {
-        // Copy last Ndim-1 dimensions of Tupdates[i] to
-        // Tparams[Tindices[i]]
-        Assign<op>::Run(Tparams_flat.template chip<0>(Tindices_vec(i)),
-                        Tupdates_flat.template chip<0>(i));
-      }
+      auto indices_flat = indices.flat<Index>();
+      auto params_flat = params.flat_outer_dims<T>();
+      auto updates_flat = updates.shaped<T, 2>({N, updates.NumElements() / N});
+
+      functor::ScatterFunctor<Device, T, Index, op> functor;
+      const Index bad_i = functor(c, c->template eigen_device<Device>(),
+                                  params_flat, updates_flat, indices_flat);
+      OP_REQUIRES(
+          c, bad_i < 0,
+          errors::InvalidArgument(
+              "indices", SliceDebugString(indices.shape(), bad_i), " = ",
+              indices_flat(bad_i), " is not in [0, ", params.dim_size(0), ")"));
     }
   }
 };
 
-#define REGISTER_SCATTER_UPDATE(type, index_type)  \
-  REGISTER_KERNEL_BUILDER(                         \
-      Name("ScatterUpdate")                        \
-          .Device(DEVICE_CPU)                      \
-          .TypeConstraint<type>("T")               \
-          .TypeConstraint<index_type>("Tindices"), \
-      ScatterUpdateOp<type, index_type, UpdateOp::ASSIGN>);
+namespace functor {
+// Implementation of update functor for CPU.
+template <typename T, typename Index, scatter_op::UpdateOp op>
+struct ScatterFunctor<CPUDevice, T, Index, op> {
+  Index operator()(OpKernelContext* c, const CPUDevice& d,
+                   typename TTypes<T>::Matrix params,
+                   typename TTypes<T>::ConstMatrix updates,
+                   typename TTypes<Index>::ConstFlat indices) {
+    const Index N = indices.size();
+    const Index limit = params.dimension(0);
+    for (Index i = 0; i < N; i++) {
+      // Grab the index and check its validity.  An earlier version of the
+      // code checked it and then grabbed it from memory a second time, which
+      // was a security risk since it could have changed in between.
+      const Index index = internal::SubtleMustCopy(indices(i));
+      if (!FastBoundsCheck(index, limit)) return i;
+      // Copy last Ndim-1 dimensions of updates[i] to params[index]
+      Assign<op>::Run(params.template chip<0>(index),
+                      updates.template chip<0>(i));
+    }
+    return -1;
+  }
+};
+}  // namespace functor
 
-#define REGISTER_SCATTER_UPDATE_INT32(type) REGISTER_SCATTER_UPDATE(type, int32)
-#define REGISTER_SCATTER_UPDATE_INT64(type) REGISTER_SCATTER_UPDATE(type, int64)
-
-TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_INT32);
-TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_INT64);
-
-#undef REGISTER_SCATTER_UPDATE_INT64
-#undef REGISTER_SCATTER_UPDATE_INT32
-#undef REGISTER_SCATTER_UPDATE
-
-#define REGISTER_SCATTER_ADD(type, index_type)                         \
-  REGISTER_KERNEL_BUILDER(Name("ScatterAdd")                           \
-                              .Device(DEVICE_CPU)                      \
+#define REGISTER_SCATTER_KERNEL_INDEX(type, index_type, dev, name, op) \
+  REGISTER_KERNEL_BUILDER(Name(name)                                   \
+                              .Device(DEVICE_##dev)                    \
                               .TypeConstraint<type>("T")               \
                               .TypeConstraint<index_type>("Tindices"), \
-                          ScatterUpdateOp<type, index_type, UpdateOp::ADD>);
+                          ScatterUpdateOp<dev##Device, type, index_type, op>)
 
-#define REGISTER_SCATTER_ADD_INT32(type) REGISTER_SCATTER_ADD(type, int32)
-#define REGISTER_SCATTER_ADD_INT64(type) REGISTER_SCATTER_ADD(type, int64)
+#define REGISTER_SCATTER_KERNEL(type, dev, name, op)         \
+  REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op); \
+  REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
 
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ADD_INT32);
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ADD_INT64);
+#define REGISTER_SCATTER_ADD_SUB(type, dev)                                    \
+  REGISTER_SCATTER_KERNEL(type, dev, "ScatterAdd", scatter_op::UpdateOp::ADD); \
+  REGISTER_SCATTER_KERNEL(type, dev, "ScatterSub", scatter_op::UpdateOp::SUB);
 
-#undef REGISTER_SCATTER_ADD_INT32
-#undef REGISTER_SCATTER_ADD_INT64
+#define REGISTER_SCATTER_UPDATE(type, dev)            \
+  REGISTER_SCATTER_KERNEL(type, dev, "ScatterUpdate", \
+                          scatter_op::UpdateOp::ASSIGN);
+
+// Registers CPU kernels.
+#define REGISTER_SCATTER_ADD_SUB_CPU(type) REGISTER_SCATTER_ADD_SUB(type, CPU);
+
+#define REGISTER_SCATTER_UPDATE_CPU(type) REGISTER_SCATTER_UPDATE(type, CPU);
+
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ADD_SUB_CPU);
+TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_CPU);
+
+// Registers GPU kernels.
+#if GOOGLE_CUDA
+#define REGISTER_SCATTER_ADD_SUB_GPU(type) REGISTER_SCATTER_ADD_SUB(type, GPU);
+
+#define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ADD_SUB_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_GPU);
+
+#endif  // GOOGLE_CUDA
+
 #undef REGISTER_SCATTER_ADD
+#undef REGISTER_SCATTER_ADD_SUB
+#undef REGISTER_SCATTER_ADD_SUB_CPU
+#undef REGISTER_SCATTER_ADD_SUB_GPU
+#undef REGISTER_SCATTER_UPDATE
+#undef REGISTER_SCATTER_UPDATE_CPU
+#undef REGISTER_SCATTER_UPDATE_GPU
+#undef REGISTER_SCATTER_KERNEL
+#undef REGISTER_SCATTER_KERNEL_INDEX
 
-#define REGISTER_SCATTER_SUB(type, index_type)                         \
-  REGISTER_KERNEL_BUILDER(Name("ScatterSub")                           \
-                              .Device(DEVICE_CPU)                      \
-                              .TypeConstraint<type>("T")               \
-                              .TypeConstraint<index_type>("Tindices"), \
-                          ScatterUpdateOp<type, index_type, UpdateOp::SUB>);
+#if GOOGLE_CUDA
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
 
-#define REGISTER_SCATTER_SUB_INT32(type) REGISTER_SCATTER_SUB(type, int32)
-#define REGISTER_SCATTER_SUB_INT64(type) REGISTER_SCATTER_SUB(type, int64)
+#define DECLARE_GPU_SPECS_OP(T, Index, op)                   \
+  template <>                                                \
+  Index ScatterFunctor<GPUDevice, T, Index, op>::operator()( \
+      OpKernelContext* c, const GPUDevice& d,                \
+      typename TTypes<T>::Matrix params,                     \
+      typename TTypes<T>::ConstMatrix updates,               \
+      typename TTypes<Index>::ConstFlat indices);            \
+  extern template struct ScatterFunctor<GPUDevice, T, Index, op>;
 
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_SUB_INT32);
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_SUB_INT64);
+#define DECLARE_GPU_SPECS_INDEX(T, Index)                       \
+  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ASSIGN); \
+  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ADD);    \
+  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::SUB);
 
-#undef REGISTER_SCATTER_SUB_INT64
-#undef REGISTER_SCATTER_SUB_INT32
-#undef REGISTER_SCATTER_SUB
+#define DECLARE_GPU_SPECS(T)         \
+  DECLARE_GPU_SPECS_INDEX(T, int32); \
+  DECLARE_GPU_SPECS_INDEX(T, int64);
+
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+
+#undef DECLARE_GPU_SPECS
+#undef DECLARE_GPU_SPECS_INDEX
+#undef DECLARE_GPU_SPECS_OP
+
+}  // namespace functor
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

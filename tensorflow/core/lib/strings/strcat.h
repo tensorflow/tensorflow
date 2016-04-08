@@ -24,12 +24,13 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 // The AlphaNum type was designed to be used as the parameter type for StrCat().
 // Any routine accepting either a string or a number may accept it.
 // The basic idea is that by accepting a "const AlphaNum &" as an argument
-// to your function, your callers will automagically convert bools, integers,
+// to your function, your callers will automatically convert bools, integers,
 // and floating point values to strings for you.
 //
 // NOTE: Use of AlphaNum outside of the //strings package is unsupported except
@@ -140,9 +141,6 @@ class AlphaNum {
 
 extern AlphaNum gEmptyAlphaNum;
 
-using strings::AlphaNum;
-using strings::gEmptyAlphaNum;
-
 // ----------------------------------------------------------------------
 // StrCat()
 //    This merges the given strings or numbers, with no delimiter.  This
@@ -174,9 +172,6 @@ string StrCat(const AlphaNum &a, const AlphaNum &b,
 string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
               const AlphaNum &d) TF_MUST_USE_RESULT;
 
-// inline definitions must be duplicated due to TF_MUST_USE_RESULT
-inline string StrCat(const AlphaNum &a) { return string(a.data(), a.size()); }
-
 namespace internal {
 
 // Do not call directly - this is not part of the public API.
@@ -192,8 +187,8 @@ string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
               const AV &... args) TF_MUST_USE_RESULT;
 
 template <typename... AV>
-inline string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-                     const AlphaNum &d, const AlphaNum &e, const AV &... args) {
+string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
+              const AlphaNum &d, const AlphaNum &e, const AV &... args) {
   return internal::CatPieces({a.Piece(), b.Piece(), c.Piece(), d.Piece(),
                               e.Piece(),
                               static_cast<const AlphaNum &>(args).Piece()...});

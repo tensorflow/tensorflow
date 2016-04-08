@@ -20,11 +20,12 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/image_resizer_state.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -33,65 +34,35 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename Device, typename T>
 class ResizeBilinearOp : public OpKernel {
  public:
-  explicit ResizeBilinearOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+  explicit ResizeBilinearOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
-    const Tensor& shape_t = context->input(1);
-    OP_REQUIRES(context, shape_t.dims() == 1,
-                errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().ShortDebugString()));
-    OP_REQUIRES(context, shape_t.NumElements() == 2,
-                errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().ShortDebugString()));
+    ImageResizerState st(align_corners_);
+    st.ValidateAndCreateOutput(context, input);
 
-    auto Svec = shape_t.vec<int32>();
-    // Initialize shape to the batch size of the input, then add
-    // the rest of the dimensions
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({input.dim_size(0), Svec(0),
-                                                Svec(1), input.dim_size(3)}),
-                                &output));
-
-    const int64 batch_size = input.dim_size(0);
-    const int64 in_height = input.dim_size(1);
-    const int64 in_width = input.dim_size(2);
-    const int64 channels = input.dim_size(3);
-    const int64 out_height = output->dim_size(1);
-    const int64 out_width = output->dim_size(2);
-    CHECK_GT(in_height, 0);
-    CHECK_GT(in_width, 0);
-    CHECK_GT(channels, 0);
-    CHECK_GT(out_height, 0);
-    CHECK_GT(out_width, 0);
+    if (!context->status().ok()) return;
 
     typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
-    typename TTypes<float, 4>::Tensor output_data = output->tensor<float, 4>();
+    typename TTypes<float, 4>::Tensor output_data =
+        st.output->tensor<float, 4>();
 
-    const float height_scale = in_height / static_cast<float>(out_height);
-    const float width_scale = in_width / static_cast<float>(out_width);
-
-    for (int b = 0; b < batch_size; ++b) {
-      for (int y = 0; y < out_height; ++y) {
-        const float in_y = y * height_scale;
+    for (int b = 0; b < st.batch_size; ++b) {
+      for (int y = 0; y < st.out_height; ++y) {
+        const float in_y = y * st.height_scale;
         const int top_y_index = static_cast<int>(floorf(in_y));
         const int bottom_y_index =
-            std::min(static_cast<int64>(ceilf(in_y)), (in_height - 1));
+            std::min(static_cast<int64>(ceilf(in_y)), (st.in_height - 1));
         const float y_lerp = in_y - top_y_index;
-        const float inverse_y_lerp = (1.0f - y_lerp);
-        for (int x = 0; x < out_width; ++x) {
-          const float in_x = x * width_scale;
+        for (int x = 0; x < st.out_width; ++x) {
+          const float in_x = x * st.width_scale;
           const int left_x_index = static_cast<int>(floorf(in_x));
           const int right_x_index =
-              std::min(static_cast<int64>(ceilf(in_x)), (in_width - 1));
+              std::min(static_cast<int64>(ceilf(in_x)), (st.in_width - 1));
           const float x_lerp = in_x - left_x_index;
-          const float inverse_x_lerp = (1.0f - x_lerp);
-          for (int c = 0; c < channels; ++c) {
+          for (int c = 0; c < st.channels; ++c) {
             const float top_left = input_data(b, top_y_index, left_x_index, c);
             const float top_right =
                 input_data(b, top_y_index, right_x_index, c);
@@ -99,24 +70,27 @@ class ResizeBilinearOp : public OpKernel {
                 input_data(b, bottom_y_index, left_x_index, c);
             const float bottom_right =
                 input_data(b, bottom_y_index, right_x_index, c);
-            const float top =
-                (top_left * inverse_x_lerp) + (top_right * x_lerp);
+            const float top = top_left + (top_right - top_left) * x_lerp;
             const float bottom =
-                (bottom_left * inverse_x_lerp) + (bottom_right * x_lerp);
-            output_data(b, y, x, c) =
-                (top * inverse_y_lerp) + (bottom * y_lerp);
+                bottom_left + (bottom_right - bottom_left) * x_lerp;
+            output_data(b, y, x, c) = top + (bottom - top) * y_lerp;
           }
         }
       }
     }
   }
+
+ private:
+  bool align_corners_;
 };
 
 template <typename Device, typename T>
 class ResizeBilinearOpGrad : public OpKernel {
  public:
   explicit ResizeBilinearOpGrad(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
 
   void Compute(OpKernelContext* context) override {
     // Validate input.
@@ -124,7 +98,7 @@ class ResizeBilinearOpGrad : public OpKernel {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input_grad must be 4-dimensional",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     // ResizeBilinear always produces float images, so the input gradient is
     // always a float.
     OP_REQUIRES(context, input.dtype() == DT_FLOAT,
@@ -133,10 +107,9 @@ class ResizeBilinearOpGrad : public OpKernel {
 
     // The second argument is the original input to resize_bilinear.
     const Tensor& original_image = context->input(1);
-    OP_REQUIRES(
-        context, original_image.dims() == 4,
-        errors::InvalidArgument("original_image must be 4-dimensional",
-                                original_image.shape().ShortDebugString()));
+    OP_REQUIRES(context, original_image.dims() == 4,
+                errors::InvalidArgument("original_image must be 4-dimensional",
+                                        original_image.shape().DebugString()));
 
     // Allocate output and initialize to zeros.
     const int64 batch_size = input.dim_size(0);
@@ -166,9 +139,13 @@ class ResizeBilinearOpGrad : public OpKernel {
     }
 
     const float height_scale =
-        original_height / static_cast<float>(resized_height);
+        (align_corners_ && resized_height > 1)
+            ? (original_height - 1) / static_cast<float>(resized_height - 1)
+            : original_height / static_cast<float>(resized_height);
     const float width_scale =
-        original_width / static_cast<float>(resized_width);
+        (align_corners_ && resized_width > 1)
+            ? (original_width - 1) / static_cast<float>(resized_width - 1)
+            : original_width / static_cast<float>(resized_width);
 
     // Each resized pixel was computed as a weighted average of four input
     // pixels. Here we find the pixels that contributed to each output pixel
@@ -206,6 +183,9 @@ class ResizeBilinearOpGrad : public OpKernel {
       }
     }
   }
+
+ private:
+  bool align_corners_;
 };
 
 #define REGISTER_KERNEL(T)                            \
@@ -215,11 +195,8 @@ class ResizeBilinearOpGrad : public OpKernel {
                               .HostMemory("size"),    \
                           ResizeBilinearOp<CPUDevice, T>);
 
-REGISTER_KERNEL(uint8);
-REGISTER_KERNEL(int8);
-REGISTER_KERNEL(int32);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
+
 #undef REGISTER_KERNEL
 
 REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")

@@ -16,8 +16,9 @@ limitations under the License.
 // Unit test for bit_cast template.
 
 #include "tensorflow/core/lib/core/casts.h"
-#include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 

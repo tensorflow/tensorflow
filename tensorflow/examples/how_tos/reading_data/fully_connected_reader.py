@@ -30,7 +30,6 @@ from __future__ import print_function
 import os.path
 import time
 
-import tensorflow.python.platform
 import numpy
 import tensorflow as tf
 
@@ -58,9 +57,11 @@ def read_and_decode(filename_queue):
   _, serialized_example = reader.read(filename_queue)
   features = tf.parse_single_example(
       serialized_example,
-      dense_keys=['image_raw', 'label'],
       # Defaults are not specified since both keys are required.
-      dense_types=[tf.string, tf.int64])
+      features={
+          'image_raw': tf.FixedLenFeature([], tf.string),
+          'label': tf.FixedLenFeature([], tf.int64),
+      })
 
   # Convert from a scalar string tensor (whose single string has
   # length mnist.IMAGE_PIXELS) to a uint8 tensor with shape

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -27,6 +25,7 @@ import tensorflow as tf
 class GradientCheckerTest(tf.test.TestCase):
 
   def testAddSimple(self):
+    np.random.seed(1)  # Fix seed to avoid flakiness
     with self.test_session(use_gpu=False):
       # a test case for Add operation
       size = (2, 3)
@@ -40,6 +39,7 @@ class GradientCheckerTest(tf.test.TestCase):
     assert error < 1e-4
 
   def testAddSimpleGPU(self):
+    np.random.seed(2)  # Fix seed to avoid flakiness
     with self.test_session(use_gpu=True):
       # a test case for Add operation
       size = (2, 3)
@@ -53,6 +53,7 @@ class GradientCheckerTest(tf.test.TestCase):
     assert error < 1e-4
 
   def testAddCustomized(self):
+    np.random.seed(3)  # Fix seed to avoid flakiness
     with self.test_session():
       # a test case for Add operation
       size = (2, 3)
@@ -74,6 +75,7 @@ class GradientCheckerTest(tf.test.TestCase):
     assert error < 1e-10
 
   def testGather(self):
+    np.random.seed(4)  # Fix seed to avoid flakiness
     with self.test_session():
       p_shape = (4, 2)
       p_size = 8
@@ -89,6 +91,7 @@ class GradientCheckerTest(tf.test.TestCase):
     assert error < 1e-4
 
   def testNestedGather(self):
+    np.random.seed(5)  # Fix seed to avoid flakiness
     with self.test_session():
       p_shape = (8, 2)
       p_size = 16
@@ -107,9 +110,35 @@ class GradientCheckerTest(tf.test.TestCase):
     tf.logging.info("nested gather error = %f", error)
     assert error < 1e-4
 
+  def testComplexMul(self):
+    with self.test_session():
+      size = ()
+      c = tf.constant(5 + 7j, dtype=tf.complex64)
+      x = tf.constant(11 - 13j, dtype=tf.complex64)
+      y = c * x
+      analytical, numerical = tf.test.compute_gradient(x, size, y, size)
+      correct = np.array([[5, 7], [-7, 5]])
+      self.assertAllEqual(correct, analytical)
+      self.assertAllClose(correct, numerical, rtol=1e-4)
+      self.assertLess(tf.test.compute_gradient_error(x, size, y, size), 2e-4)
+
+  def testComplexConj(self):
+    with self.test_session():
+      size = ()
+      x = tf.constant(11 - 13j, dtype=tf.complex64)
+      y = tf.conj(x)
+      analytical, numerical = tf.test.compute_gradient(x, size, y, size)
+      correct = np.array([[1, 0], [0, -1]])
+      self.assertAllEqual(correct, analytical)
+      self.assertAllClose(correct, numerical, rtol=3e-6)
+      self.assertLess(tf.test.compute_gradient_error(x, size, y, size), 2e-5)
+
 
 # Gradient checker for MNIST.
 def BuildAndTestMiniMNIST(param_index, tag):
+  # Fix seed to avoid occasional flakiness
+  np.random.seed(6)
+
   # Hyperparameters
   batch = 3
   inputs = 16

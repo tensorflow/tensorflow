@@ -9,6 +9,7 @@ py_library(
     name = "cifar10_input",
     srcs = ["cifar10_input.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -16,6 +17,7 @@ py_library(
 
 py_test(
     name = "cifar10_input_test",
+    size = "small",
     srcs = ["cifar10_input_test.py"],
     srcs_version = "PY2AND3",
     deps = [

@@ -19,8 +19,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
@@ -81,7 +82,11 @@ TensorSliceWriter::TensorSliceWriter(const string& filename,
     : filename_(filename),
       create_builder_(create_builder),
       tmpname_(strings::StrCat(filename, ".tempstate", random::New64())),
-      slices_(0) {}
+      slices_(0) {
+  VersionDef* versions = sts_.mutable_meta()->mutable_versions();
+  versions->set_producer(TF_CHECKPOINT_VERSION);
+  versions->set_min_consumer(TF_CHECKPOINT_VERSION_MIN_CONSUMER);
+}
 
 Status TensorSliceWriter::Finish() {
   Builder* b;

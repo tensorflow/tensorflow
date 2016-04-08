@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def_builder.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -41,7 +41,7 @@ class OpDefBuilderTest : public ::testing::Test {
   void ExpectSuccess(const OpDefBuilder& builder, StringPiece proto) {
     OpDef op_def;
     Status status = builder.Finalize(&op_def);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(
@@ -56,7 +56,7 @@ class OpDefBuilderTest : public ::testing::Test {
   void ExpectOrdered(const OpDefBuilder& builder, StringPiece proto) {
     OpDef op_def;
     Status status = builder.Finalize(&op_def);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(
@@ -110,17 +110,19 @@ TEST_F(OpDefBuilderTest, AttrFailure) {
 
 TEST_F(OpDefBuilderTest, AttrWithRestrictions) {
   // Types with restrictions.
-  ExpectSuccess(b().Attr("a:numbertype"),
-                "attr: { name: 'a' type: 'type' allowed_values { list { type: "
-                "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-                "DT_INT8, DT_COMPLEX64, DT_QINT8, DT_QUINT8, DT_QINT32] } } }");
+  ExpectSuccess(
+      b().Attr("a:numbertype"),
+      "attr: { name: 'a' type: 'type' allowed_values { list { type: "
+      "[DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
+      "DT_UINT16, DT_INT8, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8, DT_QUINT8, "
+      "DT_QINT32] } } }");
   ExpectSuccess(b().Attr("a:realnumbertype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
-                "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-                "DT_INT8] } } }");
+                "[DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, "
+                "DT_INT16, DT_UINT16, DT_INT8] } } }");
   ExpectSuccess(b().Attr("a:quantizedtype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
-                "[DT_QINT8, DT_QUINT8, DT_QINT32] } } }");
+                "[DT_QINT8, DT_QUINT8, DT_QINT32, DT_QINT16, DT_QUINT16]} } }");
   ExpectSuccess(b().Attr("a:{string,int32}"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_STRING, DT_INT32] } } }");
@@ -139,6 +141,12 @@ TEST_F(OpDefBuilderTest, AttrWithRestrictions) {
   ExpectSuccess(
       b().Attr("i: int >= -5"),
       "attr: { name: 'i' type: 'int' has_minimum: true minimum: -5 }");
+  ExpectSuccess(b().Attr("i: int >= 9223372036854775807"),
+                ("attr: { name: 'i' type: 'int' has_minimum: true "
+                 "minimum: 9223372036854775807 }"));
+  ExpectSuccess(b().Attr("i: int >= -9223372036854775808"),
+                ("attr: { name: 'i' type: 'int' has_minimum: true "
+                 "minimum: -9223372036854775808 }"));
 }
 
 TEST_F(OpDefBuilderTest, AttrRestrictionFailure) {
@@ -163,6 +171,20 @@ TEST_F(OpDefBuilderTest, AttrRestrictionFailure) {
   ExpectFailure(b().Attr("a:{float,,}"),
                 "Trouble parsing type string at ',}' from "
                 "Attr(\"a:{float,,}\") for Op Test");
+  ExpectFailure(b().Attr("i: int >= a"),
+                "Could not parse integer lower limit after '>=', "
+                "found ' a' instead from Attr(\"i: int >= a\") for Op Test");
+  ExpectFailure(b().Attr("i: int >= -a"),
+                "Could not parse integer lower limit after '>=', found ' -a' "
+                "instead from Attr(\"i: int >= -a\") for Op Test");
+  ExpectFailure(b().Attr("i: int >= 9223372036854775808"),
+                "Could not parse integer lower limit after '>=', found "
+                "' 9223372036854775808' instead from "
+                "Attr(\"i: int >= 9223372036854775808\") for Op Test");
+  ExpectFailure(b().Attr("i: int >= -9223372036854775809"),
+                "Could not parse integer lower limit after '>=', found "
+                "' -9223372036854775809' instead from "
+                "Attr(\"i: int >= -9223372036854775809\") for Op Test");
 }
 
 TEST_F(OpDefBuilderTest, AttrListOfRestricted) {
@@ -170,11 +192,11 @@ TEST_F(OpDefBuilderTest, AttrListOfRestricted) {
       b().Attr("a:list(realnumbertype)"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "
       "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-      "DT_INT8] } } }");
+      "DT_UINT16, DT_INT8, DT_HALF] } } }");
   ExpectSuccess(
       b().Attr("a:list(quantizedtype)"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "
-      "[DT_QINT8, DT_QUINT8, DT_QINT32] } } }");
+      "[DT_QINT8, DT_QUINT8, DT_QINT32, DT_QINT16, DT_QUINT16] } } }");
   ExpectSuccess(
       b().Attr("a: list({float, string, bool})"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "
@@ -216,6 +238,9 @@ TEST_F(OpDefBuilderTest, AttrWithDefaults) {
   ExpectSuccess(b().Attr("a:shape = { dim { size: 3 } dim { size: 4 } }"),
                 "attr: { name: 'a' type: 'shape' default_value { shape {"
                 "    dim { size: 3 } dim { size: 4 } } } }");
+  ExpectSuccess(b().Attr("a:shape = { dim { size: -1 } dim { size: 4 } }"),
+                "attr: { name: 'a' type: 'shape' default_value { shape {"
+                "    dim { size: -1 } dim { size: 4 } } } }");
 }
 
 TEST_F(OpDefBuilderTest, AttrFailedDefaults) {
@@ -237,6 +262,9 @@ TEST_F(OpDefBuilderTest, AttrListWithDefaults) {
   ExpectSuccess(b().Attr(R"(a:list(int)=[0, -1, 2, -4, 8])"),
                 "attr: { name: 'a' type: 'list(int)' "
                 "default_value { list { i: [0, -1, 2, -4, 8] } } }");
+  ExpectSuccess(b().Attr(R"(a:list(int)=[  ])"),
+                "attr: { name: 'a' type: 'list(int)' "
+                "default_value { list { i: [] } } }");
 }
 
 TEST_F(OpDefBuilderTest, AttrFailedListDefaults) {
@@ -255,6 +283,12 @@ TEST_F(OpDefBuilderTest, AttrFailedListDefaults) {
   ExpectFailure(b().Attr(R"(a:list(string)='foo')"),
                 "Could not parse default value ''foo'' from "
                 "Attr(\"a:list(string)='foo'\") for Op Test");
+  ExpectFailure(b().Attr("a:list(float) = ["),
+                "Could not parse default value '[' from "
+                "Attr(\"a:list(float) = [\") for Op Test");
+  ExpectFailure(b().Attr("a:list(float) = "),
+                "Could not parse default value '' from "
+                "Attr(\"a:list(float) = \") for Op Test");
 }
 
 TEST_F(OpDefBuilderTest, InputOutput) {
@@ -264,7 +298,7 @@ TEST_F(OpDefBuilderTest, InputOutput) {
                 "output_arg: { name: 'b' type: DT_STRING }");
   ExpectSuccess(b().Input("c: float  "),
                 "input_arg: { name: 'c' type: DT_FLOAT }");
-  ExpectSuccess(b().Output("d: Ref(bool)"),
+  ExpectSuccess(b().Output("d: Ref  (  bool ) "),
                 "output_arg: { name: 'd' type: DT_BOOL is_ref: true }");
   ExpectOrdered(b().Input("a: bool")
                     .Output("c: complex64")
@@ -322,6 +356,12 @@ TEST_F(OpDefBuilderTest, InputOutputFailure) {
   ExpectFailure(
       b().Input("CAPS: int32"),
       "Trouble parsing 'name:' from Input(\"CAPS: int32\") for Op Test");
+  ExpectFailure(
+      b().Input("_underscore: int32"),
+      "Trouble parsing 'name:' from Input(\"_underscore: int32\") for Op Test");
+  ExpectFailure(
+      b().Input("0digit: int32"),
+      "Trouble parsing 'name:' from Input(\"0digit: int32\") for Op Test");
   ExpectFailure(b().Input("a: _"),
                 "Trouble parsing either a type or an attr name at '_' from "
                 "Input(\"a: _\") for Op Test");
@@ -340,6 +380,9 @@ TEST_F(OpDefBuilderTest, InputOutputFailure) {
   ExpectFailure(b().Input("a: Ref(int32"),
                 "Did not find closing ')' for 'Ref(', instead found: '' from "
                 "Input(\"a: Ref(int32\") for Op Test");
+  ExpectFailure(
+      b().Input("a: Ref"),
+      "Reference to unknown attr 'Ref' from Input(\"a: Ref\") for Op Test");
   ExpectFailure(b().Input("a: Ref(x y").Attr("x: type"),
                 "Did not find closing ')' for 'Ref(', instead found: 'y' from "
                 "Input(\"a: Ref(x y\") for Op Test");

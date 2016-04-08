@@ -27,7 +27,7 @@ REGISTER_OP("Switch")
     .Doc(R"doc(
 Forwards `data` to the output port determined by `pred`.
 
-If `pred` is true, the `data` input is forwared to `output_true`. Otherwise,
+If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,
 the data goes to `output_false`.
 
 See also `RefSwitch` and `Merge`.
@@ -48,7 +48,7 @@ REGISTER_OP("RefSwitch")
     .Doc(R"doc(
 Forwards the ref tensor `data` to the output port determined by `pred`.
 
-If `pred` is true, the `data` input is forwared to `output_true`. Otherwise,
+If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,
 the data goes to `output_false`.
 
 See also `Switch` and `Merge`.
@@ -78,6 +78,28 @@ output: The forwarded tensor.
 REGISTER_OP("Merge")
     .Input("inputs: N * T")
     .Output("output: T")
+    .Output("value_index: int32")
+    .Attr("T: type")
+    .Attr("N: int >= 1")
+    .Doc(R"doc(
+Forwards the value of an available tensor from `inputs` to `output`.
+
+`Merge` waits for at least one of the tensors in `inputs` to become available.
+It is usually combined with `Switch` to implement branching.
+
+`Merge` forwards the first tensor for become available to `output`, and sets
+`value_index` to its index in `inputs`.
+
+It is an error if more than one tensor in `inputs` is available.
+
+inputs: The input tensors, exactly one of which will become available.
+output: Will be set to the available input tensor.
+value_index: The index of the chosen input tensor in `inputs`.
+)doc");
+
+REGISTER_OP("RefMerge")
+    .Input("inputs: Ref(N * T)")
+    .Output("output: Ref(T)")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
@@ -158,10 +180,34 @@ data: The tensor to be made available to the parent frame.
 output: The same tensor as `data`.
 )doc");
 
+REGISTER_OP("RefExit")
+    .Input("data: Ref(T)")
+    .Output("output: Ref(T)")
+    .Attr("T: type")
+    .Doc(R"doc(
+Exits the current frame to its parent frame.
+
+Exit makes its input `data` available to the parent frame.
+
+data: The tensor to be made available to the parent frame.
+output: The same tensor as `data`.
+)doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("NextIteration")
     .Input("data: T")
     .Output("output: T")
+    .Attr("T: type")
+    .Doc(R"doc(
+Makes its input available to the next iteration.
+
+data: The tensor to be made available to the next iteration.
+output: The same tensor as `data`.
+)doc");
+
+REGISTER_OP("RefNextIteration")
+    .Input("data: Ref(T)")
+    .Output("output: Ref(T)")
     .Attr("T: type")
     .Doc(R"doc(
 Makes its input available to the next iteration.
@@ -180,7 +226,7 @@ Forwards the input to the output.
 This operator represents the loop termination condition used by the
 "pivot" switches of a loop.
 
-input:= A boolean scalar, representing the branch predicate of the Switch op.
+input: A boolean scalar, representing the branch predicate of the Switch op.
 output: The same tensor as `input`.
 )doc");
 
@@ -189,6 +235,17 @@ REGISTER_OP("ControlTrigger")
     .Doc(R"doc(
 Does nothing. Serves as a control trigger for scheduling. Only useful as a
 placeholder for control edges.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("Abort")
+    .Attr("error_msg: string = ''")
+    .Doc(R"doc(
+Raise a exception to abort the process when called.
+
+Returns nothing but an exception.
+
+error_msg: A string which is the message associated with the exception.
 )doc");
 
 }  // namespace tensorflow

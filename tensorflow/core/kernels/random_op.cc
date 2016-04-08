@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -180,10 +180,10 @@ namespace {
 
 static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
                                       int index, Tensor** output) {
-  if (!TensorShapeUtils::IsLegacyVector(shape.shape())) {
+  if (!ctx->op_kernel().IsLegacyVector(shape.shape())) {
     return errors::InvalidArgument(
         "shape must be a vector of {int32,int64}, got shape ",
-        shape.shape().ShortDebugString());
+        shape.shape().DebugString());
   }
   if (shape.dtype() == DataType::DT_INT32) {
     auto vec = shape.flat<int32>();
@@ -249,10 +249,10 @@ class RandomUniformIntOp : public OpKernel {
     const Tensor& maxval = ctx->input(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval.shape()),
                 errors::InvalidArgument("minval must be 0-D, got shape ",
-                                        minval.shape().ShortDebugString()));
+                                        minval.shape().DebugString()));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(maxval.shape()),
                 errors::InvalidArgument("maxval must be 0-D, got shape ",
-                                        maxval.shape().ShortDebugString()));
+                                        maxval.shape().DebugString()));
 
     // Verify that minval < maxval
     IntType lo = minval.scalar<IntType>()();

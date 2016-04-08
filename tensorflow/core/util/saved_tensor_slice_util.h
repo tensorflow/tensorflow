@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"  // for Status
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/public/status.h"  // for Status
 
 namespace tensorflow {
 
@@ -108,6 +108,7 @@ TENSOR_PROTO_EXTRACT_TYPE(bool, bool, bool);
 TENSOR_PROTO_EXTRACT_TYPE(float, float, float);
 TENSOR_PROTO_EXTRACT_TYPE(double, double, double);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex64, scomplex, float);
+TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex128, dcomplex, double);
 TENSOR_PROTO_EXTRACT_TYPE(int32, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(int64, int64, int64);
 TENSOR_PROTO_EXTRACT_TYPE(uint8, int, int32);

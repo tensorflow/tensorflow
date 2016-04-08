@@ -108,7 +108,7 @@ unzip tensorflow/examples/label_image/data/inception_dec_2015.zip -d tensorflow/
 
 Next, we need to compile the C++ binary that includes the code to load and run the graph.
 If you've followed [the instructions to download the source installation of
-TensorFlow](http://www.tensorflow.org/versions/master/get_started/os_setup.html#source)
+TensorFlow](../../get_started/os_setup.md#installing-from-sources)
 for your platform, you should be able to build the example by
 running this command from your shell terminal:
 
@@ -436,11 +436,7 @@ should be able to transfer some of that understanding to solving related
 problems.  One way to perform transfer learning is to remove the final
 classification layer of the network and extract 
 the [next-to-last layer of the CNN](http://arxiv.org/abs/1310.1531), in this case a 2048 dimensional vector.
-One can specify
-this by setting `--output_layer=pool_3` in the [C++ API example](#usage-with-the-c-api)
-and then
-changing the output tensor handling. Try extracting this feature on a set of images
-and see if you can predict new categories not in ImageNet.
+There's a guide to doing this [in the how-to section](../../how_tos/image_retraining/index.html).
 
 
 ## Resources for Learning More

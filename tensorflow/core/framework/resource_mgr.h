@@ -23,11 +23,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 
@@ -70,65 +72,6 @@ class ResourceBase : public core::RefCounted {
   // Returns a debug string for *this.
   virtual string DebugString() = 0;
 };
-
-// On Android, we would like to avoid using RTTI for smaller binary sizes. The
-// following #ifdef section provides a non-functional replacement for
-// std::type_index (with a minimal set of functions needed by ResourceMgr).
-#ifdef __ANDROID__
-
-// A thin TypeIndex class that mimics std::type_index but does not use RTTI. As
-// a result, it does not provide the actual name of the type, and only returns a
-// pre-baked string specifying that RTTI is disabled.
-// The hash code provided in this class is unique for each class. However, it is
-// generated at runtime so this hash code should not be serialized - the value
-// for the same type can change from different runs.
-class ResourceMgrTypeIndex {
- public:
-  ResourceMgrTypeIndex(const ResourceMgrTypeIndex& src) : hash_(src.hash_) {}
-  ResourceMgrTypeIndex& operator=(const ResourceMgrTypeIndex& src) {
-    hash_ = src.hash_;
-    return *this;
-  }
-  bool operator==(const ResourceMgrTypeIndex& rhs) const {
-    return (hash_ == rhs.hash_);
-  }
-  bool operator!=(const ResourceMgrTypeIndex& rhs) const {
-    return (hash_ != rhs.hash_);
-  }
-  ~ResourceMgrTypeIndex() {}
-
-  string name() const { return "[RTTI disabled for Android]"; }
-  uint64 hash_code() const { return hash_; }
-
-  // Returns a ResourceMgrTypeIndex object that corresponds to a typename.
-  template <typename T>
-  static ResourceMgrTypeIndex Make() {
-    static bool hash_bit[1];
-    return ResourceMgrTypeIndex(
-        static_cast<uint64>(reinterpret_cast<intptr_t>(hash_bit)));
-  }
-
- private:
-  // We hide the constructor to be private. One needs to create the templated
-  // Make<T>() function to create a ResourceMgrTypeIndex object.
-  ResourceMgrTypeIndex(const uint64 hash) : hash_(hash) {}
-  uint64 hash_;
-};
-
-template <typename T>
-inline ResourceMgrTypeIndex GetResourceMgrTypeIndex() {
-  return ResourceMgrTypeIndex::Make<T>();
-}
-
-#else  // __ANDROID__
-
-typedef std::type_index ResourceMgrTypeIndex;
-template <typename T>
-inline ResourceMgrTypeIndex GetResourceMgrTypeIndex() {
-  return ResourceMgrTypeIndex(typeid(T));
-}
-
-#endif  // __ANDROID__
 
 class ResourceMgr {
  public:
@@ -181,7 +124,7 @@ class ResourceMgr {
   void Clear();
 
  private:
-  typedef std::pair<ResourceMgrTypeIndex, string> Key;
+  typedef std::pair<TypeIndex, string> Key;
   struct KeyHash {
     std::size_t operator()(const Key& k) const {
       return Hash64(k.second.data(), k.second.size(), k.first.hash_code());
@@ -198,13 +141,11 @@ class ResourceMgr {
   mutable mutex mu_;
   std::unordered_map<string, Container*> containers_ GUARDED_BY(mu_);
 
-  Status DoCreate(const string& container, ResourceMgrTypeIndex type,
-                  const string& name,
+  Status DoCreate(const string& container, TypeIndex type, const string& name,
                   ResourceBase* resource) TF_MUST_USE_RESULT;
-  Status DoLookup(const string& container, ResourceMgrTypeIndex type,
-                  const string& name,
+  Status DoLookup(const string& container, TypeIndex type, const string& name,
                   ResourceBase** resource) const TF_MUST_USE_RESULT;
-  Status DoDelete(const string& container, ResourceMgrTypeIndex type,
+  Status DoDelete(const string& container, TypeIndex type,
                   const string& name) TF_MUST_USE_RESULT;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ResourceMgr);
@@ -282,7 +223,7 @@ Status ResourceMgr::Create(const string& container, const string& name,
                            T* resource) {
   CheckDeriveFromResourceBase<T>();
   CHECK(resource != nullptr);
-  return DoCreate(container, GetResourceMgrTypeIndex<T>(), name, resource);
+  return DoCreate(container, MakeTypeIndex<T>(), name, resource);
 }
 
 template <typename T>
@@ -290,7 +231,7 @@ Status ResourceMgr::Lookup(const string& container, const string& name,
                            T** resource) const {
   CheckDeriveFromResourceBase<T>();
   ResourceBase* found = nullptr;
-  Status s = DoLookup(container, GetResourceMgrTypeIndex<T>(), name, &found);
+  Status s = DoLookup(container, MakeTypeIndex<T>(), name, &found);
   if (s.ok()) {
     // It's safe to down cast 'found' to T* since
     // typeid(T).hash_code() is part of the map key.
@@ -324,7 +265,7 @@ Status ResourceMgr::LookupOrCreate(const string& container, const string& name,
 template <typename T>
 Status ResourceMgr::Delete(const string& container, const string& name) {
   CheckDeriveFromResourceBase<T>();
-  return DoDelete(container, GetResourceMgrTypeIndex<T>(), name);
+  return DoDelete(container, MakeTypeIndex<T>(), name);
 }
 
 template <typename T>

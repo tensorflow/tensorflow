@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import traceback
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 from tensorflow.python.ops import template

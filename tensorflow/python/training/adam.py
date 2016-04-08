@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -31,14 +30,15 @@ from tensorflow.python.training import training_ops
 class AdamOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adam algorithm.
 
+  See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
+  ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
+
   @@__init__
   """
 
   def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
                use_locking=False, name="Adam"):
     """Construct a new Adam optimizer.
-
-    Implementation is based on: http://arxiv.org/pdf/1412.6980v7.pdf
 
     Initialization:
 
@@ -102,7 +102,7 @@ class AdamOptimizer(optimizer.Optimizer):
     # Create the beta1 and beta2 accumulators on the same device as the first
     # variable.
     if self._beta1_power is None:
-      with ops.device(var_list[0].device):
+      with ops.colocate_with(var_list[0]):
         self._beta1_power = variables.Variable(self._beta1,
                                                name="beta1_power",
                                                trainable=False)
@@ -154,7 +154,7 @@ class AdamOptimizer(optimizer.Optimizer):
   def _finish(self, update_ops, name_scope):
     # Update the power accumulators.
     with ops.control_dependencies(update_ops):
-      with ops.device(self._beta1_power.device):
+      with ops.colocate_with(self._beta1_power):
         update_beta1 = self._beta1_power.assign(
             self._beta1_power * self._beta1_t,
             use_locking=self._use_locking)

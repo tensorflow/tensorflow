@@ -17,11 +17,15 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_LOOKUP_INTERFACE_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace lookup {
+
+// Forward declaration so we can define GetInitializableLookupTable() in
+// LookupInterface.
+class InitializableLookupTable;
 
 // Lookup interface for batch lookups used by table lookup ops.
 class LookupInterface : public ResourceBase {
@@ -53,6 +57,12 @@ class LookupInterface : public ResourceBase {
   virtual DataType value_dtype() const = 0;
 
   string DebugString() override { return "A lookup table"; }
+
+  // Returns an InitializableLookupTable, a subclass of LookupInterface, if the
+  // current object is an InitializableLookupTable. Otherwise, returns nullptr.
+  virtual InitializableLookupTable* GetInitializableLookupTable() {
+    return nullptr;
+  }
 
  protected:
   virtual ~LookupInterface() = default;

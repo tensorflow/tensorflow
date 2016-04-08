@@ -32,7 +32,6 @@ from __future__ import print_function
 import os.path
 import time
 
-import tensorflow.python.platform
 import numpy
 import tensorflow as tf
 
@@ -114,8 +113,7 @@ def run_training():
              feed_dict={labels_initializer: data_sets.train.labels})
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                            graph_def=sess.graph_def)
+    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 
     # Start input enqueue threads.
     coord = tf.train.Coordinator()

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 
+#include <algorithm>
 #include <iostream>
 #include "tensorflow/core/lib/hash/hash.h"
 
@@ -30,7 +31,7 @@ std::ostream& operator<<(std::ostream& o, StringPiece piece) {
 }
 
 bool StringPiece::contains(StringPiece s) const {
-  return memmem(data_, size_, s.data_, s.size_) != nullptr;
+  return std::search(begin(), end(), s.begin(), s.end()) != end();
 }
 
 size_t StringPiece::find(char c, size_t pos) const {
@@ -51,14 +52,6 @@ size_t StringPiece::rfind(char c, size_t pos) const {
     }
   }
   return npos;
-}
-
-bool StringPiece::Consume(StringPiece x) {
-  if (starts_with(x)) {
-    remove_prefix(x.size_);
-    return true;
-  }
-  return false;
 }
 
 StringPiece StringPiece::substr(size_t pos, size_t n) const {

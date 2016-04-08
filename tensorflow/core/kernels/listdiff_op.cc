@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 template <typename T>
@@ -72,6 +72,12 @@ class ListDiffOp : public OpKernel {
 
     for (int i = 0, p = 0; i < x_size; ++i) {
       if (y_set.count(Tx(i)) == 0) {
+        OP_REQUIRES(context, p < out_size,
+                    errors::OutOfRange(
+                        "Tried to set output index ", p,
+                        " when output Tensor only had ", out_size,
+                        " elements. Check that your "
+                        "input tensors are not being concurrently mutated."));
         Tout(p) = Tx(i);
         Tindices(p) = i;
         p++;

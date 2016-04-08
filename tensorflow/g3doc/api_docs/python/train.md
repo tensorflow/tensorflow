@@ -32,7 +32,7 @@ opt = GradientDescentOptimizer(learning_rate=0.1)
 # Add Ops to the graph to minimize a cost by updating a list of variables.
 # "cost" is a Tensor, and the list of variables contains tf.Variable
 # objects.
-opt_op = opt.minimize(cost, <list of variables>)
+opt_op = opt.minimize(cost, var_list=<list of variables>)
 ```
 
 In the training program you will just have to run the returned Op.
@@ -63,7 +63,7 @@ grads_and_vars = opt.compute_gradients(loss, <list of variables>)
 
 # grads_and_vars is a list of tuples (gradient, variable).  Do whatever you
 # need to the 'gradient' part, for example cap them, etc.
-capped_grads_and_vars = [(MyCapper(gv[0]), gv[1])) for gv in grads_and_vars]
+capped_grads_and_vars = [(MyCapper(gv[0]), gv[1]) for gv in grads_and_vars]
 
 # Ask the optimizer to apply the capped gradients.
 opt.apply_gradients(capped_grads_and_vars)
@@ -88,13 +88,13 @@ This must be called by the constructors of subclasses.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if name is malformed.
+*  <b>`ValueError`</b>: If name is malformed.
 
 
 
 - - -
 
-#### `tf.train.Optimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, name=None)` {#Optimizer.minimize}
+#### `tf.train.Optimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None)` {#Optimizer.minimize}
 
 Add operations to minimize `loss` by updating `var_list`.
 
@@ -116,6 +116,8 @@ of using this function.
     `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
 *  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
     Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
 *  <b>`name`</b>: Optional name for the returned operation.
 
 ##### Returns:
@@ -126,12 +128,12 @@ of using this function.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if some of the variables are not `Variable` objects.
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
 
 
 - - -
 
-#### `tf.train.Optimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None)` {#Optimizer.compute_gradients}
+#### `tf.train.Optimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False)` {#Optimizer.compute_gradients}
 
 Compute gradients of `loss` for the variables in `var_list`.
 
@@ -152,6 +154,8 @@ given variable.
     `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
 *  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
     Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
 
 ##### Returns:
 
@@ -191,8 +195,8 @@ applies gradients.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `grads_and_vars` is malformed.
-*  <b>`ValueError`</b>: if none of the variables have gradients.
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
 
 
 
@@ -294,9 +298,39 @@ Construct a new gradient descent optimizer.
 
 - - -
 
+### `class tf.train.AdadeltaOptimizer` {#AdadeltaOptimizer}
+
+Optimizer that implements the Adadelta algorithm. 
+
+See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
+([pdf](http://arxiv.org/pdf/1212.570.pdf))
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.__init__(learning_rate=0.001, rho=0.95, epsilon=1e-08, use_locking=False, name='Adadelta')` {#AdadeltaOptimizer.__init__}
+
+Construct a new Adadelta optimizer.
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value. The learning rate.
+*  <b>`rho`</b>: A `Tensor` or a floating point value. The decay rate.
+*  <b>`epsilon`</b>: A `Tensor` or a floating point value.  A constant epsilon used
+           to better conditioning the grad update.
+*  <b>`use_locking`</b>: If `True` use locks for update operations.
+*  <b>`name`</b>: Optional name prefix for the operations created when applying
+    gradients.  Defaults to "Adadelta".
+
+
+
+- - -
+
 ### `class tf.train.AdagradOptimizer` {#AdagradOptimizer}
 
 Optimizer that implements the Adagrad algorithm.
+
+See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
 
 - - -
 
@@ -350,13 +384,14 @@ Construct a new Momentum optimizer.
 
 Optimizer that implements the Adam algorithm.
 
+See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
+([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
+
 - - -
 
 #### `tf.train.AdamOptimizer.__init__(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-08, use_locking=False, name='Adam')` {#AdamOptimizer.__init__}
 
 Construct a new Adam optimizer.
-
-Implementation is based on: http://arxiv.org/pdf/1412.6980v7.pdf
 
 Initialization:
 
@@ -403,35 +438,14 @@ current good choice is 1.0 or 0.1.
 
 Optimizer that implements the FTRL algorithm.
 
+See this [paper](
+https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
+
 - - -
 
 #### `tf.train.FtrlOptimizer.__init__(learning_rate, learning_rate_power=-0.5, initial_accumulator_value=0.1, l1_regularization_strength=0.0, l2_regularization_strength=0.0, use_locking=False, name='Ftrl')` {#FtrlOptimizer.__init__}
 
 Construct a new FTRL optimizer.
-
-The Ftrl-proximal algorithm, abbreviated for Follow-the-regularized-leader,
-is described in the paper [Ad Click Prediction: a View from the Trenches](
-https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
-
-It can give a good performance vs. sparsity tradeoff.
-
-Ftrl-proximal uses its own global base learning rate and can behave like
-Adagrad with `learning_rate_power=-0.5`, or like gradient descent with
-`learning_rate_power=0.0`.
-
-The effective learning rate is adjusted per parameter, relative to this
-base learning rate as:
-
-```
-effective_learning_rate_i = (learning_rate /
-    pow(k + summed_squared_gradients_for_i, learning_rate_power));
-```
-
-where k is the small constant `initial_accumulator_value`.
-
-Note that the real regularization coefficient of `|w|^2` for objective
-function is `1 / lambda_2` if specifying `l2 = lambda_2` as argument when
-using this function.
 
 ##### Args:
 
@@ -451,7 +465,7 @@ using this function.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if one of the arguments is invalid.
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
 
 
 
@@ -461,9 +475,12 @@ using this function.
 
 Optimizer that implements the RMSProp algorithm.
 
+See the [paper]
+(http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
+
 - - -
 
-#### `tf.train.RMSPropOptimizer.__init__(learning_rate, decay, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')` {#RMSPropOptimizer.__init__}
+#### `tf.train.RMSPropOptimizer.__init__(learning_rate, decay=0.9, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')` {#RMSPropOptimizer.__init__}
 
 Construct a new RMSProp optimizer.
 
@@ -471,11 +488,11 @@ Construct a new RMSProp optimizer.
 
 
 *  <b>`learning_rate`</b>: A Tensor or a floating point value.  The learning rate.
-*  <b>`decay`</b>: discounting factor for the history/coming gradient
-*  <b>`momentum`</b>: a scalar tensor.
-*  <b>`epsilon`</b>: small value to avoid zero denominator.
+*  <b>`decay`</b>: Discounting factor for the history/coming gradient
+*  <b>`momentum`</b>: A scalar tensor.
+*  <b>`epsilon`</b>: Small value to avoid zero denominator.
 *  <b>`use_locking`</b>: If True use locks for update operation.
-*  <b>`name`</b>: Optional name prefic for the operations created when applying
+*  <b>`name`</b>: Optional name prefix for the operations created when applying
     gradients. Defaults to "RMSProp".
 
 
@@ -493,7 +510,7 @@ functions below.
 
 ### `tf.gradients(ys, xs, grad_ys=None, name='gradients', colocate_gradients_with_ops=False, gate_gradients=False, aggregation_method=None)` {#gradients}
 
-Constructs symbolic partial derivatives of `ys` w.r.t. x in `xs`.
+Constructs symbolic partial derivatives of sum of `ys` w.r.t. x in `xs`.
 
 `ys` and `xs` are each a `Tensor` or a list of tensors.  `grad_ys`
 is a list of `Tensor`, holding the gradients received by the
@@ -716,8 +733,8 @@ otherwise they're all shrunk by the global ratio.
 Any of the entries of `t_list` that are of type `None` are ignored.
 
 This is the correct way to perform gradient clipping (for example, see
-R. Pascanu, T. Mikolov, and Y. Bengio, "On the difficulty of training
-Recurrent Neural Networks".  http://arxiv.org/abs/1211.5063)
+[Pascanu et al., 2012](http://arxiv.org/abs/1211.5063)
+([pdf](http://arxiv.org/pdf/1211.5063.pdf))).
 
 However, it is slower than `clip_by_norm()` because all the parameters must be
 ready before the clipping operation can be performed.
@@ -805,9 +822,11 @@ global_step = tf.Variable(0, trainable=False)
 starter_learning_rate = 0.1
 learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
                                            100000, 0.96, staircase=True)
-optimizer = tf.GradientDescentOptimizer(learning_rate)
 # Passing global_step to minimize() will increment it at each step.
-optimizer.minimize(...my loss..., global_step=global_step)
+learning_step = (
+    tf.GradientDescentOptimizer(learning_rate)
+    .minimize(...my loss..., global_step=global_step)
+)
 ```
 
 ##### Args:
@@ -822,7 +841,7 @@ optimizer.minimize(...my loss..., global_step=global_step)
 *  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The decay rate.
 *  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals.
-*  <b>`name`</b>: string.  Optional name of the operation.  Defaults to 'ExponentialDecay'
+*  <b>`name`</b>: String.  Optional name of the operation.  Defaults to 'ExponentialDecay'
 
 ##### Returns:
 
@@ -893,7 +912,7 @@ ema = tf.train.ExponentialMovingAverage(decay=0.9999)
 maintain_averages_op = ema.apply([var0, var1])
 
 # Create an op that will update the moving averages after each training
-# step.  This is what we will use in place of the usuall trainig op.
+# step.  This is what we will use in place of the usual training op.
 with tf.control_dependencies([opt_op]):
     training_op = tf.group(maintain_averages_op)
 
@@ -956,6 +975,7 @@ Maintains moving averages of variables.
 `var_list` must be a list of `Variable` or `Tensor` objects.  This method
 creates shadow variables for all elements of `var_list`.  Shadow variables
 for `Variable` objects are initialized to the variable's initial value.
+They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
 For `Tensor` objects, the shadow variables are initialized to 0.
 
 shadow variables are created with `trainable=False` and added to the
@@ -1009,7 +1029,7 @@ to restore the variable from the moving average value with:
 
 ##### Returns:
 
-  A string: the name of the variable that will be used or was used
+  A string: The name of the variable that will be used or was used
   by the `ExponentialMovingAverage class` to hold the moving average of
   `var`.
 
@@ -1029,6 +1049,37 @@ Returns the `Variable` holding the average of `var`.
 
   A `Variable` object or `None` if the moving average of `var`
   is not maintained..
+
+
+- - -
+
+#### `tf.train.ExponentialMovingAverage.variables_to_restore()` {#ExponentialMovingAverage.variables_to_restore}
+
+Returns a map of names to `Variables` to restore.
+
+If a variable has a moving average, use the moving average variable name as
+the restore name; otherwise, use the variable name.
+
+For example,
+
+```python
+  variables_to_restore = ema.variables_to_restore()
+  saver = tf.train.Saver(variables_to_restore)
+```
+
+Below is an example of such mapping:
+
+```
+  conv/batchnorm/gamma/ExponentialMovingAverage: conv/batchnorm/gamma,
+  conv_4/conv2d_params/ExponentialMovingAverage: conv_4/conv2d_params,
+  global_step: global_step
+```
+
+##### Returns:
+
+  A map from restore_names to variables. The restore_name can be the
+  moving_average version of the variable name if it exist, or the original
+  variable name.
 
 
 
@@ -1084,7 +1135,7 @@ Thread code:
 try:
   while not coord.should_stop():
     ...do some work...
-except Exception, e:
+except Exception as e:
   coord.request_stop(e)
 ```
 
@@ -1099,7 +1150,7 @@ try:
   ...start thread N...(coord, ...)
   # Wait for all the threads to terminate.
   coord.join(threads)
-except Exception, e:
+except Exception as e:
   ...exception that was passed to coord.request_stop()
 ```
 
@@ -1145,6 +1196,15 @@ Create a new Coordinator.
 
 - - -
 
+#### `tf.train.Coordinator.clear_stop()` {#Coordinator.clear_stop}
+
+Clears the stop flag.
+
+After this is called, calls to `should_stop()` will return `False`.
+
+
+- - -
+
 #### `tf.train.Coordinator.join(threads, stop_grace_period_secs=120)` {#Coordinator.join}
 
 Wait for threads to terminate.
@@ -1152,7 +1212,7 @@ Wait for threads to terminate.
 Blocks until all `threads` have terminated or `request_stop()` is called.
 
 After the threads stop, if an `exc_info` was passed to `request_stop`, that
-exception is re-reaised.
+exception is re-raised.
 
 Grace period handling: When `request_stop()` is called, threads are given
 'stop_grace_period_secs' seconds to terminate.  If any of them is still
@@ -1181,6 +1241,10 @@ that `RuntimeError`.
 Request that the threads stop.
 
 After this is called, calls to `should_stop()` will return `True`.
+
+Note: If an exception is being passed in, in must be in the context of
+handling the exception (i.e. `try: ... except Exception as ex: ...`) and not
+a newly created one.
 
 ##### Args:
 
@@ -1227,7 +1291,7 @@ This is completely equivalent to the slightly longer code:
 ```python
 try:
   ...body...
-exception Exception, ex:
+exception Exception as ex:
   coord.request_stop(ex)
 ```
 
@@ -1245,7 +1309,7 @@ Wait till the Coordinator is told to stop.
 ##### Args:
 
 
-*  <b>`timeout`</b>: float.  Sleep for up to that many seconds waiting for
+*  <b>`timeout`</b>: Float.  Sleep for up to that many seconds waiting for
     should_stop() to become True.
 
 ##### Returns:
@@ -1274,7 +1338,7 @@ and reporting exceptions, etc.
 The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
 - - -
 
-#### `tf.train.QueueRunner.__init__(queue, enqueue_ops)` {#QueueRunner.__init__}
+#### `tf.train.QueueRunner.__init__(queue=None, enqueue_ops=None, close_op=None, cancel_op=None, queue_runner_def=None)` {#QueueRunner.__init__}
 
 Create a QueueRunner.
 
@@ -1292,6 +1356,32 @@ to all be the same op, but it is expected that they all enqueue tensors in
 
 *  <b>`queue`</b>: A `Queue`.
 *  <b>`enqueue_ops`</b>: List of enqueue ops to run in threads later.
+*  <b>`close_op`</b>: Op to close the queue. Pending enqueue ops are preserved.
+*  <b>`cancel_op`</b>: Op to close the queue and cancel pending enqueue ops.
+*  <b>`queue_runner_def`</b>: Optional `QueueRunnerDef` protocol buffer. If specified,
+    recreates the QueueRunner from its contents. `queue_runner_def` and the
+    other arguments are mutually exclusive.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both `queue_runner_def` and `queue` are both specified.
+*  <b>`ValueError`</b>: If `queue` or `enqueue_ops` are not provided when not
+    restoring from `queue_runner_def`.
+
+
+- - -
+
+#### `tf.train.QueueRunner.cancel_op` {#QueueRunner.cancel_op}
+
+
+
+
+- - -
+
+#### `tf.train.QueueRunner.close_op` {#QueueRunner.close_op}
+
+
 
 
 - - -
@@ -1335,6 +1425,13 @@ have stopped.
 
 - - -
 
+#### `tf.train.QueueRunner.enqueue_ops` {#QueueRunner.enqueue_ops}
+
+
+
+
+- - -
+
 #### `tf.train.QueueRunner.exceptions_raised` {#QueueRunner.exceptions_raised}
 
 Exceptions raised but not handled by the `QueueRunner` threads.
@@ -1356,9 +1453,34 @@ depending on whether or not a `Coordinator` was passed to
 
 - - -
 
+#### `tf.train.QueueRunner.from_proto(queue_runner_def)` {#QueueRunner.from_proto}
+
+Returns a `QueueRunner` object created from `queue_runner_def`.
+
+
+- - -
+
 #### `tf.train.QueueRunner.name` {#QueueRunner.name}
 
 The string name of the underlying Queue.
+
+
+- - -
+
+#### `tf.train.QueueRunner.queue` {#QueueRunner.queue}
+
+
+
+
+- - -
+
+#### `tf.train.QueueRunner.to_proto()` {#QueueRunner.to_proto}
+
+Converts this `QueueRunner` to a `QueueRunnerDef` protocol buffer.
+
+##### Returns:
+
+  A `QueueRunnerDef` protocol buffer.
 
 
 
@@ -1414,13 +1536,13 @@ the list of all threads.
 ## Summary Operations
 
 The following ops output
-[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 protocol buffers as serialized string tensors.
 
 You can fetch the output of a summary op in a session, and pass it to
 a [SummaryWriter](../../api_docs/python/train.md#SummaryWriter) to append it
 to an event file.  Event files contain
-[`Event`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/util/event.proto)
+[`Event`](https://www.tensorflow.org/code/tensorflow/core/util/event.proto)
 protos that can contain `Summary` protos along with the timestamp and
 step.  You can then use TensorBoard to visualize the contents of the
 event files.  See [TensorBoard and
@@ -1439,8 +1561,8 @@ summary has a summary value for each tag-value pair in `tags` and `values`.
 ##### Args:
 
 
-*  <b>`tags`</b>: A 1-D `string` `Tensor`.  Tags for the summaries.
-*  <b>`values`</b>: A 1-D `float32` or `float64` Tensor.  Values for the summaries.
+*  <b>`tags`</b>: A `string` `Tensor`.  Tags for the summaries.
+*  <b>`values`</b>: A real numeric Tensor.  Values for the summaries.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -1509,7 +1631,7 @@ build the `tag` of the summary values:
 Outputs a `Summary` protocol buffer with a histogram.
 
 The generated
-[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 has one summary value containing a histogram for `values`.
 
 This op reports an `OutOfRange` error if any value is not finite.
@@ -1541,7 +1663,7 @@ If `value` is empty, the result is `nan`.
 This is useful in summaries to measure and report sparsity.  For example,
 
     z = tf.Relu(...)
-    summ = tf.scalar_summary('sparsity', tf.zero_fraction(z))
+    summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
 
 ##### Args:
 
@@ -1562,7 +1684,7 @@ This is useful in summaries to measure and report sparsity.  For example,
 Merges summaries.
 
 This op creates a
-[`Summary`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 protocol buffer that contains the union of all the values in the input
 summaries.
 
@@ -1624,16 +1746,16 @@ training.
 
 - - -
 
-#### `tf.train.SummaryWriter.__init__(logdir, graph_def=None, max_queue=10, flush_secs=120)` {#SummaryWriter.__init__}
+#### `tf.train.SummaryWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#SummaryWriter.__init__}
 
 Creates a `SummaryWriter` and an event file.
 
 On construction the summary writer creates a new event file in `logdir`.
 This event file will contain `Event` protocol buffers constructed when you
-call one of the following functions: `add_summary()`, `add_event()`, or
-`add_graph()`.
+call one of the following functions: `add_summary()`, `add_session_log()`,
+`add_event()`, or `add_graph()`.
 
-If you pass a `graph_def` protocol buffer to the constructor it is added to
+If you pass a `Graph` to the constructor it is added to
 the event file. (This is equivalent to calling `add_graph()` later).
 
 TensorBoard will pick the graph from the file and display it graphically so
@@ -1644,8 +1766,8 @@ the graph from the session in which you launched it:
 ...create a graph...
 # Launch the graph in a session.
 sess = tf.Session()
-# Create a summary writer, add the 'graph_def' to the event file.
-writer = tf.train.SummaryWriter(<some-directory>, sess.graph_def)
+# Create a summary writer, add the 'graph' to the event file.
+writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
 ```
 
 The other arguments to the constructor control the asynchronous writes to
@@ -1660,10 +1782,11 @@ the event file:
 
 
 *  <b>`logdir`</b>: A string. Directory where event file will be written.
-*  <b>`graph_def`</b>: A `GraphDef` protocol buffer.
+*  <b>`graph`</b>: A `Graph` object, such as `sess.graph`.
 *  <b>`max_queue`</b>: Integer. Size of the queue for pending events and summaries.
 *  <b>`flush_secs`</b>: Number. How often, in seconds, to flush the
     pending events and summaries to disk.
+*  <b>`graph_def`</b>: DEPRECATED: Use the `graph` argument instead.
 
 
 
@@ -1673,11 +1796,11 @@ the event file:
 
 Adds a `Summary` protocol buffer to the event file.
 
-This method wraps the provided summary in an `Event` procotol buffer
+This method wraps the provided summary in an `Event` protocol buffer
 and adds it to the event file.
 
 You can pass the result of evaluating any summary op, using
-[`Session.run()`](client.md#Session.run] or
+[`Session.run()`](client.md#Session.run) or
 [`Tensor.eval()`](framework.md#Tensor.eval), to this
 function. Alternatively, you can pass a `tf.Summary` protocol
 buffer that you populate with your own data. The latter is
@@ -1687,6 +1810,23 @@ commonly done to report evaluation results in event files.
 
 
 *  <b>`summary`</b>: A `Summary` protocol buffer, optionally serialized as a string.
+*  <b>`global_step`</b>: Number. Optional global step value to record with the
+    summary.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.add_session_log(session_log, global_step=None)` {#SummaryWriter.add_session_log}
+
+Adds a `SessionLog` protocol buffer to the event file.
+
+This method wraps the provided session in an `Event` procotol buffer
+and adds it to the event file.
+
+##### Args:
+
+
+*  <b>`session_log`</b>: A `SessionLog` protocol buffer.
 *  <b>`global_step`</b>: Number. Optional global step value to record with the
     summary.
 
@@ -1705,9 +1845,9 @@ Adds an event to the event file.
 
 - - -
 
-#### `tf.train.SummaryWriter.add_graph(graph_def, global_step=None)` {#SummaryWriter.add_graph}
+#### `tf.train.SummaryWriter.add_graph(graph, global_step=None, graph_def=None)` {#SummaryWriter.add_graph}
 
-Adds a `GraphDef` protocol buffer to the event file.
+Adds a `Graph` to the event file.
 
 The graph described by the protocol buffer will be displayed by
 TensorBoard. Most users pass a graph in the constructor instead.
@@ -1715,9 +1855,35 @@ TensorBoard. Most users pass a graph in the constructor instead.
 ##### Args:
 
 
-*  <b>`graph_def`</b>: A `GraphDef` protocol buffer.
+*  <b>`graph`</b>: A `Graph` object, such as `sess.graph`.
 *  <b>`global_step`</b>: Number. Optional global step counter to record with the
     graph.
+*  <b>`graph_def`</b>: DEPRECATED. Use the `graph` parameter instead.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both graph and graph_def are passed to the method.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.add_run_metadata(run_metadata, tag, global_step=None)` {#SummaryWriter.add_run_metadata}
+
+Adds a metadata information for a single session.run() call.
+
+##### Args:
+
+
+*  <b>`run_metadata`</b>: A `RunMetadata` protobuf object.
+*  <b>`tag`</b>: The tag name for this metadata.
+*  <b>`global_step`</b>: Number. Optional global step counter to record with the
+    StepStats.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the provided tag was already used for this type of event.
 
 
 
@@ -1753,7 +1919,7 @@ a Python iterator that yields `Event` protocol buffers.
 Example: Print the contents of an events file.
 
 ```python
-for e in tf.summary_iterator(path to events file):
+for e in tf.train.summary_iterator(path to events file):
     print(e)
 ```
 
@@ -1764,16 +1930,16 @@ Example: Print selected summary values.
 # summary value tag 'loss'.  These could have been added by calling
 # `add_summary()`, passing the output of a scalar summary op created with
 # with: `tf.scalar_summary(['loss'], loss_tensor)`.
-for e in tf.summary_iterator(path to events file):
+for e in tf.train.summary_iterator(path to events file):
     for v in e.summary.value:
         if v.tag == 'loss':
             print(v.simple_value)
 ```
 
 See the protocol buffer definitions of
-[Event](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/util/event.proto)
+[Event](https://www.tensorflow.org/code/tensorflow/core/util/event.proto)
 and
-[Summary](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/summary.proto)
+[Summary](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 for more information about their attributes.
 
 ##### Args:
@@ -1810,7 +1976,7 @@ global_step: 10
 ##### Args:
 
 
-*  <b>`sess`</b>: A brain `Session` object.
+*  <b>`sess`</b>: A TensorFlow `Session` object.
 *  <b>`global_step_tensor`</b>: `Tensor` or the `name` of the operation that contains
     the global step.
 
@@ -1840,5 +2006,343 @@ tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
 *  <b>`logdir`</b>: Directory where to write the graph.
 *  <b>`name`</b>: Filename for the graph.
 *  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `class tf.train.LooperThread` {#LooperThread}
+
+A thread that runs code repeatedly, optionally on a timer.
+
+This thread class is intended to be used with a `Coordinator`.  It repeatedly
+runs code specified either as `target` and `args` or by the `run_loop()`
+method.
+
+Before each run the thread checks if the coordinator has requested stop.  In
+that case the looper thread terminates immediately.
+
+If the code being run raises an exception, that exception is reported to the
+coordinator and the thread terminates.  The coordinator will then request all
+the other threads it coordinates to stop.
+
+You typically pass looper threads to the supervisor `Join()` method.
+- - -
+
+#### `tf.train.LooperThread.__init__(coord, timer_interval_secs, target=None, args=None)` {#LooperThread.__init__}
+
+Create a LooperThread.
+
+##### Args:
+
+
+*  <b>`coord`</b>: A Coordinator.
+*  <b>`timer_interval_secs`</b>: Time boundaries at which to call Run(), or None
+    if it should be called back to back.
+*  <b>`target`</b>: Optional callable object that will be executed in the thread.
+*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.train.LooperThread.daemon` {#LooperThread.daemon}
+
+A boolean value indicating whether this thread is a daemon thread (True) or not (False).
+
+This must be set before start() is called, otherwise RuntimeError is
+raised. Its initial value is inherited from the creating thread; the
+main thread is not a daemon thread and therefore all threads created in
+the main thread default to daemon = False.
+
+The entire Python program exits when no alive non-daemon threads are
+left.
+
+
+- - -
+
+#### `tf.train.LooperThread.getName()` {#LooperThread.getName}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.ident` {#LooperThread.ident}
+
+Thread identifier of this thread or None if it has not been started.
+
+This is a nonzero integer. See the thread.get_ident() function. Thread
+identifiers may be recycled when a thread exits and another thread is
+created. The identifier is available even after the thread has exited.
+
+
+- - -
+
+#### `tf.train.LooperThread.isAlive()` {#LooperThread.isAlive}
+
+Return whether the thread is alive.
+
+This method returns True just before the run() method starts until just
+after the run() method terminates. The module function enumerate()
+returns a list of all alive threads.
+
+
+- - -
+
+#### `tf.train.LooperThread.isDaemon()` {#LooperThread.isDaemon}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.is_alive()` {#LooperThread.is_alive}
+
+Return whether the thread is alive.
+
+This method returns True just before the run() method starts until just
+after the run() method terminates. The module function enumerate()
+returns a list of all alive threads.
+
+
+- - -
+
+#### `tf.train.LooperThread.join(timeout=None)` {#LooperThread.join}
+
+Wait until the thread terminates.
+
+This blocks the calling thread until the thread whose join() method is
+called terminates -- either normally or through an unhandled exception
+or until the optional timeout occurs.
+
+When the timeout argument is present and not None, it should be a
+floating point number specifying a timeout for the operation in seconds
+(or fractions thereof). As join() always returns None, you must call
+isAlive() after join() to decide whether a timeout happened -- if the
+thread is still alive, the join() call timed out.
+
+When the timeout argument is not present or None, the operation will
+block until the thread terminates.
+
+A thread can be join()ed many times.
+
+join() raises a RuntimeError if an attempt is made to join the current
+thread as that would cause a deadlock. It is also an error to join() a
+thread before it has been started and attempts to do so raises the same
+exception.
+
+
+- - -
+
+#### `tf.train.LooperThread.loop(coord, timer_interval_secs, target, args=None)` {#LooperThread.loop}
+
+Start a LooperThread that calls a function periodically.
+
+If `timer_interval_secs` is None the thread calls `target(args)`
+repeatedly.  Otherwise `target(args)` is called every `timer_interval_secs`
+seconds.  The thread terminates when a stop of the coordinator is
+requested.
+
+##### Args:
+
+
+*  <b>`coord`</b>: A Coordinator.
+*  <b>`timer_interval_secs`</b>: Number. Time boundaries at which to call `target`.
+*  <b>`target`</b>: A callable object.
+*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+
+##### Returns:
+
+  The started thread.
+
+
+- - -
+
+#### `tf.train.LooperThread.name` {#LooperThread.name}
+
+A string used for identification purposes only.
+
+It has no semantics. Multiple threads may be given the same name. The
+initial name is set by the constructor.
+
+
+- - -
+
+#### `tf.train.LooperThread.run()` {#LooperThread.run}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.run_loop()` {#LooperThread.run_loop}
+
+Called at 'timer_interval_secs' boundaries.
+
+
+- - -
+
+#### `tf.train.LooperThread.setDaemon(daemonic)` {#LooperThread.setDaemon}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.setName(name)` {#LooperThread.setName}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.start()` {#LooperThread.start}
+
+Start the thread's activity.
+
+It must be called at most once per thread object. It arranges for the
+object's run() method to be invoked in a separate thread of control.
+
+This method will raise a RuntimeError if called more than once on the
+same thread object.
+
+
+- - -
+
+#### `tf.train.LooperThread.start_loop()` {#LooperThread.start_loop}
+
+Called when the thread starts.
+
+
+- - -
+
+#### `tf.train.LooperThread.stop_loop()` {#LooperThread.stop_loop}
+
+Called when the thread stops.
+
+
+
+- - -
+
+### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False)` {#export_meta_graph}
+
+Returns `MetaGraphDef` proto. Optionally writes it to filename.
+
+This function exports the graph, saver, and collection objects into
+`MetaGraphDef` protocol buffer with the intension of it being imported
+at a later time or location to restart training, run inference, or be
+a subgraph.
+
+##### Args:
+
+
+*  <b>`filename`</b>: Optional filename including the path for writing the
+    generated `MetaGraphDef` protocol buffer.
+*  <b>`meta_info_def`</b>: `MetaInfoDef` protocol buffer.
+*  <b>`graph_def`</b>: `GraphDef` protocol buffer.
+*  <b>`saver_def`</b>: `SaverDef` protocol buffer.
+*  <b>`collection_list`</b>: List of string keys to collect.
+*  <b>`as_text`</b>: If `True`, writes the `MetaGraphDef` as an ASCII proto.
+
+##### Returns:
+
+  A `MetaGraphDef` proto.
+
+
+- - -
+
+### `tf.train.generate_checkpoint_state_proto(save_dir, model_checkpoint_path, all_model_checkpoint_paths=None)` {#generate_checkpoint_state_proto}
+
+Generates a checkpoint state proto.
+
+##### Args:
+
+
+*  <b>`save_dir`</b>: Directory where the model was saved.
+*  <b>`model_checkpoint_path`</b>: The checkpoint file.
+*  <b>`all_model_checkpoint_paths`</b>: List of strings.  Paths to all not-yet-deleted
+    checkpoints, sorted from oldest to newest.  If this is a non-empty list,
+    the last element must be equal to model_checkpoint_path.  These paths
+    are also saved in the CheckpointState proto.
+
+##### Returns:
+
+  CheckpointState proto with model_checkpoint_path and
+  all_model_checkpoint_paths updated to either absolute paths or
+  relative paths to the current save_dir.
+
+
+- - -
+
+### `tf.train.import_meta_graph(meta_graph_or_file)` {#import_meta_graph}
+
+Recreates a Graph saved in a `MetaGraphDef` proto.
+
+This function takes a `MetaGraphDef` protocol buffer as input. If
+the argument is a file containing a `MetaGraphDef` protocol buffer ,
+it constructs a protocol buffer from the file content. The function
+then adds all the nodes from the `graph_def` field to the
+current graph, recreates all the collections, and returns a saver
+constructed from the `saver_def` field.
+
+In combination with `export_meta_graph()`, this function can be used to
+
+* Serialize a graph along with other Python objects such as `QueueRunner`,
+  `Variable` into a `MetaGraphDef`.
+
+* Restart training from a saved graph and checkpoints.
+
+* Run inference from a saved graph and checkpoints.
+
+```Python
+...
+# Create a saver.
+saver = tf.train.Saver(...variables...)
+# Remember the training_op we want to run by adding it to a collection.
+tf.add_to_collection('train_op', train_op)
+sess = tf.Session()
+for step in xrange(1000000):
+    sess.run(train_op)
+    if step % 1000 == 0:
+        # Saves checkpoint, which by default also exports a meta_graph
+        # named 'my-model-global_step.meta'.
+        saver.save(sess, 'my-model', global_step=step)
+```
+
+Later we can continue training from this saved `meta_graph` without building
+the model from scratch.
+
+```Python
+with tf.Session() as sess:
+  new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
+  new_saver.restore(sess, 'my-save-dir/my-model-10000')
+  # tf.get_collection() returns a list. In this example we only want the
+  # first one.
+  train_op = tf.get_collection('train_op')[0]
+  for step in xrange(1000000):
+    sess.run(train_op)
+```
+
+NOTE: Restarting training from saved `meta_graph` only works if the
+device assignments have not changed.
+
+##### Args:
+
+
+*  <b>`meta_graph_or_file`</b>: `MetaGraphDef` protocol buffer or filename (including
+    the path) containing a `MetaGraphDef`.
+
+##### Returns:
+
+  A saver constructed from `saver_def` in `MetaGraphDef` or None.
+
+  A None value is returned if no variables exist in the `MetaGraphDef`
+  (i.e., there are no variables to restore).
 
 

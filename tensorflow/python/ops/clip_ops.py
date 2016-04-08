@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 
 
 def clip_by_value(t, clip_value_min, clip_value_max,
@@ -126,11 +127,18 @@ def global_norm(t_list, name=None):
             name="t_%d" % i)
         if t is not None else t
         for i, t in enumerate(t_list)]
-    squared_norms = array_ops.pack(
-        [math_ops.reduce_sum(v * v) for v in values if v])
+    half_squared_norms = []
+    for v in values:
+      if v is not None:
+        with ops.colocate_with(v):
+          half_squared_norms.append(nn_ops.l2_loss(v))
+
+    half_squared_norm = math_ops.reduce_sum(array_ops.pack(half_squared_norms))
 
     norm = math_ops.sqrt(
-        math_ops.reduce_sum(squared_norms), name="global_norm")
+        half_squared_norm *
+        constant_op.constant(2.0, dtype=half_squared_norm.dtype),
+        name="global_norm")
 
   return norm
 
@@ -157,8 +165,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   Any of the entries of `t_list` that are of type `None` are ignored.
 
   This is the correct way to perform gradient clipping (for example, see
-  R. Pascanu, T. Mikolov, and Y. Bengio, "On the difficulty of training
-  Recurrent Neural Networks".  http://arxiv.org/abs/1211.5063)
+  [Pascanu et al., 2012](http://arxiv.org/abs/1211.5063)
+  ([pdf](http://arxiv.org/pdf/1211.5063.pdf))).
 
   However, it is slower than `clip_by_norm()` because all the parameters must be
   ready before the clipping operation can be performed.
@@ -197,10 +205,14 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
         if t is not None else t
         for i, t in enumerate(t_list)]
 
-    values_clipped = [
-        array_ops.identity(v * scale, name="%s_%d" % (name, i))
-        if v is not None else None
-        for i, v in enumerate(values)]
+    values_clipped = []
+    for i, v in enumerate(values):
+      if v is None:
+        values_clipped.append(None)
+      else:
+        with ops.colocate_with(v):
+          values_clipped.append(
+              array_ops.identity(v * scale, name="%s_%d" % (name, i)))
 
     list_clipped = [
         ops.IndexedSlices(c_v, t.indices)

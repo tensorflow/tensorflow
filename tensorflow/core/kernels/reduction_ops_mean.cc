@@ -24,4 +24,19 @@ namespace tensorflow {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
+#if GOOGLE_CUDA
+
+#define REGISTER_GPU_KERNELS(type)          \
+  REGISTER_KERNEL_BUILDER(                  \
+      Name("Mean")                          \
+          .Device(DEVICE_GPU)               \
+          .TypeConstraint<type>("T")        \
+          .HostMemory("reduction_indices"), \
+      ReductionOp<GPUDevice, type, Eigen::internal::MeanReducer<type>>);
+REGISTER_GPU_KERNELS(float);
+REGISTER_GPU_KERNELS(double);
+#undef REGISTER_GPU_KERNELS
+
+#endif
+
 }  // namespace tensorflow

@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PUBLIC_VERSION_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PUBLIC_VERSION_H_
+#ifndef TENSORFLOW_CORE_PUBLIC_VERSION_H_
+#define TENSORFLOW_CORE_PUBLIC_VERSION_H_
 
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
 #define TF_MAJOR_VERSION 0
-#define TF_MINOR_VERSION 6
-#define TF_PATCH_VERSION 0
+#define TF_MINOR_VERSION 7
+#define TF_PATCH_VERSION 1
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
@@ -36,9 +36,49 @@ limitations under the License.
 
 // TODO(josh11b): Public API functions for exporting the above.
 
-// Supported GraphDef versions (see graph.proto).
-#define TF_GRAPH_DEF_VERSION_MIN 0
-#define TF_GRAPH_DEF_VERSION_MAX 1
-#define TF_GRAPH_DEF_VERSION TF_GRAPH_DEF_VERSION_MAX
+// GraphDef compatibility versions (the versions field in graph.proto).
+//
+// Each graph has producer and min_consumer versions, and each
+// consumer has its own version and a min_producer.  In addition, graphs can
+// mark specific consumer versions as bad (to prevent bugs from executing).
+// A consumer will execute a graph if the consumer's version is at least the
+// graph's min_consumer, the graph's producer version is at least the consumer's
+// min_producer, and the consumer version isn't specifically disallowed by the
+// graph.
+//
+// By default, newly created graphs have producer version TF_GRAPH_DEF_VERSION
+// min_consumer TF_GRAPH_DEF_MIN_CONSUMER, and no other bad consumer versions.
+//
+// Version history:
+//
+// 0. Graphs created before GraphDef versioning
+// 1. First real version (2dec2015)
+// 2. adjust_contrast only takes float, doesn't perform clamping (11dec2015)
+// 3. Remove TileGrad, since it was equivalent to reduce_sum (30dec2015)
+// 4. When support for this version is removed, we can safely make AttrValue
+//    parsing more strict with respect to empty list values (see
+//    111635679, 7jan2016).
+// 5. Graphs are wholly-validated during Session::Create() (7jan2016).
+// 6. TensorFlow is scalar strict within Google (27jan2016).
+// 7. Remove TopK in favor of TopKV2 (5feb2016).
+// 8. Replace RandomCrop from C++ with pure Python (5feb2016).
+// 9. Deprecate batch_norm_with_global_normalization (16feb2016).
+#define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
+#define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
+#define TF_GRAPH_DEF_VERSION 9
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PUBLIC_VERSION_H_
+// Checkpoint compatibility versions (the versions field in SavedSliceMeta).
+//
+// The checkpoint versions have the same semantics as GraphDef versions, but the
+// numbering scheme is separate.  We have no plans to ever deprecate checkpoint
+// versions, but it's good to have this in place in case we ever need to.
+//
+// Version history:
+//
+// 0. Checkpoints saved before checkpoint versioning.
+// 1. First real version (10feb2015).
+#define TF_CHECKPOINT_VERSION_MIN_PRODUCER 0
+#define TF_CHECKPOINT_VERSION_MIN_CONSUMER 0
+#define TF_CHECKPOINT_VERSION 1
+
+#endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

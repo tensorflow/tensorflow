@@ -21,10 +21,9 @@ from __future__ import print_function
 
 import os
 
-import tensorflow.python.platform
 import tensorflow as tf
 
-from tensorflow.models.embedding import word2vec_optimized as word2vec_optimized
+from tensorflow.models.embedding import word2vec_optimized
 
 flags = tf.app.flags
 

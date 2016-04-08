@@ -52,20 +52,21 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     TensorSliceReader::OpenTableFunction open_function, int preferred_shard) {
   mutex_lock l(mu_);
 
-#ifdef ANDROID
-  // On Android, we have RTTI disabled so we will hard-code func_ptr to be zero,
-  // since we cannot figure out the target type for open_function.
-  // TODO(jiayq): find a more elegant way to possibly enable cache again.
-  TensorSliceReaderCache::OpenFuncType* func_ptr = nullptr;
-#else  // ANDROID
+#ifdef __GXX_RTTI
   // Get the function pointer from the open_function value.
   TensorSliceReaderCache::OpenFuncType* func_ptr =
       open_function.target<TensorSliceReaderCache::OpenFuncType>();
-#endif
+#else   // __GXX_RTTI
+  // When RTTI is disabled, we will hard-code func_ptr to be zero,
+  // since we cannot figure out the target type for open_function.
+  // TODO(jiayq): find a more elegant way to possibly enable cache again.
+  TensorSliceReaderCache::OpenFuncType* func_ptr = nullptr;
+#endif  // _GXX_RTTI
 
   if (!func_ptr) {
     // We could not get the pointer, no caching is possible.
-    LOG(WARNING) << "Caching disabled because the open function is a lambda.";
+    LOG(WARNING) << "Caching disabled because the open function is a lambda or "
+                    "RTTI is not enabled in this build.";
     return nullptr;
   }
 
@@ -91,7 +92,7 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     } else {
       delete tmp_reader;
     }
-    CHECK_EQ(1, still_opening_.erase(filepattern));
+    CHECK_EQ(size_t{1}, still_opening_.erase(filepattern));
     VLOG(1) << "Cached TensorSliceReader for " << filepattern << ": " << reader;
   } else {
     auto cached_val = readers_[filepattern];

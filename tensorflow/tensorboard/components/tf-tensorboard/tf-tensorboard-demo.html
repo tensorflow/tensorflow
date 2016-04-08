@@ -1,0 +1,45 @@
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="tf-tensorboard.html">
+<!--
+tf-tensorboard-demo is a standalone demo TensorBoard that expects to load mocked
+json data from a "dataDir" rather than connecting to a live backend.
+-->
+<dom-module id="tf-tensorboard-demo">
+  <template>
+    <tf-tensorboard
+      id="tensorboard"
+      router="[[_demoRouter]]"
+      no-hash="[[noHash]]"
+    ></tf-tensorboard>
+    <style>
+      :host {
+        height: 100%;
+        display: block;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-tensorboard-demo",
+      properties: {
+        _demoRouter: {
+          type: Object,
+          computed: "_makeDemoRouter(dataDir)",
+        },
+        dataDir: {
+          type: String,
+          value: "data",
+        },
+        // If true, tab switching in TensorBoard will not update
+        // location hash. Hash update interferes with selenium tests.
+        noHash: {
+          type: Boolean,
+          value: false
+        }
+      },
+      _makeDemoRouter: function(dataDir) {
+        return TF.Backend.router(dataDir, true);
+      },
+    });
+  </script>
+</dom-module>

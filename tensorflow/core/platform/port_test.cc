@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/port.h"
 #include <condition_variable>
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace port {

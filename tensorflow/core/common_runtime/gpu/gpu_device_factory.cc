@@ -19,10 +19,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/threadpool_device.h"
 
 namespace tensorflow {
-
-void RequireGPUDevice() {}
 
 class GPUDevice : public BaseGPUDevice {
  public:
@@ -31,7 +30,8 @@ class GPUDevice : public BaseGPUDevice {
             const string& physical_device_desc, Allocator* gpu_allocator,
             Allocator* cpu_allocator)
       : BaseGPUDevice(options, name, memory_limit, bus_adjacency, gpu_id,
-                      physical_device_desc, gpu_allocator, cpu_allocator) {}
+                      physical_device_desc, gpu_allocator, cpu_allocator,
+                      false /* sync every op */, 1 /* max_streams */) {}
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     if (attr.on_host()) {
@@ -61,6 +61,49 @@ class GPUDeviceFactory : public BaseGPUDeviceFactory {
 };
 
 REGISTER_LOCAL_DEVICE_FACTORY("GPU", GPUDeviceFactory);
+
+//------------------------------------------------------------------------------
+// A CPUDevice that optimizes for interaction with GPUs in the
+// process.
+// -----------------------------------------------------------------------------
+class GPUCompatibleCPUDevice : public ThreadPoolDevice {
+ public:
+  GPUCompatibleCPUDevice(const SessionOptions& options, const string& name,
+                         Bytes memory_limit, BusAdjacency bus_adjacency,
+                         Allocator* allocator)
+      : ThreadPoolDevice(options, name, memory_limit, bus_adjacency,
+                         allocator) {}
+  ~GPUCompatibleCPUDevice() override {}
+
+  Allocator* GetAllocator(AllocatorAttributes attr) override {
+    ProcessState* ps = ProcessState::singleton();
+    if (attr.gpu_compatible()) {
+      return ps->GetCUDAHostAllocator(0);
+    } else {
+      // Call the parent's implementation.
+      return ThreadPoolDevice::GetAllocator(attr);
+    }
+  }
+};
+
+// The associated factory.
+class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
+ public:
+  void CreateDevices(const SessionOptions& options, const string& name_prefix,
+                     std::vector<Device*>* devices) override {
+    int n = 1;
+    auto iter = options.config.device_count().find("CPU");
+    if (iter != options.config.device_count().end()) {
+      n = iter->second;
+    }
+    for (int i = 0; i < n; i++) {
+      string name = strings::StrCat(name_prefix, "/cpu:", i);
+      devices->push_back(new GPUCompatibleCPUDevice(
+          options, name, Bytes(256 << 20), BUS_ANY, cpu_allocator()));
+    }
+  }
+};
+REGISTER_LOCAL_DEVICE_FACTORY("CPU", GPUCompatibleCPUDeviceFactory, 50);
 
 }  // namespace tensorflow
 

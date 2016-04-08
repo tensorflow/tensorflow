@@ -25,33 +25,41 @@ BinaryOpShared::BinaryOpShared(OpKernelConstruction* ctx, DataType out,
 
 void BinaryOpShared::SetUnimplementedError(OpKernelContext* ctx) {
   ctx->SetStatus(errors::Unimplemented(
-      "Broadcast between ", ctx->input(0).shape().ShortDebugString(), " and ",
-      ctx->input(1).shape().ShortDebugString(), " is not supported yet."));
+      "Broadcast between ", ctx->input(0).shape().DebugString(), " and ",
+      ctx->input(1).shape().DebugString(), " is not supported yet."));
 }
 
 static BCast::Vec FromShape(const TensorShape& shape) {
-  BCast::Vec ret;
-  for (int i = 0; i < shape.dims(); ++i) ret.push_back(shape.dim_size(i));
+  const int N = shape.dims();
+  BCast::Vec ret(N);
+  for (int i = 0; i < N; ++i) {
+    ret[i] = shape.dim_size(i);
+  }
   return ret;
 }
 
 static TensorShape ToShape(const BCast::Vec& vec) {
-  TensorShape shape;
-  for (auto elem : vec) shape.AddDim(elem);
+  TensorShape shape(vec);
   return shape;
 }
 
 BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
-    : bcast(FromShape(ctx->input(0).shape()),
-            FromShape(ctx->input(1).shape())) {
+    : in0(ctx->input(0)),
+      in1(ctx->input(1)),
+      bcast(FromShape(in0.shape()), FromShape(in1.shape())) {
   if (!bcast.IsValid()) {
-    ctx->SetStatus(errors::InvalidArgument(
-        "Incompatible shapes: ", ctx->input(0).shape().ShortDebugString(),
-        " vs. ", ctx->input(1).shape().ShortDebugString()));
+    ctx->SetStatus(errors::InvalidArgument("Incompatible shapes: ",
+                                           in0.shape().DebugString(), " vs. ",
+                                           in1.shape().DebugString()));
     return;
   }
   OP_REQUIRES_OK(ctx,
                  ctx->allocate_output(0, ToShape(bcast.output_shape()), &out));
+  out_num_elements = out->NumElements();
+  in0_num_elements = in0.NumElements();
+  in1_num_elements = in1.NumElements();
+
+  ndims = bcast.x_reshape().size();
 }
 
 }  // namespace tensorflow

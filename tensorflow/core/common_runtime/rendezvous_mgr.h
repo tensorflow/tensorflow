@@ -21,9 +21,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

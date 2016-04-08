@@ -3,7 +3,7 @@
 # Constants, Sequences, and Random Values
 
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 
 [TOC]
 
@@ -176,9 +176,8 @@ Creates a constant tensor.
  elements specified by `shape`, the last element in the list will be used
  to fill the remaining entries.
 
- The argument `shape` is optional. If present, it specifies the dimensions
- of the resulting tensor. If not present, then the tensor is a scalar (0-D)
- if `value` is a scalar, or 1-D otherwise.
+ The argument `shape` is optional. If present, it specifies the dimensions of
+ the resulting tensor. If not present, the shape of `value` is used.
 
  If the argument `dtype` is not specified, then the type is inferred from
  the type of `value`.
@@ -322,9 +321,11 @@ print(sess.run(norm))
 print(sess.run(norm))
 
 # Set an op-level seed to generate repeatable sequences across sessions.
-c = tf.constant([[1, 2], [3, 4], [5, 6]])
+norm = tf.random_normal([2, 3], seed=1234)
 sess = tf.Session()
-norm = tf.random_normal(c, seed=1234)
+print(sess.run(norm))
+print(sess.run(norm))
+sess = tf.Session()
 print(sess.run(norm))
 print(sess.run(norm))
 ```
@@ -473,6 +474,34 @@ to one and only one `output[i]`. For example, a mapping that might occur for a
 
   A tensor of same shape and type as `value`, shuffled along its first
   dimension.
+
+
+- - -
+
+### `tf.random_crop(value, size, seed=None, name=None)` {#random_crop}
+
+Randomly crops a tensor to a given size.
+
+Slices a shape `size` portion out of `value` at a uniformly chosen offset.
+Requires `value.shape >= size`.
+
+If a dimension should not be cropped, pass the full size of that dimension.
+For example, RGB images can be cropped with
+`size = [crop_height, crop_width, 3]`.
+
+##### Args:
+
+
+*  <b>`value`</b>: Input tensor to crop.
+*  <b>`size`</b>: 1-D tensor with size the rank of `value`.
+*  <b>`seed`</b>: Python integer. Used to create a random seed. See
+    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+    for behavior.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  A cropped tensor of the same rank as `value` and shape `size`.
 
 
 - - -

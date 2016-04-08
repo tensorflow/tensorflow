@@ -17,6 +17,106 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("SparseAddGrad")
+    .Input("backprop_val_grad: T")
+    .Input("a_indices: int64")
+    .Input("b_indices: int64")
+    .Input("sum_indices: int64")
+    .Output("a_val_grad: T")
+    .Output("b_val_grad: T")
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+The gradient operator for the SparseAdd op.
+
+The SparseAdd op calculates A + B, where A, B, and the sum are all represented
+as `SparseTensor` objects.  This op takes in the upstream gradient w.r.t.
+non-empty values of the sum, and outputs the gradients w.r.t. the non-empty
+values of A and B.
+
+backprop_val_grad: 1-D with shape `[nnz(sum)]`.  The gradient with respect to
+  the non-empty values of the sum.
+a_indices: 2-D.  The `indices` of the `SparseTensor` A, size `[nnz(A), ndims]`.
+b_indices: 2-D.  The `indices` of the `SparseTensor` B, size `[nnz(B), ndims]`.
+sum_indices: 2-D.  The `indices` of the sum `SparseTensor`, size
+  `[nnz(sum), ndims]`.
+a_val_grad: 1-D with shape `[nnz(A)]`. The gradient with respect to the
+  non-empty values of A.
+b_val_grad: 1-D with shape `[nnz(B)]`. The gradient with respect to the
+  non-empty values of B.
+)doc");
+
+REGISTER_OP("SparseAdd")
+    .Input("a_indices: int64")
+    .Input("a_values: T")
+    .Input("a_shape: int64")
+    .Input("b_indices: int64")
+    .Input("b_values: T")
+    .Input("b_shape: int64")
+    .Input("thresh: Treal")
+    .Output("sum_indices: int64")
+    .Output("sum_values: T")
+    .Output("sum_shape: int64")
+    .Attr("T: numbertype")
+    .Attr("Treal: realnumbertype")
+    .Doc(R"doc(
+Adds two `SparseTensor` objects to produce another `SparseTensor`.
+
+The input `SparseTensor` objects' indices are assumed ordered in standard
+lexicographic order.  If this is not the case, before this step run
+`SparseReorder` to restore index ordering.
+
+By default, if two values sum to zero at some index, the output `SparseTensor`
+would still include that particular location in its index, storing a zero in the
+corresponding value slot.  To override this, callers can specify `thresh`,
+indicating that if the sum has a magnitude strictly smaller than `thresh`, its
+corresponding value and index would then not be included.  In particular,
+`thresh == 0` (default) means everything is kept and actual thresholding happens
+only for a positive value.
+
+In the following shapes, `nnz` is the count after taking `thresh` into account.
+
+a_indices: 2-D.  The `indices` of the first `SparseTensor`, size `[nnz, ndims]` Matrix.
+a_values: 1-D.  The `values` of the first `SparseTensor`, size `[nnz]` Vector.
+a_shape: 1-D.  The `shape` of the first `SparseTensor`, size `[ndims]` Vector.
+b_indices: 2-D.  The `indices` of the second `SparseTensor`, size `[nnz, ndims]` Matrix.
+b_values: 1-D.  The `values` of the second `SparseTensor`, size `[nnz]` Vector.
+b_shape: 1-D.  The `shape` of the second `SparseTensor`, size `[ndims]` Vector.
+thresh: 0-D.  The magnitude threshold that determines if an output value/index
+pair takes space.
+)doc");
+
+REGISTER_OP("SparseTensorDenseMatMul")
+    .Input("a_indices: int64")
+    .Input("a_values: T")
+    .Input("a_shape: int64")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("T: type")
+    .Attr("adjoint_a: bool = false")
+    .Attr("adjoint_b: bool = false")
+    .Doc(R"doc(
+Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
+
+No validity checking is performed on the indices of A.  However, the following
+input format is recommended for optimal behavior:
+
+if adjoint_a == false:
+  A should be sorted in lexicographically increasing order.  Use SparseReorder
+  if you're not sure.
+if adjoint_a == true:
+  A should be sorted in order of increasing dimension 1 (i.e., "column major"
+  order instead of "row major" order).
+
+a_indices: 2-D.  The `indices` of the `SparseTensor`, size `[nnz, 2]` Matrix.
+a_values: 1-D.  The `values` of the `SparseTensor`, size `[nnz]` Vector.
+a_shape: 1-D.  The `shape` of the `SparseTensor`, size `[2]` Vector.
+b: 2-D.  A dense Matrix.
+adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex, this
+  is transpose(conj(A)).  Otherwise it's transpose(A).
+adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex, this
+  is transpose(conj(B)).  Otherwise it's transpose(B).
+)doc");
+
 REGISTER_OP("SerializeSparse")
     .Input("sparse_indices: int64")
     .Input("sparse_values: T")
@@ -114,8 +214,9 @@ REGISTER_OP("SparseToDense")
     .Input("output_shape: Tindices")
     .Input("sparse_values: T")
     .Input("default_value: T")
-    .Output("dense: T")
+    .Attr("validate_indices: bool = true")
     .Attr("T: type")
+    .Output("dense: T")
     .Attr("Tindices: {int32, int64}")
     .Doc(R"doc(
 Converts a sparse representation into a dense tensor.
@@ -136,6 +237,10 @@ dense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]
 All other values in `dense` are set to `default_value`.  If `sparse_values` is a
 scalar, all sparse indices are set to this single value.
 
+Indices should be sorted in lexicographic order, and indices must not
+contain any repeats. If `validate_indices` is true, these properties
+are checked during execution.
+
 sparse_indices: 0-D, 1-D, or 2-D.  `sparse_indices[i]` contains the complete
   index where `sparse_values[i]` will be placed.
 output_shape: 1-D.  Shape of the dense output tensor.
@@ -143,6 +248,8 @@ sparse_values: 1-D.  Values corresponding to each row of `sparse_indices`,
   or a scalar value to be used for all sparse indices.
 default_value: Scalar value to set for indices not specified in
   `sparse_indices`.
+validate_indices: If true, indices are checked to make sure they are sorted in
+  lexicographic order and that there are no repeats.
 dense: Dense output tensor of shape `output_shape`.
 )doc");
 

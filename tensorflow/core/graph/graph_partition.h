@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
@@ -39,7 +40,7 @@ struct PartitionOptions {
 
   // A function that returns the incarnation of a device given the
   // device's fullname. If not found, GetIncarnationFunc should return
-  // kIlledgalIncarnation.
+  // kIllegalIncarnation.
   static const uint64 kIllegalIncarnation = 0;
   typedef std::function<uint64(const string&)> GetIncarnationFunc;
   GetIncarnationFunc get_incarnation = nullptr;

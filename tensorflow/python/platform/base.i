@@ -17,14 +17,14 @@ limitations under the License.
 //
 %{
   #include <memory>
-  #include "tensorflow/core/platform/port.h"
+  #include "tensorflow/core/platform/types.h"
   using tensorflow::uint64;
   using tensorflow::string;
 
   template<class T>
       bool _PyObjAs(PyObject *pystr, T* cstr) {
     T::undefined;  // You need to define specialization _PyObjAs<T>
-    return NULL;
+    return false;
   }
 
   template<class T>

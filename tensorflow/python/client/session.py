@@ -20,13 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-import sys
 import threading
 
-import tensorflow.python.platform
-
 import numpy as np
-import six
 
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import errors
@@ -48,9 +44,27 @@ class SessionInterface(object):
     """The TensorFlow process to which this session will connect."""
     raise NotImplementedError('sess_str')
 
-  def run(self, fetches, feed_dict=None):
+  def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Runs operations in the session. See `Session.run()` for details."""
-    raise NotImplementedError('Run')
+    raise NotImplementedError('run')
+
+  def partial_run_setup(self, fetches, feeds=None):
+    """Sets up the feeds and fetches for partial runs in the session."""
+    raise NotImplementedError('partial_run_setup')
+
+  def partial_run(self, handle, fetches, feed_dict=None):
+    """Continues the execution with additional feeds and fetches."""
+    raise NotImplementedError('partial_run')
+
+def _get_indexed_slices_value_from_fetches(fetched_vals):
+  return ops.IndexedSlicesValue(fetched_vals[0], fetched_vals[1],
+                                fetched_vals[2]
+                                if len(fetched_vals) == 3 else None)
+
+
+def _get_feeds_for_indexed_slices(feed, feed_val):
+  return list(zip([feed.values, feed.indices] if feed.dense_shape is None else
+                  [feed.values, feed.indices, feed.dense_shape], feed_val))
 
 
 class BaseSession(SessionInterface):
@@ -202,11 +216,12 @@ class BaseSession(SessionInterface):
     return ops.default_session(self)
 
   # Eventually, this registration could be opened up to support custom
-  # Tensor expansions. Expects tuples of (Type, fetch_fn, feed_fn),
+  # Tensor expansions. Expects tuples of (Type, fetch_fn, feed_fn1, feed_fn2),
   # where the signatures are:
   #   fetch_fn : Type -> (list of Tensors,
   #                       lambda: list of fetched np.ndarray -> TypeVal)
-  #   feed_fn  : Type, TypeVal -> list of (Tensor, value)
+  #   feed_fn1 : Type, TypeVal -> list of (Tensor, value)
+  #   feed_fn2 : Type -> list of Tensors
   # Conceptually, fetch_fn describes how to expand fetch into its
   # component Tensors and how to contracting the fetched results back into
   # a single return value. feed_fn describes how to unpack a single fed
@@ -220,14 +235,26 @@ class BaseSession(SessionInterface):
            [fetch.indices, fetch.values, fetch.shape],
            lambda fetched_vals: ops.SparseTensorValue(*fetched_vals)),
        lambda feed, feed_val: list(zip(
-           [feed.indices, feed.values, feed.shape], feed_val))),
+           [feed.indices, feed.values, feed.shape], feed_val)),
+       lambda feed: [feed.indices, feed.values, feed.shape]),
+      # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
+      # IndexedSlicesValues or normal tuples.
+      (ops.IndexedSlices,
+       lambda fetch: (
+           [fetch.values, fetch.indices] if fetch.dense_shape is None
+           else [fetch.values, fetch.indices, fetch.dense_shape],
+           _get_indexed_slices_value_from_fetches),
+       _get_feeds_for_indexed_slices,
+       lambda feed: [feed.values, feed.indices] if feed.dense_shape is None
+                    else [feed.values, feed.indices, feed.dense_shape]),
       # The default catches all types and performs no expansions.
       (object,
        lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),
-       lambda feed, feed_val: [(feed, feed_val)])]
+       lambda feed, feed_val: [(feed, feed_val)],
+       lambda feed: [feed])]
   # pylint: enable=g-long-lambda
 
-  def run(self, fetches, feed_dict=None):
+  def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Runs the operations and evaluates the tensors in `fetches`.
 
     This method runs one "step" of TensorFlow computation, by
@@ -266,11 +293,22 @@ class BaseSession(SessionInterface):
       the value should be a
       [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
 
+    The optional `options` argument expects a [`RunOptions`] proto. The options
+    allow controlling the behavior of this particular step (e.g. turning tracing
+    on).
+
+    The optional `run_metadata` argument expects a [`RunMetadata`] proto. When
+    appropriate, the non-Tensor output of this step will be collected there. For
+    example, when users turn on tracing in `options`, the profiled info will be
+    collected into this argument and passed back.
+
     Args:
       fetches: A single graph element, or a list of graph elements
         (described above).
       feed_dict: A dictionary that maps graph elements to values
         (described above).
+      options: A [`RunOptions`] protocol buffer
+      run_metadata: A [`RunMetadata`] protocol buffer
 
     Returns:
       Either a single value if `fetches` is a single graph element, or
@@ -283,17 +321,84 @@ class BaseSession(SessionInterface):
       ValueError: If `fetches` or `feed_dict` keys are invalid or refer to a
         `Tensor` that doesn't exist.
     """
-    def _fetch_fn(fetch):
-      for tensor_type, fetch_fn, _ in BaseSession._REGISTERED_EXPANSIONS:
-        if isinstance(fetch, tensor_type):
-          return fetch_fn(fetch)
-      raise TypeError('Fetch argument %r has invalid type %r'
-                      % (fetch, type(fetch)))
+    run_metadata_ptr = tf_session.TF_NewBuffer()
+    if options:
+      options_ptr = tf_session.TF_NewBufferFromString(
+          compat.as_bytes(options.SerializeToString()))
+    else:
+      options_ptr = None
 
-    def _feed_fn(feed, feed_val):
-      for tensor_type, _, feed_fn in BaseSession._REGISTERED_EXPANSIONS:
+    try:
+      result = self._run(None, fetches, feed_dict, options_ptr,
+                         run_metadata_ptr)
+      if run_metadata:
+        proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
+        run_metadata.ParseFromString(compat.as_bytes(proto_data))
+    finally:
+      tf_session.TF_DeleteBuffer(run_metadata_ptr)
+      if options:
+        tf_session.TF_DeleteBuffer(options_ptr)
+    return result
+
+  def partial_run(self, handle, fetches, feed_dict=None):
+    """Continues the execution with more feeds and fetches.
+
+    This is EXPERIMENTAL and subject to change.
+
+    To use partial execution, a user first calls `partial_run_setup()` and
+    then a sequence of `partial_run()`. `partial_run_setup` specifies the
+    list of feeds and fetches that will be used in the subsequent
+    `partial_run` calls.
+
+    Below is a simple example:
+
+      a = array_ops.placeholder(dtypes.float32, shape=[])
+      b = array_ops.placeholder(dtypes.float32, shape=[])
+      c = array_ops.placeholder(dtypes.float32, shape=[])
+      r1 = math_ops.add(a, b)
+      r2 = math_ops.mul(r1, c)
+
+      h = sess.partial_run_setup([r1, r2], [a, b, c])
+      res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+      res = sess.partial_run(h, r2, feed_dict={c: res})
+
+    Args:
+      handle: A handle for a sequence of partial runs.
+      fetches: A single graph element, or a list of graph elements
+        (described above).
+      feed_dict: A dictionary that maps graph elements to values
+        (described above).
+
+    Returns:
+      Either a single value if `fetches` is a single graph element, or
+      a list of values if `fetches` is a list (described above).
+    """
+    return self._run(handle, fetches, feed_dict, None, None)
+
+  def partial_run_setup(self, fetches, feeds=None):
+    """Sets up a graph with feeds and fetches for partial run.
+
+    This is EXPERIMENTAL and subject to change.
+
+    Note that contrary to `run`, `feeds` only specifies the graph elements.
+    The tensors will be supplied by the subsequent `partial_run` calls.
+
+    Args:
+      fetches: A single graph element, or a list of graph elements.
+      feeds: A single graph element, or a list of graph elements.
+
+    Returns:
+      A handle for partial run.
+
+    Raises:
+      RuntimeError: If this `Session` is in an invalid state (e.g. has been
+        closed).
+      TypeError: If `fetches` or `feed_dict` keys are of an inappropriate type.
+    """
+    def _feed_fn(feed):
+      for tensor_type, _, _, feed_fn in BaseSession._REGISTERED_EXPANSIONS:
         if isinstance(feed, tensor_type):
-          return feed_fn(feed, feed_val)
+          return feed_fn(feed)
       raise TypeError('Feed argument %r has invalid type %r'
                       % (feed, type(feed)))
 
@@ -303,6 +408,46 @@ class BaseSession(SessionInterface):
     if self.graph.version == 0:
       raise RuntimeError('The Session graph is empty.  Add operations to the '
                          'graph before calling run().')
+
+    # Validate and process fetches.
+    unique_fetches, target_list, _ = self._process_fetches(fetches)
+
+    # Create request.
+    feed_list = []
+
+    # Validate and process feed_list.
+    is_list_feed = isinstance(feeds, (list, tuple))
+    if not is_list_feed:
+      feeds = [feeds]
+    for feed in feeds:
+      for subfeed in _feed_fn(feed):
+        try:
+          subfeed_t = self.graph.as_graph_element(subfeed, allow_tensor=True,
+                                                  allow_operation=False)
+          feed_list.append(compat.as_bytes(subfeed_t.name))
+        except Exception as e:
+          e.message = ('Cannot interpret feed_list key as Tensor: '
+                       + e.message)
+          e.args = (e.message,)
+          raise e
+
+    # Set up a graph with feeds and fetches for partial run.
+    def _setup_fn(session, feed_list, fetch_list, target_list):
+      self._extend_graph()
+      return tf_session.TF_PRunSetup(session, feed_list, fetch_list,
+                                     target_list)
+
+    return self._do_call(_setup_fn, self._session, feed_list, unique_fetches,
+                         target_list)
+
+  def _process_fetches(self, fetches):
+    """Validate and process fetches."""
+    def _fetch_fn(fetch):
+      for tensor_type, fetch_fn, _, _ in BaseSession._REGISTERED_EXPANSIONS:
+        if isinstance(fetch, tensor_type):
+          return fetch_fn(fetch)
+      raise TypeError('Fetch argument %r has invalid type %r'
+                      % (fetch, type(fetch)))
 
     # Validate and process fetches.
     is_list_fetch = isinstance(fetches, (list, tuple))
@@ -338,6 +483,26 @@ class BaseSession(SessionInterface):
       fetch_info.append((subfetch_names, fetch_contraction_fn))
 
     unique_fetch_targets = list(unique_fetch_targets)
+    return unique_fetch_targets, target_list, fetch_info
+
+  def _run(self, handle, fetches, feed_dict, options, run_metadata):
+    """Perform either run or partial_run, depending the exitence of `handle`."""
+    def _feed_fn(feed, feed_val):
+      for tensor_type, _, feed_fn, _ in BaseSession._REGISTERED_EXPANSIONS:
+        if isinstance(feed, tensor_type):
+          return feed_fn(feed, feed_val)
+      raise TypeError('Feed argument %r has invalid type %r'
+                      % (feed, type(feed)))
+
+    # Check session.
+    if self._closed:
+      raise RuntimeError('Attempted to use a closed Session.')
+    if self.graph.version == 0:
+      raise RuntimeError('The Session graph is empty.  Add operations to the '
+                         'graph before calling run().')
+
+    # Validate and process fetches.
+    unique_fetches, target_list, fetch_info = self._process_fetches(fetches)
 
     # Create request.
     feed_dict_string = {}
@@ -350,27 +515,33 @@ class BaseSession(SessionInterface):
             subfeed_t = self.graph.as_graph_element(subfeed, allow_tensor=True,
                                                     allow_operation=False)
           except Exception as e:
-            e.message = ('Cannot interpret feed_dict key as Tensor: '
-                         + e.message)
-            e.args = (e.message,)
-            raise e
+            raise TypeError('Cannot interpret feed_dict key as Tensor: '
+                            + e.args[0])
+
+          if isinstance(subfeed_val, ops.Tensor):
+            raise TypeError('The value of a feed cannot be a tf.Tensor object. '
+                            'Acceptable feed values include Python scalars, '
+                            'strings, lists, or numpy ndarrays.')
+
           np_val = np.array(subfeed_val, dtype=subfeed_t.dtype.as_numpy_dtype)
-          if subfeed_t.op.type == 'Placeholder':
-            if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
-              raise ValueError(
-                  'Cannot feed value of shape %r for Tensor %r, '
-                  'which has shape %r'
-                  % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
+          if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
+            raise ValueError(
+                'Cannot feed value of shape %r for Tensor %r, '
+                'which has shape %r'
+                % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
+          if not self.graph.is_feedable(subfeed_t):
+            raise ValueError('Tensor %s may not be fed.' % subfeed_t)
           feed_dict_string[compat.as_bytes(subfeed_t.name)] = np_val
 
     # Run request and get response.
-    results = self._do_run(target_list, unique_fetch_targets, feed_dict_string)
+    results = self._do_run(handle, target_list, unique_fetches,
+                           feed_dict_string, options, run_metadata)
 
     # User may have fetched the same tensor multiple times, but we
     # only fetch them from the runtime once.  Furthermore, they may
     # be wrapped as a tuple of tensors.  Here we map the results back
     # to what the client asked for.
-    fetched_results = dict(zip(unique_fetch_targets, results))
+    fetched_results = dict(zip(unique_fetches, results))
     ret = []
     for fetch_names, fetch_contraction_fn in fetch_info:
       if fetch_names:
@@ -379,7 +550,7 @@ class BaseSession(SessionInterface):
       else:
         ret.append(None)
 
-    if is_list_fetch:
+    if isinstance(fetches, (list, tuple)):
       return ret
     else:
       return ret[0]
@@ -387,16 +558,20 @@ class BaseSession(SessionInterface):
   # Captures the name of a node in an error status.
   _NODEDEF_NAME_RE = re.compile(r'\[\[Node: ([^ ]*?) =')
 
-  def _do_run(self, target_list, fetch_list, feed_dict):
+  def _do_run(self, handle, target_list, fetch_list, feed_dict,
+              options, run_metadata):
     """Runs a step based on the given fetches and feeds.
 
     Args:
+      handle: a handle for partial_run. None if this is just a call to run().
       target_list: A list of byte arrays corresponding to names of tensors
         or operations to be run to, but not fetched.
       fetch_list: A list of byte arrays corresponding to names of tensors to
         be fetched and operations to be run.
       feed_dict: A dictionary that maps tensor names (as byte arrays) to
         numpy ndarrays.
+      options: A (pointer to a) [`RunOptions`] protocol buffer, or None
+      run_metadata: A (pointer to a) [`RunMetadata`] protocol buffer, or None
 
     Returns:
       A list of numpy ndarrays, corresponding to the elements of
@@ -404,45 +579,68 @@ class BaseSession(SessionInterface):
       name of an operation, the first Tensor output of that operation
       will be returned for that element.
     """
-    try:
+    def _run_fn(session, feed_dict, fetch_list, target_list, options,
+                run_metadata):
       # Ensure any changes to the graph are reflected in the runtime.
-      with self._extend_lock:
-        if self._graph.version > self._current_version:
-          graph_def = self._graph.as_graph_def(
-              from_version=self._current_version)
+      self._extend_graph()
+      if options:
+        return tf_session.TF_Run(session, options,
+                                 feed_dict, fetch_list, target_list,
+                                 run_metadata)
+      else:
+        return tf_session.TF_Run(
+            session, None, feed_dict, fetch_list, target_list, None)
 
-          try:
-            status = tf_session.TF_NewStatus()
-            tf_session.TF_ExtendGraph(
-                self._session, graph_def.SerializeToString(), status)
-            if tf_session.TF_GetCode(status) != 0:
-              raise RuntimeError(compat.as_text(tf_session.TF_Message(status)))
-            self._opened = True
-          finally:
-            tf_session.TF_DeleteStatus(status)
+    def _prun_fn(session, handle, feed_dict, fetch_list):
+      if target_list:
+        raise RuntimeError('partial_run() requires empty target_list.')
+      return tf_session.TF_PRun(session, handle, feed_dict, fetch_list)
 
-          self._current_version = self._graph.version
+    if handle is None:
+      return self._do_call(_run_fn, self._session, feed_dict, fetch_list,
+                           target_list, options, run_metadata)
+    else:
+      return self._do_call(_prun_fn, self._session, handle, feed_dict,
+                           fetch_list)
 
-      return tf_session.TF_Run(self._session, feed_dict, fetch_list,
-                               target_list)
-
+  def _do_call(self, fn, *args):
+    try:
+      return fn(*args)
     except tf_session.StatusNotOK as e:
-      e_type, e_value, e_traceback = sys.exc_info()
       error_message = compat.as_text(e.error_message)
       m = BaseSession._NODEDEF_NAME_RE.search(error_message)
+      node_def = None
+      op = None
       if m is not None:
         node_name = m.group(1)
-        node_def = None
         try:
           op = self._graph.get_operation_by_name(node_name)
           node_def = op.node_def
         except KeyError:
-          op = None
-        # pylint: disable=protected-access
-        raise errors._make_specific_exception(node_def, op, error_message,
-                                              e.code)
-        # pylint: enable=protected-access
-      six.reraise(e_type, e_value, e_traceback)
+          pass
+      # pylint: disable=protected-access
+      raise errors._make_specific_exception(node_def, op, error_message,
+                                            e.code)
+      # pylint: enable=protected-access
+
+  def _extend_graph(self):
+    # Ensure any changes to the graph are reflected in the runtime.
+    with self._extend_lock:
+      if self._graph.version > self._current_version:
+        graph_def = self._graph.as_graph_def(
+            from_version=self._current_version)
+
+        try:
+          status = tf_session.TF_NewStatus()
+          tf_session.TF_ExtendGraph(
+              self._session, graph_def.SerializeToString(), status)
+          if tf_session.TF_GetCode(status) != 0:
+            raise RuntimeError(compat.as_text(tf_session.TF_Message(status)))
+          self._opened = True
+        finally:
+          tf_session.TF_DeleteStatus(status)
+
+        self._current_version = self._graph.version
 
 
 class Session(BaseSession):
@@ -485,7 +683,7 @@ class Session(BaseSession):
   ```
 
   The [`ConfigProto`]
-  (https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/config.proto)
+  (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
   protocol buffer exposes various configuration options for a
   session. For example, to create a session that uses soft constraints
   for device placement, and log the resulting placement decisions,
@@ -524,7 +722,7 @@ class Session(BaseSession):
         Defaults to using an in-process engine. At present, no value
         other than the empty string is supported.
       graph: (Optional.) The `Graph` to be launched (described above).
-      config: (Optional.) A [`ConfigProto`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/config.proto)
+      config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
         protocol buffer with configuration options for the session.
 
     """
@@ -588,7 +786,7 @@ class InteractiveSession(BaseSession):
   @@close
   """
 
-  def __init__(self, target='', graph=None):
+  def __init__(self, target='', graph=None, config=None):
     """Creates a new interactive TensorFlow session.
 
     If no `graph` argument is specified when constructing the session,
@@ -604,8 +802,9 @@ class InteractiveSession(BaseSession):
         Defaults to using an in-process engine. At present, no value
         other than the empty string is supported.
       graph: (Optional.) The `Graph` to be launched (described above).
+      config: (Optional) `ConfigProto` proto used to configure the session.
     """
-    super(InteractiveSession, self).__init__(target, graph)
+    super(InteractiveSession, self).__init__(target, graph, config)
     self._default_session = self.as_default()
     self._default_session.__enter__()
     self._explicit_graph = graph

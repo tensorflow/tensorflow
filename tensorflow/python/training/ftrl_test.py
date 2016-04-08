@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -170,7 +168,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
     v0_val, v1_val = sess.run([var0, var1])
     return v0_val, v1_val
 
-  # When variables are intialized with Zero, FTRL-Proximal has two properties:
+  # When variables are initialized with Zero, FTRL-Proximal has two properties:
   # 1. Without L1&L2 but with fixed learning rate, FTRL-Proximal is identical
   # with GradientDescent.
   # 2. Without L1&L2 but with adaptive learning rate, FTRL-Proximal is identical

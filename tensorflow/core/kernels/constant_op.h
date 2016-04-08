@@ -19,6 +19,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
@@ -33,6 +34,20 @@ class ConstantOp : public OpKernel {
  private:
   Tensor tensor_;
   TF_DISALLOW_COPY_AND_ASSIGN(ConstantOp);
+};
+
+// HostConstantOp differs from ConstantOp in that its output is always
+// in host memory.
+class HostConstantOp : public OpKernel {
+ public:
+  explicit HostConstantOp(OpKernelConstruction* ctx);
+  void Compute(OpKernelContext* ctx) override;
+  bool IsExpensive() override { return false; }
+  ~HostConstantOp() override {}
+
+ private:
+  Tensor tensor_;
+  TF_DISALLOW_COPY_AND_ASSIGN(HostConstantOp);
 };
 
 }  // namespace tensorflow

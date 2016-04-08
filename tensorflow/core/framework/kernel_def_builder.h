@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -82,8 +83,7 @@ class KernelDefBuilder {
 // IMPLEMENTATION
 
 template <class T>
-inline KernelDefBuilder& KernelDefBuilder::TypeConstraint(
-    const char* attr_name) {
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* attr_name) {
   return this->TypeConstraint(attr_name, DataTypeToEnum<T>::v());
 }
 

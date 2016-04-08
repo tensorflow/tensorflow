@@ -1,6 +1,7 @@
-# BibTex Citation
+# TensorFlow Whitepaper
+
 If you use TensorFlow in your research and would like to cite the TensorFlow
-system, we suggest you cite the following whitepaper:
+system, we suggest you cite the [whitepaper](http://download.tensorflow.org/paper/whitepaper2015.pdf):
 
 ```
 @misc{tensorflow2015-whitepaper,

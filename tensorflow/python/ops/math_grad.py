@@ -18,13 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -58,8 +59,16 @@ def _MinOrMaxGrad(op, grad):
   y = op.outputs[0]
   y = array_ops.reshape(y, new_output_shape)
   grad = array_ops.reshape(grad, new_output_shape)
+
+  # Compute the number of selected (maximum or minimum) elements in each
+  # reduction dimension. If there are multiple minimum or maximum elements
+  # then the gradient will be divided between them.
   indicators = math_ops.cast(math_ops.equal(y, inp), grad.dtype)
-  return [indicators * grad, None]
+  num_selected = array_ops.reshape(
+      math_ops.reduce_sum(indicators, op.inputs[1]),
+      new_output_shape)
+
+  return [math_ops.div(indicators, num_selected) * grad, None]
 
 
 @ops.RegisterGradient("Max")
@@ -134,28 +143,46 @@ def _SparseSegmentMeanGrad(op, grad):
           None, None)
 
 
+@ops.RegisterGradient("SparseSegmentSqrtN")
+def _SparseSegmentSqrtNGrad(op, grad):
+  """Gradient for SparseSegmentSqrtN."""
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.sparse_segment_sqrt_n_grad(grad,
+                                              op.inputs[1],
+                                              op.inputs[2],
+                                              dim0),
+          None, None)
+
+
+def _SegmentMinOrMaxGrad(op, grad):
+  """Gradient for SegmentMin and SegmentMax. Both share the same code."""
+  zeros = array_ops.zeros(array_ops.shape(op.inputs[0]),
+                          dtype=op.inputs[0].dtype)
+
+  # Get the number of selected (minimum or maximum) elements in each segment.
+  gathered_outputs = array_ops.gather(op.outputs[0], op.inputs[1])
+  is_selected = math_ops.equal(op.inputs[0], gathered_outputs)
+  num_selected = math_ops.segment_sum(math_ops.cast(is_selected, grad.dtype),
+                                      op.inputs[1])
+
+  # Compute the gradient for each segment. The gradient for the ith segment is
+  # divided evenly among the selected elements in that segment.
+  weighted_grads = math_ops.div(grad, num_selected)
+  gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
+
+  return math_ops.select(is_selected, gathered_grads, zeros), None
+
+
 @ops.RegisterGradient("SegmentMin")
 def _SegmentMinGrad(op, grad):
   """Gradient for SegmentMin."""
-  zeros = array_ops.zeros(array_ops.shape(op.inputs[0]),
-                          dtype=op.inputs[0].dtype)
-  gathered_grads = array_ops.gather(grad, op.inputs[1])
-  gathered_outputs = array_ops.gather(op.outputs[0], op.inputs[1])
-  return math_ops.select(math_ops.greater(op.inputs[0], gathered_outputs),
-                         zeros,
-                         gathered_grads), None
+  return _SegmentMinOrMaxGrad(op, grad)
 
 
 @ops.RegisterGradient("SegmentMax")
 def _SegmentMaxGrad(op, grad):
   """Gradient for SegmentMax."""
-  zeros = array_ops.zeros(array_ops.shape(op.inputs[0]),
-                          dtype=op.inputs[0].dtype)
-  gathered_grads = array_ops.gather(grad, op.inputs[1])
-  gathered_outputs = array_ops.gather(op.outputs[0], op.inputs[1])
-  return math_ops.select(math_ops.less(op.inputs[0], gathered_outputs),
-                         zeros,
-                         gathered_grads), None
+  return _SegmentMinOrMaxGrad(op, grad)
 
 
 @ops.RegisterGradient("UnsortedSegmentSum")
@@ -180,54 +207,129 @@ def _NegGrad(_, grad):
 def _InvGrad(op, grad):
   """Returns -grad * (1 / x^2)."""
   y = op.outputs[0]  # y = 1 / x
-  return grad * (- math_ops.square(y))
+  # Added control dependencies to prevent -x^2 from being computed too early.
+  with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
+    return grad * (- math_ops.square(y))
 
 
 @ops.RegisterGradient("Square")
 def _SquareGrad(op, grad):
   x = op.inputs[0]
-  return grad * (2.0 * x)
+  # Added control dependencies to prevent 2*x from being computed too early.
+  with ops.control_dependencies([grad.op]):
+    if x.dtype.is_complex:
+      x = math_ops.conj(x)
+    return grad * (2.0 * x)
 
 
 @ops.RegisterGradient("Sqrt")
 def _SqrtGrad(op, grad):
   y = op.outputs[0]  # y = x^(1/2)
-  return grad * (.5 * math_ops.inv(y))
+  with ops.control_dependencies([grad.op]):
+    return grad * (.5 * math_ops.inv(y))
 
 
 @ops.RegisterGradient("Rsqrt")
 def _RsqrtGrad(op, grad):
   x = op.inputs[0]
   y = op.outputs[0]  # y = x^(-1/2)
-  return grad * ((-0.5) * math_ops.inv(x) * y)
+  with ops.control_dependencies([grad.op]):
+    return grad * ((-0.5) * math_ops.inv(x) * y)
 
 
 @ops.RegisterGradient("Exp")
 def _ExpGrad(op, grad):
   """Returns grad * exp(x)."""
   y = op.outputs[0]  # y = e^x
-  return grad * y
+  with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
+    return grad * y
 
 
 @ops.RegisterGradient("Log")
 def _LogGrad(op, grad):
   """Returns grad * (1/x)."""
   x = op.inputs[0]
-  return grad * math_ops.inv(x)
+  with ops.control_dependencies([grad.op]):
+    return grad * math_ops.inv(x)
 
 
 @ops.RegisterGradient("Tanh")
 def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""
   y = op.outputs[0]  # y = tanh(x)
-  return grad * (1 - math_ops.square(y))
+  with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
+    return grad * (1 - math_ops.square(y))
+
+
+@ops.RegisterGradient("Erf")
+def _ErfGrad(op, grad):
+  """Returns grad * 2/sqrt(pi) * exp(-x**2)."""
+  x = op.inputs[0]
+  two_over_root_pi = constant_op.constant(2 / np.sqrt(np.pi), dtype=grad.dtype)
+  with ops.control_dependencies([grad.op]):
+    return  grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
+
+
+@ops.RegisterGradient("Erfc")
+def _ErfcGrad(op, grad):
+  """Returns -grad * 2/sqrt(pi) * exp(-x**2)."""
+  x = op.inputs[0]
+  minus_two_over_root_pi = constant_op.constant(-2 / np.sqrt(np.pi),
+                                                dtype=grad.dtype)
+  with ops.control_dependencies([grad.op]):
+    return  grad * minus_two_over_root_pi * math_ops.exp(-math_ops.square(x))
+
+
+@ops.RegisterGradient("Lgamma")
+def _LgammaGrad(op, grad):
+  """Returns grad * digamma(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    return grad * math_ops.digamma(x)
+
+
+@ops.RegisterGradient("Digamma")
+def _DigammaGrad(op, grad):  # pylint: disable=unused-argument
+  raise NotImplementedError("grad(Digamma) == Polygamma(1) is not implemented")
+
+
+@ops.RegisterGradient("Igamma")
+def _IgammaGrad(op, grad):
+  """Returns gradient of igamma(a, x) with respect to a and x."""
+  # TODO(ebrevdo): Perhaps add the derivative w.r.t. a
+  a = op.inputs[0]
+  x = op.inputs[1]
+  sa = array_ops.shape(a)
+  sx = array_ops.shape(x)
+  unused_ra, rx = gen_array_ops._broadcast_gradient_args(sa, sx)
+
+  # Perform operations in log space before summing, because Gamma(a)
+  # and Gamma'(a) can grow large.
+  partial_x = math_ops.exp(-x + (a-1) * math_ops.log(x) - math_ops.lgamma(a))
+  return (None,
+          array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
+
+
+@ops.RegisterGradient("Igammac")
+def _IgammacGrad(op, grad):
+  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. a and x."""
+  return [-1 * g if g is not None else None for g in _IgammaGrad(op, grad)]
 
 
 @ops.RegisterGradient("Sigmoid")
 def _SigmoidGrad(op, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
   y = op.outputs[0]  # y = sigmoid(x)
-  return grad * (y * (1 - y))
+  with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
+    return grad * (y * (1 - y))
 
 
 @ops.RegisterGradient("Sign")
@@ -241,14 +343,20 @@ def _SignGrad(op, _):
 def _SinGrad(op, grad):
   """Returns grad * cos(x)."""
   x = op.inputs[0]
-  return grad * math_ops.cos(x)
+  with ops.control_dependencies([grad.op]):
+    if x.dtype.is_complex:
+      x = math_ops.conj(x)
+    return grad * math_ops.cos(x)
 
 
 @ops.RegisterGradient("Cos")
 def _CosGrad(op, grad):
   """Returns grad * -sin(x)."""
   x = op.inputs[0]
-  return -grad * math_ops.sin(x)
+  with ops.control_dependencies([grad.op]):
+    if x.dtype.is_complex:
+      x = math_ops.conj(x)
+    return -grad * math_ops.sin(x)
 
 
 @ops.RegisterGradient("AddN")
@@ -282,18 +390,18 @@ def _SubGrad(op, grad):
 
 @ops.RegisterGradient("Mul")
 def _MulGrad(op, grad):
+  """The gradient of scalar multiplication."""
   x = op.inputs[0]
   y = op.inputs[1]
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  if x.dtype.base_dtype == dtypes.complex64:
-    return (array_ops.reshape(math_ops.reduce_sum(grad * math_ops.conj(y), rx), sx),
-            array_ops.reshape(math_ops.reduce_sum(math_ops.conj(x) * grad, ry), sy))
-  else:
-    return (array_ops.reshape(math_ops.reduce_sum(grad * y, rx), sx),
-            array_ops.reshape(math_ops.reduce_sum(x * grad, ry), sy))
+  if x.dtype.is_complex:
+    x = math_ops.conj(x)
+    y = math_ops.conj(y)
+  return (array_ops.reshape(math_ops.reduce_sum(grad * y, rx), sx),
+          array_ops.reshape(math_ops.reduce_sum(x * grad, ry), sy))
 
 
 @ops.RegisterGradient("Div")
@@ -302,7 +410,7 @@ def _DivGrad(op, grad):
   y = op.inputs[1]
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)  # pylint: disable=protected-access
   return (array_ops.reshape(math_ops.reduce_sum(grad / y, rx), sx),
           array_ops.reshape(math_ops.reduce_sum(grad *
                                          (-x / math_ops.square(y)), ry), sy))
@@ -317,9 +425,10 @@ def _PowGrad(op, grad):
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  gx = array_ops.reshape(math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx),
-                         sx)
-  gy = array_ops.reshape(math_ops.reduce_sum(grad * z * math_ops.log(x), ry), sy)
+  gx = array_ops.reshape(
+      math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx), sx)
+  gy = array_ops.reshape(
+      math_ops.reduce_sum(grad * z * math_ops.log(x), ry), sy)
   return gx, gy
 
 
@@ -353,6 +462,25 @@ def _MinimumGrad(op, grad):
   return _MaximumMinimumGrad(op, grad, math_ops.less_equal)
 
 
+@ops.RegisterGradient("SquaredDifference")
+def _SquaredDifferenceGrad(op, grad):
+  """Returns the gradient for (x-y)^2."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  # pylint: disable=protected-access
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
+  # .op works with Tensors or IndexedSlices
+  with ops.control_dependencies([grad.op]):
+    # The parens ensure that if grad is IndexedSlices, it'll get multiplied by
+    # Tensor (not a number like 2.0) which causes it to convert to Tensor.
+    x_grad = math_ops.scalar_mul(2.0, grad) * (x - y)
+  return (array_ops.reshape(math_ops.reduce_sum(x_grad, rx), sx),
+          -array_ops.reshape(math_ops.reduce_sum(x_grad, ry), sy))
+
+
 # Logical operations have no gradients.
 ops.NoGradient("Less")
 ops.NoGradient("LessEqual")
@@ -369,7 +497,7 @@ ops.NoGradient("LogicalNot")
 def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
-  zeros = array_ops.zeros(array_ops.shape(c), dtype=x.dtype)
+  zeros = array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
   return (None, math_ops.select(c, grad, zeros),
           math_ops.select(c, zeros, grad))
 
@@ -438,8 +566,8 @@ def _SparseMatMulGrad(op, grad):
 
 
 @ops.RegisterGradient("Floor")
-def _FloorGrad(_, grad):
-  return grad
+def _FloorGrad(_, unused_grad):
+  return [None]
 
 
 @ops.RegisterGradient("BatchMatMul")
@@ -498,6 +626,15 @@ def _ConjGrad(_, grad):
   return math_ops.conj(grad)
 
 
+@ops.RegisterGradient("ComplexAbs")
+def _ComplexAbsGrad(op, grad):
+  """Returns the gradient of ComplexAbs."""
+  # TODO(b/27786104): The cast to complex could be removed once arithmetic
+  # supports mixtures of complex64 and real values.
+  return (math_ops.complex(grad, array_ops.zeros_like(grad)) *
+          math_ops.sign(op.inputs[0]))
+
+
 @ops.RegisterGradient("Cast")
 def _CastGrad(op, grad):
   t = [dtypes.float32, dtypes.float64, dtypes.bfloat16]
@@ -507,3 +644,88 @@ def _CastGrad(op, grad):
     return math_ops.cast(grad, src_type)
   else:
     return None
+
+
+@ops.RegisterGradient("FFT")
+def _FFTGrad(_, grad):
+  size = math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.ifft(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("IFFT")
+def _IFFTGrad(_, grad):
+  rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.fft(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("FFT2D")
+def _FFT2DGrad(_, grad):
+  size = math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.ifft2d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("IFFT2D")
+def _IFFT2DGrad(_, grad):
+  rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("FFT3D")
+def _FFT3DGrad(_, grad):
+  size = math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.ifft3d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("IFFT3D")
+def _IFFT3DGrad(_, grad):
+  rsize = 1. / math_ops.cast(array_ops.size(grad), dtypes.float32)
+  return math_ops.fft3d(grad) * math_ops.complex(rsize, 0.)
+
+
+def _FFTSizeForGrad(grad, rank):
+  return math_ops.reduce_prod(array_ops.slice(
+      array_ops.reverse(
+          array_ops.shape(grad), (True,)), (0,), (rank,)))
+
+
+@ops.RegisterGradient("BatchFFT")
+def _BatchFFTGrad(_, grad):
+  size = math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
+  return math_ops.batch_ifft(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("BatchIFFT")
+def _BatchIFFTGrad(_, grad):
+  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
+  return math_ops.batch_fft(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("BatchFFT2D")
+def _BatchFFT2DGrad(_, grad):
+  size = math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
+  return math_ops.batch_ifft2d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("BatchIFFT2D")
+def _BatchIFFT2DGrad(_, grad):
+  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
+  return math_ops.batch_fft2d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("BatchFFT3D")
+def _BatchFFT3DGrad(_, grad):
+  size = math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
+  return math_ops.batch_ifft3d(grad) * math_ops.complex(size, 0.)
+
+
+@ops.RegisterGradient("BatchIFFT3D")
+def _BatchIFFT3DGrad(_, grad):
+  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
+  return math_ops.batch_fft3d(grad) * math_ops.complex(rsize, 0.)
+
+
+@ops.RegisterGradient("Cross")
+def _CrossGrad(op, grad):
+  u = op.inputs[0]
+  v = op.inputs[1]
+  return (math_ops.cross(v, grad), math_ops.cross(grad, u))

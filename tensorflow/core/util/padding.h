@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
@@ -44,7 +44,7 @@ enum Padding {
 string GetPaddingAttrString();
 
 // Specialization to parse an attribute directly into a Padding enum.
-Status GetNodeAttr(const NodeDef& node_def, const string& attr_name,
+Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
                    Padding* value);
 
 }  // end namespace tensorflow

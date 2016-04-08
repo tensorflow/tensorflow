@@ -16,16 +16,16 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/adjust_contrast_op.h"
 #include <memory>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/adjust_contrast_op.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -38,7 +38,7 @@ template <typename Device, typename T>
 class AdjustContrastOp : public OpKernel {
  public:
   explicit AdjustContrastOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_DEPRECATED(context, 2);
+    OP_DEPRECATED(context, 2, "Use AdjustContrastv2 instead");
   }
 
   void Compute(OpKernelContext* context) override {
@@ -48,20 +48,20 @@ class AdjustContrastOp : public OpKernel {
     const Tensor& max_value = context->input(3);
     OP_REQUIRES(context, input.dims() >= 3,
                 errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     const int64 height = input.dim_size(input.dims() - 3);
     const int64 width = input.dim_size(input.dims() - 2);
     const int64 channels = input.dim_size(input.dims() - 1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor.shape()),
                 errors::InvalidArgument("contrast_factor must be scalar: ",
-                                        factor.shape().ShortDebugString()));
+                                        factor.shape().DebugString()));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_value.shape()),
                 errors::InvalidArgument("min_value must be scalar: ",
-                                        min_value.shape().ShortDebugString()));
+                                        min_value.shape().DebugString()));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_value.shape()),
                 errors::InvalidArgument("max_value must be scalar: ",
-                                        max_value.shape().ShortDebugString()));
+                                        max_value.shape().DebugString()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -147,31 +147,25 @@ class AdjustContrastOpv2 : public OpKernel {
     const Tensor& factor = context->input(1);
     OP_REQUIRES(context, input.dims() >= 3,
                 errors::InvalidArgument("input must be at least 3-D, got shape",
-                                        input.shape().ShortDebugString()));
+                                        input.shape().DebugString()));
     const int64 height = input.dim_size(input.dims() - 3);
     const int64 width = input.dim_size(input.dims() - 2);
     const int64 channels = input.dim_size(input.dims() - 1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor.shape()),
                 errors::InvalidArgument("contrast_factor must be scalar: ",
-                                        factor.shape().ShortDebugString()));
+                                        factor.shape().DebugString()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
-
-    Tensor mean_values;
-    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<float>::value,
-                                                   TensorShape(input.shape()),
-                                                   &mean_values));
 
     if (input.NumElements() > 0) {
       const int64 batch = input.NumElements() / (height * width * channels);
       const int64 shape[4] = {batch, height, width, channels};
       functor::AdjustContrastv2<Device>()(
           context->eigen_device<Device>(), input.shaped<float, 4>(shape),
-          factor.scalar<float>(), mean_values.shaped<float, 4>(shape),
-          output->shaped<float, 4>(shape));
+          factor.scalar<float>(), output->shaped<float, 4>(shape));
     }
   }
 };
@@ -187,7 +181,6 @@ template <>
 void AdjustContrastv2<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float, 4>::ConstTensor input,
     typename TTypes<float>::ConstScalar contrast_factor,
-    typename TTypes<float, 4>::Tensor mean_values,
     typename TTypes<float, 4>::Tensor output);
 extern template struct AdjustContrastv2<GPUDevice>;
 #undef DECLARE_GPU_SPEC

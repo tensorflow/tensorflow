@@ -18,12 +18,12 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -79,7 +79,7 @@ class EncodeJpegOp : public OpKernel {
     const Tensor& image = context->input(0);
     OP_REQUIRES(context, image.dims() == 3,
                 errors::InvalidArgument("image must be 3-dimensional",
-                                        image.shape().ShortDebugString()));
+                                        image.shape().DebugString()));
 
     // Autodetect format if desired, otherwise make sure format and
     // image channels are consistent.
@@ -94,7 +94,7 @@ class EncodeJpegOp : public OpKernel {
       } else {
         OP_REQUIRES(context, false, errors::InvalidArgument(
                                         "image must have 1 or 3 channels, got ",
-                                        image.shape().ShortDebugString()));
+                                        image.shape().DebugString()));
       }
     } else {
       if (flags_.format == jpeg::FORMAT_GRAYSCALE) {
@@ -105,7 +105,7 @@ class EncodeJpegOp : public OpKernel {
       OP_REQUIRES(context, channels == image.dim_size(2),
                   errors::InvalidArgument("format ", format_, " expects ",
                                           channels, " channels, got ",
-                                          image.shape().ShortDebugString()));
+                                          image.shape().DebugString()));
     }
 
     // Encode image to jpeg string

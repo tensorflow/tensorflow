@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/util/mirror_pad_mode.h"
 
 namespace tensorflow {
 
@@ -75,6 +76,31 @@ output: A `Tensor` with the concatenation of values stacked along the
   in `concat_dim` where it has the sum of the sizes.
 )doc");
 
+REGISTER_OP("ConcatOffset")
+    .Input("concat_dim: int32")
+    .Input("shape: N * int32")
+    .Output("offset: N * int32")
+    .Attr("N: int >= 2")
+    .Doc(R"doc(
+Computes offsets of concat inputs within its output.
+
+For example:
+
+```prettyprint
+# 'x' is [2, 2, 7]
+# 'y' is [2, 3, 7]
+# 'z' is [2, 5, 7]
+concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
+```
+
+concat_dim: The dimension along which to concatenate.
+shape: The `N` int32 vectors representing shape of tensors being concatenated.
+output: The `N` int32 vectors representing the starting offset
+        of input tensors within the concatenated output.
+
+This is typically used by gradient computations for a concat operation.
+)doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("Split")
     .Input("split_dim: int32")
@@ -104,6 +130,25 @@ REGISTER_OP("Const")
 Returns a constant tensor.
 
 value: Attr `value` is the tensor to return.
+)doc");
+
+// --------------------------------------------------------------------------
+// TODO(mgubin): Update the doc when the freeze_graph script supports converting
+// into memmapped format.
+REGISTER_OP("ImmutableConst")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .Attr("memory_region_name: string")
+    .Output("tensor: dtype")
+    .Doc(R"doc(
+Returns immutable tensor from memory region.
+
+The current implementation memmaps the tensor from a file.
+
+dtype: Type of the returned tensor.
+shape: Shape of the returned tensor.
+memory_region_name: Name of readonly memory region used by the tensor, see
+  NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -145,6 +190,38 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
 ```
 
 diagonal: Rank k tensor where k is at most 3.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DiagPart")
+    .Input("input: T")
+    .Output("diagonal: T")
+    .Attr("T: {float, double, int32, int64}")
+    .Doc(R"doc(
+Returns the diagonal part of the tensor.
+
+This operation returns a tensor with the `diagonal` part
+of the `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
+tensor of rank `k` with dimensions `[D1,..., Dk]` where:
+
+`diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
+
+For example:
+
+```prettyprint
+# 'input' is [[1, 0, 0, 0]
+              [0, 2, 0, 0]
+              [0, 0, 3, 0]
+              [0, 0, 0, 4]]
+
+tf.diag_part(input) ==> [1, 2, 3, 4]
+```
+
+input: Rank k tensor where k is 2, 4, or 6.
+diagonal: The extracted diagonal.
+
 )doc");
 
 // --------------------------------------------------------------------------
@@ -303,6 +380,7 @@ value: 0-D (scalar). Value to fill the returned tensor.
 REGISTER_OP("Gather")
     .Input("params: Tparams")
     .Input("indices: Tindices")
+    .Attr("validate_indices: bool = true")
     .Output("output: Tparams")
     .Attr("Tparams: type")
     .Attr("Tindices: {int32,int64}")
@@ -327,6 +405,34 @@ this operation will permute `params` accordingly.
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/Gather.png" alt>
 </div>
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("GatherNd")
+    .Input("params: Tparams")
+    .Input("indices: Tindices")
+    .Output("output: Tparams")
+    .Attr("Tparams: type")
+    .Attr("Tindices: {int32,int64}")
+    .Doc(R"doc(
+Gather values from `params` according to `indices`.
+
+`indices` must be integer tensor, containing indices into `params`.
+It must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.
+The innermost dimension of `indices` (with length `R`) corresponds to the
+indices of `params`.
+
+Produces an output tensor with shape `[d_0, ..., d_{n-1}]` where:
+
+    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]
+
+e.g. for `indices` a matrix:
+
+    output[i] = params[indices[i, :]]
+
+params: R-D.  The tensor from which to gather values.
+indices: (N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`.
+output: N-D.  Values from `params` gathered from indices given by `indices`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -456,7 +562,7 @@ Computes the inverse permutation of a tensor.
 
 This operation computes the inverse of an index permutation. It takes a 1-D
 integer tensor `x`, which represents the indices of a zero-based array, and
-swaps each value with its index position. In other words, for an ouput tensor
+swaps each value with its index position. In other words, for an output tensor
 `y` and an input tensor `x`, this operation computes the following:
 
 `y[x[i]] = i for i in [0, 1, ..., len(x) - 1]`
@@ -518,6 +624,40 @@ idx: 1-D.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("UniqueWithCounts")
+    .Input("x: T")
+    .Output("y: T")
+    .Output("idx: int32")
+    .Output("count: int32")
+    .Attr("T: type")
+    .Doc(R"doc(
+Finds unique elements in a 1-D tensor.
+
+This operation returns a tensor `y` containing all of the unique elements of `x`
+sorted in the same order that they occur in `x`. This operation also returns a
+tensor `idx` the same size as `x` that contains the index of each value of `x`
+in the unique output `y`. Finally, it returns a third tensor `count` that
+contains the count of each element of `y` in `x`. In other words:
+
+`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
+
+For example:
+
+```prettyprint
+# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
+y, idx, count = unique_with_counts(x)
+y ==> [1, 2, 4, 7, 8]
+idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+count ==> [2, 1, 3, 1, 2]
+```
+
+x: 1-D.
+y: 1-D.
+idx: 1-D.
+count: 1-D.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("Shape")
     .Input("input: T")
     .Output("output: int32")
@@ -534,6 +674,17 @@ For example:
 shape(t) ==> [2, 2, 3]
 ```
 
+)doc");
+
+REGISTER_OP("ShapeN")
+    .Input("input: N * T")
+    .Output("output: N * int32")
+    .Attr("N: int32")
+    .Attr("T: type")
+    .Doc(R"doc(
+Returns shape of tensors.
+
+This operation returns N 1-D integer tensors representing shape of `input[i]s`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -581,6 +732,7 @@ output[3, 2:, :, ...] = input[3, 2:, :, ...]
 ```
 
 In contrast, if:
+
 ```prettyprint
 # Given this:
 batch_dim = 2
@@ -602,7 +754,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 ```
 
 input: The input to reverse.
-seq_lengths: 1-D with length `input.dims(0)` and
+seq_lengths: 1-D with length `input.dims(batch_dim)` and
   `max(seq_lengths) < input.dims(seq_dim)`
 seq_dim: The dimension which is partially reversed.
 batch_dim: The dimension along which reversal is performed.
@@ -765,7 +917,6 @@ This is typically used by gradient computations for a broadcasting operation.
 )doc");
 
 // --------------------------------------------------------------------------
-
 REGISTER_OP("Pad")
     .Input("input: T")
     .Input("paddings: int32")
@@ -800,10 +951,93 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("MirrorPad")
+    .Input("input: T")
+    .Input("paddings: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr(GetMirrorPadModeAttrString())
+    .Doc(R"doc(
+Pads a tensor with mirrored values.
+
+This operation pads a `input` with mirrored values according to the `paddings`
+you specify. `paddings` is an integer tensor with shape `[n, 2]`, where n is
+the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
+how many values to add before the contents of `input` in that dimension, and
+`paddings[D, 1]` indicates how many values to add after the contents of `input`
+in that dimension. Both `paddings[D, 0]` and `paddings[D, 1]` must be no greater
+than `input.dim_size(D)` (or `input.dim_size(D) - 1`) if `copy_border` is true
+(if false, respectively).
+
+The padded size of each dimension D of the output is:
+
+`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+
+For example:
+
+```prettyprint
+# 't' is [[1, 2, 3], [4, 5, 6]].
+# 'paddings' is [[1, 1]], [2, 2]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
+                      [2, 1, 1, 2, 3, 3, 2]
+                      [5, 4, 4, 5, 6, 6, 5]
+                      [5, 4, 4, 5, 6, 6, 5]]
+```
+
+input: The input tensor to be padded.
+paddings: A two-column matrix specifying the padding sizes. The number of
+  rows must be the same as the rank of `input`.
+mode: Either `REFLECT` or `SYMMETRIC`. In reflect mode the padded regions
+  do not include the borders, while in symmetric mode the padded regions
+  do include the borders. For example, if `input` is `[1, 2, 3]` and `paddings`
+  is `[0, 2]`, then the output is `[1, 2, 3, 2, 1]` in reflect mode, and
+  it is `[1, 2, 3, 3, 2]` in symmetric mode.
+output: The padded tensor.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("MirrorPadGrad")
+    .Input("input: T")
+    .Input("paddings: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr(GetMirrorPadModeAttrString())
+    .Doc(R"doc(
+Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor.
+
+This operation folds the padded areas of `input` by `MirrorPad` according to the
+`paddings` you specify. `paddings` must be the same as `paddings` argument
+given to the corresponding `MirrorPad` op.
+
+The folded size of each dimension D of the output is:
+
+`input.dim_size(D) - paddings(D, 0) - paddings(D, 1)`
+
+For example:
+
+```prettyprint
+# 't' is [[1, 2, 3], [4, 5, 6], [7, 8, 9]].
+# 'paddings' is [[0, 1]], [0, 1]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[ 1,  5]
+                      [11, 28]]
+```
+
+input: The input tensor to be folded.
+paddings: A two-column matrix specifying the padding sizes. The number of
+  rows must be the same as the rank of `input`.
+mode: The mode used in the `MirrorPad` op.
+output: The folded tensor.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("Placeholder")
     .Output("output: dtype")
     .Attr("dtype: type")
-    .Attr("shape: shape")
+    .Attr("shape: shape = {}")
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
 
@@ -815,6 +1049,21 @@ output: A placeholder tensor that must be replaced using the feed mechanism.
 dtype: The type of elements in the tensor.
 shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
   shape is unconstrained.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("PlaceholderWithDefault")
+    .Input("input: dtype")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .Doc(R"doc(
+A placeholder op that passes though `input` when its output is not fed.
+
+input: The default value to produce when `output` is not fed.
+output: A placeholder tensor that defaults to `input` if it is not fed.
+dtype: The type of elements in the tensor.
+shape: The (possibly partial) shape of the tensor.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -934,6 +1183,308 @@ x: 1-D. Values to keep.
 y: 1-D. Values to remove.
 out: 1-D. Values present in `x` but not in `y`.
 idx: 1-D. Positions of `x` values preserved in `out`.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("SpaceToDepth")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("block_size: int32 >= 1")
+    .Doc(R"doc(
+SpaceToDepth for tensors of type T.
+
+Rearranges blocks of spatial data, into depth. More specifically,
+this op outputs a copy of the input tensor where values from the `height`
+and `width` dimensions are moved to the `depth` dimension.
+The attr `block_size` indicates the input block size and how the data is moved.
+
+  * Non-overlapping blocks of size `block_size x block size` are rearranged
+    into depth at each location.
+  * The depth of the output tensor is `input_depth * block_size * block_size`.
+  * The input tensor's height and width must be divisible by block_size.
+
+That is, assuming the input is in the shape:
+`[batch, height, width, depth]`,
+the shape of the output will be:
+`[batch, height/block_size, width/block_size, depth*block_size*block_size]`
+
+This operation requires that the input tensor be of rank 4, and that
+`block_size` be >=1 and a divisor of both the input `height` and `width`.
+
+This operation is useful for resizing the activations between convolutions
+(but keeping all data), e.g. instead of pooling. It is also useful for training
+purely convolutional models.
+
+For example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:
+
+```prettyprint
+x = [[[[1], [2]],
+      [[3], [4]]]]
+```
+
+This operation will output a tensor of shape `[1, 1, 1, 4]`:
+
+```prettyprint
+[[[[1, 2, 3, 4]]]]
+```
+
+Here, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,
+the corresponding output will have a single element (i.e. width and height are
+both 1) and will have a depth of 4 channels (1 * block_size * block_size).
+The output element shape is `[1, 1, 4]`.
+
+For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
+
+```prettyprint
+x = [[[[1, 2, 3], [4, 5, 6]],
+      [[7, 8, 9], [10, 11, 12]]]]
+```
+
+This operation, for block_size of 2, will return the following tensor of shape
+`[1, 1, 1, 12]`
+
+```prettyprint
+[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+```
+
+Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
+
+```prettyprint
+x = [[ [1],   [2],  [5],  [6]],
+     [ [3],   [4],  [7],  [8]],
+     [ [9],  [10], [13],  [14]],
+     [ [11], [12], [15],  [16]]]
+```
+
+the operator will return the following tensor of shape `[1 2 2 4]`:
+
+```prettyprint
+x = [[[[1, 2, 3, 4],
+       [5, 6, 7, 8]],
+      [[9, 10, 11, 12],
+       [13, 14, 15, 16]]]]
+```
+
+block_size: The size of the spatial block.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DepthToSpace")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("block_size: int32 >= 1")
+    .Doc(R"doc(
+DepthToSpace for tensors of type T.
+
+Rearranges data from depth into blocks of spatial data.
+This is the reverse transformation of SpaceToDepth. More specifically,
+this op outputs a copy of the input tensor where values from the `depth`
+dimension are moved in spatial blocks to the `height` and `width` dimensions.
+The attr `block_size` indicates the input block size and how the data is moved.
+
+  * Chunks of data of size `block_size * block_size` from depth are rearranged
+    into non-overlapping blocks of size `block_size x block_size`
+  * The width the output tensor is `input_depth * block_size`, whereas the
+    height is `input_height * block_size`.
+  * The depth of the input tensor must be divisible by
+    `block_size * block_size`.
+
+That is, assuming the input is in the shape:
+`[batch, height, width, depth]`,
+the shape of the output will be:
+`[batch, height*block_size, width*block_size, depth/(block_size*block_size)]`
+
+This operation requires that the input tensor be of rank 4, and that
+`block_size` be >=1 and that `block_size * block_size` be a divisor of the
+input depth.
+
+This operation is useful for resizing the activations between convolutions
+(but keeping all data), e.g. instead of pooling. It is also useful for training
+purely convolutional models.
+
+For example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:
+
+```prettyprint
+x = [[[[1, 2, 3, 4]]]]
+
+```
+
+This operation will output a tensor of shape `[1, 2, 2, 1]`:
+
+```prettyprint
+   [[[[1], [2]],
+     [[3], [4]]]]
+```
+
+Here, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,
+the corresponding output will have 2x2 elements and will have a depth of
+1 channel (1 = `4 / (block_size * block_size)`).
+The output element shape is `[2, 2, 1]`.
+
+For an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.
+
+```prettyprint
+x = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+```
+
+This operation, for block size of 2, will return the following tensor of shape
+`[1, 2, 2, 3]`
+
+```prettyprint
+   [[[[1, 2, 3], [4, 5, 6]],
+     [[7, 8, 9], [10, 11, 12]]]]
+
+```
+
+Similarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:
+
+```prettyprint
+x =  [[[[1, 2, 3, 4],
+       [5, 6, 7, 8]],
+      [[9, 10, 11, 12],
+       [13, 14, 15, 16]]]]
+```
+
+the operator will return the following tensor of shape `[1 4 4 1]`:
+
+```prettyprint
+x = [[ [1],   [2],  [5],  [6]],
+     [ [3],   [4],  [7],  [8]],
+     [ [9],  [10], [13],  [14]],
+     [ [11], [12], [15],  [16]]]
+
+```
+
+block_size: The size of the spatial block, same as in Space2Depth.
+)doc");
+
+REGISTER_OP("Bitcast")
+    .Input("input: T")
+    .Output("output: type")
+    .Attr("T: numbertype")
+    .Attr("type: numbertype")
+    .Doc(R"doc(
+Bitcasts a tensor from one type to another without copying data.
+
+Given a tensor `input`, this operation returns a tensor that has the same buffer
+data as `input` with datatype `type`.
+
+If the input datatype `T` is larger than the output datatype `type` then the
+shape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].
+
+If `T` is smaller than `type`, the operator requires that the rightmost
+dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
+[..., sizeof(`type`)/sizeof(`T`)] to [...].
+)doc");
+
+REGISTER_OP("OneHot")
+    .Input("indices: int64")
+    .Input("depth: int32")
+    .Input("on_value: T")
+    .Input("off_value: T")
+    .Attr("axis: int = -1")
+    .Output("output: T")
+    .Attr("T: type")
+    .Doc(R"doc(
+Returns a one-hot tensor.
+
+The locations represented by indices in `indices` take value `on_value`,
+while all other locations take value `off_value`.
+
+If the input `indices` is rank `N`, the output will have rank `N+1`,
+The new axis is created at dimension `axis` (default: the new axis is
+appended at the end).
+
+If `indices` is a scalar the output shape will be a vector of length `depth`.
+
+If `indices` is a vector of length `features`, the output shape will be:
+```
+  features x depth if axis == -1
+  depth x features if axis == 0
+```
+
+If `indices` is a matrix (batch) with shape `[batch, features]`,
+the output shape will be:
+```
+  batch x features x depth if axis == -1
+  batch x depth x features if axis == 1
+  depth x batch x features if axis == 0
+```
+
+
+Examples
+=========
+
+Suppose that
+
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 5.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[4 x 3]`:
+
+    ```output =
+      [5.0 0.0 0.0]  // one_hot(0)
+      [0.0 0.0 5.0]  // one_hot(2)
+      [0.0 0.0 0.0]  // one_hot(-1)
+      [0.0 5.0 0.0]  // one_hot(1)
+    ```
+
+Suppose that
+
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 0.0
+  off_value = 3.0
+  axis = 0
+```
+
+Then output is `[3 x 4]`:
+
+    ```output =
+      [0.0 3.0 3.0 3.0]
+      [3.0 3.0 3.0 0.0]
+      [3.0 3.0 3.0 3.0]
+      [3.0 0.0 3.0 3.0]
+    //  ^                one_hot(0)
+    //      ^            one_hot(2)
+    //          ^        one_hot(-1)
+    //              ^    one_hot(1)
+    ```
+Suppose that
+
+```
+  indices = [[0, 2], [1, -1]]
+  depth = 3
+  on_value = 1.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[2 x 2 x 3]`:
+
+    ```output =
+      [
+        [1.0, 0.0, 0.0]  // one_hot(0)
+        [0.0, 0.0, 1.0]  // one_hot(2)
+      ][
+        [0.0, 1.0, 0.0]  // one_hot(1)
+        [0.0, 0.0, 0.0]  // one_hot(-1)
+      ]```
+
+indices: A tensor of indices.
+depth: A scalar defining the depth of the one hot dimension.
+on_value: A scalar defining the value to fill in output when `indices[j] = i`.
+off_value: A scalar defining the value to fill in output when `indices[j] != i`.
+axis: The axis to fill (default: -1, a new inner-most axis).
+output: The one-hot tensor.
 )doc");
 
 }  // namespace tensorflow

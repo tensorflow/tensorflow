@@ -18,12 +18,15 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include <vector>
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -81,7 +84,7 @@ class FunctionDefHelper {
     return FunctionRef(name, {});
   }
 
-  // Node is used to consturct FunctionDef.Node using initialization
+  // Node is used to construct FunctionDef.Node using initialization
   // lists. E.g.,
   //  Node n = {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}};  // z = x * y
   struct Node {
@@ -125,7 +128,7 @@ class FunctionDefHelper {
     n.attr.push_back({"dtype", dtype});
     int64 num = vals.size();
     Tensor t(dtype, TensorShape({num}));
-    for (int i = 0; i < vals.size(); ++i) {
+    for (size_t i = 0; i < vals.size(); ++i) {
       t.flat<T>()(i) = vals[i];
     }
     n.attr.push_back({"value", t});
@@ -158,10 +161,10 @@ inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(StringPiece val) {
 // "attr_values", which is a map from a placeholder name to an attr
 // value.
 //
-// InstatiateFunction calls "get_function" to find signatures of other
+// InstantiateFunction calls "get_function" to find signatures of other
 // functions and primitive ops.
 
-// Placeholders in "fdef" is substitued based on "attr_values" here.
+// Placeholders in "fdef" is substituted based on "attr_values" here.
 typedef ::tensorflow::protobuf::Map<string, AttrValue> InstantiateAttrValueMap;
 typedef gtl::ArraySlice<std::pair<string, FunctionDefHelper::AttrValueWrapper>>
     InstantiateAttrValueSlice;
@@ -255,6 +258,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // returns its definition proto.
   const FunctionDef* Find(const string& func) const;
 
+  // If the gradient function for 'func' is specified explicitly in
+  // the library, returns the gradient function name.  Otherwise,
+  // returns an empty string.
+  string FindGradient(const string& func) const;
+
   // OpRegistryInterface method. Useful for constructing a Graph.
   //
   // If "op" is defined in the library, returns its signature.
@@ -264,12 +272,16 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
  private:
   std::unordered_map<string, FunctionDef> function_defs_;
+  std::unordered_map<string, string> func_grad_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryDefinition);
 };
 
 // Forward declare. Defined in common_runtime/function.h
 struct FunctionBody;
+
+// Forward declare. Defined in common_runtime/device.h
+class Device;
 
 class FunctionLibraryRuntime {
  public:
@@ -303,6 +315,8 @@ class FunctionLibraryRuntime {
   // Does not take ownership of "rets".
   struct Options {
     CancellationManager* cancellation_manager = nullptr;
+    // The id of the step that is calling this function.
+    int64 step_id = 0;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
@@ -315,8 +329,11 @@ class FunctionLibraryRuntime {
   // returned "*kernel". Otherwise, returns an error.
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
-  // Return true iff 'function_name' is the name of a defined function.
-  virtual bool IsDefined(const string& function_name) = 0;
+  // Return true iff 'function' is stateful.
+  virtual bool IsStateful(const string& function_name) = 0;
+
+  // Return the device on which the function executes.
+  virtual Device* device() = 0;
 };
 
 // To register a gradient function for a builtin op, one should use
@@ -327,7 +344,7 @@ class FunctionLibraryRuntime {
 //   std::function<Status(const AttrSlice&, FunctionDef*)>.
 //
 // A ::tensorflow::gradient::Creator should populate in FunctionDef* with a
-// definition of a brain function which computate the gradient for the
+// definition of a brain function which compute the gradient for the
 // <op_name> when the <op_name> is instantiated with the given attrs.
 //
 // E.g.,
@@ -373,8 +390,9 @@ class FunctionLibraryRuntime {
 #define REGISTER_OP_GRADIENT_UNIQ_HELPER(ctr, name, fn) \
   REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)
 
-#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn) \
-  static bool unused_grad_##ctr = ::tensorflow::gradient::RegisterOp(name, fn)
+#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)                 \
+  static bool unused_grad_##ctr = SHOULD_REGISTER_OP_GRADIENT && \
+                                  ::tensorflow::gradient::RegisterOp(name, fn)
 
 namespace gradient {
 // Register a gradient creator for the "op".

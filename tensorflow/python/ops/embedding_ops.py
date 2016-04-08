@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -27,7 +28,8 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 
 
-def embedding_lookup(params, ids, partition_strategy="mod", name=None):
+def embedding_lookup(params, ids, partition_strategy="mod", name=None,
+                     validate_indices=True):
   """Looks up `ids` in a list of embedding tensors.
 
   This function is used to perform parallel lookups on the list of
@@ -63,6 +65,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None):
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`.
     name: A name for the operation (optional).
+    validate_indices: Whether or not to validate gather indices.
 
   Returns:
     A `Tensor` with the same type as the tensors in `params`.
@@ -78,8 +81,9 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None):
     np = len(params)  # Number of partitions
     params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     if np == 1:
-      with ops.device(params[0].device):
-        return array_ops.gather(params[0], ids, name=name)
+      with ops.colocate_with(params[0]):
+        return array_ops.gather(params[0], ids, name=name,
+                                validate_indices=validate_indices)
     else:
       ids = ops.convert_to_tensor(ids, name="ids")
       flat_ids = array_ops.reshape(ids, [-1])
@@ -101,8 +105,11 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None):
         else:
           dim_0_sizes = []
           for p in xrange(np):
-            with ops.device(params[p].device):
-              dim_0_sizes.append(array_ops.shape(params[p])[0])
+            if params[p].get_shape()[0].value is not None:
+              dim_0_sizes.append(params[p].get_shape()[0].value)
+            else:
+              with ops.colocate_with(params[p]):
+                dim_0_sizes.append(array_ops.shape(params[p])[0])
           num_total_ids = math_ops.reduce_sum(
               math_ops.cast(array_ops.pack(dim_0_sizes), flat_ids.dtype))
         ids_per_partition = num_total_ids // np
@@ -135,24 +142,30 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None):
       # Do np separate lookups, finding embeddings for plist[p] in params[p]
       partitioned_result = []
       for p in xrange(np):
-        with ops.device(params[p].device):
-          partitioned_result.append(array_ops.gather(params[p], gather_ids[p]))
+        with ops.colocate_with(params[p]):
+          partitioned_result.append(array_ops.gather(
+              params[p], gather_ids[p],
+              validate_indices=validate_indices))
       # Stitch these back together
       ret = data_flow_ops.dynamic_stitch(pindices, partitioned_result,
                                          name=name)
       # Reshape to reverse the flattening of ids.
-      # It's important that we compute params[0].shape on the right device
-      # to avoid data motion.
-      with ops.device(params[0].device):
-        params_shape = array_ops.shape(params[0])
-      ret = array_ops.reshape(ret, array_ops.concat(0, [
-          array_ops.shape(ids), array_ops.slice(params_shape, [1], [-1])]))
-      # output shape = ids.shape + params[*].shape[1:]
-      # Normally the reshape is sufficient, but setting shape explicitly
-      # teaches shape inference that params[1:].get_shape() matters.
       element_shape = params[0].get_shape()[1:]
       for p in params[1:]:
         element_shape = element_shape.merge_with(p.get_shape()[1:])
+      if element_shape.is_fully_defined():
+        ret = array_ops.reshape(ret, array_ops.concat(0, [
+            array_ops.shape(ids), element_shape]))
+      else:
+        # It's important that we compute params[0].shape on the right device
+        # to avoid data motion.
+        with ops.colocate_with(params[0]):
+          params_shape = array_ops.shape(params[0])
+        ret = array_ops.reshape(ret, array_ops.concat(0, [
+            array_ops.shape(ids), array_ops.slice(params_shape, [1], [-1])]))
+      # output shape = ids.shape + params[*].shape[1:]
+      # Normally the reshape is sufficient, but setting shape explicitly
+      # teaches shape inference that params[1:].get_shape() matters.
       ret.set_shape(ids.get_shape().concatenate(element_shape))
       return ret
 
@@ -184,10 +197,12 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: Optional name for the op.
-    combiner: A string specifying the reduction op. Currently "mean" and "sum"
-      are supported.
+    combiner: A string specifying the reduction op. Currently "mean", "sqrtn"
+      and "sum" are supported.
       "sum" computes the weighted sum of the embedding results for each row.
       "mean" is the weighted sum divided by the total weight.
+      "sqrtn" is the weighted sum divided by the square root of the sum of the
+      squares of the weights.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -217,10 +232,10 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
   Raises:
     TypeError: If sp_ids is not a SparseTensor, or if sp_weights is neither
       None nor SparseTensor.
-    ValueError: If combiner is not one of {"mean", "sum"}.
+    ValueError: If combiner is not one of {"mean", "sqrtn", "sum"}.
   """
-  if combiner not in ("mean", "sum"):
-    raise ValueError("combiner must be one of 'mean' or 'sum'")
+  if combiner not in ("mean", "sqrtn", "sum"):
+    raise ValueError("combiner must be one of 'mean', 'sqrtn' or 'sum'")
   if not isinstance(params, list):
     params = [params]
   if not isinstance(sp_ids, ops.SparseTensor):
@@ -279,6 +294,12 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weight_sum = math_ops.segment_sum(weights, segment_ids)
         embeddings = math_ops.div(embeddings, weight_sum, name=name)
+      elif combiner == "sqrtn":
+        embeddings = math_ops.segment_sum(embeddings, segment_ids)
+        weights_squared = math_ops.pow(weights, 2)
+        weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
+        weight_sum_sqrt = math_ops.sqrt(weight_sum)
+        embeddings = math_ops.div(embeddings, weight_sum_sqrt, name=name)
       else:
         assert False, "Unrecognized combiner"
     else:
@@ -289,6 +310,9 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       elif combiner == "mean":
         embeddings = math_ops.sparse_segment_mean(embeddings, idx, segment_ids,
                                                   name=name)
+      elif combiner == "sqrtn":
+        embeddings = math_ops.sparse_segment_sqrt_n(embeddings, idx,
+                                                    segment_ids, name=name)
       else:
         assert False, "Unrecognized combiner"
 

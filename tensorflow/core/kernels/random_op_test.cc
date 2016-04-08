@@ -15,36 +15,38 @@ limitations under the License.
 
 #include <random>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
-Tensor Int32(int32 v) {
-  Tensor t(DT_INT32, TensorShape({}));
-  t.scalar<int32>()() = v;
-  return t;
+Tensor VecShape(int32 v) {
+  Tensor shape(DT_INT32, TensorShape({1}));
+  shape.vec<int32>()(0) = v;
+  return shape;
 }
 
 Graph* RandomUniform(int64 n) {
   Graph* g = new Graph(OpRegistry::Global());
-  test::graph::RandomUniform(g, test::graph::Constant(g, Int32(n)), DT_FLOAT);
+  test::graph::RandomUniform(g, test::graph::Constant(g, VecShape(n)),
+                             DT_FLOAT);
   return g;
 }
 
 Graph* RandomNormal(int64 n) {
   Graph* g = new Graph(OpRegistry::Global());
-  test::graph::RandomGaussian(g, test::graph::Constant(g, Int32(n)), DT_FLOAT);
+  test::graph::RandomGaussian(g, test::graph::Constant(g, VecShape(n)),
+                              DT_FLOAT);
   return g;
 }
 
-Graph* RandomParameters(int64 n) {
+Graph* TruncatedNormal(int64 n) {
   Graph* g = new Graph(OpRegistry::Global());
-  test::graph::RandomParameters(g, test::graph::Constant(g, Int32(n)),
-                                DT_FLOAT);
+  test::graph::TruncatedNormal(g, test::graph::Constant(g, VecShape(n)),
+                               DT_FLOAT);
   return g;
 }
 
@@ -57,11 +59,11 @@ Graph* RandomParameters(int64 n) {
 
 BM_RNG(cpu, RandomUniform);
 BM_RNG(cpu, RandomNormal);
-BM_RNG(cpu, RandomParameters);
+BM_RNG(cpu, TruncatedNormal);
 
 BM_RNG(gpu, RandomUniform);
 BM_RNG(gpu, RandomNormal);
-BM_RNG(gpu, RandomParameters);
+BM_RNG(gpu, TruncatedNormal);
 
 static void BM_PhiloxRandom(int iters) {
   // Fill 2M random numbers

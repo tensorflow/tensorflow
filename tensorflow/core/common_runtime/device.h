@@ -31,7 +31,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -44,8 +43,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -87,10 +87,35 @@ class Device : public DeviceBase {
     op_kernel->ComputeAsync(context, done);
   }
 
+  // Takes ownership of the references in tensors. If necessary, a
+  // device may override this method to keep a reference to the
+  // accessed tensors until the async computation has completed.
+  virtual void ConsumeListOfAccessedTensors(
+      DeviceContext* context, const TensorReferenceVector& tensors) {
+    for (const auto& ref : tensors) {
+      ref.Unref();
+    }
+  }
+
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
   // at completion.
   virtual Status Sync() = 0;
+
+  // Optionally modify the device's GraphDef before execution.
+  //
+  // This method should be considered experimental and is supplied to enable
+  // prototyping of TensorFlow device implementations that need to modify
+  // the GraphDef before execution.
+  //
+  // 'library' provides access to the function library which is shared
+  // between all device partitions.
+  // 'graphdef' supplies the partition of the graph assigned to this
+  // device.
+  virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
+                                   GraphDef* /*graphdef*/) {
+    return Status::OK();
+  }
 
   // Fill in the context map for the graph. Default behavior is to do
   // nothing.

@@ -83,7 +83,7 @@
            * Render node information associated with this node. Optional. If
            * specified, this is only used when computing the fill of the icon
            * element.
-           * @type {tf.graph.render.RenderNodeInformation}
+           * @type {tf.graph.render.RenderNodeInfo}
            */
           renderInfo: {
             type: Object,
@@ -92,7 +92,7 @@
 
           /**
            * String indicating the type of coloring to use for this node, used
-           * only for deterimining the fill.
+           * only for determining the fill.
            */
           colorBy: {
             type: Object,
@@ -100,7 +100,7 @@
           },
 
           /**
-           * Function used by structural coloring algorithim to determine which
+           * Function used by structural coloring algorithm to determine which
            * color to use based on the template ID of the node. Optional.
            */
           templateIndex: {

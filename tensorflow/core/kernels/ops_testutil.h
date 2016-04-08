@@ -19,26 +19,28 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -49,6 +51,19 @@ namespace test {
 // Return a NodeDef with the specified name/op/inputs.
 NodeDef Node(const string& name, const string& op,
              const std::vector<string>& inputs);
+
+inline void SetOutputAttrs(OpKernelContext::Params* params,
+                           std::vector<AllocatorAttributes>* attrs) {
+  attrs->clear();
+  for (int index = 0; index < params->op_kernel->num_outputs(); index++) {
+    AllocatorAttributes attr;
+    const bool on_host =
+        (params->op_kernel->output_memory_types()[index] == HOST_MEMORY);
+    attr.set_on_host(on_host);
+    attrs->push_back(attr);
+  }
+  params->output_attr_array = gtl::vector_as_array(attrs);
+}
 
 }  // namespace test
 
@@ -67,6 +82,7 @@ class OpsTestBase : public ::testing::Test {
   ~OpsTestBase() override {
     gtl::STLDeleteElements(&tensors_);
     context_.reset(nullptr);
+    params_.reset(nullptr);
   }
 
   void set_node_def(const NodeDef& node_def) { node_def_.CopyFrom(node_def); }
@@ -135,22 +151,21 @@ class OpsTestBase : public ::testing::Test {
   //
   // Returns the context's status after running the operation.
   Status RunOpKernel() {
-    OpKernelContext::Params params;
-    params.device = device_.get();
-    params.frame_iter = FrameAndIter(0, 0);
-    params.inputs = &inputs_;
-    params.op_kernel = kernel_.get();
-    params.output_alloc_attr = [this, &params](int index) {
-      AllocatorAttributes attr;
-      const bool on_host =
-          (kernel_->output_memory_types()[index] == HOST_MEMORY);
-      attr.set_on_host(on_host);
-      return attr;
-    };
-    checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
-    params.slice_reader_cache = &slice_reader_cache_wrapper;
+    // Make sure the old OpKernelContext is deleted before the Params
+    // it was using.
+    context_.reset(nullptr);
 
-    context_.reset(new OpKernelContext(params));
+    params_.reset(new OpKernelContext::Params);
+    params_.get()->device = device_.get();
+    params_.get()->frame_iter = FrameAndIter(0, 0);
+    params_.get()->inputs = &inputs_;
+    params_.get()->op_kernel = kernel_.get();
+    std::vector<AllocatorAttributes> attrs;
+    test::SetOutputAttrs(params_.get(), &attrs);
+    checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
+    params_.get()->slice_reader_cache = &slice_reader_cache_wrapper;
+
+    context_.reset(new OpKernelContext(params_.get()));
     device_->Compute(kernel_.get(), context_.get());
     return context_->status();
   }
@@ -196,6 +211,7 @@ class OpsTestBase : public ::testing::Test {
   // Owns Tensors.
   std::vector<Tensor*> tensors_;
 
+  std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<OpKernelContext> context_;
 
  private:

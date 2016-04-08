@@ -5,18 +5,29 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_copts")
+
 exports_files(["LICENSE"])
 
-cc_library(
-    name = "tensorflow_native_libs",
-    srcs = glob(["jni/**/*.cc"]) + [":libpthread.so"],
-    hdrs = glob(["jni/**/*.h"]),
-    copts = [
-        "-std=c++11",
-        "-mfpu=neon",
-        "-O2",
+cc_binary(
+    name = "libtensorflow_demo.so",
+    srcs = glob([
+        "jni/**/*.cc",
+        "jni/**/*.h",
+    ]) + [":libpthread.so"],
+    copts = tf_copts(),
+    linkopts = [
+        "-landroid",
+        "-ljnigraphics",
+        "-llog",
+        "-lm",
+        "-z defs",
+        "-s",
+        "-Wl,--icf=all",  # Identical Code Folding
+        "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
     ],
-    linkopts = ["-llog -landroid -lm -ljnigraphics"],
+    linkshared = 1,
+    linkstatic = 1,
     tags = [
         "manual",
         "notap",
@@ -37,6 +48,18 @@ cc_binary(
     ],
 )
 
+cc_library(
+    name = "tensorflow_native_libs",
+    srcs = [
+        ":libpthread.so",
+        ":libtensorflow_demo.so",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+)
+
 android_binary(
     name = "tensorflow_demo",
     srcs = glob([
@@ -46,7 +69,6 @@ android_binary(
     assets_dir = "assets",
     custom_package = "org.tensorflow.demo",
     inline_constants = 1,
-    legacy_native_support = 0,
     manifest = "AndroidManifest.xml",
     resource_files = glob(["res/**"]),
     tags = [
@@ -71,3 +93,23 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+filegroup(
+    name = "java_files",
+    srcs = glob(["src/**/*.java"]),
+)
+
+filegroup(
+    name = "jni_files",
+    srcs = glob([
+        "jni/**/*.cc",
+        "jni/**/*.h",
+    ]),
+)
+
+filegroup(
+    name = "resource_files",
+    srcs = glob(["res/**"]),
+)
+
+exports_files(["AndroidManifest.xml"])

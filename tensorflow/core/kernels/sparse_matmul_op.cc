@@ -17,9 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/common_runtime/device.h"
+#include <vector>
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -27,7 +28,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -65,7 +67,7 @@ static const int N = 128;
 // Note that all the data/indices of all the blocks are stored in the same
 // vectors respectively. To identify block boundaries, we store the block
 // offsets using index3_offset/index_offset. If there are n blocks in the slice,
-// index3_offset and index_offset have n entires. The indices for the ith block
+// index3_offset and index_offset have n entries. The indices for the ith block
 // are the values in the following range:
 // [index3[index3_offset[i-1]], index3[index3_offset[i]]). Similarly for
 // index_offset.
@@ -144,6 +146,10 @@ void SparseSlice::Initialize(const ConstMatrixMap& mat, int col_offset) {
     int num_block_cols = std::min(block_size, num_cols - block_size * i);
     for (int row = 0; row < num_rows; ++row) {
       idx3.m = static_cast<uint8>(row);
+      // Safety note: The following code has a race, since it checks whether
+      // *curr is nonzero and then reads it again on use.  However, the result
+      // of the race is only that some of the "nonzeros" in the resulting sparse
+      // representation may actually be zero, which is harmless.
       const float* start =
           Transpose ? &mat(col_offset, row) : &mat(row, col_offset);
       const float* curr = start;
@@ -473,7 +479,7 @@ class SparseMatMulOp : public OpKernel {
     if (!a_is_sparse_ && !b_is_sparse_) {
       // Fallback to Eigen contract.
       // Note that we currently don't optimize the case where only right is
-      // sparse. That can generally be handled by tranposing the order of the
+      // sparse. That can generally be handled by transposing the order of the
       // matmul.
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
       dim_pair[0].first = transpose_a_ ? 0 : 1;
@@ -518,7 +524,7 @@ class SparseMatMulOp : public OpKernel {
 
  private:
   // Perform matrix multiplication of "left" and "right", and store the result
-  // in *"ouptut".
+  // in *"output".
   static inline void SparseMatMul(
       const ConstMatrixMap& left, const ConstMatrixMap& right,
       bool transpose_left, const DeviceBase::CpuWorkerThreads* thread_pool,
@@ -538,7 +544,7 @@ class SparseMatMulOp : public OpKernel {
   // Encodes "mat" using a sparse representation and stores that in
   // "mat_slices". "mat" is broken into a grid with sizes "slice_num_rows" and
   // "slice_num_cols", each grid element is converted into a SparseSlice and
-  // stored in mat_slices. "slice_block_size" is used to perform futher column
+  // stored in mat_slices. "slice_block_size" is used to perform further column
   // blocking of each slice.
   static inline BlockingCounter* CreateSparseSlices(
       const ConstMatrixMap& mat, bool transpose, int slice_num_rows,
@@ -774,7 +780,7 @@ inline void SparseMatMulOp::ComputeBlockSizes(const ConstMatrixMap& left,
   *KR = std::min(static_cast<int>(right.dimension(0)), mem / 256);
   *NR = right.dimension(1);
   if (*KR * *NR > mem) {
-    // 4096 may be enough to ammortize the cost of writes.
+    // 4096 may be enough to amortize the cost of writes.
     *KR = std::min<int>(*KR, 4096);
   }
   // Use sizes that are multiples of K and 256.
@@ -801,7 +807,7 @@ inline void SparseMatMulOp::ComputeBlockSizes(const ConstMatrixMap& left,
 
   *JB = std::max(1, static_cast<int>(sqrt(num_threads) / 2.0));
   *IB = 8 * *JB;
-  DCHECK_EQ(N * sizeof(float) % 64, 0);
+  DCHECK_EQ(N * sizeof(float) % 64, size_t{0});
 }
 
 // Here is a an overview of the SparseMatMul code. Note that we assume that the
@@ -852,7 +858,7 @@ inline void SparseMatMulOp::SparseMatMul(
   const int right_dim0 = right.dimension(0);
   const int right_dim1 = right.dimension(1);
   // Allocate buffer for storing slices of right matrix.
-  // Note buffer needs enough space to hold atmost a KR * NR matrix since that
+  // Note buffer needs enough space to hold at most a KR * NR matrix since that
   // is the block size per iteration.
   const int buffer_num_rows =
       std::min(KR, right_dim0) * (std::min(NR, right_dim1) + N - 1) / N;

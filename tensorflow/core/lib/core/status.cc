@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 #include <stdio.h>
 
 namespace tensorflow {
@@ -24,7 +24,6 @@ Status::Status(tensorflow::error::Code code, StringPiece msg) {
   state_->code = code;
   state_->msg = msg.ToString();
 }
-Status::~Status() { delete state_; }
 
 void Status::Update(const Status& new_status) {
   if (ok()) {

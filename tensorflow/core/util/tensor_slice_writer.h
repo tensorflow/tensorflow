@@ -22,15 +22,16 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/saved_tensor_slice.pb.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
@@ -136,7 +137,9 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
     // list the tensor slices we want to save and then another pass to actually
     // set the data. Need to figure out if the interface works well.
     std::pair<string, string> key_value(key, "");
-    sts.AppendToString(&key_value.second);
+    if (!sts.AppendToString(&key_value.second)) {
+      return errors::Internal("Error writing Tensor. Possible size overflow.");
+    }
     data_.insert(key_value);
   }
   ++slices_;

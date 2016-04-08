@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -72,10 +70,20 @@ class DynamicPartitionTest(tf.test.TestCase):
           partitions = np.random.randint(n, size=np.prod(shape)).reshape(shape)
           for extra_shape in (), (6,), (6, 7):
             data = np.random.randn(*(shape + extra_shape))
-            outputs = tf.dynamic_partition(data, partitions, num_partitions=n)
+            partitions_t = tf.constant(partitions, dtype=tf.int32)
+            data_t = tf.constant(data)
+            outputs = tf.dynamic_partition(
+                data_t, partitions_t, num_partitions=n)
             self.assertEqual(n, len(outputs))
-            for i, output in enumerate(sess.run(outputs)):
+            outputs_val = sess.run(outputs)
+            for i, output in enumerate(outputs_val):
               self.assertAllEqual(output, data[partitions == i])
+
+            # Test gradients
+            outputs_grad = [7 * output for output in outputs_val]
+            grads = tf.gradients(outputs, [data_t, partitions_t], outputs_grad)
+            self.assertEqual(grads[1], None)  # Partitions has no gradients
+            self.assertAllEqual(7 * data, sess.run(grads[0]))
 
   def testErrorIndexOutOfRange(self):
     with self.test_session() as sess:

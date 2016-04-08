@@ -23,7 +23,6 @@ from __future__ import print_function
 
 import logging
 import os
-import six
 import sys
 import time
 from logging import DEBUG
@@ -31,6 +30,9 @@ from logging import ERROR
 from logging import FATAL
 from logging import INFO
 from logging import WARN
+
+import six
+
 
 # Controls which methods from pyglib.logging are available within the project
 # Do not add methods here without also adding to platform/google/_logging.py

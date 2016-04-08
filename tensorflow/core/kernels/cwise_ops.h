@@ -22,71 +22,23 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
-// The following functors (sign, tanh, sigmoid, etc.) are not defined
-// by Eigen.  When their equivalent are added into the Eigen, we can
-// replace them using type aliases.
-
 namespace Eigen {
 namespace internal {
 
-// TODO(zhifengc): Eigen::internal::pow_impl does not have proper
-// EIGEN host/device decoration. We duplicate code here for now.
-template <typename T, bool IsInteger>
-struct pow {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
-                                                     const T& y) const {
-    return std::pow(x, y);
-  }
-};
-
-template <typename T>
-struct pow<T, true> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(T x, T y) const {
-    T res(1);
-    if (y & 1) res *= x;
-    y >>= 1;
-    while (y) {
-      x *= x;
-      if (y & 1) res *= x;
-      y >>= 1;
-    }
-    return res;
-  }
-};
-
-template <typename T>
-struct scalar_pow2_op : pow<T, NumTraits<T>::IsInteger> {};
-
-template <typename T>
-struct functor_traits<scalar_pow2_op<T> > {
-  enum {
-    Cost = 5 * NumTraits<T>::MulCost,
-    PacketAccess = false,
-  };
-};
-
+// TODO(rmlarsen): Get rid of fmod2 once fmod is upstreamed to Eigen.
 template <typename T>
 struct scalar_fmod2_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_fmod2_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
                                                            const T& b) const {
-    return fmod(a, b);
+    return std::fmod(a, b);
   }
 };
 
 template <typename T>
-struct scalar_mod2_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_mod2_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
-                                                           const T& b) const {
-    return a % b;
-  }
-};
-
-template <typename T>
-struct functor_traits<scalar_mod2_op<T> > {
+struct functor_traits<scalar_fmod2_op<T>> {
   enum {
-    Cost = 5,  // Roughly the cost of a div
+    Cost = 13,  // Reciprocal throughput of FPREM on Haswell.
     PacketAccess = false,
   };
 };
@@ -235,6 +187,30 @@ struct less_equal : std::binary_function<T, T, bool> {
   }
 };
 
+// Functor that enables composition of multiple Eigen functors.
+template <typename Scalar, typename UnaryFunctor, typename BinaryFunctor>
+struct scalar_compose_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return UnaryFunctor()(BinaryFunctor()(a, b));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& a, const Packet& b) const {
+    return UnaryFunctor().packetOp(BinaryFunctor().packetOp(a, b));
+  }
+};
+
+template <typename Scalar, typename UnaryFunctor, typename BinaryFunctor>
+struct functor_traits<scalar_compose_op<Scalar, UnaryFunctor, BinaryFunctor>> {
+  enum {
+    Cost = functor_traits<UnaryFunctor>::Cost +
+           functor_traits<BinaryFunctor>::Cost,
+    PacketAccess = functor_traits<UnaryFunctor>::PacketAccess &&
+                   functor_traits<BinaryFunctor>::PacketAccess
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -302,7 +278,7 @@ struct use_bcast_optimization<double> {
 // sqrt(x) = x^(1/2)
 // rsqrt(x) = x^(-1/2)
 // exp(x) = e^x
-// log(x) = natural logrithm of x
+// log(x) = natural logarithm of x
 // tanh = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
 // sigmoid = 1 / (1 + exp(-x))  // a.k.a, logistic
 //
@@ -340,6 +316,18 @@ struct sign : base<T, Eigen::internal::scalar_sign_op<T> > {};
 
 template <typename T>
 struct tanh : base<T, Eigen::internal::scalar_tanh_op<T> > {};
+
+template <typename T>
+struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T> > {};
+
+template <typename T>
+struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
+
+template <typename T>
+struct erf : base<T, Eigen::internal::scalar_erf_op<T> > {};
+
+template <typename T>
+struct erfc : base<T, Eigen::internal::scalar_erfc_op<T> > {};
 
 template <typename T>
 struct sigmoid : base<T, Eigen::internal::scalar_sigmoid_op<T> > {};
@@ -484,6 +472,7 @@ struct ceil : base<T, ceil_func<T> > {};
 // pow(x, y) = x ^ y
 // maximum(x, y) = x > y ? x : y
 // minimum(x, y) = x < y ? x : y
+// squared_difference(x, y) = (x - y) * (x - y)
 
 template <typename T>
 struct add : base<T, Eigen::internal::scalar_sum_op<T> > {
@@ -505,16 +494,28 @@ template <typename T>
 struct fmod : base<T, Eigen::internal::scalar_fmod2_op<T> > {};
 
 template <typename T>
-struct mod : base<T, Eigen::internal::scalar_mod2_op<T> > {};
+struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_pow2_op<T> > {};
+struct pow : base<T, Eigen::internal::scalar_binary_pow_op<T, T> > {};
 
 template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T> > {};
 
 template <typename T>
 struct minimum : base<T, Eigen::internal::scalar_min_op<T> > {};
+
+template <typename T>
+struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
+
+template <typename T>
+struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};
+
+template <typename T>
+struct squared_difference
+    : base<T, Eigen::internal::scalar_compose_op<
+                  T, Eigen::internal::scalar_square_op<T>,
+                  Eigen::internal::scalar_difference_op<T>>> {};
 
 template <typename T>
 struct less : base<T, Eigen::internal::less<T>, bool> {};
@@ -591,7 +592,7 @@ struct BinaryFunctor {
              typename Functor::tscalar_type scalar);
 
   // Computes on device "d":
-  //   out = Functor(in0.broadcast(bcast0), in1.broadcast(bcast01))
+  //   out = Functor(in0.broadcast(bcast0), in1.broadcast(bcast1))
   //
   // TODO(zhifengc): makes BCast a template member function on NDIMS
   // instead making BinaryFunctor templates on NDIMS.
@@ -605,7 +606,7 @@ struct BinaryFunctor {
 
 template <int NDIMS>
 bool AllOne(const typename Eigen::array<Eigen::DenseIndex, NDIMS>& a) {
-  for (int i = 0; i < a.size(); ++i) {
+  for (size_t i = 0; i < a.size(); ++i) {
     if (a[i] != 1) return false;
   }
   return true;
@@ -617,6 +618,15 @@ struct SelectFunctor {
                   typename TTypes<bool>::ConstFlat cond_flat,
                   typename TTypes<T>::ConstFlat then_flat,
                   typename TTypes<T>::ConstFlat else_flat);
+};
+
+template <typename Device, typename T>
+struct BatchSelectFunctor {
+  void operator()(const Device& d,
+                  typename TTypes<T>::Matrix output_flat_outer_dims,
+                  TTypes<bool>::ConstVec cond_vec,
+                  typename TTypes<T>::ConstMatrix then_flat_outer_dims,
+                  typename TTypes<T>::ConstMatrix else_flat_outer_dims);
 };
 
 }  // end namespace functor

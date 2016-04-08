@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 
@@ -37,7 +37,7 @@ namespace tensorflow {
 //     node_builder.Input(input);
 //     return opts.FinalizeBuilder(&node_builder);
 //   }
-//   }  // namspace ops
+//   }  // namespace ops
 //
 //   // Or, alternatively:
 //   namespace ops {
@@ -45,7 +45,7 @@ namespace tensorflow {
 //     static const string kOpName = "Identity";
 //     return UnaryOp(kOpName, input, opts);
 //   }
-//   }  // namspace ops
+//   }  // namespace ops
 //
 // You call it like:
 //   GraphDefBuilder b;

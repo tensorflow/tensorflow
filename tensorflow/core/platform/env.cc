@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -30,32 +31,31 @@ Thread::~Thread() {}
 EnvWrapper::~EnvWrapper() {}
 
 Status ReadFileToString(Env* env, const string& fname, string* data) {
-  data->clear();
-  RandomAccessFile* file;
-  Status s = env->NewRandomAccessFile(fname, &file);
+  uint64 file_size;
+  Status s = env->GetFileSize(fname, &file_size);
   if (!s.ok()) {
     return s;
   }
-  int64 offset = 0;
-  static const int kBufferSize = 8192;
-  char* space = new char[kBufferSize];
-  while (true) {
-    StringPiece fragment;
-    s = file->Read(offset, kBufferSize, &fragment, space);
-    if (!s.ok()) {
-      if (errors::IsOutOfRange(s)) {  // No more bytes, but not an error
-        s = Status::OK();
-        data->append(fragment.data(), fragment.size());
-      }
-      break;
-    }
-    offset += fragment.size();
-    data->append(fragment.data(), fragment.size());
-    if (fragment.empty()) {
-      break;
-    }
+  RandomAccessFile* file;
+  s = env->NewRandomAccessFile(fname, &file);
+  if (!s.ok()) {
+    return s;
   }
-  delete[] space;
+  gtl::STLStringResizeUninitialized(data, file_size);
+  char* p = gtl::string_as_array(data);
+  StringPiece result;
+  s = file->Read(0, file_size, &result, p);
+  if (!s.ok()) {
+    data->clear();
+  } else if (result.size() != file_size) {
+    s = errors::Aborted("File ", fname, " changed while reading: ", file_size,
+                        " vs. ", result.size());
+    data->clear();
+  } else if (result.data() == p) {
+    // Data is already in the correct location
+  } else {
+    memmove(p, result.data(), result.size());
+  }
   delete file;
   return s;
 }

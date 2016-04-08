@@ -173,6 +173,39 @@ shared_name: If non-empty, this queue will be shared under the given name
   across multiple sessions.
 )doc");
 
+REGISTER_OP("PaddingFIFOQueue")
+    .Output("handle: Ref(string)")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("shapes: list(shape) >= 0 = []")
+    .Attr("capacity: int = -1")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .Doc(R"doc(
+A queue that produces elements in first-in first-out order.
+
+Variable-size shapes are allowed by setting the corresponding shape dimensions
+to 0 in the shape attr.  In this case DequeueMany will pad up to the maximum
+size of any given element in the minibatch.  See below for details.
+
+handle: The handle to the queue.
+component_types: The type of each component in a value.
+shapes: The shape of each component in a value. The length of this attr must
+  be either 0 or the same as the length of component_types.
+  Shapes of fixed rank but variable size are allowed by setting
+  any shape dimension to -1.  In this case, the inputs' shape may vary along
+  the given dimension, and DequeueMany will pad the given dimension with
+  zeros up to the maximum shape of all elements in the given batch.
+  If the length of this attr is 0, different queue elements may have
+  different ranks and shapes, but only one element may be dequeued at a time.
+capacity: The upper bound on the number of elements in this queue.
+  Negative numbers mean no limit.
+container: If non-empty, this queue is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this queue will be shared under the given name
+  across multiple sessions.
+)doc");
+
 REGISTER_OP("QueueEnqueue")
     .Input("handle: Ref(string)")
     .Input("components: Tcomponents")
@@ -320,12 +353,14 @@ REGISTER_OP("StackPush")
     .Input("elem: T")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("swap_memory: bool = false")
     .Doc(R"doc(
 Push an element onto the stack.
 
 handle: The handle to a stack.
 elem: The tensor to be pushed onto the stack.
 output: The same tensor as the input 'elem'.
+swap_memory: Swap `elem` to CPU. Default to false.
 )doc");
 
 REGISTER_OP("StackPop")
@@ -336,8 +371,8 @@ REGISTER_OP("StackPop")
 Pop the element at the top of the stack.
 
 handle: The handle to a stack.
-elem_type: The type of the elem that is popped.
 elem: The tensor that is popped from the top of the stack.
+elem_type: The type of the elem that is popped.
 )doc");
 
 REGISTER_OP("StackClose")
@@ -346,6 +381,222 @@ REGISTER_OP("StackClose")
 Delete the stack from its resource container.
 
 handle: The handle to a stack.
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("TensorArray")
+    .Input("size: int32")
+    .Attr("dtype: type")
+    .Attr("dynamic_size: bool = false")
+    .Attr("tensor_array_name: string = ''")
+    .Output("handle: Ref(string)")
+    .SetIsStateful()
+    .Doc(R"doc(
+An array of Tensors of given size, with data written via Write and read
+via Read or Pack.
+
+handle: The handle to the TensorArray.
+size: The size of the array.
+dtype: The type of the elements on the tensor_array.
+dynamic_size: A boolean that determines whether writes to the TensorArray
+  are allowed to grow the size.  By default, this is not allowed.
+tensor_array_name: Overrides the name used for the temporary tensor_array
+  resource. Default value is the name of the 'TensorArray' op (which
+  is guaranteed unique).
+)doc");
+
+REGISTER_OP("TensorArrayGrad")
+    .Input("handle: Ref(string)")
+    .Input("flow_in: float")
+    .Output("grad_handle: Ref(string)")
+    .Attr("source: string")
+    .SetIsStateful()
+    .Doc(R"doc(
+Creates a TensorArray for storing the gradients of values in the given handle.
+
+If the given TensorArray gradient already exists, returns a reference to it.
+
+Locks the size of the original TensorArray by disabling its dynamic size flag.
+
+**A note about the input flow_in:**
+
+The handle flow_in forces the execution of the gradient lookup to occur
+only after certain other operations have occurred.  For example, when
+the forward TensorArray is dynamically sized, writes to this TensorArray
+may resize the object.  The gradient TensorArray is statically sized based
+on the size of the forward TensorArray when this operation executes.
+Furthermore, the size of the forward TensorArray is frozen by this call.
+As a result, the flow is used to ensure that the call to generate the gradient
+TensorArray only happens after all writes are executed.
+
+In terms of e.g. python TensorArray sugar wrappers when using dynamically sized
+TensorArrays:  Gradients should only be called on read operations that have
+themselves been chained via flow to occur only after all writes have executed.
+That way the final size of the forward TensorArray is known when this operation
+is called.
+
+**A note about the source attribute:**
+
+TensorArray gradient calls use an accumulator TensorArray object.  If
+multiple gradients are calculated and run in the same session, the multiple
+gradient nodes may accidentally flow throuth the same accumulator TensorArray.
+This double counts and generally breaks the TensorArray gradient flow.
+
+The solution is to identify which gradient call this particular
+TensorArray gradient is being called in.  This is performed by identifying
+a unique string (e.g. "gradients", "gradients_1", ...) from the input
+gradient Tensor's name.  This string is used as a suffix when creating
+the TensorArray gradient object here (the attribute `source`).
+
+The attribute `source` is added as a suffix to the forward TensorArray's
+name when performing the creation / lookup, so that each separate gradient
+calculation gets its own TensorArray accumulator.
+
+handle: The handle to the forward TensorArray.
+flow_in: A float scalar that enforces proper chaining of operations.
+source: The gradient source string, used to decide which gradient TensorArray
+  to return.
+)doc");
+
+REGISTER_OP("TensorArrayWrite")
+    .Input("handle: Ref(string)")
+    .Input("index: int32")
+    .Input("value: T")
+    .Input("flow_in: float")
+    .Output("flow_out: float")
+    .Attr("T: type")
+    .Doc(R"doc(
+Push an element onto the tensor_array.
+
+handle: The handle to a TensorArray.
+index: The position to write to inside the TensorArray.
+value: The tensor to write to the TensorArray.
+flow_in: A float scalar that enforces proper chaining of operations.
+flow_out: A float scalar that enforces proper chaining of operations.
+)doc");
+
+REGISTER_OP("TensorArrayRead")
+    .Input("handle: Ref(string)")
+    .Input("index: int32")
+    .Input("flow_in: float")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .Doc(R"doc(
+Read an element from the TensorArray.
+
+handle: The handle to a TensorArray.
+dtype: The type of the elem that is returned.
+flow_in: A float scalar that enforces proper chaining of operations.
+value: The tensor that is read from the TensorArray.
+)doc");
+
+REGISTER_OP("TensorArrayPack")
+    .Input("handle: Ref(string)")
+    .Input("flow_in: float")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .Doc(R"doc(
+Pack the elements from the TensorArray.
+
+All elements must have the same shape.
+
+handle: The handle to a TensorArray.
+dtype: The type of the elem that is returned.
+flow_in: A float scalar that enforces proper chaining of operations.
+value: All of the elements in the TensorArray, concatenated along a new
+  axis (the new dimension 0).
+)doc");
+
+REGISTER_OP("TensorArrayUnpack")
+    .Input("handle: Ref(string)")
+    .Input("value: T")
+    .Input("flow_in: float")
+    .Output("flow_out: float")
+    .Attr("T: type")
+    .Doc(R"doc(
+Unpack the data from the input value into TensorArray elements.
+
+handle: The handle to a TensorArray.
+value: The concatenated tensor to write to the TensorArray.
+flow_in: A float scalar that enforces proper chaining of operations.
+flow_out: A float scalar that enforces proper chaining of operations.
+)doc");
+
+REGISTER_OP("TensorArrayConcat")
+    .Input("handle: Ref(string)")
+    .Input("flow_in: float")
+    .Output("value: dtype")
+    .Output("lengths: int64")
+    .Attr("dtype: type")
+    .Doc(R"doc(
+Concat the elements from the TensorArray.
+
+Takes T elements of shapes (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...),
+  ..., (n(T-1) x d0 x d1 x ...)
+and concatenates them into a Tensor of shape:
+  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...).
+
+All elements must have the same shape (excepting the first dimension).
+
+handle: The handle to a TensorArray.
+dtype: The type of the elem that is returned.
+flow_in: A float scalar that enforces proper chaining of operations.
+value: All of the elements in the TensorArray, concatenated along the first
+  axis.
+lengths: A vector of the row sizes of the original T elements in the
+  value output.  In the example above, this would be the values:
+  (n1, n2, ..., n(T-1))
+)doc");
+
+REGISTER_OP("TensorArraySplit")
+    .Input("handle: Ref(string)")
+    .Input("value: T")
+    .Input("lengths: int64")
+    .Input("flow_in: float")
+    .Output("flow_out: float")
+    .Attr("T: type")
+    .Doc(R"doc(
+Split the data from the input value into TensorArray elements.
+
+Assuming that `lengths` takes on values
+  (n0, n1, ..., n(T-1))
+and that `value` has shape
+  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...),
+this splits values into a TensorArray with T tensors.
+
+TensorArray index t will be the subtensor of values with starting position
+  (n0 + n1 + ... + n(t-1), 0, 0, ...)
+and having size
+  nt x d0 x d1 x ...
+
+handle: The handle to a TensorArray.
+value: The concatenated tensor to write to the TensorArray.
+lengths: The vector of lengths, how to split the rows of value into the
+  TensorArray.
+flow_in: A float scalar that enforces proper chaining of operations.
+flow_out: A float scalar that enforces proper chaining of operations.
+)doc");
+
+REGISTER_OP("TensorArraySize")
+    .Input("handle: Ref(string)")
+    .Input("flow_in: float")
+    .Output("size: int32")
+    .Doc(R"doc(
+Get the current size of the TensorArray.
+
+handle: The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
+flow_in: A float scalar that enforces proper chaining of operations.
+size: The current size of the TensorArray.
+)doc");
+
+REGISTER_OP("TensorArrayClose")
+    .Input("handle: Ref(string)")
+    .Doc(R"doc(
+Delete the TensorArray from its resource container.  This enables
+the user to close and release the resource in the middle of a step/run.
+
+handle: The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
 )doc");
 
 // --------------------------------------------------------------------------
@@ -388,6 +639,7 @@ REGISTER_OP("HashTable")
     .Attr("shared_name: string = ''")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
+    .SetIsStateful()
     .Doc(R"doc(
 Creates a non-initialized hash table.
 

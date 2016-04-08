@@ -22,7 +22,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/block_builder.h"
 #include "tensorflow/core/lib/io/format.h"
 #include "tensorflow/core/lib/io/table_options.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/snappy.h"
 
 namespace tensorflow {
 namespace table {

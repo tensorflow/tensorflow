@@ -15,15 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/inputbuffer.h"
 
-#include "tensorflow/core/public/env.h"
+#include <vector>
+#include "tensorflow/core/platform/env.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 
@@ -94,6 +94,32 @@ TEST(InputBuffer, ReadLine_EmptyLines) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";
   WriteStringToFile(env, fname, "line one\n\n\nline two\nline three");
+
+  for (auto buf_size : BufferSizes()) {
+    RandomAccessFile* file;
+    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    string line;
+    io::InputBuffer in(file, buf_size);
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "line one");
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "");
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "");
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "line two");
+    TF_CHECK_OK(in.ReadLine(&line));
+    EXPECT_EQ(line, "line three");
+    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    // A second call should also return end of file
+    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+  }
+}
+
+TEST(InputBuffer, ReadLine_CRLF) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/inputbuffer_test";
+  WriteStringToFile(env, fname, "line one\r\n\r\n\r\nline two\r\nline three");
 
   for (auto buf_size : BufferSizes()) {
     RandomAccessFile* file;

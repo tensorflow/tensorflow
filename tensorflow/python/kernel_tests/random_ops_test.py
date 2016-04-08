@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -99,7 +97,7 @@ class TruncatedNormalTest(tf.test.TestCase):
   # to see the same sequence of values. Will catch buggy
   # implementations which uses the same random number seed.
   def testDistinct(self):
-    # NOTE: RandomParameters on GPU is not supported.
+    # NOTE: TruncatedNormal on GPU is not supported.
     for use_gpu in [False]:
       for dt in tf.float32, tf.float64:
         sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu)
@@ -249,7 +247,7 @@ class RandomUniformTest(tf.test.TestCase):
 
 class RandomShapeTest(tf.test.TestCase):
 
-  def testRandomParameters(self):
+  def testTruncatedNormal(self):
     # Fully known shape.
     rnd1 = tf.truncated_normal([1, 2, 3])
     self.assertEqual([1, 2, 3], rnd1.get_shape())

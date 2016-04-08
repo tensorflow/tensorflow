@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_util.h"
 
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 namespace lookup {
@@ -64,7 +64,7 @@ Status GetInitializableLookupTable(const string& input_name,
   LookupInterface* lookup_table;
   TF_RETURN_IF_ERROR(
       ctx->resource_manager()->Lookup(container, table_handle, &lookup_table));
-  *table = dynamic_cast<InitializableLookupTable*>(lookup_table);
+  *table = lookup_table->GetInitializableLookupTable();
   if (*table == nullptr) {
     lookup_table->Unref();
     return errors::InvalidArgument("Table ", container, " ", table_handle,

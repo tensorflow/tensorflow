@@ -37,7 +37,6 @@ from datetime import datetime
 import math
 import time
 
-import tensorflow.python.platform
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -164,7 +163,7 @@ def time_tensorflow_run(session, target, info_string):
 
   Args:
     session: the TensorFlow session to run the computation under.
-    target: the targe Tensor that is passed to the session's run() function.
+    target: the target Tensor that is passed to the session's run() function.
     info_string: a string summarizing this run, to be printed with the stats.
 
   Returns:

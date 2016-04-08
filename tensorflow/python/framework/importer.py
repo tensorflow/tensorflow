@@ -20,8 +20,7 @@ from __future__ import print_function
 
 import contextlib
 
-import tensorflow.python.platform
-
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import op_def_registry
@@ -147,7 +146,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   """Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
 
   This function provides a way to import a serialized TensorFlow
-  [`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+  [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
   protocol buffer, and extract individual objects in the `GraphDef` as
   [`Tensor`](#Tensor) and [`Operation`](#Operation) objects. See
   [`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a
@@ -215,7 +214,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
   with ops.op_scope(input_map.values(), name, 'import'):
     g = ops.get_default_graph()
-    g.graph_def_version = graph_def.version
+    g.graph_def_versions.CopyFrom(graph_def.versions)
 
     with ops.name_scope('_inputs'):
       input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
@@ -225,16 +224,47 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
     # 1. Add operations without their inputs.
     for node in graph_def.node:
+      # Set any default attr values that aren't present.
+      op_def = op_dict[node.op]
+      for attr_def in op_def.attr:
+        key = attr_def.name
+        if attr_def.HasField('default_value'):
+          value = node.attr[key]
+          if value is None or value.WhichOneof('value') is None:
+            node.attr[key].CopyFrom(attr_def.default_value)
+
       output_types = _OutputTypes(node, op_dict)
-      with _MaybeDevice(node.device):
-        name_to_op[node.name] = g.create_op(
-            node.op, [], output_types, name=node.name, attrs=node.attr,
-            compute_shapes=False)
+      name_to_op[node.name] = g.create_op(
+          node.op, [], output_types, name=node.name, attrs=node.attr,
+          compute_shapes=False, compute_device=False,
+          op_def=op_def)
 
     # 2. Add inputs to the operations.
     for node in graph_def.node:
       op = name_to_op[node.name]
       input_types = _InputTypes(node, op_dict)
+
+      # Rewrite the colocation attributes in the graph, since the
+      # names of new ops may have changed.
+      for key, value in op.node_def.attr.items():
+        if key == '_class':
+          class_values = value.list
+          new_class_values = []
+          for class_value in class_values.s:
+            if class_value.startswith(b'loc:@'):
+              op_to_bind_to = class_value[5:].decode()
+              # Find the op by its original name.
+              if op_to_bind_to not in name_to_op:
+                raise ValueError('Specified colocation to an op that '
+                                 'does not exist during import: %s in %s' % (
+                                     op_to_bind_to, node.name))
+              original_op = name_to_op[op_to_bind_to]
+              new_class_values.append(compat.as_bytes(
+                  'loc:@' + original_op.name))
+            else:
+              new_class_values.append(class_value)
+          value.list.CopyFrom(attr_value_pb2.AttrValue.ListValue(
+              s=new_class_values))
 
       # NOTE(mrry): We cannot use zip here because control inputs do not appear
       # in the list of input_types.
@@ -303,6 +333,12 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       # NOTE(mrry): If the graph contains a cycle, the full shape information
       # may not be available for this op's inputs.
       ops.set_shapes_for_outputs(op)
+
+      # Apply device functions for this op.
+      # NOTE(mrry): We do this after configuring the inputs, because
+      # the result of the device functions may depend on the inputs.
+      with _MaybeDevice(node.device):
+        g._apply_device_functions(op)  # pylint: disable=protected-access
 
     # Treat unused input mappings as an error, because they are likely to be
     # due to a typo.

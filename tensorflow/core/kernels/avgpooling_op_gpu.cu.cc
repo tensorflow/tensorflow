@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -35,12 +36,6 @@ typedef Eigen::GpuDevice GPUDevice;
 DEFINE_GPU_KERNELS(float)
 
 #undef DEFINE_GPU_KERNELS
-
-#define CUDA_1D_KERNEL_LOOP(i, n)                              \
-  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < (n); \
-       i += blockDim.x * gridDim.x)
-
-static const int CAFFE_CUDA_NUM_THREADS = 1024;
 
 template <typename dtype>
 __global__ void AvePoolBackwardNHWC(const int nthreads,
@@ -93,13 +88,12 @@ bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
                             const int pad_l, T* const bottom_diff,
                             const GPUDevice& d) {
   int x_size = num * height * width * channels;
-  int thread_per_block =
-      std::min(CAFFE_CUDA_NUM_THREADS, d.maxCudaThreadsPerMultiProcessor());
-  int block_count = (x_size + thread_per_block - 1) / thread_per_block;
-  AvePoolBackwardNHWC<T><<<block_count, thread_per_block, 0, d.stream()>>>(
-      x_size, top_diff, num, height, width, channels, pooled_height,
-      pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_t,
-      bottom_diff);
+  CudaLaunchConfig config = GetCudaLaunchConfig(x_size, d);
+  AvePoolBackwardNHWC<
+      T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+      config.virtual_thread_count, top_diff, num, height, width, channels,
+      pooled_height, pooled_width, kernel_h, kernel_w, stride_h, stride_w,
+      pad_t, pad_t, bottom_diff);
 
   return d.ok();
 }

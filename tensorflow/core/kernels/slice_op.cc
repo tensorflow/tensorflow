@@ -26,10 +26,11 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 
@@ -68,14 +69,14 @@ static void SharedValidation(OpKernelContext* context,
   const Tensor& size_tensor = context->input(2);
 
   OP_REQUIRES(
-      context, TensorShapeUtils::IsLegacyVector(begin_tensor.shape()) &&
-                   TensorShapeUtils::IsLegacyVector(size_tensor.shape()) &&
+      context, context->op_kernel().IsLegacyVector(begin_tensor.shape()) &&
+                   context->op_kernel().IsLegacyVector(size_tensor.shape()) &&
                    begin_tensor.NumElements() == input.dims() &&
                    size_tensor.NumElements() == input.dims(),
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
-          input.dims(), ", but got ", begin_tensor.NumElements(), " and ",
-          size_tensor.NumElements(), " instead."));
+          input.dims(), ", but got shapes ", begin_tensor.shape().DebugString(),
+          " and ", size_tensor.shape().DebugString(), " instead."));
 
   const int input_dims = input.dims();
   *begin = IntTensorToInt64Vec(begin_tensor);
@@ -174,6 +175,7 @@ class SliceOp : public OpKernel {
       HANDLE_DIM(3);
       HANDLE_DIM(4);
       HANDLE_DIM(5);
+      HANDLE_DIM(6);
 
 #undef HANDLE_DIM
 
@@ -229,7 +231,8 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 2); \
   DECLARE_GPU_SPEC(T, 3); \
   DECLARE_GPU_SPEC(T, 4); \
-  DECLARE_GPU_SPEC(T, 5);
+  DECLARE_GPU_SPEC(T, 5); \
+  DECLARE_GPU_SPEC(T, 6);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
@@ -248,7 +251,19 @@ DECLARE_FOR_N(int32);
                           SliceOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-REGISTER_GPU(int32);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Slice")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("input")
+                            .HostMemory("begin")
+                            .HostMemory("size")
+                            .HostMemory("output"),
+                        SliceOp<CPUDevice, int32>);
 
 #undef REGISTER_GPU
 

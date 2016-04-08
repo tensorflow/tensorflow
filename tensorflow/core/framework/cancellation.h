@@ -21,9 +21,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

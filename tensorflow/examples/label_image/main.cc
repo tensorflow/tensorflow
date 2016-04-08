@@ -37,9 +37,9 @@ limitations under the License.
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/lib/core/command_line_flags.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -47,45 +47,22 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/util/command_line_flags.h"
 
 // These are all common classes it's handy to reference with no namespace.
+using tensorflow::Flag;
 using tensorflow::Tensor;
 using tensorflow::Status;
 using tensorflow::string;
 using tensorflow::int32;
 
-// These are the command-line flags the program can understand.
-// They define where the graph and input data is located, and what kind of
-// input the model expects. If you train your own model, or use something
-// other than GoogLeNet you'll need to update these.
-TF_DEFINE_string(image,
-                 "tensorflow/examples/label_image/data/grace_hopper.jpg",
-                 "The image to classify (JPEG or PNG).");
-TF_DEFINE_string(graph,
-                 "tensorflow/examples/label_image/data/"
-                 "tensorflow_inception_graph.pb",
-                 "The location of the GraphDef file containing the protobuf"
-                 " definition of the network.");
-TF_DEFINE_string(labels,
-                 "tensorflow/examples/label_image/data/"
-                 "imagenet_comp_graph_label_strings.txt",
-                 "A text file containing the labels of all the categories, one"
-                 " per line.");
-TF_DEFINE_int32(input_width, 299, "Width of the image the network expects.");
-TF_DEFINE_int32(input_height, 299, "Height of the image the network expects.");
-TF_DEFINE_int32(input_mean, 128, "How much to subtract from input values.");
-TF_DEFINE_int32(input_std, 128, "What to divide the input values by.");
-TF_DEFINE_string(input_layer, "Mul", "The name of the input node.");
-TF_DEFINE_string(output_layer, "softmax", "The name of the output node.");
-TF_DEFINE_bool(self_test, false, "Whether to run a sanity check on the results.");
-TF_DEFINE_string(root_dir, "", "The directory at the root of the data files.");
-
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
 // of the result is a multiple of 16, because our model expects that.
-Status ReadLabelsFile(string file_name, std::vector<string>* result) {
+Status ReadLabelsFile(string file_name, std::vector<string>* result,
+                      size_t* found_label_count) {
   std::ifstream file(file_name);
   if (!file) {
     return tensorflow::errors::NotFound("Labels file ", file_name,
@@ -96,6 +73,7 @@ Status ReadLabelsFile(string file_name, std::vector<string>* result) {
   while (std::getline(file, line)) {
     result->push_back(line);
   }
+  *found_label_count = result->size();
   const int padding = 16;
   while (result->size() % padding) {
     result->emplace_back();
@@ -171,7 +149,6 @@ Status LoadGraph(string graph_file_name,
     return tensorflow::errors::NotFound("Failed to load compute graph at '",
                                         graph_file_name, "'");
   }
-
   session->reset(tensorflow::NewSession(tensorflow::SessionOptions()));
   Status session_create_status = (*session)->Create(graph_def);
   if (!session_create_status.ok()) {
@@ -186,8 +163,9 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
                     Tensor* indices, Tensor* scores) {
   tensorflow::GraphDefBuilder b;
   string output_name = "top_k";
-  tensorflow::ops::TopK(tensorflow::ops::Const(outputs[0], b.opts()),
-                        how_many_labels, b.opts().WithName(output_name));
+  tensorflow::ops::TopKV2(tensorflow::ops::Const(outputs[0], b.opts()),
+                          tensorflow::ops::Const(how_many_labels, b.opts()),
+                          b.opts().WithName(output_name));
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;
@@ -210,12 +188,14 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
 Status PrintTopLabels(const std::vector<Tensor>& outputs,
                       string labels_file_name) {
   std::vector<string> labels;
-  Status read_labels_status = ReadLabelsFile(labels_file_name, &labels);
+  size_t label_count;
+  Status read_labels_status =
+      ReadLabelsFile(labels_file_name, &labels, &label_count);
   if (!read_labels_status.ok()) {
     LOG(ERROR) << read_labels_status;
     return read_labels_status;
   }
-  const int how_many_labels = 5;
+  const int how_many_labels = std::min(5, static_cast<int>(label_count));
   Tensor indices;
   Tensor scores;
   TF_RETURN_IF_ERROR(GetTopLabels(outputs, how_many_labels, &indices, &scores));
@@ -250,17 +230,52 @@ Status CheckTopLabel(const std::vector<Tensor>& outputs, int expected,
 }
 
 int main(int argc, char* argv[]) {
+  // These are the command-line flags the program can understand.
+  // They define where the graph and input data is located, and what kind of
+  // input the model expects. If you train your own model, or use something
+  // other than GoogLeNet you'll need to update these.
+  string image = "tensorflow/examples/label_image/data/grace_hopper.jpg";
+  string graph =
+      "tensorflow/examples/label_image/data/"
+      "tensorflow_inception_graph.pb";
+  string labels =
+      "tensorflow/examples/label_image/data/"
+      "imagenet_comp_graph_label_strings.txt";
+  int32 input_width = 299;
+  int32 input_height = 299;
+  int32 input_mean = 128;
+  int32 input_std = 128;
+  string input_layer = "Mul";
+  string output_layer = "softmax";
+  bool self_test = false;
+  string root_dir = "";
+  const bool parse_result = tensorflow::ParseFlags(
+      &argc, argv, {Flag("image", &image),                //
+                    Flag("graph", &graph),                //
+                    Flag("labels", &labels),              //
+                    Flag("input_width", &input_width),    //
+                    Flag("input_height", &input_height),  //
+                    Flag("input_mean", &input_mean),      //
+                    Flag("input_std", &input_std),        //
+                    Flag("input_layer", &input_layer),    //
+                    Flag("output_layer", &output_layer),  //
+                    Flag("self_test", &self_test),        //
+                    Flag("root_dir", &root_dir)});
+  if (!parse_result) {
+    LOG(ERROR) << "Error parsing command-line flags.";
+    return -1;
+  }
+
   // We need to call this to set up global state for TensorFlow.
   tensorflow::port::InitMain(argv[0], &argc, &argv);
-  Status s = tensorflow::ParseCommandLineFlags(&argc, argv);
-  if (!s.ok()) {
-    LOG(ERROR) << "Error parsing command line flags: " << s.ToString();
+  if (argc > 1) {
+    LOG(ERROR) << "Unknown argument " << argv[1];
     return -1;
   }
 
   // First we load and initialize the model.
   std::unique_ptr<tensorflow::Session> session;
-  string graph_path = tensorflow::io::JoinPath(FLAGS_root_dir, FLAGS_graph);
+  string graph_path = tensorflow::io::JoinPath(root_dir, graph);
   Status load_graph_status = LoadGraph(graph_path, &session);
   if (!load_graph_status.ok()) {
     LOG(ERROR) << load_graph_status;
@@ -270,10 +285,10 @@ int main(int argc, char* argv[]) {
   // Get the image from disk as a float array of numbers, resized and normalized
   // to the specifications the main graph expects.
   std::vector<Tensor> resized_tensors;
-  string image_path = tensorflow::io::JoinPath(FLAGS_root_dir, FLAGS_image);
-  Status read_tensor_status = ReadTensorFromImageFile(
-      image_path, FLAGS_input_height, FLAGS_input_width, FLAGS_input_mean,
-      FLAGS_input_std, &resized_tensors);
+  string image_path = tensorflow::io::JoinPath(root_dir, image);
+  Status read_tensor_status =
+      ReadTensorFromImageFile(image_path, input_height, input_width, input_mean,
+                              input_std, &resized_tensors);
   if (!read_tensor_status.ok()) {
     LOG(ERROR) << read_tensor_status;
     return -1;
@@ -282,8 +297,8 @@ int main(int argc, char* argv[]) {
 
   // Actually run the image through the model.
   std::vector<Tensor> outputs;
-  Status run_status = session->Run({{FLAGS_input_layer, resized_tensor}},
-                                   {FLAGS_output_layer}, {}, &outputs);
+  Status run_status = session->Run({{input_layer, resized_tensor}},
+                                   {output_layer}, {}, &outputs);
   if (!run_status.ok()) {
     LOG(ERROR) << "Running model failed: " << run_status;
     return -1;
@@ -292,7 +307,7 @@ int main(int argc, char* argv[]) {
   // This is for automated testing to make sure we get the expected result with
   // the default settings. We know that label 866 (military uniform) should be
   // the top label for the Admiral Hopper image.
-  if (FLAGS_self_test) {
+  if (self_test) {
     bool expected_matches;
     Status check_status = CheckTopLabel(outputs, 866, &expected_matches);
     if (!check_status.ok()) {
@@ -306,7 +321,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Do something interesting with the results we've generated.
-  Status print_status = PrintTopLabels(outputs, FLAGS_labels);
+  Status print_status = PrintTopLabels(outputs, labels);
   if (!print_status.ok()) {
     LOG(ERROR) << "Running print failed: " << print_status;
     return -1;

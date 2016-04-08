@@ -15,14 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 
-//#include "base/commandlineflags.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/gpu/dma_helper.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -33,23 +32,27 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/util.h"
 
-#include "tensorflow/core/platform/stream_executor_util.h"
+// IMPLEMENTATION NOTE:
+//
+// 1. Within this module, we intentionally LOG(FATAL) if any stream
+//    involved in memcpy becomes !stream->ok(), because TF process
+//    today (1/2016) can not properly recover from such an error.
+//
+// 2. When 0-size tensor is being copied, we should not schedule a
+//    copy ThenMemcpy since there is no byte to move. However, we must
+//    ensure the causal ordering by arranging the copy done callback
+//    happens-after all activities scheduled on the given stream being
+//    finished.
 
-#if defined(PLATFORM_GOOGLE)
-DEFINE_int64(brain_gpu_util_debug_string_maxlen, 128,
-             "When dumping gpu memory, prints up to this many bytes.");
-
-DECLARE_bool(record_mem_types);
-#else
-tensorflow::int64 FLAGS_brain_gpu_util_debug_string_maxlen = 128;
-bool FLAGS_EXPERIMENTAL_brain_gpu_multi_stream = false;
-extern bool FLAGS_record_mem_types;
-#endif
+// If this need to be runtime configurable, consider adding options to
+// ConfigProto.
+const tensorflow::int64 FLAGS_brain_gpu_util_debug_string_maxlen = 128;
+extern bool FLAGS_brain_gpu_record_mem_types;
 
 using perftools::gputools::DeviceMemoryBase;
 using perftools::gputools::DeviceMemory;
@@ -59,174 +62,242 @@ namespace tensorflow {
 
 namespace gpu = ::perftools::gputools;
 
+Status PrepareCopy(Device* device, const DeviceContext* ctx, const Tensor& src,
+                   const Tensor* dst,
+                   const DeviceBase::GpuDeviceInfo** dev_info,
+                   gpu::Stream** stream) {
+  if (device == nullptr) {
+    return errors::Internal("Unexpected null device.");
+  }
+  auto di = device->tensorflow_gpu_device_info();
+  if (di == nullptr) {
+    return errors::Internal("Unexpected null device info.");
+  }
+  *dev_info = di;
+  if (ctx == nullptr) {
+    return errors::Internal("Unexpected null device context.");
+  }
+  auto gs = static_cast<const GPUDeviceContext*>(ctx)->stream();
+  if (gs == nullptr) {
+    return errors::Internal("No gpu stream is available.");
+  }
+  *stream = gs;
+  if (dst != nullptr) {
+    if (src.dtype() != dst->dtype()) {
+      return errors::Internal("Can't copy a tensor of ",
+                              DataTypeString(src.dtype()), " into a tensor of ",
+                              DataTypeString(dst->dtype()));
+    }
+    if (src.TotalBytes() != dst->TotalBytes()) {
+      return errors::Internal("Can't copy ", src.TotalBytes(),
+                              " bytes of a tensor into another with ",
+                              dst->TotalBytes(), " bytes buffer.");
+    }
+    if ((src.TotalBytes() > 0) && !src.IsInitialized()) {
+      return errors::Internal("Src tensor is not initialized.");
+    }
+    if ((dst->TotalBytes() > 0) && !dst->IsInitialized()) {
+      return errors::Internal("Dst tensor is not initialized.");
+    }
+  }
+  if (!DMAHelper::CanUseDMA(&src)) {
+    return errors::Internal("GPU copy from non-DMA ",
+                            DataTypeString(src.dtype()), "tensor");
+  }
+  return Status::OK();
+}
+
+void* GetBase(const Tensor* src) {
+  return const_cast<void*>(DMAHelper::base(src));
+}
+
+void* GetBase(Tensor* dst) { return DMAHelper::base(dst); }
+
 /*static*/
 void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
                               const DeviceContext* device_context,
                               TensorProto* proto, bool is_dead,
                               StatusCallback done) {
   VLOG(1) << "SetProtoFromGPU device_context " << device_context;
+  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  gpu::Stream* send_stream = nullptr;
+  Status s = PrepareCopy(dev, device_context, tensor, nullptr, &dev_info,
+                         &send_stream);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+
+  auto send_device_to_host_stream =
+      static_cast<const GPUDeviceContext*>(device_context)
+          ->device_to_host_stream();
+  if (send_device_to_host_stream == nullptr) {
+    done(errors::Internal("No send gpu copy-out-stream is available."));
+    return;
+  }
+  // Wait for the sender's main stream to make sure the data are available.
+  send_device_to_host_stream->ThenWaitFor(send_stream);
+
   // Tensor values need to be copied from GPU to CPU ram so that
   // we can build the protobuf response for a RecvTensor RPC.
   // "device context" identifies the stream where the _Send op executed.
-  CHECK(device_context);
-  gpu::Stream* stream =
-      static_cast<const GPUDeviceContext*>(device_context)->stream();
-
-  if (!DMAHelper::CanUseDMA(&tensor)) {
-    done(errors::Internal(strings::StrCat(
-        "GPU copy from non-DMA ", DataTypeString(tensor.dtype()), "tensor")));
-    return;
-  }
   proto->set_dtype(tensor.dtype());
   tensor.shape().AsProto(proto->mutable_tensor_shape());
-  // Prepare a Cord with the right data buf size, and DMA the
-  // data over from the GPU buffer.  Note that 0-size tensors
-  // do not have a backing buffer.
-  const size_t num_bytes = is_dead ? 0 : tensor.TotalBytes();
-  if (num_bytes > 0) {
-    port::Tracing::ScopedAnnotation annotation("SetProtoFromGPU");
-    Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
-    char* mb = alloc->Allocate<char>(num_bytes);
-    const char* src_ptr =
-        reinterpret_cast<const char*>(DMAHelper::base(&tensor));
-    DeviceMemoryBase gpu_src_ptr(const_cast<char*>(src_ptr), num_bytes);
-    stream->ThenMemcpy(mb, gpu_src_ptr, num_bytes);
-    // Use of tensor may outlive stack scope, so keep a ref.
-    TensorReference tensor_ref(tensor);
-    dev->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, [stream, done, proto, mb, num_bytes, alloc, tensor_ref]() {
-          if (!stream->ok()) {
-            done(errors::Internal("SetProtoFromGPU: GPU Memcpy failed"));
-            // TODO(pbar) We currently have no way to recover the
-            // worker from a GPU stream in the error state.  Until
-            // there is a way to reset the CUDA driver, it is
-            // preferable to crash the process and restart.  Tracked
-            // under b/23717097
-            LOG(FATAL) << "SetProtoFromGPU: GPU Memcpy failed";
-            return;
-          }
-          tensor_ref.Unref();
-          port::CopyFromArray(proto->mutable_tensor_content(), mb, num_bytes);
-          alloc->Deallocate<char>(mb);
-          done(Status::OK());
-        });
-  } else {
-    done(Status::OK());
-  }
-}
 
-typedef ProcessState::MemDesc PMD;
-
-/*static*/
-void GPUUtil::CopyViaDMA(const string& edge_name,
-                         DeviceContext* send_dev_context,
-                         DeviceContext* recv_dev_context, Device* src,
-                         Device* dst, AllocatorAttributes src_alloc_attr,
-                         AllocatorAttributes dst_alloc_attr,
-                         const Tensor* input, Tensor* output,
-                         StatusCallback done) {
-  port::Tracing::ScopedAnnotation annotation(edge_name);
-  VLOG(1) << "CopyViaDMA " << edge_name;
-  size_t total_bytes = input->TotalBytes();
-  // Note that 0-size tensors have no backing buffer.
+  // Prepare a proto with the right data buf size, and DMA the data
+  // over from the GPU buffer.  Note that 0-size tensors do not have a
+  // backing buffer.
+  Allocator* alloc = nullptr;
+  char* buf = nullptr;
+  const int64 total_bytes = is_dead ? 0 : tensor.TotalBytes();
   if (total_bytes > 0) {
-    const void* src_ptr = DMAHelper::base(input);
-    void* dst_ptr = DMAHelper::base(output);
-    VLOG(2) << "src_ptr " << src_ptr << " dst_ptr " << dst_ptr;
-    if (FLAGS_record_mem_types) {
-      ProcessState::MemDesc smd = ProcessState::singleton()->PtrType(src_ptr);
-      ProcessState::MemDesc dmd = ProcessState::singleton()->PtrType(dst_ptr);
-      VLOG(0) << "Src " << smd.DebugString() << " Dst " << dmd.DebugString();
-      if (smd.loc == PMD::CPU && dmd.loc == PMD::GPU && (!smd.gpu_registered)) {
-        LOG(WARNING) << "CPU -> GPU no reg for " << edge_name;
-      }
-      if (dmd.loc == PMD::CPU && smd.loc == PMD::GPU && (!dmd.gpu_registered)) {
-        LOG(WARNING) << "GPU -> CPU no reg for " << edge_name;
-      }
+    port::Tracing::ScopedAnnotation annotation("SetProtoFromGPU");
+    alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    buf = alloc->Allocate<char>(total_bytes);
+    if (LogMemory::IsEnabled()) {
+      LogMemory::RecordRawAllocation("SetProtoFromGPU",
+                                     LogMemory::PROTO_BUFFER_STEP_ID,
+                                     total_bytes, buf, alloc);
     }
-
-    auto src_device_type = src->attributes().device_type();
-    auto dst_device_type = dst->attributes().device_type();
-
-    bool non_cpu_src = (!src_alloc_attr.on_host() &&
-                        src_device_type != DeviceType(DEVICE_CPU).type());
-    bool non_cpu_dst = (!dst_alloc_attr.on_host() &&
-                        dst_device_type != DeviceType(DEVICE_CPU).type());
-    if (non_cpu_src) {
-      gpu::Stream* stream = send_dev_context->stream();
-      if (stream == nullptr) {
-        done(errors::Internal("Failed to find device stream"));
-        return;
-      }
-      auto* src_dev_info = src->tensorflow_gpu_device_info();
-      CHECK(src_dev_info);
-
-      if (non_cpu_dst) {
-        // Device to device copy
-        DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
-        stream->ThenMemcpy(
-            &gpu_dst_ptr,
-            DeviceMemoryBase{const_cast<void*>(src_ptr), total_bytes},
-            total_bytes);
-        if (dst_device_type == DeviceType(DEVICE_GPU).type()) {
-          // Use of input may outlive stack scope, so keep a ref.
-          TensorReference input_ref(*input);
-          src_dev_info->event_mgr->ThenExecute(
-              stream, [done, stream, input_ref]() {
-                input_ref.Unref();
-                if (!stream->ok()) {
-                  done(errors::Internal("GPU->GPU Memcpy failed"));
-                } else {
-                  done(Status::OK());
-                }
-              });
-        }
-        send_dev_context->MaintainLifetimeOnStream(input, stream);
-      } else {
-        // Device to host copy.
-        return send_dev_context->CopyDeviceTensorToCPU(input, edge_name, src,
-                                                       output, done);
-      }
-    } else if (non_cpu_dst) {
-      // Host to Device copy.
-      // Note that this is already an async copy.
-      recv_dev_context->CopyCPUTensorToDevice(input, dst, output, done);
-    } else {
-      memcpy(dst_ptr, src_ptr, total_bytes);
-      done(Status::OK());
-    }
-  } else {
-    // buffer is empty
-    done(Status::OK());
+    void* src_ptr = GetBase(&tensor);
+    DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
+    send_device_to_host_stream->ThenMemcpy(buf, gpu_src_ptr, total_bytes);
   }
+  // Use of tensor may outlive stack scope, so keep a ref.
+  TensorReference tensor_ref(tensor);
+  dev_info->event_mgr->ThenExecute(
+      send_device_to_host_stream, [send_device_to_host_stream, done, proto, buf,
+                                   total_bytes, alloc, tensor_ref]() {
+        if (!send_device_to_host_stream->ok()) {
+          LOG(FATAL) << "SetProtoFromGPU: GPU Memcpy failed";
+        }
+        tensor_ref.Unref();
+        if (total_bytes > 0) {
+          port::CopyFromArray(proto->mutable_tensor_content(), buf,
+                              total_bytes);
+          if (LogMemory::IsEnabled()) {
+            LogMemory::RecordRawDeallocation("SetProtoFromGPU",
+                                             LogMemory::PROTO_BUFFER_STEP_ID,
+                                             buf, alloc, false);
+          }
+          alloc->Deallocate<char>(buf, total_bytes);
+        }
+        done(Status::OK());
+      });
 }
 
+// static
+void GPUUtil::DeviceToDeviceCopy(DeviceContext* send_dev_context,
+                                 DeviceContext* recv_dev_context, Device* src,
+                                 Device* dst,
+                                 AllocatorAttributes src_alloc_attr,
+                                 AllocatorAttributes dst_alloc_attr,
+                                 const Tensor* input, Tensor* output,
+                                 StatusCallback done) {
+  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  gpu::Stream* send_stream = nullptr;
+  Status s = PrepareCopy(src, send_dev_context, *input, output, &dev_info,
+                         &send_stream);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+  auto send_device_to_device_stream =
+      static_cast<const GPUDeviceContext*>(send_dev_context)
+          ->device_to_device_stream();
+  if (send_device_to_device_stream == nullptr) {
+    done(errors::Internal("No send gpu copy-out-stream is available."));
+    return;
+  }
+  // Wait for the main stream on the sender to make sure the result is
+  // available.
+  send_device_to_device_stream->ThenWaitFor(send_stream);
+
+  const int64 total_bytes = input->TotalBytes();
+  if (total_bytes > 0) {
+    void* src_ptr = GetBase(input);
+    DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
+    void* dst_ptr = GetBase(output);
+    DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
+    auto recv_stream =
+        static_cast<const GPUDeviceContext*>(recv_dev_context)->stream();
+    if (recv_stream == nullptr) {
+      done(errors::Internal("No recv gpu stream is available."));
+      return;
+    }
+    // Since we want to use the memory from recv_stream in the
+    // send_device_to_device_stream, add a dependency to make sure the memory is
+    // truely free.
+    // TODO(zhengxq): remove this dependency when we switch to a better way
+    // to make sure the memory is free.
+    send_device_to_device_stream->ThenWaitFor(recv_stream);
+
+    VLOG(2) << "src_ptr " << src_ptr << " dst_ptr " << dst_ptr;
+    send_device_to_device_stream->ThenMemcpy(&gpu_dst_ptr, gpu_src_ptr,
+                                             total_bytes);
+  }
+
+  // Use of input may outlive stack scope, so keep a ref.
+  TensorReference input_ref(*input);
+  dev_info->event_mgr->ThenExecute(
+      send_device_to_device_stream,
+      [done, send_device_to_device_stream, input_ref]() {
+        input_ref.Unref();
+        if (!send_device_to_device_stream->ok()) {
+          LOG(FATAL) << "GPU->GPU Memcpy failed";
+        }
+        done(Status::OK());
+      });
+  send_dev_context->MaintainLifetimeOnStream(input,
+                                             send_device_to_device_stream);
+}
+
+static CopyTensor::Registration register_gpu_gpu_copy(
+    DEVICE_GPU, DEVICE_GPU, GPUUtil::DeviceToDeviceCopy);
+
+// static
 void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
                                  const DeviceContext* device_context,
                                  const Tensor* gpu_tensor, Tensor* cpu_tensor,
                                  StatusCallback done) {
   VLOG(1) << "CopyGPUTensorToCPU";
-  size_t total_bytes = gpu_tensor->TotalBytes();
-  // Note that 0-size tensors have no backing buffer.
-  if (total_bytes > 0) {
-    const void* src_ptr = DMAHelper::base(gpu_tensor);
-    void* dst_ptr = DMAHelper::base(cpu_tensor);
-    CHECK(dst_ptr);
-    auto* stream = gpu_device->tensorflow_gpu_device_info()->stream;
-    if (device_context) {
-      stream = static_cast<const GPUDeviceContext*>(device_context)->stream();
-    }
-    stream->ThenMemcpy(
-        dst_ptr, DeviceMemoryBase{const_cast<void*>(src_ptr), total_bytes},
-        total_bytes);
-    stream->BlockHostUntilDone();
-    if (!stream->ok()) {
-      done(errors::Internal("CopyGPUTensorToCPU: GPU->CPU Memcpy failed"));
-      return;
-    }
+  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  gpu::Stream* send_stream = nullptr;
+  Status s = PrepareCopy(gpu_device, device_context, *gpu_tensor, cpu_tensor,
+                         &dev_info, &send_stream);
+  if (!s.ok()) {
+    done(s);
+    return;
   }
 
-  done(Status::OK());
+  auto send_device_to_host_stream =
+      static_cast<const GPUDeviceContext*>(device_context)
+          ->device_to_host_stream();
+  if (send_device_to_host_stream == nullptr) {
+    done(errors::Internal("No send gpu copy-out-stream is available."));
+    return;
+  }
+  // Wait for the sender's main stream to make sure the data are available.
+  send_device_to_host_stream->ThenWaitFor(send_stream);
+
+  const int64 total_bytes = gpu_tensor->TotalBytes();
+  if (total_bytes > 0) {
+    void* src_ptr = GetBase(gpu_tensor);
+    DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
+    void* dst_ptr = GetBase(cpu_tensor);
+    send_device_to_host_stream->ThenMemcpy(dst_ptr, gpu_src_ptr, total_bytes);
+  }
+  // Use of the input may outlive stack scope, so keep a ref.
+  TensorReference input_ref(*gpu_tensor);
+  dev_info->event_mgr->ThenExecute(
+      send_device_to_host_stream,
+      [send_device_to_host_stream, done, input_ref]() {
+        if (!send_device_to_host_stream->ok()) {
+          LOG(FATAL) << "GPU->CPU Memcpy failed";
+        }
+        input_ref.Unref();
+        done(Status::OK());
+      });
 }
 
 /*  static */
@@ -235,47 +306,44 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
                                  Device* gpu_device, Tensor* gpu_tensor,
                                  StatusCallback done) {
   VLOG(1) << "CopyCPUTensorToGPU";
-  CHECK(DeviceType(gpu_device->attributes().device_type()) ==
-        DeviceType(DEVICE_GPU));
+  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  gpu::Stream* recv_stream = nullptr;
+  Status s = PrepareCopy(gpu_device, device_context, *cpu_tensor, gpu_tensor,
+                         &dev_info, &recv_stream);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
 
-  auto* dev_info = gpu_device->tensorflow_gpu_device_info();
-  if (!dev_info) {
-    done(errors::Internal("Failed to find dest device GPUDeviceInfo"));
+  auto recv_host_to_device_stream =
+      static_cast<const GPUDeviceContext*>(device_context)
+          ->host_to_device_stream();
+  if (recv_host_to_device_stream == nullptr) {
+    done(errors::Internal("No send gpu copy-out-stream is available."));
     return;
   }
-  if (cpu_tensor->TotalBytes() != gpu_tensor->TotalBytes()) {
-    done(errors::Internal(
-        strings::StrCat("Can't copy ", cpu_tensor->TotalBytes(),
-                        " bytes of a tensor into another with ",
-                        gpu_tensor->TotalBytes(), " bytes buffer.")));
-    return;
-  }
+  // Wait for the recv-stream to make sure the buffer is truely available.
+  recv_host_to_device_stream->ThenWaitFor(recv_stream);
+
   const int64 total_bytes = cpu_tensor->TotalBytes();
   // Note that 0-size tensors have no backing buffer.
   if (total_bytes > 0) {
-    const void* src_ptr = DMAHelper::base(cpu_tensor);
-    void* dst_ptr = DMAHelper::base(gpu_tensor);
+    void* src_ptr = GetBase(cpu_tensor);
+    void* dst_ptr = GetBase(gpu_tensor);
     DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
-
-    CHECK(device_context);
-    auto* stream =
-        static_cast<const GPUDeviceContext*>(device_context)->stream();
-    stream->ThenMemcpy(&gpu_dst_ptr, src_ptr, total_bytes);
-    auto* dev_info = gpu_device->tensorflow_gpu_device_info();
-    // Use of cpu_tensor may outlive stack scope, so keep a ref.
-    TensorReference input_ref(*cpu_tensor);
-    dev_info->event_mgr->ThenExecute(stream, [stream, done, input_ref]() {
-      input_ref.Unref();
-      if (!stream->ok()) {
-        done(errors::Internal("CopyCPUTensorToGPU: GPU Memcpy failed"));
-      } else {
-        done(Status::OK());
-      }
-    });
-  } else {
-    // empty tensor case
-    done(Status::OK());
+    recv_host_to_device_stream->ThenMemcpy(&gpu_dst_ptr, src_ptr, total_bytes);
   }
+  // Use of cpu_tensor may outlive stack scope, so keep a ref.
+  TensorReference input_ref(*cpu_tensor);
+  dev_info->event_mgr->ThenExecute(
+      recv_host_to_device_stream,
+      [recv_host_to_device_stream, done, input_ref]() {
+        input_ref.Unref();
+        if (!recv_host_to_device_stream->ok()) {
+          LOG(FATAL) << "CPU->GPU Memcpy failed";
+        }
+        done(Status::OK());
+      });
 }
 
 Status GPUUtil::Sync(Device* gpu_device) {
@@ -309,7 +377,7 @@ string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
   CHECK(tensor);
   const int64 num_bytes = std::min<int64>(
       FLAGS_brain_gpu_util_debug_string_maxlen, tensor->TotalBytes());
-  void* ptr = (num_bytes > 0) ? DMAHelper::base(tensor) : nullptr;
+  void* ptr = (num_bytes > 0) ? GetBase(tensor) : nullptr;
   strings::Appendf(&ret, "%p:", ptr);
   if (num_bytes > 0) {
     auto* dev_info = device->tensorflow_gpu_device_info();
@@ -320,7 +388,7 @@ string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
       string buf;
       buf.resize(num_bytes);
       DeviceMemoryBase gpu_ptr(ptr, num_bytes);
-      Status s = dev_info->stream->parent()->SynchronousMemcpyD2H(
+      auto s = dev_info->stream->parent()->SynchronousMemcpyD2H(
           gpu_ptr, num_bytes, gtl::string_as_array(&buf));
       strings::StrAppend(&ret,
                          PrintMemory(gtl::string_as_array(&buf), num_bytes));
@@ -347,14 +415,14 @@ uint64 GPUUtil::Checksum(Device* gpu_device,
 }
 
 uint64 GPUUtil::Checksum(const Tensor& tensor) {
-  const float* fptr = reinterpret_cast<const float*>(DMAHelper::base(&tensor));
+  const float* fptr = reinterpret_cast<const float*>(GetBase(&tensor));
   size_t num_bytes = tensor.TotalBytes();
   size_t num_floats = num_bytes / sizeof(float);
   for (size_t i = 0; i < num_floats; ++i) {
     CHECK(!std::isnan(fptr[i])) << " i " << i;
   }
   // TODO(tucker): consider using crc32c instead.
-  return Hash64(reinterpret_cast<const char*>(DMAHelper::base(&tensor)),
+  return Hash64(reinterpret_cast<const char*>(GetBase(&tensor)),
                 tensor.TotalBytes(), 0);
 }
 

@@ -105,11 +105,12 @@ In the second example, the session acts as a
 which has the effect of installing it as the default session for the lifetime of
 the `with` block. The context manager approach can lead to more concise code for
 simple use cases (like unit tests); if your code deals with multiple graphs and
-sessions, it may be more straightforward to explicit calls to `Session.run()`.
+sessions, it may be more straightforward to make explicit calls to
+`Session.run()`.
 
 #### Do Sessions have a lifetime? What about intermediate tensors?
 
-Sessions can own resources, such
+Sessions can own resources, such as
 [variables](../api_docs/python/state_ops.md#Variable),
 [queues](../api_docs/python/io_ops.md#QueueBase), and
 [readers](../api_docs/python/io_ops.md#ReaderBase); and these resources can use
@@ -142,11 +143,11 @@ TensorFlow is designed to support multiple client languages. Currently, the
 best-supported client language is [Python](../api_docs/python/index.md). The
 [C++ client API](../api_docs/cc/index.md) provides an interface for launching
 graphs and running steps; we also have an experimental API for
-[building graphs in C++](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/cc/tutorials/example_trainer.cc).
+[building graphs in C++](https://www.tensorflow.org/code/tensorflow/cc/tutorials/example_trainer.cc).
 
 We would like to support more client languages, as determined by community
 interest. TensorFlow has a
-[C-based client API](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/public/tensor_c_api.h)
+[C-based client API](https://www.tensorflow.org/code/tensorflow/core/public/tensor_c_api.h)
 that makes it easy to build a client in many different languages. We invite
 contributions of new language bindings.
 
@@ -170,7 +171,7 @@ available. These operations allow you to build sophisticated
 [input pipelines](../how_tos/reading_data/index.md), at the cost of making the
 TensorFlow computation somewhat more complicated. See the how-to documentation
 for
-[using `QueueRunner` objects to drive queues and readers](../how_tos/reading_data/index.md#QueueRunners)
+[using `QueueRunner` objects to drive queues and readers](../how_tos/reading_data/index.md#creating-threads-to-prefetch-using-queuerunner-objects)
 for more information on how to use them.
 
 ## Variables
@@ -189,9 +190,9 @@ operation for that variable in a session. It is destroyed when that
 #### How do variables behave when they are concurrently accessed?
 
 Variables allow concurrent read and write operations. The value read from a
-variable may change it is concurrently updated. By default, concurrent assigment
-operations to a variable are allowed to run with no mutual exclusion. To acquire
-a lock when assigning to a variable, pass `use_locking=True` to
+variable may change if it is concurrently updated. By default, concurrent
+assigment operations to a variable are allowed to run with no mutual exclusion.
+To acquire a lock when assigning to a variable, pass `use_locking=True` to
 [`Variable.assign()`](../api_docs/python/state_ops.md#Variable.assign).
 
 ## Tensor shapes
@@ -241,7 +242,7 @@ to encode the batch size as a Python constant, but instead to use a symbolic
   of `tf.reduce_sum(...) / batch_size`.
 
 * If you use
-  [placeholders for feeding input](../how_tos/reading_data/index.md#Feeding),
+  [placeholders for feeding input](../how_tos/reading_data/index.md#feeding),
   you can specify a variable batch dimension by creating the placeholder with
   [`tf.placeholder(..., shape=[None, ...])`](../api_docs/python/io_ops.md#placeholder). The
   `None` element of the shape corresponds to a variable-sized dimension.
@@ -281,7 +282,7 @@ The easier option is to write parsing code in Python that transforms the data
 into a numpy array, then feed a [`tf.placeholder()`]
 (../api_docs/python/io_ops.md#placeholder) a tensor with that data. See the
 documentation on
-[using placeholders for input](../how_tos/reading_data/index.md#Feeding) for
+[using placeholders for input](../how_tos/reading_data/index.md#feeding) for
 more details. This approach is easy to get up and running, but the parsing can
 be a performance bottleneck.
 
@@ -298,7 +299,7 @@ single tensor, a list of tensors with the same type (for example when adding
 together a variable-length list of tensors), or a list of tensors with different
 types (for example when enqueuing a tuple of tensors to a queue).  See the
 how-to documentation for
-[adding an op with a list of inputs or outputs](../how_tos/adding_an_op/index.md#list-input-output)
+[adding an op with a list of inputs or outputs](../how_tos/adding_an_op/index.md#list-inputs-and-outputs)
 for more details of how to define these different input types.
 
 ## Miscellaneous
@@ -316,3 +317,4 @@ The TensorFlow C++ code base adheres to the
 
 (<sup>*</sup> With one exception: we use 2-space indentation instead of 4-space
 indentation.)
+

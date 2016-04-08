@@ -19,9 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
-
-import tensorflow.python.platform
 import sys
+
 import tensorflow as tf
 
 from tensorflow.python.framework import docs
@@ -36,21 +35,24 @@ tf.flags.DEFINE_boolean("print_hidden_regex", False,
 FLAGS = tf.flags.FLAGS
 
 
-# TODO(josh11b,wicke): Remove the ../../api_docs/python/ once the
-# website can handle it.
 PREFIX_TEXT = """
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor).
+[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
 """
 
 
 def get_module_to_name():
-  return {tf: 'tf',
-          tf.errors: 'tf.errors',
-          tf.image: 'tf.image',
-          tf.nn: 'tf.nn',
-          tf.train: 'tf.train',
-          tf.python_io: 'tf.python_io'}
+  return {
+    tf: "tf",
+    tf.errors: "tf.errors",
+    tf.image: "tf.image",
+    tf.nn: "tf.nn",
+    tf.train: "tf.train",
+    tf.python_io: "tf.python_io",
+    tf.test: "tf.test",
+    tf.contrib.layers: "tf.contrib.layers",
+    tf.contrib.util: "tf.contrib.util",
+  }
 
 def all_libraries(module_to_name, members, documented):
   # A list of (filename, docs.Library) pairs representing the individual files
@@ -70,14 +72,18 @@ def all_libraries(module_to_name, members, documented):
       library("framework", "Building Graphs", framework_lib),
       library("constant_op", "Constants, Sequences, and Random Values",
               prefix=PREFIX_TEXT),
-      library("state_ops", "Variables", prefix=PREFIX_TEXT),
+      library("state_ops", "Variables",
+              exclude_symbols=["create_partitioned_variables"],
+              prefix=PREFIX_TEXT),
       library("array_ops", "Tensor Transformations",
               exclude_symbols=["list_diff"], prefix=PREFIX_TEXT),
       library("math_ops", "Math",
               exclude_symbols=["sparse_matmul", "arg_min", "arg_max",
                                "lin_space", "sparse_segment_mean_grad"],
               prefix=PREFIX_TEXT),
+      library("histogram_ops", "Histograms"),
       library("control_flow_ops", "Control Flow", prefix=PREFIX_TEXT),
+      library("functional_ops", "Higher Order Functions", prefix=PREFIX_TEXT),
       library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"],
               prefix=PREFIX_TEXT),
       library("sparse_ops", "Sparse Tensors",
@@ -86,13 +92,14 @@ def all_libraries(module_to_name, members, documented):
               prefix=PREFIX_TEXT),
       library("io_ops", "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
+                               "PaddingFIFOQueue",
                                "initialize_all_tables",
                                "parse_single_sequence_example",
                                "string_to_hash_bucket"],
               prefix=PREFIX_TEXT),
       library("python_io", "Data IO (Python functions)", tf.python_io),
       library("nn", "Neural Network", tf.nn,
-              exclude_symbols=["deconv2d", "conv2d_backprop_input",
+              exclude_symbols=["conv2d_backprop_input",
                                "conv2d_backprop_filter", "avg_pool_grad",
                                "max_pool_grad", "max_pool_grad_with_argmax",
                                "batch_norm_with_global_normalization_grad",
@@ -101,21 +108,29 @@ def all_libraries(module_to_name, members, documented):
                                "lrn", "batch_norm_with_global_normalization",
                                "batch_norm_with_global_normalization_grad",
                                "all_candidate_sampler",
-                               "embedding_lookup_sparse",
                                "rnn", "state_saving_rnn", "bidirectional_rnn",
                                "dynamic_rnn", "seq2seq", "rnn_cell"],
               prefix=PREFIX_TEXT),
-      library('client', "Running Graphs", client_lib),
+      library("client", "Running Graphs", client_lib),
       library("train", "Training", tf.train,
               exclude_symbols=["Feature", "Features", "BytesList", "FloatList",
                                "Int64List", "Example", "InferenceExample",
                                "FeatureList", "FeatureLists",
                                "RankingExample", "SequenceExample"]),
+      library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT),
+      library("test", "Testing", tf.test),
+      library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
+      library("contrib.util", "Utilities (contrib)", tf.contrib.util),
   ]
 
-_hidden_symbols = ["Event", "Summary", "xrange",
+_hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
-                   "GPUOptions", "SessionInterface", "BaseSession"]
+                   "GPUOptions", "GraphOptions", "RunOptions", "RunMetadata",
+                   "SessionInterface", "BaseSession", "NameAttrList",
+                   "AttrValue", "TensorArray", "OptimizerOptions",
+                   "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
+                   "SaverDef", "VariableDef", "TestCase", "GrpcServer",
+                   "ClusterDef", "JobDef", "ServerDef"]
 
 def main(unused_argv):
   if not FLAGS.out_dir:

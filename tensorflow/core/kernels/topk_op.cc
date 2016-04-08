@@ -17,12 +17,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/op_kernel.h"
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -30,32 +31,53 @@ template <typename T>
 class TopK : public OpKernel {
  public:
   explicit TopK(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
+    OP_REQUIRES_OK(context, context->GetAttr("sorted", &sorted_));
+    if (num_inputs() < 2) {  // k is an attr (TopK).
+      OP_DEPRECATED(context, 7, "Use TopKV2 instead");
+      OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
+    } else {  // k is an input (TopKV2), so we won't know it until Compute.
+      k_ = -1;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
+    int k = k_;
+    if (num_inputs() >= 2) {
+      const auto& k_in = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsScalar(k_in.shape()),
+                  errors::InvalidArgument("k must be scalar, got shape ",
+                                          k_in.shape().DebugString()));
+      k = k_in.scalar<int32>()();
+    }
+    OP_REQUIRES(context, k >= 0,
+                errors::InvalidArgument("Need k >= 0, got ", k));
     const auto& input_in = context->input(0);
-    OP_REQUIRES(context, input_in.dims() == 2,
-                errors::InvalidArgument("input must be 2-dimensional"));
-    OP_REQUIRES(context, input_in.dim_size(1) >= k_,
+    OP_REQUIRES(context, input_in.dims() >= 1,
+                errors::InvalidArgument("input must be >= 1-D, got shape ",
+                                        input_in.shape().DebugString()));
+    OP_REQUIRES(context, input_in.dim_size(input_in.dims() - 1) >= k,
                 errors::InvalidArgument("input must have at least k columns"));
 
-    const auto& input = input_in.matrix<T>();
+    const auto& input = input_in.flat_inner_dims<T>();
 
-    const auto num_rows = input_in.dim_size(0);  // generally batch_size
-    const auto num_cols = input_in.dim_size(1);
+    const auto num_rows = input.dimension(0);  // generally batch_size
+    const auto num_cols = input.dimension(1);
 
+    TensorShape output_shape = input_in.shape();
+    output_shape.set_dim(input_in.dims() - 1, k);
     Tensor* values_out = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({num_rows, k_}), &values_out));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, output_shape, &values_out));
     Tensor* indices_out = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                1, TensorShape({num_rows, k_}), &indices_out));
-    auto values = values_out->matrix<T>();
-    auto indices = indices_out->matrix<int32>();
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(1, output_shape, &indices_out));
 
-    gtl::TopN<std::pair<T, int32>> filter(k_);
+    // Nothing to do for top-nothing.
+    if (k == 0) return;
 
+    auto values = values_out->flat_inner_dims<T>();
+    auto indices = indices_out->flat_inner_dims<int32>();
+    gtl::TopN<std::pair<T, int32>> filter(k);
     for (int r = 0; r < num_rows; r++) {
       for (int32 c = 0; c < num_cols; ++c) {
         // The second element is the negated index, so that lower-index elements
@@ -63,10 +85,21 @@ class TopK : public OpKernel {
         filter.push(std::make_pair(input(r, c), -c));
       }
 
-      std::unique_ptr<std::vector<std::pair<T, int32>>> top_k(filter.Extract());
-      for (int32 i = 0; i < k_; ++i) {
-        values(r, i) = (*top_k)[i].first;
-        indices(r, i) = -(*top_k)[i].second;
+      int32 i = 0;
+      if (sorted_ && k > 1) {
+        std::unique_ptr<std::vector<std::pair<T, int32>>> top_k(
+            filter.Extract());
+        for (auto top_k_it = top_k->begin(); top_k_it != top_k->end();
+             ++top_k_it, ++i) {
+          values(r, i) = top_k_it->first;
+          indices(r, i) = -top_k_it->second;
+        }
+      } else {
+        for (auto top_k_it = filter.unsorted_begin();
+             top_k_it != filter.unsorted_end(); ++top_k_it, ++i) {
+          values(r, i) = top_k_it->first;
+          indices(r, i) = -top_k_it->second;
+        }
       }
       filter.Reset();
     }
@@ -74,13 +107,19 @@ class TopK : public OpKernel {
 
  private:
   int k_;
+  bool sorted_;
 };
 
-#define REGISTER_KERNELS(type) \
-  REGISTER_KERNEL_BUILDER(     \
-      Name("TopK").Device(DEVICE_CPU).TypeConstraint<type>("T"), TopK<type>)
+#define REGISTER_KERNELS_NAME(name, type) \
+  REGISTER_KERNEL_BUILDER(                \
+      Name(#name).Device(DEVICE_CPU).TypeConstraint<type>("T"), TopK<type>)
+
+#define REGISTER_KERNELS(type)       \
+  REGISTER_KERNELS_NAME(TopK, type); \
+  REGISTER_KERNELS_NAME(TopKV2, type)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS_TO_NAME
 #undef REGISTER_KERNELS
 
 }  // namespace tensorflow

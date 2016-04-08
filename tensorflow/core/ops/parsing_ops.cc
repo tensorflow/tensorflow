@@ -71,7 +71,7 @@ dense_shapes: A list of Ndense shapes; the shapes of data in each Feature
   given in dense_keys.
   The number of elements in the Feature corresponding to dense_key[j]
   must always equal dense_shapes[j].NumEntries().
-  If dense_shapes[j] == (D0, D1, ..., DN) then the the shape of output
+  If dense_shapes[j] == (D0, D1, ..., DN) then the shape of output
   Tensor dense_values[j] will be (|serialized|, D0, D1, ..., DN):
   The dense outputs are just the inputs row-stacked by batch.
 sparse_keys: A list of Nsparse string Tensors (scalars).
@@ -87,6 +87,7 @@ REGISTER_OP("ParseSingleSequenceExample")
     .Input("feature_list_dense_missing_assumed_empty: string")
     .Input("context_sparse_keys: Ncontext_sparse * string")
     .Input("context_dense_keys: Ncontext_dense * string")
+    .Input("feature_list_sparse_keys: Nfeature_list_sparse * string")
     .Input("feature_list_dense_keys: Nfeature_list_dense * string")
     .Input("context_dense_defaults: Tcontext_dense")
     .Input("debug_name: string")
@@ -94,16 +95,24 @@ REGISTER_OP("ParseSingleSequenceExample")
     .Output("context_sparse_values: context_sparse_types")
     .Output("context_sparse_shapes: Ncontext_sparse * int64")
     .Output("context_dense_values: Tcontext_dense")
+    .Output("feature_list_sparse_indices: Nfeature_list_sparse * int64")
+    .Output("feature_list_sparse_values: feature_list_sparse_types")
+    .Output("feature_list_sparse_shapes: Nfeature_list_sparse * int64")
     .Output("feature_list_dense_values: feature_list_dense_types")
-    .Attr("Ncontext_sparse: int >= 0")  // Infer from context_sparse_keys
-    .Attr("Ncontext_dense: int >= 0")   // Infer from context_dense_keys
-    .Attr(
-        "Nfeature_list_dense: int >= 0")  // Infer from feature_list_dense_keys
-    .Attr("context_sparse_types: list({float,int64,string}) >= 0")
-    .Attr("Tcontext_dense: list({float,int64,string}) >= 0")
-    .Attr("feature_list_dense_types: list({float,int64,string}) >= 0")
-    .Attr("context_dense_shapes: list(shape) >= 0")
-    .Attr("feature_list_dense_shapes: list(shape) >= 0")
+    // Infer from context_sparse_keys
+    .Attr("Ncontext_sparse: int >= 0 = 0")
+    // Infer from context_dense_keys
+    .Attr("Ncontext_dense: int >= 0 = 0")
+    // Infer from feature_list_sparse_keys
+    .Attr("Nfeature_list_sparse: int >= 0 = 0")
+    // Infer from feature_list_dense_keys
+    .Attr("Nfeature_list_dense: int >= 0 = 0")
+    .Attr("context_sparse_types: list({float,int64,string}) >= 0 = []")
+    .Attr("Tcontext_dense: list({float,int64,string}) >= 0 = []")
+    .Attr("feature_list_dense_types: list({float,int64,string}) >= 0 = []")
+    .Attr("context_dense_shapes: list(shape) >= 0 = []")
+    .Attr("feature_list_sparse_types: list({float,int64,string}) >= 0 = []")
+    .Attr("feature_list_dense_shapes: list(shape) >= 0 = []")
     .Doc(R"doc(
 Transforms a scalar brain.SequenceExample proto (as strings) into typed tensors.
 
@@ -148,6 +157,32 @@ context_sparse_types: A list of Ncontext_sparse types; the data types of data in
   each context Feature given in context_sparse_keys.
   Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
   DT_INT64 (Int64List), and DT_STRING (BytesList).
+feature_list_sparse_keys: A list of Nfeature_list_sparse string Tensors
+  (scalars).  The keys expected in the FeatureLists associated with sparse
+  values.
+feature_list_sparse_types: A list of Nfeature_list_sparse types; the data types
+  of data in each FeatureList given in feature_list_sparse_keys.
+  Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
+  DT_INT64 (Int64List), and DT_STRING (BytesList).
+)doc");
+
+REGISTER_OP("DecodeJSONExample")
+    .Input("json_examples: string")
+    .Output("binary_examples: string")
+    .Doc(R"doc(
+Convert JSON-encoded Example records to binary protocol buffer strings.
+
+This op translates a tensor containing Example records, encoded using
+the [standard JSON
+mapping](https://developers.google.com/protocol-buffers/docs/proto3#json),
+into a tensor containing the same records encoded as binary protocol
+buffers. The resulting tensor can then be fed to any of the other
+Example-parsing ops.
+
+json_examples: Each string is a JSON object serialized according to the JSON
+  mapping of the Example proto.
+binary_examples: Each string is a binary Example protocol buffer corresponding
+  to the respective element of `json_examples`.
 )doc");
 
 REGISTER_OP("DecodeCSV")

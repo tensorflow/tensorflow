@@ -19,7 +19,7 @@ installed on your system.
 3. The Android SDK and build tools may be obtained from:
         https://developer.android.com/tools/revisions/build-tools.html
 
-The Android entries in [`<workspace_root>/WORKSPACE`](../../WORKSPACE) must be
+The Android entries in [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L2-L13) must be
 uncommented with the paths filled in appropriately depending on where you
 installed the NDK and SDK. Otherwise an error such as:
 "The external label '//external:android/sdk' is not bound to anything" will
@@ -45,18 +45,22 @@ your workspace root:
 $ bazel build //tensorflow/examples/android:tensorflow_demo
 ```
 
-If you get build errors about protocol buffers then you may have left out the
-`--recurse-submodules` argument to `git clone`. Review the instructions
-here and then build again:
-https://www.tensorflow.org/versions/master/get_started/os_setup.html#clone-the-tensorflow-repository
+If you get build errors about protocol buffers, run
+`git submodule update --init` and build again.
 
 If adb debugging is enabled on your Android 5.0 or later device, you may then
 use the following command from your workspace root to install the APK once
 built:
 
 ```bash
-$ adb install -r -g bazel-bin/tensorflow/examples/android/tensorflow_demo_incremental.apk
+$ adb install -r -g bazel-bin/tensorflow/examples/android/tensorflow_demo.apk
 ```
+
+Some older versions of adb might complain about the -g option (returning:
+"Error: Unknown option: -g").  In this case, if your device runs Android 6.0 or
+later, then make sure you update to the latest adb version before trying the
+install command again. If your device runs earlier versions of Android, however,
+you can issue the install command without the -g option.
 
 Alternatively, a streamlined means of building, installing and running in one
 command is:

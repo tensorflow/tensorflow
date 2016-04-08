@@ -15,23 +15,21 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/port.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 namespace tensorflow {
@@ -40,24 +38,24 @@ namespace {
 class SaveOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
-    RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "Save")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE,
-                                    DT_QINT8, DT_QINT32, DT_UINT8, DT_INT8,
-                                    DT_INT16, DT_STRING, DT_COMPLEX64}))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(
+        NodeDefBuilder("myop", "Save")
+            .Input(FakeInput())
+            .Input(FakeInput())
+            .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8,
+                              DT_QINT32, DT_UINT8, DT_INT8, DT_INT16, DT_INT64,
+                              DT_STRING, DT_COMPLEX64}))
+            .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
 TEST_F(SaveOpTest, Simple) {
   const string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
   const string tensornames[] = {
-      "tensor_bool",  "tensor_int",    "tensor_float",    "tensor_double",
-      "tensor_qint8", "tensor_qint32", "tensor_uint8",    "tensor_int8",
-      "tensor_int16", "tensor_string", "tensor_complex64"};
+      "tensor_bool",  "tensor_int",    "tensor_float",  "tensor_double",
+      "tensor_qint8", "tensor_qint32", "tensor_uint8",  "tensor_int8",
+      "tensor_int16", "tensor_int64",  "tensor_string", "tensor_complex64"};
 
   MakeOp();
   // Add a file name
@@ -65,7 +63,7 @@ TEST_F(SaveOpTest, Simple) {
                    [&filename](int x) -> string { return filename; });
 
   // Add the tensor names
-  AddInput<string>(TensorShape({11}),
+  AddInput<string>(TensorShape({12}),
                    [&tensornames](int x) -> string { return tensornames[x]; });
 
   // Add a 1-d bool tensor
@@ -100,6 +98,9 @@ TEST_F(SaveOpTest, Simple) {
   // Add a 1-d int16 tensor
   AddInput<int16>(TensorShape({7}), [](int x) -> int16 { return x - 8; });
 
+  // Add a 1-d int64 tensor
+  AddInput<int64>(TensorShape({9}), [](int x) -> int64 { return x - 9; });
+
   // Add a 1-d string tensor
   AddInput<string>(TensorShape({2}),
                    [](int x) -> string { return x ? "yes" : "no"; });
@@ -109,12 +110,12 @@ TEST_F(SaveOpTest, Simple) {
     return complex64(100 + x, 200 + x);
   });
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check that the checkpoint file is properly written
   checkpoint::TensorSliceReader reader(filename,
                                        checkpoint::OpenTableTensorSliceReader);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
 
   // We expect to find all saved tensors
   {
@@ -284,6 +285,24 @@ TEST_F(SaveOpTest, Simple) {
   }
 
   {
+    // The 1-d int64 tensor
+    TensorShape shape;
+    DataType type;
+    EXPECT_TRUE(reader.HasTensor("tensor_int64", &shape, &type));
+    TensorShape expected({9});
+    EXPECT_TRUE(shape.IsSameSize(expected));
+    EXPECT_EQ(DT_INT64, type);
+
+    // We expect the tensor value to be correct.
+    TensorSlice s = TensorSlice::ParseOrDie("-");
+    int64 data[9];
+    EXPECT_TRUE(reader.CopySliceData("tensor_int64", s, data));
+    for (int i = 0; i < 9; ++i) {
+      EXPECT_EQ(i - 9, data[i]);
+    }
+  }
+
+  {
     // The 1-d string tensor
     TensorShape shape;
     DataType type;
@@ -323,15 +342,14 @@ TEST_F(SaveOpTest, Simple) {
 class SaveSlicesOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
-    RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput(
-                      {DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8, DT_QINT32}))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput(
+                         {DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8, DT_QINT32}))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -387,12 +405,12 @@ TEST_F(SaveSlicesOpTest, Slices) {
     return *reinterpret_cast<qint32*>(&x) * qint8(2);
   });
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check that the checkpoint file is properly written
   checkpoint::TensorSliceReader reader(filename,
                                        checkpoint::OpenTableTensorSliceReader);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
 
   // We expect to find all saved tensors
   {
@@ -483,14 +501,13 @@ TEST_F(SaveSlicesOpTest, Slices) {
 class SaveOpSlices2Test : public OpsTestBase {
  protected:
   void MakeOp() {
-    RequireDefaultOps();
-    ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput())
-                  .Input(FakeInput({DT_INT32, DT_INT32, DT_FLOAT}))
-                  .Finalize(node_def()));
-    ASSERT_OK(InitOp());
+    TF_ASSERT_OK(NodeDefBuilder("myop", "SaveSlices")
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Input(FakeInput({DT_INT32, DT_INT32, DT_FLOAT}))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
   }
 };
 
@@ -531,12 +548,12 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
   AddInput<float>(TensorShape({2, 4}),
                   [](int x) -> float { return static_cast<float>(x) / 10; });
 
-  ASSERT_OK(RunOpKernel());
+  TF_ASSERT_OK(RunOpKernel());
 
   // Check that the checkpoint file is properly written
   checkpoint::TensorSliceReader reader(filename,
                                        checkpoint::OpenTableTensorSliceReader);
-  EXPECT_OK(reader.status());
+  TF_EXPECT_OK(reader.status());
 
   {
     // Reload the two slices of "four_by_sixteen" into that tensor.

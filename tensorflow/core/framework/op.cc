@@ -22,8 +22,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -33,14 +34,16 @@ OpRegistryInterface::~OpRegistryInterface() {}
 
 OpRegistry::OpRegistry() : initialized_(false) {}
 
-void OpRegistry::Register(std::function<OpDef(void)> func) {
+void OpRegistry::Register(const OpDef& op_def) {
   mutex_lock lock(mu_);
   if (initialized_) {
-    OpDef def = func();
-    TF_QCHECK_OK(RegisterAlreadyLocked(def)) << "Attempting to register: "
-                                             << SummarizeOpDef(def);
+    TF_QCHECK_OK(RegisterAlreadyLocked(op_def)) << "Attempting to register: "
+                                                << SummarizeOpDef(op_def);
   } else {
-    deferred_.push_back(func);
+    deferred_.push_back(op_def);
+  }
+  if (watcher_) {
+    watcher_(op_def);
   }
 }
 
@@ -55,24 +58,42 @@ const OpDef* OpRegistry::LookUp(const string& op_type_name,
     // Note: Can't hold mu_ while calling Export() below.
   }
   if (first_call) {
-    TF_QCHECK_OK(ValidateKernelRegistrations(this));
+    TF_QCHECK_OK(ValidateKernelRegistrations(*this));
   }
   if (op_def == nullptr) {
     status->Update(
         errors::NotFound("Op type not registered '", op_type_name, "'"));
-    LOG(INFO) << status->ToString();
+    VLOG(1) << status->ToString();
     static bool first_unregistered = true;
     if (first_unregistered) {
       OpList op_list;
       Export(true, &op_list);
-      LOG(INFO) << "All registered Ops:";
+      VLOG(1) << "All registered Ops:";
       for (const auto& op : op_list.op()) {
-        LOG(INFO) << SummarizeOpDef(op);
+        VLOG(1) << SummarizeOpDef(op);
       }
       first_unregistered = false;
     }
   }
   return op_def;
+}
+
+void OpRegistry::GetRegisteredOps(std::vector<OpDef>* op_defs) {
+  mutex_lock lock(mu_);
+  CallDeferred();
+  for (auto p : registry_) {
+    op_defs->push_back(*p.second);
+  }
+}
+
+Status OpRegistry::SetWatcher(const Watcher& watcher) {
+  mutex_lock lock(mu_);
+  if (watcher_ && watcher) {
+    return errors::AlreadyExists(
+        "Cannot over-write a valid watcher with another.");
+  }
+  watcher_ = watcher;
+  return Status::OK();
 }
 
 void OpRegistry::Export(bool include_internal, OpList* ops) const {
@@ -107,10 +128,9 @@ string OpRegistry::DebugString(bool include_internal) const {
 bool OpRegistry::CallDeferred() const {
   if (initialized_) return false;
   initialized_ = true;
-  for (const auto& fn : deferred_) {
-    OpDef def = fn();
-    TF_QCHECK_OK(RegisterAlreadyLocked(def)) << "Attempting to register: "
-                                             << SummarizeOpDef(def);
+  for (const auto& op_def : deferred_) {
+    TF_QCHECK_OK(RegisterAlreadyLocked(op_def)) << "Attempting to register: "
+                                                << SummarizeOpDef(op_def);
   }
   deferred_.clear();
   return true;
@@ -134,13 +154,33 @@ OpRegistry* OpRegistry::Global() {
   return global_op_registry;
 }
 
+// OpListOpRegistry -----------------------------------------------------------
+
+OpListOpRegistry::OpListOpRegistry(const OpList* op_list) {
+  for (const OpDef& op_def : op_list->op()) {
+    index_[op_def.name()] = &op_def;
+  }
+}
+
+const OpDef* OpListOpRegistry::LookUp(const string& op_type_name,
+                                      Status* status) const {
+  auto iter = index_.find(op_type_name);
+  if (iter == index_.end()) {
+    status->Update(
+        errors::NotFound("Op type not registered '", op_type_name, "'"));
+    return nullptr;
+  }
+  return iter->second;
+}
+
+// Other registration ---------------------------------------------------------
+
 namespace register_op {
-OpDefBuilderReceiver::OpDefBuilderReceiver(const OpDefBuilder& builder) {
-  OpRegistry::Global()->Register([builder]() {
-    OpDef op_def;
-    TF_QCHECK_OK(builder.Finalize(&op_def));
-    return op_def;
-  });
+OpDefBuilderReceiver::OpDefBuilderReceiver(
+    const OpDefBuilderWrapper<true>& wrapper) {
+  OpDef op_def;
+  wrapper.builder().Finalize(&op_def);
+  OpRegistry::Global()->Register(op_def);
 }
 }  // namespace register_op
 

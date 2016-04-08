@@ -30,7 +30,7 @@ limitations under the License.
 // * Objects are always passed around as pointers to opaque structs
 //   and these structs are allocated/deallocated via the API.
 // * TF_Status holds error information.  It is an object type
-//   and threfore is passed around as a pointer to an opaque
+//   and therefore is passed around as a pointer to an opaque
 //   struct as mentioned above.
 // * Every call that has a TF_Status* argument clears it on success
 //   and fills it with error info on failure.
@@ -78,13 +78,18 @@ typedef enum {
   TF_INT16 = 5,
   TF_INT8 = 6,
   TF_STRING = 7,
-  TF_COMPLEX = 8,  // Single-precision complex
+  TF_COMPLEX64 = 8,  // Single-precision complex
+  TF_COMPLEX = 8,    // Old identifier kept for API backwards compatibility
   TF_INT64 = 9,
   TF_BOOL = 10,
   TF_QINT8 = 11,     // Quantized int8
   TF_QUINT8 = 12,    // Quantized uint8
   TF_QINT32 = 13,    // Quantized int32
   TF_BFLOAT16 = 14,  // Float32 truncated to 16 bits.  Only for cast ops.
+  TF_QINT16 = 15,    // Quantized int16
+  TF_QUINT16 = 16,   // Quantized uint16
+  TF_UINT16 = 17,
+  TF_COMPLEX128 = 18,  // Double-precision complex
 } TF_DataType;
 
 // --------------------------------------------------------------------------
@@ -114,6 +119,35 @@ typedef enum {
 // TF_Status holds error information.  It either has an OK code, or
 // else an error code with an associated error message.
 typedef struct TF_Status TF_Status;
+
+// --------------------------------------------------------------------------
+// TF_Buffer holds a pointer to a block of data and its associated length.
+// Typically, the data consists of a serialized protocol buffer, but other data
+// may also be held in a buffer.
+//
+// By default, TF_Buffer itself does not do any memory management of the
+// pointed-to block.  If need be, users of this struct should specify how to
+// deallocate the block by setting the `data_deallocator` function pointer.
+typedef struct {
+  const void* data;
+  size_t length;
+  void (*data_deallocator)(void* data, size_t length);
+} TF_Buffer;
+
+// Makes a copy of the input and sets an appropriate deallocator.  Useful for
+// passing in read-only, input protobufs.
+extern TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len);
+
+// Useful for passing *out* a protobuf.
+extern TF_Buffer* TF_NewBuffer();
+
+extern void TF_DeleteBuffer(TF_Buffer*);
+
+extern TF_Buffer TF_GetBuffer(TF_Buffer* buffer);
+
+// --------------------------------------------------------------------------
+// TF_Library holds information about dynamically loaded TensorFlow plugins.
+typedef struct TF_Library TF_Library;
 
 // Return a new status object.
 extern TF_Status* TF_NewStatus();
@@ -154,7 +188,7 @@ typedef struct TF_Tensor TF_Tensor;
 // Return a new tensor that holds the bytes data[0,len-1].
 //
 // The data will be deallocated by a subsequent call to TF_DeleteTensor via:
-//      (*deallocator_fn)(data, len, deallocator_arg)
+//      (*deallocator)(data, len, deallocator_arg)
 // Clients must provide a custom deallocator function so they can pass in
 // memory managed by something like numpy.
 extern TF_Tensor* TF_NewTensor(TF_DataType, long long* dims, int num_dims,
@@ -234,13 +268,29 @@ extern void TF_ExtendGraph(TF_Session*, const void* proto, size_t proto_len,
 // failure, inputs[] become the property of the implementation (the
 // implementation will eventually call TF_DeleteTensor on each input).
 //
+// Any NULL and non-NULL value combinations for (`run_options`,
+// `run_metadata`) are valid.
+//
+//    - `run_options` may be NULL, in which case it will be ignored; or
+//      non-NULL, in which case it must point to a `TF_Buffer` containing the
+//      serialized representation of a `RunOptions` protocol buffer.
+//    - `run_metadata` may be NULL, in which case it will be ignored; or
+//      non-NULL, in which case it must point to an empty, freshly allocated
+//      `TF_Buffer` that may be updated to contain the serialized representation
+//      of a `RunMetadata` protocol buffer.
+//
+// The caller retains the ownership of `run_options` and/or `run_metadata` (when
+// not NULL) and should manually call TF_DeleteBuffer on them.
+//
 // On success, the tensors corresponding to output_names[0,noutputs-1]
-// are placed in outputs[].  and these outputs[] become the property
+// are placed in outputs[], and these outputs[] become the property
 // of the caller (the caller must eventually call TF_DeleteTensor on
 // them).
 //
-// On failure, outputs[] contains nulls.
+// On failure, outputs[] contains NULLs.
 extern void TF_Run(TF_Session*,
+                   // RunOptions
+                   const TF_Buffer* run_options,
                    // Input tensors
                    const char** input_names, TF_Tensor** inputs, int ninputs,
                    // Output tensors
@@ -248,8 +298,70 @@ extern void TF_Run(TF_Session*,
                    int noutputs,
                    // Target nodes
                    const char** target_node_names, int ntargets,
+                   // RunMetadata
+                   TF_Buffer* run_metadata,
                    // Output status
                    TF_Status*);
+
+// Set up the graph with the intended feeds and fetches for a sequence
+// of partial run calls.
+//
+// On success, returns a handle that is used for subsequent PRun calls.
+//
+// On failure, out_status contains a tensorflow::Status with an error
+// message.
+// NOTE: This is EXPERIMENTAL and subject to change.
+extern void TF_PRunSetup(TF_Session*,
+                         // Input names
+                         const char** input_names, int ninputs,
+                         // Output names
+                         const char** output_tensor_names, int noutputs,
+                         // Target nodes
+                         const char** target_node_names, int ntargets,
+                         // Output handle
+                         char** handle,
+                         // Output status
+                         TF_Status*);
+
+// Continue to run the graph with additional feeds and fetches. The
+// execution state is uniquely identified by the handle.
+// NOTE: This is EXPERIMENTAL and subject to change.
+extern void TF_PRun(TF_Session*, const char* handle,
+                    // Input tensors
+                    const char** input_names, TF_Tensor** inputs, int ninputs,
+                    // Output tensors
+                    const char** output_tensor_names, TF_Tensor** outputs,
+                    int noutputs,
+                    // Target nodes
+                    const char** target_node_names, int ntargets,
+                    // Output status
+                    TF_Status*);
+
+// --------------------------------------------------------------------------
+// Load plugins containing custom ops and kernels
+
+// Load the library specified by library_filename and register the ops and
+// kernels present in that library.
+//
+// Pass "library_filename" to a platform-specific mechanism for dynamically
+// loading a library. The rules for determining the exact location of the
+// library are platform-specific and are not documented here.
+// Expects the symbols "RegisterOps", "RegisterKernels", and "GetOpList", to be
+// defined in the library.
+//
+// On success, place OK in status and return the newly created library handle.
+// The caller owns the library handle.
+//
+// On failure, place an error status in status and return NULL.
+extern TF_Library* TF_LoadLibrary(const char* library_filename,
+                                  TF_Status* status);
+
+// Get the OpList of OpDefs defined in the library pointed by lib_handle.
+//
+// Returns a TF_Buffer. The memory pointed to by the result is owned by
+// lib_handle. The data in the buffer will be the serialized OpList proto for
+// ops defined in the library.
+extern TF_Buffer TF_GetOpList(TF_Library* lib_handle);
 
 #ifdef __cplusplus
 } /* end extern "C" */

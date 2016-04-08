@@ -23,8 +23,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_string_ops
-# pylint: disable=wildcard-import,undefined-variable
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
+# pylint: enable=wildcard-import
 
 ops.NoGradient("StringToHashBucket")
 

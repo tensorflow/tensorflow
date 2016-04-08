@@ -17,49 +17,19 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#if !defined(__ANDROID__) && (defined(PLATFORM_GOOGLE) || GOOGLE_CUDA)
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#endif
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-namespace {
-
-void CopyTensorBetweenDevices(const string& id, DeviceContext* send_dev_context,
-                              DeviceContext* recv_dev_context, Device* src,
-                              Device* dst,
-                              const AllocatorAttributes src_alloc_attr,
-                              const AllocatorAttributes dst_alloc_attr,
-                              const Tensor* input, Tensor* output,
-                              std::function<void(const Status&)> done) {
-  if (src->attributes().device_type() != dst->attributes().device_type()) {
-    done(errors::Unimplemented(
-        "Copy between device types not yet implemented: src=", src->name(),
-        " dst=", dst->name()));
-  } else if (src->attributes().device_type() != "CPU") {
-    done(errors::Unimplemented(
-        "Copy between non-CPU devices not yet implemented"));
-  }
-  *output = *input;
-  done(Status::OK());
-}
-
-#if !defined(__ANDROID__) && (defined(PLATFORM_GOOGLE) || GOOGLE_CUDA)
-constexpr auto CopyTensorBetweenDevicesFunc = &GPUUtil::CopyViaDMA;
-#else
-constexpr auto CopyTensorBetweenDevicesFunc = &CopyTensorBetweenDevices;
-#endif
-
-}  // end namespace
 
 IntraProcessRendezvous::IntraProcessRendezvous(const DeviceMgr* device_mgr)
     : device_mgr_(device_mgr), local_(NewLocalRendezvous()) {}
@@ -135,10 +105,10 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   Tensor copy(out_allocator, in.dtype(), in.shape());
   *out = copy;
 
-  CopyTensorBetweenDevicesFunc(parsed.edge_name, send_args.device_context,
-                               recv_args.device_context, src_device, dst_device,
-                               send_args.alloc_attrs, recv_args.alloc_attrs,
-                               &in, out, done);
+  CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
+                     recv_args.device_context, src_device, dst_device,
+                     send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
+                     done);
 }
 
 void IntraProcessRendezvous::RecvAsync(const string& key,

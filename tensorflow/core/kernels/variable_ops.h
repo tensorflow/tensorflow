@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -65,7 +67,7 @@ class VariableOp : public OpKernel {
 
     string DebugString() override {
       return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
-                             tensor_.shape().ShortDebugString());
+                             tensor_.shape().DebugString());
     }
 
    private:

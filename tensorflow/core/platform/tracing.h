@@ -24,27 +24,12 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/port.h"  // Must be first
-#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-class NodeExecStats;
-class StepStats;
-
-class StepStatsCollector {
- public:
-  explicit StepStatsCollector(StepStats* ss);
-
-  void Save(const string& device, NodeExecStats* nt);
-
-  void Swap(StepStats* ss);
-
- private:
-  friend class StepStatsMgr;
-  mutex mu_;
-  StepStats* step_stats_ GUARDED_BY(mu_);
-};
 
 namespace port {
 
@@ -52,7 +37,7 @@ class Tracing {
  public:
   // This enumeration contains the identifiers of all TensorFlow
   // threadscape events and code regions.  Threadscape assigns its
-  // own identiers at runtime when we register our events and we
+  // own identifiers at runtime when we register our events and we
   // cannot know in advance what IDs it will choose.  The "RecordEvent"
   // method and "ScopedActivity" use these event IDs for consistency
   // and remap them to threadscape IDs at runtime.  This enum is limited
@@ -96,8 +81,10 @@ class Tracing {
     ~ScopedActivity();
 
    private:
+#if defined(PLATFORM_GOOGLE)
     const bool enabled_;
     const int32 region_id_;
+#endif
 
     TF_DISALLOW_COPY_AND_ASSIGN(ScopedActivity);
   };
@@ -151,6 +138,9 @@ class Tracing::Engine {
  public:
   Engine() {}
   virtual ~Engine();
+
+  // Returns true if Tracing is currently enabled.
+  virtual bool IsEnabled() const = 0;
 
   // Represents an active annotation.
   class Annotation {
@@ -225,7 +215,7 @@ class Tracing::TraceMe {
 
 inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name) {
   auto e = Tracing::engine();
-  if (e) {
+  if (e && e->IsEnabled()) {
     annotation_.reset(e->PushAnnotation(name));
   }
 }
@@ -233,7 +223,7 @@ inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name) {
 inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
                                                    StringPiece name_part2) {
   auto e = Tracing::engine();
-  if (e) {
+  if (e && e->IsEnabled()) {
     annotation_.reset(
         e->PushAnnotation(strings::StrCat(name_part1, ":", name_part2)));
   }
@@ -241,7 +231,7 @@ inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
 
 inline Tracing::TraceMe::TraceMe(StringPiece name) {
   auto e = Tracing::engine();
-  if (e) {
+  if (e && e->IsEnabled()) {
     tracer_.reset(e->StartTracing(name));
   }
 }

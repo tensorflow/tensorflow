@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/// <reference path="../../../typings/tsd.d.ts" />
-
 declare module graphlib {
 
   interface GraphOptions {
-    name: string;
+    name?: string;
     /**
      * Direction for rank nodes. Can be TB, BT, LR, or RL, where T = top,
      * B = bottom, L = left, and R = right.
      */
-    rankdir: string;
-    type: string|number;
+    rankdir?: string;
+    type?: string|number;
     /** Number of pixels between each rank in the layout. */
     ranksep?: number;
     /** Number of pixels that separate nodes horizontally in the layout. */
     nodesep?: number;
+    /** Number of pixels that separate edges horizontally in the layout */
+    edgesep?: number;
   }
 
   export interface EdgeObject {
@@ -58,7 +58,10 @@ declare module graphlib {
         edges(): EdgeObject[];
         outEdges(name: string): E[];
         inEdges(name: string): E[];
-        /** Returns those nodes in the graph that have no in-edges. Takes O(|V|) time. */
+        /**
+         * Returns those nodes in the graph that have no in-edges.
+         * Takes O(|V|) time.
+         */
         sources(): string[];
         /**
          * Remove the node with the id v in the graph or do nothing if
@@ -95,7 +98,41 @@ export function time<T>(msg: string, task: () => T) {
 export interface ProgressTracker {
   updateProgress(incrementValue: number): void;
   setMessage(msg: string): void;
-  reportError(msg: string): void;
+  reportError(msg: string, err: Error): void;
+}
+
+/**
+ * Creates a tracker that sets the progress property of the
+ * provided polymer component. The provided component must have
+ * a property called 'progress' that is not read-only. The progress
+ * property is an object with a numerical 'value' property and a
+ * string 'msg' property.
+ */
+export function getTracker(polymerComponent: any) {
+  return {
+    setMessage: function(msg) {
+      polymerComponent.set("progress", {
+        value: polymerComponent.progress.value,
+        msg: msg
+      });
+    },
+    updateProgress: function(value) {
+      polymerComponent.set("progress", {
+        value: polymerComponent.progress.value + value,
+        msg: polymerComponent.progress.msg
+      });
+    },
+    reportError: function(msg: string, err) {
+      // Log the stack trace in the console.
+      console.error(err.stack);
+      // And send a user-friendly message to the UI.
+      polymerComponent.set("progress", {
+        value: polymerComponent.progress.value,
+        msg: msg,
+        error: true
+      });
+    },
+  };
 }
 
 /**
@@ -110,7 +147,7 @@ export function getSubtaskTracker(parentTracker: ProgressTracker,
     setMessage: function(progressMsg) {
       // The parent should show a concatenation of its message along with
       // its subtask tracker message.
-      parentTracker.setMessage(subtaskMsg + " : " + progressMsg);
+      parentTracker.setMessage(subtaskMsg + ": " + progressMsg);
     },
     updateProgress: function(incrementValue) {
       // Update the parent progress relative to the child progress.
@@ -119,12 +156,34 @@ export function getSubtaskTracker(parentTracker: ProgressTracker,
       parentTracker
           .updateProgress(incrementValue * impactOnTotalProgress / 100);
     },
-    reportError: function(errorMsg) {
+    reportError: function(msg: string, err: Error) {
       // The parent should show a concatenation of its message along with
       // its subtask error message.
-      parentTracker.reportError(subtaskMsg + " : " + errorMsg);
+      parentTracker.reportError(subtaskMsg + ": " + msg, err);
     }
   };
+}
+
+/**
+ * Runs an expensive task and return the result.
+ */
+export function runTask<T>(msg: string, incProgressValue: number,
+    task: () => T, tracker: ProgressTracker): T {
+  // Update the progress message to say the current running task.
+  tracker.setMessage(msg);
+  // Run the expensive task with a delay that gives enough time for the
+  // UI to update.
+  try {
+    var result = tf.time(msg, task);
+    // Update the progress value.
+    tracker.updateProgress(incProgressValue);
+    // Return the result to be used by other tasks.
+    return result;
+  } catch (e) {
+    // Errors that happen inside asynchronous tasks are
+    // reported to the tracker using a user-friendly message.
+    tracker.reportError("Failed " + msg, e);
+  }
 }
 
 /**
@@ -145,7 +204,9 @@ export function runAsyncTask<T>(msg: string, incProgressValue: number,
         // Return the result to be used by other tasks.
         resolve(result);
       } catch (e) {
-        reject(result);
+        // Errors that happen inside asynchronous tasks are
+        // reported to the tracker using a user-friendly message.
+        tracker.reportError("Failed " + msg, e);
       }
     }, ASYNC_TASK_DELAY);
   });
@@ -160,7 +221,7 @@ export function escapeQuerySelector(querySelector: string): string {
 }
 
 /**
- * TensorFlow node definition as definied in the graph proto file.
+ * TensorFlow node definition as defined in the graph proto file.
  */
 export interface TFNode {
   /** Name of the node */

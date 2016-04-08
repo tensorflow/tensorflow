@@ -20,12 +20,12 @@ TensorFlow session.
 ### Load MNIST Data
 
 For your convenience, we've included
-[a script](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/input_data.py)
+[a script](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/input_data.py)
 which automatically downloads and imports the MNIST dataset. It will create a
 directory `'MNIST_data'` in which to store the data files.
 
 ```python
-import input_data
+from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 ```
 
@@ -47,7 +47,7 @@ It allows you to interleave operations which build a
 [computation graph](../../../get_started/basic_usage.md#the-computation-graph)
 with ones that run the graph.
 This is particularly convenient when working in interactive contexts like
-iPython.
+IPython.
 If you are not using an `InteractiveSession`, then you should build
 the entire computation graph before starting a session and [launching the
 graph](../../../get_started/basic_usage.md#launching-the-graph-in-a-session).
@@ -94,8 +94,8 @@ We start building the computation graph by creating nodes for the
 input images and target output classes.
 
 ```python
-x = tf.placeholder("float", shape=[None, 784])
-y_ = tf.placeholder("float", shape=[None, 10])
+x = tf.placeholder(tf.float32, shape=[None, 784])
+y_ = tf.placeholder(tf.float32, shape=[None, 10])
 ```
 
 Here `x` and `y_` aren't specific values. Rather, they are each a `placeholder`
@@ -119,7 +119,7 @@ these like additional inputs, but TensorFlow has an even better way to handle
 them: `Variable`.
 A `Variable` is a value that lives in TensorFlow's computation graph.
 It can be used and even modified by the computation. In machine
-learning applications, one generally has the model paramaters be `Variable`s.
+learning applications, one generally has the model parameters be `Variable`s.
 
 ```python
 W = tf.Variable(tf.zeros([784,10]))
@@ -157,11 +157,11 @@ easily. Our cost function will be the cross-entropy between the target and the
 model's prediction.
 
 ```python
-cross_entropy = -tf.reduce_sum(y_*tf.log(y))
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
 ```
 
-Note that `tf.reduce_sum` sums across all images in the minibatch, as well as
-all classes. We are computing the cross entropy for the entire minibatch.
+Note that `tf.reduce_sum` sums across all classes and `tf.reduce_mean` takes 
+the average over these sums.
 
 ## Train the Model
 
@@ -174,10 +174,10 @@ TensorFlow has a variety of
 [builtin optimization algorithms]
 (../../../api_docs/python/train.md#optimizers).
 For this example, we will use steepest gradient descent, with a step length of
-0.01, to descend the cross entropy.
+0.5, to descend the cross entropy.
 
 ```python
-train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
+train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 ```
 
 What TensorFlow actually did in that single line was to add new operations to
@@ -220,11 +220,11 @@ cast to floating point numbers and then take the mean. For example,
 `[True, False, True, True]` would become `[1,0,1,1]` which would become `0.75`.
 
 ```python
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 ```
 
 Finally, we can evaluate our accuracy on the test data. This should be about
-91% correct.
+92% correct.
 
 ```python
 print(accuracy.eval(feed_dict={x: mnist.test.images, y_: mnist.test.labels}))
@@ -340,10 +340,10 @@ We create a `placeholder` for the probability that a neuron's output is kept
 during dropout. This allows us to turn dropout on during training, and turn it
 off during testing.
 TensorFlow's `tf.nn.dropout` op automatically handles scaling neuron outputs in
-addition to masking them, so dropout just works without any additional scaling.
+addition to masking them, so dropout just works without any additional scaling.<sup id="a1">[1](#f1)</sup>
 
 ```python
-keep_prob = tf.placeholder("float")
+keep_prob = tf.placeholder(tf.float32)
 h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 ```
 
@@ -370,10 +370,10 @@ additional parameter `keep_prob` in `feed_dict` to control the dropout rate;
 and we will add logging to every 100th iteration in the training process.
 
 ```python
-cross_entropy = -tf.reduce_sum(y_*tf.log(y_conv))
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y_conv), reduction_indices=[1]))
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 sess.run(tf.initialize_all_variables())
 for i in range(20000):
   batch = mnist.train.next_batch(50)
@@ -391,3 +391,5 @@ The final test set accuracy after running this code should be approximately 99.2
 
 We have learned how to quickly and easily build, train, and evaluate a
 fairly sophisticated deep learning model using TensorFlow.
+
+<b id="f1">1</b>: For this small convolutional network, performance is actually nearly identical with and without dropout. Dropout is often very effective at reducing overfitting, but it is most useful when training very large neural networks. [↩](#a1)

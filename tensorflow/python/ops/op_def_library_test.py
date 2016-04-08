@@ -45,6 +45,8 @@ ops.RegisterShape("AttrListMin")(None)
 ops.RegisterShape("AttrMin")(None)
 ops.RegisterShape("AttrShape")(None)
 ops.RegisterShape("AttrShapeList")(None)
+ops.RegisterShape("AttrPartialShape")(None)
+ops.RegisterShape("AttrPartialShapeList")(None)
 ops.RegisterShape("Binary")(None)
 ops.RegisterShape("ComplexStruct")(None)
 ops.RegisterShape("InPolymorphicTwice")(None)
@@ -103,7 +105,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testNoRegisteredOpFails(self):
     with self.assertRaises(RuntimeError) as cm:
-      self._lib.apply_op("unknown", g=self._g)
+      self._lib.apply_op("unknown")
     self.assertEqual(str(cm.exception), "Unrecognized Op name unknown")
 
   def testAddOpValidation(self):
@@ -709,7 +711,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     #                  "Don't know how to convert 5 to a TensorShapeProto for "
     #                  "argument 'a'")
 
-    with self.assertRaises(ValueError) as cm:
+    with self.assertRaises(ValueError):
       self._lib.apply_op("AttrShape", a="ABC")
 
   def testAttrShapeList(self):
@@ -726,6 +728,78 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     op = self._lib.apply_op("AttrShapeList", a=[], name="esl")
     self.assertProtoEquals("""
       name: 'esl' op: 'AttrShapeList' attr { key: 'a' value { list { } } }
+      """, op.node_def)
+
+  def testAttrPartialShape(self):
+    self._add_op(
+        "name: 'AttrPartialShape' attr { name: 'a' type: 'shape' }")
+
+    op = self._lib.apply_op("AttrPartialShape", a=[5], name="s1")
+    self.assertProtoEquals("""
+      name: 's1' op: 'AttrPartialShape'
+      attr { key: 'a' value { shape { dim { size: 5 } } } }
+      """, op.node_def)
+
+    op = self._lib.apply_op("AttrPartialShape", a=(4, None, 2), name="s2")
+    self.assertProtoEquals("""
+      name: 's2' op: 'AttrPartialShape'
+      attr { key: 'a' value {
+        shape { dim { size: 4 } dim { size: -1 } dim { size: 2 } } } }
+      """, op.node_def)
+
+    op = self._lib.apply_op(
+        "AttrPartialShape", a=tensor_shape.TensorShape([3, None]), name="s3")
+    self.assertProtoEquals("""
+      name: 's3' op: 'AttrPartialShape'
+      attr { key: 'a' value {
+        shape { dim { size: 3 } dim { size: -1 } } } }
+      """, op.node_def)
+
+    op = self._lib.apply_op("AttrPartialShape", a=[], name="s4")
+    self.assertProtoEquals("""
+      name: 's4' op: 'AttrPartialShape'
+      attr { key: 'a' value { shape { } } }
+      """, op.node_def)
+
+    shape = tensor_shape_pb2.TensorShapeProto()
+    shape.dim.add().size = -1
+    shape.dim.add().size = 3
+    op = self._lib.apply_op("AttrPartialShape", a=shape, name="s5")
+    self.assertProtoEquals("""
+      name: 's5' op: 'AttrPartialShape'
+      attr { key: 'a' value {
+        shape { dim { size: -1 } dim { size: 3 } } } }
+      """, op.node_def)
+
+    # TODO(ebrevdo): Re-enable once we stop promoting scalars to shapes.
+    # with self.assertRaises(TypeError) as cm:
+    #   self._lib.apply_op("AttrPartialShape", a=5)
+    # self.assertEqual(str(cm.exception),
+    #                  "Don't know how to convert 5 to a TensorShapeProto for "
+    #                  "argument 'a'")
+
+    with self.assertRaises(ValueError) as cm:
+      self._lib.apply_op("AttrPartialShape", a="ABC")
+
+  def testAttrPartialShapeList(self):
+    self._add_op("""
+      name: 'AttrPartialShapeList'
+      attr { name: 'a' type: 'list(shape)' }
+    """)
+
+    op = self._lib.apply_op(
+        "AttrPartialShapeList", a=[[3, 2], [6, None, 4]], name="sl")
+    self.assertProtoEquals("""
+      name: 'sl' op: 'AttrPartialShapeList'
+      attr { key: 'a' value { list {
+        shape { dim { size: 3 } dim { size: 2 } }
+        shape { dim { size: 6 } dim { size: -1 } dim { size: 4 } } } } }
+      """, op.node_def)
+
+    op = self._lib.apply_op("AttrPartialShapeList", a=[], name="esl")
+    self.assertProtoEquals("""
+      name: 'esl' op: 'AttrPartialShapeList' attr {
+        key: 'a' value { list { } } }
       """, op.node_def)
 
   def testAttrDefault(self):
@@ -1313,14 +1387,14 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                      "Input 'a' of 'RefIn' Op requires l-value input")
 
   def testSpecifyDevice(self):
-    with self._g.device("ADevice"):
+    with self._g.device("/job:ADevice"):
       self._lib.apply_op("Simple", a=3)
     # We look at the whole graph here to make sure the Const op is also given
     # the specified device.
     graph_def = self._g.as_graph_def()
     self.assertEqual(len(graph_def.node), 2)
     for node in graph_def.node:
-      self.assertEqual(node.device, "ADevice")
+      self.assertDeviceEqual(node.device, "/job:ADevice")
 
   def testStructuredOutputSingleList(self):
     self._add_op("name: 'SimpleStruct' "
@@ -1394,29 +1468,15 @@ class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
       out = self._lib.apply_op("Simple", a=3)
       self.assertEqual(out.graph, self._g)
 
-  def testIgnoreDefaultGraphWithGraphArgument(self):
-    default_g = ops.Graph()
-    with default_g.as_default():
-      out = self._lib.apply_op("Simple", a=3, g=self._g)
-      self.assertEqual(ops.get_default_graph(), default_g)
-      self.assertEqual(out.graph, self._g)
-
   def testDifferentGraphFails(self):
-    a = self._lib.apply_op("Simple", a=3, g=self._g)
+    with self._g.as_default():
+      a = self._lib.apply_op("Simple", a=3)
     other_g = ops.Graph()
-    b = self._lib.apply_op("Simple", a=4, g=other_g)
+    with other_g.as_default():
+      b = self._lib.apply_op("Simple", a=4)
     with self.assertRaises(ValueError) as cm:
       self._lib.apply_op("Binary", a=a, b=b)
     self.assertTrue("must be from the same graph" in str(cm.exception))
-
-  def testDifferentGraphFailsWithGraphArgument(self):
-    other_g = ops.Graph()
-    a = self._lib.apply_op("Simple", a=3, g=other_g)
-    b = self._lib.apply_op("Simple", a=4, g=other_g)
-    with self.assertRaises(ValueError) as cm:
-      self._lib.apply_op("Binary", a=a, b=b, g=self._g)
-    self.assertTrue(
-        "not from the passed-in graph" in str(cm.exception))
 
 
 if __name__ == "__main__":

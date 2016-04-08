@@ -25,6 +25,9 @@ Status InitializableLookupTable::Find(const Tensor& keys, Tensor* values,
   if (!is_initialized()) {
     return errors::FailedPrecondition("Table not initialized.");
   }
+  // Do not let the use migrate before the check;  table is used without
+  // a lock by the readers.
+  std::atomic_thread_fence(std::memory_order_acquire);
   TF_RETURN_IF_ERROR(CheckFindArguments(keys, *values, default_value));
   return DoFind(keys, values, default_value);
 }
@@ -48,6 +51,10 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
   if (!errors::IsOutOfRange(iter.status())) {
     return iter.status();
   }
+
+  // Prevent compiler/memory reordering of is_initialized and
+  // the initialization itself.
+  std::atomic_thread_fence(std::memory_order_release);
   is_initialized_ = true;
   return Status::OK();
 }

@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
@@ -29,17 +29,21 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename T>
 class UniqueOp : public OpKernel {
  public:
-  explicit UniqueOp(OpKernelConstruction* context) : OpKernel(context) {
-    const DataType dt = DataTypeToEnum<T>::v();
-    OP_REQUIRES_OK(context, context->MatchSignature({dt}, {dt, DT_INT32}));
-  }
+  explicit UniqueOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
                 errors::InvalidArgument("unique expects a 1D vector."));
+    // TODO(dga):  Make unique polymorphic for returning int32 and int64
+    // vectors to support large tensors.
+    OP_REQUIRES(context,
+                input.NumElements() <= std::numeric_limits<int32>::max(),
+                errors::InvalidArgument(
+                    "unique does not support input tensors larger than ",
+                    std::numeric_limits<int32>::max(), " elements"));
     auto Tin = input.vec<T>();
-    const int N = Tin.size();
+    const int64 N = static_cast<int64>(Tin.size());
 
     Tensor* idx = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, input.shape(), &idx));
@@ -47,14 +51,14 @@ class UniqueOp : public OpKernel {
 
     std::unordered_map<T, int32> uniq;
     uniq.reserve(2 * N);
-    for (int i = 0, j = 0; i < N; ++i) {
+    for (int64 i = 0, j = 0; i < N; ++i) {
       auto it = uniq.insert(std::make_pair(Tin(i), j));
       idx_vec(i) = it.first->second;
       if (it.second) {
         ++j;
       }
     }
-    int32 uniq_size = uniq.size();
+    int64 uniq_size = static_cast<int64>(uniq.size());
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, TensorShape({uniq_size}), &output));
@@ -63,14 +67,26 @@ class UniqueOp : public OpKernel {
     for (auto it : uniq) {
       output_vec(it.second) = it.first;
     }
+
+    if (num_outputs() > 2) {
+      OP_REQUIRES_OK(context, context->allocate_output(
+                                  2, TensorShape({uniq_size}), &output));
+      auto count_output_vec = output->template vec<int32>();
+      count_output_vec.setZero();
+      for (int64 i = 0; i < N; ++i) {
+        count_output_vec(idx_vec(i))++;
+      }
+    }
   }
 };
 
-#define REGISTER_UNIQUE(type)                                      \
-  REGISTER_KERNEL_BUILDER(                                         \
-      Name("Unique").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_UNIQUE(type)                                                \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("Unique").Device(DEVICE_CPU).TypeConstraint<type>("T"),           \
+      UniqueOp<type>);                                                       \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("UniqueWithCounts").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       UniqueOp<type>)
-
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
 #undef REGISTER_UNIQUE
 }  // namespace tensorflow

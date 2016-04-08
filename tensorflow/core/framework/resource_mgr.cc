@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 
 namespace tensorflow {
 
@@ -41,7 +41,7 @@ void ResourceMgr::Clear() {
   containers_.clear();
 }
 
-Status ResourceMgr::DoCreate(const string& container, ResourceMgrTypeIndex type,
+Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
                              const string& name, ResourceBase* resource) {
   {
     mutex_lock l(mu_);
@@ -58,7 +58,7 @@ Status ResourceMgr::DoCreate(const string& container, ResourceMgrTypeIndex type,
                                type.name());
 }
 
-Status ResourceMgr::DoLookup(const string& container, ResourceMgrTypeIndex type,
+Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                              const string& name,
                              ResourceBase** resource) const {
   mutex_lock l(mu_);
@@ -76,7 +76,7 @@ Status ResourceMgr::DoLookup(const string& container, ResourceMgrTypeIndex type,
   return Status::OK();
 }
 
-Status ResourceMgr::DoDelete(const string& container, ResourceMgrTypeIndex type,
+Status ResourceMgr::DoDelete(const string& container, TypeIndex type,
                              const string& name) {
   ResourceBase* base = nullptr;
   {
@@ -117,15 +117,22 @@ Status ResourceMgr::Cleanup(const string& container) {
   return Status::OK();
 }
 
+static bool IsValidContainerName(StringPiece s) {
+  using ::tensorflow::strings::Scanner;
+  return Scanner(s)
+      .One(Scanner::LETTER_DIGIT_DOT)
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH)
+      .Eos()
+      .GetResult();
+}
+
 Status ContainerInfo::Init(ResourceMgr* rmgr, const NodeDef& ndef,
                            bool use_node_name_as_default) {
   CHECK(rmgr);
   rmgr_ = rmgr;
   string attr_container;
   TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "container", &attr_container));
-  static RE2 container_re("[A-Za-z0-9.][A-Za-z0-9_.\\-/]*");
-  if (!attr_container.empty() &&
-      !RE2::FullMatch(attr_container, container_re)) {
+  if (!attr_container.empty() && !IsValidContainerName(attr_container)) {
     return errors::InvalidArgument("container contains invalid characters: ",
                                    attr_container);
   }

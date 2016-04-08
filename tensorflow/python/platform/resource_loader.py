@@ -13,17 +13,63 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Load a file resource and return the contents."""
+"""Read a file and return its contents."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
-# pylint: disable=g-import-not-at-top
-# pylint: disable=wildcard-import
-from . import control_imports
-import tensorflow.python.platform
-if control_imports.USE_OSS:
-  from tensorflow.python.platform.default._resource_loader import *
-else:
-  from tensorflow.python.platform.google._resource_loader import *
+import inspect
+import os.path
+import sys
+
+from tensorflow.python.platform import logging
+
+
+def load_resource(path):
+  """Load the resource at given path, where path is relative to tensorflow/.
+
+  Args:
+    path: a string resource path relative to tensorflow/.
+
+  Returns:
+    The contents of that resource.
+
+  Raises:
+    IOError: If the path is not found, or the resource can't be opened.
+  """
+  tensorflow_root = (
+      os.path.join(
+          os.path.dirname(__file__), os.pardir, os.pardir))
+  path = os.path.join(tensorflow_root, path)
+  path = os.path.abspath(path)
+  try:
+    with open(path, 'rb') as f:
+      return f.read()
+  except IOError as e:
+    logging.warning('IOError %s on path %s', e, path)
+    raise e
+
+
+# pylint: disable=protected-access
+def get_data_files_path():
+  """Get the directory where files specified in data attribute are stored.
+
+  Returns:
+    The directory where files specified in data attribute of py_test
+    and py_binary are store.
+  """
+  return os.path.dirname(inspect.getfile(sys._getframe(1)))
+
+
+def get_resource_path(subdir, path):
+  """Get the path to the specified resource relative to tensorflow/<subdir>/.
+
+  Args:
+    subdir: a string subdirectory relative to tensorflow/
+    path: a string resource path relative to tensorflow/<subdir>
+
+  Returns:
+    The path to that resource.
+  """
+  return os.path.join(os.path.abspath(subdir), path)

@@ -16,26 +16,39 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_DEFAULT_MUTEX_H_
 #define TENSORFLOW_PLATFORM_DEFAULT_MUTEX_H_
 
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/mutex.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/mutex.h
+
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
-
+#include "tensorflow/core/platform/thread_annotations.h"
 namespace tensorflow {
 
 enum LinkerInitialized { LINKER_INITIALIZED };
 
 // A class that wraps around the std::mutex implementation, only adding an
 // additional LinkerInitialized constructor interface.
-class mutex : public std::mutex {
+class LOCKABLE mutex : public std::mutex {
  public:
   mutex() {}
   // The default implementation of std::mutex is safe to use after the linker
   // initializations
   explicit mutex(LinkerInitialized x) {}
+
+  void lock() ACQUIRE() { std::mutex::lock(); }
+  void unlock() RELEASE() { std::mutex::unlock(); }
+};
+
+class SCOPED_LOCKABLE mutex_lock : public std::unique_lock<std::mutex> {
+ public:
+  mutex_lock(class mutex& m) ACQUIRE(m) : std::unique_lock<std::mutex>(m) {}
+  mutex_lock(mutex_lock&& ml) noexcept
+      : std::unique_lock<std::mutex>(std::move(ml)) {}
+  ~mutex_lock() RELEASE() {}
 };
 
 using std::condition_variable;
-typedef std::unique_lock<std::mutex> mutex_lock;
 
 inline ConditionResult WaitForMilliseconds(mutex_lock* mu,
                                            condition_variable* cv, int64 ms) {

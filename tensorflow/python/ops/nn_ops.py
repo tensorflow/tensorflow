@@ -15,13 +15,14 @@
 
 """Wrappers for primitive Neural Net (NN) Operations."""
 
+# pylint: disable=invalid-name
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
 import numpy as np
 
+from tensorflow.python.client import graph_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -31,20 +32,24 @@ from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
+# pylint: enable=wildcard-import
 
 
 # Aliases for some automatically-generated names.
 local_response_normalization = gen_nn_ops.lrn
 
 
-def deconv2d(value, filter, output_shape, strides, padding="SAME",
-             name=None):
+def conv2d_transpose(value, filter, output_shape, strides, padding="SAME",
+                     name=None):
   """The transpose of `conv2d`.
 
-  This used to be called "deconvolution", but it is actually the transpose
-  (gradient) of `conv2d`, not an actual deconvolution.
+  This operation is sometimes called "deconvolution" after (Deconvolutional
+  Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+  actually the transpose (gradient) of `conv2d` rather than an actual
+  deconvolution.
 
   Args:
     value: A 4-D `Tensor` of type `float` and shape
@@ -66,7 +71,8 @@ def deconv2d(value, filter, output_shape, strides, padding="SAME",
     ValueError: If input/output depth does not match `filter`'s shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  with ops.op_scope([value, filter, output_shape], name, "DeConv2D") as name:
+  with ops.op_scope([value, filter, output_shape], name,
+                    "conv2d_transpose") as name:
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
     if not value.get_shape()[3].is_compatible_with(filter.get_shape()[3]):
@@ -99,8 +105,42 @@ def deconv2d(value, filter, output_shape, strides, padding="SAME",
 
 
 # pylint: disable=protected-access
-def bias_add(value, bias, name=None):
+def bias_add(value, bias, data_format=None, name=None):
   """Adds `bias` to `value`.
+
+  This is (mostly) a special case of `tf.add` where `bias` is restricted to 1-D.
+  Broadcasting is supported, so `value` may have any number of dimensions.
+  Unlike `tf.add`, the type of `bias` is allowed to differ from `value` in the
+  case where both types are quantized.
+
+  Args:
+    value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
+      `int16`, `int8`, or `complex64`.
+    bias: A 1-D `Tensor` with size matching the last dimension of `value`.
+      Must be the same type as `value` unless `value` is a quantized type,
+      in which case a different quantized type may be used.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+  """
+  with ops.op_scope([value, bias], name, "BiasAdd") as name:
+    value = ops.convert_to_tensor(value, name="input")
+    bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
+    return gen_nn_ops._bias_add(value, bias, data_format=data_format, name=name)
+
+ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
+
+
+ops.RegisterShape("BiasAddGrad")(common_shapes.bias_add_grad_shape)
+
+
+# pylint: disable=protected-access
+def bias_add_v1(value, bias, name=None):
+  """Adds `bias` to `value`.
+
+  This is a deprecated version of bias_add and will soon to be removed.
 
   This is (mostly) a special case of `tf.add` where `bias` is restricted to 1-D.
   Broadcasting is supported, so `value` may have any number of dimensions.
@@ -118,13 +158,16 @@ def bias_add(value, bias, name=None):
   Returns:
     A `Tensor` with the same type as `value`.
   """
-  with ops.op_scope([value, bias], name, "BiasAdd") as name:
+  with ops.op_scope([value, bias], name, "BiasAddV1") as name:
     value = ops.convert_to_tensor(value, name="input")
     bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
-    return gen_nn_ops._bias_add(value, bias, name=name)
+    return gen_nn_ops._bias_add_v1(value, bias, name=name)
 
 
-ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
+ops.RegisterShape("BiasAddV1")(common_shapes.bias_add_shape)
+
+
+ops.RegisterShape("BiasAddGradV1")(common_shapes.bias_add_grad_shape)
 
 
 
@@ -152,6 +195,10 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   example, each CIFAR-10 image is labeled with one and only one label: an image
   can be a dog or a truck, but not both.
 
+  **NOTE:**  While the classes are mutually exclusive, their probabilities
+  need not be. If using exclusive `labels` (wherein one and only one class is
+  true at a time), see `sparse_softmax_cross_entropy_with_logits`.
+
   **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
@@ -161,7 +208,9 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
 
   Args:
     logits: Unscaled log probabilities.
-    labels: Each row `labels[i]` must be a valid probability distribution.
+    labels: Each row `labels[i]` must be a valid probability distribution or
+        all zeros. If all zeros, the corresponding loss will be `0`, regardless
+        of the contents of `logits[i]`.
     name: A name for the operation (optional).
 
   Returns:
@@ -175,6 +224,59 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   return cost
 
 
+def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
+  """Computes sparse softmax cross entropy between `logits` and `labels`.
+
+  Measures the probability error in discrete classification tasks in which the
+  classes are mutually exclusive (each entry is in exactly one class).  For
+  example, each CIFAR-10 image is labeled with one and only one label: an image
+  can be a dog or a truck, but not both.
+
+  **NOTE:**  For this operation, the probability of a given label is considered
+  exclusive.  That is, soft classes are not allowed, and the `labels` vector
+  must provide a single specific index for the true class for each row of
+  `logits` (each minibatch entry).  For soft softmax classification with
+  a probability distribution for each entry, see
+  `softmax_cross_entropy_with_logits`.
+
+  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  on `logits` internally for efficiency.  Do not call this op with the
+  output of `softmax`, as it will produce incorrect results.
+
+  `logits` and must have the shape `[batch_size, num_classes]`
+  and the dtype (either `float32` or `float64`).
+
+  `labels` must have the shape `[batch_size]` and the dtype `int64`.
+
+  Args:
+    logits: Unscaled log probabilities.
+    labels: Each entry `labels[i]` must be an index in `[0, num_classes)` or
+        `-1`. If `-1`, the corresponding loss will be `0`, regardless
+        of the contents of `logits[i]`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
+    softmax cross entropy loss.
+  """
+  # The second output tensor contains the gradients.  We use it in
+  # _CrossEntropyGrad() in nn_grad but not here.
+  cost, unused_backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+      logits, labels, name=name)
+  return cost
+
+
+@ops.RegisterShape("SparseSoftmaxCrossEntropyWithLogits")
+def _SparseSoftmaxCrossEntropyWithLogitsShape(op):
+  """Shape function for SparseSoftmaxCrossEntropyWithLogits op."""
+  logits_shape = op.inputs[0].get_shape()
+  input_shape = logits_shape.with_rank(2)
+  batch_size = input_shape[0]
+  # labels_shape
+  op.inputs[1].get_shape().merge_with(tensor_shape.vector(batch_size))
+  return [tensor_shape.vector(batch_size.value), input_shape]
+
+
 @ops.RegisterShape("SoftmaxCrossEntropyWithLogits")
 def _SoftmaxCrossEntropyWithLogitsShape(op):
   """Shape function for SoftmaxCrossEntropyWithLogits op."""
@@ -185,7 +287,7 @@ def _SoftmaxCrossEntropyWithLogitsShape(op):
   return [tensor_shape.vector(batch_size.value), input_shape]
 
 
-def avg_pool(value, ksize, strides, padding, name=None):
+def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the average pooling on the input.
 
   Each entry in `output` is the mean of the corresponding size `ksize`
@@ -200,6 +302,7 @@ def avg_pool(value, ksize, strides, padding, name=None):
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
   Returns:
@@ -209,10 +312,11 @@ def avg_pool(value, ksize, strides, padding, name=None):
     value = ops.convert_to_tensor(value, name="input")
     return gen_nn_ops._avg_pool(value, ksize=ksize, strides=strides,
                                 padding=padding,
+                                data_format=data_format,
                                 name=name)
 
 
-def max_pool(value, ksize, strides, padding, name=None):
+def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the max pooling on the input.
 
   Args:
@@ -223,6 +327,7 @@ def max_pool(value, ksize, strides, padding, name=None):
     strides: A list of ints that has length >= 4.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
   Returns:
@@ -232,6 +337,7 @@ def max_pool(value, ksize, strides, padding, name=None):
     value = ops.convert_to_tensor(value, name="input")
     return gen_nn_ops._max_pool(value, ksize=ksize, strides=strides,
                                 padding=padding,
+                                data_format=data_format,
                                 name=name)
 
 
@@ -278,6 +384,10 @@ ops.RegisterShape("Softmax")(
     common_shapes.unchanged_shape_with_rank(2))
 
 
+ops.RegisterShape("LogSoftmax")(
+    common_shapes.unchanged_shape_with_rank(2))
+
+
 @ops.RegisterShape("InTopK")
 def _InTopKShape(op):
   """Shape function for InTopK op."""
@@ -288,16 +398,20 @@ def _InTopKShape(op):
 
 
 @ops.RegisterShape("TopK")
+@ops.RegisterShape("TopKV2")
 def _TopKShape(op):
-  """Shape function for TopK op."""
-  input_shape = op.inputs[0].get_shape().with_rank(2)
-  k = op.get_attr("k")
-  num_rows = input_shape[0]
-  num_cols = input_shape[1]
-  if num_cols.value is not None and num_cols.value < k:
-    raise ValueError("input must have at least k (%d) columns" % k)
-  return [tensor_shape.TensorShape([num_rows, k]),
-          tensor_shape.TensorShape([num_rows, k])]
+  """Shape function for TopK and TopKV2 ops."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(1)
+  if len(op.inputs) >= 2:
+    k = tensor_util.constant_value(op.inputs[1])
+  else:
+    k = op.get_attr("k")
+  last = input_shape[-1].value
+  if last is not None and k is not None and last < k:
+    raise ValueError("input.shape %s must have last dimension >= k = %d" %
+                     (input_shape, k))
+  output_shape = input_shape[:-1].concatenate([k])
+  return [output_shape, output_shape]
 
 
 @ops.RegisterShape("BatchNormWithGlobalNormalization")
@@ -332,6 +446,8 @@ def _BatchNormGradShape(op):
 
 
 ops.RegisterShape("Conv2D")(common_shapes.conv2d_shape)
+ops.RegisterShape("DepthwiseConv2dNative")(
+    common_shapes.depthwise_conv2d_native_shape)
 ops.RegisterShape("AvgPool")(common_shapes.avg_pool_shape)
 ops.RegisterShape("MaxPool")(common_shapes.max_pool_shape)
 
@@ -345,7 +461,7 @@ def _MaxPoolWithArgMaxShape(op):
 @ops.RegisterShape("AvgPoolGrad")
 def _AvgPoolGradShape(op):
   """Shape function for the AvgPoolGrad op."""
-  orig_input_shape = tensor_util.ConstantValue(op.inputs[0])
+  orig_input_shape = tensor_util.constant_value(op.inputs[0])
   if orig_input_shape is not None:
     return [tensor_shape.TensorShape(orig_input_shape.tolist())]
   else:
@@ -359,7 +475,7 @@ def _AvgPoolGradShape(op):
 @ops.RegisterShape("Conv2DBackpropFilter")
 def _Conv2DBackpropFilterShape(op):
   """Shape function for the Conv2DBackpropFilter op."""
-  filter_shape = tensor_util.ConstantValue(op.inputs[1])
+  filter_shape = tensor_util.constant_value(op.inputs[1])
   if filter_shape is not None:
     return [tensor_shape.TensorShape(filter_shape.tolist())]
   else:
@@ -373,7 +489,7 @@ def _Conv2DBackpropFilterShape(op):
 @ops.RegisterShape("Conv2DBackpropInput")
 def _Conv2DBackpropInputShape(op):
   """Shape function for the Conv2DBackpropInput op."""
-  input_shape = tensor_util.ConstantValue(op.inputs[0])
+  input_shape = tensor_util.constant_value(op.inputs[0])
   if input_shape is not None:
     return [tensor_shape.TensorShape(input_shape.tolist())]
   else:
@@ -381,6 +497,26 @@ def _Conv2DBackpropInputShape(op):
     # gradients and the attrs, but if we do not know input_shape
     # statically, then we are unlikely to know the shape of the
     # gradients either.
+    return [tensor_shape.unknown_shape(ndims=4)]
+
+
+@ops.RegisterShape("DepthwiseConv2dNativeBackpropFilter")
+def _DepthwiseConv2dNativeBackpropFilterShape(op):
+  """Shape function for the DepthwiseConv2dNativeBackpropFilter op."""
+  filter_shape = tensor_util.constant_value(op.inputs[1])
+  if filter_shape is not None:
+    return [tensor_shape.TensorShape(filter_shape.tolist())]
+  else:
+    return [tensor_shape.unknown_shape(ndims=4)]
+
+
+@ops.RegisterShape("DepthwiseConv2dNativeBackpropInput")
+def _DepthwiseConv2dNativeBackpropInputShape(op):
+  """Shape function for the DepthwiseConv2dNativeBackpropInput op."""
+  input_shape = tensor_util.constant_value(op.inputs[0])
+  if input_shape is not None:
+    return [tensor_shape.TensorShape(input_shape.tolist())]
+  else:
     return [tensor_shape.unknown_shape(ndims=4)]
 
 
@@ -392,6 +528,60 @@ def _MaxPoolGradShape(op):
   return [orig_input_shape]
 
 
+@ops.RegisterStatistics("Conv2D", "flops")
+def _calc_conv_flops(graph, node):
+  """Calculates the compute resources needed for Conv2D."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
+                                                            node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_height = int(filter_shape[0])
+  filter_width = int(filter_shape[1])
+  filter_in_depth = int(filter_shape[2])
+  output_count = np.prod(output_shape.as_list())
+  return ops.OpStats("flops", (output_count * filter_in_depth * filter_height *
+                               filter_width * 2))
+
+
+@ops.RegisterStatistics("Conv2D", "weight_parameters")
+def _calc_conv_weight_params(graph, node):
+  """Calculates the on-disk size of the weights for Conv2D."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
+                                                            node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_height = int(filter_shape[0])
+  filter_width = int(filter_shape[1])
+  filter_in_depth = int(filter_shape[2])
+  filter_out_depth = int(filter_shape[3])
+  return ops.OpStats("weight_parameters", (filter_height * filter_width *
+                                           filter_in_depth * filter_out_depth))
+
+
+@ops.RegisterStatistics("BiasAdd", "flops")
+def _calc_bias_add_flops(graph, node):
+  """Calculates the computing needed for BiasAdd."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  input_count = np.prod(input_shape.as_list())
+  return ops.OpStats("flops", input_count)
+
+
+@ops.RegisterStatistics("BiasAdd", "weight_parameters")
+def _calc_bias_add_weight_params(graph, node):
+  """Calculates the on-disk weight parameters for BiasAdd."""
+  bias_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[1])
+  bias_shape.assert_is_fully_defined()
+  bias_count = np.prod(bias_shape.as_list())
+  return ops.OpStats("weight_parameters", bias_count)
+
+
 def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
   """Computes matmul(x, weights) + biases.
 
@@ -400,7 +590,7 @@ def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
     weights: a 2D tensor.  Dimensions typically: in_units, out_units
     biases: a 1D tensor.  Dimensions: out_units
     name: A name for the operation (optional).  If not specified
-      "wx_plus_b" is used.
+      "xw_plus_b" is used.
 
   Returns:
     A 2-D Tensor computing matmul(x, weights) + biases.
@@ -412,6 +602,30 @@ def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
     biases = ops.convert_to_tensor(biases, name="biases")
     mm = math_ops.matmul(x, weights)
     return bias_add(mm, biases, name=name)
+
+
+def xw_plus_b_v1(x, weights, biases, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(x, weights) + biases.
+
+  This is a deprecated version of that will soon be removed.
+
+  Args:
+    x: a 2D tensor.  Dimensions typically: batch, in_units
+    weights: a 2D tensor.  Dimensions typically: in_units, out_units
+    biases: a 1D tensor.  Dimensions: out_units
+    name: A name for the operation (optional).  If not specified
+      "xw_plus_b_v1" is used.
+
+  Returns:
+    A 2-D Tensor computing matmul(x, weights) + biases.
+    Dimensions typically: batch, out_units.
+  """
+  with ops.op_scope([x, weights, biases], name, "xw_plus_b_v1") as name:
+    x = ops.convert_to_tensor(x, name="x")
+    weights = ops.convert_to_tensor(weights, name="weights")
+    biases = ops.convert_to_tensor(biases, name="biases")
+    mm = math_ops.matmul(x, weights)
+    return bias_add_v1(mm, biases, name=name)
 
 
 # pylint: disable=invalid-name
@@ -456,7 +670,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
         keep_prob, dtype=x.dtype, name="keep_prob")
     keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
 
-    noise_shape = noise_shape or array_ops.shape(x)
+    noise_shape = noise_shape if noise_shape is not None else array_ops.shape(x)
     # uniform [keep_prob, 1.0 + keep_prob)
     random_tensor = keep_prob
     random_tensor += random_ops.random_uniform(
@@ -466,5 +680,35 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
     ret = x * math_ops.inv(keep_prob) * binary_tensor
     ret.set_shape(x.get_shape())
     return ret
+
+
+def top_k(input, k=1, sorted=True, name=None):
+  """Finds values and indices of the `k` largest entries for the last dimension.
+
+  If the input is a vector (rank-1), finds the `k` largest entries in the vector
+  and outputs their values and indices as vectors.  Thus `values[j]` is the
+  `j`-th largest entry in `input`, and its index is `indices[j]`.
+
+  For matrices (resp. higher rank input), computes the top `k` entries in each
+  row (resp. vector along the last dimension).  Thus,
+
+      values.shape = indices.shape = input.shape[:-1] + [k]
+
+  If two elements are equal, the lower-index element appears first.
+
+  Args:
+    input: 1-D or higher `Tensor` with last dimension at least `k`.
+    k: 0-D `int32` `Tensor`.  Number of top elements to look for along the last
+      dimension (along each row for matrices).
+    sorted: If true the resulting `k` elements will be sorted by the values in
+      descending order.
+    name: Optional name for the operation.
+
+  Returns:
+    values: The `k` largest elements along each last dimensional slice.
+    indices: The indices of `values` within the last dimension of `input`.
+  """
+  return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
+
 
 # pylint: enable=invalid-name

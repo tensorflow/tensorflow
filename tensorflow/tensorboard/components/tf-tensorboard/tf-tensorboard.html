@@ -8,6 +8,8 @@
 <link rel="import" href="../tf-image-dashboard/tf-image-dashboard.html">
 <link rel="import" href="../tf-graph-dashboard/tf-graph-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+<link rel="import" href="../tf-backend/tf-backend.html">
+
 <!--
 tf-tensorboard is the frontend entry point for TensorBoard.
 
@@ -20,29 +22,43 @@ allows the user to toggle between various dashboards.
       <paper-toolbar id="toolbar">
         <div id="toolbar-content">
           <div class="toolbar-title">TensorBoard</div>
-          <paper-tabs selected="0" noink class="tabs">
-            <paper-tab on-click="chooseEvents">Events</paper-tab>
-            <paper-tab on-click="chooseImages">Images</paper-tab>
-            <paper-tab on-click="chooseGraphs">Graph</paper-tab>
-            <paper-tab on-click="chooseHistograms">Histograms</paper-tab>
+          <paper-tabs selected="{{modeIndex}}" noink class="tabs" id="tabs">
+            <paper-tab data-mode="events">Events</paper-tab>
+            <paper-tab data-mode="images">Images</paper-tab>
+            <paper-tab data-mode="graphs">Graph</paper-tab>
+            <paper-tab data-mode="histograms">Histograms</paper-tab>
           </paper-tabs>
         </div>
       </paper-toolbar>
       <div id="content" class="fit">
         <template is="dom-if" if="[[eventDashboard(mode)]]">
-          <tf-event-dashboard id="eventDash"></tf-event-dashboard>
+          <tf-event-dashboard
+            id="eventDash"
+            backend="[[_backend]]"
+            router="[[router]]"
+          ></tf-event-dashboard>
         </template>
 
         <template is="dom-if" if="[[imageDashboard(mode)]]">
-          <tf-image-dashboard id="imageDash"></tf-image-dashboard>
+          <tf-image-dashboard
+            id="imageDash"
+            backend="[[_backend]]"
+          ></tf-image-dashboard>
         </template>
 
         <template is="dom-if" if="[[graphDashboard(mode)]]">
-          <tf-graph-dashboard id="graphDash"></tf-graph-dashboard>
+          <tf-graph-dashboard
+            id="graphDash"
+            backend="[[_backend]]"
+            router="[[router]]"
+          ></tf-graph-dashboard>
         </template>
 
         <template is="dom-if" if="[[histogramDashboard(mode)]]">
-          <tf-histogram-dashboard id="histogramDash"></tf-histogram-dashboard>
+          <tf-histogram-dashboard
+            id="histogramDash"
+            backend="[[_backend]]"
+          ></tf-histogram-dashboard>
         </template>
       </div>
     </paper-header-panel>
@@ -95,22 +111,35 @@ allows the user to toggle between various dashboards.
     Polymer({
       is: "tf-tensorboard",
       properties: {
+        router: {
+          type: Object,
+          value: function() {return TF.Backend.router()},
+        },
+        _backend: {
+          type: Object,
+          computed: "_makeBackend(router)",
+        },
+        // Which tab is selected (events, graph, images etc).
         mode: {
           type: String,
-          value: "events",
+          computed: '_getModeFromIndex(modeIndex)'
         },
+        // If true, tab switching in TensorBoard will not update
+        // location hash. Hash update interferes with selenium tests.
+        noHash: {
+          type: Boolean,
+          value: false
+        }
       },
-      chooseEvents: function() {
-        this.mode = "events";
+      _getModeFromIndex: function(modeIndex) {
+        var mode = this.tabs[modeIndex];
+        if (!this.noHash) {
+          window.location.hash = mode;
+        }
+        return mode;
       },
-      chooseImages: function() {
-        this.mode = "images";
-      },
-      chooseGraphs: function() {
-        this.mode = "graphs";
-      },
-      chooseHistograms: function() {
-        this.mode = "histograms";
+      _makeBackend: function(router) {
+        return new TF.Backend.Backend(router);
       },
       eventDashboard: function(mode) {
         return mode === "events";
@@ -123,7 +152,28 @@ allows the user to toggle between various dashboards.
       },
       histogramDashboard: function(mode) {
         return mode === "histograms";
-      }
+      },
+      ready: function() {
+        this.tabs = [].slice.call(this.querySelectorAll('paper-tab')).map(function(a) {
+          return a.dataset.mode;
+        });
+        this._getModeFromHash();
+        window.addEventListener('hashchange', function() {
+          this._getModeFromHash();
+        }.bind(this));
+      },
+      _getModeFromHash: function() {
+        // Return the mode as it is stored in the hash.
+        var tabName = window.location.hash.trim().slice(1);
+        var modeIndex = this.tabs.indexOf(tabName);
+        if (modeIndex == -1 && this.modeIndex == null) {
+          // Selecting the first tab as default.
+          this.set('modeIndex', 0);
+        }
+        if (modeIndex != -1 && modeIndex != this.modeIndex) {
+          this.set('modeIndex', modeIndex);
+        }
+      },
     });
   </script>
 </dom-module>

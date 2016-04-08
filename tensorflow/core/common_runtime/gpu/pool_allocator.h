@@ -23,21 +23,17 @@ limitations under the License.
 #include <atomic>
 #include <map>
 #include <memory>
-#include "tensorflow/stream_executor/stream_executor.h"
-#include "tensorflow/core/common_runtime/gpu/visitable_allocator.h"
+#include <vector>
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-// Interface of an object that does the underlying alloc/free of memory.
-class SubAllocator {
- public:
-  virtual ~SubAllocator() {}
-  virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
-  virtual void Free(void* ptr, size_t num_bytes) = 0;
-};
 
 // Interface of an object that rounds up integers.
 class RoundUpInterface {
@@ -114,6 +110,8 @@ class PoolAllocator : public VisitableAllocator {
   size_t size_limit() const NO_THREAD_SAFETY_ANALYSIS {
     return pool_size_limit_;
   }
+
+  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
 
  private:
   struct PtrRecord {

@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_CORE_ERRORS_H_
 #define TENSORFLOW_LIB_CORE_ERRORS_H_
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace errors {
@@ -32,7 +33,7 @@ template <typename... Args>
 void AppendToMessage(::tensorflow::Status* status, Args... args) {
   *status = ::tensorflow::Status(
       status->code(),
-      strings::StrCat(status->error_message(), "\n\t", args...));
+      ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...));
 }
 
 // For propagating errors when calling a function.
@@ -57,14 +58,14 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 //   if (errors::IsInvalidArgument(status)) { ... }
 //   switch (status.code()) { case error::INVALID_ARGUMENT: ... }
 
-#define DECLARE_ERROR(FUNC, CONST)                           \
-  template <typename... Args>                                \
-  inline ::tensorflow::Status FUNC(Args... args) {           \
-    return ::tensorflow::Status(::tensorflow::error::CONST,  \
-                                strings::StrCat(args...));   \
-  }                                                          \
-  inline bool Is##FUNC(const ::tensorflow::Status& status) { \
-    return status.code() == ::tensorflow::error::CONST;      \
+#define DECLARE_ERROR(FUNC, CONST)                                       \
+  template <typename... Args>                                            \
+  ::tensorflow::Status FUNC(Args... args) {                              \
+    return ::tensorflow::Status(::tensorflow::error::CONST,              \
+                                ::tensorflow::strings::StrCat(args...)); \
+  }                                                                      \
+  inline bool Is##FUNC(const ::tensorflow::Status& status) {             \
+    return status.code() == ::tensorflow::error::CONST;                  \
   }
 
 DECLARE_ERROR(Cancelled, CANCELLED)
@@ -88,73 +89,6 @@ DECLARE_ERROR(Unauthenticated, UNAUTHENTICATED)
 
 // The CanonicalCode() for non-errors.
 using ::tensorflow::error::OK;
-
-// Convenience macros for asserting and handling exceptional conditions.
-// Analogous to the CHECK* macros provided by logging.h.
-//
-// Example use:
-// void Compute(OperationContext* context) {
-//   OP_REQUIRES(context, context->num_inputs() == 2,
-//               errors::InvalidArgument("FooOp requires 2 arguments"));
-//   ...
-//   Status status = SomeUncertainMethod();
-//   OP_REQUIRES_OK(context, status);
-//   ...
-// }
-
-// Declares an op deprecated, and illegal starting at GraphDef version VERSION
-#define OP_DEPRECATED(CTX, VERSION)                                            \
-  if ((CTX)->graph_def_version() >= (VERSION)) {                               \
-    ::tensorflow::Status _s(::tensorflow::errors::Unimplemented(               \
-        "Op ", (CTX)->op_def().name(),                                         \
-        " is not available in GraphDef version ", (CTX)->graph_def_version(),  \
-        ". It has been removed in version ", (VERSION), "."));                 \
-    VLOG(1) << _s;                                                             \
-    (CTX)->SetStatus(_s);                                                      \
-    return;                                                                    \
-  } else {                                                                     \
-    LOG(WARNING) << "Op is deprecated."                                        \
-                 << " It will cease to work in GraphDef version " << (VERSION) \
-                 << ".";                                                       \
-  }
-
-#define OP_REQUIRES(CTX, EXP, STATUS) \
-  if (!(EXP)) {                       \
-    ::tensorflow::Status _s(STATUS);  \
-    VLOG(1) << _s;                    \
-    (CTX)->SetStatus(_s);             \
-    return;                           \
-  }
-
-#define OP_REQUIRES_OK(CTX, STATUS)  \
-  do {                               \
-    ::tensorflow::Status _s(STATUS); \
-    if (!_s.ok()) {                  \
-      LOG(WARNING) << _s;            \
-      (CTX)->SetStatus(_s);          \
-      return;                        \
-    }                                \
-  } while (0)
-
-#define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK) \
-  if (!(EXP)) {                                       \
-    ::tensorflow::Status _s(STATUS);                  \
-    VLOG(1) << _s;                                    \
-    (CTX)->SetStatus(_s);                             \
-    (CALLBACK)();                                     \
-    return;                                           \
-  }
-
-#define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK) \
-  do {                                              \
-    ::tensorflow::Status _s(STATUS);                \
-    if (!_s.ok()) {                                 \
-      LOG(WARNING) << _s;                           \
-      (CTX)->SetStatus(_s);                         \
-      (CALLBACK)();                                 \
-      return;                                       \
-    }                                               \
-  } while (0)
 
 }  // namespace errors
 }  // namespace tensorflow

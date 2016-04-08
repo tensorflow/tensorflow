@@ -18,10 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
+from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
@@ -256,17 +254,29 @@ class ShapeTest(test_util.TensorFlowTestCase):
       unknown / unknown  # pylint: disable=pointless-statement
 
   def testConvertFromProto(self):
-    proto = tensor_util.MakeTensorShapeProto([])
+    def make_tensor_shape_proto(shape):
+      return tensor_shape_pb2.TensorShapeProto(
+          dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=x) for x in shape])
+    proto = make_tensor_shape_proto([])
     self.assertEqual(tensor_shape.TensorShape([]),
                      tensor_shape.TensorShape(proto))
     self.assertEqual(tensor_shape.TensorShape([]),
                      tensor_shape.as_shape(proto))
 
-    proto = tensor_util.MakeTensorShapeProto([1, 37, 42])
+    proto = make_tensor_shape_proto([1, 37, 42])
     self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
                      tensor_shape.TensorShape(proto))
     self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
                      tensor_shape.as_shape(proto))
+
+    partial_proto_shape = tensor_shape.as_shape(
+        make_tensor_shape_proto([-1, 37, 42]))
+    partial_shape = tensor_shape.TensorShape([None, 37, 42])
+    self.assertNotEqual(partial_proto_shape, partial_shape)
+    self.assertEqual(partial_proto_shape[0].value, None)
+    self.assertEqual(partial_proto_shape[1].value, 37)
+    self.assertEqual(partial_proto_shape[2].value, 42)
+    self.assertTrue(partial_shape.is_compatible_with(partial_proto_shape))
 
   def testStr(self):
     self.assertEqual("<unknown>", str(tensor_shape.unknown_shape()))
@@ -281,6 +291,15 @@ class ShapeTest(test_util.TensorFlowTestCase):
 
     self.assertEqual("(32, ?, 1, 9)",
                      str(tensor_shape.TensorShape([32, None, 1, 9])))
+
+  def testAsProto(self):
+    self.assertTrue(tensor_shape.unknown_shape().as_proto().unknown_rank)
+    self.assertFalse(
+        tensor_shape.unknown_shape(ndims=3).as_proto().unknown_rank)
+    self.assertFalse(
+        tensor_shape.TensorShape([1, 2, 3]).as_proto().unknown_rank)
+    self.assertFalse(
+        tensor_shape.TensorShape([1, None, 3]).as_proto().unknown_rank)
 
 
 if __name__ == "__main__":

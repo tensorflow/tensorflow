@@ -1,6 +1,6 @@
 # MNIST Data Download
 
-Code: [tensorflow/examples/tutorials/mnist/](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/)
+Code: [tensorflow/examples/tutorials/mnist/](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/)
 
 The goal of this tutorial is to show how to download the dataset files required
 for handwritten digit classification using the (classic) MNIST data set.
@@ -11,7 +11,7 @@ This tutorial references the following files:
 
 File | Purpose
 --- | ---
-[`input_data.py`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/mnist/input_data.py) | The code to download the MNIST dataset for training and evaluation.
+[`input_data.py`](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/input_data.py) | The code to download the MNIST dataset for training and evaluation.
 
 ## Prepare the Data
 
@@ -50,7 +50,7 @@ unpacked (following the instructions available at the website) by the
 
 The image data is extracted into a 2d tensor of: `[image index, pixel index]`
 where each entry is the intensity value of a specific pixel in a specific
-image, rescaled from `[0, 255]` to `[-0.5, 0.5]`.  The "image index" corresponds
+image, rescaled from `[0, 255]` to `[0, 1]`.  The "image index" corresponds
 to an image in the dataset, counting up from zero to the size of the dataset.
 And the "pixel index" corresponds to a specific pixel in that image, ranging
 from zero to the number of pixels in the image.

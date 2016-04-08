@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_INPUTBUFFER_H_
 
 #include <string>
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/env.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace io {

@@ -20,23 +20,29 @@ from __future__ import print_function
 
 import gzip
 import os
+import tempfile
 
 import numpy
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 
 SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
 
 
 def maybe_download(filename, work_directory):
   """Download the data from Yann's website, unless it's already here."""
-  if not os.path.exists(work_directory):
-    os.mkdir(work_directory)
+  if not tf.gfile.Exists(work_directory):
+    tf.gfile.MakeDirs(work_directory)
   filepath = os.path.join(work_directory, filename)
-  if not os.path.exists(filepath):
-    filepath, _ = urllib.request.urlretrieve(SOURCE_URL + filename, filepath)
-    statinfo = os.stat(filepath)
-    print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')
+  if not tf.gfile.Exists(filepath):
+    with tempfile.NamedTemporaryFile() as tmpfile:
+      temp_file_name = tmpfile.name
+      urllib.request.urlretrieve(SOURCE_URL + filename, temp_file_name)
+      tf.gfile.Copy(temp_file_name, filepath)
+      with tf.gfile.GFile(filepath) as f:
+        size = f.Size()
+      print('Successfully downloaded', filename, size, 'bytes.')
   return filepath
 
 
@@ -48,7 +54,7 @@ def _read32(bytestream):
 def extract_images(filename):
   """Extract the images into a 4D uint8 numpy array [index, y, x, depth]."""
   print('Extracting', filename)
-  with gzip.open(filename) as bytestream:
+  with tf.gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2051:
       raise ValueError(
@@ -63,7 +69,7 @@ def extract_images(filename):
     return data
 
 
-def dense_to_one_hot(labels_dense, num_classes=10):
+def dense_to_one_hot(labels_dense, num_classes):
   """Convert class labels from scalars to one-hot vectors."""
   num_labels = labels_dense.shape[0]
   index_offset = numpy.arange(num_labels) * num_classes
@@ -72,10 +78,10 @@ def dense_to_one_hot(labels_dense, num_classes=10):
   return labels_one_hot
 
 
-def extract_labels(filename, one_hot=False):
+def extract_labels(filename, one_hot=False, num_classes=10):
   """Extract the labels into a 1D uint8 numpy array [index]."""
   print('Extracting', filename)
-  with gzip.open(filename) as bytestream:
+  with tf.gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2049:
       raise ValueError(
@@ -85,15 +91,24 @@ def extract_labels(filename, one_hot=False):
     buf = bytestream.read(num_items)
     labels = numpy.frombuffer(buf, dtype=numpy.uint8)
     if one_hot:
-      return dense_to_one_hot(labels)
+      return dense_to_one_hot(labels, num_classes)
     return labels
 
 
 class DataSet(object):
 
-  def __init__(self, images, labels, fake_data=False, one_hot=False):
-    """Construct a DataSet. one_hot arg is used only if fake_data is true."""
+  def __init__(self, images, labels, fake_data=False, one_hot=False,
+               dtype=tf.float32):
+    """Construct a DataSet.
 
+    one_hot arg is used only if fake_data is true.  `dtype` can be either
+    `uint8` to leave the input as `[0, 255]`, or `float32` to rescale into
+    `[0, 1]`.
+    """
+    dtype = tf.as_dtype(dtype).base_dtype
+    if dtype not in (tf.uint8, tf.float32):
+      raise TypeError('Invalid image dtype %r, expected uint8 or float32' %
+                      dtype)
     if fake_data:
       self._num_examples = 10000
       self.one_hot = one_hot
@@ -108,9 +123,10 @@ class DataSet(object):
       assert images.shape[3] == 1
       images = images.reshape(images.shape[0],
                               images.shape[1] * images.shape[2])
-      # Convert from [0, 255] -> [0.0, 1.0].
-      images = images.astype(numpy.float32)
-      images = numpy.multiply(images, 1.0 / 255.0)
+      if dtype == tf.float32:
+        # Convert from [0, 255] -> [0.0, 1.0].
+        images = images.astype(numpy.float32)
+        images = numpy.multiply(images, 1.0 / 255.0)
     self._images = images
     self._labels = labels
     self._epochs_completed = 0
@@ -160,15 +176,17 @@ class DataSet(object):
     return self._images[start:end], self._labels[start:end]
 
 
-def read_data_sets(train_dir, fake_data=False, one_hot=False):
+def read_data_sets(train_dir, fake_data=False, one_hot=False, dtype=tf.float32):
   class DataSets(object):
     pass
   data_sets = DataSets()
 
   if fake_data:
-    data_sets.train = DataSet([], [], fake_data=True, one_hot=one_hot)
-    data_sets.validation = DataSet([], [], fake_data=True, one_hot=one_hot)
-    data_sets.test = DataSet([], [], fake_data=True, one_hot=one_hot)
+    def fake():
+      return DataSet([], [], fake_data=True, one_hot=one_hot, dtype=dtype)
+    data_sets.train = fake()
+    data_sets.validation = fake()
+    data_sets.test = fake()
     return data_sets
 
   TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
@@ -194,8 +212,9 @@ def read_data_sets(train_dir, fake_data=False, one_hot=False):
   train_images = train_images[VALIDATION_SIZE:]
   train_labels = train_labels[VALIDATION_SIZE:]
 
-  data_sets.train = DataSet(train_images, train_labels)
-  data_sets.validation = DataSet(validation_images, validation_labels)
-  data_sets.test = DataSet(test_images, test_labels)
+  data_sets.train = DataSet(train_images, train_labels, dtype=dtype)
+  data_sets.validation = DataSet(validation_images, validation_labels,
+                                 dtype=dtype)
+  data_sets.test = DataSet(test_images, test_labels, dtype=dtype)
 
   return data_sets
