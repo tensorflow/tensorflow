@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -66,7 +67,13 @@ FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
 
 string GetSchemeFromURI(const string& name) {
   auto colon_loc = name.find(":");
-  if (colon_loc != string::npos) {
+  // Make sure scheme matches [a-zA-Z][0-9a-zA-Z.]*
+  // TODO(keveman): Allow "+" and "-" in the scheme.
+  if (colon_loc != string::npos &&
+      strings::Scanner(StringPiece(name.data(), colon_loc))
+          .One(strings::Scanner::LETTER)
+          .Many(strings::Scanner::LETTER_DIGIT_DOT)
+          .GetResult()) {
     return name.substr(0, colon_loc);
   }
   return "";

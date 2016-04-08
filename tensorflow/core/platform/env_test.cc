@@ -116,4 +116,15 @@ TEST(EnvTest, IPFS) {
   }
 }
 
+TEST(EnvTest, GetSchemeForURI) {
+  EXPECT_EQ(GetSchemeFromURI("http://foo"), "http");
+  EXPECT_EQ(GetSchemeFromURI("/encrypted/://foo"), "");
+  EXPECT_EQ(GetSchemeFromURI("/usr/local/foo"), "");
+  EXPECT_EQ(GetSchemeFromURI("file:///usr/local/foo"), "file");
+  EXPECT_EQ(GetSchemeFromURI("local.file:///usr/local/foo"), "local.file");
+  EXPECT_EQ(GetSchemeFromURI("a-b:///foo"), "");
+  EXPECT_EQ(GetSchemeFromURI(":///foo"), "");
+  EXPECT_EQ(GetSchemeFromURI("9dfd:///foo"), "");
+}
+
 }  // namespace tensorflow
