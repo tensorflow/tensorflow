@@ -15,8 +15,9 @@ by Alex Krizhevsky.
 
 ### Goals
 
-The goal of this tutorial is to build a relatively small convolutional neural
-network (CNN) for recognizing images. In the process, this tutorial:
+The goal of this tutorial is to build a relatively small [convolutional neural
+network](https://en.wikipedia.org/wiki/Convolutional_neural_network) (CNN) for
+recognizing images. In the process, this tutorial:
 
 1. Highlights a canonical organization for network architecture,
 training and evaluation.

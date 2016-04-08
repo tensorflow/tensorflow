@@ -68,3 +68,8 @@ def _MatrixDeterminantGrad(op, grad):
   c = op.outputs[0]
   ainv = linalg_ops.matrix_inverse(a)
   return grad * c * array_ops.transpose(ainv)
+
+@ops.RegisterGradient("Cholesky")
+def _cholesky_grad(op, grad):
+  """Gradient for Cholesky."""
+  return linalg_ops.cholesky_grad( op.outputs[0] , grad )

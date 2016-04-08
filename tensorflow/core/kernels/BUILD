@@ -736,6 +736,7 @@ tf_kernel_libraries(
     name = "linalg",
     prefixes = [
         "cholesky_op",
+        "cholesky_grad",
         "determinant_op",
         "self_adjoint_eig_op",
         "matrix_inverse_op",
