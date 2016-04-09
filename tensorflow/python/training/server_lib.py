@@ -22,6 +22,7 @@ import six  # pylint: disable=unused-import
 
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 
 
@@ -128,7 +129,12 @@ class Server(object):
     """
     server_def = _make_server_def(server_or_cluster_def,
                                   job_name, task_index, protocol)
-    self._server = pywrap_tensorflow.NewServer(server_def.SerializeToString())
+    try:
+      self._server = pywrap_tensorflow.NewServer(server_def.SerializeToString())
+    except pywrap_tensorflow.StatusNotOK as e:
+      # pylint: disable=protected-access
+      raise errors._make_specific_exception(None, None, e.error_message, e.code)
+      # pylint: enable=protected-access
     if start:
       self.start()
 

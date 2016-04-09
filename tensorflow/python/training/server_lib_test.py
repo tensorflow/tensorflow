@@ -79,6 +79,12 @@ class GrpcServerTest(tf.test.TestCase):
       self.assertEqual(0.5, min_val)
       self.assertEqual(0.5, max_val)
 
+  def testInvalidHostname(self):
+    with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, "port"):
+      _ = tf.train.Server({"local": ["localhost"]},
+                          job_name="local",
+                          task_index=0)
+
 
 class ServerDefTest(tf.test.TestCase):
 
