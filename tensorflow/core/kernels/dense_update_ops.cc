@@ -89,6 +89,7 @@ typedef Eigen::GpuDevice GPUDevice;
       AssignOpT<CPUDevice, type>);
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
+TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA

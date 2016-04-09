@@ -24,41 +24,46 @@ import tensorflow as tf
 
 class MatrixSolveOpTest(tf.test.TestCase):
 
-  def _verifySolve(self, x, y):
-    for np_type in [np.float32, np.float64]:
-      a = x.astype(np_type)
-      b = y.astype(np_type)
-      with self.test_session():
-        if a.ndim == 2:
-          tf_ans = tf.matrix_solve(a, b)
+  def _verifySolve(self, x, y, batch_dims=None):
+    for adjoint in False, True:
+      for np_type in [np.float32, np.float64]:
+        a = x.astype(np_type)
+        b = y.astype(np_type)
+        if adjoint:
+          a_np = np.conj(np.transpose(a))
         else:
-          tf_ans = tf.batch_matrix_solve(a, b)
-        out = tf_ans.eval()
-      np_ans = np.linalg.solve(a, b)
-      self.assertEqual(np_ans.shape, out.shape)
-      self.assertAllClose(np_ans, out)
+          a_np = a
+        if batch_dims is not None:
+          a = np.tile(a, batch_dims + [1, 1])
+          a_np = np.tile(a_np, batch_dims + [1, 1])
+          b = np.tile(b, batch_dims + [1, 1])
+        with self.test_session():
+          if a.ndim == 2:
+            tf_ans = tf.matrix_solve(a, b, adjoint=adjoint)
+          else:
+            tf_ans = tf.batch_matrix_solve(a, b, adjoint=adjoint)
+          out = tf_ans.eval()
+        np_ans = np.linalg.solve(a_np, b)
+        self.assertEqual(np_ans.shape, out.shape)
+        self.assertAllClose(np_ans, out)
 
-  def testBasic(self):
+  def testSolve(self):
     # 2x2 matrices, 2x1 right-hand side.
-    matrix0 = np.array([[1., 2.], [3., 4.]])
+    matrix = np.array([[1., 2.], [3., 4.]])
     rhs0 = np.array([[1.], [1.]])
-    self._verifySolve(matrix0, rhs0)
-
-    # 2x2 matrices, 2x3 right-hand sides.
-    matrix1 = np.array([[1., 2.], [3., 4.]])
-    matrix2 = np.array([[1., 3.], [3., 5.]])
+    self._verifySolve(matrix, rhs0)
+    # 2x2 matrices, 2xx right-hand sides.
+    matrix = np.array([[1., 2.], [3., 4.]])
     rhs1 = np.array([[1., 0., 1.], [0., 1., 1.]])
-    rhs2 = np.array([[1., 1., 1.], [2., 2., 2.]])
-    self._verifySolve(matrix1, rhs1)
-    self._verifySolve(matrix2, rhs2)
-    # A multidimensional batch of 2x2 matrices and 2x3 right-hand sides.
-    matrix_batch = np.concatenate([np.expand_dims(matrix1, 0), np.expand_dims(
-        matrix2, 0)])
-    matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
-    rhs_batch = np.concatenate([np.expand_dims(rhs1, 0), np.expand_dims(rhs2, 0)
-                               ])
-    rhs_batch = np.tile(rhs_batch, [2, 3, 1, 1])
-    self._verifySolve(matrix_batch, rhs_batch)
+    self._verifySolve(matrix, rhs1)
+
+  def testSolveBatch(self):
+    matrix = np.array([[1., 2.], [3., 4.]])
+    rhs = np.array([[1., 0., 1.], [0., 1., 1.]])
+    # Batch of 2x3x2x2 matrices, 2x3x2x3 right-hand sides.
+    self._verifySolve(matrix, rhs, batch_dims=[2, 3])
+    # Batch of 3x2x2x2 matrices, 3x2x2x3 right-hand sides.
+    self._verifySolve(matrix, rhs, batch_dims=[3, 2])
 
   def testNonSquareMatrix(self):
     # When the solve of a non-square matrix is attempted we should return
@@ -85,8 +90,9 @@ class MatrixSolveOpTest(tf.test.TestCase):
         tf.matrix_solve(matrix, matrix).eval()
 
   def testEmpty(self):
-    self._verifySolve(np.empty([0, 2, 2]), np.empty([0, 2, 2]))
-    self._verifySolve(np.empty([2, 0, 0]), np.empty([2, 0, 0]))
+    with self.test_session():
+      self._verifySolve(np.empty([0, 0]), np.empty([0, 0]))
+      self._verifySolve(np.empty([2, 2]), np.empty([2, 0]))
 
 
 if __name__ == "__main__":

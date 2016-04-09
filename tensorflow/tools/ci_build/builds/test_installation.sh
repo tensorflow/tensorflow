@@ -68,11 +68,14 @@
 #   depends on compare_test_pb2 defined outside Python
 # tensorflow/python/framework/device_test.py:
 #   depends on CheckValid() and ToString(), both defined externally
+# tensorflow/python/framework/file_system_test.py:
+#   depends on having the .so which is not shipped in the pip package.
 #
 PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/framework/ops_test.py:"\
 "tensorflow/python/util/protobuf/compare_test.py:"\
-"tensorflow/python/framework/device_test.py"
+"tensorflow/python/framework/device_test.py:"\
+"tensorflow/python/framework/file_system_test.py"
 
 # Test blacklist: GPU-only
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\

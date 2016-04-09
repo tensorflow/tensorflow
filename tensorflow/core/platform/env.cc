@@ -15,16 +15,148 @@ limitations under the License.
 
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
-Env::~Env() {}
+class FileSystemRegistryImpl : public FileSystemRegistry {
+ public:
+  void Register(const string& scheme, Factory factory) override;
+  FileSystem* Lookup(const string& scheme) override;
+  Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes) override;
 
-RandomAccessFile::~RandomAccessFile() {}
+ private:
+  mutable mutex mu_;
+  mutable std::unordered_map<string, FileSystem*> registry_ GUARDED_BY(mu_);
+};
 
-WritableFile::~WritableFile() {}
+void FileSystemRegistryImpl::Register(const string& scheme,
+                                      FileSystemRegistry::Factory factory) {
+  mutex_lock lock(mu_);
+  QCHECK(!gtl::FindOrNull(registry_, scheme)) << "File factory for " << scheme
+                                              << " already registered";
+  registry_[scheme] = factory();
+}
+
+FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
+  mutex_lock lock(mu_);
+  auto fs_ptr = gtl::FindOrNull(registry_, scheme);
+  if (!fs_ptr) {
+    return nullptr;
+  }
+  return *fs_ptr;
+}
+
+Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
+    std::vector<string>* schemes) {
+  mutex_lock lock(mu_);
+  for (auto const e : registry_) {
+    schemes->push_back(e.first);
+  }
+  return Status::OK();
+}
+
+Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
+
+Env::~Env() { delete file_system_registry_; }
+
+Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
+  string scheme = GetSchemeFromURI(fname);
+  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  if (!file_system) {
+    return errors::Unimplemented("File system scheme ", scheme,
+                                 " not implemented");
+  }
+  *result = file_system;
+  return Status::OK();
+}
+
+Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
+  return file_system_registry_->GetRegisteredFileSystemSchemes(schemes);
+}
+
+void Env::RegisterFileSystem(const string& scheme,
+                             FileSystemRegistry::Factory factory) {
+  file_system_registry_->Register(scheme, factory);
+}
+
+Status Env::NewRandomAccessFile(const string& fname,
+                                RandomAccessFile** result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->NewRandomAccessFile(fname, result);
+}
+
+Status Env::NewWritableFile(const string& fname, WritableFile** result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->NewWritableFile(fname, result);
+}
+
+Status Env::NewAppendableFile(const string& fname, WritableFile** result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->NewAppendableFile(fname, result);
+}
+
+Status Env::NewReadOnlyMemoryRegionFromFile(const string& fname,
+                                            ReadOnlyMemoryRegion** result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->NewReadOnlyMemoryRegionFromFile(fname, result);
+}
+
+bool Env::FileExists(const string& fname) {
+  FileSystem* fs;
+  if (!GetFileSystemForFile(fname, &fs).ok()) {
+    return false;
+  }
+  return fs->FileExists(fname);
+}
+
+Status Env::GetChildren(const string& dir, std::vector<string>* result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dir, &fs));
+  return fs->GetChildren(dir, result);
+}
+
+Status Env::DeleteFile(const string& fname) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->DeleteFile(fname);
+}
+
+Status Env::CreateDir(const string& dirname) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->CreateDir(dirname);
+}
+
+Status Env::DeleteDir(const string& dirname) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->DeleteDir(dirname);
+}
+
+Status Env::GetFileSize(const string& fname, uint64* file_size) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->GetFileSize(fname, file_size);
+}
+
+Status Env::RenameFile(const string& src, const string& target) {
+  FileSystem* src_fs;
+  FileSystem* target_fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
+  if (src_fs != target_fs) {
+    return errors::Unimplemented("Renaming ", src, " to ", target,
+                                 " not implemented");
+  }
+  return src_fs->RenameFile(src, target);
+}
 
 Thread::~Thread() {}
 

@@ -71,6 +71,8 @@ class SessionManagerTest(tf.test.TestCase):
       os.rename(checkpoint_dir, checkpoint_dir2)
       gfile.MakeDirs(checkpoint_dir)
       v = tf.Variable([6.0, 7.0, 8.0], name="v")
+      with self.test_session():
+        self.assertEqual(False, tf.is_variable_initialized(v).eval())
       tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
       saver = tf.train.Saver({"v": v})
       # This should fail as there's no checkpoint within 2 seconds.
@@ -85,6 +87,9 @@ class SessionManagerTest(tf.test.TestCase):
       sess = sm.prepare_session("", init_op=None, saver=saver,
                                 checkpoint_dir=checkpoint_dir,
                                 wait_for_checkpoint=True, max_wait_secs=2)
+      self.assertEqual(
+          True, tf.is_variable_initialized(
+              sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
 
   def testRecoverSession(self):
     # Create a checkpoint.
@@ -109,11 +114,16 @@ class SessionManagerTest(tf.test.TestCase):
     # Create a new Graph and SessionManager and recover.
     with tf.Graph().as_default():
       v = tf.Variable(2, name="v")
+      with self.test_session():
+        self.assertEqual(False, tf.is_variable_initialized(v).eval())
       sm2 = tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
       saver = tf.train.Saver({"v": v})
       sess, initialized = sm2.recover_session("", saver=saver,
                                               checkpoint_dir=checkpoint_dir)
       self.assertTrue(initialized)
+      self.assertEqual(
+          True, tf.is_variable_initialized(
+              sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEquals(1, sess.run(v))
 
   def testWaitForSessionReturnsNoneAfterTimeout(self):
@@ -124,7 +134,7 @@ class SessionManagerTest(tf.test.TestCase):
 
       # Set max_wait_secs to allow us to try a few times.
       with self.assertRaises(errors.DeadlineExceededError):
-        sm.wait_for_session(master="", max_wait_secs=3000)
+        sm.wait_for_session(master="", max_wait_secs=3)
 
 if __name__ == "__main__":
   tf.test.main()
