@@ -911,7 +911,7 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
     // allow.
     device_opts.allow_internal_ops = true;
     device_opts.expect_device_spec = true;
-    Status s = ConvertGraphDefToGraph(device_opts, *graph_def, device_graph);
+    s = ConvertGraphDefToGraph(device_opts, *graph_def, device_graph);
     if (!s.ok()) {
       delete device_graph;
       break;

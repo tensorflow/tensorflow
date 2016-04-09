@@ -564,6 +564,28 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
   ASSERT_EQ(true, outputs[0].flat<bool>()(0));
 }
 
+TEST(DirectSessionTest, CreateGraphFailsWhenAssigningAFedVar) {
+  Graph graph(OpRegistry::Global());
+
+  Node* a = test::graph::Var(&graph, DT_FLOAT, {});
+  Node* b = test::graph::Constant(&graph, {});
+
+  Tensor zero(DT_FLOAT, {});
+  test::FillValues<float>(&zero, {0});
+
+  // a = b
+  Node* assign = test::graph::Assign(&graph, a, b);
+
+  std::unique_ptr<Session> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+
+  // The graph is invalid since a constant cannot be assigned to a constant.
+  // The return Status of session->Run should flag this as an invalid argument.
+  std::vector<Tensor> outputs;
+  Status s = session->Run({{a->name(), zero}}, {assign->name()}, {}, &outputs);
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
+}
+
 TEST(DirectSessionTest, TimeoutSession) {
   GraphDef graph;
   // Creates a graph with one FIFOQueue and one dequeue op.
