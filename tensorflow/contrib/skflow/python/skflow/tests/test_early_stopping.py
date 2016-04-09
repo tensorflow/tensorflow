@@ -19,10 +19,10 @@ import tensorflow as tf
 
 import random
 
-from sklearn import datasets, metrics
-from sklearn.cross_validation import train_test_split
-
 from tensorflow.contrib.skflow.python import skflow
+from tensorflow.contrib.skflow.python.skflow import datasets
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import accuracy_score
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import train_test_split
 
 
 class EarlyStoppingTest(tf.test.TestCase):
@@ -43,14 +43,14 @@ class EarlyStoppingTest(tf.test.TestCase):
         classifier1 = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                      n_classes=3, steps=1000)
         classifier1.fit(X_train, y_train)
-        score1 = metrics.accuracy_score(y_test, classifier1.predict(X_test))
+        score1 = accuracy_score(y_test, classifier1.predict(X_test))
 
         # classifier with early stopping - improved accuracy on testing set
         classifier2 = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                      n_classes=3, steps=1000)
 
         classifier2.fit(X_train, y_train, val_monitor)
-        score2 = metrics.accuracy_score(y_test, classifier2.predict(X_test))
+        score2 = accuracy_score(y_test, classifier2.predict(X_test))
 
         # self.assertGreater(score2, score1, "No improvement using early stopping.")
 

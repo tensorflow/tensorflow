@@ -24,7 +24,6 @@ import six
 from six.moves import xrange   # pylint: disable=redefined-builtin
 
 import numpy as np
-from sklearn.utils import check_array
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.framework import dtypes
@@ -149,6 +148,20 @@ def setup_processor_data_feeder(X):
     return X
 
 
+def check_array(array, dtype):
+    """Checks array on dtype and convers it if different.
+    
+    Args:
+        array: Input array.
+        dtype: Expected dtype.
+        
+    Returns:
+        Original array or converted.
+    """
+    array = np.array(array, dtype=dtype, order=None, copy=False)
+    return array
+
+
 class DataFeeder(object):
     """Data feeder is an example class to sample data for TF trainer.
 
@@ -175,10 +188,8 @@ class DataFeeder(object):
     def __init__(self, X, y, n_classes, batch_size, random_state=None):
         x_dtype = np.int64 if X.dtype == np.int64 else np.float32
         y_dtype = np.int64 if n_classes > 1 else np.float32
-        self.X = check_array(X, ensure_2d=False,
-                             allow_nd=True, dtype=x_dtype)
-        self.y = (None if y is None else check_array(y, ensure_2d=False,
-                                                     dtype=y_dtype))
+        self.X = check_array(X, dtype=x_dtype)
+        self.y = (None if y is None else check_array(y, dtype=y_dtype))
         self.n_classes = n_classes
         self.batch_size = batch_size
         self.input_shape, self.output_shape = _get_in_out_shape(

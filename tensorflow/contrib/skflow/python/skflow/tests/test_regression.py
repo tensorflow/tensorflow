@@ -17,13 +17,11 @@ from __future__ import print_function
 
 import random
 
-from sklearn import datasets
-from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
-
 import numpy as np
-
 import tensorflow as tf
+
 from tensorflow.contrib.skflow.python import skflow
+from tensorflow.contrib.skflow.python.skflow import datasets
 
 
 class RegressionTest(tf.test.TestCase):

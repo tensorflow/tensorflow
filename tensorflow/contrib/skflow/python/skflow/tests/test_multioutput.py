@@ -19,11 +19,10 @@ import random
 
 import numpy as np
 
-from sklearn import datasets
-from sklearn.metrics import accuracy_score, mean_squared_error
-
 import tensorflow as tf
 from tensorflow.contrib.skflow.python import skflow
+from tensorflow.contrib.skflow.python.skflow import datasets
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import mean_squared_error
 
 
 class MultiOutputTest(tf.test.TestCase):

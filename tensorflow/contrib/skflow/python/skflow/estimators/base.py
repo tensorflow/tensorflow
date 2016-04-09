@@ -25,13 +25,6 @@ from six import string_types
 import numpy as np
 import tensorflow as tf
 
-
-import sklearn.base as sklearn_base
-try:
-    from sklearn.exceptions import NotFittedError
-except ImportError:
-    from sklearn.utils.validation import NotFittedError  # pylint: disable=ungrouped-imports
-
 from google.protobuf import text_format
 from tensorflow.python.platform.default import _gfile as gfile
 
@@ -45,6 +38,8 @@ from tensorflow.contrib.skflow.python.skflow.io.data_feeder import setup_predict
 from tensorflow.contrib.skflow.python.skflow.ops.dropout_ops import DROPOUTS
 from tensorflow.contrib.skflow.python.skflow import monitors
 
+from tensorflow.contrib.skflow.python.skflow.estimators import _sklearn
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import NotFittedError
 from tensorflow.contrib.skflow.python.skflow.estimators.run_config import RunConfig
 
 
@@ -55,7 +50,7 @@ def _write_with_backup(filename, content):
         f.write(content)
 
 
-class TensorFlowEstimator(sklearn_base.BaseEstimator):
+class TensorFlowEstimator(_sklearn.BaseEstimator):
     """Base class for all TensorFlow estimators.
 
     Parameters:
@@ -272,7 +267,7 @@ class TensorFlowEstimator(sklearn_base.BaseEstimator):
 
     def _predict(self, X, axis=-1, batch_size=None):
         if not self._initialized:
-            raise NotFittedError()
+            raise _sklearn.NotFittedError()
 
         # Use the batch size for fitting if the user did not specify one.
         if batch_size is None:
@@ -363,7 +358,7 @@ class TensorFlowEstimator(sklearn_base.BaseEstimator):
             path: Folder to save model to.
         """
         if not self._initialized:
-            raise NotFittedError()
+            raise _sklearn.NotFittedError()
 
         # Currently Saver requires absolute path to work correctly.
         path = os.path.abspath(path)

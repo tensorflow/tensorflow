@@ -16,10 +16,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from sklearn.base import ClassifierMixin, RegressorMixin
-
-from .base import TensorFlowEstimator
-from .. import models
+from tensorflow.contrib.skflow.python.skflow.estimators import _sklearn
+from tensorflow.contrib.skflow.python.skflow.estimators.base import TensorFlowEstimator
+from tensorflow.contrib.skflow.python.skflow import models
 
 
 def null_input_op_fn(X):
@@ -27,7 +26,7 @@ def null_input_op_fn(X):
     return X
 
 
-class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
+class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
     """TensorFlow RNN Classifier model.
 
     Parameters:
@@ -69,7 +68,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
                  initial_state=None, bidirectional=False,
                  sequence_length=None, batch_size=32,
                  steps=50, optimizer="Adagrad", learning_rate=0.1,
-                 class_weight=None,
+                 class_weight=None, clip_gradients=5.0,
                  continue_training=False,
                  config=None, verbose=1):
 
@@ -85,6 +84,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
             n_classes=n_classes,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, class_weight=class_weight,
+            clip_gradients=clip_gradients,
             continue_training=continue_training, config=config,
             verbose=verbose)
 
@@ -107,7 +107,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, ClassifierMixin):
         return self.get_tensor_value('logistic_regression/weights:0')
 
 
-class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
+class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
     """TensorFlow RNN Regressor model.
 
     Parameters:
@@ -149,6 +149,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
                  bidirectional=False, sequence_length=None,
                  n_classes=0, batch_size=32,
                  steps=50, optimizer="Adagrad", learning_rate=0.1,
+                 clip_gradients=5.0,
                  continue_training=False,
                  config=None, verbose=1):
         self.rnn_size = rnn_size
@@ -162,7 +163,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, RegressorMixin):
             model_fn=self._model_fn,
             n_classes=n_classes,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate,
+            learning_rate=learning_rate, clip_gradients=clip_gradients,
             continue_training=continue_training, config=config,
             verbose=verbose)
 
