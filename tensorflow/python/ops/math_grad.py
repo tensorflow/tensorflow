@@ -331,8 +331,15 @@ def _ZetaGrad(op, grad):
   # TODO(tillahoffmann): Add derivative with respect to x
   x = op.inputs[0]
   q = op.inputs[1]
+  # Broadcast gradients
+  sx = array_ops.shape(x)
+  sq = array_ops.shape(q)
+  unused_rx, rq = gen_array_ops._broadcast_gradient_args(sx, sq)
+  # Evaluate gradient
   with ops.control_dependencies([grad.op]):
-    return (None, -x * math_ops.zeta(x + 1, q))
+    partial_q = -x * math_ops.zeta(x + 1, q)
+    return (None,
+            array_ops.reshape(math_ops.reduce_sum(partial_q * grad, rq), sq))
 
 
 @ops.RegisterGradient("Polygamma")
@@ -340,9 +347,16 @@ def _PolygammaGrad(op, grad):
   """Returns gradient of psi(n, x) with respect to n and x."""
   # TODO(tillahoffmann): Add derivative with respect to n
   n = op.inputs[0]
-  x = op.inputs[2]
+  x = op.inputs[1]
+  # Broadcast gradients
+  sn = array_ops.shape(n)
+  sx = array_ops.shape(x)
+  unused_rn, rx = gen_array_ops._broadcast_gradient_args(sn, sx)
+  # Evaluate gradient
   with ops.control_dependencies([grad.op]):
-    return (None, math_ops.polygamma(n + 1, x))
+    partial_x = math_ops.polygamma(n + 1, x)
+    return (None,
+            array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Sigmoid")
