@@ -57,10 +57,6 @@ class UnaryOpTest(tf.test.TestCase):
       self.assertShapeEqual(np_ans, y)
       self.assertAllClose(np_ans, tf_cpu)
 
-      # TODO(ebrevdo): consider adding polygamma function
-      if tf_func in (tf.digamma,):
-        return  # Return early
-
       if x.dtype == np.complex64 and tf_func in (
           tf.sign, tf.sqrt, tf.rsqrt, tf.log):
         return  # Return early
@@ -311,7 +307,7 @@ class BinaryOpTest(tf.test.TestCase):
       if tf_func not in (_FLOORDIV, tf.floordiv, tf.igamma, tf.igammac):
         self._compareGradientX(x, y, np_func, tf_func)
         self._compareGradientY(x, y, np_func, tf_func)
-      if tf_func in (tf.igamma, tf.igammac):
+      if tf_func in (tf.igamma, tf.igammac, tf.zeta, tf.polygamma):
         # These methods only support gradients in the second parameter
         self._compareGradientY(x, y, np_func, tf_func)
       self._compareGpu(x, y, np_func, tf_func)
@@ -335,6 +331,8 @@ class BinaryOpTest(tf.test.TestCase):
       x_pos_small = np.linspace(0.1, 10, 15).reshape(1, 3, 5).astype(np.float32)
       self._compareBoth(a_pos_small, x_pos_small, special.gammainc, tf.igamma)
       self._compareBoth(a_pos_small, x_pos_small, special.gammaincc, tf.igammac)
+      self._compareBoth(a_pos_small, x_pos_small, special.zeta, tf.zeta)
+      self._compareBoth(a_pos_small, x_pos_small, special.polygamma, tf.polygamma)
     except ImportError as e:
       tf.logging.warn("Cannot test special functions: %s" % str(e))
 
