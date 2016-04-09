@@ -18,10 +18,16 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
-from os.path import join
+import collections
+from os import path
+
+import numpy as np
+
+    
+Dataset = collections.namedtuple('Dataset', ['data', 'target'])
 
 
-def load_csv(filename):
+def load_csv(filename, target_dtype):
     with open(filename) as csv_file:
         data_file = csv.reader(csv_file)
         header = next(data_file)
@@ -33,25 +39,27 @@ def load_csv(filename):
 
         for i, ir in enumerate(data_file):
             data[i] = np.asarray(ir[:-1], dtype=np.float64)
-            target[i] = np.asarray(ir[-1], dtype=np.int)
+            target[i] = np.asarray(ir[-1], dtype=target_dtype)
 
-    return data, target
+    return Dataset(data=data, target=target)
 
 
 def load_iris():
-    module_path = dirname(__file__)
-    return load_csv(join(module_path, 'data', 'iris.csv'))
+    module_path = path.dirname(__file__)
+    return load_csv(path.join(module_path, 'data', 'iris.csv'),
+                    target_dtype=np.int)
 
 
 def load_boston():
-    module_path = dirname(__file__)
-    return load_csv(join(module_path, 'data', 'boston_house_prices.csv'))
+    module_path = path.dirname(__file__)
+    return load_csv(path.join(module_path, 'data', 'boston_house_prices.csv'),
+                    target_dtype=np.float)
 
 
 # List of all available datasets.
 DATASETS = {
-    'iris': load_iris(),
-    'boston': load_boston(),
+    'iris': load_iris,
+    'boston': load_boston,
 }
 
 
