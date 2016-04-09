@@ -341,62 +341,6 @@ struct cos : base<T, Eigen::internal::scalar_cos_op<T> > {};
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool> > {
 };
 
-namespace impl {
-
-#ifndef __CUDACC__
-// Uses STL std cmath functions.
-template <typename T>
-bool isinf(T v) {
-  return std::isinf(v);
-}
-
-template <typename T>
-bool isnan(T v) {
-  return std::isnan(v);
-}
-
-template <typename T>
-bool isfinite(T v) {
-  return std::isfinite(v);
-}
-
-template <typename T>
-T floor(T v) {
-  return std::floor(v);
-}
-
-template <typename T>
-T ceil(T v) {
-  return std::ceil(v);
-}
-#else
-// Uses CUDA's functions for float and double.
-template <typename T>
-EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool isinf(T v) {
-  return ::isinf(v);
-}
-
-template <typename T>
-EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool isnan(T v) {
-  return ::isnan(v);
-}
-
-template <typename T>
-EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool isfinite(T v) {
-  return ::isfinite(v);
-}
-
-template <typename T>
-EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T floor(T v) {
-  return ::floor(v);
-}
-
-template <typename T>
-EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T ceil(T v) {
-  return ::ceil(v);
-}
-#endif
-}  // end namespace impl
 
 // NOTE: std::isinf, std::isnan, std::isfinite are plain function.
 // Therefore we need to wrap them in functors to be used with Eigen's
@@ -406,7 +350,7 @@ template <typename T>
 struct isinf_func {
   typedef bool result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(T x) const {
-    return impl::isinf(x);
+    return Eigen::numext::isinf(x);
   }
 };
 
@@ -417,7 +361,7 @@ template <typename T>
 struct isnan_func {
   typedef bool result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(T x) const {
-    return impl::isnan(x);
+    return Eigen::numext::isnan(x);
   }
 };
 
@@ -428,7 +372,7 @@ template <typename T>
 struct isfinite_func {
   typedef bool result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(T x) const {
-    return impl::isfinite(x);
+    return Eigen::numext::isfinite(x);
   }
 };
 
@@ -439,7 +383,7 @@ template <typename T>
 struct floor_func {
   typedef T result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(T x) const {
-    return impl::floor(x);
+    return Eigen::numext::floor(x);
   }
 };
 
@@ -450,7 +394,7 @@ template <typename T>
 struct ceil_func {
   typedef T result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(T x) const {
-    return impl::ceil(x);
+    return Eigen::numext::ceil(x);
   }
 };
 
