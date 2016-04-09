@@ -45,14 +45,13 @@ Example
   <div class="side">
     <tf-graph-controls
         color-by-params="[[colorByParams]]"
-        has-stats="[[hasStats]]"
+        stats="[[stats]]"
         color-by="{{colorBy}}"
     ></tf-graph-controls>
     <tf-graph-loader id="loader"
         out-graph-hierarchy="{{graphHierarchy}}"
         out-graph="{{graph}}"
-        out-graph-name="{{graphName}}"
-        has-stats="{{hasStats}}"
+        out-stats="{{stats}}"
         progress="{{_progress}}"
     ></tf-graph-loader>
   </div>
@@ -60,8 +59,7 @@ Example
     <tf-graph-board id="graphboard"
         graph-hierarchy="[[graphHierarchy]]"
         graph="[[graph]]"
-        has-stats="[[hasStats]]"
-        graph-name="[[graphName]]"
+        stats="[[stats]]"
         progress="[[_progress]]"
         color-by="[[colorBy]]"
         color-by-params="{{colorByParams}}"
@@ -77,7 +75,7 @@ Example
 Polymer({
   is: 'tf-graph-app',
   properties: {
-    hasStats: Boolean,
+    stats: Object,
     pbtxt: {
       type: String,
       observer: '_updateGraph',

@@ -39,11 +39,19 @@ module TF.Backend {
     }
     function standardRoute(route: string): ((tag: string, run: string) => string) {
       return function(tag: string, run: string): string {
-        return dataDir + "/" + route + clean(queryEncoder({tag: tag, run: run}));
+        var url = dataDir + "/" + route + clean(queryEncoder({tag: tag, run: run}));
+        if (demoMode) {
+          url += ".json";
+        }
+        return url;
       };
     }
     function individualImageUrl(query: string) {
-      return dataDir + "/" + clean("individualImage?" + query);
+      var url = dataDir + "/" + clean("individualImage?" + query);
+      if (demoMode) {
+        url += ".png";
+      }
+      return url;
     }
     function graphUrl(run: string, limit_attr_size?: number,
         large_attrs_key?: string) {
@@ -57,10 +65,14 @@ module TF.Backend {
       let query = query_params.map(param => {
         return param[0] + "=" + encodeURIComponent(param[1]);
       }).join("&");
-      return dataDir + "/graph" + clean("?" + query);
+      var url = dataDir + "/graph" + clean("?" + query);
+      if (demoMode) {
+        url += ".pbtxt";
+      }
+      return url;
     }
     return {
-      runs: () => dataDir + "/runs",
+      runs: () => dataDir + "/runs" + (demoMode ? ".json" : ""),
       individualImage: individualImageUrl,
       graph: graphUrl,
       scalars: standardRoute("scalars"),

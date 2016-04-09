@@ -317,7 +317,8 @@ const string TensorSliceReader::DebugString() const {
   string shape_str;
   if (status().ok()) {
     for (auto e : Tensors()) {
-      strings::StrAppend(&shape_str, e.first, " ",
+      strings::StrAppend(&shape_str, e.first, " (",
+                         DataType_Name(e.second->type()), ") ",
                          e.second->shape().DebugString(), "\n");
     }
   }

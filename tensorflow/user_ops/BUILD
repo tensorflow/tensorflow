@@ -23,7 +23,6 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 tf_custom_op_library(
     name = "ackermann_op.so",
     srcs = ["ackermann_op.cc"],
-    deps = ["//google/protobuf"],
 )
 
 py_tests(

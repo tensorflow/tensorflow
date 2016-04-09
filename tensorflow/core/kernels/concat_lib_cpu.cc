@@ -41,7 +41,7 @@ void ConcatCPU(DeviceBase* d,
   int num_inputs = inputs.size();
   std::vector<ptrdiff_t> sizes;
   sizes.reserve(num_inputs);
-  int row_size = 0;
+  int64 row_size = 0;
   for (int j = 0; j < num_inputs; ++j) {
     sizes.push_back(inputs[j]->dimension(1));
     row_size += sizes.back();

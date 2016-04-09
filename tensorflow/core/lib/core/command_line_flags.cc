@@ -28,8 +28,8 @@ template <typename T>
 bool StringToValue(const string& content, T* value);
 
 template <>
-bool StringToValue<int32>(const string& content, int* value) {
-  return str_util::NumericParse32(content, value);
+bool StringToValue<int32>(const string& content, int32* value) {
+  return strings::safe_strto32(content, value);
 }
 
 template <>

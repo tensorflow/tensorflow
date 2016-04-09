@@ -13,26 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Based on the gulpfile provided by angular team
-// (https://github.com/angular/ts2dart/blob/master/gulpfile.js)
 var gulp = require('gulp');
-var tester = require('web-component-tester').test;
-var ts = require('gulp-typescript');
-var typescript = require('typescript');
-var gutil = require('gulp-util');
-var tslint = require('gulp-tslint');
 var server = require('gulp-server-livereload');
-var merge = require('merge2');
-var gulpFilter = require('gulp-filter');
-var vulcanize = require('gulp-vulcanize');
 var minimist = require('minimist');
-var replace = require('gulp-replace');
-var rename = require('gulp-rename');
-var header = require('gulp-header');
-var fs = require('fs');
-var path = require('path');
-var typings = require('gulp-typings');
-var bower = require('gulp-bower');
+
 var options = minimist(process.argv.slice(2), {
   default: {
     p: 8000,  // port for gulp server
@@ -40,104 +24,33 @@ var options = minimist(process.argv.slice(2), {
   }
 });
 
-var tsProject = ts.createProject('tsconfig.json', {
-  typescript: typescript,
-  noExternalResolve: true, // opt-in for faster compilation!
-});
+function getTask(task) {
+    return require('./gulp_tasks/' + task);
+}
 
-var hasError;
-var failOnError = true; // Is set to false when watching.
 
-var onError = function(err) {
-  hasError = true;
-  gutil.log(err.message);
-  if (failOnError) {
-    process.exit(1);
-  }
-};
+gulp.task('compile', getTask('compile'));
+gulp.task('typings', getTask('typings'));
+gulp.task('tslint', getTask('tslint')(true));
+// tslint.permissive warns without failing.
+gulp.task('tslint.permissive', getTask('tslint')(false));
+gulp.task('first-compile', ['typings'], getTask('compile'));
+gulp.task('test.onlytest', getTask('test')); // if you don't want to lint, etc
+gulp.task('test', ['tslint', 'compile'], getTask('test'));
 
-// These constants should always be in sync with the path in the .gitignore
-// file.
-var TF_COMPONENTS_PREFIX = 'tf-';
-var TF_COMPONENTS_TYPESCRIPT_GLOB = 'components/' + TF_COMPONENTS_PREFIX +
-    '*/**/*.ts';
-
-var TF_LIB_TYPESCRIPT_GLOB = 'lib/js/**/*.ts';
-
-gulp.task('typings', function() {
-  // This task will create a typings directory at root level, with all typings
-  // installed in it.
-  return gulp.src('./typings.json')
-      .pipe(typings());
-});
-
-// TODO(danmane): Wire this up once bower.json specifies all resolutions
-gulp.task('bower', function() {
-  return bower();
-});
-
-gulp.task('compile.all', ['typings'], function() {
-  hasError = false;
-  var isComponent = gulpFilter(['components/**/*.js']);
-  var isLib = gulpFilter(['lib/js/**/*.js']);
-  var isApp = gulpFilter(['app/**/*.js']);
-
-  var tsResult = tsProject.src()
-                     .pipe(ts(tsProject))
-                     .on('error', onError);
-  return merge([
-    // Duplicate all component code to live next to the ts file
-    // (makes polymer imports very clean)
-    tsResult.js
-            .pipe(isComponent)
-            .pipe(gulp.dest('.')),
-    tsResult.js
-            .pipe(isLib)
-            .pipe(gulp.dest('.')),
-  ]);
-});
-
-gulp.task('test', ['tslint-strict', 'compile.all'], function(done) {
-  tester({}, function(error) {
-    if (error) {
-      // Pretty error for gulp.
-      error = new Error(error.message || error);
-      error.showStack = false;
-    }
-    done(error);
-  });
-});
-
-var tslintTask = function(strict) {
-  return function(done) {
-    if (hasError) {
-      done();
-      return;
-    }
-    return gulp.src([TF_COMPONENTS_TYPESCRIPT_GLOB, TF_LIB_TYPESCRIPT_GLOB])
-               .pipe(tslint())
-               .pipe(tslint.report('verbose', {
-                  emitError: strict,
-               }));
- };
-};
-
-// Since constructs like console.log are disabled by tslint
-// but very useful while developing, create a "permissive"
-// version of tslint that warns without erroring, for the
-// watch task.
-gulp.task('tslint-permissive', [], tslintTask(false));
-gulp.task('tslint-strict', [], tslintTask(true));
-
-gulp.task('watch', ['compile.all', 'tslint-permissive'], function() {
-  failOnError = false;
+gulp.task('watch', [], function() {
   // Avoid watching generated .d.ts in the build (aka output) directory.
-  return gulp.watch([TF_COMPONENTS_TYPESCRIPT_GLOB, TF_LIB_TYPESCRIPT_GLOB],
+  return gulp.watch('components/tf-*/**/*.ts',
           {ignoreInitial: true},
-          ['compile.all', 'tslint-permissive']);
+          ['compile', 'tslint.permissive']);
 });
 
-gulp.task('server', function() {
+
+// Do first-compile before turning on server, to avoid spamming
+// livereload info
+// TODO(danmane): Disconnect this once we can get livereload to
+// no longer spam.
+gulp.task('server', ['first-compile'], function() {
   gulp.src('.').pipe(server({
     host: options.h,
     port: options.p,
@@ -151,50 +64,11 @@ gulp.task('server', function() {
   }));
 });
 
-/**
- * Returns a list of non-tensorboard components inside the components
- * directory, i.e. components that don't begin with 'tf-'.
- */
-function getNonTensorBoardComponents() {
-  return fs.readdirSync('components')
-      .filter(function(file) {
-        var filePrefix = file.slice(0, TF_COMPONENTS_PREFIX.length);
-        return fs.statSync(path.join('components', file)).isDirectory() &&
-            filePrefix !== TF_COMPONENTS_PREFIX;
-      })
-      .map(function(dir) { return '/' + dir + '/'; });
-}
+// TODO(danmane): When testing is nicer, integrate into vulcanize task
+// gulp vulcanize: Regenerate the tf-tensorboard.html.OPENSOURCE file for pre-release
+gulp.task('vulcanize', ['first-compile', 'tslint.permissive'], getTask('vulcanize')(false));
+// gulp regenerate: Regenerate the tf-tensorboard.html for interactive bazel development
+gulp.task('regenerate', ['first-compile', 'tslint.permissive'], getTask('vulcanize')(true));
 
-
-var linkRegex = /<link rel="[^"]*" (type="[^"]*" )?href="[^"]*">\n/g;
-var scriptRegex = /<script src="[^"]*"><\/script>\n/g;
-gulp.task('vulcanize', ['compile.all', 'tslint-strict'], function() {
-  // Vulcanize TensorBoard without external libraries.
-  gulp.src('components/tf-tensorboard/tf-tensorboard.html')
-      .pipe(vulcanize({
-        inlineScripts: true,
-        inlineCss: true,
-        stripComments: true,
-        excludes: getNonTensorBoardComponents(),
-      }))
-      // TODO(danmane): Remove this worrisome brittleness when vulcanize
-      // fixes https://github.com/Polymer/vulcanize/issues/273
-      .pipe(replace(linkRegex, ''))
-      .pipe(replace(scriptRegex, ''))
-      .pipe(header('// AUTOGENERATED FILE - DO NOT MODIFY \n'))
-      .pipe(rename('tf-tensorboard.html.OPENSOURCE'))
-      .pipe(gulp.dest('./dist'));
-
-
-  gulp.src('components/tf-tensorboard/tf-tensorboard-demo.html')
-      .pipe(vulcanize({
-        inlineScripts: true,
-        inlineCss: true,
-        stripComments: true,
-      }))
-      .pipe(header('// AUTOGENERATED FILE - DO NOT MODIFY \n'))
-      .pipe(gulp.dest('dist'));
-});
-
-gulp.task('serve', ['server']); // alias
-gulp.task('default', ['compile.all', 'watch', 'serve']);
+// TODO(danmane): consider making bower install part of default task
+gulp.task('default', ['watch', 'server']);

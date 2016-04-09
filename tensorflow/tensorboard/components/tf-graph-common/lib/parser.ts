@@ -37,7 +37,7 @@ function parseValue(value: string): string|number|boolean {
 /**
  * Fetches a text file and returns a promise of the result.
  */
-export function readPbTxt(filepath: string): Promise<string> {
+export function fetchPbTxt(filepath: string): Promise<string> {
   return new Promise<string>(function(resolve, reject) {
     d3.text(filepath, function(error, text) {
       if (error) {
@@ -50,52 +50,36 @@ export function readPbTxt(filepath: string): Promise<string> {
 }
 
 /**
- * Fetches and parses a json file and returns a promise of the result.
+ * Fetches the metadata file, parses it and returns a promise of the result.
  */
-export function readJson(filepath: string): Promise<Object> {
-  return new Promise<Object>(function(resolve, reject) {
-    d3.json(filepath, function(error, text) {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(text);
-    });
+export function fetchAndParseMetadata(path: string, tracker: ProgressTracker) {
+  return runTask("Reading metadata pbtxt", 40, () => {
+    if (path == null) {
+      return Promise.resolve(null);
+    }
+    return fetchPbTxt(path).then(text => new Blob([text]));
+  }, tracker)
+  .then((blob: Blob) => {
+    return runTask("Parsing metadata.pbtxt", 60, () => {
+      return blob != null ? parseStatsPbTxt(blob) : null;
+    }, tracker);
   });
 }
 
 /**
- * Reads the graph and stats file (if available), parses them and returns a
- * promise of the result.
+ * Fetches the graph file, parses it and returns a promise of the result.
  */
-export function readAndParseData(dataset: {path: string, statsPath: string},
-    pbTxtFile: Blob, tracker: ProgressTracker):
-    Promise<{ nodes: TFNode[], statsJson: Object }|void> {
-  let graphPbTxt: Blob;
-  let statsJson: Object;
-  return runTask("Reading graph.pbtxt", 20, () => {
+export function fetchAndParseGraphData(path: string, pbTxtFile: Blob,
+    tracker: ProgressTracker) {
+  return runTask("Reading graph pbtxt", 40, () => {
     return pbTxtFile ?
       Promise.resolve(pbTxtFile) :
-      readPbTxt(dataset.path).then(text => new Blob([text]));
+      fetchPbTxt(path).then(text => new Blob([text]));
   }, tracker)
   .then(blob => {
-    graphPbTxt = blob;
-    return runTask("Reading stats.pbtxt", 20, () => {
-      return (dataset != null && dataset.statsPath != null) ?
-          readJson(dataset.statsPath) : null;
-    }, tracker);
-  })
-  .then(json => {
-    statsJson = json;
     return runTask("Parsing graph.pbtxt", 60, () => {
-      return parsePbtxtFile(graphPbTxt);
+      return parseGraphPbTxt(blob);
     }, tracker);
-  })
-  .then(nodes => {
-    return {
-      nodes: nodes,
-      statsJson: statsJson
-    };
   });
 }
 
@@ -158,13 +142,59 @@ export function streamParse(file: Blob, callback: (string) => void,
 }
 
 /**
- * Parses a proto txt file or blob into javascript object.
+ * Since proto-txt doesn't explicitly say whether an attribute is repeated
+ * (an array) or not, we keep a hard-coded list of attributes that are known
+ * to be repeated. This list is used in parsing time to convert repeated
+ * attributes into arrays even when the attribute only shows up once in the
+ * object.
+ */
+const GRAPH_REPEATED_FIELDS: {[attrPath: string]: boolean} = {
+  "node": true,
+  "node.input": true,
+  "node.attr": true,
+  "node.attr.value.list.type": true,
+  "node.attr.value.shape.dim": true,
+  "node.attr.value.tensor.string_val": true,
+  "node.attr.value.tensor.tensor_shape.dim": true,
+  "node.attr.value.list.shape": true,
+  "node.attr.value.list.shape.dim": true,
+  "node.attr.value.list.s": true
+};
+
+const METADATA_REPEATED_FIELDS: {[attrPath: string]: boolean} = {
+  "step_stats.dev_stats": true,
+  "step_stats.dev_stats.node_stats": true,
+  "step_stats.dev_stats.node_stats.output": true,
+  "step_stats.dev_stats.node_stats.memory": true,
+  "step_stats.dev_stats.node_stats.output.tensor_description.shape.dim": true
+};
+
+/**
+ * Parses a blob of proto txt file into a raw Graph object.
+ */
+export function parseGraphPbTxt(input: Blob): Promise<TFNode[]> {
+  return parsePbtxtFile(input, GRAPH_REPEATED_FIELDS).then(obj => obj["node"]);
+}
+
+/**
+ * Parses a blob of proto txt file into a StepStats object.
+ */
+function parseStatsPbTxt(input: Blob): Promise<StepStats> {
+  return parsePbtxtFile(input, METADATA_REPEATED_FIELDS)
+    .then(obj => obj["step_stats"]);
+}
+
+/**
+ * Parses a blob of proto txt file into javascript object.
  *
  * @param input The Blob or file object implementing slice.
+ * @param repeatedFields Map (Set) of all the repeated fields, since you can't
+ *   tell directly from the pbtxt if a field is repeated or not.
  * @returns The parsed object.
  */
-export function parsePbtxtFile(input: Blob): Promise<TFNode[]> {
-  let output: { [name: string]: any; } = { node: [] };
+function parsePbtxtFile(input: Blob,
+    repeatedFields: {[attrPath: string]: boolean}): Promise<Object> {
+  let output: { [name: string]: any; } = {};
   let stack = [];
   let path: string[] = [];
   let current: { [name: string]: any; } = output;
@@ -178,26 +208,6 @@ export function parsePbtxtFile(input: Blob): Promise<TFNode[]> {
       value: value
     };
   }
-
-  /**
-   * Since proto-txt doesn't explicitly say whether an attribute is repeated
-   * (an array) or not, we keep a hard-coded list of attributes that are known
-   * to be repeated. This list is used in parsing time to convert repeated
-   * attributes into arrays even when the attribute only shows up once in the
-   * object.
-   */
-  let ARRAY_ATTRIBUTES: {[attrPath: string]: boolean} = {
-    "node": true,
-    "node.input": true,
-    "node.attr": true,
-    "node.attr.value.list.type": true,
-    "node.attr.value.shape.dim": true,
-    "node.attr.value.tensor.string_val": true,
-    "node.attr.value.tensor.tensor_shape.dim": true,
-    "node.attr.value.list.shape": true,
-    "node.attr.value.list.shape.dim": true,
-    "node.attr.value.list.s": true
-  };
 
   /**
    * Adds a value, given the attribute name and the host object. If the
@@ -215,7 +225,7 @@ export function parsePbtxtFile(input: Blob): Promise<TFNode[]> {
     // We treat "node" specially since it is done so often.
     let existingValue = obj[name];
     if (existingValue == null) {
-      obj[name] = path.join(".") in ARRAY_ATTRIBUTES ? [value] : value;
+      obj[name] = path.join(".") in repeatedFields ? [value] : value;
     } else if (Array.isArray(existingValue)) {
       existingValue.push(value);
     } else {
@@ -247,19 +257,8 @@ export function parsePbtxtFile(input: Blob): Promise<TFNode[]> {
         break;
     }
   }).then(function() {
-    return output["node"];
+    return output;
   });
-}
-
-/**
- * Parses a proto txt file into a javascript object.
- *
- * @param input The string contents of the proto txt file.
- * @return The parsed object.
- */
-export function parsePbtxt(input: string): Promise<TFNode[]> {
-  let blob = new Blob([input]);
-  return parsePbtxtFile(blob);
 }
 
 } // Close module tf.graph.parser.

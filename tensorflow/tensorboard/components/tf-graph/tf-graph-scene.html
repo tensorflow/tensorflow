@@ -676,12 +676,14 @@ Polymer({
     * UI controls.
     */
   _colorByChanged: function() {
-    // We iterate through each svg node and update its state.
-    _.each(this._nodeGroupIndex, function(nodeGroup, nodeName) {
-      this._updateNodeState(nodeName);
-    }, this);
-    // Notify also the minimap.
-    this.minimap.update();
+    if (this.renderHierarchy != null) {
+      // We iterate through each svg node and update its state.
+      _.each(this._nodeGroupIndex, function(nodeGroup, nodeName) {
+        this._updateNodeState(nodeName);
+      }, this);
+      // Notify also the minimap.
+      this.minimap.update();
+    }
   },
   fit: function() {
     tf.graph.scene.fit(this.$.svg, this.$.root, this._zoom, function() {

@@ -34,8 +34,10 @@ class MatrixTriangularSolveOp
  public:
   explicit MatrixTriangularSolveOp(OpKernelConstruction* context)
       : BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context),
-        lower_(true) {
+        lower_(true),
+        adjoint_(false) {
     OP_REQUIRES_OK(context, context->GetAttr("lower", &lower_));
+    OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
   }
   ~MatrixTriangularSolveOp() override {}
 
@@ -72,27 +74,36 @@ class MatrixTriangularSolveOp
     OP_REQUIRES(context, matrix.rows() == matrix.cols(),
                 errors::InvalidArgument("Input matrix must be square."));
     OP_REQUIRES(
-        context, matrix.rows() == rhs.rows(),
+        context, matrix.cols() == rhs.rows(),
         errors::InvalidArgument("Input matrix and rhs are incompatible."));
-    if (matrix.rows() == 0) {
+    if (matrix.rows() == 0 || rhs.cols() == 0) {
       // To be consistent with the MatrixInverse op, we define the solution for
-      // an empty set of equation is the empty matrix.
+      // an empty set of equation as the empty matrix.
       return;
     }
     const Scalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > Scalar(0),
                 errors::InvalidArgument("Input matrix is not invertible."));
     if (lower_) {
-      output->noalias() =
-          matrix.template triangularView<Eigen::Lower>().solve(rhs);
+      auto triangle = matrix.template triangularView<Eigen::Lower>();
+      if (adjoint_) {
+        output->noalias() = triangle.adjoint().solve(rhs);
+      } else {
+        output->noalias() = triangle.solve(rhs);
+      }
     } else {
-      output->noalias() =
-          matrix.template triangularView<Eigen::Upper>().solve(rhs);
+      auto triangle = matrix.template triangularView<Eigen::Upper>();
+      if (adjoint_) {
+        output->noalias() = triangle.adjoint().solve(rhs);
+      } else {
+        output->noalias() = triangle.solve(rhs);
+      }
     }
   }
 
  private:
   bool lower_;
+  bool adjoint_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixTriangularSolveOp);
 };

@@ -45,20 +45,21 @@ Example
   <div class="side">
     <tf-graph-controls
         color-by-params="[[colorByParams]]"
-        has-stats="[[hasStats]]"
+        stats="[[stats]]"
         color-by="{{colorBy}}"
         datasets="[[datasets]]",
         selected-dataset="{{selectedDataset}}"
         selected-file="{{selectedFile}}"
+        selected-metadata-tag="{{selectedMetadataTag}}"
     ></tf-graph-controls>
     <tf-graph-loader id="loader"
         datasets="[[datasets]]",
         selected-dataset="[[selectedDataset]]"
+        selected-metadata-tag="[[selectedMetadataTag]]"
         selected-file="[[selectedFile]]"
         out-graph-hierarchy="{{graphHierarchy}}"
         out-graph="{{graph}}"
-        out-graph-name="{{graphName}}"
-        has-stats="{{hasStats}}"
+        out-stats="{{stats}}"
         progress="{{_progress}}"
         out-hierarchy-params="{{_hierarchyParams}}"
     ></tf-graph-loader>
@@ -67,8 +68,7 @@ Example
     <tf-graph-board id="graphboard"
         graph-hierarchy="[[graphHierarchy]]"
         graph="[[graph]]"
-        has-stats="[[hasStats]]"
-        graph-name="[[graphName]]"
+        stats="[[stats]]"
         progress="[[_progress]]"
         color-by="[[colorBy]]"
         color-by-params="{{colorByParams}}"
@@ -88,9 +88,18 @@ var datasets = [
     path: "mnist_eval.pbtxt",
   },
   {
-    name: "Mnist Train (with stats)",
-    path: "mnist_train.pbtxt",
-    statsPath: "mnist_train_stats.json"
+    name: "Mnist with summaries (+stats)",
+    path: "mnist_with_summaries.pbtxt",
+    runMetadata: [
+      {
+        tag: "step100",
+        path: "mnist_with_summaries_step100.pbtxt"
+      },
+      {
+        tag: "step1000",
+        path: "mnist_with_summaries_step1000.pbtxt"
+      }
+    ]
   },
   {
     name: "Mnist Train (with shapes)",
@@ -121,16 +130,48 @@ var datasets = [
     path: "ptb_word_lstm_test_eval.pbtxt",
   },
   {
-    name: "Cifar10 Train (with shapes)",
+    name: "Cifar10 Train (+stats)",
     path: "cifar10_train.pbtxt",
+    runMetadata: [
+      {
+        tag: "step0",
+        path: "cifar10_train_step0.pbtxt"
+      },
+      {
+        tag: "step100",
+        path: "cifar10_train_step100.pbtxt"
+      },
+      {
+        tag: "step200",
+        path: "cifar10_train_step200.pbtxt"
+      },
+      {
+        tag: "step300",
+        path: "cifar10_train_step300.pbtxt"
+      }
+    ]
   },
   {
     name: "Cifar10 Multi-GPU Train",
     path: "cifar10_multi_gpu_train.pbtxt",
   },
   {
-    name: "Cifar10 Eval",
+    name: "Cifar10 Eval (+stats)",
     path: "cifar10_eval.pbtxt",
+    runMetadata: [
+      {
+        tag: "step0",
+        path: "cifar10_eval_step0.pbtxt"
+      },
+      {
+        tag: "step10",
+        path: "cifar10_eval_step10.pbtxt"
+      },
+      {
+        tag: "step20",
+        path: "cifar10_eval_step20.pbtxt"
+      },
+    ]
   },
   {
     name: "Fatcat LSTM",
@@ -161,7 +202,6 @@ var datasets = [
 Polymer({
   is: 'tf-graph-demo',
   properties: {
-    hasStats: Boolean,
     datasets: {
       type: Object,
       value: function() {
@@ -170,24 +210,27 @@ Polymer({
     },
     selectedDataset: {
       type: Number,
-      value: 9 // Cifar train with shapes.
+      value: 1 // Mnist with metadata info.
     },
     _progress: Object
+  },
+  _normalizePath: function(path) {
+    return this.resolveUrl('tf_model_zoo/' + path)
+      .replace('tf_model_zoo', DEMO_DIR_PREFIX + 'tf_model_zoo');
   },
   _getDatasets: function() {
     if(typeof DEMO_DIR_PREFIX === 'undefined') {
       DEMO_DIR_PREFIX = '';
     }
-    return _.map(datasets, function(dataset) {
-      var result = {
-        name: dataset.name,
-        path: this.resolveUrl('tf_model_zoo/' + dataset.path).replace("tf_model_zoo", DEMO_DIR_PREFIX + 'tf_model_zoo')
-      };
-      if (dataset.statsPath != null) {
-        result.statsPath = this.resolveUrl('tf_model_zoo/' + dataset.statsPath).replace("tf_model_zoo", DEMO_DIR_PREFIX + 'tf_model_zoo');
+    _.each(datasets, function(dataset) {
+      dataset.path = this._normalizePath(dataset.path);
+      if (dataset.runMetadata != null) {
+        _.each(dataset.runMetadata, function(metadata) {
+          metadata.path = this._normalizePath(metadata.path);
+        }, this);
       }
-      return result;
     }, this);
+    return datasets;
   }
 });
 })();

@@ -181,6 +181,13 @@ TEST_F(ScannerTest, CaptureAndGetResult) {
   EXPECT_TRUE(scan.GetResult(&remaining, &match));
   EXPECT_EQ("second", remaining.ToString());
   EXPECT_EQ("first", match.ToString());
+
+  scan.RestartCapture().One(Scanner::LETTER).One(Scanner::LETTER);
+  remaining = "";
+  match = "";
+  EXPECT_TRUE(scan.GetResult(&remaining, &match));
+  EXPECT_EQ("cond", remaining.ToString());
+  EXPECT_EQ("se", match.ToString());
 }
 
 // Tests that if StopCapture is not called, then calling GetResult, then

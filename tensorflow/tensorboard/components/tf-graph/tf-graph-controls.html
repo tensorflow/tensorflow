@@ -1,6 +1,7 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-menu/paper-menu.html">
 <link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
+<link rel="import" href="../paper-radio-group/paper-radio-group.html">
 
 <dom-module id="tf-graph-controls">
 <template>
@@ -52,6 +53,7 @@ table td {
 }
 
 .allcontrols {
+  width: 188px;
   padding: 30px;
 }
 
@@ -62,6 +64,7 @@ table td {
 }
 
 paper-radio-button {
+  display: block;
   padding: 5px;
 }
 svg.icon {
@@ -125,7 +128,7 @@ svg.icon {
 }
 
 .color-text {
-  padding: 0 0 0 55px;
+  padding: 0 0 0 49px;
 }
 
 .button-text {
@@ -158,6 +161,15 @@ svg.icon {
   display: flex;
   clear: both;
 }
+
+.allcontrols .control-holder paper-radio-group {
+  margin-top: 5px;
+}
+
+span.counter {
+  font-size: 13px;
+  color: gray;
+}
 </style>
 <div class="allcontrols">
   <div class="control-holder">
@@ -175,12 +187,23 @@ svg.icon {
     </a>
   </div>
   <div class="control-holder">
-    <div class="title">Run</div>
+    <div class="title">Run <span class="counter">([[datasets.length]])</span></div>
     <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
       <paper-menu id="select" class="dropdown-content" selected="{{selectedDataset}}">
         <template is="dom-repeat" items="[[datasets]]">
           <paper-item>[[item.name]]</paper-item>
         </template>
+      </paper-menu>
+    </paper-dropdown-menu>
+  </div>
+  <div class="control-holder">
+    <div class="title">Session runs <span class="counter">([[_numSessionRuns(metadataTags)]])</span></div>
+    <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
+      <paper-menu id="select" class="dropdown-content" selected="{{selectedMetadataTag}}">
+        <template is="dom-repeat" items="[[metadataTags]]">
+          <paper-item>[[item.tag]]</paper-item>
+        </template>
+        <paper-item>None</paper-item>
       </paper-menu>
     </paper-dropdown-menu>
   </div>
@@ -194,20 +217,18 @@ svg.icon {
   </div>
   <div class="control-holder">
     <div class="title">Color</div>
-    <paper-dropdown-menu no-label-float no-animations noink class="color-dropdown">
-      <paper-menu class="dropdown-content" selected="{{_colorByIndex}}">
-        <paper-item>Structure</paper-item>
-        <paper-item>Device</paper-item>
-        <template is="dom-if" if="[[hasStats]]">
-          <paper-item>Compute time</paper-item>
-          <paper-item>Memory</paper-item>
-        </template>
-      </paper-menu>
-    </paper-dropdown-menu>
+    <paper-radio-group selected="{{colorBy}}">
+      <paper-radio-button name="structure">Structure</paper-radio-button>
+      <paper-radio-button name="device">Device</paper-radio-button>
+      <template is="dom-if" if="[[_statsNotNull(stats)]]">
+        <paper-radio-button name="compute_time">Compute time</paper-radio-button>
+        <paper-radio-button name="memory">Memory</paper-radio-button>
+      </template>
+    </paper-radio-group>
   </div>
   <div>
     <template is="dom-if" if="[[_isGradientColoring(colorBy)]]">
-      <svg width="160" height="20" style="margin: 0 5px" class="color-text">
+      <svg width="140" height="20" style="margin: 0 5px" class="color-text">
         <defs>
           <linearGradient id="linearGradient" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop class="start" offset="0%"
@@ -216,7 +237,7 @@ svg.icon {
                 stop-color$="[[_currentGradientParams.endColor]]"/>
           </linearGradient>
         </defs>
-        <rect x="0" y="0" width="160" height="20" fill="url(#linearGradient)"
+        <rect x="0" y="0" width="135" height="20" fill="url(#linearGradient)"
             stroke="black" />
       </svg>
       <div class="domainValues color-text">
@@ -359,18 +380,21 @@ Polymer({
   is: 'tf-graph-controls',
   properties: {
     // Public API.
-    hasStats: {
-      type: Boolean
-    },
+    stats: Object,
     colorBy: {
       type: String,
+      value: 'structure',
       notify: true,
-      computed: '_getColorBy(_colorByIndex)'
+      readonly: true
     },
     colorByParams: Object,
     datasets: {
       type: Array,
       observer: '_datasetsChanged'
+    },
+    metadataTags: {
+      type: Array,
+      computed: '_getMetadataTags(selectedDataset, datasets)'
     },
     selectedDataset: {
       type: Number,
@@ -382,18 +406,21 @@ Polymer({
       type: Object,
       notify: true
     },
-    // Private API.
-    _colorByIndex: {
+    selectedMetadataTag: {
       type: Number,
-      value: 0 // Defaults to 'structure'.
+      notify: true,
+      value: -1
     },
     _currentGradientParams: {
       type: Object,
       computed: '_getCurrentGradientParams(colorByParams, colorBy)'
     }
   },
-  _getColorBy: function(colorByIndex) {
-    return ["structure", "device", "compute_time", "memory"][colorByIndex];
+  _statsNotNull: function(stats) {
+    return stats != null;
+  },
+  _numSessionRuns: function(metadataTags) {
+    return metadataTags != null ? metadataTags.length : 0;
   },
   _getBackgroundColor: function(color) {
     return 'background-color:' + color;
@@ -446,8 +473,13 @@ Polymer({
       this._setDownloadFilename(this.datasets[this.selectedDataset].path);
     }
   },
+  _getMetadataTags: function(selectedDataset, datasets) {
+    return this.datasets[selectedDataset].runMetadata;
+  },
   _selectedDatasetChanged: function(newDataset, oldDataset) {
     if (this.datasets) {
+      this.set('selectedMetadataTag', -1);
+      this.set('colorBy', 'structure');
       this._setDownloadFilename(this.datasets[newDataset].path);
     }
   },

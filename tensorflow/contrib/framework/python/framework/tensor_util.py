@@ -21,6 +21,8 @@
 @@assert_non_positive
 @@assert_less
 @@assert_less_equal
+@@assert_rank
+@@assert_rank_at_least
 @@assert_same_float_dtype
 @@assert_scalar_int
 @@is_numeric_tensor
@@ -37,6 +39,7 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
@@ -48,6 +51,7 @@ __all__ = [
     'local_variable', 'reduce_sum_n', 'with_shape', 'with_same_shape',
     'assert_positive', 'assert_negative', 'assert_non_positive',
     'assert_non_negative', 'assert_less', 'assert_less_equal',
+    'assert_rank', 'assert_rank_at_least',
     'is_strictly_increasing', 'is_non_decreasing',
 ]
 
@@ -211,6 +215,90 @@ def assert_less_equal(x, y, data=None, summarize=None, name=None):
           'Condition x <= y did not hold element-wise: x = ',
           x.name, x, 'y = ', y.name, y]
     condition = math_ops.reduce_all(math_ops.less_equal(x, y))
+    return logging_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_rank(x, rank, data=None, summarize=None, name=None):
+  """Assert `x` has rank equal to `rank`.
+
+  Args:
+    x:  Numeric `Tensor`.
+    rank:  Scalar `Tensor`.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).  Defaults to "assert_rank".
+
+  Returns:
+    Op raising `InvalidArgumentError` unless `x` has specified rank.
+
+  Raises:
+    ValueError:  If static checks determine `x` has wrong rank.
+  """
+  with ops.op_scope([x], name, 'assert_rank'):
+    x = ops.convert_to_tensor(x, name='x')
+    rank = ops.convert_to_tensor(rank, name='rank')
+
+    # Attempt to statically defined rank.
+    x_rank_static = x.get_shape().ndims
+    rank_static = tensor_util.constant_value(rank)
+    if x_rank_static is not None and rank_static is not None:
+      if x_rank_static != rank_static:
+        raise ValueError(
+            'Tensor %s must have rank %d.  Received rank %d, shape %s'
+            % (x.name, rank_static, x_rank_static, x.get_shape()))
+      return control_flow_ops.no_op(name='static_checks_determined_all_ok')
+
+    # Assert dynamically.
+    if data is None:
+      data = [
+          'Tensor %s must have rank' % x.name,
+          rank,
+          'Received shape: ',
+          array_ops.shape(x)]
+    condition = math_ops.equal(array_ops.rank(x), rank)
+    return logging_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_rank_at_least(x, rank, data=None, summarize=None, name=None):
+  """Assert `x` has rank equal to `rank` or higher.
+
+  Args:
+    x:  Numeric `Tensor`.
+    rank:  Scalar `Tensor`.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).
+      Defaults to "assert_rank_at_least".
+
+  Returns:
+    Op raising `InvalidArgumentError` unless `x` has specified rank or higher.
+
+  Raises:
+    ValueError:  If static checks determine `x` has wrong rank.
+  """
+  with ops.op_scope([x], name, 'assert_rank_at_least'):
+    x = ops.convert_to_tensor(x, name='x')
+    rank = ops.convert_to_tensor(rank, name='rank')
+
+    # Attempt to statically defined rank.
+    x_rank_static = x.get_shape().ndims
+    rank_static = tensor_util.constant_value(rank)
+    if x_rank_static is not None and rank_static is not None:
+      if x_rank_static < rank_static:
+        raise ValueError(
+            'Tensor %s must have rank %d.  Received rank %d, shape %s'
+            % (x.name, rank_static, x_rank_static, x.get_shape()))
+      return control_flow_ops.no_op(name='static_checks_determined_all_ok')
+
+    if data is None:
+      data = [
+          'Tensor %s must have rank at least' % x.name,
+          rank,
+          'Received shape: ',
+          array_ops.shape(x)]
+    condition = math_ops.greater_equal(array_ops.rank(x), rank)
     return logging_ops.Assert(condition, data, summarize=summarize)
 
 
