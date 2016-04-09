@@ -19,7 +19,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 
-def batch_normalize(tensor_in, epsilon=1e-5, convnet=True, decay=0.9,
+def batch_normalize(tensor_in, epsilon=1e-5, convnet=False, decay=0.9,
                     scale_after_normalization=True):
     """Batch Normalization
 
