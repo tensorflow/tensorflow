@@ -13,7 +13,7 @@ common machine learning algorithms.
 
 - - -
 
-### `tf.contrib.layers.convolution2d(x, num_output_channels, kernel_size, activation_fn=None, stride=(1, 1), padding='SAME', weight_init=_initializer, bias_init=_initializer, name=None, weight_collections=None, bias_collections=None, output_collections=None, weight_regularizer=None, bias_regularizer=None)` {#convolution2d}
+### `tf.contrib.layers.convolution2d(x, num_output_channels, kernel_size, activation_fn=None, stride=(1, 1), padding='SAME', weight_init=_initializer, bias_init=_initializer, name=None, weight_collections=None, bias_collections=None, output_collections=None, trainable=True, weight_regularizer=None, bias_regularizer=None)` {#convolution2d}
 
 Adds the parameters for a conv2d layer and returns the output.
 
@@ -63,6 +63,8 @@ This is only applied to weights and not the bias.
 *  <b>`weight_collections`</b>: List of graph collections to which weights are added.
 *  <b>`bias_collections`</b>: List of graph collections to which biases are added.
 *  <b>`output_collections`</b>: List of graph collections to which outputs are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`weight_regularizer`</b>: A regularizer like the result of
     `l1_regularizer` or `l2_regularizer`. Used for weights.
 *  <b>`bias_regularizer`</b>: A regularizer like the result of
@@ -80,7 +82,7 @@ This is only applied to weights and not the bias.
 
 - - -
 
-### `tf.contrib.layers.fully_connected(x, num_output_units, activation_fn=None, weight_init=_initializer, bias_init=_initializer, name=None, weight_collections=('weights',), bias_collections=('biases',), output_collections=('activations',), weight_regularizer=None, bias_regularizer=None)` {#fully_connected}
+### `tf.contrib.layers.fully_connected(x, num_output_units, activation_fn=None, weight_init=_initializer, bias_init=_initializer, name=None, weight_collections=('weights',), bias_collections=('biases',), output_collections=('activations',), trainable=True, weight_regularizer=None, bias_regularizer=None)` {#fully_connected}
 
 Adds the parameters for a fully connected layer and returns the output.
 
@@ -137,6 +139,8 @@ collection.
 *  <b>`weight_collections`</b>: List of graph collections to which weights are added.
 *  <b>`bias_collections`</b>: List of graph collections to which biases are added.
 *  <b>`output_collections`</b>: List of graph collections to which outputs are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`weight_regularizer`</b>: A regularizer like the result of
     `l1_regularizer` or `l2_regularizer`. Used for weights.
 *  <b>`bias_regularizer`</b>: A regularizer like the result of

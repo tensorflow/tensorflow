@@ -172,6 +172,7 @@ cc_library(
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
         "platform/env.h",
+        "platform/file_system.h",
         "platform/host_info.h",  # TODO(josh11b): make internal
         "platform/init_main.h",
         "platform/logging.h",
@@ -615,6 +616,7 @@ ANDROID_TF_LITE_HDRS = [
     "framework/tensor.h",
     "platform/default/integral_types.h",
     "platform/env.h",
+    "platform/file_system.h",
     "platform/logging.h",
     "platform/platform.h",
     "platform/types.h",
@@ -629,7 +631,7 @@ ANDROID_TF_LITE_HDRS = [
 # build errors. If not building this as part of an android_binary,
 # a command such as the following must be used:
 # bazel build -c opt tensorflow/core:android_tensorflow_lib \
-# --crosstool_top=//third_party/java/android/android_ndk_linux/toolchains:everything \
+# --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
@@ -772,6 +774,7 @@ cc_library(
     deps = [
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -881,6 +884,7 @@ filegroup(
         "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/env.h",
+        "platform/file_system.h",
         "platform/host_info.h",
         "platform/logging.h",
         "platform/macros.h",
@@ -1213,6 +1217,7 @@ tf_cc_test(
     name = "common_runtime/constant_folding_test",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":core",
         ":core_cpu",
@@ -1220,6 +1225,7 @@ tf_cc_test(
         ":direct_session_internal",
         ":framework",
         ":framework_internal",
+        ":gpu_runtime",
         ":lib",
         ":lib_internal",
         ":ops",
@@ -1229,6 +1235,7 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:bcast_ops",
+        "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",

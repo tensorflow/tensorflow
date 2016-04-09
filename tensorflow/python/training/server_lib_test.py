@@ -24,7 +24,7 @@ import tensorflow as tf
 class GrpcServerTest(tf.test.TestCase):
 
   def testRunStep(self):
-    server = tf.GrpcServer.create_local_server()
+    server = tf.train.Server.create_local_server()
 
     with tf.Session(server.target) as sess:
       c = tf.constant([[2, 1]])
@@ -34,7 +34,7 @@ class GrpcServerTest(tf.test.TestCase):
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
   def testMultipleSessions(self):
-    server = tf.GrpcServer.create_local_server()
+    server = tf.train.Server.create_local_server()
 
     c = tf.constant([[2, 1]])
     d = tf.constant([[1], [2]])
@@ -51,7 +51,7 @@ class GrpcServerTest(tf.test.TestCase):
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
   def testLargeConstant(self):
-    server = tf.GrpcServer.create_local_server()
+    server = tf.train.Server.create_local_server()
     with tf.Session(server.target) as sess:
       const_val = np.empty([10000, 3000], dtype=np.float32)
       const_val.fill(0.5)
@@ -60,7 +60,7 @@ class GrpcServerTest(tf.test.TestCase):
       self.assertAllEqual([10000, 3000], sess.run(shape_t))
 
   def testLargeFetch(self):
-    server = tf.GrpcServer.create_local_server()
+    server = tf.train.Server.create_local_server()
     with tf.Session(server.target) as sess:
       c = tf.fill([10000, 3000], 0.5)
       expected_val = np.empty([10000, 3000], dtype=np.float32)
@@ -68,7 +68,7 @@ class GrpcServerTest(tf.test.TestCase):
       self.assertAllEqual(expected_val, sess.run(c))
 
   def testLargeFeed(self):
-    server = tf.GrpcServer.create_local_server()
+    server = tf.train.Server.create_local_server()
     with tf.Session(server.target) as sess:
       feed_val = np.empty([10000, 3000], dtype=np.float32)
       feed_val.fill(0.5)
@@ -83,9 +83,10 @@ class GrpcServerTest(tf.test.TestCase):
 class ServerDefTest(tf.test.TestCase):
 
   def testLocalServer(self):
-    cluster_def = tf.ClusterSpec({"local": ["localhost:2222"]}).as_cluster_def()
-    server_def = tf.ServerDef(cluster=cluster_def,
-                              job_name="local", task_index=0, protocol="grpc")
+    cluster_def = tf.train.ClusterSpec(
+        {"local": ["localhost:2222"]}).as_cluster_def()
+    server_def = tf.train.ServerDef(
+        cluster=cluster_def, job_name="local", task_index=0, protocol="grpc")
 
     self.assertProtoEquals("""
     cluster {
@@ -95,14 +96,14 @@ class ServerDefTest(tf.test.TestCase):
     """, server_def)
 
     # Verifies round trip from Proto->Spec->Proto is correct.
-    cluster_spec = tf.ClusterSpec(cluster_def)
+    cluster_spec = tf.train.ClusterSpec(cluster_def)
     self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
   def testTwoProcesses(self):
-    cluster_def = tf.ClusterSpec({"local": ["localhost:2222",
-                                            "localhost:2223"]}).as_cluster_def()
-    server_def = tf.ServerDef(cluster=cluster_def,
-                              job_name="local", task_index=1, protocol="grpc")
+    cluster_def = tf.train.ClusterSpec(
+        {"local": ["localhost:2222", "localhost:2223"]}).as_cluster_def()
+    server_def = tf.train.ServerDef(
+        cluster=cluster_def, job_name="local", task_index=1, protocol="grpc")
 
     self.assertProtoEquals("""
     cluster {
@@ -113,15 +114,16 @@ class ServerDefTest(tf.test.TestCase):
     """, server_def)
 
     # Verifies round trip from Proto->Spec->Proto is correct.
-    cluster_spec = tf.ClusterSpec(cluster_def)
+    cluster_spec = tf.train.ClusterSpec(cluster_def)
     self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
   def testTwoJobs(self):
-    cluster_def = tf.ClusterSpec({"ps": ["ps0:2222", "ps1:2222"],
-                                  "worker": ["worker0:2222", "worker1:2222",
-                                             "worker2:2222"]}).as_cluster_def()
-    server_def = tf.ServerDef(cluster=cluster_def,
-                              job_name="worker", task_index=2, protocol="grpc")
+    cluster_def = tf.train.ClusterSpec(
+        {"ps": ["ps0:2222", "ps1:2222"],
+         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]}
+    ).as_cluster_def()
+    server_def = tf.train.ServerDef(
+        cluster=cluster_def, job_name="worker", task_index=2, protocol="grpc")
 
     self.assertProtoEquals("""
     cluster {
@@ -135,7 +137,7 @@ class ServerDefTest(tf.test.TestCase):
     """, server_def)
 
     # Verifies round trip from Proto->Spec->Proto is correct.
-    cluster_spec = tf.ClusterSpec(cluster_def)
+    cluster_spec = tf.train.ClusterSpec(cluster_def)
     self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
 

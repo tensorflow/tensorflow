@@ -981,7 +981,7 @@ class Saver(object):
     self._last_checkpoints = last_checkpoints_with_time
 
   def save(self, sess, save_path, global_step=None, latest_filename=None,
-           meta_graph_suffix="meta"):
+           meta_graph_suffix="meta", write_meta_graph=True):
     """Saves variables.
 
     This method runs the ops added by the constructor for saving variables.
@@ -1004,6 +1004,8 @@ class Saver(object):
         managed by the saver to keep track of recent checkpoints.  Defaults to
         'checkpoint'.
       meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+      write_meta_graph: `Boolean` indicating whether or not to write the meta
+        graph file.
 
     Returns:
       A string: path at which the variables were saved.  If the saver is
@@ -1038,10 +1040,11 @@ class Saver(object):
                                     meta_graph_suffix=meta_graph_suffix)
     update_checkpoint_state(save_path, model_checkpoint_path,
                             self.last_checkpoints, latest_filename)
-    meta_graph_filename = self._MetaGraphFilename(
-        checkpoint_file, meta_graph_suffix=meta_graph_suffix)
-    with sess.graph.as_default():
-      self.export_meta_graph(meta_graph_filename)
+    if write_meta_graph:
+      meta_graph_filename = self._MetaGraphFilename(
+          checkpoint_file, meta_graph_suffix=meta_graph_suffix)
+      with sess.graph.as_default():
+        self.export_meta_graph(meta_graph_filename)
 
     return model_checkpoint_path
 
@@ -1247,7 +1250,7 @@ def _as_meta_graph_def(meta_info_def=None, graph_def=None, saver_def=None,
   return meta_graph_def
 
 
-def _read_meta_graph_file(filename):
+def read_meta_graph_file(filename):
   """Reads a file containing `MetaGraphDef` and returns the protocol buffer.
 
   Args:
@@ -1409,7 +1412,7 @@ def import_meta_graph(meta_graph_or_file):
   if isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
     return _import_meta_graph_def(meta_graph_or_file)
   else:
-    return _import_meta_graph_def(_read_meta_graph_file(meta_graph_or_file))
+    return _import_meta_graph_def(read_meta_graph_file(meta_graph_or_file))
 
 
 def export_meta_graph(filename=None, meta_info_def=None, graph_def=None,

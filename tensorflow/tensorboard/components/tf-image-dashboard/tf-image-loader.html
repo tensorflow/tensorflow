@@ -20,7 +20,7 @@ future for loading older images.
   </style>
   <template>
     <template is="dom-if" if="[[imageUrl]]">
-      <img src="[[imageUrl]]">
+      <img src="[[imageUrl]]" on-error="retry">
     </template>
   </template>
   <script>
@@ -41,7 +41,11 @@ future for loading older images.
       },
       ready: function() {
         this.reload();
-      }
+      },
+      retry: function() {
+        this.imageUrl = ""; // force reload
+        this.reload();
+      },
     });
   </script>
 </dom-module>

@@ -42,7 +42,7 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name):
   try:
     reader = tf.train.NewCheckpointReader(file_name)
     if not tensor_name:
-      print(reader.debug_string())
+      print(reader.debug_string().decode("utf-8"))
     else:
       print("tensor_name: ", tensor_name)
       print(reader.get_tensor(tensor_name))

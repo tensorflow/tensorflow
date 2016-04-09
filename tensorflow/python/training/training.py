@@ -84,6 +84,17 @@ see [Queues](../../api_docs/python/io_ops.md#queues).
 @@add_queue_runner
 @@start_queue_runners
 
+## Distributed execution
+
+See [Distributed TensorFlow](../../how_tos/distributed/index.md) for
+more information about how to configure a distributed TensorFlow program.
+
+@@Server
+@@Supervisor
+@@SessionManager
+@@ClusterSpec
+@@replica_device_setter
+
 ## Summary Operations
 
 The following ops output
@@ -183,6 +194,15 @@ from tensorflow.core.protobuf.saver_pb2 import *
 
 # Utility op.  Open Source. TODO(touts): move to nn?
 from tensorflow.python.training.learning_rate_decay import exponential_decay
+
+
+# Distributed computing support
+from tensorflow.core.protobuf.tensorflow_server_pb2 import ClusterDef
+from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
+from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
+from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.training.server_lib import Server
+
 
 from tensorflow.python.util.all_util import make_all
 

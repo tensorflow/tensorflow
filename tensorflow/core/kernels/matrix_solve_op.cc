@@ -36,7 +36,9 @@ class MatrixSolveOp
     : public BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
  public:
   explicit MatrixSolveOp(OpKernelConstruction* context)
-      : BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
+      : BinaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
+  }
   ~MatrixSolveOp() override {}
 
   TensorShape GetOutputMatrixShape(
@@ -73,26 +75,44 @@ class MatrixSolveOp
     OP_REQUIRES(context, matrix.rows() == matrix.cols(),
                 errors::InvalidArgument("Input matrix must be square."));
     OP_REQUIRES(
-        context, matrix.rows() == rhs.rows(),
+        context, matrix.cols() == rhs.rows(),
         errors::InvalidArgument("Input matrix and rhs are incompatible."));
-    if (matrix.rows() == 0) {
+    if (matrix.rows() == 0 || rhs.cols() == 0) {
       // To be consistent with the MatrixInverse op, we define the solution for
-      // an empty set of equation is the empty matrix.
+      // an empty set of equation as the empty matrix.
       return;
     }
-    Eigen::PartialPivLU<Matrix> lu_decomposition(matrix);
-    // While PartialPivLU cannot give strong guarantees on invertibility,
-    // we can at least guard against exact zero pivots. This can occur as
+    Eigen::PartialPivLU<Matrix> lu_decomposition(matrix.rows());
+    if (adjoint_) {
+      // TODO(rmlarsen): For Eigen 3.2, this creates a temporary copy.
+      // Make sure to backport: https://bitbucket.org/eigen/eigen/commits/ \
+      // bd2219a74c96dfe3f6bc2c23588749e36d2d8173
+      lu_decomposition.compute(matrix.adjoint());
+    } else {
+      lu_decomposition.compute(matrix);
+    }
+
+    // PartialPivLU cannot give strong guarantees on invertibility,
+    // but we can at least guard against exact zero pivots. This can occur as
     // a result of basic user mistakes such providing integer valued
     // matrices that are exactly singular, or due to underflow if this
     // code is run with denormals being flushed to zero.
-    // TODO(rmlarsen): Add check based on condition number estimation.
     const Scalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > Scalar(0),
                 errors::InvalidArgument("Input matrix is not invertible."));
+
+    // TODO(rmlarsen): Add check based on condition number estimation.
+    // The necessary changes to Eigen are in
+    // https://bitbucket.org/eigen/eigen/pull-requests/174/ \
+    // add-matrix-condition-number-estimation/diff
     *output = lu_decomposition.solve(rhs);
   }
+
+ private:
+  bool adjoint_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSolveOp);
 };
 
 REGISTER_BINARY_LINALG_OP("MatrixSolve", (MatrixSolveOp<float, false>), float);

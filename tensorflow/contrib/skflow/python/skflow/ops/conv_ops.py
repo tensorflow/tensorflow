@@ -57,7 +57,7 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
                                        tf.float32)
             output = output + bias_var
         if batch_norm:
-            output = batch_normalize(output)
+            output = batch_normalize(output, convnet=True)
         if activation:
             output = activation(output)
         return output
