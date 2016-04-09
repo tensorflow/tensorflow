@@ -103,8 +103,8 @@ Status GrpcServer::Init() {
         return errors::InvalidArgument("Task ", server_def_.task_index(),
                                        " was not defined in job \"",
                                        server_def_.job_name(), "\"");
-      } else if (!str_util::NumericParse32(
-                     str_util::Split(iter->second, ':')[1], &requested_port_)) {
+      } else if (!strings::safe_strto32(str_util::Split(iter->second, ':')[1],
+                                        &requested_port_)) {
         return errors::Internal("Could not parse port for local server from \"",
                                 iter->second, "\"");
       } else {
@@ -164,8 +164,8 @@ Status GrpcServer::Init() {
   std::unique_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(
       channel_spec, GetChannelCreationFunction(server_def_)));
   const string host_port = channel_cache->TranslateTask(name_prefix);
-  if (!str_util::NumericParse32(str_util::Split(host_port, ':')[1],
-                                &requested_port_)) {
+  if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
+                             &requested_port_)) {
     return errors::Internal("Could not parse port for local server from \"",
                             channel_cache->TranslateTask(name_prefix), "\".");
   }

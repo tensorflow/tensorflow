@@ -229,9 +229,8 @@ def squared(predicted, target, name=None):
 def logistic(logit, target, name=None):
   """Calculates the logistic cross-entropy loss, averaged across batches.
 
-  **WARNING:** `logit` must be unscaled, while the `target` should be a
-  normalized probability prediction. See
-  `tf.nn.sigmoid_cross_entropy_with_logits` for more details.
+  **WARNING:** `logit` must be unscaled.
+  See `tf.nn.sigmoid_cross_entropy_with_logits` for more details.
 
   Args:
     logit: A `Tensor` of shape `[batch_size, dim_1, ..., dim_n]`
@@ -257,8 +256,8 @@ def softmax(logit, target, name=None):
   """Calculates the softmax cross-entropy loss, averaged across batches.
 
   **WARNING:** `logit` must be unscaled, while the `target` should be a
-  normalized probability prediction. See
-  `tf.nn.sigmoid_cross_entropy_with_logits` for more details.
+  normalized probability prediction.
+  See `tf.nn.softmax_cross_entropy_with_logits` for more details.
 
   Args:
     logit: Tensor of actual values. Shape must have rank 2, generally

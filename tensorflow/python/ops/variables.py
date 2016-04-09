@@ -798,6 +798,18 @@ def initialize_local_variables():
   return initialize_variables(local_variables())
 
 
+def is_variable_initialized(variable):
+  """Returns an Op to check if a variable has been initialized.
+
+  Args:
+    variable: A `Variable`.
+
+  Returns:
+    An operation to check whether a variable has been initialized.
+  """
+  return state_ops.is_variable_initialized(variable)
+
+
 def assert_variables_initialized(var_list=None):
   """Returns an Op to check if variables are initialized.
 

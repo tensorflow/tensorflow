@@ -30,6 +30,7 @@ collected in the graph.
 @@initialize_all_variables
 @@initialize_variables
 @@initialize_local_variables
+@@is_variable_initialized
 @@assert_variables_initialized
 
 ## Saving and Restoring Variables
@@ -133,6 +134,8 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
 
 # NOTE(mrry): Shapes are conditionally set in the Python wrapper.
 ops.RegisterShape("Variable")(common_shapes.unknown_shape)
+
+ops.RegisterShape("IsVariableInitialized")(common_shapes.scalar_shape)
 
 
 @ops.RegisterShape("TemporaryVariable")

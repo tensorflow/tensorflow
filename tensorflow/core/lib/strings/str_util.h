@@ -40,11 +40,6 @@ string CEscape(const string& src);
 // NOTE: Does not support \u or \U!
 bool CUnescape(StringPiece source, string* dest, string* error);
 
-// If "text" can be successfully parsed as the ASCII representation of
-// an integer, sets "*val" to the value and returns true.  Otherwise,
-// returns false.
-bool NumericParse32(const string& text, int32* val);
-
 // Removes any trailing whitespace from "*s".
 void StripTrailingWhitespace(string* s);
 

@@ -21,13 +21,13 @@ import threading
 import time
 
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python.client import server_lib
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.training import saver as saver_mod
+from tensorflow.python.training import server_lib
 
 
 class SessionManager(object):
@@ -272,7 +272,7 @@ class SessionManager(object):
 
       # Do we have enough time left to try again?
       remaining_ms_after_wait = (
-          timer.ms_remaining() - 1000 * self._recovery_wait_secs)
+          timer.secs_remaining() - self._recovery_wait_secs)
       if remaining_ms_after_wait < 0:
         raise errors.DeadlineExceededError(
             None, None,
@@ -304,7 +304,7 @@ class SessionManager(object):
           job_def.tasks[0] = "localhost:0"
           server_def.job_name = job_def.name
           server_def.task_index = 0
-          server = server_lib.GrpcServer(server_def)
+          server = server_lib.Server(server_def)
           # Launch tensorflow server.
           SessionManager._TENSORFLOW_LAUNCHED = True
           server.start()
@@ -356,10 +356,10 @@ class SessionManager(object):
 
 class _CountDownTimer(object):
 
-  def __init__(self, duration_ms):
-    self._start_time_ms = time.time() * 1000
-    self._duration_ms = duration_ms
+  def __init__(self, duration_secs):
+    self._start_time_secs = time.time()
+    self._duration_secs = duration_secs
 
-  def ms_remaining(self):
-    diff = self._duration_ms - (time.time() * 1000 - self._start_time_ms)
+  def secs_remaining(self):
+    diff = self._duration_secs - (time.time() - self._start_time_secs)
     return max(0, diff)

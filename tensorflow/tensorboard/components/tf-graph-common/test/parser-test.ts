@@ -32,7 +32,7 @@ test("simple pbtxt", (done) => {
        input: "Q"
        input: "W"
      }`;
-  tf.graph.parser.parsePbtxt(pbtxt).then(nodes => {
+  tf.graph.parser.parseGraphPbTxt(new Blob([pbtxt])).then(nodes => {
     assert.isTrue(nodes != null && nodes.length === 3);
     done();
   });

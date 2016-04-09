@@ -90,6 +90,7 @@ typedef enum {
   TF_QUINT16 = 16,   // Quantized uint16
   TF_UINT16 = 17,
   TF_COMPLEX128 = 18,  // Double-precision complex
+  TF_HALF = 19,
 } TF_DataType;
 
 // --------------------------------------------------------------------------
