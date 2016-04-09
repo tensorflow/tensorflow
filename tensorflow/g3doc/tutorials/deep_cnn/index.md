@@ -39,7 +39,8 @@ https://en.wikipedia.org/wiki/Rectifier_(neural_networks))), [max pooling](
 ../../api_docs/python/nn.md#max_pool) ([wiki](
 https://en.wikipedia.org/wiki/Convolutional_neural_network#Pooling_layer))
 and [local response normalization](
-../../api_docs/python/nn.md#local_response_normalization) ([quora](https://www.quora.com/What-is-local-response-normalization)).
+../../api_docs/python/nn.md#local_response_normalization) 
+(Chapter 3.3 in [AlexNet paper](http://www.cs.toronto.edu/~fritz/absps/imagenet.pdf)).
 * [Visualization](../../how_tos/summaries_and_tensorboard/index.md)
 of network activities during training, including input images,
 losses and distributions of activations and gradients.
