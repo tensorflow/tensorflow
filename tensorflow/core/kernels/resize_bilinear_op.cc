@@ -63,12 +63,13 @@ class ResizeBilinearOp : public OpKernel {
               std::min(static_cast<int64>(ceilf(in_x)), (st.in_width - 1));
           const float x_lerp = in_x - left_x_index;
           for (int c = 0; c < st.channels; ++c) {
-            const float top_left(input_data(b, top_y_index, left_x_index, c));
-            const float top_right(input_data(b, top_y_index, right_x_index, c));
-            const float bottom_left(
-                input_data(b, bottom_y_index, left_x_index, c));
-            const float bottom_right(
-                input_data(b, bottom_y_index, right_x_index, c));
+            const float top_left = input_data(b, top_y_index, left_x_index, c);
+            const float top_right =
+                input_data(b, top_y_index, right_x_index, c);
+            const float bottom_left =
+                input_data(b, bottom_y_index, left_x_index, c);
+            const float bottom_right =
+                input_data(b, bottom_y_index, right_x_index, c);
             const float top = top_left + (top_right - top_left) * x_lerp;
             const float bottom =
                 bottom_left + (bottom_right - bottom_left) * x_lerp;

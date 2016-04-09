@@ -121,8 +121,6 @@ TENSOR_PROTO_EXTRACT_TYPE(quint8, int, int32);
 #undef TENSOR_PROTO_EXTRACT_TYPE_HELPER
 #undef TENSOR_PROTO_EXTRACT_TYPE
 
-// Custom implementation for qint32, based on the one for int32.
-
 template <>
 struct SaveTypeTraits<qint32> : SaveTypeTraits<int32> {};
 
@@ -138,37 +136,6 @@ inline void Fill(const qint32* data, size_t n, TensorProto* t) {
   typename protobuf::RepeatedField<int32> copy(p, p + n);
   t->mutable_int_val()->Swap(&copy);
 }
-
-// Custom implementation for Eigen::half.
-
-template <>
-struct SaveTypeTraits<Eigen::half> {
-  static constexpr bool supported = true;
-  typedef int SavedType;
-  typedef protobuf::RepeatedField<int32> RepeatedField;
-};
-
-template <>
-inline const int* TensorProtoData<Eigen::half>(const TensorProto& t) {
-  return t.half_val().data();
-}
-
-template <>
-inline protobuf::RepeatedField<int32>* MutableTensorProtoData<Eigen::half>(
-    TensorProto* t) {
-  return t->mutable_half_val();
-}
-
-template <>
-inline void Fill(const Eigen::half* data, size_t n, TensorProto* t) {
-  typename protobuf::RepeatedField<int32>* val = t->mutable_half_val();
-  val->Resize(n, 0);
-  for (size_t i = 0; i < n; ++i) {
-    val->Set(i, data[i].x);
-  }
-}
-
-// Custom implementation for string.
 
 template <>
 struct SaveTypeTraits<string> {

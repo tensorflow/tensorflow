@@ -110,9 +110,8 @@ template <typename T>
 bool ResizeNearestNeighborBackward(const T* top_diff, const int batch,
                                    const int in_height, const int in_width,
                                    const int channels, const int out_height,
-                                   const int out_width,
-                                   const float height_scale,
-                                   const float width_scale, T* bottom_diff,
+                                   const int out_width, const float height_scale,
+				                   const float width_scale, T* bottom_diff,
                                    const Eigen::GpuDevice& d) {
   const int output_size = batch * channels * out_height * out_width;
   CudaLaunchConfig output_config = GetCudaLaunchConfig(output_size, d);
@@ -121,10 +120,11 @@ bool ResizeNearestNeighborBackward(const T* top_diff, const int batch,
 
   const int input_size = batch * channels * in_height * in_width;
   CudaLaunchConfig input_config = GetCudaLaunchConfig(input_size, d);
-  ResizeNearestNeighborBackwardNHWC<T><<<
-      input_config.block_count, input_config.thread_per_block, 0, d.stream()>>>(
-      input_config.virtual_thread_count, top_diff, in_height, in_width,
-      channels, out_height, out_width, height_scale, width_scale, bottom_diff);
+  ResizeNearestNeighborBackwardNHWC<T><<<input_config.block_count,
+	                                     input_config.thread_per_block, 0, d.stream()>>>(
+	      input_config.virtual_thread_count, top_diff,
+	      in_height, in_width, channels, out_height,
+	      out_width, height_scale, width_scale, bottom_diff);
   return d.ok();
 }
 
@@ -136,7 +136,7 @@ bool ResizeNearestNeighborBackward(const T* top_diff, const int batch,
                                const float width_scale, T* bottom_diff,               \
                                const Eigen::GpuDevice& d);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPEC);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
 

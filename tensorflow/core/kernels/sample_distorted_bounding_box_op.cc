@@ -253,8 +253,8 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
     // Note image_size_data(2) is the depth and unused.
     typename TTypes<T, 1>::ConstTensor image_size_data =
         image_size.tensor<T, 1>();
-    const int32 height(image_size_data(0));
-    const int32 width(image_size_data(1));
+    const int32 height = image_size_data(0);
+    const int32 width = image_size_data(1);
 
     // Ensure that the supplied bounding boxes are sane and convert them to
     // Rectangles.
