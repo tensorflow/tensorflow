@@ -16,18 +16,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.contrib.losses.python.losses import loss_ops
 
 
 def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
     """Returns prediction and loss for mean squared error regression."""
-    with tf.op_scope([tensor_in, labels], name, "mean_squared_error_regressor"):
-        predictions = tf.nn.xw_plus_b(tensor_in, weights, biases)
+    with ops.op_scope([tensor_in, labels], name, "mean_squared_error_regressor"):
+        predictions = nn.xw_plus_b(tensor_in, weights, biases)
         if len(labels.get_shape()) == 1:
-            labels = tf.reshape(labels, [-1, 1])
-        diff = labels - predictions
-        loss = tf.reduce_mean(tf.mul(diff, diff))
-        return predictions, loss
+            labels = array_ops_.reshape(labels, [-1, 1])
+        return predictions, loss_ops.squared(predictions, labels)
 
 
 def softmax_classifier(tensor_in, labels, weights, biases, class_weight=None, name=None):
@@ -45,13 +47,9 @@ def softmax_classifier(tensor_in, labels, weights, biases, class_weight=None, na
     Returns:
         Prediction and loss tensors.
     """
-    with tf.op_scope([tensor_in, labels], name, "softmax_classifier"):
-        logits = tf.nn.xw_plus_b(tensor_in, weights, biases)
+    with ops.op_scope([tensor_in, labels], name, "softmax_classifier"):
+        logits = nn.xw_plus_b(tensor_in, weights, biases)
         if class_weight is not None:
-            logits = tf.mul(logits, class_weight)
-        xent = tf.nn.softmax_cross_entropy_with_logits(logits,
-                                                       labels,
-                                                       name="xent_raw")
-        loss = tf.reduce_mean(xent, name="xent")
-        predictions = tf.nn.softmax(logits, name=name)
-        return predictions, loss
+            logits = math_ops.mul(logits, class_weight)
+        return nn.softmax(logits), loss_ops.softmax(logits, labels)
+

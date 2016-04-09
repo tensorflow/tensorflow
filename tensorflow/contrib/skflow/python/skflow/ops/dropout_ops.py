@@ -16,7 +16,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variable_scope as vs
 
 
 # Key to collect dropout probabilities.
@@ -36,11 +39,11 @@ def dropout(tensor_in, prob, name=None):
     Raises:
         ValueError: If `keep_prob` is not in `(0, 1]`.
     """
-    with tf.op_scope([tensor_in], name, "dropout") as name:
+    with ops.op_scope([tensor_in], name, "dropout") as name:
         if isinstance(prob, float):
-            prob = tf.get_variable("prob", [],
-                                   initializer=tf.constant_initializer(prob),
+            prob = vs.get_variable("prob", [],
+                                   initializer=init_ops.constant_initializer(prob),
                                    trainable=False)
-        tf.add_to_collection(DROPOUTS, prob)
-        return tf.nn.dropout(tensor_in, prob)
+        ops.add_to_collection(DROPOUTS, prob)
+        return nn.dropout(tensor_in, prob)
 

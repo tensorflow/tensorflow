@@ -37,7 +37,7 @@ class BaseTest(tf.test.TestCase):
         regressor = skflow.TensorFlowLinearRegressor()
         regressor.fit(X, y)
         score = mean_squared_error(y, regressor.predict(X))
-        self.assertLess(score, 1.5, "Failed with score = {0}".format(score))
+        self.assertLess(score, 1.0, "Failed with score = {0}".format(score))
 
     def testIris(self):
         iris = datasets.load_iris()

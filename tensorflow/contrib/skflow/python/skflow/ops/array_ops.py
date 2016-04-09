@@ -16,7 +16,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import math_ops
 
 
 def split_squeeze(dim, num_split, tensor_in):
@@ -30,7 +32,8 @@ def split_squeeze(dim, num_split, tensor_in):
     Returns:
         List of tensors [N1, N2, .. Ndim-1, Ndim+1, .. Nx].
     """
-    return [tf.squeeze(t, squeeze_dims=[dim]) for t in tf.split(dim, num_split, tensor_in)]
+    return [array_ops_.squeeze(t, squeeze_dims=[dim]) 
+            for t in array_ops_.split(dim, num_split, tensor_in)]
 
 
 def expand_concat(dim, inputs):
@@ -43,7 +46,7 @@ def expand_concat(dim, inputs):
     Returns:
         A tensor of shape [N1, .. Ndim, ... Nx]
     """
-    return tf.concat(dim, [tf.expand_dims(t, dim) for t in inputs])
+    return array_ops_.concat(dim, [array_ops_.expand_dims(t, dim) for t in inputs])
 
 
 def one_hot_matrix(tensor_in, num_classes, on_value=1.0, off_value=0.0):
@@ -61,5 +64,5 @@ def one_hot_matrix(tensor_in, num_classes, on_value=1.0, off_value=0.0):
         Tensor of shape [N1, N2, num_classes] with 1.0 for each id in original
         tensor.
     """
-    return tf.one_hot(tensor_in, num_classes, on_value, off_value)
+    return array_ops_.one_hot(math_ops.cast(tensor_in, dtypes.int64), num_classes, on_value, off_value)
 

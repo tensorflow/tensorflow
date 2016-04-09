@@ -127,7 +127,9 @@ def _accuracy_score(y_true, y_pred):
 
 def _mean_squared_error(y_true, y_pred):
     if len(y_true.shape) > 1:
-        y_true = y_true[0]
+        y_true = np.squeeze(y_true)
+    if len(y_pred.shape) > 1:
+        y_pred = np.squeeze(y_pred)
     return np.average((y_true - y_pred) ** 2)
 
 

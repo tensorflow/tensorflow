@@ -16,9 +16,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variable_scope as vs
 
-from .ops import mean_squared_error_regressor, softmax_classifier, dnn
+from tensorflow.contrib.skflow.python.skflow.ops import mean_squared_error_regressor, softmax_classifier, dnn
 
 
 def linear_regression_zero_init(X, y):
@@ -71,9 +78,9 @@ def linear_regression(X, y, init_mean=None, init_stddev=1.0):
         is desirable for convex use cases.)  If init_mean is None, then the
         uniform_unit_scaling_initialzer will be used.
     """
-    with tf.variable_scope('linear_regression'):
-        tf.histogram_summary('linear_regression.X', X)
-        tf.histogram_summary('linear_regression.y', y)
+    with vs.variable_scope('linear_regression'):
+        logging_ops.histogram_summary('linear_regression.X', X)
+        logging_ops.histogram_summary('linear_regression.y', y)
         y_shape = y.get_shape()
         if len(y_shape) == 1:
             output_shape = 1
@@ -81,21 +88,21 @@ def linear_regression(X, y, init_mean=None, init_stddev=1.0):
             output_shape = y_shape[1]
         # Set up the requested initialization.
         if (init_mean is None):
-            weights = tf.get_variable('weights',
+            weights = vs.get_variable('weights',
                                       [X.get_shape()[1], output_shape])
-            bias = tf.get_variable('bias',
+            bias = vs.get_variable('bias',
                                    [output_shape])
         else:
-            weights = tf.get_variable('weights',
+            weights = vs.get_variable('weights',
                                       [X.get_shape()[1], output_shape],
-                                      initializer=tf.random_normal_initializer(
+                                      initializer=init_ops.random_normal_initializer(
                                           init_mean, init_stddev))
-            bias = tf.get_variable('bias',
+            bias = vs.get_variable('bias',
                                    [output_shape],
-                                   initializer=tf.random_normal_initializer(
+                                   initializer=init_ops.random_normal_initializer(
                                        init_mean, init_stddev))
-        tf.histogram_summary('linear_regression.weights', weights)
-        tf.histogram_summary('linear_regression.bias', bias)
+        logging_ops.histogram_summary('linear_regression.weights', weights)
+        logging_ops.histogram_summary('linear_regression.bias', bias)
         return mean_squared_error_regressor(X, y, weights, bias)
 
 
@@ -126,31 +133,31 @@ def logistic_regression(X, y, class_weight=None, init_mean=None,
         is desirable for convex use cases.)  If init_mean is None, then the
         uniform_unit_scaling_initialzer will be used.
     """
-    with tf.variable_scope('logistic_regression'):
-        tf.histogram_summary('logistic_regression.X', X)
-        tf.histogram_summary('logistic_regression.y', y)
+    with vs.variable_scope('logistic_regression'):
+        logging_ops.histogram_summary('logistic_regression.X', X)
+        logging_ops.histogram_summary('logistic_regression.y', y)
         # Set up the requested initialization.
         if (init_mean is None):
-            weights = tf.get_variable('weights',
+            weights = vs.get_variable('weights',
                                       [X.get_shape()[1], y.get_shape()[-1]])
-            bias = tf.get_variable('bias',
+            bias = vs.get_variable('bias',
                                    [y.get_shape()[-1]])
         else:
-            weights = tf.get_variable('weights',
+            weights = vs.get_variable('weights',
                                       [X.get_shape()[1], y.get_shape()[-1]],
-                                      initializer=tf.random_normal_initializer(
+                                      initializer=init_ops.random_normal_initializer(
                                           init_mean, init_stddev))
-            bias = tf.get_variable('bias',
+            bias = vs.get_variable('bias',
                                    [y.get_shape()[-1]],
-                                   initializer=tf.random_normal_initializer(
+                                   initializer=init_ops.random_normal_initializer(
                                        init_mean, init_stddev))
-        tf.histogram_summary('logistic_regression.weights', weights)
-        tf.histogram_summary('logistic_regression.bias', bias)
+        logging_ops.histogram_summary('logistic_regression.weights', weights)
+        logging_ops.histogram_summary('logistic_regression.bias', bias)
         # If no class weight provided, try to retrieve one from pre-defined
         # tensor name in the graph.
         if not class_weight:
             try:
-                class_weight = tf.get_default_graph().get_tensor_by_name('class_weight:0')
+                class_weight = ops.get_default_graph().get_tensor_by_name('class_weight:0')
             except KeyError:
                 pass
 
@@ -200,12 +207,12 @@ def _reverse_seq(input_seq, lengths):
         input_.set_shape(input_.get_shape().with_rank(2))
 
     # Join into (time, batch_size, depth)
-    s_joined = tf.pack(input_seq)
+    s_joined = array_ops_.pack(input_seq)
 
     # Reverse along dimension 0
-    s_reversed = tf.reverse_sequence(s_joined, lengths, 0, 1)
+    s_reversed = array_ops_.reverse_sequence(s_joined, lengths, 0, 1)
     # Split again into list
-    result = tf.unpack(s_reversed)
+    result = array_ops_.unpack(s_reversed)
     return result
 
 
@@ -245,9 +252,9 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
         ValueError: If inputs is None or an empty list.
     """
 
-    if not isinstance(cell_fw, tf.nn.rnn_cell.RNNCell):
+    if not isinstance(cell_fw, nn.rnn_cell.RNNCell):
         raise TypeError("cell_fw must be an instance of RNNCell")
-    if not isinstance(cell_bw, tf.nn.rnn_cell.RNNCell):
+    if not isinstance(cell_bw, nn.rnn_cell.RNNCell):
         raise TypeError("cell_bw must be an instance of RNNCell")
     if not isinstance(inputs, list):
         raise TypeError("inputs must be a list")
@@ -256,20 +263,20 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
 
     name = scope or "BiRNN"
     # Forward direction
-    with tf.variable_scope(name + "_FW"):
-        output_fw, state_fw = tf.nn.rnn(cell_fw, inputs, initial_state_fw, dtype,
-                                        sequence_length)
+    with vs.variable_scope(name + "_FW"):
+        output_fw, state_fw = nn.rnn(cell_fw, inputs, initial_state_fw, dtype,
+                                     sequence_length)
 
     # Backward direction
-    with tf.variable_scope(name + "_BW"):
-        tmp, state_bw = tf.nn.rnn(cell_bw, _reverse_seq(inputs, sequence_length),
-                                  initial_state_bw, dtype, sequence_length)
+    with vs.variable_scope(name + "_BW"):
+        tmp, state_bw = nn.rnn(cell_bw, _reverse_seq(inputs, sequence_length),
+                               initial_state_bw, dtype, sequence_length)
     output_bw = _reverse_seq(tmp, sequence_length)
     # Concat each of the forward/backward outputs
-    outputs = [tf.concat(1, [fw, bw])
+    outputs = [array_ops_.concat(1, [fw, bw])
                for fw, bw in zip(output_fw, output_bw)]
 
-    return outputs, tf.concat(1, [state_fw, state_bw])
+    return outputs, array_ops_.concat(1, [state_fw, state_bw])
 
 # End of Tensorflow 0.7
 
@@ -305,27 +312,27 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn,
         """RNN estimator with target predictor function on top."""
         X = input_op_fn(X)
         if cell_type == 'rnn':
-            cell_fn = tf.nn.rnn_cell.BasicRNNCell
+            cell_fn = nn.rnn_cell.BasicRNNCell
         elif cell_type == 'gru':
-            cell_fn = tf.nn.rnn_cell.GRUCell
+            cell_fn = nn.rnn_cell.GRUCell
         elif cell_type == 'lstm':
-            cell_fn = tf.nn.rnn_cell.BasicLSTMCell
+            cell_fn = nn.rnn_cell.BasicLSTMCell
         else:
             raise ValueError("cell_type {} is not supported. ".format(cell_type))
         if bidirectional:
             # forward direction cell
-            rnn_fw_cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            rnn_fw_cell = nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # backward direction cell
-            rnn_bw_cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            rnn_bw_cell = nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
             # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
             _, encoding = bidirectional_rnn(rnn_fw_cell, rnn_bw_cell, X,
-                                            dtype=tf.float32,
+                                            dtype=dtypes.float32,
                                             sequence_length=sequence_length,
                                             initial_state_fw=initial_state,
                                             initial_state_bw=initial_state)
         else:
-            cell = tf.nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
-            _, encoding = tf.nn.rnn(cell, X, dtype=tf.float32,
+            cell = nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+            _, encoding = nn.rnn(cell, X, dtype=dtypes.float32,
                                     sequence_length=sequence_length,
                                     initial_state=initial_state)
         return target_predictor_fn(encoding, y)
