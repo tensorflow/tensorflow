@@ -221,9 +221,8 @@ def inference(images):
   # local3
   with tf.variable_scope('local3') as scope:
     # Move everything into depth so we can perform a single matrix multiply.
-    dim = 1
-    for d in pool2.get_shape()[1:].as_list():
-      dim *= d
+    dim = reduce(lambda x, y: x*y, pool2.get_shape()[1:].as_list())
+
     reshape = tf.reshape(pool2, [FLAGS.batch_size, dim])
 
     weights = _variable_with_weight_decay('weights', shape=[dim, 384],
