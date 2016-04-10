@@ -584,7 +584,7 @@ def _dynamic_rnn_loop(
 
     return (time + 1, new_state, output_ta_t)
 
-  (unused_final_time, final_state, output_final_ta) = control_flow_ops.While(
+  (_, final_state, output_final_ta) = control_flow_ops.while_loop(
       cond=lambda time, _1, _2: time < time_steps,
       body=_time_step,
       loop_vars=(time, state, output_ta),

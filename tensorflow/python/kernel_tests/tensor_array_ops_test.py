@@ -23,7 +23,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.ops import tensor_array_ops
@@ -705,7 +704,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
         ta_t = ta_t.write(time, out)
         return (time+1, ta_t, state)
 
-      (unused_0, h_final, unused_2) = control_flow_ops.While(
+      (unused_0, h_final, unused_2) = tf.while_loop(
           cond=lambda time, unused_1, unused_2: time < 3,
           body=body,
           loop_vars=(time_0, ta, state0),

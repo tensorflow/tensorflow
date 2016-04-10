@@ -22,7 +22,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 
 
@@ -67,7 +66,7 @@ class StackOpTest(tf.test.TestCase):
           v = gen_data_flow_ops._stack_push(h, a, swap_memory=True)
         with tf.control_dependencies([v]):
           return tf.add(x, 1)
-      r = control_flow_ops.While(c, b, [n])
+      r = tf.while_loop(c, b, [n])
 
       v = tf.constant(np.zeros(2000), dtype=tf.float32)
       def c1(x, y):
@@ -76,7 +75,7 @@ class StackOpTest(tf.test.TestCase):
         nx = tf.sub(x, 1)
         ny = y + gen_data_flow_ops._stack_pop(h, tf.float32)
         return [nx, ny]
-      rx, ry = control_flow_ops.While(c1, b1, [r, v])
+      rx, ry = tf.while_loop(c1, b1, [r, v])
       self.assertAllClose(np.ones(2000) * 10.0, ry.eval())
 
   def testStackWhileSwap(self):

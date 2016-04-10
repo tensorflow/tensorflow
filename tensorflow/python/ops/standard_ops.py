@@ -38,6 +38,7 @@ from tensorflow.python.ops.control_flow_ops import no_op
 from tensorflow.python.ops.control_flow_ops import tuple
 from tensorflow.python.ops.control_flow_ops import cond
 from tensorflow.python.ops.control_flow_ops import case
+from tensorflow.python.ops.control_flow_ops import while_loop
 from tensorflow.python.ops.data_flow_ops import *
 from tensorflow.python.ops.functional_ops import *
 from tensorflow.python.ops.gradients import *

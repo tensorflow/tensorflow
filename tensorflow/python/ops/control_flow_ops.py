@@ -25,6 +25,7 @@ the execution of operations and add conditional dependencies to your graph.
 @@count_up_to
 @@cond
 @@case
+@@while_loop
 
 ## Logical Operators
 
@@ -1123,7 +1124,7 @@ def cond(pred, fn1, fn2, name=None):
     y = tf.constant(5)
     def f1(): return tf.mul(x, 17)
     def f2(): return tf.add(y, 23)
-    r = cond(math_ops.less(x, y), f1, f2)
+    r = cond(tf.less(x, y), f1, f2)
     # r is set to f1().
     # Operations in f2 (e.g., tf.add) are not executed.
   ```
@@ -1528,8 +1529,8 @@ class WhileContext(ControlFlowContext):
             else exit_vars_with_tensor_arrays)
 
 
-def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
-          swap_memory=False, name=None):
+def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
+               swap_memory=False, name=None):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable taking a list of tensors and returning a boolean scalar
@@ -1560,14 +1561,16 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     ValueError: if `loop_var` is empty.
 
   Example:
+
     ```python
-    i = constant(0)
-    c = lambda i: math_ops.less(i, 10)
-    b = lambda i: math_ops.add(i, 1)
-    r = While(c, b, [i])
+    i = tf.constant(0)
+    c = lambda i: tf.less(i, 10)
+    b = lambda i: tf.add(i, 1)
+    r = tf.while_loop(c, b, [i])
     ```
+
   """
-  with ops.op_scope(loop_vars, name, "While") as name:
+  with ops.op_scope(loop_vars, name, "while") as name:
     if not loop_vars:
       raise ValueError("No loop variables provided")
     if not callable(cond):
@@ -1580,6 +1583,14 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     result = context.BuildLoop(cond, body, loop_vars)
     context.Exit()
     return result
+
+
+def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
+          swap_memory=False, name=None):
+  """DEPRECATED: Use `while_loop`."""
+  return while_loop(cond=cond, body=body, loop_vars=loop_vars,
+                    parallel_iterations=parallel_iterations,
+                    back_prop=back_prop, swap_memory=swap_memory, name=name)
 
 
 def _AsTensorList(x, p):

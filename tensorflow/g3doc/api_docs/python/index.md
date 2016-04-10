@@ -261,6 +261,7 @@
   * [`tuple`](../../api_docs/python/control_flow_ops.md#tuple)
   * [`verify_tensor_all_finite`](../../api_docs/python/control_flow_ops.md#verify_tensor_all_finite)
   * [`where`](../../api_docs/python/control_flow_ops.md#where)
+  * [`while_loop`](../../api_docs/python/control_flow_ops.md#while_loop)
 
 * **[Higher Order Functions](../../api_docs/python/functional_ops.md)**:
   * [`foldl`](../../api_docs/python/functional_ops.md#foldl)
