@@ -564,6 +564,55 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
   ASSERT_EQ(true, outputs[0].flat<bool>()(0));
 }
 
+TEST(DirectSessionTest, RunHandleTest) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+
+  Tensor value0(DT_FLOAT, TensorShape({}));
+  value0.scalar<float>()() = 1.0;
+  Node* const0 = test::graph::Constant(&g, value0);
+  Node* identity0 = test::graph::Identity(&g, const0);
+
+  Tensor value1(DT_FLOAT, TensorShape({}));
+  value1.scalar<float>()() = 2.0;
+  Node* const1 = test::graph::Constant(&g, value1);
+  Node* node3 = test::graph::Add(&g, identity0, const1);
+  Node* node4 = test::graph::Unary(&g, "GetSessionHandle", node3);
+
+  Tensor value2(DT_STRING, TensorShape({}));
+  Node* const2 = test::graph::Constant(&g, value2);
+  Node* node5 = test::graph::GetSessionTensor(&g, const2);
+  Node* node6 = test::graph::Add(&g, node5, const1);
+
+  Node* node7 = test::graph::Unary(&g, "DeleteSessionTensor", const2);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  std::unique_ptr<Session> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  // First run call: Create a handle.
+  std::vector<Tensor> outputs;
+  Status s = session->Run({}, {node4->name() + ":0"}, {}, &outputs);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(1, outputs.size());
+
+  // Second run call: Use a handle.
+  std::vector<Tensor> outputs1;
+  s = session->Run({{const2->name(), outputs[0]}}, {node6->name() + ":0"}, {},
+                   &outputs1);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(1, outputs1.size());
+  ASSERT_EQ(5.0, outputs1[0].flat<float>()(0));
+
+  // Third run call: Delete a handle.
+  std::vector<Tensor> outputs2;
+  s = session->Run({{const2->name(), outputs[0]}}, {}, {node7->name()},
+                   &outputs2);
+  ASSERT_TRUE(s.ok());
+}
+
 TEST(DirectSessionTest, CreateGraphFailsWhenAssigningAFedVar) {
   Graph graph(OpRegistry::Global());
 

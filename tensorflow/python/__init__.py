@@ -106,6 +106,7 @@ from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
@@ -121,8 +122,8 @@ _whitelist = set([app, compat, contrib, errors, flags, gfile, image,
 __all__ = make_all(__name__,
                    [framework_lib, array_ops, client_lib, constant_op,
                     control_flow_ops, functional_ops, histogram_ops, io_ops,
-                    math_ops, nn, script_ops, sparse_ops, state_ops, string_ops,
-                    train])
+                    math_ops, nn, script_ops, session_ops, sparse_ops,
+                    state_ops, string_ops, train])
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through

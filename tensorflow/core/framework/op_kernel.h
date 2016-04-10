@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -502,6 +503,12 @@ class OpKernelContext {
     // computations running on other devices.
     Rendezvous* rendezvous = nullptr;
 
+    // The session state for this op.
+    SessionState* session_state = nullptr;
+
+    // The tensor store for this op.
+    TensorStore* tensor_store = nullptr;
+
     // Mechanism used by this op kernel invocation to register a callback
     // for its cancellation.
     CancellationManager* cancellation_manager = nullptr;
@@ -840,6 +847,12 @@ class OpKernelContext {
   // An op kernel communicates with outside environment through
   // Rendezvous Send() and Recv().
   Rendezvous* rendezvous() const { return params_->rendezvous; }
+
+  // An op kernel can access the session state it belongs to.
+  SessionState* session_state() const { return params_->session_state; }
+
+  // An op kernel can access the tensor store of the run it belongs to.
+  TensorStore* tensor_store() const { return params_->tensor_store; }
 
   // Function call support.
   //

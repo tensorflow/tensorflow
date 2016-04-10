@@ -118,6 +118,11 @@ class Node {
   bool IsConstant() const { return (class_ == NC_CONSTANT); }
   bool IsVariable() const { return (class_ == NC_VARIABLE); }
   bool IsIdentity() const { return (class_ == NC_IDENTITY); }
+  bool IsGetSessionHandle() const { return (class_ == NC_GET_SESSION_HANDLE); }
+  bool IsGetSessionTensor() const { return (class_ == NC_GET_SESSION_TENSOR); }
+  bool IsDeleteSessionTensor() const {
+    return (class_ == NC_DELETE_SESSION_TENSOR);
+  }
   bool IsControlFlow() const {
     return (class_ != NC_OTHER) &&  // Fast path
            (IsSwitch() || IsMerge() || IsEnter() || IsExit() ||
@@ -172,6 +177,9 @@ class Node {
     NC_CONSTANT,
     NC_VARIABLE,
     NC_IDENTITY,
+    NC_GET_SESSION_HANDLE,
+    NC_GET_SESSION_TENSOR,
+    NC_DELETE_SESSION_TENSOR,
     NC_OTHER  // Not a special kind of node
   };
 

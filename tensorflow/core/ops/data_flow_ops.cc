@@ -686,4 +686,35 @@ keys: Keys of type Tkey.
 values: Values of type Tval. Same shape as `keys`.
 )doc");
 
+REGISTER_OP("GetSessionHandle")
+    .Input("value: T")
+    .Output("handle: string")
+    .Attr("T: type")
+    .Doc(R"doc(
+Store the input tensor in the state of the current session.
+
+value: The tensor to be stored.
+handle: The handle for the tensor stored in the session state.
+)doc");
+
+REGISTER_OP("GetSessionTensor")
+    .Input("handle: string")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .Doc(R"doc(
+Get the value of the tensor specified by its handle.
+
+handle: The handle for a tensor stored in the session state.
+value: The tensor for the given handle.
+dtype: The type of the output value.
+)doc");
+
+REGISTER_OP("DeleteSessionTensor")
+    .Input("handle: string")
+    .Doc(R"doc(
+Delete the tensor specified by its handle in the session.
+
+handle: The handle for a tensor stored in the session state.
+)doc");
+
 }  // namespace tensorflow

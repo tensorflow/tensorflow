@@ -1871,6 +1871,14 @@ class Graph(object):
     self._colocation_stack = []
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
+    # A map of tensor handle placeholder to tensor dtype.
+    self._handle_feeders = {}
+    # A map from tensor handle to its read op.
+    self._handle_readers = {}
+    # A map from tensor handle to its move op.
+    self._handle_movers = {}
+    # A map from tensor handle to its delete op.
+    self._handle_deleters = {}
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.

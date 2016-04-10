@@ -257,6 +257,7 @@ def merge(inputs, name=None):
       else:
         dense_shape = None
       return ops.IndexedSlices(values, indices, dense_shape), chosen_index
+# pylint: enable=protected-access
 
 
 def _SwitchRefOrTensor(data, pred, name="Switch"):
@@ -970,9 +971,8 @@ class ControlFlowContext(object):
     """
     while_ctxt = self.GetWhileContext()
     if while_ctxt is not None:
-      # pylint: disable=protected-access
       op._add_control_input(while_ctxt.GetControlPivot().op)
-      # pylint: enable=protected-access
+  # pylint: enable=protected-access
 
 
 class CondContext(ControlFlowContext):
