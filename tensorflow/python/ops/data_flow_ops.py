@@ -570,6 +570,11 @@ ops.RegisterShape("StackPush")(common_shapes.unknown_shape)
 ops.RegisterShape("StackPop")(common_shapes.unknown_shape)
 ops.RegisterShape("StackClose")(_ScalarToVoidShape)
 
+# NOTE(yuanbyu): We probably can do better here.
+ops.RegisterShape("GetSessionHandle")(common_shapes.scalar_shape)
+ops.RegisterShape("GetSessionTensor")(common_shapes.unknown_shape)
+ops.RegisterShape("DeleteSessionTensor")(_ScalarToVoidShape)
+
 
 @ops.RegisterShape("DynamicPartition")
 def _DynamicPartitionShape(op):

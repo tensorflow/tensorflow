@@ -24,22 +24,60 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/aggregate_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
+namespace tensor_array {
+
+// Full implementations are in tensor_array.cc
+template <typename Device, typename T>
+Status AddToTensor(OpKernelContext* ctx, Tensor* sum, const Tensor* current,
+                   const Tensor* add) {
+  return errors::InvalidArgument(
+      "tensor_array::AddToTensor type not supported: ",
+      DataTypeString(DataTypeToEnum<T>::value));
+};
+
+#define TENSOR_ARRAY_WRITE_OR_ADD(Device, T)                         \
+  template <>                                                        \
+  Status AddToTensor<Device, T>(OpKernelContext * ctx, Tensor * sum, \
+                                const Tensor* current, const Tensor* add);
+
+#define TENSOR_ARRAY_WRITE_OR_ADD_CPU(T) TENSOR_ARRAY_WRITE_OR_ADD(CPUDevice, T)
+TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_CPU)
+#undef TENSOR_ARRAY_WRITE_OR_ADD_CPU
+
+#if GOOGLE_CUDA
+
+#define TENSOR_ARRAY_WRITE_OR_ADD_GPU(T) TENSOR_ARRAY_WRITE_OR_ADD(GPUDevice, T)
+TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
+#undef TENSOR_ARRAY_WRITE_OR_ADD_GPU
+
+#endif  // GOOGLE_CUDA
+
+#undef TENSOR_ARRAY_WRITE_OR_ADD
+
+}  // namespace tensor_array
+
 // The TensorArray object keeps an array of PersistentTensors.  It
 // allows reading from the array and writing to the array.
 //
 // Important properties:
-//   * Reading and writing to a particular index in the TensorArray
-//     is allowed at most once per index.
-//   * Upon reading an entry, that entry is cleared from the array and
-//     marked as read.  This allows removal of Tensor from memory
-//     as soon as it is not needed.  Its shape is saved.
-//   * No deep copies of any PersistentTensor are ever made.
+//   * Usually, writing to a particular index in the TensorArray is allowed at
+//     most once per index.  In a special case, writes with the flag
+//     multiple_writes_aggregate allow multiple writes to the same
+//     index.  In this case, the writes are summed.
+//   * Multiple reads are supported.
+//   * Deep copies of PersistentTensors are rarely made.  The only
+//     time they are made is when WriteOrAggregate is called at least twice
+//     on the same index with the flag multiple_writes_aggregate = True.
 //   * Reading and Writing to the array is protected by a mutex.
 //     All operations on a TensorArray are thread-safe.
 //   * A TensorArray may be preemptively closed, which releases all
@@ -51,8 +89,12 @@ namespace tensorflow {
 //   * Write-Once semantics mean the gradient of a TensorArray Read never has to
 //     worry which of multiple writes to that index the gradient value
 //     is meant for.
-//   * Read-Once semantics mean the TensorArray never sees
-//     multiple writes to the same index as part of gradient aggregation.
+//   * Read-Many semantics (when using clear_after_read=false) allow the
+//     TensorArray to be read, packed, or concatenated multiple times;
+//     and the gradient operations use the multiple_writes_aggregate
+//     flag to aggregate the backprop writes.  Multiple backprop writes to
+//     the same index are partial gradients corresponding to the
+//     multiple reads of that index in the forward phase.
 //
 class TensorArray : public ResourceBase {
  public:
@@ -61,11 +103,15 @@ class TensorArray : public ResourceBase {
   // can hold more than MAX_INT entries, in practice we do not expect
   // users to construct this many Tensors for storage in a TensorArray.
   TensorArray(const DataType& dtype, const Tensor& handle, int32 N,
-              bool dynamic_size)
+              bool dynamic_size, bool multiple_writes_aggregate,
+              bool clear_after_read)
       : dtype_(dtype),
         handle_(handle),
         closed_(false),
         dynamic_size_(dynamic_size),
+        multiple_writes_aggregate_(multiple_writes_aggregate),
+        gradients_disallowed_(false),
+        clear_after_read_(clear_after_read),
         tensors_(N) {}
 
   // Write PersistentTensor 'value' to index 'index'.
@@ -77,25 +123,40 @@ class TensorArray : public ResourceBase {
   //    Otherwise:
   //      The index is in [0, N) where N == Size()
   //  * The dtype of the Tensor in 'value' matches the TensorArray's dtype.
-  //  * The Tensor at 'index' has not yet been written to.
+  //  * If multiple_writes_aggregate is false:
+  //    The Tensor at 'index' has not yet been written to.
+  //  * If multiple_writes_aggregate is true:
+  //    The Tensor at 'index' has the same shape as value.
   //
   // Side effects:
-  //  * The underlying Tensor in 'value' has a new reference to it.
-  //  * Index 'index' is marked as written.
+  //  * On the first write to 'index':
+  //    - The underlying Tensor in 'value' has a new reference to it.
+  //    - The index 'index' is marked as written.
+  //  * If multiple_writes_aggregate is false, subsequent writes to 'index'
+  //    raise an InvalidArgument error.
+  //  * If multiple_writes_aggregate is true, subsequent writes to 'index':
+  //    - The underlying Tensors in 'value' and from the first write
+  //      are released and a local PersistentTensor is created.
+  //    - Index 'index' is also marked as local_copy.
+  //    - The gradient_disallowed flag is set true (GradientAllowed()
+  //      will now return false).
   //
   // Note, value is passed as a pointer because we its underlying
   // Tensor's shape is accessed.  Otherwise it is not modified.
-  Status Write(OpKernelContext* ctx, const int32 index,
-               PersistentTensor* value) {
+  template <typename Device, typename T>
+  Status WriteOrAggregate(OpKernelContext* ctx, const int32 index,
+                          PersistentTensor* value) {
     mutex_lock l(mu_);
-    return LockedWrite(ctx, index, value);
+    return LockedWriteOrAggregate<Device, T>(ctx, index, value);
   }
 
-  Status WriteMany(OpKernelContext* ctx,
-                   std::vector<PersistentTensor>* values) {
+  template <typename Device, typename T>
+  Status WriteOrAggregateMany(OpKernelContext* ctx,
+                              std::vector<PersistentTensor>* values) {
     mutex_lock l(mu_);
     for (int32 i = values->size() - 1; i >= 0; --i) {
-      TF_RETURN_IF_ERROR(LockedWrite(ctx, i, &(*values)[i]));
+      Status s = LockedWriteOrAggregate<Device, T>(ctx, i, &(*values)[i]);
+      TF_RETURN_IF_ERROR(s);
     }
     return Status::OK();
   }
@@ -106,13 +167,15 @@ class TensorArray : public ResourceBase {
   //  * The TensorArray is not closed
   //  * The index is in [0, N)
   //  * The Tensor at 'index' has been written to.
-  //  * The Tensor at 'index' has not already been read.
+  //  * The Tensor at 'index' has not been read from with flag
+  //    clear_after_read = true.
   //
   // Side effects:
-  //  * The PersistentTensor at 'index' is cleared from the given index.
-  //  * The reference to the underlying Tensor at 'index' is shifted to
+  //  * If clear_after_read is true, the reference to the underlying
+  //    Tensor is deleted.
+  //  * The reference to the underlying Tensor at 'index' is copied to
   //    the returned '*value'.
-  //  * Index 'index' is marked as read.
+  //  * The index is marked as read (it cannot be rewritten to).
   Status Read(const int32 index, PersistentTensor* value) {
     mutex_lock l(mu_);
     return LockedRead(index, value);
@@ -161,6 +224,11 @@ class TensorArray : public ResourceBase {
     return dynamic_size_;
   }
 
+  bool GradientsAllowed() {
+    mutex_lock l(mu_);
+    return !gradients_disallowed_;
+  }
+
   // Clear the TensorArray, including any Tensor references, and mark as closed.
   void ClearAndMarkClosed() {
     mutex_lock l(mu_);
@@ -174,6 +242,11 @@ class TensorArray : public ResourceBase {
  private:
   Status LockedWrite(OpKernelContext* ctx, const int32 index,
                      PersistentTensor* value) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  template <typename Device, typename T>
+  Status LockedWriteOrAggregate(OpKernelContext* ctx, const int32 index,
+                                PersistentTensor* value)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status LockedRead(const int32 index, PersistentTensor* value)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -191,24 +264,133 @@ class TensorArray : public ResourceBase {
 
   mutex mu_;
 
-  bool closed_
-      GUARDED_BY(mu_);  // Marks that the tensor_array_ has been cleared.
+  // Marks that the tensor_array_ has been cleared.
+  bool closed_ GUARDED_BY(mu_);
 
-  bool dynamic_size_;  // Determines if Writes are allowed to grow the array.
+  // Writes are allowed to grow the array.
+  bool dynamic_size_;
+
+  // Multiple writes to the same index will result in summation of the
+  // values (used by backprop)
+  bool multiple_writes_aggregate_;
+
+  // If multiple Writes were attempted (e.g. via attribute
+  // multiple_writes_aggregate), then gradients are disallowed.
+  bool gradients_disallowed_ GUARDED_BY(mu_);
+
+  // After a read at an index, clear away its PersistentTensor to
+  // release memory.
+  bool clear_after_read_;
 
   // TensorAndState is used to keep track of the PersistentTensors
   // stored in the TensorArray, along with their shapes, and a boolean
   // that determines whether they have already been read or not.
   struct TensorAndState {
-    TensorAndState() : written(false), read(false) {}
+    TensorAndState()
+        : written(false), read(false), cleared(false), local_copy(false) {}
     PersistentTensor tensor;
     TensorShape shape;
     bool written;  // True if a Tensor has been written to the index.
     bool read;  // True if a Tensor has been written to and read from the index.
+    bool cleared;  // True if a tensor has been read with
+                   // clear_after_read = true;
+
+    // Used by writes when multiple_writes_aggregate is true.  In this
+    // case, the first time a value is written, it is a shallow copy.
+    // The second time a value is written, it is aggregated.  However,
+    // in this case a new Tensor must be constructed to hold the
+    // aggregated value.  This flag marks that such a Tensor is being
+    // used.  All future writes will aggregate to the existing local Tensor.
+    bool local_copy;
   };
   // The list of underlying PersistentTensors and states.
   std::vector<TensorAndState> tensors_ GUARDED_BY(mu_);
 };
+
+template <typename Device, typename T>
+Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
+                                           const int32 index,
+                                           PersistentTensor* value) {
+  TF_RETURN_IF_ERROR(LockedReturnIfClosed());
+  size_t index_size = static_cast<size_t>(index);
+  if (index < 0 || (!dynamic_size_ && index_size >= tensors_.size())) {
+    return errors::InvalidArgument(
+        "TensorArray ", handle_.vec<string>()(1), ": Tried to write to index ",
+        index, " but array is not resizeable and size is: ", tensors_.size());
+  }
+  if (dynamic_size_) {
+    // We must grow the internal TensorArray
+    if (index_size >= tensors_.capacity()) {
+      tensors_.reserve(2 * (index_size + 1));
+    }
+    if (index_size >= tensors_.size()) {
+      tensors_.resize(index_size + 1);
+    }
+  }
+  TensorAndState& t = tensors_[index];
+
+  Tensor* value_t = value->AccessTensor(ctx);
+  if (value_t->dtype() != dtype_) {
+    return errors::InvalidArgument(
+        "TensorArray ", handle_.vec<string>()(1),
+        ": Could not write to TensorArray index ", index,
+        " because the value dtype is ", DataTypeString(value_t->dtype()),
+        " but TensorArray dtype is ", DataTypeString(dtype_), ".");
+  }
+
+  if (t.read) {
+    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+                                   ": Could not write to TensorArray index ",
+                                   index, " because it has already been read.");
+  }
+
+  if (!multiple_writes_aggregate_ && t.written) {
+    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+                                   ": Could not write to TensorArray index ",
+                                   index,
+                                   " because it has already been written to.");
+  }
+
+  if (t.written) {
+    DCHECK(multiple_writes_aggregate_);
+
+    // Check that value_t shape matches t.shape
+    if (value_t->shape() != t.shape) {
+      return errors::InvalidArgument(
+          "TensorArray ", handle_.vec<string>()(1),
+          ": Could not aggregate to TensorArray index ", index,
+          " because the existing shape is ", t.shape.DebugString(),
+          " but the new input shape is ", value_t->shape().DebugString(), ".");
+    }
+
+    Tensor* existing_t = t.tensor.AccessTensor(ctx);
+
+    if (t.local_copy) {
+      Status s = tensor_array::AddToTensor<Device, T>(ctx, existing_t,
+                                                      existing_t, value_t);
+      TF_RETURN_IF_ERROR(s);
+    } else {
+      PersistentTensor local_tensor;
+      Tensor* local_tensor_t;
+      TF_RETURN_IF_ERROR(ctx->allocate_persistent(
+          dtype_, existing_t->shape(), &local_tensor, &local_tensor_t));
+      Status s = tensor_array::AddToTensor<Device, T>(ctx, local_tensor_t,
+                                                      existing_t, value_t);
+      TF_RETURN_IF_ERROR(s);
+      t.tensor = local_tensor;
+      t.local_copy = true;
+    }
+
+    // We've aggregated the values, so disallow backprop on this
+    // TensorArray.
+    gradients_disallowed_ = true;
+  } else {
+    t.tensor = *value;
+    t.shape = value_t->shape();
+    t.written = true;
+  }
+  return Status::OK();
+}
 
 }  // namespace tensorflow
 

@@ -89,7 +89,7 @@ class SummaryHistoOp : public OpKernel {
       T v = flat(i);
       if (!std::isfinite(v)) {
         c->SetStatus(
-            errors::OutOfRange("Nan in summary histogram for: ", name()));
+            errors::InvalidArgument("Nan in summary histogram for: ", name()));
         break;
       }
       histo.Add(static_cast<double>(v));

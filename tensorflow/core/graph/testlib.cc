@@ -360,6 +360,15 @@ Node* Gather(Graph* g, Node* in0, Node* in1) {
   return ret;
 }
 
+Node* GetSessionTensor(Graph* g, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "GetSessionTensor")
+                  .Input(in, 0)
+                  .Attr("dtype", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 void ToGraphDef(Graph* g, GraphDef* gdef) { g->ToGraphDef(gdef); }
 
 }  // end namespace graph

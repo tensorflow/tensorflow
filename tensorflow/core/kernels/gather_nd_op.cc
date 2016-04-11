@@ -200,7 +200,7 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, NDIM>::ConstTensor Tparams, \
       typename TTypes<Index>::ConstMatrix Tindices,                      \
       typename TTypes<T>::Flat Tout);                                    \
-  extern template struct GatherNd<GPUDevice, T, Index, NDIM>
+  extern template struct GatherNd<GPUDevice, T, Index, NDIM>;
 
 #define DECLARE_GPU_SPECS_INDEX(T, Index)    \
   DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 1); \

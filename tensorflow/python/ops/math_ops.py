@@ -64,6 +64,9 @@ mathematical functions to your graph.
 TensorFlow provides several operations that you can use to add basic
 mathematical functions for matrices to your graph.
 
+@@batch_matrix_diag
+@@batch_matrix_diag_part
+
 @@diag
 @@diag_part
 @@trace

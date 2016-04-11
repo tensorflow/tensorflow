@@ -63,9 +63,9 @@ Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
   for (int64 i = 0; i < axis.NumElements(); ++i) {
     const int32 index = axis_vec(i);
     if (index < 0 || index >= data.dims()) {
-      return errors::OutOfRange("Invalid reduction dimension (", index,
-                                " for input with ", data.dims(),
-                                " dimension(s)");
+      return errors::InvalidArgument("Invalid reduction dimension (", index,
+                                     " for input with ", data.dims(),
+                                     " dimension(s)");
     }
     bitmap[index] = true;
   }

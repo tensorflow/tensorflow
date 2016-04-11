@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import logging
 from tensorflow.python.util import compat
 
@@ -98,6 +99,9 @@ class BaseSession(SessionInterface):
     self._current_version = 0
     self._extend_lock = threading.Lock()
     self._target = target
+
+    self._delete_lock = threading.Lock()
+    self._dead_handles = []
 
     self._session = None
 
@@ -277,6 +281,9 @@ class BaseSession(SessionInterface):
       the *i*th return value will be a
       [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
       containing the value of that sparse tensor.
+    * If the *i*th element of `fetches` is produced by a `get_tensor_handle` op,
+      the *i*th return value will be a numpy ndarray containing the handle of
+      that tensor.
 
     The optional `feed_dict` argument allows the caller to override
     the value of tensors in the graph. Each key in `feed_dict` can be
@@ -350,17 +357,22 @@ class BaseSession(SessionInterface):
     list of feeds and fetches that will be used in the subsequent
     `partial_run` calls.
 
+    The optional `feed_dict` argument allows the caller to override
+    the value of tensors in the graph. See run() for more information.
+
     Below is a simple example:
 
-      a = array_ops.placeholder(dtypes.float32, shape=[])
-      b = array_ops.placeholder(dtypes.float32, shape=[])
-      c = array_ops.placeholder(dtypes.float32, shape=[])
-      r1 = math_ops.add(a, b)
-      r2 = math_ops.mul(r1, c)
+    ```python
+    a = array_ops.placeholder(dtypes.float32, shape=[])
+    b = array_ops.placeholder(dtypes.float32, shape=[])
+    c = array_ops.placeholder(dtypes.float32, shape=[])
+    r1 = math_ops.add(a, b)
+    r2 = math_ops.mul(r1, c)
 
-      h = sess.partial_run_setup([r1, r2], [a, b, c])
-      res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-      res = sess.partial_run(h, r2, feed_dict={c: res})
+    h = sess.partial_run_setup([r1, r2], [a, b, c])
+    res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+    res = sess.partial_run(h, r2, feed_dict={c: res})
+    ```
 
     Args:
       handle: A handle for a sequence of partial runs.
@@ -410,7 +422,7 @@ class BaseSession(SessionInterface):
                          'graph before calling run().')
 
     # Validate and process fetches.
-    unique_fetches, target_list, _ = self._process_fetches(fetches)
+    unique_fetches, target_list, _, _ = self._process_fetches(fetches)
 
     # Create request.
     feed_list = []
@@ -455,6 +467,7 @@ class BaseSession(SessionInterface):
       fetches = [fetches]
 
     unique_fetch_targets = set()
+    unique_fetch_handles = {}
     target_list = []
 
     fetch_info = []
@@ -465,10 +478,15 @@ class BaseSession(SessionInterface):
         try:
           fetch_t = self.graph.as_graph_element(subfetch, allow_tensor=True,
                                                 allow_operation=True)
+          fetch_name = compat.as_bytes(fetch_t.name)
           if isinstance(fetch_t, ops.Operation):
-            target_list.append(compat.as_bytes(fetch_t.name))
+            target_list.append(fetch_name)
           else:
-            subfetch_names.append(compat.as_bytes(fetch_t.name))
+            subfetch_names.append(fetch_name)
+          # Remember the fetch if it is for a tensor handle.
+          if (isinstance(fetch_t, ops.Tensor) and
+              fetch_t.op.type == 'GetSessionHandle'):
+            unique_fetch_handles[fetch_name] = fetch_t.op.inputs[0].dtype
         except TypeError as e:
           raise TypeError('Fetch argument %r of %r has invalid type %r, '
                           'must be a string or Tensor. (%s)'
@@ -483,7 +501,7 @@ class BaseSession(SessionInterface):
       fetch_info.append((subfetch_names, fetch_contraction_fn))
 
     unique_fetch_targets = list(unique_fetch_targets)
-    return unique_fetch_targets, target_list, fetch_info
+    return unique_fetch_targets, target_list, fetch_info, unique_fetch_handles
 
   def _run(self, handle, fetches, feed_dict, options, run_metadata):
     """Perform either run or partial_run, depending the exitence of `handle`."""
@@ -502,10 +520,15 @@ class BaseSession(SessionInterface):
                          'graph before calling run().')
 
     # Validate and process fetches.
-    unique_fetches, target_list, fetch_info = self._process_fetches(fetches)
+    processed_fetches = self._process_fetches(fetches)
+    unique_fetches = processed_fetches[0]
+    target_list = processed_fetches[1]
+    fetch_info = processed_fetches[2]
+    unique_handles = processed_fetches[3]
 
     # Create request.
     feed_dict_string = {}
+    feed_map = {}
 
     # Validate and process feed_dict.
     if feed_dict:
@@ -522,7 +545,6 @@ class BaseSession(SessionInterface):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
                             'Acceptable feed values include Python scalars, '
                             'strings, lists, or numpy ndarrays.')
-
           np_val = np.array(subfeed_val, dtype=subfeed_t.dtype.as_numpy_dtype)
           if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
             raise ValueError(
@@ -531,17 +553,31 @@ class BaseSession(SessionInterface):
                 % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
           if not self.graph.is_feedable(subfeed_t):
             raise ValueError('Tensor %s may not be fed.' % subfeed_t)
-          feed_dict_string[compat.as_bytes(subfeed_t.name)] = np_val
+          subfeed_name = compat.as_bytes(subfeed_t.name)
+          feed_dict_string[subfeed_name] = np_val
+          feed_map[subfeed_name] = (subfeed_t, subfeed_val)
 
     # Run request and get response.
-    results = self._do_run(handle, target_list, unique_fetches,
-                           feed_dict_string, options, run_metadata)
+    movers = self._update_with_movers(feed_dict_string, feed_map)
+    try:
+      results = self._do_run(handle, target_list, unique_fetches,
+                             feed_dict_string, options, run_metadata)
+    finally:
+      # The movers are no longer used. Delete them.
+      for handle in movers:
+        self._register_dead_handle(handle)
 
     # User may have fetched the same tensor multiple times, but we
     # only fetch them from the runtime once.  Furthermore, they may
     # be wrapped as a tuple of tensors.  Here we map the results back
     # to what the client asked for.
-    fetched_results = dict(zip(unique_fetches, results))
+    # TODO(yuanbyu): Use the contraction_fn in _REGISTERED_EXPANSIONS.
+    fetched_results = {}
+    for fetch, result in zip(unique_fetches, results):
+      dtype = unique_handles.get(fetch)
+      if dtype:
+        result = session_ops.TensorHandle(result, dtype, self)
+      fetched_results[fetch] = result
     ret = []
     for fetch_names, fetch_contraction_fn in fetch_info:
       if fetch_names:
@@ -641,6 +677,55 @@ class BaseSession(SessionInterface):
           tf_session.TF_DeleteStatus(status)
 
         self._current_version = self._graph.version
+
+  # The threshold to run garbage collection to delete dead tensors.
+  _DEAD_HANDLES_THRESHOLD = 10
+
+  def _register_dead_handle(self, handle):
+    # Register a dead handle in the session. Delete the dead tensors when
+    # the number of dead tensors exceeds certain threshold.
+    tensors_to_delete = None
+    with self._delete_lock:
+      self._dead_handles.append(handle)
+      if len(self._dead_handles) == BaseSession._DEAD_HANDLES_THRESHOLD:
+        tensors_to_delete = self._dead_handles
+        self._dead_handles = []
+    # Delete the dead tensors.
+    # TODO(yuanbyu): For now we use a sequence of runs to minimize the graph
+    # size and the overhead of graph construction/partitioning.
+    if tensors_to_delete:
+      for tensor_handle in tensors_to_delete:
+        feeds = {}
+        fetches = []
+        holder, deleter = session_ops._get_handle_deleter(self.graph,
+                                                          tensor_handle)
+        feeds[holder] = tensor_handle
+        fetches.append(deleter)
+        self.run(fetches, feed_dict=feeds)
+
+  def _update_with_movers(self, feed_dict, feed_map):
+    # If a tensor handle that is fed to a device incompatible placeholder,
+    # we move the tensor to the right device, generate a new tensor handle,
+    # and update `feed_dict` to use the new handle.
+    handle_movers = []
+    for feed_name, val in feed_map.items():
+      mover = session_ops._get_handle_mover(self.graph, *val)
+      if mover:
+        handle_movers.append((feed_name, val[1], mover))
+    # Transfer a tensor to the right device if needed.
+    if not handle_movers:
+      return []
+    else:
+      feeds = {}
+      fetches = []
+      for _, handle, mover in handle_movers:
+        feeds[mover[0]] = handle
+        fetches.append(mover[1])
+      handles = self.run(fetches, feed_dict=feeds)
+      for handle_mover, handle in zip(handle_movers, handles):
+        np_val = np.array(handle.handle, dtype=np.object)
+        feed_dict[handle_mover[0]] = np_val
+      return handles
 
 
 class Session(BaseSession):

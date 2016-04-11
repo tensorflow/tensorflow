@@ -645,6 +645,8 @@ class ExecutorState {
   int64 step_id_;
   // Not owned.
   Rendezvous* rendezvous_;
+  SessionState* session_state_;
+  TensorStore* tensor_store_;
   StepStatsCollector* stats_collector_;
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
@@ -793,6 +795,8 @@ class ExecutorState {
 ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
     : step_id_(args.step_id),
       rendezvous_(args.rendezvous),
+      session_state_(args.session_state),
+      tensor_store_(args.tensor_store),
       stats_collector_(args.stats_collector),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
@@ -938,6 +942,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   // track allocations if and only if we are collecting statistics
   params.track_allocations = (stats_collector_ != nullptr);
   params.rendezvous = rendezvous_;
+  params.session_state = session_state_;
+  params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
   params.call_frame = call_frame_;
   params.function_library = impl_->params_.function_library;

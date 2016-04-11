@@ -110,10 +110,11 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     def compute(i, a):
       a = fn(a, elems_ta.read(i))
       return [i + 1, a]
-    _, r_a = control_flow_ops.While(lambda i, a: i < n, compute, [i, a],
-                                    parallel_iterations=parallel_iterations,
-                                    back_prop=back_prop,
-                                    swap_memory=swap_memory)
+    _, r_a = control_flow_ops.while_loop(
+        lambda i, a: i < n, compute, [i, a],
+        parallel_iterations=parallel_iterations,
+        back_prop=back_prop,
+        swap_memory=swap_memory)
     return r_a
 
 
@@ -180,10 +181,11 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       i -= 1
       a = fn(a, elems_ta.read(i))
       return [i, a]
-    _, r_a = control_flow_ops.While(lambda i, a: i > 0, compute, [i, a],
-                                    parallel_iterations=parallel_iterations,
-                                    back_prop=back_prop,
-                                    swap_memory=swap_memory)
+    _, r_a = control_flow_ops.while_loop(
+        lambda i, a: i > 0, compute, [i, a],
+        parallel_iterations=parallel_iterations,
+        back_prop=back_prop,
+        swap_memory=swap_memory)
     return r_a
 
 
@@ -246,10 +248,11 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     def compute(i, ta):
       ta = ta.write(i, fn(elems_ta.read(i)))
       return [i + 1, ta]
-    _, r_a = control_flow_ops.While(lambda i, a: i < n, compute, [i, acc_ta],
-                                    parallel_iterations=parallel_iterations,
-                                    back_prop=back_prop,
-                                    swap_memory=swap_memory)
+    _, r_a = control_flow_ops.while_loop(
+        lambda i, a: i < n, compute, [i, acc_ta],
+        parallel_iterations=parallel_iterations,
+        back_prop=back_prop,
+        swap_memory=swap_memory)
     return r_a.pack()
 
 
@@ -323,7 +326,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       a = fn(a, elems_ta.read(i))
       ta = ta.write(i, a)
       return [i + 1, a, ta]
-    _, _, r_a = control_flow_ops.While(
+    _, _, r_a = control_flow_ops.while_loop(
         lambda i, a, ta: i < n, compute, [i, a, acc_ta],
         parallel_iterations=parallel_iterations,
         back_prop=back_prop, swap_memory=swap_memory)

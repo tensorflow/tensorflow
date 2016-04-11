@@ -141,6 +141,8 @@
   * [`batch_ifft3d`](../../api_docs/python/math_ops.md#batch_ifft3d)
   * [`batch_matmul`](../../api_docs/python/math_ops.md#batch_matmul)
   * [`batch_matrix_determinant`](../../api_docs/python/math_ops.md#batch_matrix_determinant)
+  * [`batch_matrix_diag`](../../api_docs/python/math_ops.md#batch_matrix_diag)
+  * [`batch_matrix_diag_part`](../../api_docs/python/math_ops.md#batch_matrix_diag_part)
   * [`batch_matrix_inverse`](../../api_docs/python/math_ops.md#batch_matrix_inverse)
   * [`batch_matrix_solve`](../../api_docs/python/math_ops.md#batch_matrix_solve)
   * [`batch_matrix_solve_ls`](../../api_docs/python/math_ops.md#batch_matrix_solve_ls)
@@ -224,6 +226,10 @@
   * [`unsorted_segment_sum`](../../api_docs/python/math_ops.md#unsorted_segment_sum)
   * [`where`](../../api_docs/python/math_ops.md#where)
 
+* **[Strings](../../api_docs/python/string_ops.md)**:
+  * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
+  * [`string_to_hash_bucket`](../../api_docs/python/string_ops.md#string_to_hash_bucket)
+
 * **[Histograms](../../api_docs/python/histogram_ops.md)**:
   * [`histogram_fixed_width`](../../api_docs/python/histogram_ops.md#histogram_fixed_width)
 
@@ -255,12 +261,18 @@
   * [`tuple`](../../api_docs/python/control_flow_ops.md#tuple)
   * [`verify_tensor_all_finite`](../../api_docs/python/control_flow_ops.md#verify_tensor_all_finite)
   * [`where`](../../api_docs/python/control_flow_ops.md#where)
+  * [`while_loop`](../../api_docs/python/control_flow_ops.md#while_loop)
 
 * **[Higher Order Functions](../../api_docs/python/functional_ops.md)**:
   * [`foldl`](../../api_docs/python/functional_ops.md#foldl)
   * [`foldr`](../../api_docs/python/functional_ops.md#foldr)
   * [`map_fn`](../../api_docs/python/functional_ops.md#map_fn)
   * [`scan`](../../api_docs/python/functional_ops.md#scan)
+
+* **[Tensor Handle Operations](../../api_docs/python/session_ops.md)**:
+  * [`delete_session_tensor`](../../api_docs/python/session_ops.md#delete_session_tensor)
+  * [`get_session_handle`](../../api_docs/python/session_ops.md#get_session_handle)
+  * [`get_session_tensor`](../../api_docs/python/session_ops.md#get_session_tensor)
 
 * **[Images](../../api_docs/python/image.md)**:
   * [`adjust_brightness`](../../api_docs/python/image.md#adjust_brightness)

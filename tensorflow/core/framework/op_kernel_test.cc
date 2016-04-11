@@ -120,8 +120,8 @@ class OpKernelTest : public ::testing::Test {
   void ExpectEqual(const string& what, const DataTypeVector& expected,
                    const DataTypeVector& observed) {
     EXPECT_EQ(expected.size(), observed.size()) << what;
-    const int size = std::min(expected.size(), observed.size());
-    for (int i = 0; i < size; ++i) {
+    const size_t size = std::min(expected.size(), observed.size());
+    for (size_t i = 0; i < size; ++i) {
       bool match = TypesCompatible(expected[i], observed[i]);
       EXPECT_TRUE(match) << what << " i:" << i << ", expected: " << expected[i]
                          << ", observed: " << observed[i];

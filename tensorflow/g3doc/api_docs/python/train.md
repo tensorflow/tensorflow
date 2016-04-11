@@ -1558,7 +1558,7 @@ communicate with any other server in the same cluster.
 Creates a new server with the given definition.
 
 The `job_name`, `task_index`, and `protocol` arguments are optional, and
-override any information also provided in `server_or_cluster_def`.
+override any information provided in `server_or_cluster_def`.
 
 ##### Args:
 
@@ -1567,13 +1567,15 @@ override any information also provided in `server_or_cluster_def`.
     `tf.train.ClusterDef` protocol buffer, or a
     `tf.train.ClusterSpec` object, describing the server to be
     created and/or the cluster of which it is a member.
-*  <b>`job_name`</b>: (Optional.) If not specified in `server_or_cluster_def`,
-    specifies the name of the job of which this server is a member.
-*  <b>`task_index`</b>: (Optional.) If not specified in `server_or_cluster_def`,
-    specifies the task index of this server in its job.
-*  <b>`protocol`</b>: (Optional.) If not specified in `server_or_cluster_def`,
-    specifies the protocol to be used by this server. Acceptable
-    values include `"grpc"`.
+*  <b>`job_name`</b>: (Optional.) Specifies the name of the job of which the server
+    is a member. Defaults to the value in `server_or_cluster_def`, if
+    specified.
+*  <b>`task_index`</b>: (Optional.) Specifies the task index of the server in its
+    job. Defaults to the value in `server_or_cluster_def`, if specified.
+    Otherwise defaults to 0 if the server's job has only one task.
+*  <b>`protocol`</b>: (Optional.) Specifies the protocol to be used by the server.
+    Acceptable values include `"grpc"`. Defaults to the value in
+    `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
 *  <b>`start`</b>: (Optional.) Boolean, indicating whether to start the server
     after creating it. Defaults to `True`.
 
@@ -2677,7 +2679,7 @@ Returns a list of tasks in the given job.
 ##### Returns:
 
   A list of strings, corresponding to the network addresses of tasks in
-  the given job.
+  the given job, ordered by task index.
 
 ##### Raises:
 
@@ -2852,7 +2854,7 @@ The generated
 [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 has one summary value containing a histogram for `values`.
 
-This op reports an `OutOfRange` error if any value is not finite.
+This op reports an `InvalidArgument` error if any value is not finite.
 
 ##### Args:
 
