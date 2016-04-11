@@ -16,7 +16,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python import GPUOptions, ConfigProto
 
 
 class RunConfig(object):
@@ -53,11 +53,11 @@ class RunConfig(object):
                  keep_checkpoint_max=5,
                  keep_checkpoint_every_n_hours=10000):
         self.tf_master = tf_master
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_memory_fraction)
-        self.tf_config = tf.ConfigProto(log_device_placement=(verbose > 1),
-                                        inter_op_parallelism_threads=num_cores,
-                                        intra_op_parallelism_threads=num_cores,
-                                        gpu_options=gpu_options)
+        gpu_options = GPUOptions(per_process_gpu_memory_fraction=gpu_memory_fraction)
+        self.tf_config = ConfigProto(log_device_placement=(verbose > 1),
+                                     inter_op_parallelism_threads=num_cores,
+                                     intra_op_parallelism_threads=num_cores,
+                                     gpu_options=gpu_options)
         self.tf_random_seed = tf_random_seed
         self.keep_checkpoint_max = keep_checkpoint_max
         self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours

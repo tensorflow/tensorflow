@@ -20,7 +20,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variable_scope as vs
 
 
 def embedding_lookup(params, ids, name="embedding_lookup"):
@@ -43,14 +47,14 @@ def embedding_lookup(params, ids, name="embedding_lookup"):
     Raises:
         ValueError: if some parameters are invalid.
     """
-    with tf.op_scope([params, ids], name, "embedding_lookup"):
-        params = tf.convert_to_tensor(params)
-        ids = tf.convert_to_tensor(ids)
-        shape = tf.shape(ids)
-        ids_flat = tf.reshape(ids, tf.reduce_prod(shape, keep_dims=True))
-        embeds_flat = tf.nn.embedding_lookup(params, ids_flat, name)
-        embed_shape = tf.concat(0, [shape, [-1]])
-        embeds = tf.reshape(embeds_flat, embed_shape)
+    with ops.op_scope([params, ids], name, "embedding_lookup"):
+        params = ops.convert_to_tensor(params)
+        ids = ops.convert_to_tensor(ids)
+        shape = array_ops_.shape(ids)
+        ids_flat = array_ops_.reshape(ids, math_ops.reduce_prod(shape, keep_dims=True))
+        embeds_flat = nn.embedding_lookup(params, ids_flat, name)
+        embed_shape = array_ops_.concat(0, [shape, [-1]])
+        embeds = array_ops_.reshape(embeds_flat, embed_shape)
         embeds.set_shape(ids.get_shape().concatenate(params.get_shape()[1:]))
         return embeds
 
@@ -72,7 +76,7 @@ def categorical_variable(tensor_in, n_classes, embedding_size, name):
         Calling categorical_variable([1, 2], 5, 10, "my_cat"), will return 2 x 10
         tensor, where each row is representation of the class.
     """
-    with tf.variable_scope(name):
-        embeddings = tf.get_variable(
+    with vs.variable_scope(name):
+        embeddings = vs.get_variable(
             name + "_embeddings", [n_classes, embedding_size])
         return embedding_lookup(embeddings, tensor_in)

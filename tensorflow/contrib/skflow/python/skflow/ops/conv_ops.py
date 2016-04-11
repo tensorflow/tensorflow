@@ -16,8 +16,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-from .batch_norm_ops import batch_normalize
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variable_scope as vs
+from tensorflow.contrib.skflow.python.skflow.ops.batch_norm_ops import batch_normalize
 
 
 def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
@@ -45,16 +47,16 @@ def conv2d(tensor_in, n_filters, filter_shape, strides=None, padding='SAME',
     Returns:
         A Tensor with resulting convolution.
     """
-    with tf.variable_scope('convolution'):
+    with vs.variable_scope('convolution'):
         if strides is None:
             strides = [1, 1, 1, 1]
         input_shape = tensor_in.get_shape()
         filter_shape = list(filter_shape) + [input_shape[3], n_filters]
-        filters = tf.get_variable('filters', filter_shape, tf.float32)
-        output = tf.nn.conv2d(tensor_in, filters, strides, padding)
+        filters = vs.get_variable('filters', filter_shape, dtypes.float32)
+        output = nn.conv2d(tensor_in, filters, strides, padding)
         if bias:
-            bias_var = tf.get_variable('bias', [1, 1, 1, n_filters],
-                                       tf.float32)
+            bias_var = vs.get_variable('bias', [1, 1, 1, n_filters],
+                                       dtypes.float32)
             output = output + bias_var
         if batch_norm:
             output = batch_normalize(output, convnet=True)

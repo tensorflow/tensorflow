@@ -23,14 +23,27 @@ import shutil
 from six import string_types
 
 import numpy as np
-import tensorflow as tf
 
 from google.protobuf import text_format
 from tensorflow.python.platform.default import _gfile as gfile
 
+from tensorflow.python.client import session
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import variables
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import importer
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.training import training as train
+
 from tensorflow.contrib.layers import optimizers
 from tensorflow.contrib.skflow.python.skflow import trainer
 from tensorflow.contrib.skflow.python.skflow.io.data_feeder import setup_train_data_feeder
@@ -108,11 +121,11 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
         if self._config is None:
             self._config = RunConfig(verbose=self.verbose)
         # Create new graph.
-        self._graph = tf.Graph()
+        self._graph = ops.Graph()
         self._graph.add_to_collection("IS_TRAINING", True)
         with self._graph.as_default():
-            tf.set_random_seed(self._config.tf_random_seed)
-            self._global_step = tf.Variable(
+            random_seed.set_random_seed(self._config.tf_random_seed)
+            self._global_step = variables.Variable(
                 0, name="global_step", trainable=False)
 
             # Setting up inputs and outputs.
@@ -121,21 +134,21 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
             # If class weights are provided, add them to the graph.
             # Different loss functions can use this tensor by name.
             if self.class_weight:
-                self._class_weight_node = tf.constant(
+                self._class_weight_node = constant_op.constant(
                     self.class_weight, name='class_weight')
 
             # Add histograms for X and y if they are floats.
             if self._data_feeder.input_dtype in (np.float32, np.float64):
-                tf.histogram_summary("X", self._inp)
+                logging_ops.histogram_summary("X", self._inp)
             if self._data_feeder.output_dtype in (np.float32, np.float64):
-                tf.histogram_summary("y", self._out)
+                logging_ops.histogram_summary("y", self._out)
 
             # Create model's graph.
             self._model_predictions, self._model_loss = self.model_fn(
                 self._inp, self._out)
 
             # Set up a single operator to merge all the summaries
-            self._summaries = tf.merge_all_summaries()
+            self._summaries = logging_ops.merge_all_summaries()
 
             # Create trainer and augment graph with gradients and optimizer.
             # Additionally creates initialization ops.
@@ -156,7 +169,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
             self._initializers = variables.initialize_all_variables()
 
             # Create model's saver capturing all the nodes created up until now.
-            self._saver = tf.train.Saver(
+            self._saver = train.Saver(
                 max_to_keep=self._config.keep_checkpoint_max,
                 keep_checkpoint_every_n_hours=self._config.keep_checkpoint_every_n_hours)
 
@@ -164,14 +177,14 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
             self._monitor.create_val_feed_dict(self._inp, self._out)
 
             # Create session to run model with.
-            self._session = tf.Session(self._config.tf_master, config=self._config.tf_config)
+            self._session = session.Session(self._config.tf_master, config=self._config.tf_config)
 
             # Run parameter initializers.
             self._session.run(self._initializers)
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
-        self._summary_writer = tf.train.SummaryWriter(
+        self._summary_writer = train.SummaryWriter(
             os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
             graph=self._session.graph)
 
@@ -410,7 +423,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
         # Currently Saver requires absolute path to work correctly.
         path = os.path.abspath(path)
 
-        self._graph = tf.Graph()
+        self._graph = ops.Graph()
         with self._graph.as_default():
             endpoints_filename = os.path.join(path, 'endpoints')
             if not os.path.exists(endpoints_filename):
@@ -421,18 +434,18 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
             if not os.path.exists(graph_filename):
                 raise ValueError("Restore folder doesn't contain graph definition.")
             with gfile.Open(graph_filename) as fgraph:
-                graph_def = tf.GraphDef()
+                graph_def = graph_pb2.GraphDef()
                 text_format.Merge(fgraph.read(), graph_def)
                 (self._inp, self._out,
-                 self._model_predictions, self._model_loss) = tf.import_graph_def(
+                 self._model_predictions, self._model_loss) = importer.import_graph_def(
                      graph_def, name='', return_elements=endpoints)
             saver_filename = os.path.join(path, 'saver.pbtxt')
             if not os.path.exists(saver_filename):
                 raise ValueError("Restore folder doesn't contain saver defintion.")
             with gfile.Open(saver_filename) as fsaver:
-                saver_def = tf.train.SaverDef()
+                saver_def = train.SaverDef()
                 text_format.Merge(fsaver.read(), saver_def)
-                self._saver = tf.train.Saver(saver_def=saver_def)
+                self._saver = train.Saver(saver_def=saver_def)
 
             # Restore trainer
             self._global_step = self._graph.get_tensor_by_name('global_step:0')
@@ -444,10 +457,10 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
             # Restore session.
             if not isinstance(self._config, RunConfig):
                 self._config = RunConfig(verbose=self.verbose)
-            self._session = tf.Session(
+            self._session = session.Session(
                 self._config.tf_master,
                 config=self._config.tf_config)
-            checkpoint_path = tf.train.latest_checkpoint(path)
+            checkpoint_path = train.latest_checkpoint(path)
             if checkpoint_path is None:
                 raise ValueError("Missing checkpoint files in the %s. Please "
                                  "make sure you are you have checkpoint file that describes "

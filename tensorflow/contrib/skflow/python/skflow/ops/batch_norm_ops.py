@@ -16,7 +16,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.training import moving_averages
 
 
 def batch_normalize(tensor_in, epsilon=1e-5, convnet=False, decay=0.9,
@@ -34,25 +40,25 @@ def batch_normalize(tensor_in, epsilon=1e-5, convnet=False, decay=0.9,
     """
     shape = tensor_in.get_shape().as_list()
 
-    with tf.variable_scope("batch_norm"):
-        gamma = tf.get_variable("gamma", [shape[-1]],
-                                initializer=tf.random_normal_initializer(1., 0.02))
-        beta = tf.get_variable("beta", [shape[-1]],
-                               initializer=tf.constant_initializer(0.))
-        ema = tf.train.ExponentialMovingAverage(decay=decay)
+    with vs.variable_scope("batch_norm"):
+        gamma = vs.get_variable("gamma", [shape[-1]],
+                                initializer=init_ops.random_normal_initializer(1., 0.02))
+        beta = vs.get_variable("beta", [shape[-1]],
+                               initializer=init_ops.constant_initializer(0.))
+        ema = moving_averages.ExponentialMovingAverage(decay=decay)
         if convnet:
-            assign_mean, assign_var = tf.nn.moments(tensor_in, [0, 1, 2])
+            assign_mean, assign_var = nn.moments(tensor_in, [0, 1, 2])
         else:
-            assign_mean, assign_var = tf.nn.moments(tensor_in, [0])
+            assign_mean, assign_var = nn.moments(tensor_in, [0])
         ema_assign_op = ema.apply([assign_mean, assign_var])
         ema_mean, ema_var = ema.average(assign_mean), ema.average(assign_var)
         def update_mean_var():
             """Internal function that updates mean and variance during training"""
-            with tf.control_dependencies([ema_assign_op]):
-                return tf.identity(assign_mean), tf.identity(assign_var)
-        is_training = tf.squeeze(tf.get_collection("IS_TRAINING"))
-        mean, variance = tf.cond(
+            with ops.control_dependencies([ema_assign_op]):
+                return array_ops_.identity(assign_mean), array_ops_.identity(assign_var)
+        is_training = array_ops_.squeeze(ops.get_collection("IS_TRAINING"))
+        mean, variance = control_flow_ops.cond(
             is_training, update_mean_var, lambda: (ema_mean, ema_var))
-        return tf.nn.batch_norm_with_global_normalization(
+        return nn.batch_norm_with_global_normalization(
             tensor_in, mean, variance, beta, gamma, epsilon,
             scale_after_normalization=scale_after_normalization)
