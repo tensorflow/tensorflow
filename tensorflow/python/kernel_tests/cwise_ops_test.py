@@ -52,7 +52,11 @@ class UnaryOpTest(tf.test.TestCase):
     np_ans = np_func(x)
     with self.test_session(use_gpu=False):
       inx = tf.convert_to_tensor(x)
-      y = tf_func(inx)
+      if x.dtype in (np.float32, np.float64):
+        y = 1.1 * tf_func(inx)
+        np_ans *= 1.1
+      else:
+        y = tf_func(inx)
       tf_cpu = y.eval()
       self.assertShapeEqual(np_ans, y)
       self.assertAllClose(np_ans, tf_cpu)
@@ -264,7 +268,10 @@ class BinaryOpTest(tf.test.TestCase):
     with self.test_session():
       inx = tf.convert_to_tensor(x)
       iny = tf.convert_to_tensor(y)
-      out = tf_func(inx, iny)
+      if x.dtype in (np.float32, np.float64):
+        out = 1.1 * tf_func(inx, iny)
+      else:
+        out = tf_func(inx, iny)
       xs = list(x.shape)
       jacob_t, jacob_n = tf.test.compute_gradient(inx,
                                                   xs,
@@ -282,7 +289,10 @@ class BinaryOpTest(tf.test.TestCase):
     with self.test_session():
       inx = tf.convert_to_tensor(x)
       iny = tf.convert_to_tensor(y)
-      out = tf_func(inx, iny)
+      if x.dtype in (np.float32, np.float64):
+        out = 1.1 * tf_func(inx, iny)
+      else:
+        out = tf_func(inx, iny)
       ys = list(np.shape(y))
       jacob_t, jacob_n = tf.test.compute_gradient(iny,
                                                   ys,
