@@ -492,7 +492,7 @@ REGISTER\_OP("ZeroOut")
 Your Op registration now specifies that the input's type must be `float`, or
 `int32`, and that its output will be the same type, since both have type `T`.
 
-> A note on naming:{#naming} Inputs, outputs, and attrs generally should be
+> <a id="naming"></a>A note on naming: Inputs, outputs, and attrs generally should be
 > given snake\_case names.  The one exception is attrs that are used as the type
 > of an input or in the type of an input. Those attrs can be inferred when the
 > op is added to the graph and so don't appear in the op's function.  For
