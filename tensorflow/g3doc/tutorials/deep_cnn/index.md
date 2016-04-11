@@ -50,7 +50,7 @@ that systematically decrements over time.
 for input
 data to isolate the model from disk latency and expensive image pre-processing.
 
-We also provide a multi-GPU version of the model which demonstrates:
+We also provide a [multi-GPU version](index.md#multi-GPU version) of the model which demonstrates:
 
 * Configuring a model to train across multiple GPU cards in parallel.
 * Sharing and updating variables among multiple GPUs.
@@ -343,7 +343,7 @@ the averaged parameters for the model and verify that the predictive performance
 drops.
 
 
-## Training a Model Using Multiple GPU Cards
+## Training a Model Using Multiple GPU Cards {#multi-GPU}
 
 Modern workstations may contain multiple GPUs for scientific computation.
 TensorFlow can leverage this environment to run the training operation
