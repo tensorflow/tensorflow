@@ -275,10 +275,18 @@ def _run_benchmarks(regex):
   # Match benchmarks in registry against regex
   for benchmark in registry:
     benchmark_name = "%s.%s" % (benchmark.__module__, benchmark.__name__)
-    if re.search(regex, benchmark_name):
-      # Found a match
 
-      _run_specific_benchmark(benchmark)
+    benchmark_class = benchmark()
+    attrs = dir(benchmark_class)
+    for attr in attrs:
+      if not attr.startswith("benchmark"):
+        continue
+      benchmark_fn = getattr(benchmark_class, attr)
+      if not callable(benchmark_fn):
+        continue
+      full_benchmark_name = "%s.%s" % (benchmark_name, attr)
+      if regex == "all" or re.search(regex, full_benchmark_name):
+        benchmark_fn()
 
 
 def benchmarks_main(true_main):
