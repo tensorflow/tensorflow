@@ -33,6 +33,7 @@ class SaverTest(tf.test.TestCase):
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target)
         classifier.save(path)
+        print(path)
         new_classifier = skflow.TensorFlowEstimator.restore(path)
         self.assertEqual(type(new_classifier), type(classifier))
         score = accuracy_score(iris.target, new_classifier.predict(iris.data))

@@ -25,7 +25,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import moving_averages
 
 
-def batch_normalize(tensor_in, epsilon=1e-5, convnet=True, decay=0.9,
+def batch_normalize(tensor_in, epsilon=1e-5, convnet=False, decay=0.9,
                     scale_after_normalization=True):
     """Batch Normalization
 
