@@ -53,6 +53,7 @@ def histogram_fixed_width(values,
     A 1-D `Tensor` holding histogram of values.
 
   Examples:
+
   ```python
   # Bins will be:  (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
   nbins = 5
