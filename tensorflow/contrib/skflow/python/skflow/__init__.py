@@ -17,17 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-## Check existance of sklearn and it's version
-try:
-    import sklearn
-except ImportError:
-    raise ImportError("Please install sklearn (pip install sklearn) to use "
-                      "skflow.")
-
-if sklearn.__version__ < '0.16.0':
-    raise ImportError("Your scikit-learn version needs to be at least 0.16. "
-                      "Your current version is %s. " % sklearn.__version__)
-
 import numpy as np
 import tensorflow as tf
 

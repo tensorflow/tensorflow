@@ -17,14 +17,15 @@ from __future__ import print_function
 
 import random
 
-from sklearn import datasets
-from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
-
 import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.skflow.python import skflow
+from tensorflow.contrib.skflow.python.skflow import datasets
 from tensorflow.contrib.skflow.python.skflow.estimators import base
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import accuracy_score
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import log_loss
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import mean_squared_error
 
 
 class BaseTest(tf.test.TestCase):
@@ -35,8 +36,8 @@ class BaseTest(tf.test.TestCase):
         y = 2 * X + 3
         regressor = skflow.TensorFlowLinearRegressor()
         regressor.fit(X, y)
-        score = mean_squared_error(regressor.predict(X), y)
-        self.assertLess(score, 0.5, "Failed with score = {0}".format(score))
+        score = mean_squared_error(y, regressor.predict(X))
+        self.assertLess(score, 1.5, "Failed with score = {0}".format(score))
 
     def testIris(self):
         iris = datasets.load_iris()
@@ -44,7 +45,7 @@ class BaseTest(tf.test.TestCase):
         classifier.fit(iris.data, [float(x) for x in iris.target])
         score = accuracy_score(iris.target, classifier.predict(iris.data))
         self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
-
+    
     def testIrisClassWeight(self):
         iris = datasets.load_iris()
         classifier = skflow.TensorFlowLinearClassifier(
@@ -99,12 +100,14 @@ class BaseTest(tf.test.TestCase):
                                          "data.".format(score2, score1))
 
     def testIris_proba(self):
-        random.seed(42)
-        iris = datasets.load_iris()
-        classifier = skflow.TensorFlowClassifier(n_classes=3, steps=250)
-        classifier.fit(iris.data, iris.target)
-        score = log_loss(iris.target, classifier.predict_proba(iris.data))
-        self.assertLess(score, 0.8, "Failed with score = {0}".format(score))
+        # If sklearn available.
+        if log_loss:
+            random.seed(42)
+            iris = datasets.load_iris()
+            classifier = skflow.TensorFlowClassifier(n_classes=3, steps=250)
+            classifier.fit(iris.data, iris.target)
+            score = log_loss(iris.target, classifier.predict_proba(iris.data))
+            self.assertLess(score, 0.8, "Failed with score = {0}".format(score))
 
     def testBoston(self):
         random.seed(42)

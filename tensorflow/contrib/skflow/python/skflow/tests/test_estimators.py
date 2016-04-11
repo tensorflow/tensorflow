@@ -19,10 +19,10 @@ import tensorflow as tf
 
 import random
 
-from sklearn import datasets, metrics
-from sklearn.cross_validation import train_test_split
-
 from tensorflow.contrib.skflow.python import skflow
+from tensorflow.contrib.skflow.python.skflow import datasets
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import accuracy_score
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import train_test_split
 
 
 class CustomOptimizer(tf.test.TestCase):
@@ -46,7 +46,7 @@ class CustomOptimizer(tf.test.TestCase):
                                                     learning_rate=exp_decay,
                                                     optimizer=custom_optimizer)
         classifier.fit(X_train, y_train)
-        score = metrics.accuracy_score(y_test, classifier.predict(X_test))
+        score = accuracy_score(y_test, classifier.predict(X_test))
 
         self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
 

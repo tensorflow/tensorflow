@@ -16,23 +16,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from sklearn.base import ClassifierMixin, RegressorMixin
+from tensorflow.contrib.skflow.python.skflow.estimators import _sklearn
+from tensorflow.contrib.skflow.python.skflow.estimators.base import TensorFlowEstimator
+from tensorflow.contrib.skflow.python.skflow import models
 
-from .base import TensorFlowEstimator
-from .. import models
 
-
-class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
+class TensorFlowLinearRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
     """TensorFlow Linear Regression model."""
 
     def __init__(self, n_classes=0, batch_size=32, steps=200, optimizer="Adagrad",
-                 learning_rate=0.1, continue_training=False,
+                 learning_rate=0.1, clip_gradients=5.0, continue_training=False,
                  config=None, verbose=1):
 
         super(TensorFlowLinearRegressor, self).__init__(
             model_fn=models.linear_regression_zero_init, n_classes=n_classes,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate,
+            learning_rate=learning_rate, clip_gradients=clip_gradients,
             continue_training=continue_training, config=config,
             verbose=verbose)
 
@@ -47,11 +46,11 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, RegressorMixin):
         return self.get_tensor_value('linear_regression/bias:0')
 
 
-class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
+class TensorFlowLinearClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
     """TensorFlow Linear Classifier model."""
 
     def __init__(self, n_classes, batch_size=32, steps=200, optimizer="Adagrad",
-                 learning_rate=0.1, class_weight=None,
+                 learning_rate=0.1, class_weight=None, clip_gradients=5.0,
                  continue_training=False, config=None,
                  verbose=1):
 
@@ -59,6 +58,7 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, ClassifierMixin):
             model_fn=models.logistic_regression_zero_init, n_classes=n_classes,
             batch_size=batch_size, steps=steps, optimizer=optimizer,
             learning_rate=learning_rate, class_weight=class_weight,
+            clip_gradients=clip_gradients,
             continue_training=continue_training, config=config,
             verbose=verbose)
 

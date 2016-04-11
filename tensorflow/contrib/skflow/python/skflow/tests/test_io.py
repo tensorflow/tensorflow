@@ -17,13 +17,12 @@ from __future__ import print_function
 
 import random
 
-from sklearn import datasets
-from sklearn.metrics import accuracy_score
-
 import tensorflow as tf
 
 from tensorflow.contrib.skflow.python import skflow
 from tensorflow.contrib.skflow.python.skflow.io import *
+from tensorflow.contrib.skflow.python.skflow import datasets
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import accuracy_score
 
 
 class IOTest(tf.test.TestCase):
@@ -36,7 +35,7 @@ class IOTest(tf.test.TestCase):
             labels = pd.DataFrame(iris.target)
             classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
             classifier.fit(data, labels)
-            score = accuracy_score(labels, classifier.predict(data))
+            score = accuracy_score(labels[0], classifier.predict(data))
             self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
         else:
             print("No pandas installed. pandas-related tests are skipped.")

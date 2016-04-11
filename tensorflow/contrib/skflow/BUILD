@@ -7,11 +7,17 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+filegroup(
+    name = "datasets",
+    srcs = glob(["**/*.csv"]),
+)
+
 py_library(
     name = "skflow",
     srcs = glob([
         "python/skflow/**/*.py",
     ]) + ["__init__.py", "python/__init__.py"],
+    data = [":datasets"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/python:framework"],
 )

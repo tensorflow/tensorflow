@@ -18,11 +18,10 @@ from __future__ import print_function
 import os
 import random
 
-from sklearn import datasets
-from sklearn.metrics import accuracy_score, mean_squared_error, log_loss
-
 import tensorflow as tf
 from tensorflow.contrib.skflow.python import skflow
+from tensorflow.contrib.skflow.python.skflow import datasets
+from tensorflow.contrib.skflow.python.skflow.estimators._sklearn import accuracy_score
 
 
 class SaverTest(tf.test.TestCase):
@@ -34,6 +33,7 @@ class SaverTest(tf.test.TestCase):
         classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
         classifier.fit(iris.data, iris.target)
         classifier.save(path)
+        print(path)
         new_classifier = skflow.TensorFlowEstimator.restore(path)
         self.assertEqual(type(new_classifier), type(classifier))
         score = accuracy_score(iris.target, new_classifier.predict(iris.data))

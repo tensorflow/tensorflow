@@ -16,9 +16,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variable_scope as vs
 
-from . import array_ops
+from tensorflow.contrib.skflow.python.skflow.ops import array_ops
 
 
 def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
@@ -34,18 +39,18 @@ def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
     Returns:
         Predictions and losses tensors.
     """
-    with tf.op_scope([decoding, labels], name, "sequence_classifier"):
+    with ops.op_scope([decoding, labels], name, "sequence_classifier"):
         predictions, xent_list = [], []
         for i, pred in enumerate(decoding):
             xent_list.append(
-                tf.nn.softmax_cross_entropy_with_logits(
+                nn.softmax_cross_entropy_with_logits(
                     pred, labels[i], name="sequence_loss/xent_raw{0}".format(i)))
             if sampling_decoding:
-                predictions.append(tf.nn.softmax(sampling_decoding[i]))
+                predictions.append(nn.softmax(sampling_decoding[i]))
             else:
-                predictions.append(tf.nn.softmax(pred))
-        xent = tf.add_n(xent_list, name="sequence_loss/xent")
-        loss = tf.reduce_sum(xent, name="sequence_loss")
+                predictions.append(nn.softmax(pred))
+        xent = math_ops.add_n(xent_list, name="sequence_loss/xent")
+        loss = math_ops.reduce_sum(xent, name="sequence_loss")
         return array_ops.expand_concat(1, predictions), loss
 
 
@@ -65,13 +70,13 @@ def seq2seq_inputs(X, y, input_length, output_length, sentinel=None, name=None):
     Returns:
         Encoder input from X, and decoder inputs and outputs from y.
     """
-    with tf.op_scope([X, y], name, "seq2seq_inputs"):
+    with ops.op_scope([X, y], name, "seq2seq_inputs"):
         in_X = array_ops.split_squeeze(1, input_length, X)
         y = array_ops.split_squeeze(1, output_length, y)
         if not sentinel:
             # Set to zeros of shape of y[0], using X for batch size.
-            sentinel_shape = tf.pack([tf.shape(X)[0], y[0].get_shape()[1]])
-            sentinel = tf.zeros(sentinel_shape)
+            sentinel_shape = array_ops_.pack([array_ops_.shape(X)[0], y[0].get_shape()[1]])
+            sentinel = array_ops_.zeros(sentinel_shape)
             sentinel.set_shape(y[0].get_shape())
         in_y = [sentinel] + y
         out_y = y + [sentinel]
@@ -91,17 +96,17 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
     Returns:
         List of tensors for outputs and states for training and sampling sub-graphs.
     """
-    with tf.variable_scope(scope or "dnn_decoder"):
+    with vs.variable_scope(scope or "dnn_decoder"):
         states, sampling_states = [initial_state], [initial_state]
         outputs, sampling_outputs = [], []
-        with tf.op_scope([decoder_inputs, initial_state], "training"):
+        with ops.op_scope([decoder_inputs, initial_state], "training"):
             for i, inp in enumerate(decoder_inputs):
                 if i > 0:
-                    tf.get_variable_scope().reuse_variables()
+                    vs.get_variable_scope().reuse_variables()
                 output, new_state = cell(inp, states[-1])
                 outputs.append(output)
                 states.append(new_state)
-        with tf.op_scope([initial_state], "sampling"):
+        with ops.op_scope([initial_state], "sampling"):
             for i, _ in enumerate(decoder_inputs):
                 if i == 0:
                     sampling_outputs.append(outputs[i])
@@ -115,7 +120,7 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
 
 
 def rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_cell, decoder_cell=None,
-                dtype=tf.float32, scope=None):
+                dtype=dtypes.float32, scope=None):
     """RNN Sequence to Sequence model.
 
     Args:
@@ -129,6 +134,7 @@ def rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_cell, decoder_cell=None,
     Returns:
         List of tensors for outputs and states for trianing and sampling sub-graphs.
     """
-    with tf.variable_scope(scope or "rnn_seq2seq"):
-        _, last_enc_state = tf.nn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
+    with vs.variable_scope(scope or "rnn_seq2seq"):
+        _, last_enc_state = nn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
         return rnn_decoder(decoder_inputs, last_enc_state, decoder_cell or encoder_cell)
+
