@@ -95,6 +95,9 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
   SET_CLASS(NC_VARIABLE, ts, "Variable", "");
   SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
+  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandle", "");
+  SET_CLASS(NC_GET_SESSION_TENSOR, ts, "GetSessionTensor", "");
+  SET_CLASS(NC_DELETE_SESSION_TENSOR, ts, "DeleteSessionTensor", "");
   if (class_ == NC_UNINITIALIZED) {
     class_ = NC_OTHER;  // Catch all
   }

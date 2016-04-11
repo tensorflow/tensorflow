@@ -23,8 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -145,6 +147,10 @@ class FillOp : public OpKernel {
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         Tvalue.shape().DebugString()));
     auto dims = Tdims.flat<int32>();
+    OP_REQUIRES(context,
+                FastBoundsCheck(dims.size(), TensorShape::MaxDimensions()),
+                errors::InvalidArgument("dims must have size < ",
+                                        TensorShape::MaxDimensions()));
     for (int i = 0; i < dims.size(); i++) {
       OP_REQUIRES(context, dims(i) >= 0,
                   errors::InvalidArgument("dims[", i, "] = ", dims(i),
@@ -153,7 +159,7 @@ class FillOp : public OpKernel {
     TensorShape shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 reinterpret_cast<const int32*>(dims.data()),
-                                dims.size(), &shape));
+                                static_cast<int>(dims.size()), &shape));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     functor::FillFunctor<Device, T> functor;

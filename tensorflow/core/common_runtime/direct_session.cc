@@ -313,6 +313,8 @@ Status DirectSession::Run(const RunOptions& run_options,
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  args.session_state = &session_state_;
+  args.tensor_store = &run_state.tensor_store;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
@@ -340,6 +342,11 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Receive outputs.
   TF_RETURN_IF_ERROR(
       RecvOutputs(output_names, executors_and_keys, &run_state, outputs));
+
+  // Save the output tensors of this run we choose to keep.
+  TF_RETURN_IF_ERROR(
+      run_state.tensor_store.SaveTensors(output_names, &session_state_));
+
   return Status::OK();
 }
 
@@ -369,9 +376,8 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   {
     mutex_lock l(executor_lock_);
     if (!partial_runs_.insert({run_state_args.handle, run_state}).second) {
-      return errors::Internal("The handle ", run_state_args.handle,
-                              " created for this partial"
-                              " run is not unique.");
+      return errors::Internal("The handle '", run_state_args.handle,
+                              "' created for this partial run is not unique.");
     }
   }
 
@@ -390,13 +396,12 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
       });
 
   Executor::Args args;
-  {
-    mutex_lock l(mu_);
-    args.step_id = name_counter_++;
-  }
+  args.step_id = step_id_counter_.fetch_add(1);
   args.rendezvous = run_state->rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  args.session_state = &session_state_;
+  args.tensor_store = &run_state->tensor_store;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
@@ -470,9 +475,14 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
     s = RecvOutputs(output_names, executors_and_keys, run_state, outputs);
   }
 
-  // Delete the run state if there is an error or all fetches are done.
+  // Save the output tensors of this run we choose to keep.
+  if (s.ok()) {
+    s = run_state->tensor_store.SaveTensors(output_names, &session_state_);
+  }
+
   {
     mutex_lock l(executor_lock_);
+    // Delete the run state if there is an error or all fetches are done.
     bool done = true;
     if (s.ok()) {
       {
@@ -911,7 +921,7 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
     // allow.
     device_opts.allow_internal_ops = true;
     device_opts.expect_device_spec = true;
-    Status s = ConvertGraphDefToGraph(device_opts, *graph_def, device_graph);
+    s = ConvertGraphDefToGraph(device_opts, *graph_def, device_graph);
     if (!s.ok()) {
       delete device_graph;
       break;

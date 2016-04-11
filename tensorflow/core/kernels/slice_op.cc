@@ -155,7 +155,7 @@ class SliceOp : public OpKernel {
         // TODO(agarwal): Consider multi-threading this loop for cases where
         // size[0] is very large.
         for (int i = 0; i < size[0]; ++i) {
-          const int row = begin[0] + i;
+          const int64 row = begin[0] + i;
           if (i + 1 < size[0]) {
             port::prefetch<port::PREFETCH_HINT_T0>(&output(i + 1, 0));
             port::prefetch<port::PREFETCH_HINT_T0>(&input(row + 1, begin[1]));

@@ -143,6 +143,14 @@ class DimensionTest(test_util.TensorFlowTestCase):
     self.assertIs(None,
                   tensor_shape.Dimension(None) != tensor_shape.Dimension(None))
 
+  def testRepr(self):
+    self.assertEqual(repr(tensor_shape.Dimension(7)), "Dimension(7)")
+    self.assertEqual(repr(tensor_shape.Dimension(None)), "Dimension(None)")
+
+  def testStr(self):
+    self.assertEqual(str(tensor_shape.Dimension(7)), "7")
+    self.assertEqual(str(tensor_shape.Dimension(None)), "?")
+
 
 class ShapeTest(test_util.TensorFlowTestCase):
 

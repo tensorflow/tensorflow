@@ -937,13 +937,14 @@ def graph_creation_static_vs_dynamic_rnn_benchmark(max_time):
 
   def _create_static_rnn():
     with tf.Session(config=config, graph=tf.Graph()) as sess:
-      inputs_list_t = [tf.constant(x) for x in inputs_list]
+      inputs_list_t = [
+          tf.Variable(x, trainable=False).value() for x in inputs_list]
       ops = _static_vs_dynamic_rnn_benchmark_static(
           inputs_list_t, sequence_length)
 
   def _create_dynamic_rnn():
     with tf.Session(config=config, graph=tf.Graph()) as sess:
-      inputs_t = tf.constant(inputs)
+      inputs_t = tf.Variable(inputs, trainable=False).value()
       ops = _static_vs_dynamic_rnn_benchmark_dynamic(
           inputs_t, sequence_length)
 
@@ -961,7 +962,7 @@ def _timer(sess, ops):
     sess.run(ops)
 
   # Timing run
-  runs = 10
+  runs = 20
   start = time.time()
   for _ in range(runs):
     sess.run(ops)
@@ -983,13 +984,9 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
 
   # Using rnn()
   with tf.Session(config=config, graph=tf.Graph()) as sess:
-    if not use_gpu:
-      with tf.device("/cpu:0"):
-        inputs_list_t = [tf.constant(x) for x in inputs_list]
-        ops = _static_vs_dynamic_rnn_benchmark_static(
-            inputs_list_t, sequence_length)
-    else:
-      inputs_list_t = [tf.constant(x) for x in inputs_list]
+    with tf.device("/cpu:0" if not use_gpu else None):
+      inputs_list_t = [
+          tf.Variable(x, trainable=False).value() for x in inputs_list]
       ops = _static_vs_dynamic_rnn_benchmark_static(
           inputs_list_t, sequence_length)
     tf.initialize_all_variables().run()
@@ -997,13 +994,8 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
 
   # Using dynamic_rnn()
   with tf.Session(config=config, graph=tf.Graph()) as sess:
-    if not use_gpu:
-      with tf.device("/cpu:0"):
-        inputs_t = tf.Variable(inputs)
-        ops = _static_vs_dynamic_rnn_benchmark_dynamic(
-            inputs_t, sequence_length)
-    else:
-      inputs_t = tf.Variable(inputs)
+    with tf.device("/cpu:0" if not use_gpu else None):
+      inputs_t = tf.Variable(inputs, trainable=False).value()
       ops = _static_vs_dynamic_rnn_benchmark_dynamic(
           inputs_t, sequence_length)
     tf.initialize_all_variables().run()
@@ -1014,6 +1006,59 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
          delta_dynamic, delta_dynamic/delta_static))
 
   return delta_static, delta_dynamic
+
+
+def _half_seq_len_vs_unroll_half_rnn_benchmark(inputs_list_t, sequence_length):
+  (_, input_size) = inputs_list_t[0].get_shape().as_list()
+  initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=127)
+  cell = tf.nn.rnn_cell.LSTMCell(
+      num_units=input_size, input_size=input_size, use_peepholes=True,
+      initializer=initializer)
+  outputs, final_state = tf.nn.rnn(
+      cell, inputs_list_t, sequence_length=sequence_length, dtype=tf.float32)
+
+  trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+  gradients = tf.gradients(outputs + [final_state], trainable_variables)
+
+  return tf.group(final_state, *(gradients + outputs))
+
+
+def half_seq_len_vs_unroll_half_rnn_benchmark(
+    batch_size, max_time, num_units, use_gpu):
+  config = tf.ConfigProto()
+  config.allow_soft_placement = True
+
+  # Set up sequence lengths
+  np.random.seed([127])
+  sequence_length = max_time * np.ones((batch_size,))
+  inputs_list = [
+      np.random.randn(batch_size, num_units).astype(np.float32)
+      for _ in range(max_time)]
+
+  # Halve the sequence length, full static unroll
+  with tf.Session(config=config, graph=tf.Graph()) as sess:
+    with tf.device("/cpu:0" if not use_gpu else None):
+      inputs_list_t = [
+          tf.Variable(x, trainable=False).value() for x in inputs_list]
+      ops = _half_seq_len_vs_unroll_half_rnn_benchmark(
+          inputs_list_t, sequence_length / 2)
+    tf.initialize_all_variables().run()
+    delta_half_seq_len = _timer(sess, ops)
+
+  # Halve the unroll size, don't use sequence length
+  with tf.Session(config=config, graph=tf.Graph()) as sess:
+    with tf.device("/cpu:0" if not use_gpu else None):
+      inputs_list_t = [
+          tf.Variable(x, trainable=False).value() for x in inputs_list]
+      ops = _half_seq_len_vs_unroll_half_rnn_benchmark(
+          inputs_list_t[:(max_time // 2)], sequence_length / 2)
+    tf.initialize_all_variables().run()
+    delta_unroll_half = _timer(sess, ops)
+  print("%d \t %d \t\t %d \t %s \t %f \t\t %f \t\t %f" %
+        (batch_size, max_time, num_units, use_gpu, delta_half_seq_len,
+         delta_unroll_half, delta_half_seq_len/delta_unroll_half))
+
+  return delta_half_seq_len, delta_unroll_half
 
 
 def _dynamic_rnn_swap_memory_benchmark(inputs_t, sequence_length,
@@ -1047,7 +1092,7 @@ def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
 
   # No memory swap
   with tf.Session(config=config, graph=tf.Graph()) as sess:
-    inputs_t = tf.Variable(inputs)
+    inputs_t = tf.Variable(inputs, trainable=False).value()
     ops = _dynamic_rnn_swap_memory_benchmark(
         inputs_t, sequence_length, swap_memory=False)
     tf.initialize_all_variables().run()
@@ -1055,7 +1100,7 @@ def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
 
   # Memory swap
   with tf.Session(config=config, graph=tf.Graph()) as sess:
-    inputs_t = tf.Variable(inputs)
+    inputs_t = tf.Variable(inputs, trainable=False).value()
     ops = _dynamic_rnn_swap_memory_benchmark(
         inputs_t, sequence_length, swap_memory=True)
     tf.initialize_all_variables().run()
@@ -1082,14 +1127,15 @@ def rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
   for _ in range(5):
     if dynamic:
       with tf.Session(config=config, graph=tf.Graph()) as sess:
-        inputs_t = tf.Variable(inputs)
+        inputs_t = tf.Variable(inputs, trainable=False).value()
         ops = _dynamic_rnn_swap_memory_benchmark(
             inputs_t, sequence_length, swap_memory=swap_memory)
         tf.initialize_all_variables().run()
         elapsed = _timer(sess, ops)
     else:
       with tf.Session(config=config, graph=tf.Graph()) as sess:
-        inputs_list_t = [tf.constant(x) for x in inputs_list]
+        inputs_list_t = [
+            tf.Variable(x, trainable=False).value() for x in inputs_list]
         ops = _static_vs_dynamic_rnn_benchmark_static(
             inputs_list_t, sequence_length)
         tf.initialize_all_variables().run()
@@ -1126,11 +1172,11 @@ class BenchmarkRNN(tf.test.Benchmark):
             self.report_benchmark(
                 name="static_unroll_time_T%02d_B%03d_N%03d_gpu_%s"
                 % (max_time, batch_size, num_units, use_gpu),
-                iters=10, wall_time=s_dt)
+                iters=20, wall_time=s_dt)
             self.report_benchmark(
                 name="dynamic_unroll_time_T%02d_B%03d_N%03d_gpu_%s"
                 % (max_time, batch_size, num_units, use_gpu),
-                iters=10, wall_time=d_dt)
+                iters=20, wall_time=d_dt)
 
   def benchmarkDynamicLSTMNoMemorySwapVsMemorySwap(self):
     print("Calculation: Dynamic LSTM No Memory Swap vs. Memory Swap")
@@ -1143,11 +1189,31 @@ class BenchmarkRNN(tf.test.Benchmark):
           self.report_benchmark(
               name="dynamic_lstm_no_memory_swap_T%02d_B%03d_N%03d"
               % (max_time, batch_size, num_units),
-              iters=10, wall_time=no_swap)
+              iters=20, wall_time=no_swap)
           self.report_benchmark(
               name="dynamic_lstm_with_memory_swap_T%02d_B%03d_N%03d"
               % (max_time, batch_size, num_units),
-              iters=10, wall_time=swap)
+              iters=20, wall_time=swap)
+
+  def benchmarkStaticUnrollHalfSequenceLengthVsHalfUnroll(self):
+    print("Calculation: Static Unroll with Halved Sequence Length "
+          "vs. Half Static Unroll")
+    print("batch \t full_t \t units \t gpu \t dt(half_seq_len) "
+          "\t dt(unroll_half) \t dt(half_seq_len)/dt(unroll_half)")
+    for batch_size in (128,):
+      for max_time in (50,):
+        for num_units in (256,):
+          for use_gpu in (False, True):
+            s_dt, d_dt = half_seq_len_vs_unroll_half_rnn_benchmark(
+                batch_size, max_time, num_units, use_gpu)
+            self.report_benchmark(
+                name="half_seq_len_time_T%02d_B%03d_N%03d_gpu_%s"
+                % (max_time, batch_size, num_units, use_gpu),
+                iters=20, wall_time=s_dt)
+            self.report_benchmark(
+                name="unroll_half_time_T%02d_B%03d_N%03d_gpu_%s"
+                % (max_time, batch_size, num_units, use_gpu),
+                iters=20, wall_time=d_dt)
 
 
 if __name__ == "__main__":

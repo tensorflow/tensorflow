@@ -126,6 +126,8 @@ class TensorArrayOp : public TensorArrayCreationOp {
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
     OP_REQUIRES_OK(context, context->GetAttr("dynamic_size", &dynamic_size_));
     OP_REQUIRES_OK(context,
+                   context->GetAttr("clear_after_read", &clear_after_read_));
+    OP_REQUIRES_OK(context,
                    context->GetAttr("tensor_array_name", &tensor_array_name_));
     if (tensor_array_name_ == "") tensor_array_name_ = name();
   }
@@ -148,7 +150,8 @@ class TensorArrayOp : public TensorArrayCreationOp {
     handle(1) = tensor_array_name_;
 
     TensorArray* tensor_array = new TensorArray(
-        dtype_, *tensor_array_output_handle, size, dynamic_size_);
+        dtype_, *tensor_array_output_handle, size, dynamic_size_,
+        false /* multiple_writes_aggregate */, clear_after_read_);
 
     TF_RETURN_IF_ERROR(rm->Create(handle(0), tensor_array_name_, tensor_array));
 
@@ -160,6 +163,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
  private:
   DataType dtype_;
   bool dynamic_size_;
+  bool clear_after_read_;
   string tensor_array_name_;  // The name used to create the TensorArray.
 
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
@@ -220,11 +224,20 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     tensor_array->DisableDynamicSize();
     TF_RETURN_IF_ERROR(tensor_array->Size(&array_size));
 
+    if (!tensor_array->GradientsAllowed()) {
+      return errors::InvalidArgument(
+          "Unable to create a gradients TensorArray for ", tensor_array_name,
+          ".  Perhaps you used the multiple_writes_aggregate flag on a "
+          "previous write?  Gradient calculation is impossible when multiple "
+          "writes are performed to the same index.");
+    }
+
     auto creator = [this, tensor_array, array_size,
                     tensor_array_output_handle](TensorArray** ret) {
-      *ret =
-          new TensorArray(tensor_array->ElemType(), *tensor_array_output_handle,
-                          array_size, false /* dynamic_size */);
+      *ret = new TensorArray(
+          tensor_array->ElemType(), *tensor_array_output_handle, array_size,
+          false /* dynamic_size */, true /* multiple_writes_aggregate */,
+          true /* close_after_read */);
       return Status::OK();
     };
 
@@ -285,10 +298,10 @@ class TensorArrayWriteOp : public OpKernel {
                                 " but Op is trying to write dtype ",
                                 DataTypeString(tensor_value->dtype()), "."));
     PersistentTensor persistent_tensor(*tensor_value);
-    OP_REQUIRES_OK(ctx, tensor_array->Write(ctx, index, &persistent_tensor));
+    Status s = tensor_array->WriteOrAggregate<Device, T>(ctx, index,
+                                                         &persistent_tensor);
+    OP_REQUIRES_OK(ctx, s);
   }
-
-  bool IsExpensive() override { return false; }
 };
 
 #define REGISTER_WRITE(type)                                                 \
@@ -737,7 +750,9 @@ class TensorArrayUnpackOp : public OpKernel {
       write_values.push_back(persistent_tensor);
     }
 
-    OP_REQUIRES_OK(ctx, tensor_array->WriteMany(ctx, &write_values));
+    Status s =
+        tensor_array->WriteOrAggregateMany<Device, T>(ctx, &write_values);
+    OP_REQUIRES_OK(ctx, s);
   }
 };
 
@@ -871,7 +886,9 @@ class TensorArraySplitOp : public OpKernel {
       write_values.push_back(persistent_tensor);
     }
 
-    OP_REQUIRES_OK(ctx, tensor_array->WriteMany(ctx, &write_values));
+    Status s =
+        tensor_array->WriteOrAggregateMany<Device, T>(ctx, &write_values);
+    OP_REQUIRES_OK(ctx, s);
   }
 };
 
