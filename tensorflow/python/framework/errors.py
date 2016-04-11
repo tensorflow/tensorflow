@@ -328,7 +328,7 @@ class AbortedError(OpError):
 
 
 class OutOfRangeError(OpError):
-  """Raised when an operation executed past the valid range.
+  """Raised when an operation iterates past the valid input range.
 
   This exception is raised in "end-of-file" conditions, such as when a
   [`queue.dequeue()`](../../api_docs/python/io_ops.md#QueueBase.dequeue)
