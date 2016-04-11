@@ -52,7 +52,7 @@ fi
 NEW_VER=$1
 
 # Check validity of new version string
-echo "${NEW_VER}" | grep -q -E "[0-9]+\.[0-9]+\.[0-9]+"
+echo "${NEW_VER}" | grep -q -E "[0-9]+\.[0-9]+\.[[:alnum:]]+"
 if [[ $? != "0" ]]; then
   die "ERROR: Invalid new version: \"${NEW_VER}\""
 fi
@@ -70,7 +70,7 @@ OLD_MAJOR=$(cat ${VERSION_H} | grep -E "^#define TF_MAJOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
 OLD_MINOR=$(cat ${VERSION_H} | grep -E "^#define TF_MINOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
-OLD_PATCH=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [0-9]+" | \
+OLD_PATCH=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [[:alnum:]]+" | \
 cut -d ' ' -f 3)
 
 sed -i -e "s/^#define TF_MAJOR_VERSION ${OLD_MAJOR}/#define TF_MAJOR_VERSION ${MAJOR}/g" ${VERSION_H}
@@ -100,14 +100,27 @@ done
 OS_SETUP="${TF_SRC_DIR}/g3doc/get_started/os_setup.md"
 check_existence file "${OS_SETUP}"
 
-sed -i -r -e "s/(.*pip[0-9]* install .*tensorflow-)([0-9]+\.[0-9]+\.[0-9]+)(.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
+sed -i -r -e "s/(.*pip[0-9]* install .*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
 
-sed -i -r -e "s/(.*\(e\.g\..*[^0-9])([0-9]+\.[0-9]+\.[0-9]+)([^0-9].*\).*)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
+sed -i -r -e "s/(.*\(e\.g\..*[^0-9])([0-9]+\.[0-9]+\.[[:alnum:]]+)(-gpu.*)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
 
 
 # Update README.md
 README_MD="./README.md"
 check_existence file "${README_MD}"
+
+# Update tensorflow/tools/dist_test/Dockerfile
+DIST_TEST_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/Dockerfile"
+check_existence file "${DIST_TEST_DOCKER_FILE}"
+
+sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${DIST_TEST_DOCKER_FILE}"
+
+# Update tensorflow/tools/dist_test/server/Dockerfile
+SERVER_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/server/Dockerfile"
+
+check_existence file "${SERVER_DOCKER_FILE}"
+
+sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${SERVER_DOCKER_FILE}"
 
 sed -i -r -e "s/${OLD_MAJOR}\.${OLD_MINOR}\.${OLD_PATCH}/${MAJOR}.${MINOR}.${PATCH}/g" "${README_MD}"
 
