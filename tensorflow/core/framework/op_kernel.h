@@ -1044,15 +1044,16 @@ typedef ::tensorflow::KernelDefBuilder Name;
 #define REGISTER_KERNEL_BUILDER_UNIQ_HELPER(ctr, kernel_builder, ...) \
   REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
 
-#define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
-  static ::tensorflow::kernel_factory::OpKernelRegistrar              \
-      registrar__body__##ctr##__object(                               \
-          SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)                     \
-              ? ::tensorflow::register_kernel::kernel_builder.Build() \
-              : nullptr,                                              \
-          #__VA_ARGS__,                                               \
-          [](::tensorflow::OpKernelConstruction* context)             \
-              -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
+#define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)          \
+  static ::tensorflow::kernel_factory::OpKernelRegistrar                \
+      registrar__body__##ctr##__object(                                 \
+          SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)                       \
+              ? ::tensorflow::register_kernel::kernel_builder.Build()   \
+              : nullptr,                                                \
+          #__VA_ARGS__, [](::tensorflow::OpKernelConstruction* context) \
+                            -> ::tensorflow::OpKernel* {                \
+                              return new __VA_ARGS__(context);          \
+                            });
 
 void* GlobalKernelRegistry();
 
