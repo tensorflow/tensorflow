@@ -1,6 +1,8 @@
 # TensorFlow for Go
 
-This is a high-level API to generate and control the execution of a TensorFlow graph from Go.
+This package provides a high-level Go API for TensorFlow, this package
+provides the nexessary tools to create and manipulate Tensors, Variables,
+Constants and build, load and run Graphs.
 
 TODO: Add link to GoDoc
 
@@ -23,9 +25,12 @@ with tf.Session() as sess:
     tf.train.write_graph(sess.graph_def, '/tmp/graph/', 'test_graph.pb', as_text=True)
 ```
 
-The previous code will prepare two placeholders with names 'input1' and 'input2' respectively, and another tensor used as output of the addition of the two placeholders. And dumps the graph as text into a text file with path: '/tmp/graph/test_graph.pb'.
+The previous code will prepare two placeholders with names 'input1' and
+'input2' respectively, and another tensor used as output of the addition of the
+two placeholders. And dumps the graph as text into a text file with path:
+'/tmp/graph/test_graph.pb'.
 
-From a golang aplication you can use the next code to execute the graph:
+From a Go aplication, you can use the next code to execute the graph:
 
 ```go
 package main

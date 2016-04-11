@@ -31,6 +31,7 @@ const (
 	cBytesComplex64 = 8
 )
 
+// DataType Type of the data contained by a Tensor
 type DataType pb.DataType
 
 // TensorInt Interface to be implemented by the tensors.
