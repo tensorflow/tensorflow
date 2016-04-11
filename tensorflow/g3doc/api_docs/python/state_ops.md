@@ -781,7 +781,7 @@ checkpoints per device.
 
 - - -
 
-#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta')` {#Saver.save}
+#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta', write_meta_graph=True)` {#Saver.save}
 
 Saves variables.
 
@@ -807,6 +807,8 @@ path can be passed directly to a call to `restore()`.
     managed by the saver to keep track of recent checkpoints.  Defaults to
     'checkpoint'.
 *  <b>`meta_graph_suffix`</b>: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+*  <b>`write_meta_graph`</b>: `Boolean` indicating whether or not to write the meta
+    graph file.
 
 ##### Returns:
 

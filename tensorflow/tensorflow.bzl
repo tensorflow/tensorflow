@@ -77,12 +77,17 @@ def if_cuda(a, b=[]):
       "//conditions:default": b,
   })
 
+def if_android_arm(a, b=[]):
+  return select({
+      "//tensorflow:android_arm": a,
+      "//conditions:default": b,
+  })
 
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
+          if_android_arm(["-mfpu=neon"]) +
           select({"//tensorflow:android": [
-                    "-mfpu=neon",
                     "-std=c++11",
                     "-DMIN_LOG_LEVEL=0",
                     "-DTF_LEAN_BINARY",

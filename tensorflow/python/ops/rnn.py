@@ -226,44 +226,47 @@ def _rnn_step(
       final_output is a `Tensor` matrix of shape [batch_size, output_size]
       final_state is a `Tensor` matrix of shape [batch_size, state_size]
   """
-  # Step 1: determine whether we need to call_cell or not
-  empty_update = lambda: (zero_output, state)
   state_shape = state.get_shape()
 
-  if skip_conditionals:
-    # Skip using conditionals: calculate the RNN step at all time
-    # steps.  This is faster for dynamic_rnn, where the time steps
-    # should cap out at max_sequence_length anyway.
-    output, new_state = call_cell()
-  else:
-    output, new_state = control_flow_ops.cond(
-        time < max_sequence_length, call_cell, empty_update)
-
-  # Step 2: determine whether we need to copy through state and/or outputs
-  existing_output_state = lambda: (output, new_state)
-
-  def copy_through():
+  def _copy_some_through(new_output, new_state):
     # Use broadcasting select to determine which values should get
     # the previous state & zero output, and which values should get
     # a calculated state & output.
     copy_cond = (time >= sequence_length)
-    return (math_ops.select(copy_cond, zero_output, output),
+    return (math_ops.select(copy_cond, zero_output, new_output),
             math_ops.select(copy_cond, state, new_state))
+
+  def _maybe_copy_some_through():
+    """Run RNN step.  Pass through either no or some past state."""
+    new_output, new_state = call_cell()
+
+    return control_flow_ops.cond(
+        # if t < min_seq_len: calculate and return everything
+        time < min_sequence_length, lambda: (new_output, new_state),
+        # else copy some of it through
+        lambda: _copy_some_through(new_output, new_state))
 
   # TODO(ebrevdo): skipping these conditionals may cause a slowdown,
   # but benefits from removing cond() and its gradient.  We should
   # profile with and without this switch here.
   if skip_conditionals:
-    # Skip using conditionals: perform the selective copy at all time
-    # steps.  This is usually faster.
-    (output, state) = copy_through()
+    # Instead of using conditionals, perform the selective copy at all time
+    # steps.  This is faster when max_seq_len is equal to the number of unrolls
+    # (which is typical for dynamic_rnn).
+    new_output, new_state = call_cell()
+    (final_output, final_state) = _copy_some_through(new_output, new_state)
   else:
-    (output, state) = control_flow_ops.cond(
-        time < min_sequence_length, existing_output_state, copy_through)
+    empty_update = lambda: (zero_output, state)
 
-  output.set_shape(zero_output.get_shape())
-  state.set_shape(state_shape)
-  return (output, state)
+    (final_output, final_state) = control_flow_ops.cond(
+        # if t >= max_seq_len: copy all state through, output zeros
+        time >= max_sequence_length, empty_update,
+        # otherwise calculation is required: copy some or all of it through
+        _maybe_copy_some_through)
+
+  final_output.set_shape(zero_output.get_shape())
+  final_state.set_shape(state_shape)
+  return (final_output, final_state)
 
 
 def _reverse_seq(input_seq, lengths):
@@ -584,7 +587,7 @@ def _dynamic_rnn_loop(
 
     return (time + 1, new_state, output_ta_t)
 
-  (unused_final_time, final_state, output_final_ta) = control_flow_ops.While(
+  (_, final_state, output_final_ta) = control_flow_ops.while_loop(
       cond=lambda time, _1, _2: time < time_steps,
       body=_time_step,
       loop_vars=(time, state, output_ta),

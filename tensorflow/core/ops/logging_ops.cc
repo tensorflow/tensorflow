@@ -89,7 +89,7 @@ The generated
 [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 has one summary value containing a histogram for `values`.
 
-This op reports an `OutOfRange` error if any value is not finite.
+This op reports an `InvalidArgument` error if any value is not finite.
 
 tag: Scalar.  Tag to use for the `Summary.Value`.
 values: Any shape. Values to use to build the histogram.

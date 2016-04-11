@@ -752,7 +752,7 @@ class WithShapeTest(tf.test.TestCase):
 
       for incompatible_shape in [[0], [1]]:
         self.assertRaisesRegexp(
-            ValueError, "must have the same rank",
+            ValueError, r"Shapes \(\?, 2\) and \([01],\) are not compatible",
             tf.contrib.framework.with_shape,
             incompatible_shape, tensor_partial_shape)
       for incompatible_shape in [[1, 2, 1]]:
@@ -761,7 +761,7 @@ class WithShapeTest(tf.test.TestCase):
             incompatible_shape, tensor_partial_shape)
       for incompatible_shape in [[2, 1]]:
         self.assertRaisesRegexp(
-            ValueError, "Dimensions.*are not compatible",
+            ValueError, r"Shapes \(\?, 2\) and \(2, 1\) are not compatible",
             tf.contrib.framework.with_shape,
             incompatible_shape, tensor_partial_shape)
 
