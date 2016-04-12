@@ -23,43 +23,21 @@ from os import path
 
 import numpy as np
 
-    
-Dataset = collections.namedtuple('Dataset', ['data', 'target'])
+from tensorflow.contrib.learn.python.learn.datasets import base
+from tensorflow.contrib.learn.python.learn.datasets import mnist
 
-
-def load_csv(filename, target_dtype):
-    with open(filename) as csv_file:
-        data_file = csv.reader(csv_file)
-        header = next(data_file)
-        n_samples = int(header[0])
-        n_features = int(header[1])
-        target_names = np.array(header[2:])
-        data = np.empty((n_samples, n_features))
-        target = np.empty((n_samples,), dtype=np.int)
-
-        for i, ir in enumerate(data_file):
-            data[i] = np.asarray(ir[:-1], dtype=np.float64)
-            target[i] = np.asarray(ir[-1], dtype=target_dtype)
-
-    return Dataset(data=data, target=target)
-
-
-def load_iris():
-    module_path = path.dirname(__file__)
-    return load_csv(path.join(module_path, 'data', 'iris.csv'),
-                    target_dtype=np.int)
-
-
-def load_boston():
-    module_path = path.dirname(__file__)
-    return load_csv(path.join(module_path, 'data', 'boston_house_prices.csv'),
-                    target_dtype=np.float)
-
+# Export load_iris and load_boston.
+load_iris = base.load_iris
+load_boston = base.load_boston
 
 # List of all available datasets.
+# Note, currently they may return different types.
 DATASETS = {
-    'iris': load_iris,
-    'boston': load_boston,
+    # Returns base.Dataset.
+    'iris': base.load_iris,
+    'boston': base.load_boston,
+    # Returns mnist.Dataset.
+    'mnist': mnist.load_mnist,
 }
 
 
