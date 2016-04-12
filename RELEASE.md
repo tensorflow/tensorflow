@@ -6,10 +6,12 @@
 * Move skflow to `contrib/learn`
 * Better linear optimizer in `contrib/linear_optimizer`
 * Random forest implementation in `contrib/tensor_forest`
+* CTC loss and decoders in `contrib/ctc`
 * Basic support for `half` data type
 * Better support for loading user ops (see examples in `contrib/`)
 * Allow use of (non-blocking) Eigen threadpool with `TENSORFLOW_USE_EIGEN_THREADPOOL` define
 * Add an extension mechanism for adding network file system support
+* TensorBoard displays metadata stats (running time, memory usage and device used) and tensor shapes
 
 ## Big Fixes and Other Changes
 
@@ -21,6 +23,7 @@
 * `bool`-strictness: Tensors have to be explictly compared to `None`
 * Shape strictness: all fed values must have a shape that is compatible with the tensor they are replacing
 * Exposed `tf.while_loop` (deprecated `control_flow_ops.While`)
+* run() now takes RunOptions and RunMetadata, which enable timing stats
 * Fixed lots of potential overflow problems in op kernels
 * Various performance improvements, especially for RNNs and convolutions
 * Many bugfixes
