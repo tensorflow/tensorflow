@@ -109,6 +109,8 @@ sed -i -r -e "s/(.*\(e\.g\..*[^0-9])([0-9]+\.[0-9]+\.[[:alnum:]]+)(-gpu.*)/\1${M
 README_MD="./README.md"
 check_existence file "${README_MD}"
 
+sed -i -r -e "s/${OLD_MAJOR}\.${OLD_MINOR}\.${OLD_PATCH}/${MAJOR}.${MINOR}.${PATCH}/g" "${README_MD}"
+
 # Update tensorflow/tools/dist_test/Dockerfile
 DIST_TEST_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/Dockerfile"
 check_existence file "${DIST_TEST_DOCKER_FILE}"
@@ -122,7 +124,12 @@ check_existence file "${SERVER_DOCKER_FILE}"
 
 sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${SERVER_DOCKER_FILE}"
 
-sed -i -r -e "s/${OLD_MAJOR}\.${OLD_MINOR}\.${OLD_PATCH}/${MAJOR}.${MINOR}.${PATCH}/g" "${README_MD}"
+# Update tensorflow/tools/dist_test/server/Dockerfile.test
+TEST_SERVER_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/server/Dockerfile.test"
+
+check_existence file "${TEST_SERVER_DOCKER_FILE}"
+
+sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${TEST_SERVER_DOCKER_FILE}"
 
 
 echo "Major: ${OLD_MAJOR} -> ${MAJOR}"
