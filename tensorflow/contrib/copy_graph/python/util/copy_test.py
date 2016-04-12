@@ -22,12 +22,13 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.framework.python.framework import tensor_util
 
+graph1 = tf.Graph()
+graph2 = tf.Graph()
+
 
 class CopyVariablesTest(tf.test.TestCase):
 
     def testVariableCopy(self):
-        graph1 = tf.Graph()
-        graph2 = tf.Graph()
 
         with graph1.as_default():
             #Define a Variable in graph1
@@ -52,4 +53,44 @@ class CopyVariablesTest(tf.test.TestCase):
         v2 = self.test_session.run(copy1)
         v3 = self.test_session.run(copy2)
 
+        assert isinstance(copy1, tf.Variable)
+        assert isinstance(copy2, tf.Variable)
         assert v1 == v2 == v3 == 2
+
+
+class CopyOpsTest(tf.test.TestCase):
+
+    def testOpsCopy(self):
+
+        with graph1.as_default():
+            #Initialize a basic expression y = ax + b
+            x = tf.placeholder("float")
+            a = tf.Variable(3.0)
+            b = tf.constant(4.0)
+            ax = tf.mul(x, a)
+            y = tf.add(ax, b)
+            #Initialize the Variable
+            self.test_session.run(tf.initialize_all_variables())
+
+        #First, initialize a as a Variable in graph2
+        a1 = tf.contrib.copy_graph.copy_variable_to_graph(
+            a, graph2)
+
+        #Initialize a1 in graph2
+        with graph2.as_default():
+            self.test_session.run(tf.initialize_all_variables())
+
+        #Initialize a copy of y in graph2
+        y1 = tf.contrib.copy_graph.copy_op_to_graph(
+            y, graph2, [a1])
+
+        #Now that y has been copied, x must be copied too.
+        #Get that instance
+        x1 = tf.contrib.copy_graph.get_copied_op(x, graph2)
+
+        #Compare values of y & y1 for a sample input
+        #and check if they match
+        v1 = self.test_session.run(y, {x: 5})
+        v2 = self.test_session.run(y1, {x1: 5})
+
+        assert v1 == v2
