@@ -1,3 +1,41 @@
+# Release 0.8.0
+
+## Major Features and Improvements
+
+* Added a distributed runtime using GRPC
+* Move skflow to `contrib/learn`
+* Better linear optimizer in `contrib/linear_optimizer`
+* Random forest implementation in `contrib/tensor_forest`
+* Basic support for `half` data type
+* Better support for loading user ops (see examples in `contrib/`)
+* Allow use of (non-blocking) Eigen threadpool with `TENSORFLOW_USE_EIGEN_THREADPOOL` define
+* Add an extension mechanism for adding network file system support
+
+## Big Fixes and Other Changes
+
+* Utility for inspecting checkpoints
+* Allow building against cuDNN 5 (not incl. RNN/LSTM support) 
+* Added instructions and binaries for ProtoBuf library with fast serialization and without 64MB limit
+* Added special functions
+* `bool`-strictness: Tensors have to be explictly compared to `None`
+* Exposed `tf.while_loop` (deprecated `control_flow_ops.While`)
+* Fixed lots of potential overflow problems in op kernels
+* Various performance improvements, especially for RNNs and convolutions
+* Many bugfixes
+* Nightly builds, tutorial tests, many test improvements
+* New examples: transfer learning and deepdream ipython notebook
+* Added tutorials, many documentation fixes.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+
+
+We are also grateful to all who filed issues or helped resolve them, asked and 
+answered questions, and were part of inspiring discussions. 
+
+
 # Release 0.7.1
 
 ## Bug Fixes and Other Changes
