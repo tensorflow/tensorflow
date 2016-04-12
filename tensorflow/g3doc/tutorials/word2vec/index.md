@@ -207,7 +207,7 @@ loss for this pair of observed and noisy examples, i.e. the objective at time
 step \\(t\\) becomes
 
 $$J^{(t)}_\text{NEG} = \log Q_\theta(D=1 | \text{the, quick}) +
-  \log(Q_\theta(D=0 | \text{sheep, quick}))$$.
+  \log(Q_\theta(D=0 | \text{sheep, quick}))$$
 
 The goal is to make an update to the embedding parameters \\(\theta\\) to improve
 (in this case, maximize) this objective function.  We do this by deriving the
