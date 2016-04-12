@@ -113,8 +113,8 @@ def generate_batch(batch_size, num_skips, skip_window):
 
 batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
 for i in range(8):
-    print(batch[i], reverse_dictionary[batch[i]],
-          '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
+  print(batch[i], reverse_dictionary[batch[i]],
+      '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
 
 # Step 4: Build and train a skip-gram model.
 
