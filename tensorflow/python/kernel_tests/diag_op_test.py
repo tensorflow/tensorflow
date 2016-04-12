@@ -58,7 +58,7 @@ class BatchMatrixDiagTest(tf.test.TestCase):
         tf.batch_matrix_diag(v).eval(feed_dict={v: 0.0})
 
   def testGrad(self):
-    shapes = ((3,), (18, 4), (1, 9, 4, 8,))
+    shapes = ((3,), (7, 4))
     with self.test_session(use_gpu=self._use_gpu):
       for shape in shapes:
         x = tf.constant(np.random.rand(*shape), np.float32)
@@ -115,7 +115,7 @@ class BatchMatrixDiagPartTest(tf.test.TestCase):
             feed_dict={v: [[0, 1], [1, 0], [0, 0]]})
 
   def testGrad(self):
-    shapes = ((3, 3), (18, 3, 3), (1, 9, 4, 3, 5, 5))
+    shapes = ((3, 3), (5, 3, 3))
     with self.test_session(use_gpu=self._use_gpu):
       for shape in shapes:
         x = tf.constant(np.random.rand(*shape), dtype=np.float32)
@@ -244,22 +244,14 @@ class DiagPartOpTest(tf.test.TestCase):
   def testOddRank(self):
     w = np.random.rand(2)
     x = np.random.rand(2, 2, 2)
-    y = np.random.rand(2, 2, 2, 2, 2)
-    z = np.random.rand(2, 2, 2, 2, 2, 2, 2)
     self.assertRaises(ValueError, self.diagPartOp, w, np.float32, 0)
     self.assertRaises(ValueError, self.diagPartOp, x, np.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, y, np.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, z, np.float32, 0)
 
   def testUnevenDimensions(self):
     w = np.random.rand(2, 5)
     x = np.random.rand(2, 1, 2, 3)
-    y = np.random.rand(2, 1, 2, 1, 2, 5)
-    z = np.random.rand(2, 2, 2, 2, 2, 2, 2, 2)
     self.assertRaises(ValueError, self.diagPartOp, w, np.float32, 0)
     self.assertRaises(ValueError, self.diagPartOp, x, np.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, y, np.float32, 0)
-    self.assertRaises(ValueError, self.diagPartOp, z, np.float32, 0)
 
 
 class DiagGradOpTest(tf.test.TestCase):
@@ -284,7 +276,7 @@ class DiagGradPartOpTest(tf.test.TestCase):
 
   def testDiagPartGrad(self):
     np.random.seed(0)
-    shapes = ((3,3), (3,3,3,3), (3,3,3,3,3,3))
+    shapes = ((3,3), (3,3,3,3))
     dtypes = (tf.float32, tf.float64)
     with self.test_session(use_gpu=False):
       errors = []
