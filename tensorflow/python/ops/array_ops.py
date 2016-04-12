@@ -561,7 +561,7 @@ def transpose(a, perm=None, name="transpose"):
   #           [[7  8  9]
   #            [10 11 12]]]
   # Take the transpose of the matrices in dimension-0
-  tf.transpose(b, perm=[0, 2, 1]) ==> [[[1  4]
+  tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
                                         [2  5]
                                         [3  6]]
 
