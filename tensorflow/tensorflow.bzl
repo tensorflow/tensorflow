@@ -62,6 +62,7 @@ def tf_android_core_proto_sources_relative():
         "protobuf/config.proto",
         "protobuf/saver.proto",
         "util/saved_tensor_slice.proto",
+        "util/test_log.proto",
   ]
 
 # Returns the list of pb.h headers that are generated for
