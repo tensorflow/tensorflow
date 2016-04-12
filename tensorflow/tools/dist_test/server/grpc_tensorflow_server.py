@@ -67,6 +67,9 @@ def parse_cluster_spec(cluster_spec, cluster):
 
   job_strings = cluster_spec.split(",")
 
+  if not cluster_spec:
+    raise ValueError("Empty cluster_spec string")
+
   for job_string in job_strings:
     job_def = cluster.job.add()
 
@@ -86,7 +89,7 @@ def parse_cluster_spec(cluster_spec, cluster):
     job_tasks = job_string.split("|")[1].split(";")
     for i in range(len(job_tasks)):
       if not job_tasks[i]:
-        raise ValueError("Empty job_task string at position %d" % i)
+        raise ValueError("Empty task string at position %d" % i)
 
       job_def.tasks[i] = job_tasks[i]
 
@@ -96,7 +99,7 @@ def parse_cluster_spec(cluster_spec, cluster):
 
 def main(unused_args):
   # Create Protobuf ServerDef
-  server_def = tf.ServerDef(protocol="grpc")
+  server_def = tf.train.ServerDef(protocol="grpc")
 
   # Cluster info
   parse_cluster_spec(FLAGS.cluster_spec, server_def.cluster)
@@ -111,8 +114,8 @@ def main(unused_args):
     raise ValueError("Invalid task_id: %d" % FLAGS.task_id)
   server_def.task_index = FLAGS.task_id
 
-  # Create GrpcServer instance
-  server = tf.GrpcServer(server_def)
+  # Create GRPC Server instance
+  server = tf.train.Server(server_def)
 
   # join() is blocking, unlike start()
   server.join()

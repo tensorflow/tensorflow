@@ -544,7 +544,6 @@ tf_cuda_library(
 
 # Android-specific BUILD targets
 load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources")
-load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources_relative")
 load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_headers")
 
 # List of protos we want on android
@@ -591,8 +590,6 @@ filegroup(
             "lib/png/*.cc",
             "util/events_writer.cc",
             "util/events_writer.h",
-            "util/reporter.cc",
-            "util/reporter.h",
             # Exclude all protobuf/google headers except protobuf_android.h
             "platform/google/cord_coding.h",
             "platform/google/dynamic_annotations.h",
@@ -604,8 +601,6 @@ filegroup(
             "platform/google/*.cc",
             "platform/google/test_benchmark.cc",
             "platform/google/test_benchmark.h",
-            "platform/test_benchmark.h",
-            "platform/default/test_benchmark.cc",
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/*.cc",
             "common_runtime/gpu_device_factory.cc",

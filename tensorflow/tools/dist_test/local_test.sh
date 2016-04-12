@@ -25,10 +25,24 @@
 #    and run the distributed test suite.
 #
 # Usage: local_test.sh [--leave-container-running]
+#                      [--num-workers <NUM_WORKERS>]
+#                      [--num-parameter-servers <NUM_PARAMETER_SERVERS>]
+#                      [--sync-replicas]
 #
 # Arguments:
 # --leave-container-running:  Do not stop the docker-in-docker container after
 #                             the termination of the tests, e.g., for debugging
+#
+# --num-workers <NUM_WORKERS>:
+#   Specifies the number of worker pods to start
+#
+# --num-parameter-server <NUM_PARAMETER_SERVERS>:
+#   Specifies the number of parameter servers to start
+#
+# --sync-replicas
+#   Use the synchronized-replica mode. The parameter updates from the replicas
+#   (workers) will be aggregated before applied, which avoids stale parameter
+#   updates.
 #
 # In addition, this script obeys the following environment variables:
 # TF_DIST_SERVER_DOCKER_IMAGE:  overrides the default docker image to launch
@@ -47,6 +61,34 @@ get_container_id_by_image_name() {
 
     echo $(docker ps | grep $1 | awk '{print $1}')
 }
+
+# Parse input arguments
+LEAVE_CONTAINER_RUNNING=0
+NUM_WORKERS=2
+NUM_PARAMETER_SERVERS=2
+SYNC_REPLICAS=0
+
+while true; do
+  if [[ $1 == "--leave-container-running" ]]; then
+    LEAVE_CONTAINER_RUNNING=1
+  elif [[ $1 == "--num-workers" ]]; then
+    NUM_WORKERS=$2
+  elif [[ $1 == "--num-parameter-servers" ]]; then
+    NUM_PARAMETER_SERVERS=$2
+  elif [[ $1 == "--sync-replicas" ]]; then
+    SYNC_REPLICAS=1
+  fi
+
+  shift
+  if [[ -z $1 ]]; then
+    break
+  fi
+done
+
+echo "LEAVE_CONTAINER_RUNNING: ${LEAVE_CONTAINER_RUNNING}"
+echo "NUM_WORKERS: ${NUM_WORKERS}"
+echo "NUM_PARAMETER_SERVERS: ${NUM_PARAMETER_SERVERS}"
+echo "SYNC_REPLICAS: ${SYNC_REPLICAS}"
 
 # Current script directory
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -126,12 +168,18 @@ echo "Launching k8s tf cluster and tests in container ${DIND_ID} ..."
 echo ""
 
 # Launch k8s tf cluster in the docker-in-docker container and perform tests
+SYNC_REPLICAS_FLAG=""
+if [[ ${SYNC_REPLICAS} == "1" ]]; then
+  SYNC_REPLICAS_FLAG="--sync-replicas"
+fi
+
 docker exec ${DIND_ID} \
-       /var/tf-k8s/local/test_local_tf_cluster.sh
+       /var/tf-k8s/local/test_local_tf_cluster.sh \
+       ${NUM_WORKERS} ${NUM_PARAMETER_SERVERS} ${SYNC_REPLICAS_FLAG}
 TEST_RES=$?
 
 # Tear down: stop docker-in-docker container
-if [[ $1 != "--leave-container-running" ]]; then
+if [[ ${LEAVE_CONTAINER_RUNNING} == "0" ]]; then
   echo ""
   echo "Stopping docker-in-docker container ${DIND_ID}"
 
@@ -140,7 +188,7 @@ if [[ $1 != "--leave-container-running" ]]; then
 
   echo ""
 else
-  echo "Will not terminate DIND container ${DIND_ID}"
+  echo "Will NOT terminate DIND container ${DIND_ID}"
 fi
 
 if [[ "${TEST_RES}" != "0" ]]; then
