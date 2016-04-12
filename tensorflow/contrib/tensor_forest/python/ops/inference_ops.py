@@ -25,6 +25,12 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string('inference_library_base_dir', '',
+                    'Directory to look for inference library file.')
+
 INFERENCE_OPS_FILE = '_inference_ops.so'
 
 _inference_ops = None
@@ -54,7 +60,8 @@ def Load():
   with _ops_lock:
     global _inference_ops
     if not _inference_ops:
-      data_files_path = tf.resource_loader.get_data_files_path()
+      data_files_path = os.path.join(FLAGS.inference_library_base_dir,
+                                     tf.resource_loader.get_data_files_path())
       tf.logging.info('data path: %s', data_files_path)
       _inference_ops = tf.load_op_library(os.path.join(
           data_files_path, INFERENCE_OPS_FILE))
