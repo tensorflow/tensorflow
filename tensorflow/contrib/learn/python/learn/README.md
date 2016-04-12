@@ -1,4 +1,4 @@
-|License| |Join the chat at https://gitter.im/tensorflow/skflow|
+|License| |Join the chat at [https://gitter.im/tensorflow/skflow](https://gitter.im/tensorflow/skflow)|
 
 TF Learn (aka Scikit Flow)
 ===========
