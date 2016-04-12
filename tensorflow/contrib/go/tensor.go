@@ -13,8 +13,6 @@ import (
 	pb "github.com/tensorflow/tensorflow/tensorflow/contrib/go/proto"
 )
 
-// #include <stdlib.h>
-// #include <string.h>
 import "C"
 
 const (
@@ -137,11 +135,6 @@ func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
 
 // NewTensor Initializes a tensor based on the slice passed by parameter, the
 // data type and shape is deducted from the data parameter.
-// Example:
-//  NewTensor([][]int64{
-//    {1, 2, 3, 4},
-//    {5, 6, 7, 8},
-//  })
 func NewTensor(data interface{}) (tensor *Tensor, err error) {
 	var dataPtr uintptr
 	var dataSer []interface{}
@@ -735,13 +728,9 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 	}
 	dims = (*int64)(unsafe.Pointer(&llDims[0]))
 
-	dataLen := C.size_t(size)
-	cData := C.malloc(dataLen)
-	C.memcpy(cData, data, dataLen)
-
 	t := &Tensor{
 		memReleased: false,
-		tensor:      TF_NewTensor_wrapper(TF_DataType(dataType), dims, len(shape), uintptr(cData), size),
+		tensor:      TF_NewTensor_wrapper(TF_DataType(dataType), dims, len(shape), uintptr(data), size),
 	}
 
 	// Release the C allocated memory when the instance is destroyed

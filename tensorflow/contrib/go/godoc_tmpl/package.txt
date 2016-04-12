@@ -56,13 +56,13 @@ import "{{.ImportPath}}"
 ---------------------------------------
 
 */}}{{with .Types}}{{if not $filtered}}## Types
-{{end}}{{range .}}{{$tname := .Name}}
-### {{.Name}}
+{{end}}{{range .}}{{$tname := .Name}}# {{.Name}}
+
 ```Go
 {{node $ .Decl}}
 ```
-{{comment_text .Doc "" ""}}
-{{/*
+
+{{comment_text .Doc "" ""}}{{/*
 
 ---------------------------------------
 
@@ -78,34 +78,37 @@ import "{{.ImportPath}}"
 
 ---------------------------------------
 
-*/}}{{if .Funcs}}{{range .Funcs}}
+*/}}{{if .Funcs}}
+## {{.Name}} Constructors
+{{range .Funcs}}
 ### {{.Name}}
-{{comment_text .Doc "" ""}}
+
 ```go
 {{node $ .Decl}}
 ```
-{{if example_text $ .Name ""}}
+
+{{comment_text .Doc "" ""}}{{if example_text $ .Name ""}}
 ```Go
 {{example_text $ .Name ""}}
 ```
-{{end}}
-{{end}}{{end}}{{/*
+{{end}}{{end}}{{end}}{{/*
 
 ---------------------------------------
 
-*/}}{{if .Methods}}{{range .Methods}}
+*/}}{{if .Methods}}
+## {{.Name}} Methods
+{{range .Methods}}
 #### {{.Name}}
+
 ```go
 {{node $ .Decl}}
 ```
-{{comment_text .Doc "" "\t"}}
-{{$name := printf "%s_%s" $tname .Name}}
-{{if example_text $ $name ""}}
+
+{{comment_text .Doc "" "  "}}{{$name := printf "%s_%s" $tname .Name}}{{if example_text $ $name ""}}
 ```Go
 {{example_text $ $name ""}}
 ```
-{{end}}
-{{end}}{{end}}{{/*
+{{end}}{{end}}{{end}}{{/*
 
 ---------------------------------------
 
@@ -126,7 +129,7 @@ import "{{.ImportPath}}"
 {{range $marker, $content := .}}
 {{$marker}}S
 
-{{range $content}}{{comment_text .Body "   " "\t"}}
+{{range $content}}{{comment_text .Body "" "  "}}
 {{end}}{{end}}{{end}}{{end}}{{/*
 
 ---------------------------------------

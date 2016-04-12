@@ -4,11 +4,21 @@ This package provides a high-level Go API for TensorFlow, this package
 provides the nexessary tools to create and manipulate Tensors, Variables,
 Constants and build, load and run Graphs.
 
-TODO: Add link to GoDoc
+#### Session
+
+* [Session](g3doc/session.md)
+
+#### Graph
+
+* [Graph](g3doc/graph.md)
+
+#### Tensor
+
+* [Tensor](g3doc/tensor.md)
 
 ## Practical Examples
 
-### Python Graph generated and executed on Go
+##### Python Graph generated and executed on Go
 
 This is just an example that shows how to interact with the provided API
 
@@ -136,9 +146,9 @@ result.
 This is a really complete code example that shows how to generate Graphs from
 Go and execute them:
 
-(Image Recognition)[https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/g3doc/tutorials/image_recognition/index.md#usage-with-the-go-api]
+[Image Recognition](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/g3doc/tutorials/image_recognition/index.md#usage-with-the-go-api)
 
-(Code)[https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/examples/label_image_go/main.go]
+[Code](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/examples/label_image_go/main.go)
 
 ## Troubleshooting
 
