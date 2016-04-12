@@ -19,16 +19,71 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import os
+import threading
 
+from tensorflow.contrib.rnn.ops import gen_lstm_ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
+from tensorflow.python.platform import resource_loader
+
+
+LSTM_OPS_FILE = "_lstm_ops.so"
+
+_lstm_ops = None
+_ops_lock = threading.Lock()
+
+
+@ops.RegisterShape("LSTMCellBlock")
+def _LSTMCellBlockShape(op):
+  batch_size = op.inputs[0].get_shape().with_rank(2)[0].value
+  cell_size = op.get_attr("cell_size")
+
+  return (tensor_shape.TensorShape([batch_size, cell_size]),
+          tensor_shape.TensorShape([batch_size, cell_size]),
+          tensor_shape.TensorShape([batch_size, cell_size]),
+          tensor_shape.TensorShape([batch_size, cell_size]),
+          tensor_shape.TensorShape([batch_size, cell_size]),
+          tensor_shape.TensorShape([batch_size, cell_size]),
+          tensor_shape.TensorShape([batch_size, cell_size * 2]),
+          tensor_shape.TensorShape([batch_size, cell_size]))
+
+
+@ops.RegisterGradient("LSTMCellBlock")
+def _LSTMCellBlockGrad(op, *grad):
+  (x, states_prev, w, b) = op.inputs
+  (i, cs, f, o, ci, co, _, h) = op.outputs
+  (_, _, _, _, _, _, states_grad, h_grad) = grad
+
+  (x_grad, states_prev_grad, dicfo, xh) = gen_lstm_ops._lstm_cell_block_grad(
+      x, states_prev, w, b, i, cs, f, o, ci, co, h, states_grad, h_grad,
+      cell_size=op.get_attr("cell_size"))
+  w_grad = math_ops.matmul(xh, dicfo, transpose_a=True)
+  b_grad = nn_ops.bias_add_grad(dicfo)
+
+  return (x_grad, states_prev_grad, w_grad, b_grad)
+
+
+@ops.RegisterShape("LSTMCellBlockGrad")
+def _LSTMCellBlockGradShape(op):
+  batch_size = op.inputs[0].get_shape().with_rank(2)[0].value
+  input_size = op.inputs[0].get_shape().with_rank(2)[1].value
+  cell_size = op.get_attr("cell_size")
+
+  return [tensor_shape.TensorShape([batch_size, input_size]),
+          tensor_shape.TensorShape([batch_size, cell_size * 2]),
+          tensor_shape.TensorShape([batch_size, cell_size * 4]),
+          tensor_shape.TensorShape([batch_size, input_size + cell_size])]
 
 
 def _get_concat_variable(name, shape, dtype, num_shards):
@@ -478,3 +533,71 @@ class GridLSTMCell(rnn_cell.RNNCell):
                                   [-1, self._feature_size])
       freq_inputs.append(cur_input)
     return freq_inputs
+
+
+class LSTMCellBlock(rnn_cell.RNNCell):
+  """Basic LSTM recurrent network cell.
+
+  The implementation is based on: http://arxiv.org/abs/1409.2329.
+
+  We add forget_bias (default: 1) to the biases of the forget gate in order to
+  reduce the scale of forgetting in the beginning of the training.
+
+  It does not allow cell clipping, a projection layer, and does not
+  use peep-hole connections: it is the basic baseline.
+
+  Unlike BasicLSTMCell, this is a monolithic op and should be much faster. The
+  weight and bias matrixes should be compatible as long as the variabel scope
+  matches.
+  """
+
+  def __init__(self, num_units, forget_bias=1.0, input_size=None):
+    """Initialize the basic LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the LSTM cell.
+      forget_bias: float, The bias added to forget gates (see above).
+    """
+    if input_size is not None:
+      logging.warn("%s: The input_size parameter is deprecated." % self)
+    self._num_units = num_units
+    self._forget_bias = forget_bias
+
+  @property
+  def state_size(self):
+    return self._num_units * 2
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  def __call__(self, x, states_prev, scope=None):
+    """Long short-term memory cell (LSTM)."""
+    with vs.variable_scope(scope or type(self).__name__):
+      x_shape = x.get_shape().with_rank(2)
+      if not x_shape[1]:
+        raise ValueError("Expecting x_shape[1] to be sets: %s" % str(x_shape))
+      input_size = x_shape[1]
+      w = vs.get_variable("W", [input_size + self._num_units,
+                                self._num_units * 4])
+      b = vs.get_variable("b", [w.get_shape().with_rank(2)[1]],
+                          initializer=init_ops.constant_initializer(0.0))
+      (_, _, _, _, _, _, states, h) = gen_lstm_ops.lstm_cell_block(
+          x, states_prev, w, b, cell_size=self._num_units,
+          forget_bias=self._forget_bias)
+
+      return h, states
+
+
+def Load(library_base_dir=''):
+  """Load the inference ops library and return the loaded module."""
+  with _ops_lock:
+    global _lstm_ops
+    if not _lstm_ops:
+      data_files_path = os.path.join(library_base_dir,
+                                     resource_loader.get_data_files_path())
+      _lstm_ops = load_op_library(os.path.join(
+          data_files_path, LSTM_OPS_FILE))
+
+      assert _lstm_ops, 'Could not load %s' % LSTM_OPS_FILE
+  return _lstm_ops

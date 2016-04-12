@@ -494,7 +494,7 @@ def tf_custom_op_library_additional_deps():
 
 # Helper to build a dynamic library (.so) from the sources containing
 # implementations of custom ops and kernels.
-def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
+def tf_custom_op_library(name, srcs=[], gpu_srcs=[], hdrs=[], deps=[]):
   cuda_deps = [
       "//tensorflow/core:stream_executor_headers_lib",
       "//third_party/gpus/cuda:cudart_static",
@@ -509,6 +509,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
     native.cc_library(
         name = basename + "_gpu",
         srcs = gpu_srcs,
+        hdrs = hdrs,
         copts = if_cuda(cuda_copts),
         deps = deps + if_cuda(cuda_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
@@ -516,6 +517,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
   native.cc_binary(name=name,
                    srcs=srcs,
                    deps=deps + if_cuda(cuda_deps),
+                   copts = if_cuda(["-DGOOGLE_CUDA=1"]) + tf_copts(),
                    linkshared=1,
                    linkopts = select({
                        "//conditions:default": [

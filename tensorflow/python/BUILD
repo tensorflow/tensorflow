@@ -1098,6 +1098,12 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_library(
+    name = "kernel_tests/rnn_test_lib",
+    srcs = ["kernel_tests/rnn_test.py"],
+    srcs_version = "PY2AND3",
+)
+
 medium_kernel_test_list = glob([
     "kernel_tests/concat_op_test.py",
     "kernel_tests/division_future_test.py",

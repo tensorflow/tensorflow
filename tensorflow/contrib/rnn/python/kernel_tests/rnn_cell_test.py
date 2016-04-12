@@ -23,6 +23,9 @@ import numpy as np
 import tensorflow as tf
 
 
+tf.contrib.rnn.Load()
+
+
 class RNNCellTest(tf.test.TestCase):
 
   def testTimeFreqLSTMCell(self):
@@ -90,6 +93,78 @@ class RNNCellTest(tf.test.TestCase):
               float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) > 1e-6)
           self.assertTrue(
               float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) > 1e-6)
+
+  def _testLSTMCellBlock(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([1, 2])
+        m = tf.zeros([1, 8])
+        g, out_m = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.contrib.rnn.LSTMCellBlock(2)] * 2)(x, m)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run([g, out_m], {x.name: np.array([[1., 1.]]),
+                                    m.name: 0.1 * np.ones([1, 8])})
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], [[0.24024698, 0.24024698]])
+        # These numbers are from testBasicLSTMCell and only test c/h.
+        expected_mem = np.array([[0.68967271, 0.68967271,
+                                  0.44848421, 0.44848421,
+                                  0.39897051, 0.39897051,
+                                  0.24024698, 0.24024698]])
+        self.assertAllClose(res[1].flatten(), expected_mem.flatten())
+
+  def testLSTMCellBlock(self):
+    self._testLSTMCellBlock(use_gpu=False)
+    self._testLSTMCellBlock(use_gpu=True)
+
+  def testLSTMBasicToBlockCell(self):
+    with self.test_session() as sess:
+      x = tf.zeros([1, 2])
+      x_values = np.random.randn(1, 2)
+
+      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890212)
+      with tf.variable_scope("basic", initializer=initializer):
+        m = tf.zeros([1, 8])
+        g, out_m = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.nn.rnn_cell.BasicLSTMCell(2)] * 2)(x, m)
+        sess.run([tf.initialize_all_variables()])
+        basic_res = sess.run([g, out_m], {x.name: x_values,
+                                          m.name: 0.1 * np.ones([1, 8])})
+
+      with tf.variable_scope("block", initializer=initializer):
+        m = tf.zeros([1, 8])
+        g, out_m = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.contrib.rnn.LSTMCellBlock(2)] * 2)(x, m)
+        sess.run([tf.initialize_all_variables()])
+        block_res = sess.run([g, out_m], {x.name: x_values,
+                                          m.name: 0.1 * np.ones([1, 8])})
+
+      self.assertAllClose(basic_res[0], block_res[0])
+      self.assertAllClose(basic_res[1].flatten(), block_res[1].flatten())
+
+  def testLSTMBasicToBlock(self):
+    with self.test_session() as sess:
+      x = tf.zeros([1, 2])
+      x_values = np.random.randn(1, 2)
+
+      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890212)
+      with tf.variable_scope("basic", initializer=initializer):
+        m = tf.zeros([1, 8])
+        g, out_m = tf.nn.rnn_cell.BasicLSTMCell(4)(x, m)
+        sess.run([tf.initialize_all_variables()])
+        basic_res = sess.run([g, out_m], {x.name: x_values,
+                                          m.name: 0.1 * np.ones([1, 8])})
+
+      with tf.variable_scope("block", initializer=initializer):
+        m = tf.zeros([1, 8])
+        g, out_m = tf.contrib.rnn.lstm_block([x], 4, initial_state=m)
+        sess.run([tf.initialize_all_variables()])
+        block_res = sess.run(g + out_m, {x.name: x_values,
+                                          m.name: 0.1 * np.ones([1, 8])})
+
+      self.assertAllClose(basic_res[0], block_res[0])
+      self.assertAllClose(basic_res[1].flatten(), block_res[1].flatten())
+
 
 if __name__ == "__main__":
   tf.test.main()
