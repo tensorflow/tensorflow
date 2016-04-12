@@ -78,7 +78,7 @@ model).
 
 Word2vec is a particularly computationally-efficient predictive model for
 learning word embeddings from raw text. It comes in two flavors, the Continuous
-Bag-of-Words model (CBOW) and the Skip-Gram model. Algorithmically, these
+Bag-of-Words model (CBOW) and the Skip-Gram model (Chapter 3.1 and 3.2 in [Mikolov et al.](http://arxiv.org/pdf/1301.3781.pdf)). Algorithmically, these
 models are similar, except that CBOW predicts target words (e.g. 'mat') from
 source context words ('the cat sits on the'), while the skip-gram does the
 inverse and predicts source context-words from the target words. This inversion
