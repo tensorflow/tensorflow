@@ -241,7 +241,7 @@ class AssertNegativeTest(tf.test.TestCase):
       out.eval()
 
 
-class AssertPostiveTest(tf.test.TestCase):
+class AssertPositiveTest(tf.test.TestCase):
 
   def test_raises_when_negative(self):
     with self.test_session():

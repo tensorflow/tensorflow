@@ -404,7 +404,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
         # Save graph definition.
         _write_with_backup(os.path.join(path, 'graph.pbtxt'), str(self._graph.as_graph_def()))
 
-        # Save saver defintion.
+        # Save saver definition.
         _write_with_backup(os.path.join(path, 'saver.pbtxt'), str(self._saver.as_saver_def()))
 
         # Save checkpoints.
@@ -441,7 +441,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
                      graph_def, name='', return_elements=endpoints)
             saver_filename = os.path.join(path, 'saver.pbtxt')
             if not os.path.exists(saver_filename):
-                raise ValueError("Restore folder doesn't contain saver defintion.")
+                raise ValueError("Restore folder doesn't contain saver definition.")
             with gfile.Open(saver_filename) as fsaver:
                 saver_def = train.SaverDef()
                 text_format.Merge(fsaver.read(), saver_def)
