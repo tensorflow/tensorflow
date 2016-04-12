@@ -26,6 +26,9 @@ import numpy as np
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.datasets import mnist
 
+# Export load_iris and load_boston.
+load_iris = base.load_iris
+load_boston = base.load_boston
 
 # List of all available datasets.
 # Note, currently they may return different types.
