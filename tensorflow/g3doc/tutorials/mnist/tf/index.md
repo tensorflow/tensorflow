@@ -211,7 +211,7 @@ Next, we instantiate a [`tf.train.GradientDescentOptimizer`](../../../api_docs/p
 responsible for applying gradients with the requested learning rate.
 
 ```python
-optimizer = tf.train.GradientDescentOptimizer(FLAGS.learning_rate)
+optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 ```
 
 We then generate a single variable to contain a counter for the global
