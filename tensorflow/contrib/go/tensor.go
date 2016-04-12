@@ -18,17 +18,17 @@ import (
 import "C"
 
 const (
-	cBellByte = 7
 	cAckByte  = 6
+	cBellByte = 7
 	cDc1      = 17
 
+	cBytesComplex64 = 8
 	cBytesFloat32   = 4
 	cBytesFloat64   = 8
-	cBytesUint16    = 2
 	cBytesInt16     = 2
 	cBytesInt32     = 4
 	cBytesInt64     = 8
-	cBytesComplex64 = 8
+	cBytesUint16    = 2
 )
 
 // DataType Type of the data contained by a Tensor
@@ -76,18 +76,18 @@ var (
 	DtBool = DataType(TF_BOOL)
 	// DtComplex corresponds to TF_COMPLEX.
 	DtComplex = DataType(TF_COMPLEX)
-	// DtDouble corresponds to TF_DOUBLE.
-	DtDouble = DataType(TF_DOUBLE)
 	// DtFloat corresponds to TF_FLOAT.
 	DtFloat = DataType(TF_FLOAT)
+	// DtDouble corresponds to TF_DOUBLE.
+	DtDouble = DataType(TF_DOUBLE)
+	// DtInt8 corresponds to TF_INT8.
+	DtInt8 = DataType(TF_INT8)
 	// DtInt16 corresponds to TF_INT16.
 	DtInt16 = DataType(TF_INT16)
 	// DtInt32 corresponds to TF_INT32.
 	DtInt32 = DataType(TF_INT32)
 	// DtInt64 corresponds to TF_INT64.
 	DtInt64 = DataType(TF_INT64)
-	// DtInt8 corresponds to TF_INT8.
-	DtInt8 = DataType(TF_INT8)
 	// DtQint16 corresponds to TF_QINT16.
 	DtQint16 = DataType(TF_QINT16)
 	// DtQuint16 corresponds to TF_QUINT16.
@@ -100,23 +100,22 @@ var (
 	DtQuint8 = DataType(TF_QUINT8)
 	// DtString corresponds to TF_STRING.
 	DtString = DataType(TF_STRING)
-	// DtUint16 corresponds to TF_UINT16.
-	DtUint16 = DataType(TF_UINT16)
 	// DtUint8 corresponds to TF_UINT8.
 	DtUint8 = DataType(TF_UINT8)
+	// DtUint16 corresponds to TF_UINT16.
+	DtUint16 = DataType(TF_UINT16)
 )
 
 // NewTensorWithShape returns a new tensor with teh specified type, shape and data.
 // The supported  data types are:
-//  - int
-//  - int8
-//  - int16
-//  - int32
-//  - int64
-//  - uint8
-//  - uint16
-//  - float32
-//  - float64
+//  - DtInt8
+//  - DtInt16
+//  - DtInt32
+//  - DtInt64
+//  - DtUint8
+//  - DtUint16
+//  - DtFloat
+//  - DtDouble
 func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
 	v := reflect.ValueOf(data)
 	if v.Kind() != reflect.Slice {
@@ -283,7 +282,7 @@ func (t *Tensor) String() string {
 // AsStr returns the content of the tensor as slice of strings if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
-//  - DT_STRING
+//  - DtString
 func (t *Tensor) AsStr() (res [][]byte, err error) {
 	if DtString != t.DataType() {
 		err = &ErrInvalidTensorType{
@@ -326,7 +325,7 @@ func (t *Tensor) AsStr() (res [][]byte, err error) {
 // AsFloat32 returns the content of the tensor as a slice of float32 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
-//  - DT_FLOAT
+//  - DtFloat
 func (t *Tensor) AsFloat32() (res []float32, err error) {
 	if DtFloat != t.DataType() {
 		err = &ErrInvalidTensorType{
@@ -354,7 +353,7 @@ func (t *Tensor) AsFloat32() (res []float32, err error) {
 // AsFloat64 returns the content of the tensor as a slice of float64 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
-//  - DT_DOUBLE
+//  - DtDouble
 func (t *Tensor) AsFloat64() (res []float64, err error) {
 	if DtDouble != t.DataType() {
 		err = &ErrInvalidTensorType{
@@ -382,10 +381,10 @@ func (t *Tensor) AsFloat64() (res []float64, err error) {
 // AsInt32 returns the content of the tensor as a slice of int32 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
-//  - DT_INT32
-//  - DT_INT16
-//  - DT_INT8
-//  - DT_UINT8
+//  - DtUint8
+//  - DtInt8
+//  - DtInt16
+//  - DtInt32
 func (t *Tensor) AsInt32() (res []int32, err error) {
 	if t.IntVal != nil {
 		return t.IntVal, nil
@@ -425,7 +424,7 @@ func (t *Tensor) AsInt32() (res []int32, err error) {
 // AsInt64 returns the content of the tensor as a slice of int64 if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
-//  - DT_INT64
+//  - DtInt64
 func (t *Tensor) AsInt64() (res []int64, err error) {
 	if DtInt64 != t.DataType() {
 		err = &ErrInvalidTensorType{
@@ -453,7 +452,7 @@ func (t *Tensor) AsInt64() (res []int64, err error) {
 // AsBool returns the content of the tensor as a slice of bool if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
-//  - DT_BOOL
+//  - DtBool
 func (t *Tensor) AsBool() (res []bool, err error) {
 	if DtBool != t.DataType() {
 		err = &ErrInvalidTensorType{
