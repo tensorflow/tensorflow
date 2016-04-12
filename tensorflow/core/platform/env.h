@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_ENV_H_
 
 #include <stdint.h>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -45,7 +46,7 @@ struct ThreadOptions;
 class Env {
  public:
   Env();
-  virtual ~Env();
+  virtual ~Env() = default;
 
   /// \brief Returns a default environment suitable for the current operating
   /// system.
@@ -59,6 +60,8 @@ class Env {
   /// \brief Returns the FileSystem object to handle operations on the file
   /// specified by 'fname'. The FileSystem object is used as the implementation
   /// for the file system related (non-virtual) functions that follow.
+  /// Returned FileSystem object is still owned by the Env object and will
+  // (might) be destroyed when the environment is destroyed.
   virtual Status GetFileSystemForFile(const string& fname, FileSystem** result);
 
   /// \brief Returns the file system schemes registered for this Env.
@@ -77,6 +80,10 @@ class Env {
   /// status.
   ///
   /// The returned file may be concurrently accessed by multiple threads.
+  ///
+  /// The ownership of the returned RandomAccessFile is passed to the caller
+  /// and the object should be deleted when is not used. The file object
+  /// shouldn't live longer than the Env object.
   Status NewRandomAccessFile(const string& fname, RandomAccessFile** result);
 
   /// \brief Creates an object that writes to a new file with the specified
@@ -88,6 +95,10 @@ class Env {
   /// returns non-OK.
   ///
   /// The returned file will only be accessed by one thread at a time.
+  ///
+  /// The ownership of the returned WritableFile is passed to the caller
+  /// and the object should be deleted when is not used. The file object
+  /// shouldn't live longer than the Env object.
   Status NewWritableFile(const string& fname, WritableFile** result);
 
   /// \brief Creates an object that either appends to an existing file, or
@@ -98,6 +109,10 @@ class Env {
   /// non-OK.
   ///
   /// The returned file will only be accessed by one thread at a time.
+  ///
+  /// The ownership of the returned WritableFile is passed to the caller
+  /// and the object should be deleted when is not used. The file object
+  /// shouldn't live longer than the Env object.
   Status NewAppendableFile(const string& fname, WritableFile** result);
 
   /// \brief Creates a readonly region of memory with the file context.
@@ -107,6 +122,10 @@ class Env {
   /// the caller. On failure stores nullptr in *result and returns non-OK.
   ///
   /// The returned memory region can be accessed from many threads in parallel.
+  ///
+  /// The ownership of the returned ReadOnlyMemoryRegion is passed to the caller
+  /// and the object should be deleted when is not used. The memory region
+  /// object shouldn't live longer than the Env object.
   Status NewReadOnlyMemoryRegionFromFile(const string& fname,
                                          ReadOnlyMemoryRegion** result);
 
@@ -192,7 +211,7 @@ class Env {
   Env(const Env&);
   void operator=(const Env&);
 
-  FileSystemRegistry* file_system_registry_;
+  std::unique_ptr<FileSystemRegistry> file_system_registry_;
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.

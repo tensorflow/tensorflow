@@ -62,7 +62,7 @@ def _GetGradSource(op_or_tensor):
     raise ValueError(
         "Expected op/tensor name to start with gradients (excluding scope)"
         ", got: %s" % op_or_tensor.name)
-  return "/".join(name_tokens[:grad_pos[0] + 1])
+  return "/".join(name_tokens[:grad_pos[-1] + 1])
 
 
 @ops.RegisterGradient("TensorArrayRead")

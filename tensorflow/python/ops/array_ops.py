@@ -561,7 +561,7 @@ def transpose(a, perm=None, name="transpose"):
   #           [[7  8  9]
   #            [10 11 12]]]
   # Take the transpose of the matrices in dimension-0
-  tf.transpose(b, perm=[0, 2, 1]) ==> [[[1  4]
+  tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
                                         [2  5]
                                         [3  6]]
 
@@ -916,6 +916,22 @@ def _UniqueWithCountsShape(op):
   input_shape = op.inputs[0].get_shape()
   input_shape.assert_has_rank(1)
   return [tensor_shape.vector(None), input_shape, tensor_shape.vector(None)]
+
+
+@ops.RegisterShape("BatchMatrixDiag")
+def _BatchMatrixDiagShape(op):
+  """Shape function for array_ops.batch_matrix_diag."""
+  diag_shape = op.inputs[0].get_shape().with_rank_at_least(1)
+  return [diag_shape.concatenate(diag_shape[-1])]
+
+
+@ops.RegisterShape("BatchMatrixDiagPart")
+def _BatchMatrixDiagPartShape(op):
+  """Shape function for array_ops.batch_matrix_diag_part."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  # Last two dims must match
+  input_shape[-1].assert_is_compatible_with(input_shape[-2])
+  return [input_shape[:-1]]
 
 
 @ops.RegisterShape("Diag")

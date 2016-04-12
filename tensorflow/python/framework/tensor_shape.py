@@ -36,6 +36,10 @@ class Dimension(object):
   def __repr__(self):
     return "Dimension(%s)" % repr(self._value)
 
+  def __str__(self):
+    value = self._value
+    return "?" if value is None else str(value)
+
   def __eq__(self, other):
     """Returns true if `other` has the same known value as this Dimension."""
     other = as_dimension(other)
@@ -429,17 +433,15 @@ class TensorShape(object):
         self._dims = [as_dimension(d) for d in dims_iter]
 
   def __repr__(self):
-    return "TensorShape(%s)" % self._dims
+    return "TensorShape(%r)" % self._dims
 
   def __str__(self):
     if self.ndims is None:
       return "<unknown>"
     elif self.ndims == 1:
-      length = self._dims[0].value
-      return "(%s,)" % (str(length) if length is not None else "?")
+      return "(%s,)" % self._dims[0]
     else:
-      return "(%s)" % ", ".join(str(d.value) if d.value is not None else "?"
-                                for d in self._dims)
+      return "(%s)" % ", ".join(str(d) for d in self._dims)
 
   @property
   def dims(self):
@@ -541,11 +543,15 @@ class TensorShape(object):
     if self._dims is None:
       return other
     else:
-      self.assert_same_rank(other)
-      new_dims = []
-      for i, dim in enumerate(self._dims):
-        new_dims.append(dim.merge_with(other[i]))
-      return TensorShape(new_dims)
+      try:
+        self.assert_same_rank(other)
+        new_dims = []
+        for i, dim in enumerate(self._dims):
+          new_dims.append(dim.merge_with(other[i]))
+        return TensorShape(new_dims)
+      except ValueError:
+        raise ValueError("Shapes %s and %s are not compatible" %
+                         (self, other))
 
   def concatenate(self, other):
     """Returns the concatenation of the dimension in `self` and `other`.

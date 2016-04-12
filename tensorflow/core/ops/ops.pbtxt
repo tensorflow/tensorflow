@@ -1391,6 +1391,44 @@ op {
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a 1-D tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
+  name: "BatchMatrixDiag"
+  input_arg {
+    name: "diagonal"
+    description: "Rank `k`, where `k >= 1`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Returns a batched diagonal tensor with a given batched diagonal values."
+  description: "Given a `diagonal`, this operation returns a tensor with the `diagonal` and\neverything else padded with zeros. The diagonal is computed as follows:\n\nAssume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a\ntensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:\n\n`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.\n\nFor example:\n\n```prettyprint\n# \'diagonal\' is [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nand diagonal.shape = (2, 4)\n\ntf.batch_matrix_diag(diagonal) ==> [[[1, 0, 0, 0]\n                                     [0, 2, 0, 0]\n                                     [0, 0, 3, 0]\n                                     [0, 0, 0, 4]],\n                                    [[5, 0, 0, 0]\n                                     [0, 6, 0, 0]\n                                     [0, 0, 7, 0]\n                                     [0, 0, 0, 8]]]\n\nwhich has shape (2, 4, 4)\n```"
+}
+op {
+  name: "BatchMatrixDiagPart"
+  input_arg {
+    name: "input"
+    description: "Rank `k` tensor where `k >= 2` and the last two dimensions are equal."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "diagonal"
+    description: "The extracted diagonal(s) having shape\n`diagonal.shape = input.shape[:-1]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Returns the batched diagonal part of a batched tensor."
+  description: "This operation returns a tensor with the `diagonal` part\nof the batched `input`. The `diagonal` part is computed as follows:\n\nAssume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a\ntensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:\n\n`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.\n\nThe input must be at least a matrix.\n\nFor example:\n\n```prettyprint\n# \'input\' is [[[1, 0, 0, 0]\n               [0, 2, 0, 0]\n               [0, 0, 3, 0]\n               [0, 0, 0, 4]],\n              [[5, 0, 0, 0]\n               [0, 6, 0, 0]\n               [0, 0, 7, 0]\n               [0, 0, 0, 8]]]\n\nand input.shape = (2, 4, 4)\n\ntf.batch_matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nwhich has shape (2, 4)\n```"
+}
+op {
   name: "BatchMatrixInverse"
   input_arg {
     name: "input"
@@ -1433,6 +1471,14 @@ op {
     type_attr: "T"
   }
   attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
+  }
+  attr {
     name: "T"
     type: "type"
     allowed_values {
@@ -1443,7 +1489,7 @@ op {
     }
   }
   summary: "Solves systems of linear equations. Checks for invertibility."
-  description: "Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape\n`[..., M, K]`. The output is a tensor shape `[..., M, K]` where each output\nmatrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]."
+  description: "Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape\n`[..., M, K]`. The output is a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output\nmatrix satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `True` then each output\nmatrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`."
 }
 op {
   name: "BatchMatrixSolveLs"
@@ -1509,7 +1555,15 @@ op {
     default_value {
       b: true
     }
-    description: "Boolean indicating whether matrix is lower or upper triangular."
+    description: "Boolean indicating whether the innermost matrices in `matrix` are\nlower or upper triangular."
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
   }
   attr {
     name: "T"
@@ -1522,7 +1576,7 @@ op {
     }
   }
   summary: "Solves systems of linear equations with upper or lower triangular matrices by"
-  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is ignored. If `lower` is False then the strictly\nlower triangular part of each inner-most matrix is ignored. `rhs` is a tensor\nof shape [..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `lower` is `True` then the\noutput satisfies\n\\\\(\\sum_{k=0}^{i}\\\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].\nIf `lower` is false then the strictly then the output satisfies\n\\\\(sum_{k=i}^{K-1}\\\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j]."
+  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of each inner-most\nmatrix is assumed to be zero and not accessed.\n`rhs` is a tensor of shape [..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `adjoint` is `True` then the\ninnermost matrices in output` satisfy matrix equations\n`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `False` then the strictly then the  innermost matrices in\n`output` satisfy matrix equations\n`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`."
 }
 op {
   name: "BatchNormWithGlobalNormalization"
@@ -2836,6 +2890,15 @@ op {
   summary: "Reinterpret the bytes of a string as a vector of numbers."
 }
 op {
+  name: "DeleteSessionTensor"
+  input_arg {
+    name: "handle"
+    description: "The handle for a tensor stored in the session state."
+    type: DT_STRING
+  }
+  summary: "Delete the tensor specified by its handle in the session."
+}
+op {
   name: "DepthToSpace"
   input_arg {
     name: "input"
@@ -4101,6 +4164,43 @@ op {
   description: "`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.\nThe innermost dimension of `indices` (with length `R`) corresponds to the\nindices of `params`.\n\nProduces an output tensor with shape `[d_0, ..., d_{n-1}]` where:\n\n    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]\n\ne.g. for `indices` a matrix:\n\n    output[i] = params[indices[i, :]]"
 }
 op {
+  name: "GetSessionHandle"
+  input_arg {
+    name: "value"
+    description: "The tensor to be stored."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle for the tensor stored in the session state."
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Store the input tensor in the state of the current session."
+}
+op {
+  name: "GetSessionTensor"
+  input_arg {
+    name: "handle"
+    description: "The handle for a tensor stored in the session state."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "value"
+    description: "The tensor for the given handle."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the output value."
+  }
+  summary: "Get the value of the tensor specified by its handle."
+}
+op {
   name: "Greater"
   input_arg {
     name: "x"
@@ -4257,7 +4357,7 @@ op {
     }
   }
   summary: "Outputs a `Summary` protocol buffer with a histogram."
-  description: "The generated\n[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)\nhas one summary value containing a histogram for `values`.\n\nThis op reports an `OutOfRange` error if any value is not finite."
+  description: "The generated\n[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)\nhas one summary value containing a histogram for `values`.\n\nThis op reports an `InvalidArgument` error if any value is not finite."
 }
 op {
   name: "IFFT"
@@ -5403,8 +5503,16 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, K]` containing the tensor that solves\nmatrix * output = rhs."
+    description: "Shape is `[M, K]`. If `adjoint` is `False` then `output` that solves\n`matrix` * `output` = `rhs`. If `adjoint` is `True` then `output` that solves\n`adjoint(matrix)` * `output` = `rhs`."
     type_attr: "T"
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Boolean indicating whether to solve with `matrix` or its adjoint."
   }
   attr {
     name: "T"
@@ -5482,7 +5590,15 @@ op {
     default_value {
       b: true
     }
-    description: "Boolean indicating whether matrix is lower or upper triangular."
+    description: "Boolean indicating whether `matrix` is lower or upper triangular"
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Boolean indicating whether to solve with `matrix` or its adjoint."
   }
   attr {
     name: "T"
@@ -5495,7 +5611,7 @@ op {
     }
   }
   summary: "Solves a system of linear equations with an upper or lower triangular matrix by"
-  description: "backsubstitution.\n\n`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly\nupper triangular part of `matrix` is ignored. If `lower` is False then the\nstrictly lower triangular part of `matrix` is ignored. `rhs` is a matrix of\nshape [M, K]`.\n\nThe output is a matrix of shape `[M, K]`. If `lower` is `True` then the output\nsatisfies \\\\(\\sum_{k=0}^{i}\\\\) matrix[i, k] * output[k, j] = rhs[i, j].\nIf `lower` is false then output satisfies\n\\\\(\\sum_{k=i}^{K-1}\\\\) matrix[i, k] * output[k, j] = rhs[i, j]."
+  description: "backsubstitution.\n\n`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly\nupper triangular part of `matrix` is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of `matrix` is\nassumed to be zero and not accessed.\n`rhs` is a matrix of shape [M, K]`.\n\nThe output is a matrix of shape `[M, K]`. If `adjoint` is `False` the output\nsatisfies the matrix equation `matrix` * `output` = `rhs`.\nIf `adjoint` is `False` then `output` satisfies the matrix equation\n`matrix` * `output` = `rhs`.\nIf `adjoint` is `True` then `output` satisfies the matrix equation\n`adjoint(matrix)` * `output` = `rhs`."
 }
 op {
   name: "Max"
@@ -7567,6 +7683,42 @@ op {
   }
   summary: "Returns the real part of a complex number."
   description: "Given a tensor `in` of complex numbers, this operation returns a tensor of type\n`float` that is the real part of each element in `in`. All elements in `in`\nmust be complex numbers of the form \\\\(a + bj\\\\), where *a* is the real part\nreturned by this operation and *b* is the imaginary part.\n\nFor example:\n\n```\n# tensor \'in\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.real(in) ==> [-2.25, 3.25]\n```"
+}
+op {
+  name: "ReduceJoin"
+  input_arg {
+    name: "inputs"
+    description: "The input to be joined.  All reduced indices must have non-zero size."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "reduction_indices"
+    description: "The dimensions to reduce over.  Dimensions are reduced in the\norder specified.  If `reduction_indices` has higher rank than `1`, it is\nflattened.  Omitting `reduction_indices` is equivalent to passing\n`[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "Has shape equal to that of the input with reduced dimensions removed or\nset to `1` depending on `keep_dims`."
+    type: DT_STRING
+  }
+  attr {
+    name: "keep_dims"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, retain reduced dimensions with length `1`."
+  }
+  attr {
+    name: "separator"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The separator to use when joining."
+  }
+  summary: "Joins a string Tensor across the given dimensions."
+  description: "Computes the string join across dimensions in the given string Tensor of shape\n`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input\nstrings with the given separator (default: empty string).  Negative indices are\ncounted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing\nan empty `reduction_indices` joins all strings in linear index order and outputs\na scalar string.\n\n\nFor example:\n```\n# tensor `a` is [[\"a\", \"b\"], [\"c\", \"d\"]]\ntf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, 0, keep_dims=True) ==> [[\"ac\", \"bd\"]]\ntf.reduce_join(a, 1, keep_dims=True) ==> [[\"ab\"], [\"cd\"]]\ntf.reduce_join(a, 0, separator=\".\") ==> [\"a.c\", \"b.d\"]\ntf.reduce_join(a, [0, 1]) ==> [\"acbd\"]\ntf.reduce_join(a, [1, 0]) ==> [\"abcd\"]\ntf.reduce_join(a, []) ==> [\"abcd\"]\n```"
 }
 op {
   name: "RefEnter"
@@ -11108,6 +11260,14 @@ op {
     description: "A boolean that determines whether writes to the TensorArray\nare allowed to grow the size.  By default, this is not allowed."
   }
   attr {
+    name: "clear_after_read"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
+  }
+  attr {
     name: "tensor_array_name"
     type: "string"
     default_value {
@@ -11150,7 +11310,7 @@ op {
   }
   output_arg {
     name: "lengths"
-    description: "A vector of the row sizes of the original T elements in the\nvalue output.  In the example above, this would be the values:\n(n1, n2, ..., n(T-1))"
+    description: "A vector of the row sizes of the original T elements in the\nvalue output.  In the example above, this would be the values:\n`(n1, n2, ..., n(T-1))`."
     type: DT_INT64
   }
   attr {
@@ -11158,8 +11318,8 @@ op {
     type: "type"
     description: "The type of the elem that is returned."
   }
-  summary: "Concat the elements from the TensorArray."
-  description: "Takes T elements of shapes (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...),\n  ..., (n(T-1) x d0 x d1 x ...)\nand concatenates them into a Tensor of shape:\n  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...).\n\nAll elements must have the same shape (excepting the first dimension)."
+  summary: "Concat the elements from the TensorArray into value `value`."
+  description: "Takes `T` elements of shapes\n\n  ```\n  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)\n  ```\n\nand concatenates them into a Tensor of shape:\n\n  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```\n\nAll elements must have the same shape (excepting the first dimension)."
 }
 op {
   name: "TensorArrayGrad"
@@ -11208,7 +11368,7 @@ op {
     type: "type"
     description: "The type of the elem that is returned."
   }
-  summary: "Pack the elements from the TensorArray."
+  summary: "Pack the elements from the TensorArray into output `value`."
   description: "All elements must have the same shape."
 }
 op {
@@ -11238,7 +11398,7 @@ op {
     type: "type"
     description: "The type of the elem that is returned."
   }
-  summary: "Read an element from the TensorArray."
+  summary: "Read an element from the TensorArray into output `value`."
 }
 op {
   name: "TensorArraySize"
@@ -11293,7 +11453,7 @@ op {
     type: "type"
   }
   summary: "Split the data from the input value into TensorArray elements."
-  description: "Assuming that `lengths` takes on values\n  (n0, n1, ..., n(T-1))\nand that `value` has shape\n  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...),\nthis splits values into a TensorArray with T tensors.\n\nTensorArray index t will be the subtensor of values with starting position\n  (n0 + n1 + ... + n(t-1), 0, 0, ...)\nand having size\n  nt x d0 x d1 x ..."
+  description: "Assuming that `lengths` takes on values\n\n  ```(n0, n1, ..., n(T-1))```\n\nand that `value` has shape\n\n  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```,\n\nthis splits values into a TensorArray with T tensors.\n\nTensorArray index t will be the subtensor of values with starting position\n\n  ```(n0 + n1 + ... + n(t-1), 0, 0, ...)```\n\nand having size\n\n  ```nt x d0 x d1 x ...```"
 }
 op {
   name: "TensorArrayUnpack"

@@ -78,7 +78,7 @@ struct FillFunctor<GPUDevice, T> {
   }
 };
 
-#define DEFINE_FILL_GPU(T) template struct FillFunctor<GPUDevice, T>
+#define DEFINE_FILL_GPU(T) template struct FillFunctor<GPUDevice, T>;
 TF_CALL_REAL_NUMBER_TYPES(DEFINE_FILL_GPU);
 DEFINE_FILL_GPU(bool);
 DEFINE_FILL_GPU(Eigen::half);

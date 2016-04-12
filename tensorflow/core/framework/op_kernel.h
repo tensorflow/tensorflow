@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -502,6 +503,12 @@ class OpKernelContext {
     // computations running on other devices.
     Rendezvous* rendezvous = nullptr;
 
+    // The session state for this op.
+    SessionState* session_state = nullptr;
+
+    // The tensor store for this op.
+    TensorStore* tensor_store = nullptr;
+
     // Mechanism used by this op kernel invocation to register a callback
     // for its cancellation.
     CancellationManager* cancellation_manager = nullptr;
@@ -841,6 +848,12 @@ class OpKernelContext {
   // Rendezvous Send() and Recv().
   Rendezvous* rendezvous() const { return params_->rendezvous; }
 
+  // An op kernel can access the session state it belongs to.
+  SessionState* session_state() const { return params_->session_state; }
+
+  // An op kernel can access the tensor store of the run it belongs to.
+  TensorStore* tensor_store() const { return params_->tensor_store; }
+
   // Function call support.
   //
   // If this kernel invocation is within a function execution,
@@ -1031,15 +1044,16 @@ typedef ::tensorflow::KernelDefBuilder Name;
 #define REGISTER_KERNEL_BUILDER_UNIQ_HELPER(ctr, kernel_builder, ...) \
   REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
 
-#define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
-  static ::tensorflow::kernel_factory::OpKernelRegistrar              \
-      registrar__body__##ctr##__object(                               \
-          SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)                     \
-              ? ::tensorflow::register_kernel::kernel_builder.Build() \
-              : nullptr,                                              \
-          #__VA_ARGS__,                                               \
-          [](::tensorflow::OpKernelConstruction* context)             \
-              -> ::tensorflow::OpKernel* { return new __VA_ARGS__(context); })
+#define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)          \
+  static ::tensorflow::kernel_factory::OpKernelRegistrar                \
+      registrar__body__##ctr##__object(                                 \
+          SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)                       \
+              ? ::tensorflow::register_kernel::kernel_builder.Build()   \
+              : nullptr,                                                \
+          #__VA_ARGS__, [](::tensorflow::OpKernelConstruction* context) \
+                            -> ::tensorflow::OpKernel* {                \
+                              return new __VA_ARGS__(context);          \
+                            });
 
 void* GlobalKernelRegistry();
 

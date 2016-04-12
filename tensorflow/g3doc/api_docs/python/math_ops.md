@@ -743,6 +743,101 @@ mathematical functions for matrices to your graph.
 
 - - -
 
+### `tf.batch_matrix_diag(diagonal, name=None)` {#batch_matrix_diag}
+
+Returns a batched diagonal tensor with a given batched diagonal values.
+
+Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+everything else padded with zeros. The diagonal is computed as follows:
+
+Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+
+For example:
+
+```prettyprint
+# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+and diagonal.shape = (2, 4)
+
+tf.batch_matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+                                     [0, 2, 0, 0]
+                                     [0, 0, 3, 0]
+                                     [0, 0, 0, 4]],
+                                    [[5, 0, 0, 0]
+                                     [0, 6, 0, 0]
+                                     [0, 0, 7, 0]
+                                     [0, 0, 0, 8]]]
+
+which has shape (2, 4, 4)
+```
+
+##### Args:
+
+
+*  <b>`diagonal`</b>: A `Tensor`. Rank `k`, where `k >= 1`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `diagonal`.
+  Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
+
+
+- - -
+
+### `tf.batch_matrix_diag_part(input, name=None)` {#batch_matrix_diag_part}
+
+Returns the batched diagonal part of a batched tensor.
+
+This operation returns a tensor with the `diagonal` part
+of the batched `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
+tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
+
+`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
+
+The input must be at least a matrix.
+
+For example:
+
+```prettyprint
+# 'input' is [[[1, 0, 0, 0]
+               [0, 2, 0, 0]
+               [0, 0, 3, 0]
+               [0, 0, 0, 4]],
+              [[5, 0, 0, 0]
+               [0, 6, 0, 0]
+               [0, 0, 7, 0]
+               [0, 0, 0, 8]]]
+
+and input.shape = (2, 4, 4)
+
+tf.batch_matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+which has shape (2, 4)
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`.
+    Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  The extracted diagonal(s) having shape
+  `diagonal.shape = input.shape[:-1]`.
+
+
+
+- - -
+
 ### `tf.diag(diagonal, name=None)` {#diag}
 
 Returns a diagonal tensor with a given diagonal values.
@@ -1192,7 +1287,7 @@ eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
 
 - - -
 
-### `tf.matrix_solve(matrix, rhs, name=None)` {#matrix_solve}
+### `tf.matrix_solve(matrix, rhs, adjoint=None, name=None)` {#matrix_solve}
 
 Solves a system of linear equations. Checks for invertibility.
 
@@ -1202,25 +1297,30 @@ Solves a system of linear equations. Checks for invertibility.
 *  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     Shape is `[M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
+*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
+    Boolean indicating whether to solve with `matrix` or its adjoint.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `matrix`.
-  Shape is `[M, K]` containing the tensor that solves
-  matrix * output = rhs.
+  Shape is `[M, K]`. If `adjoint` is `False` then `output` that solves
+  `matrix` * `output` = `rhs`. If `adjoint` is `True` then `output` that solves
+  `adjoint(matrix)` * `output` = `rhs`.
 
 
 - - -
 
-### `tf.batch_matrix_solve(matrix, rhs, name=None)` {#batch_matrix_solve}
+### `tf.batch_matrix_solve(matrix, rhs, adjoint=None, name=None)` {#batch_matrix_solve}
 
 Solves systems of linear equations. Checks for invertibility.
 
 Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. Rhs is a tensor of shape
-`[..., M, K]`. The output is a tensor shape `[..., M, K]` where each output
-matrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :].
+`[..., M, K]`. The output is a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output
+matrix satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `True` then each output
+matrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
 
 ##### Args:
 
@@ -1229,6 +1329,9 @@ matrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :].
     Shape is `[..., M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.
+*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
+    Boolean indicating whether to solve with `matrix` or its (block-wise)
+    adjoint.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1239,21 +1342,24 @@ matrix satisfies matrix[..., :, :] * output[..., :, :] = rhs[..., :, :].
 
 - - -
 
-### `tf.matrix_triangular_solve(matrix, rhs, lower=None, name=None)` {#matrix_triangular_solve}
+### `tf.matrix_triangular_solve(matrix, rhs, lower=None, adjoint=None, name=None)` {#matrix_triangular_solve}
 
 Solves a system of linear equations with an upper or lower triangular matrix by
 
 backsubstitution.
 
 `matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly
-upper triangular part of `matrix` is ignored. If `lower` is False then the
-strictly lower triangular part of `matrix` is ignored. `rhs` is a matrix of
-shape [M, K]`.
+upper triangular part of `matrix` is assumed to be zero and not accessed.
+If `lower` is False then the strictly lower triangular part of `matrix` is
+assumed to be zero and not accessed.
+`rhs` is a matrix of shape [M, K]`.
 
-The output is a matrix of shape `[M, K]`. If `lower` is `True` then the output
-satisfies \\(\sum_{k=0}^{i}\\) matrix[i, k] * output[k, j] = rhs[i, j].
-If `lower` is false then output satisfies
-\\(\sum_{k=i}^{K-1}\\) matrix[i, k] * output[k, j] = rhs[i, j].
+The output is a matrix of shape `[M, K]`. If `adjoint` is `False` the output
+satisfies the matrix equation `matrix` * `output` = `rhs`.
+If `adjoint` is `False` then `output` satisfies the matrix equation
+`matrix` * `output` = `rhs`.
+If `adjoint` is `True` then `output` satisfies the matrix equation
+`adjoint(matrix)` * `output` = `rhs`.
 
 ##### Args:
 
@@ -1262,7 +1368,9 @@ If `lower` is false then output satisfies
     Shape is `[M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
 *  <b>`lower`</b>: An optional `bool`. Defaults to `True`.
-    Boolean indicating whether matrix is lower or upper triangular.
+    Boolean indicating whether `matrix` is lower or upper triangular
+*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
+    Boolean indicating whether to solve with `matrix` or its adjoint.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1272,7 +1380,7 @@ If `lower` is false then output satisfies
 
 - - -
 
-### `tf.batch_matrix_triangular_solve(matrix, rhs, lower=None, name=None)` {#batch_matrix_triangular_solve}
+### `tf.batch_matrix_triangular_solve(matrix, rhs, lower=None, adjoint=None, name=None)` {#batch_matrix_triangular_solve}
 
 Solves systems of linear equations with upper or lower triangular matrices by
 
@@ -1280,15 +1388,17 @@ backsubstitution.
 
 `matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
 square matrices. If `lower` is `True` then the strictly upper triangular part
-of each inner-most matrix is ignored. If `lower` is False then the strictly
-lower triangular part of each inner-most matrix is ignored. `rhs` is a tensor
-of shape [..., M, K]`.
+of each inner-most matrix is assumed to be zero and not accessed.
+If `lower` is False then the strictly lower triangular part of each inner-most
+matrix is assumed to be zero and not accessed.
+`rhs` is a tensor of shape [..., M, K]`.
 
-The output is a tensor of shape `[..., M, K]`. If `lower` is `True` then the
-output satisfies
-\\(\sum_{k=0}^{i}\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].
-If `lower` is false then the strictly then the output satisfies
-\\(sum_{k=i}^{K-1}\\) matrix[..., i, k] * output[..., k, j] = rhs[..., i, j].
+The output is a tensor of shape `[..., M, K]`. If `adjoint` is `True` then the
+innermost matrices in output` satisfy matrix equations
+`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `False` then the strictly then the  innermost matrices in
+`output` satisfy matrix equations
+`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`.
 
 ##### Args:
 
@@ -1298,7 +1408,11 @@ If `lower` is false then the strictly then the output satisfies
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.
 *  <b>`lower`</b>: An optional `bool`. Defaults to `True`.
-    Boolean indicating whether matrix is lower or upper triangular.
+    Boolean indicating whether the innermost matrices in `matrix` are
+    lower or upper triangular.
+*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
+    Boolean indicating whether to solve with `matrix` or its (block-wise)
+    adjoint.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

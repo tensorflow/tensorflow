@@ -21,6 +21,15 @@ config_setting(
 )
 
 config_setting(
+    name = "android_arm",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "android_cpu": "armeabi-v7a",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
@@ -109,6 +118,7 @@ filegroup(
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/lib/python:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
+        "//tensorflow/tools/dist_test/server:all_files",
         "//tensorflow/tools/docker:all_files",
         "//tensorflow/tools/docker/notebooks:all_files",
         "//tensorflow/tools/docs:all_files",

@@ -28,6 +28,11 @@ allows the user to toggle between various dashboards.
             <paper-tab data-mode="graphs">Graph</paper-tab>
             <paper-tab data-mode="histograms">Histograms</paper-tab>
           </paper-tabs>
+          <div class="global-actions">
+            <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md" tabindex="-1">
+              <paper-icon-button icon="help-outline"></paper-icon-button>
+            </a>
+          </div>
         </div>
       </paper-toolbar>
       <div id="content" class="fit">
@@ -74,25 +79,13 @@ allows the user to toggle between various dashboards.
         -webkit-font-smoothing: antialiased;
       }
 
-      #toolbar-content {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-      }
-
       .toolbar-title {
         font-size: 20px;
         margin-left: 10px;
         text-rendering: optimizeLegibility;
         letter-spacing: -0.025em;
         font-weight: 500;
-      }
-
-      #content {
-        height: 100%;
+        width: 340px;
       }
 
       .tabs {
@@ -103,6 +96,29 @@ allows the user to toggle between various dashboards.
 
       paper-tabs {
         --paper-tabs-selection-bar-color: white;
+      }
+
+      .global-actions {
+        flex-grow: 2;
+        text-align: right;
+        color: white;
+      }
+
+      .global-actions a {
+        color: white;
+      }
+
+      #toolbar-content {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      #content {
+        height: 100%;
       }
 
     </style>

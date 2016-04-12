@@ -130,7 +130,7 @@ class ScatterUpdateOp : public OpKernel {
                     "indices has too many elements for ",
                     DataTypeString(DataTypeToEnum<Index>::v()), " indexing: ",
                     N_big, " > ", std::numeric_limits<Index>::max()));
-    const Index N = indices.NumElements();
+    const Index N = static_cast<Index>(indices.NumElements());
     OP_REQUIRES(
         c, params.dim_size(0) <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("params.shape[0] too large for ",
@@ -166,8 +166,9 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
                    typename TTypes<T>::Matrix params,
                    typename TTypes<T>::ConstMatrix updates,
                    typename TTypes<Index>::ConstFlat indices) {
-    const Index N = indices.size();
-    const Index limit = params.dimension(0);
+    // indices and params sizes were validated in DoCompute().
+    const Index N = static_cast<Index>(indices.size());
+    const Index limit = static_cast<Index>(params.dimension(0));
     for (Index i = 0; i < N; i++) {
       // Grab the index and check its validity.  An earlier version of the
       // code checked it and then grabbed it from memory a second time, which
