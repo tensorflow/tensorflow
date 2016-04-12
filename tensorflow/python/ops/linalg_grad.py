@@ -94,3 +94,27 @@ def _BatchMatrixSolveGrad(op, grad):
   grad_b = linalg_ops.batch_matrix_solve(a, grad, adjoint=True)
   grad_a = -math_ops.batch_matmul(grad_b, c, adj_y=True)
   return (grad_a, grad_b)
+
+@ops.RegisterGradient("MatrixTriangularSolve")
+def _MatrixTriangularSolveGrad(op, grad):
+  """Gradients for MatrixTriangularSolve."""
+  a = op.inputs[0]
+  c = op.outputs[0]
+  lower = op.get_attr('lower')
+  grad_b = linalg_ops.matrix_triangular_solve(a, grad, lower=lower, 
+                                              adjoint=True)
+  grad_a = -math_ops.matmul(grad_b, c, transpose_b=True)
+  return (grad_a, grad_b)
+
+@ops.RegisterGradient("BatchMatrixTriangularSolve")
+def _BatchMatrixTriangularSolveGrad(op, grad):
+  """Gradient for BatchMatrixTriangularSolve."""
+  a = op.inputs[0]
+  c = op.outputs[0]
+  lower = op.get_attr('lower')
+  grad_b = linalg_ops.batch_matrix_triangular_solve(a,
+                                                    grad,
+                                                    lower=lower, 
+                                                    adjoint=True)
+  grad_a = -math_ops.batch_matmul(grad_b, c, adj_y=True)
+  return (grad_a, grad_b)

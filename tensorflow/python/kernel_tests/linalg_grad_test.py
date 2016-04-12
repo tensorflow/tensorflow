@@ -65,19 +65,28 @@ class MatrixBinaryFunctorGradientTest(tf.test.TestCase):
 
 
 def _GetMatrixBinaryFunctorGradientTest(functor_, batch_functor_, dtype_,
-                                        shape_):
+                                        shape_, triangle):
 
-  def Test(self):
+  def Test(self,triangle=False):
     with self.test_session():
       np.random.seed(1)
-      m = np.random.uniform(low=1.0,
-                            high=100.0,
-                            size=np.prod(shape_)).reshape(shape_).astype(dtype_)
+      if triangle==False:
+        m = np.random.uniform(low=1.0,
+                              high=100.0,
+                              size=np.prod(shape_)).reshape(shape_).astype(dtype_)
+        n = np.random.uniform(low=1.0,
+                              high=100.0,
+                              size=np.prod(shape_)).reshape(shape_).astype(dtype_)
+      else:
+        m = np.random.uniform(low=90.0,
+                              high=100.0,
+                              size=np.prod(shape_)).reshape(shape_).astype(dtype_)
+        n = np.random.uniform(low=1.0,
+                              high=2.0,
+                              size=np.prod(shape_)).reshape(shape_).astype(dtype_)
       a = tf.constant(m)
 
-      n = np.random.uniform(low=1.0,
-                            high=100.0,
-                            size=np.prod(shape_)).reshape(shape_).astype(dtype_)
+
       b = tf.constant(n)
 
       if len(shape_) == 2 and functor_ is not None:
@@ -89,23 +98,26 @@ def _GetMatrixBinaryFunctorGradientTest(functor_, batch_functor_, dtype_,
 
       # Optimal stepsize for central difference is O(epsilon^{1/3}).
       epsilon = np.finfo(dtype_).eps
+      
       delta = epsilon**(1.0 / 3.0)
+
       # tolerance obtained by looking at actual differences using
       # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
       tol = 1e-3
 
       # The gradients for a and b may be of very different magnitudes,
       # so to not get spurious failures we test them separately.
-      for factor in a, b:
+      for factor, init in zip((a, b), (m, n)):
         theoretical, numerical = tf.test.compute_gradient(
             factor,
             factor.get_shape().as_list(),
             c,
             c.get_shape().as_list(),
+            x_init_value=init,
             delta=delta)
         self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
-  return Test
+  return lambda x : Test(x,triangle)
 
 
 if __name__ == '__main__':
@@ -129,7 +141,13 @@ if __name__ == '__main__':
                 'testMatrixSolveGradient_' + name,
                 _GetMatrixBinaryFunctorGradientTest(tf.matrix_solve,
                                                     tf.batch_matrix_solve,
-                                                    dtype, shape))
+                                                    dtype, shape, triangle=False))
+
+        setattr(MatrixBinaryFunctorGradientTest,
+                'testMatrixTriangularSolveGradient_' + name,
+                _GetMatrixBinaryFunctorGradientTest(tf.matrix_triangular_solve,
+                                                    tf.batch_matrix_triangular_solve,
+                                                    dtype, shape, triangle=True))
 
   # Tests for gradients of unary matrix operations.
   for dtype in (np.float64,):
