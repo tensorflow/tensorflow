@@ -94,7 +94,7 @@ def histogram_summary(tag, values, collections=None, name=None):
   [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
   has one summary value containing a histogram for `values`.
 
-  This op reports an `OutOfRange` error if any value is not finite.
+  This op reports an `InvalidArgument` error if any value is not finite.
 
   Args:
     tag: A `string` `Tensor`. 0-D.  Tag to use for the summary value.

@@ -161,6 +161,9 @@ Node* Gather(Graph* g, Node* in0, Node* in1);
 // Computes the args needed broadcast gradient function.
 Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
 
+// Gets a tensor stored in the session state.
+Node* GetSessionTensor(Graph* g, Node* in);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow

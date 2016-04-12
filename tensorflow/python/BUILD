@@ -575,6 +575,9 @@ tf_gen_op_wrapper_py(
         "TensorArraySplit",
         "TensorArrayUnpack",
         "TensorArrayWrite",
+        "GetSessionHandle",
+        "GetSessionTensor",
+        "DeleteSessionTensor",
     ],
     require_shape_functions = True,
 )
@@ -810,6 +813,7 @@ py_library(
         "ops/rnn_cell.py",
         "ops/script_ops.py",
         "ops/seq2seq.py",
+        "ops/session_ops.py",
         "ops/sparse_grad.py",
         "ops/sparse_ops.py",
         "ops/standard_ops.py",

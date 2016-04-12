@@ -22,6 +22,7 @@ import six  # pylint: disable=unused-import
 
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 
 
@@ -33,13 +34,15 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol):
       `tf.train.ClusterDef` protocol buffer, or a
       `tf.train.ClusterSpec` object, describing the server to be
       defined and/or the cluster of which it is a member.
-    job_name: (Optional.) If not specified in `server_or_cluster_def`,
-      specifies the name of the job of which the server is a member.
-    task_index: (Optional.) If not specified in `server_or_cluster_def`,
-      specifies the task index of the server in its job.
-    protocol: (Optional.) If not specified in `server_or_cluster_def`,
-      specifies the protocol to be used by the server. Acceptable
-      values include `"grpc"`.
+    job_name: (Optional.) Specifies the name of the job of which the server
+      is a member. Defaults to the value in `server_or_cluster_def`, if
+      specified.
+    task_index: (Optional.) Specifies the task index of the server in its job.
+      Defaults to the value in `server_or_cluster_def`, if specified. Otherwise
+      defaults to 0 if the server's job has only one task.
+    protocol: (Optional.) Specifies the protocol to be used by the server.
+      Acceptable values include `"grpc"`. Defaults to the value in
+      `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
 
   Returns:
     A `tf.train.ServerDef`.
@@ -109,26 +112,33 @@ class Server(object):
     """Creates a new server with the given definition.
 
     The `job_name`, `task_index`, and `protocol` arguments are optional, and
-    override any information also provided in `server_or_cluster_def`.
+    override any information provided in `server_or_cluster_def`.
 
     Args:
       server_or_cluster_def: A `tf.train.ServerDef` or
         `tf.train.ClusterDef` protocol buffer, or a
         `tf.train.ClusterSpec` object, describing the server to be
         created and/or the cluster of which it is a member.
-      job_name: (Optional.) If not specified in `server_or_cluster_def`,
-        specifies the name of the job of which this server is a member.
-      task_index: (Optional.) If not specified in `server_or_cluster_def`,
-        specifies the task index of this server in its job.
-      protocol: (Optional.) If not specified in `server_or_cluster_def`,
-        specifies the protocol to be used by this server. Acceptable
-        values include `"grpc"`.
+      job_name: (Optional.) Specifies the name of the job of which the server
+        is a member. Defaults to the value in `server_or_cluster_def`, if
+        specified.
+      task_index: (Optional.) Specifies the task index of the server in its
+        job. Defaults to the value in `server_or_cluster_def`, if specified.
+        Otherwise defaults to 0 if the server's job has only one task.
+      protocol: (Optional.) Specifies the protocol to be used by the server.
+        Acceptable values include `"grpc"`. Defaults to the value in
+        `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
       start: (Optional.) Boolean, indicating whether to start the server
         after creating it. Defaults to `True`.
     """
     server_def = _make_server_def(server_or_cluster_def,
                                   job_name, task_index, protocol)
-    self._server = pywrap_tensorflow.NewServer(server_def.SerializeToString())
+    try:
+      self._server = pywrap_tensorflow.NewServer(server_def.SerializeToString())
+    except pywrap_tensorflow.StatusNotOK as e:
+      # pylint: disable=protected-access
+      raise errors._make_specific_exception(None, None, e.error_message, e.code)
+      # pylint: enable=protected-access
     if start:
       self.start()
 
@@ -260,7 +270,7 @@ class ClusterSpec(object):
 
     Returns:
       A list of strings, corresponding to the network addresses of tasks in
-      the given job.
+      the given job, ordered by task index.
 
     Raises:
       ValueError: If `job_name` does not name a job in this cluster.
@@ -296,3 +306,4 @@ class ClusterSpec(object):
           raise TypeError(
               "Task address %r must be bytes or unicode" % task_address)
         job_def.tasks[i] = task_address
+

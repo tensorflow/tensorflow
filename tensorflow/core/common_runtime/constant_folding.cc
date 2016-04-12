@@ -50,6 +50,11 @@ bool IsConstantFoldable(const Node* n,
   if (n->IsControlFlow() || n->IsSend() || n->IsRecv()) {
     return false;
   }
+  // TODO(yuanbyu): For now disable these session handle operations.
+  if (n->IsGetSessionHandle() || n->IsGetSessionTensor() ||
+      n->IsDeleteSessionTensor()) {
+    return false;
+  }
   if (n->IsSource()) {
     return false;
   }
