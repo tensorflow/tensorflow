@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os.path
+import threading
 import uuid
 
 from six.moves import range  # pylint: disable=redefined-builtin
@@ -38,9 +40,22 @@ from tensorflow.python.platform import resource_loader
 
 __all__ = ['SdcaModel']
 
-_sdca_ops = load_op_library(resource_loader.get_path_to_datafile(
-    '_sdca_ops.so'))
-assert _sdca_ops, 'Could not load _sdca_ops.so'
+_sdca_ops = None
+_sdca_ops_lock = threading.Lock()
+
+
+# Workaround for the fact that importing tensorflow imports contrib
+# (even if a user isn't using this or any other contrib op), but
+# there's not yet any guarantee that the shared object exists.
+# In which case, "import tensorflow" will always crash, even for users that
+# never use contrib.
+def _maybe_load_sdca_ops():
+  with _sdca_ops_lock:
+    global _sdca_ops
+    if not _sdca_ops:
+      _sdca_ops = load_op_library(os.path.join(
+          resource_loader.get_data_files_path(), '_sdca_ops.so'))
+      assert _sdca_ops, 'Could not load _sdca_ops.so'
 
 
 # TODO(sibyl-Aix6ihai): add op_scope to appropriate methods.
@@ -108,6 +123,8 @@ class SdcaModel(object):
 
   def __init__(self, container, examples, variables, options):
     """Create a new sdca optimizer."""
+
+    _maybe_load_sdca_ops()
 
     if not container or not examples or not variables or not options:
       raise ValueError('All arguments must be specified.')
