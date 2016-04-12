@@ -24,30 +24,35 @@
 # the Python binary path.
 #
 # This script obeys the following environment variables (if exists):
-#   INTEG_TESTS_BLACKLIST: Force skipping of specified integration tests listed
-  #                        in INTEG_TESTS below.
+#   TF_BUILD_INTEG_TEST_BLACKLIST: Force skipping of specified integration tests
+#       listed in INTEG_TESTS below.
 #
 
 # List of all integration tests to run, separated by spaces
 INTEG_TESTS="ffmpeg_lib"
 
-if [[ -z "${INTEG_TESTS_BLACKLIST}" ]]; then
-  INTEG_TESTS_BLACKLIST=""
+if [[ -z "${TF_BUILD_INTEG_TEST_BLACKLIST}" ]]; then
+  TF_BUILD_INTEG_TEST_BLACKLIST=""
 fi
 echo ""
 echo "=== Integration Tests ==="
-echo "INTEG_TESTS_BLACKLIST = \"${INTEG_TESTS_BLACKLIST}\""
+echo "TF_BUILD_INTEG_TEST_BLACKLIST = \"${TF_BUILD_INTEG_TEST_BLACKLIST}\""
 
 # Timeout (in seconds) for each integration test
 TIMEOUT=1800
 
-INTEG_TEST_ROOT=/tmp/tf_integration_test
-INTEG_TEST_DATA_DIR=/tmp/tf_integration_test_data
+INTEG_TEST_ROOT="$(mktemp -d)"
 LOGS_DIR=pip_test/integration_tests/logs
 
 # Helper functions
+cleanup() {
+  rm -rf $INTEG_TEST_ROOT
+}
+
+
 die() {
   echo $@
+  cleanup
   exit 1
 }
 
@@ -57,6 +62,8 @@ realpath() {
 }
 
 
+# TODO(cais): This is similar to code in both test_tutorials.sh and
+# test_installation.sh. It should be pulled into a common library.
 run_in_directory() {
   DEST_DIR="$1"
   LOG_FILE="$2"
@@ -150,6 +157,8 @@ test_ffmpeg_lib() {
 
 
 # Run the integration tests
+# TODO(cais): This is similar to code in both test_tutorials.sh and
+# test_installation.sh. It should be pulled into a common library.
 NUM_INTEG_TESTS=$(echo "${INTEG_TESTS}" | wc -w)
 INTEG_TESTS=(${INTEG_TESTS})
 
@@ -163,7 +172,7 @@ for INTEG_TEST in ${INTEG_TESTS[@]}; do
   ((COUNTER++))
   STAT_STR="(${COUNTER} / ${NUM_INTEG_TESTS})"
 
-  if [[ "${INTEG_TESTS_BLACKLIST}" == *"${INTEG_TEST}"* ]]; then
+  if [[ "${TF_BUILD_INTEG_TEST_BLACKLIST}" == *"${INTEG_TEST}"* ]]; then
     ((SKIPPED_COUNTER++))
     echo "${STAT_STR} Blacklisted integration test SKIPPED: ${INTEG_TEST}"
     continue
@@ -207,6 +216,7 @@ if [[ ${FAILED_COUNTER} -eq 0  ]]; then
   echo ""
   echo "Integration tests SUCCEEDED"
 
+  cleanup
   exit 0
 else
   echo "FAILED test(s):"
