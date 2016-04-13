@@ -218,11 +218,12 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
 def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
-               suffix=""):
+               suffix="", args=None):
   name = name.replace(".cc", "")
   native.cc_test(name="%s%s" % (name.replace("/", "_"), suffix),
                  size=size,
                  srcs=["%s.cc" % (name)],
+                 args=args,
                  copts=tf_copts(),
                  data=data,
                  deps=deps,
@@ -246,9 +247,9 @@ def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium"):
              size=size)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium"):
+def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium", args=None):
   for t in tests:
-    tf_cc_test(t, deps, linkstatic, tags=tags, size=size)
+    tf_cc_test(t, deps, linkstatic, tags=tags, size=size, args=args)
 
 def tf_cuda_cc_tests(tests, deps, tags=[], size="medium"):
   for t in tests:
