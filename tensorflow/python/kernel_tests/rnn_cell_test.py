@@ -155,7 +155,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 3])
         cell = tf.nn.rnn_cell.InputProjectionWrapper(
-            tf.nn.rnn_cell.GRUCell(3), 2)
+            tf.nn.rnn_cell.GRUCell(3), num_proj=3)
         g, new_m = cell(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([g, new_m], {x.name: np.array([[1., 1.]]),

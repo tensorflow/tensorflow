@@ -62,7 +62,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   Args:
     cell: An instance of RNNCell.
     inputs: A length T list of inputs, each a tensor of shape
-      [batch_size, cell.input_size].
+      [batch_size, input_size].
     initial_state: (optional) An initial state for the RNN.  This must be
       a tensor of appropriate type and shape [batch_size x cell.state_size].
     dtype: (optional) The data type for the initial state.  Required if
@@ -154,7 +154,7 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
   Args:
     cell: An instance of RNNCell.
     inputs: A length T list of inputs, each a tensor of shape
-      [batch_size, cell.input_size].
+      [batch_size, input_size].
     state_saver: A state saver object with methods `state` and `save_state`.
     state_name: The name to use with the state_saver.
     sequence_length: (optional) An int32/int64 vector size [batch_size].
@@ -323,7 +323,7 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
     cell_fw: An instance of RNNCell, to be used for forward direction.
     cell_bw: An instance of RNNCell, to be used for backward direction.
     inputs: A length T list of inputs, each a tensor of shape
-      [batch_size, cell.input_size].
+      [batch_size, input_size].
     initial_state_fw: (optional) An initial state for the forward RNN.
       This must be a tensor of appropriate type and shape
       [batch_size x cell.state_size].
@@ -393,9 +393,9 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     cell: An instance of RNNCell.
     inputs: The RNN inputs.
       If time_major == False (default), this must be a tensor of shape:
-        `[batch_size, max_time, cell.input_size]`.
+        `[batch_size, max_time, input_size]`.
       If time_major == True, this must be a tensor of shape:
-        `[max_time, batch_size, cell.input_size]`.
+        `[max_time, batch_size, input_size]`.
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
     initial_state: (optional) An initial state for the RNN.  This must be
       a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
