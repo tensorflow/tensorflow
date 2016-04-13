@@ -326,19 +326,29 @@ class Supervisor(object):
       self._init_global_step(global_step=global_step)
     self._graph = graph
     self._is_chief = is_chief
-    self._logdir = logdir
-    self._save_summaries_secs = save_summaries_secs
-    self._save_model_secs = save_model_secs
-    self._recovery_wait_secs = recovery_wait_secs
     self._coord = coordinator.Coordinator()
-    if logdir:
+    self._started_threads = []
+    self._recovery_wait_secs = recovery_wait_secs
+
+    # Only chief supervisors write event files, so only chief supervisors
+    # should have event-writing properties. Set to None for non-chiefs.
+    if self._is_chief:
+      self._logdir = logdir
+      self._save_summaries_secs = save_summaries_secs
+      self._save_model_secs = save_model_secs
+    else:
+      self._logdir = None
+      self._save_summaries_secs = None
+      self._save_model_secs = None
+
+    if self._is_chief and self._logdir:
       self._save_path = os.path.join(self._logdir, checkpoint_basename)
       self._summary_writer = summary_io.SummaryWriter(self._logdir)
     else:
       self._save_path = None
       self._summary_writer = None
+
     self._init_session_manager(session_manager=session_manager)
-    self._started_threads = []
     self._verify_setup()
     # The graph is not allowed to change anymore.
     graph.finalize()
@@ -520,7 +530,7 @@ class Supervisor(object):
 
   @property
   def summary_writer(self):
-    """Return the SummaryWriter used by the supervisor.
+    """Return the SummaryWriter used by the chief supervisor.
 
     Returns:
       A SummaryWriter.
@@ -529,7 +539,7 @@ class Supervisor(object):
 
   @property
   def summary_op(self):
-    """Return the Summary Tensor used by the supervisor.
+    """Return the Summary Tensor used by the chief supervisor.
 
     Returns:
       A string Tensor for the summary or `None`.
@@ -583,8 +593,7 @@ class Supervisor(object):
 
   def _write_graph(self):
     """Writes graph_def to `logdir` and adds it to summary if applicable."""
-    if not self._is_chief:
-      return
+    assert self._is_chief
     if self._logdir:
       training_util.write_graph(self._graph.as_graph_def(),
                                 self._logdir, "graph.pbtxt")
@@ -610,11 +619,13 @@ class Supervisor(object):
         sv.coord.Join(<list of threads>)
 
     Raises:
+      RuntimeError: If called with a non-chief Supervisor.
       ValueError: If not `logdir` was passed to the constructor as the
         services need a log directory.
     """
     if not self._is_chief:
-      return
+      raise RuntimeError("Only chief supervisor can start standard services. "
+                         "Because only cheif supervisors can write events.")
     if not self._logdir:
       logging.warning("Standard services need a 'logdir' "
                       "passed to the SessionManager")
@@ -812,14 +823,18 @@ class Supervisor(object):
       TypeError: if 'summary' is not a Summary proto or a string.
       RuntimeError: if the Supervisor was created without a `logdir`.
     """
-    if not self._logdir:
-      raise RuntimeError("summary_computed() requires a logdir")
+    if not self._summary_writer:
+      raise RuntimeError("Writing a summary requires a summary writer.")
     if global_step is None and self.global_step is not None:
       global_step = training_util.global_step(sess, self.global_step)
-    if self._summary_writer:
-      self._summary_writer.add_summary(summary, global_step)
+    self._summary_writer.add_summary(summary, global_step)
 
   def _default_global_step_tensor(self):
+    """Returns the global_step from the default graph.
+
+    Returns:
+      The global step `Tensor` or `None`.
+    """
     try:
       gs = ops.get_default_graph().get_tensor_by_name("global_step:0")
       if gs.dtype.base_dtype in [dtypes.int32, dtypes.int64]:

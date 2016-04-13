@@ -37,6 +37,13 @@ flags.DEFINE_float(
     'samples_to_decide', 25.0,
     'Only decide on a split, or only fully use a leaf, after this many '
     'training samples have been seen.')
+flags.DEFINE_float('bagging_fraction', 1.0,
+                   'Use this fraction of the input, randomly chosen, to train '
+                   'each tree in the forest.')
+flags.DEFINE_integer(
+    'num_splits_to_consider', 0,
+    'If non-zero, consider this many candidates for a splitting '
+    'rule at a fertile node.')
 
 # If tree[i][0] equals this value, then i is a leaf node.
 LEAF_NODE = -1
@@ -69,6 +76,9 @@ class ForestHParams(object):
     # Fail fast if num_classes isn't set.
     _ = getattr(self, 'num_classes')
 
+    self.bagging_fraction = getattr(self, 'bagging_fraction',
+                                    FLAGS.bagging_fraction)
+
     self.num_trees = getattr(self, 'num_trees', FLAGS.num_trees)
     self.max_nodes = getattr(self, 'max_nodes', FLAGS.max_nodes)
 
@@ -79,7 +89,9 @@ class ForestHParams(object):
     # The Random Forest literature recommends sqrt(# features) for
     # classification problems, and p/3 for regression problems.
     # TODO(thomaswc): Consider capping this for large number of features.
-    if not getattr(self, 'num_splits_to_consider', None):
+    self.num_splits_to_consider = getattr(self, 'num_splits_to_consider',
+                                          FLAGS.num_splits_to_consider)
+    if not self.num_splits_to_consider:
       self.num_splits_to_consider = max(10, int(
           math.ceil(math.sqrt(self.num_features))))
 
@@ -94,8 +106,8 @@ class ForestHParams(object):
     self.max_fertile_nodes = getattr(self, 'max_fertile_nodes', num_fertile)
     # But it also never needs to be larger than the number of leaves,
     # which is max_nodes / 2.
-    self.max_fertile_nodes = min(self.max_nodes,
-                                 int(math.ceil(self.max_fertile_nodes / 2.0)))
+    self.max_fertile_nodes = min(self.max_fertile_nodes,
+                                 int(math.ceil(self.max_nodes / 2.0)))
 
     # split_after_samples and valid_leaf_threshold should be about the same.
     # Therefore, if either is set, use it to set the other.  Otherwise, fall
@@ -184,23 +196,6 @@ class TreeStats(object):
     self.num_leaves = num_leaves
 
 
-def get_tree_stats(variables, unused_params, session):
-  num_nodes = variables.end_of_tree.eval(session=session) - 1
-  num_leaves = tf.where(
-      tf.equal(tf.squeeze(tf.slice(variables.tree, [0, 0], [-1, 1])),
-               LEAF_NODE)).eval(session=session).shape[0]
-  return TreeStats(num_nodes, num_leaves)
-
-
-def get_forest_stats(variables, params, session):
-
-  tree_stats = []
-  for i in range(params.num_trees):
-    tree_stats.append(get_tree_stats(variables[i], params, session))
-
-  return ForestStats(tree_stats, params)
-
-
 class ForestTrainingVariables(object):
   """A container for a forests training data, consisting of multiple trees.
 
@@ -212,9 +207,11 @@ class ForestTrainingVariables(object):
     ... forest_variables.tree ...
   """
 
-  def __init__(self, params):
-    self.variables = [TreeTrainingVariables(params)
-                      for _ in range(params.num_trees)]
+  def __init__(self, params, device_assigner):
+    self.variables = []
+    for i in range(params.num_trees):
+      with tf.device(device_assigner.get_device(i)):
+        self.variables.append(TreeTrainingVariables(params))
 
   def __setitem__(self, t, val):
     self.variables[t] = val
@@ -223,12 +220,35 @@ class ForestTrainingVariables(object):
     return self.variables[t]
 
 
+class RandomForestDeviceAssigner(object):
+  """A device assigner that uses the default device.
+
+  Write subclasses that implement get_device for control over how trees
+  get assigned to devices.  This assumes that whole trees are assigned
+  to a device.
+  """
+
+  def __init__(self):
+    self.cached = None
+
+  def get_device(self, unused_tree_num):
+    if not self.cached:
+      dummy = tf.constant(0)
+      self.cached = dummy.device
+
+    return self.cached
+
+
 class RandomForestGraphs(object):
   """Builds TF graphs for random forest training and inference."""
 
-  def __init__(self, params):
+  def __init__(self, params, device_assigner=None, variables=None):
     self.params = params
-    self.variables = ForestTrainingVariables(self.params)
+    self.device_assigner = device_assigner or RandomForestDeviceAssigner()
+    tf.logging.info('Constructing forest with params = ')
+    tf.logging.info(self.params.__dict__)
+    self.variables = variables or ForestTrainingVariables(
+        self.params, device_assigner=self.device_assigner)
     self.trees = [RandomTreeGraphs(self.variables[i], self.params,
                                    training_ops.Load(), inference_ops.Load())
                   for i in range(self.params.num_trees)]
@@ -246,12 +266,26 @@ class RandomForestGraphs(object):
     """
     tree_graphs = []
     for i in range(self.params.num_trees):
-      tf.logging.info('Constructing tree %d', i)
-      seed = self.params.base_random_seed
-      if seed != 0:
-        seed += i
-      tree_graphs.append(self.trees[i].training_graph(
-          input_data, input_labels, seed))
+      with tf.device(self.device_assigner.get_device(i)):
+        seed = self.params.base_random_seed
+        if seed != 0:
+          seed += i
+        # If using bagging, randomly select some of the input.
+        tree_data = input_data
+        tree_labels = input_labels
+        if self.params.bagging_fraction < 1.0:
+          # TODO(thomaswc): This does sampling without replacment.  Consider
+          # also allowing sampling with replacement as an option.
+          batch_size = tf.slice(tf.shape(input_data), [0], [1])
+          r = tf.random_uniform(batch_size, seed=seed)
+          mask = tf.less(r, tf.ones_like(r) * self.params.bagging_fraction)
+          gather_indices = tf.squeeze(tf.where(mask), squeeze_dims=[1])
+          # TODO(thomaswc): Calculate out-of-bag data and labels, and store
+          # them for use in calculating statistics later.
+          tree_data = tf.gather(input_data, gather_indices)
+          tree_labels = tf.gather(input_labels, gather_indices)
+        tree_graphs.append(
+            self.trees[i].training_graph(tree_data, tree_labels, seed))
     return tf.group(*tree_graphs)
 
   def inference_graph(self, input_data):
@@ -265,9 +299,23 @@ class RandomForestGraphs(object):
     """
     probabilities = []
     for i in range(self.params.num_trees):
-      probabilities.append(self.trees[i].inference_graph(input_data))
-    all_predict = tf.pack(probabilities)
-    return tf.reduce_sum(all_predict, 0) / self.params.num_trees
+      with tf.device(self.device_assigner.get_device(i)):
+        probabilities.append(self.trees[i].inference_graph(input_data))
+    with tf.device(self.device_assigner.get_device(0)):
+      all_predict = tf.pack(probabilities)
+      return tf.reduce_sum(all_predict, 0) / self.params.num_trees
+
+  def average_size(self):
+    """Constructs a TF graph for evaluating the average size of a forest.
+
+    Returns:
+      The average number of nodes over the trees.
+    """
+    sizes = []
+    for i in range(self.params.num_trees):
+      with tf.device(self.device_assigner.get_device(i)):
+        sizes.append(self.trees[i].size())
+    return tf.reduce_mean(tf.pack(sizes))
 
   def average_impurity(self):
     """Constructs a TF graph for evaluating the leaf impurity of a forest.
@@ -277,8 +325,16 @@ class RandomForestGraphs(object):
     """
     impurities = []
     for i in range(self.params.num_trees):
-      impurities.append(self.trees[i].average_impurity(self.variables[i]))
+      with tf.device(self.device_assigner.get_device(i)):
+        impurities.append(self.trees[i].average_impurity())
     return tf.reduce_mean(tf.pack(impurities))
+
+  def get_stats(self, session):
+    tree_stats = []
+    for i in range(self.params.num_trees):
+      with tf.device(self.device_assigner.get_device(i)):
+        tree_stats.append(self.trees[i].get_stats(session))
+    return ForestStats(tree_stats, self.params)
 
 
 class RandomTreeGraphs(object):
@@ -394,6 +450,7 @@ class RandomTreeGraphs(object):
     with tf.control_dependencies([node_update_op]):
       def f1():
         return self.variables.non_fertile_leaf_scores
+
       def f2():
         counts = tf.gather(self.variables.node_per_class_weights,
                            self.variables.non_fertile_leaves)
@@ -535,3 +592,18 @@ class RandomTreeGraphs(object):
     counts = tf.gather(self.variables.node_per_class_weights, leaves)
     impurity = self._weighted_gini(counts)
     return tf.reduce_sum(impurity) / tf.reduce_sum(counts + 1.0)
+
+  def size(self):
+    """Constructs a TF graph for evaluating the current number of nodes.
+
+    Returns:
+      The current number of nodes in the tree.
+    """
+    return self.variables.end_of_tree - 1
+
+  def get_stats(self, session):
+    num_nodes = self.variables.end_of_tree.eval(session=session) - 1
+    num_leaves = tf.where(
+        tf.equal(tf.squeeze(tf.slice(self.variables.tree, [0, 0], [-1, 1])),
+                 LEAF_NODE)).eval(session=session).shape[0]
+    return TreeStats(num_nodes, num_leaves)

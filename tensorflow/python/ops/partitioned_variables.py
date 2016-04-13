@@ -167,19 +167,22 @@ def create_partitioned_variables(
       slice_offset[slice_dim] += var_shape[slice_dim]
 
       if callable(initializer):
-        init_val = initializer(var_shape, dtype=dtype)
-        init_val = ops.convert_to_tensor(init_val, dtype=dtype)
+        init = initializer
+        init_shape = var_shape
       elif isinstance(initializer, ops.Tensor):
-        init_val = array_ops.slice(initializer, var_offset, var_shape)
+        init = array_ops.slice(initializer, var_offset, var_shape)
         # Use the dtype of the given tensor.
-        dtype = init_val.dtype.base_dtype
+        dtype = init.dtype.base_dtype
+        init_shape = None
       else:
-        init_val = ops.convert_to_tensor(initializer, dtype=dtype)
-        init_val = array_ops.slice(init_val, var_offset, var_shape)
+        init = ops.convert_to_tensor(initializer, dtype=dtype)
+        init = array_ops.slice(init, var_offset, var_shape)
+        init_shape = None
 
       var = variable_scope.get_variable(name="part_%d" % i,
+                                        shape=init_shape,
                                         dtype=dtype,
-                                        initializer=init_val,
+                                        initializer=init,
                                         trainable=trainable,
                                         collections=collections)
 
