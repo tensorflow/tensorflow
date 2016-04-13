@@ -24,15 +24,16 @@ cc_test(
     args = [
         "--should_ffmpeg_be_installed=true",
     ],
+    data = [
+        ":testdata/test_sound1.mp3",
+    ],
     tags = [
         "local",
         "manual",
     ],
-    data = [
-        ":testdata/test_sound1.mp3",
-    ],
     deps = [
         ":ffmpeg_lib",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
@@ -44,15 +45,16 @@ cc_test(
     args = [
         "--should_ffmpeg_be_installed=false",
     ],
+    data = [
+        ":testdata/test_sound1.mp3",
+    ],
     tags = [
         "local",
         "manual",
     ],
-    data = [
-        ":testdata/test_sound1.mp3",
-    ],
     deps = [
         ":ffmpeg_lib",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
