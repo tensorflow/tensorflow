@@ -125,7 +125,6 @@ cc_binary(
     srcs = ["framework/test_file_system.cc"],
     linkopts = select({
         "//conditions:default": [
-            "-Wl,-Bsymbolic",
             "-lm",
         ],
         "//tensorflow:darwin": [],
@@ -1075,7 +1074,6 @@ py_test(
     size = "small",
     srcs = ["client/session_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["noasan"],
     deps = [
         ":framework",
         ":framework_test_lib",

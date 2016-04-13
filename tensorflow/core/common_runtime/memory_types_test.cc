@@ -54,9 +54,9 @@ TEST(MemoryTypeChecker, Int32NotOk) {
 
 TEST(MemoryTypeChecker, MemoryTypeForOutput) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor vb(DT_BOOL, {});
-  Tensor vi(DT_INT32, {});
-  Tensor vf(DT_FLOAT, {});
+  Tensor vb(DT_BOOL);
+  Tensor vi(DT_INT32);
+  Tensor vf(DT_FLOAT);
   auto pred = test::graph::Constant(g, vb);
   auto sf = test::graph::Switch(g, test::graph::Constant(g, vf), pred);
   MemoryType memory_type;

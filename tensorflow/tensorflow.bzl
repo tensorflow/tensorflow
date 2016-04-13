@@ -492,7 +492,6 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
                    linkshared=1,
                    linkopts = select({
                        "//conditions:default": [
-                           "-Wl,-Bsymbolic",
                            "-lm",
                        ],
                        "//tensorflow:darwin": [],
