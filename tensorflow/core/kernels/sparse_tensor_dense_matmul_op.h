@@ -66,7 +66,7 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T MaybeConj(T v) {
 #define MAYBE_CONJ(T)                                         \
   template <>                                                 \
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T MaybeConj<T>(T v) { \
-    return std::conj(v);                                      \
+    return Eigen::numext::conj(v);                            \
   }
 #endif
 

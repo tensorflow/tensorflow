@@ -143,7 +143,6 @@ cc_library(
         "lib/core/bits.h",
         "lib/core/casts.h",
         "lib/core/coding.h",
-        "lib/core/command_line_flags.h",  # TODO(vrv): Delete.
         "lib/core/errors.h",
         "lib/core/notification.h",
         "lib/core/status.h",
