@@ -526,6 +526,18 @@ class BatchTest(tf.test.TestCase):
       with self.assertRaisesRegexp(ValueError, "Cannot infer Tensor's rank"):
         tf.train.batch([x], batch_size=2)
 
+  def testBatchedSparseTensorInferedShape(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual(sparse.shape.get_shape().as_list(), [1])
+    batched = tf.train.batch([sparse], batch_size=2)
+    self.assertAllEqual(batched.shape.get_shape().as_list(), [2])
+
+  def testBatchedSparseTensorInferedShapeEnqueueMany(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual(sparse.shape.get_shape().as_list(), [1])
+    batched = tf.train.batch([sparse], batch_size=2, enqueue_many=True)
+    self.assertAllEqual(batched.shape.get_shape().as_list(), [1])
+
 
 class BatchJoinTest(tf.test.TestCase):
 
