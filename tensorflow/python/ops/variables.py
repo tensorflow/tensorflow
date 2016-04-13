@@ -156,9 +156,12 @@ class Variable(object):
     variable to its initial value.
 
     Args:
-      initial_value: A `Tensor`, or Python object convertible to a `Tensor`.
-        The initial value for the Variable. Must have a shape specified unless
-        `validate_shape` is set to False.
+      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
+        which is the initial value for the Variable. The initial value must have
+        a shape specified unless `validate_shape` is set to False. Can also be a
+        callable with no argument that returns the initial value when called. In
+        that case, `dtype` must be specified. (Note that initializer functions
+        from init_ops.py must first be bound to a shape before being used here.)
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
@@ -211,9 +214,12 @@ class Variable(object):
     """Creates a new variable from arguments.
 
     Args:
-      initial_value: A `Tensor`, or Python object convertible to a `Tensor`.
-        The initial value for the Variable. Must have a shape specified unless
-        `validate_shape` is set to False.
+      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
+        which is the initial value for the Variable. The initial value must have
+        a shape specified unless `validate_shape` is set to False. Can also be a
+        callable with no argument that returns the initial value when called. In
+        that case, `dtype` must be specified. (Note that initializer functions
+        from init_ops.py must first be bound to a shape before being used here.)
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
@@ -240,25 +246,62 @@ class Variable(object):
     """
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
+    init_from_fn = callable(initial_value)
+    if init_from_fn and dtype is None:
+      raise ValueError(
+          "dtype must also be specified when initial_value is callable.")
+
     if collections is None:
       collections = [ops.GraphKeys.VARIABLES]
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.control_dependencies(None):
-      with ops.op_scope([initial_value], name, "Variable") as name:
-        self._initial_value = ops.convert_to_tensor(initial_value,
-                                                    name="initial_value",
-                                                    dtype=dtype)
-        initial_value_shape = self._initial_value.get_shape()
-        if validate_shape and not initial_value_shape.is_fully_defined():
-          raise ValueError("initial_value must have a shape specified: %s"
-                           % self._initial_value)
-        shape_to_set = initial_value_shape if validate_shape else []
+      with ops.op_scope(
+          [] if init_from_fn else [initial_value], name, "Variable") as name:
 
-        self._variable = state_ops.variable_op(
-            shape_to_set, self._initial_value.dtype.base_dtype,
-            set_shape=validate_shape, name=name)
+        # Get the initial value from a callable function. The real shape of the
+        # variable will be set later, since under the init_from_fn case, the
+        # shape won't be known until after the function is invoked.
+        if init_from_fn:
+          self._variable = state_ops.variable_op(
+              [],
+              dtype.base_dtype,
+              set_shape=False,
+              name=name)
+          with ops.colocate_with(self._variable.op):
+            with ops.name_scope("Initializer"):
+              # Colocate the tensors created by the initial_value() function
+              # with the variable itself.
+              self._initial_value = ops.convert_to_tensor(initial_value(),
+                                                          name="initial_value",
+                                                          dtype=dtype)
 
+        # Or get the initial value from a Tensor or Python object.
+        else:
+          self._initial_value = ops.convert_to_tensor(initial_value,
+                                                      name="initial_value",
+                                                      dtype=dtype)
+          # In this case, the variable op can't be created until after the
+          # initial_value has been converted to a Tensor with a known type.
+          self._variable = state_ops.variable_op(
+              [],
+              self._initial_value.dtype.base_dtype,
+              set_shape=False,
+              name=name)
+
+        # Manually overrides the variable's shape with the initial value's.
+        if validate_shape:
+          initial_value_shape = self._initial_value.get_shape()
+          if not initial_value_shape.is_fully_defined():
+            raise ValueError("initial_value must have a shape specified: %s"
+                             % self._initial_value)
+          self._variable.set_shape(initial_value_shape)
+          # TODO(b/28152992): Remove the below hack modifying the node_def shape
+          # directly once set_shape() handles it.
+          self._variable.op.node_def.attr["shape"].shape.CopyFrom(
+              initial_value_shape.as_proto())
+
+        # Assigns initial value.
         with ops.colocate_with(self._variable.op):
           self._initializer_op = state_ops.assign(
               self._variable, self._initial_value,
