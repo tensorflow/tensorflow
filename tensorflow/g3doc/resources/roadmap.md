@@ -1,5 +1,5 @@
 # Roadmap
-**Last updated: January 13, 2016**
+**Last updated: April 12, 2016**
 
 TensorFlow is a fast moving project. In order for the community to better
 understand what the near future will bring, this document shares what we are
@@ -17,7 +17,6 @@ we do not have timelines for these features.
 
 ### Making TensorFlow easier to use
 * Higher level APIs (for instance, layers)
-* Saving everything to run a graph
 
 ### Performance
 * Speed and memory benchmarks
@@ -26,16 +25,12 @@ we do not have timelines for these features.
 ### Core Features
 * Repeated partial graph evaluation ([#672](https://github.com/tensorflow/tensorflow/issues/672))
 
-
 ### Platforms
 * iOS support ([#16](https://github.com/tensorflow/tensorflow/issues/16))
 * OpenCL support ([#22](https://github.com/tensorflow/tensorflow/issues/22))
-* Distributed execution
-  ([#23](https://github.com/tensorflow/tensorflow/issues/23))
+* Windows support ([#17](https://github.com/tensorflow/tensorflow/issues/17))
+* MacOS GPU support
 
 ### Community
-* Improvements to Jenkins: automated tests for all supported configurations
-* Open-source the doc generator and publish docs style guide
-* TensorFlow Models repository (partially,
-  [#6](https://github.com/tensorflow/tensorflow/issues/6))
-
+* Integration with other machine learning frameworks
+* Better installation support; support for package managers
