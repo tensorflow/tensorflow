@@ -302,6 +302,53 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertEqual(var.op.device, init_op.device)
       sess.run(init_op)
 
+  def testInitializerFunction(self):
+    value = [[-42], [133.7]]
+    shape = [2, 1]
+    with self.test_session():
+      initializer = lambda: tf.constant(value)
+      with self.assertRaises(ValueError):
+        # Checks that dtype must be specified.
+        tf.Variable(initializer)
+
+      v1 = tf.Variable(initializer, dtype=tf.float32)
+      self.assertEqual(shape, v1.get_shape())
+      self.assertAllClose(value, v1.initial_value.eval())
+      with self.assertRaises(tf.errors.FailedPreconditionError):
+        v1.eval()
+
+      v2 = tf.Variable(tf.neg(v1.initialized_value()), dtype=tf.float32)
+      self.assertEqual(v1.get_shape(), v2.get_shape())
+      self.assertAllClose(np.negative(value), v2.initial_value.eval())
+
+      # Once v2.initial_value.eval() has been called, v1 has effectively been
+      # initialized.
+      self.assertAllClose(value, v1.eval())
+
+      with self.assertRaises(tf.errors.FailedPreconditionError):
+        v2.eval()
+      tf.initialize_all_variables().run()
+      self.assertAllClose(np.negative(value), v2.eval())
+
+  def testInitializerFunctionDevicePlacement(self):
+    with self.test_session():
+      initializer = lambda: tf.constant(42.0)
+      with tf.device("/cpu:100"):
+        v1 = tf.Variable(initializer, dtype=tf.float32, name="v1")
+      expected_device = "/device:CPU:100"
+      expected_group_v1 = [b"loc:@v1"]
+      self.assertEqual(expected_device, v1.op.device)
+      self.assertEqual(expected_group_v1, v1.op.colocation_groups())
+      for i in v1.initializer.inputs:
+        self.assertEqual(expected_device, i.op.device)
+        self.assertEqual(expected_group_v1, i.op.colocation_groups())
+
+      v2 = tf.Variable(initializer, dtype=tf.float32, name="v2")
+      expected_group_v2 = [b"loc:@v2"]
+      self.assertEqual(expected_group_v2, v2.op.colocation_groups())
+      for i in v2.initializer.inputs:
+        self.assertEqual(expected_group_v2, i.op.colocation_groups())
+
 
 class IsInitializedTest(tf.test.TestCase):
 
