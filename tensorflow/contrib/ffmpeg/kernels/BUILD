@@ -35,7 +35,6 @@ cc_test(
         ":ffmpeg_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -56,6 +55,5 @@ cc_test(
         ":ffmpeg_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )

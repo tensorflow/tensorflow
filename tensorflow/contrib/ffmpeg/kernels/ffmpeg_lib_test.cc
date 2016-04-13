@@ -13,18 +13,17 @@
 // limitations under the License.
 // =============================================================================
 
-#include "tensorflow/contrib/ffmpeg/kernels/ffmpeg_lib.h"
+#include "third_party/tensorflow/contrib/ffmpeg/kernels/ffmpeg_lib.h"
 
 #include <stdlib.h>
+#include <vector>
 
-#include "tensorflow/core/lib/core/command_line_flags.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/test.h"
-
-TF_DEFINE_bool(
-    should_ffmpeg_be_installed, false,
-    "Is it expected that FFmpeg is installed on the machine running the test?");
+#include "third_party/tensorflow/core/lib/io/path.h"
+#include "third_party/tensorflow/core/lib/strings/str_util.h"
+#include "third_party/tensorflow/core/platform/thread_annotations.h"
+#include "third_party/tensorflow/core/platform/mutex.h"
+#include "third_party/tensorflow/core/platform/test.h"
+#include "third_party/tensorflow/core/util/command_line_flags.h"
 
 using tensorflow::testing::TensorFlowSrcRoot;
 
@@ -35,11 +34,25 @@ namespace {
 const char kTestSoundFilename[] =
     "contrib/ffmpeg/kernels/testdata/test_sound.mp3";
 
+// Set to true via a command line flag iff the test is expected to have FFmpeg
+// installed.
+mutex mu;
+bool should_ffmpeg_be_installed GUARDED_BY(mu) = false;
+
+void ParseTestFlags(int argc, char** argv) {
+  mutex_lock l(mu);
+  CHECK(ParseFlags(&argc, argv, {Flag("should_ffmpeg_be_installed",
+                                      &should_ffmpeg_be_installed)}));
+}
+
 TEST(FfmpegLibTest, TestUninstalled) {
-  if (FLAGS_should_ffmpeg_be_installed) {
-    return;
+  {
+    mutex_lock l(mu);
+    if (should_ffmpeg_be_installed) {
+      return;
+    }
+    LOG(INFO) << "Assuming FFmpeg is uninstalled.";
   }
-  LOG(INFO) << "Assuming FFmpeg is uninstalled.";
 
   string filename = io::JoinPath(TensorFlowSrcRoot(), kTestSoundFilename);
   std::vector<float> output_samples;
@@ -48,10 +61,13 @@ TEST(FfmpegLibTest, TestUninstalled) {
 }
 
 TEST(FfmpegLibTest, TestInstalled) {
-  if (!FLAGS_should_ffmpeg_be_installed) {
-    return;
+  {
+    mutex_lock l(mu);
+    if (!should_ffmpeg_be_installed) {
+      return;
+    }
+    LOG(INFO) << "Assuming FFmpeg is installed.";
   }
-  LOG(INFO) << "Assuming FFmpeg is installed.";
 
   string filename = io::JoinPath(TensorFlowSrcRoot(), kTestSoundFilename);
   std::vector<float> output_samples;
@@ -62,3 +78,8 @@ TEST(FfmpegLibTest, TestInstalled) {
 }  // namespace
 }  // ffmpeg
 }  // tensorflow
+
+int main(int argc, char **argv) {
+  tensorflow::ffmpeg::ParseTestFlags(argc, argv);
+  return RUN_ALL_TESTS();
+}
