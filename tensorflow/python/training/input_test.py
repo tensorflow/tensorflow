@@ -538,6 +538,24 @@ class BatchTest(tf.test.TestCase):
     batched = tf.train.batch([sparse], batch_size=2, enqueue_many=True)
     self.assertAllEqual(batched.shape.get_shape().as_list(), [1])
 
+  def testBatchedSparseTensorInferedShapeUnknownRank(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(sparse.shape.get_shape().num_elements(), None)
+    batched = tf.train.batch([sparse], batch_size=2)
+    self.assertIs(batched.shape.get_shape().num_elements(), None)
+
+  def testBatchedSparseTensorInferedShapeUnknownRankEnqueueMany(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(sparse.shape.get_shape().num_elements(), None)
+    batched = tf.train.batch([sparse], batch_size=2, enqueue_many=True)
+    self.assertIs(batched.shape.get_shape().num_elements(), None)
+
 
 class BatchJoinTest(tf.test.TestCase):
 

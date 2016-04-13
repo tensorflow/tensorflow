@@ -367,7 +367,7 @@ def _deserialize_sparse_tensors(serialized_list, sparse_info_list):
   if not received_sequence:
     serialized_list = (serialized_list,)
   tensors = [
-      sparse_ops.deserialize_many_sparse(s, info.dtype, info.rank.value + 1)
+      sparse_ops.deserialize_many_sparse(s, info.dtype, (info.rank + 1).value)
       if info.sparse else s
       for (s, info)
       in zip(serialized_list, sparse_info_list)]
