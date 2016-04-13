@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import numpy as np
 import tensorflow as tf
 
@@ -207,6 +208,60 @@ class RNNCellTest(tf.test.TestCase):
         self.assertAllClose(res, [[0.175991, 0.175991,
                                    0.13248, 0.13248]])
 
+
+class SlimRNNCellTest(tf.test.TestCase):
+
+  def testBasicRNNCell(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([1, 2])
+        m = tf.zeros([1, 2])
+        my_cell = functools.partial(basic_rnn_cell, num_units=2)
+        g, _ = tf.nn.rnn_cell.SlimRNNCell(my_cell)(x, m)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run([g], {x.name: np.array([[1., 1.]]),
+                             m.name: np.array([[0.1, 0.1]])})
+        self.assertEqual(res[0].shape, (1, 2))
+
+  def testBasicRNNCellMatch(self):
+    batch_size = 32
+    input_size = 100
+    num_units = 10
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        inputs = tf.random_uniform((batch_size, input_size))
+        _, initial_state = basic_rnn_cell(inputs, None, num_units)
+        my_cell = functools.partial(basic_rnn_cell, num_units=num_units)
+        slim_cell = tf.nn.rnn_cell.SlimRNNCell(my_cell)
+        slim_outputs, slim_state = slim_cell(inputs, initial_state)
+        rnn_cell = tf.nn.rnn_cell.BasicRNNCell(num_units)
+        outputs, state = rnn_cell(inputs, initial_state)
+        self.assertEqual(slim_outputs.get_shape(), outputs.get_shape())
+        self.assertEqual(slim_state.get_shape(), state.get_shape())
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run([slim_outputs, slim_state, outputs, state])
+        self.assertAllClose(res[0], res[2])
+        self.assertAllClose(res[1], res[3])
+
+
+def basic_rnn_cell(inputs, state, num_units, scope=None):
+  if state is None:
+    if inputs is not None:
+      batch_size = inputs.get_shape()[0]
+      dtype = inputs.dtype
+    else:
+      batch_size = 0
+      dtype = tf.float32
+    init_output = tf.zeros(tf.pack([batch_size, num_units]), dtype=dtype)
+    init_state = tf.zeros(tf.pack([batch_size, num_units]), dtype=dtype)
+    init_output.set_shape([batch_size, num_units])
+    init_state.set_shape([batch_size, num_units])
+    return init_output, init_state
+  else:
+    with tf.variable_op_scope([inputs, state], scope, "BasicRNNCell"):
+      output = tf.tanh(tf.nn.rnn_cell.linear([inputs, state],
+                                             num_units, True))
+    return output, output
 
 if __name__ == "__main__":
   tf.test.main()
