@@ -13,8 +13,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/3f653ace7d28.tar.gz",
-    sha256 = "b49502f423deda55cea33bc503f84409cca92157f3b536d17113b81138f86715",
+    url = "https://bitbucket.org/eigen/eigen/get/dd13d392eab4.tar.gz",
+    sha256 = "757cea00813036cbe308fff41a4fd2654327d1851a6a94c83a7a91aa3b6680e9",
     build_file = path_prefix + "eigen.BUILD",
   )
 
