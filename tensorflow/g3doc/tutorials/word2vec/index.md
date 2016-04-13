@@ -108,7 +108,8 @@ $$
 
 where \\(\text{score}(w\_t, h)\\) computes the compatibility of word \\(w\_t\\)
 with the context \\(h\\) (a dot product is commonly used). We train this model
-by maximizing its log-likelihood on the training set, i.e. by maximizing
+by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function) 
+on the training set, i.e. by maximizing
 
 $$
 \begin{align}
