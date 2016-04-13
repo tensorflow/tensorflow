@@ -36,13 +36,19 @@ Static helper routines for ` TensorShape `. Includes a few common predicates on 
 
 
 
-#### `static Status tensorflow::TensorShapeUtils::MakeShape(const T *dims, int n, TensorShape *out)` {#static_Status_tensorflow_TensorShapeUtils_MakeShape}
+#### `static Status tensorflow::TensorShapeUtils::MakeShape(const int32 *dims, int n, TensorShape *out)` {#static_Status_tensorflow_TensorShapeUtils_MakeShape}
 
 Returns a ` TensorShape ` whose dimensions are `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
 
 
 
-#### `static string tensorflow::TensorShapeUtils::ShapeListString(const gtl::ArraySlice< TensorShape > &shapes)` {#static_string_tensorflow_TensorShapeUtils_ShapeListString}
+#### `static Status tensorflow::TensorShapeUtils::MakeShape(const int64 *dims, int n, TensorShape *out)` {#static_Status_tensorflow_TensorShapeUtils_MakeShape}
+
+
+
+
+
+#### `string tensorflow::TensorShapeUtils::ShapeListString(const gtl::ArraySlice< TensorShape > &shapes)` {#string_tensorflow_TensorShapeUtils_ShapeListString}
 
 
 
