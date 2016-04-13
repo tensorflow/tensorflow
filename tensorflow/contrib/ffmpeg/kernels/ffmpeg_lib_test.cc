@@ -32,7 +32,7 @@ namespace ffmpeg {
 namespace {
 
 const char kTestSoundFilename[] =
-    "contrib/ffmpeg/kernels/testdata/test_sound.mp3";
+    "contrib/ffmpeg/kernels/testdata/test_sound1.mp3";
 
 // Set to true via a command line flag iff the test is expected to have FFmpeg
 // installed.
