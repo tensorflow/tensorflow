@@ -39,10 +39,10 @@ const char kTestSoundFilename[] =
 mutex mu;
 bool should_ffmpeg_be_installed GUARDED_BY(mu) = false;
 
-void ParseTestFlags(int argc, char** argv) {
+void ParseTestFlags(int* argc, char** argv) {
   mutex_lock l(mu);
-  CHECK(ParseFlags(&argc, argv, {Flag("should_ffmpeg_be_installed",
-                                      &should_ffmpeg_be_installed)}));
+  CHECK(ParseFlags(argc, argv, {Flag("should_ffmpeg_be_installed",
+                                     &should_ffmpeg_be_installed)}));
 }
 
 TEST(FfmpegLibTest, TestUninstalled) {
@@ -80,6 +80,7 @@ TEST(FfmpegLibTest, TestInstalled) {
 }  // tensorflow
 
 int main(int argc, char **argv) {
-  tensorflow::ffmpeg::ParseTestFlags(argc, argv);
+  tensorflow::ffmpeg::ParseTestFlags(&argc, argv);
+  testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
