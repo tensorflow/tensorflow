@@ -6,13 +6,13 @@ Static helper routines for ` PartialTensorShape `. Includes a few common predica
 
 ###Member Details
 
-#### `static string tensorflow::PartialTensorShapeUtils::PartialShapeListString(const gtl::ArraySlice< PartialTensorShape > &shapes)` {#static_string_tensorflow_PartialTensorShapeUtils_PartialShapeListString}
+#### `string tensorflow::PartialTensorShapeUtils::PartialShapeListString(const gtl::ArraySlice< PartialTensorShape > &shapes)` {#string_tensorflow_PartialTensorShapeUtils_PartialShapeListString}
 
 
 
 
 
-#### `static bool tensorflow::PartialTensorShapeUtils::AreCompatible(const gtl::ArraySlice< PartialTensorShape > &shapes0, const gtl::ArraySlice< PartialTensorShape > &shapes1)` {#static_bool_tensorflow_PartialTensorShapeUtils_AreCompatible}
+#### `bool tensorflow::PartialTensorShapeUtils::AreCompatible(const gtl::ArraySlice< PartialTensorShape > &shapes0, const gtl::ArraySlice< PartialTensorShape > &shapes1)` {#bool_tensorflow_PartialTensorShapeUtils_AreCompatible}
 
 
 
