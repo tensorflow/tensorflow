@@ -77,7 +77,7 @@ func LoadGraphFromTextFile(path string) (gr *Graph, err error) {
 }
 
 // Op Adds a new Node to the Graph with the specified operation, this
-// operation perfoms some internal check of the specified and expercted
+// operation performs some internal check of the specified and expected
 // attributes for the operation and try to deduct the corresponding DataTypes
 // in case of they are not specified.
 func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
@@ -375,6 +375,8 @@ func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, 
 	return
 }
 
+// String Returns a string representation of this graph, used for debugging
+// proposals.
 func (gr *Graph) String() string {
 	var bufStr bytes.Buffer
 	proto.MarshalText(&bufStr, gr.def)
@@ -399,7 +401,7 @@ func (gr *Graph) addInitializationGraphOp() {
 	})
 }
 
-// Placeholder Adds a placegolder to the Graph, a placeholder is an
+// Placeholder Adds a placeholder to the Graph, a placeholder is an
 // operation that must be fed with data on execution.
 func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64, dimNames []string) (op *GraphNode) {
 	op = &GraphNode{

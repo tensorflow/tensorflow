@@ -50,7 +50,6 @@ type TensorInt interface {
 	AsStr() (res [][]byte, err error)
 
 	String() string
-	SetCMemAsAlreadyRelease()
 }
 
 // Tensor Holds a multi-dimensional array of elements of a single data type.
@@ -548,8 +547,8 @@ func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
 	return
 }
 
-// SetCMemAsAlreadyRelease The C allocated memory was already released from C.
-func (t *Tensor) SetCMemAsAlreadyRelease() {
+// setCMemAsAlreadyRelease The C allocated memory was already released from C.
+func (t *Tensor) setCMemAsAlreadyRelease() {
 	t.memReleased = true
 }
 

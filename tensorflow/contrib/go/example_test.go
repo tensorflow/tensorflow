@@ -2,12 +2,11 @@ package tensorflow_test
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
-func ExampleOp() {
+func ExampleGraph_Op() {
 	var out []*tensorflow.Tensor
 
 	additions := 10
@@ -34,72 +33,152 @@ func ExampleOp() {
 	}
 }
 
-func ExampleLoadGraphFromTextFile() {
-	// This are the input tensors to be used
-	inputSlice1 := [][][]int64{
-		{
-			{1, 2},
-			{3, 4},
-		}, {
-			{5, 6},
-			{7, 8},
-		},
-	}
-	inputSlice2 := [][][]int64{
-		{
-			{9, 10},
-			{11, 12},
-		}, {
-			{13, 14},
-			{15, 16},
-		},
-	}
-
-	// Create the two tensors, the data type is recognized automatically as
-	// also the tensor shape from the input slice
-	t1, _ := tensorflow.NewTensor(inputSlice1)
-	t2, _ := tensorflow.NewTensor(inputSlice2)
-
-	// Load the graph from the file that we had generated from Python on
-	// the previous step
-	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
-
-	// Create the session and extend the Graph
-	s, _ := tensorflow.NewSession()
-	s.ExtendGraph(graph)
-
-	input := map[string]*tensorflow.Tensor{
-		"input1": t1,
-		"input2": t2,
-	}
-	// Execute the graph with the two input tensors, and specify the names
-	// of the tensors to be returned, on this case just one
-	out, _ := s.Run(input, []string{"output"}, nil)
-
-	if len(out) != 1 {
-		log.Fatalf("The expected number of outputs is 1 but: %d returned", len(out))
-	}
-
-	outputTensor := out[0]
-	for x := 0; x < outputTensor.Dim(0); x++ {
-		for y := 0; y < outputTensor.Dim(1); y++ {
-			for z := 0; z < outputTensor.Dim(2); z++ {
-				// Using GetVal we can access to the corresponding positions of
-				// the tensor as if we had been accessing to the positions in a
-				// multidimensional array, for instance GetVal(1, 2, 3) is
-				// equivalent to array[1][2][3] on a three dimensional array
-				val, _ := out[0].GetVal(x, y, z)
-				fmt.Println(
-					"The sum of the two elements: %d + %d is equal to: %d",
-					inputSlice1[x][y][z], inputSlice2[x][y][z], val)
-			}
-		}
-	}
-}
-
 func ExampleNewTensor() {
 	tensorflow.NewTensor([][]int64{
 		{1, 2, 3, 4},
 		{5, 6, 7, 8},
 	})
+}
+
+func ExampleNewGraphFromText() {
+	graph, err := tensorflow.NewGraphFromText(`
+		node {
+			name: "output"
+			op: "Const"
+			attr {
+				key: "dtype"
+				value {
+					type: DT_FLOAT
+				}
+			}
+			attr {
+				key: "value"
+				value {
+					tensor {
+						dtype: DT_FLOAT
+						tensor_shape {
+						}
+						float_val: 1.5 
+					}
+				}
+			}
+		}
+		version: 5`)
+
+	fmt.Println(graph, err)
+}
+
+func ExampleGraph_Constant() {
+	graph := tensorflow.NewGraph()
+	// Adds a scalar string to the graph with named 'const1'.
+	graph.Constant("const1", "this is a test...")
+
+	// Adds a bidimensional constant to the graph named 'const2'.
+	graph.Constant("const2", [][]int64{
+		{1, 2},
+		{3, 4},
+	})
+}
+
+func ExampleGraph_Placeholder() {
+	graph := tensorflow.NewGraph()
+	// Adds a placeholder named "input1" that must allocate a three elements
+	// DtInt32 tensor.
+	graph.Placeholder("input1", tensorflow.DtInt32, []int64{3}, []string{})
+}
+
+func ExampleGraph_Variable() {
+	var out []*tensorflow.Tensor
+
+	graph := tensorflow.NewGraph()
+	// Create a Variable that will be used as input and also as storage of
+	// the result on every execution.
+	input1, _ := graph.Variable("input1", []int32{1, 2, 3, 4})
+	input2, _ := graph.Constant("input2", []int32{5, 6, 7, 8})
+
+	// Add the two inputs.
+	add, _ := graph.Op("Add", "add_tensors", []*tensorflow.GraphNode{input1, input2}, "", map[string]interface{}{})
+	// Store the result on the input1 varable
+	graph.Op("Assign", "assign_inp1", []*tensorflow.GraphNode{input1, add}, "", map[string]interface{}{})
+
+	s, _ := tensorflow.NewSession()
+	// Initialize all the variable in memory, on this case only the
+	// 'input1' variable.
+	s.ExtendAndInitializeAllVariables(graph)
+
+	// Runs ten times the 'assign_inp1"' that will run also the 'Add'
+	// operation since it inputs depends on the result of the 'Add'
+	// operation.
+	// The variable 'input1' will be returned and printed on each
+	// execution.
+	for i := 0; i < 10; i++ {
+		out, _ = s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
+		fmt.Println(out[0].AsInt32())
+	}
+}
+
+func ExampleSession_ExtendAndInitializeAllVariables() {
+	graph := tensorflow.NewGraph()
+	// Create a Variable that will be initialized with the values []int32{1, 2, 3, 4}
+	graph.Variable("input1", []int32{1, 2, 3, 4})
+
+	s, _ := tensorflow.NewSession()
+	// Initialize all the variable in memory, on this case only the
+	// 'input1' variable.
+	s.ExtendAndInitializeAllVariables(graph)
+}
+
+func ExampleSession_ExtendGraph() {
+	// Load the graph from from a file who contains a previously generated
+	// graph as text file
+	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
+
+	// Create the session and extend the Graph on it
+	s, _ := tensorflow.NewSession()
+	s.ExtendGraph(graph)
+}
+
+func ExampleLoadGraphFromTextFile() {
+	// Load the graph from from a file who contains a previously generated
+	// graph as text file
+	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
+
+	// Create the session and extend the Graph on it
+	s, _ := tensorflow.NewSession()
+	s.ExtendGraph(graph)
+}
+
+func ExampleSession_Run() {
+	graph := tensorflow.NewGraph()
+	input1, _ := graph.Variable("input1", []int32{1, 2, 3, 4})
+	input2, _ := graph.Constant("input2", []int32{5, 6, 7, 8})
+
+	add, _ := graph.Op("Add", "add_tensors", []*tensorflow.GraphNode{input1, input2}, "", map[string]interface{}{})
+	graph.Op("Assign", "assign_inp1", []*tensorflow.GraphNode{input1, add}, "", map[string]interface{}{})
+
+	s, _ := tensorflow.NewSession()
+	s.ExtendAndInitializeAllVariables(graph)
+
+	out, _ := s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
+
+	// The first of the output corresponds to the node 'input1' specified
+	// on the second param
+	fmt.Println(out[0])
+}
+
+func ExampleNewTensorWithShape() {
+	// Create a new tensor with a ingle dimension of 3
+	t2, _ := tensorflow.NewTensorWithShape([][]int64{{3}}, []int64{3, 4, 5})
+	fmt.Println(t2.AsInt64())
+}
+
+func ExampleTensor_GetVal() {
+	t, _ := tensorflow.NewTensor([][]int64{
+		{1, 2, 3, 4},
+		{5, 6, 7, 8},
+	})
+
+	// Print the number 8 that is in the second position of the first
+	// dimension and the third of the second dimension.
+	fmt.Println(t.GetVal(1, 3))
 }

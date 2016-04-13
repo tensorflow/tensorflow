@@ -48,6 +48,15 @@ The supported data types are:
 - DtFloat
 - DtDouble
 
+```Go
+Example:
+	// Create a new tensor with a ingle dimension of 3
+	t2, _ := tensorflow.NewTensorWithShape([][]int64{{3}}, []int64{3, 4, 5})
+	fmt.Println(t2.AsInt64())
+
+
+```
+
 ## Tensor Methods
 
 #### AsBool
@@ -170,6 +179,20 @@ the tensor, Ex: GetVal(1, 2, 3) is equivalent to data[1][2][3] on a
 multidimensional array. This method could return an error in case of a wrong
 specified number of dimensions or a dimesions out of range.
 
+```Go
+Example:
+	t, _ := tensorflow.NewTensor([][]int64{
+	    {1, 2, 3, 4},
+	    {5, 6, 7, 8},
+	})
+	
+	// Print the number 8 that is in the second position of the first
+	// dimension and the third of the second dimension.
+	fmt.Println(t.GetVal(1, 3))
+
+
+```
+
 #### NumDims
 
 ```go
@@ -177,14 +200,6 @@ func (t *Tensor) NumDims() int
 ```
 
 NumDims returns the number of dimensions that this tensor in a tensor.
-
-#### SetCMemAsAlreadyRelease
-
-```go
-func (t *Tensor) SetCMemAsAlreadyRelease()
-```
-
-SetCMemAsAlreadyRelease The C allocated memory was already released from C.
 
 #### Shape
 

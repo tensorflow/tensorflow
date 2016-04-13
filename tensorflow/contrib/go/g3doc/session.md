@@ -30,6 +30,20 @@ ExtendAndInitializeAllVariables Adds the "init" op to the graph in order to
 initialize all the variables, loads the graph definition on the session and
 executes the "init" op.
 
+```Go
+Example:
+	graph := tensorflow.NewGraph()
+	// Create a Variable that will be initialized with the values []int32{1, 2, 3, 4}
+	graph.Variable("input1", []int32{1, 2, 3, 4})
+	
+	s, _ := tensorflow.NewSession()
+	// Initialize all the variable in memory, on this case only the
+	// 'input1' variable.
+	s.ExtendAndInitializeAllVariables(graph)
+
+
+```
+
 #### ExtendGraph
 
 ```go
@@ -37,6 +51,19 @@ func (s *Session) ExtendGraph(graph *Graph) (err error)
 ```
 
 ExtendGraph Loads the graph definition on the session.
+
+```Go
+Example:
+	// Load the graph from from a file who contains a previously generated
+	// graph as text file
+	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
+	
+	// Create the session and extend the Graph on it
+	s, _ := tensorflow.NewSession()
+	s.ExtendGraph(graph)
+
+
+```
 
 #### FreeAllocMem
 
@@ -58,4 +85,25 @@ targets are specified. the Parameter Input in a dictionary where the key is the
 tensor name on the graph, and the value the Tensor. The parameter outputs is
 used to specify the tensors from the graph to be returned in the same order as
 they occur on the slice.
+
+```Go
+Example:
+	graph := tensorflow.NewGraph()
+	input1, _ := graph.Variable("input1", []int32{1, 2, 3, 4})
+	input2, _ := graph.Constant("input2", []int32{5, 6, 7, 8})
+	
+	add, _ := graph.Op("Add", "add_tensors", []*tensorflow.GraphNode{input1, input2}, "", map[string]interface{}{})
+	graph.Op("Assign", "assign_inp1", []*tensorflow.GraphNode{input1, add}, "", map[string]interface{}{})
+	
+	s, _ := tensorflow.NewSession()
+	s.ExtendAndInitializeAllVariables(graph)
+	
+	out, _ := s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
+	
+	// The first of the output corresponds to the node 'input1' specified
+	// on the second param
+	fmt.Println(out[0])
+
+
+```
 

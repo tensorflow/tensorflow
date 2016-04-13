@@ -46,7 +46,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 	inputNames := NewStringVector()
 	inputValues := NewTensorVector()
 	for k, v := range inputs {
-		v.SetCMemAsAlreadyRelease()
+		v.setCMemAsAlreadyRelease()
 		inputValues.Add(v.tensor)
 		inputNames.Add(k)
 	}

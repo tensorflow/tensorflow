@@ -1,20 +1,16 @@
 # TensorFlow for Go
 
 This package provides a high-level Go API for TensorFlow, this package
-provides the nexessary tools to create and manipulate Tensors, Variables,
-Constants and build, load and run Graphs.
+provides the necessary tools to create and manipulate Tensors, Variables,
+Constants as also to build, load and run Graphs.
 
-#### Session
-
-* [Session](g3doc/session.md)
-
-#### Graph
-
-* [Graph](g3doc/graph.md)
-
-#### Tensor
-
-* [Tensor](g3doc/tensor.md)
+## API documentation
+* [Session](g3doc/session.md): Encapsulates the environment in which Operation
+  objects are executed, and Tensor objects are evaluated.
+* [Graph](g3doc/graph.md): Contains a set of Operations, which represent units
+  of computation; and Tensors, which represent the units of data that flow
+  between operations.
+* [Tensor](g3doc/tensor.md): Typed multi-dimensional array.
 
 ## Practical Examples
 
@@ -35,12 +31,13 @@ with tf.Session() as sess:
     tf.train.write_graph(sess.graph_def, '/tmp/graph/', 'test_graph.pb', as_text=True)
 ```
 
-The previous code will prepare two placeholders with names 'input1' and
-'input2' respectively, and another tensor used as output of the addition of the
-two placeholders. And dumps the graph as text into a text file with path:
+The previous code prepares two placeholders with names 'input1' and
+'input2' respectively and other tensor used as output of the addition of the
+two placeholders. At the end, it dumps the graph as text into a text file with
+path:
 '/tmp/graph/test_graph.pb'.
 
-From a Go aplication, you can use the next code to execute the graph:
+From a Go application, you can use the next code to execute the graph:
 
 ```go
 package main
@@ -52,7 +49,7 @@ import (
 )
 
 func main() {
-	// This are the input tensors to be used
+	// These are the input tensors to be used
 	inputSlice1 := [][][]int64{
 		{
 			{1, 2},
@@ -84,8 +81,8 @@ func main() {
 		log.Fatal("Problem trying create a new tensor, Error:", err)
 	}
 
-	// Load the graph from the file that we had generated from Python on
-	// the previous step
+	// Load the graph from the file that we generated from Python on the
+	previous step
 	graph, err := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
 	if err != nil {
 		log.Fatal("Problem reading the graph from the text file, Error:", err)
@@ -102,7 +99,7 @@ func main() {
 		"input2": t2,
 	}
 	// Execute the graph with the two input tensors, and specify the names
-	// of the tensors to be returned, on this case just one
+	// of the tensors to be returned, for this case just one
 	out, err := s.Run(input, []string{"output"}, nil)
 	if err != nil {
 		log.Fatal("Problem trying to run the saved graph, Error:", err)
@@ -137,13 +134,13 @@ func main() {
 }
 ```
 
-As you can see fro the previous code creates two Tensors to be processed by the
+As you can see from the previous code creates two Tensors to be processed by the
 previously generated Graph, after the execution returns the Tensor with the
 result.
 
 ### Image Recognition
 
-This is a really complete code example that shows how to generate Graphs from
+This is a really complete code example that shows how to generate Graphs on
 Go and execute them:
 
 [Image Recognition](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/g3doc/tutorials/image_recognition/index.md#usage-with-the-go-api)
