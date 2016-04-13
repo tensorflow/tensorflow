@@ -13,17 +13,17 @@
 // limitations under the License.
 // =============================================================================
 
-#include "third_party/tensorflow/contrib/ffmpeg/kernels/ffmpeg_lib.h"
+#include "tensorflow/contrib/ffmpeg/kernels/ffmpeg_lib.h"
 
 #include <stdlib.h>
 #include <vector>
 
-#include "third_party/tensorflow/core/lib/io/path.h"
-#include "third_party/tensorflow/core/lib/strings/str_util.h"
-#include "third_party/tensorflow/core/platform/thread_annotations.h"
-#include "third_party/tensorflow/core/platform/mutex.h"
-#include "third_party/tensorflow/core/platform/test.h"
-#include "third_party/tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/command_line_flags.h"
 
 using tensorflow::testing::TensorFlowSrcRoot;
 
