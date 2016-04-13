@@ -14,7 +14,8 @@ filegroup(
         "dist/tf-tensorboard.html",
         "//tensorflow/tensorboard/bower:bower",
         "TAG",
-    ] + glob(["lib/**/*"]),
+        "//tensorflow/tensorboard/lib:all_files"
+    ],
 )
 
 py_binary(
