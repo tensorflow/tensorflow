@@ -60,21 +60,21 @@ $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu
 
 # Mac OS X, CPU only:
 $ sudo easy_install --upgrade six
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-cp27-none-any.whl
+$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py2-none-any.whl
 ```
 
 For python3:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only:
-$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-none-linux_x86_64.whl
+$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-none-linux_x86_64.whl
+$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
 $ sudo easy_install --upgrade six
-$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-cp35-none-any.whl
+$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py3-none-any.whl
 ```
 
 NOTE: If you are upgrading from a previous installation of TensorFlow < 0.7.1,
@@ -132,7 +132,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
-(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-cp27-none-any.whl
+(tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py2-none-any.whl
 ```
 
 and again for python3:
@@ -143,13 +143,13 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
 # Ubuntu/Linux 64-bit, CPU only:
-(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-none-linux_x86_64.whl
+(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
-(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-none-linux_x86_64.whl
+(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
-(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-cp35-none-any.whl
+(tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py3-none-any.whl
 ```
 
 With the Virtualenv environment activated, you can now
