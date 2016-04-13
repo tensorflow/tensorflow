@@ -46,8 +46,11 @@ limitations under the License.
 
 // Call "m" for all number types that support the comparison operations "<" and
 // ">".
+#define TF_CALL_INTEGRAL_TYPES(m) m(int64) m(int32) m(uint8) m(int16) m(int8)
+
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
-  m(float) m(double) m(int64) m(int32) m(uint8) m(int16) m(int8)
+  TF_CALL_INTEGRAL_TYPES(m)          \
+  m(float) m(double)
 
 #define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) \
   m(float) m(double) m(int64) m(uint8) m(int16) m(int8)

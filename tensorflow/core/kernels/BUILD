@@ -672,6 +672,7 @@ tf_kernel_libraries(
         "sample_distorted_bounding_box_op",
     ],
     deps = [
+        ":bounds_check",
         ":eigen_helpers",
         ":image_resizer_state",
         "//tensorflow/core:framework",
