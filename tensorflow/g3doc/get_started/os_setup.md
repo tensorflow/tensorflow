@@ -184,11 +184,11 @@ packages on your machine.
 
 We provide 4 Docker images:
 
-* `b.gcr.io/tensorflow/tensorflow`: TensorFlow CPU binary image.
-* `b.gcr.io/tensorflow/tensorflow:latest-devel`: CPU Binary image plus source
+* `gcr.io/tensorflow/tensorflow`: TensorFlow CPU binary image.
+* `gcr.io/tensorflow/tensorflow:latest-devel`: CPU Binary image plus source
 code.
-* `b.gcr.io/tensorflow/tensorflow:latest-gpu`: TensorFlow GPU binary image.
-* `b.gcr.io/tensorflow/tensorflow:latest-devel-gpu`: GPU Binary image plus source
+* `gcr.io/tensorflow/tensorflow:latest-gpu`: TensorFlow GPU binary image.
+* `gcr.io/tensorflow/tensorflow:latest-devel-gpu`: GPU Binary image plus source
 code.
 
 We also have tags with `latest` replaced by a released version (e.g., `0.8.0rc0-gpu`).
@@ -209,7 +209,7 @@ After Docker is installed, launch a Docker container with the TensorFlow binary
 image as follows.
 
 ```bash
-$ docker run -it b.gcr.io/tensorflow/tensorflow
+$ docker run -it gcr.io/tensorflow/tensorflow
 ```
 
 If you're using a container with GPU support, some additional flags must be
@@ -219,7 +219,7 @@ include a
 in the repo with these flags, so the command-line would look like
 
 ```bash
-$ path/to/repo/tensorflow/tools/docker/docker_run_gpu.sh b.gcr.io/tensorflow/tensorflow:gpu
+$ path/to/repo/tensorflow/tools/docker/docker_run_gpu.sh gcr.io/tensorflow/tensorflow:gpu
 ```
 
 You can now [test your installation](#test-the-tensorflow-installation) within the Docker container.
