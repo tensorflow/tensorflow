@@ -111,15 +111,17 @@ an output element, this operation computes \\(y = |x|\\).
 )doc");
 
 REGISTER_OP("ComplexAbs")
-    .Input("x: complex64")
-    .Output("y: float")
+    .Input("x: T")
+    .Output("y: Tout")
+    .Attr("T: {complex64, complex128} = DT_COMPLEX64")
+    .Attr("Tout: {float, double} = DT_FLOAT")
     .Doc(R"doc(
 Computes the complex absolute value of a tensor.
 
 Given a tensor `x` of complex numbers, this operation returns a tensor of type
-`float` that is the absolute value of each element in `x`. All elements in `x`
-must be complex numbers of the form \\(a + bj\\). The absolute value is
-computed as \\( \sqrt{a^2 + b^2}\\).
+`float` or `double` that is the absolute value of each element in `x`. All
+elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
+value is computed as \\( \sqrt{a^2 + b^2}\\).
 
 For example:
 
@@ -262,7 +264,7 @@ Returns which elements of x are finite.
 REGISTER_OP("Sign")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {half, float, double, int32, int64, complex64}")
+    .Attr("T: {half, float, double, int32, int64, complex64, complex128}")
     .Doc(R"doc(
 Returns an element-wise indication of the sign of a number.
 
@@ -291,11 +293,11 @@ Returns element-wise smallest integer in not less than x.
 
 #define BINARY_MORE()                              \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {half, float, double, uint8, int8, int16, int32, int64, complex64}")
+      "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, complex128}")
 
 #define BINARY_FEWER()                             \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {half, float, double, int32, complex64, int64}")
+      "T: {half, float, double, int32, complex64, int64, complex128}")
 
 // TODO(mrry): Restore `SetIsCommutative()` for non-string types.
 REGISTER_OP("Add")
@@ -1172,9 +1174,11 @@ output: 1-D. The generated values.
 )doc");
 
 REGISTER_OP("Complex")
-    .Input("real: float")
-    .Input("imag: float")
-    .Output("output: complex64")
+    .Input("real: T")
+    .Input("imag: T")
+    .Output("out: Tout")
+    .Attr("T: {float, double} = DT_FLOAT")
+    .Attr("Tout: {complex64, complex128} = DT_COMPLEX64")
     .Doc(R"doc(
 Converts two real numbers to a complex number.
 
@@ -1194,7 +1198,12 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ```
 )doc");
 
-REGISTER_OP("Real").Input("input: complex64").Output("output: float").Doc(R"doc(
+REGISTER_OP("Real")
+    .Input("input: T")
+    .Output("output: Tout")
+    .Attr("T: {complex64, complex128} = DT_COMPLEX64")
+    .Attr("Tout: {float, double} = DT_FLOAT")
+    .Doc(R"doc(
 Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
@@ -1210,7 +1219,12 @@ tf.real(input) ==> [-2.25, 3.25]
 ```
 )doc");
 
-REGISTER_OP("Imag").Input("input: complex64").Output("output: float").Doc(R"doc(
+REGISTER_OP("Imag")
+    .Input("input: T")
+    .Output("output: Tout")
+    .Attr("T: {complex64, complex128} = DT_COMPLEX64")
+    .Attr("Tout: {float, double} = DT_FLOAT")
+    .Doc(R"doc(
 Returns the imaginary part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of

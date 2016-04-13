@@ -188,7 +188,7 @@ def _compute_gradient(x,
   """Computes the theoretical and numerical jacobian."""
   t = dtypes.as_dtype(x.dtype)
   allowed_types = [dtypes.float16, dtypes.float32, dtypes.float64,
-                   dtypes.complex64]
+                   dtypes.complex64, dtypes.complex128]
   assert t.base_dtype in allowed_types, "Don't support type %s for x" % t.name
   t2 = dtypes.as_dtype(y.dtype)
   assert t2.base_dtype in allowed_types, "Don't support type %s for y" % t2.name

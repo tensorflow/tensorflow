@@ -163,7 +163,7 @@ case where both types are quantized.
 
 
 *  <b>`value`</b>: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-    `int16`, `int8`, or `complex64`.
+    `int16`, `int8`, `complex64` or `complex128`.
 *  <b>`bias`</b>: A 1-D `Tensor` with size matching the last dimension of `value`.
     Must be the same type as `value` unless `value` is a quantized type,
     in which case a different quantized type may be used.
@@ -186,7 +186,7 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `complex128`, `int64`,
     or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -205,7 +205,7 @@ Computes hyperbolic tangent of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `complex128`, `int64`,
     or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 

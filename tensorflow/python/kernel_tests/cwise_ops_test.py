@@ -64,8 +64,8 @@ class UnaryOpTest(tf.test.TestCase):
       else:
         self.assertAllClose(np_ans, tf_cpu)
 
-      if x.dtype == np.complex64 and tf_func in (
-          tf.sign, tf.sqrt, tf.rsqrt, tf.log):
+      if (x.dtype in (np.complex64, np.complex128) and
+           tf_func in (tf.sign, tf.sqrt, tf.rsqrt, tf.log)):
         return  # Return early
 
       if x.dtype == np.float16:
@@ -85,7 +85,7 @@ class UnaryOpTest(tf.test.TestCase):
                                               x_init_value=xf)
         jacob_n = jacob_n.astype(np.float16)
         self.assertAllClose(jacob_t, jacob_n, rtol=5e-3, atol=5e-3)
-      elif x.dtype == np.float32 or x.dtype == np.complex64:
+      elif x.dtype in (np.float32, np.complex64):
         s = list(np.shape(x))
         jacob_t, jacob_n = tf.test.compute_gradient(inx,
                                                     s,
@@ -93,7 +93,7 @@ class UnaryOpTest(tf.test.TestCase):
                                                     s,
                                                     x_init_value=x)
         self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-      elif x.dtype == np.float64:
+      elif x.dtype in (np.float64, np.complex128):
         s = list(np.shape(x))
         jacob_t, jacob_n = tf.test.compute_gradient(inx,
                                                     s,
@@ -280,6 +280,31 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, self._sigmoid, tf.sigmoid)
     self._compareCpu(x, np.sin, tf.sin)
     self._compareCpu(x, np.cos, tf.cos)
+
+    # Numpy uses an incorrect definition of sign; use the right one instead.
+    def complex_sign(x):
+      return x / np.abs(x)
+    self._compareCpu(y, complex_sign, tf.sign)
+
+  def testComplex128Basic(self):
+    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
+        np.complex128)
+    y = x + 0.5  # no zeros
+    self._compareCpu(x, np.abs, tf.abs)
+    self._compareCpu(x, np.abs, _ABS)
+    # TODO Enable these once they are implemented
+    #self._compareCpu(x, np.negative, tf.neg)
+    #self._compareCpu(x, np.negative, _NEG)
+    #self._compareCpu(y, self._inv, tf.inv)
+    #self._compareCpu(x, np.square, tf.square)
+    #self._compareCpu(x, np.sqrt, tf.sqrt)
+    #self._compareCpu(y, self._rsqrt, tf.rsqrt)
+    #self._compareCpu(x, np.exp, tf.exp)
+    #self._compareCpu(y, np.log, tf.log)
+    #self._compareCpu(x, np.tanh, tf.tanh)
+    #self._compareCpu(x, self._sigmoid, tf.sigmoid)
+    #self._compareCpu(x, np.sin, tf.sin)
+    #self._compareCpu(x, np.cos, tf.cos)
 
     # Numpy uses an incorrect definition of sign; use the right one instead.
     def complex_sign(x):

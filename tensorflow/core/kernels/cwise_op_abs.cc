@@ -19,8 +19,7 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Abs", functor::abs, float, Eigen::half, double, int32,
           int64);
 #if !defined(__ANDROID__)
-REGISTER_KERNEL_BUILDER(Name("ComplexAbs").Device(DEVICE_CPU),
-                        UnaryOp<CPUDevice, functor::abs<complex64>>);
+REGISTER2(UnaryOp, CPU, "ComplexAbs", functor::abs, complex64, complex128);
 #endif
 #if GOOGLE_CUDA
 REGISTER4(UnaryOp, GPU, "Abs", functor::abs, float, Eigen::half, double, int64);
