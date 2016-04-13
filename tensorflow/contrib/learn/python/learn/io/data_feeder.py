@@ -39,7 +39,7 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
     if y_shape is None:
         return input_shape, None
     y_shape = list(y_shape[1:]) if len(y_shape) > 1 else []
-    # Skip first dimention if it is 1.
+    # Skip first dimension if it is 1.
     if y_shape and y_shape[0] == 1:
         y_shape = y_shape[1:]
     if n_classes > 1:
