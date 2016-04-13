@@ -16,14 +16,14 @@ quick links here:
 
 We currently maintain three Docker container images:
 
-* `b.gcr.io/tensorflow/tensorflow`, which is a minimal VM with TensorFlow and
+* `gcr.io/tensorflow/tensorflow`, which is a minimal VM with TensorFlow and
   all dependencies.
 
-* `b.gcr.io/tensorflow/tensorflow-full`, which contains a full source
+* `gcr.io/tensorflow/tensorflow-full`, which contains a full source
   distribution and all required libraries to build and run TensorFlow from
   source.
 
-* `b.gcr.io/tensorflow/tensorflow-full-gpu`, which is the same as the previous
+* `gcr.io/tensorflow/tensorflow-full-gpu`, which is the same as the previous
   container, but built with GPU support.
 
 ## Running the container
@@ -31,7 +31,7 @@ We currently maintain three Docker container images:
 Each of the containers is published to a Docker registry; for the non-GPU
 containers, running is as simple as
 
-    $ docker run -it -p 8888:8888 b.gcr.io/tensorflow/tensorflow
+    $ docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow
 
 For the container with GPU support, we require the user to make the appropriate
 NVidia libraries available on their system, as well as providing mappings so
@@ -40,7 +40,7 @@ accomplished via
 
     $ export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
     $ export DEVICES=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
-    $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES b.gcr.io/tensorflow/tensorflow-devel-gpu
+    $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES gcr.io/tensorflow/tensorflow-devel-gpu
 
 Alternately, you can use the `docker_run_gpu.sh` script in this directory.
 

@@ -14,13 +14,31 @@ All Env implementations are safe for concurrent access from multiple threads wit
 
 
 
-#### `tensorflow::Env::~Env()` {#tensorflow_Env_Env}
+#### `virtual tensorflow::Env::~Env()=default` {#virtual_tensorflow_Env_Env}
 
 
 
 
 
-#### `virtual Status tensorflow::Env::NewRandomAccessFile(const string &fname, RandomAccessFile **result)=0` {#virtual_Status_tensorflow_Env_NewRandomAccessFile}
+#### `Status tensorflow::Env::GetFileSystemForFile(const string &fname, FileSystem **result)` {#Status_tensorflow_Env_GetFileSystemForFile}
+
+Returns the FileSystem object to handle operations on the file specified by &apos;fname&apos;. The FileSystem object is used as the implementation for the file system related (non-virtual) functions that follow. Returned FileSystem object is still owned by the Env object and will.
+
+
+
+#### `Status tensorflow::Env::GetRegisteredFileSystemSchemes(std::vector< string > *schemes)` {#Status_tensorflow_Env_GetRegisteredFileSystemSchemes}
+
+Returns the file system schemes registered for this Env .
+
+
+
+#### `void tensorflow::Env::RegisterFileSystem(const string &scheme, FileSystemRegistry::Factory factory)` {#void_tensorflow_Env_RegisterFileSystem}
+
+
+
+
+
+#### `Status tensorflow::Env::NewRandomAccessFile(const string &fname, RandomAccessFile **result)` {#Status_tensorflow_Env_NewRandomAccessFile}
 
 Creates a brand new random access read-only file with the specified name.
 
@@ -28,7 +46,9 @@ On success, stores a pointer to the new file in *result and returns OK. On failu
 
 The returned file may be concurrently accessed by multiple threads.
 
-#### `virtual Status tensorflow::Env::NewWritableFile(const string &fname, WritableFile **result)=0` {#virtual_Status_tensorflow_Env_NewWritableFile}
+The ownership of the returned RandomAccessFile is passed to the caller and the object should be deleted when is not used. The file object shouldn&apos;t live longer than the Env object.
+
+#### `Status tensorflow::Env::NewWritableFile(const string &fname, WritableFile **result)` {#Status_tensorflow_Env_NewWritableFile}
 
 Creates an object that writes to a new file with the specified name.
 
@@ -36,7 +56,9 @@ Deletes any existing file with the same name and creates a new file. On success,
 
 The returned file will only be accessed by one thread at a time.
 
-#### `virtual Status tensorflow::Env::NewAppendableFile(const string &fname, WritableFile **result)=0` {#virtual_Status_tensorflow_Env_NewAppendableFile}
+The ownership of the returned WritableFile is passed to the caller and the object should be deleted when is not used. The file object shouldn&apos;t live longer than the Env object.
+
+#### `Status tensorflow::Env::NewAppendableFile(const string &fname, WritableFile **result)` {#Status_tensorflow_Env_NewAppendableFile}
 
 Creates an object that either appends to an existing file, or writes to a new file (if the file does not exist to begin with).
 
@@ -44,43 +66,55 @@ On success, stores a pointer to the new file in *result and returns OK. On failu
 
 The returned file will only be accessed by one thread at a time.
 
-#### `virtual bool tensorflow::Env::FileExists(const string &fname)=0` {#virtual_bool_tensorflow_Env_FileExists}
+The ownership of the returned WritableFile is passed to the caller and the object should be deleted when is not used. The file object shouldn&apos;t live longer than the Env object.
+
+#### `Status tensorflow::Env::NewReadOnlyMemoryRegionFromFile(const string &fname, ReadOnlyMemoryRegion **result)` {#Status_tensorflow_Env_NewReadOnlyMemoryRegionFromFile}
+
+Creates a readonly region of memory with the file context.
+
+On success, it returns a pointer to read-only memory region from the content of file fname. The ownership of the region is passed to the caller. On failure stores nullptr in *result and returns non-OK.
+
+The returned memory region can be accessed from many threads in parallel.
+
+The ownership of the returned ReadOnlyMemoryRegion is passed to the caller and the object should be deleted when is not used. The memory region object shouldn&apos;t live longer than the Env object.
+
+#### `bool tensorflow::Env::FileExists(const string &fname)` {#bool_tensorflow_Env_FileExists}
 
 Returns true iff the named file exists.
 
 
 
-#### `virtual Status tensorflow::Env::GetChildren(const string &dir, std::vector< string > *result)=0` {#virtual_Status_tensorflow_Env_GetChildren}
+#### `Status tensorflow::Env::GetChildren(const string &dir, std::vector< string > *result)` {#Status_tensorflow_Env_GetChildren}
 
 Stores in *result the names of the children of the specified directory. The names are relative to "dir".
 
 Original contents of *results are dropped.
 
-#### `virtual Status tensorflow::Env::DeleteFile(const string &fname)=0` {#virtual_Status_tensorflow_Env_DeleteFile}
+#### `Status tensorflow::Env::DeleteFile(const string &fname)` {#Status_tensorflow_Env_DeleteFile}
 
 Deletes the named file.
 
 
 
-#### `virtual Status tensorflow::Env::CreateDir(const string &dirname)=0` {#virtual_Status_tensorflow_Env_CreateDir}
+#### `Status tensorflow::Env::CreateDir(const string &dirname)` {#Status_tensorflow_Env_CreateDir}
 
 Creates the specified directory.
 
 
 
-#### `virtual Status tensorflow::Env::DeleteDir(const string &dirname)=0` {#virtual_Status_tensorflow_Env_DeleteDir}
+#### `Status tensorflow::Env::DeleteDir(const string &dirname)` {#Status_tensorflow_Env_DeleteDir}
 
 Deletes the specified directory.
 
 
 
-#### `virtual Status tensorflow::Env::GetFileSize(const string &fname, uint64 *file_size)=0` {#virtual_Status_tensorflow_Env_GetFileSize}
+#### `Status tensorflow::Env::GetFileSize(const string &fname, uint64 *file_size)` {#Status_tensorflow_Env_GetFileSize}
 
 Stores the size of `fname` in `*file_size`.
 
 
 
-#### `virtual Status tensorflow::Env::RenameFile(const string &src, const string &target)=0` {#virtual_Status_tensorflow_Env_RenameFile}
+#### `Status tensorflow::Env::RenameFile(const string &src, const string &target)` {#Status_tensorflow_Env_RenameFile}
 
 Renames file src to target. If target already exists, it will be replaced.
 
