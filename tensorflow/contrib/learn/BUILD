@@ -24,7 +24,7 @@ py_library(
 
 py_test(
     name = "test_base",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/tests/test_base.py"],
     srcs_version = "PY2AND3",
     deps = [
