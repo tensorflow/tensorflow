@@ -140,6 +140,7 @@
   * [`batch_ifft2d`](../../api_docs/python/math_ops.md#batch_ifft2d)
   * [`batch_ifft3d`](../../api_docs/python/math_ops.md#batch_ifft3d)
   * [`batch_matmul`](../../api_docs/python/math_ops.md#batch_matmul)
+  * [`batch_matrix_band_part`](../../api_docs/python/math_ops.md#batch_matrix_band_part)
   * [`batch_matrix_determinant`](../../api_docs/python/math_ops.md#batch_matrix_determinant)
   * [`batch_matrix_diag`](../../api_docs/python/math_ops.md#batch_matrix_diag)
   * [`batch_matrix_diag_part`](../../api_docs/python/math_ops.md#batch_matrix_diag_part)
