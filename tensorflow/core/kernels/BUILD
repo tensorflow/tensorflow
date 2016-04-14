@@ -918,6 +918,23 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "sparse_add_op_test",
+    size = "small",
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sparse_add_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "cwise_ops_test",
     size = "small",
     deps = [
@@ -1263,7 +1280,6 @@ tf_kernel_libraries(
 tf_cuda_cc_tests(
     size = "small",
     tests = [
-        "sparse_add_op_test",
         "sparse_tensor_dense_matmul_op_test",
         "sparse_to_dense_op_test",
         "sparse_xent_op_test",
