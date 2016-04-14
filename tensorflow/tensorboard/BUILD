@@ -12,9 +12,10 @@ filegroup(
     srcs = [
         "dist/index.html",
         "dist/tf-tensorboard.html",
-        "//tensorflow/tensorboard/bower:bower",
         "TAG",
-    ] + glob(["lib/**/*"]),
+        "//tensorflow/tensorboard/bower:bower",
+        "//tensorflow/tensorboard/lib:all_files",
+    ],
 )
 
 py_binary(
