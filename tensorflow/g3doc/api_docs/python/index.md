@@ -32,6 +32,19 @@
   * [`Tensor`](../../api_docs/python/framework.md#Tensor)
   * [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
 
+* **[Asserts and boolean checks.](../../api_docs/python/check_ops.md)**:
+  * [`assert_less`](../../api_docs/python/check_ops.md#assert_less)
+  * [`assert_less_equal`](../../api_docs/python/check_ops.md#assert_less_equal)
+  * [`assert_negative`](../../api_docs/python/check_ops.md#assert_negative)
+  * [`assert_non_negative`](../../api_docs/python/check_ops.md#assert_non_negative)
+  * [`assert_non_positive`](../../api_docs/python/check_ops.md#assert_non_positive)
+  * [`assert_positive`](../../api_docs/python/check_ops.md#assert_positive)
+  * [`assert_rank`](../../api_docs/python/check_ops.md#assert_rank)
+  * [`assert_rank_at_least`](../../api_docs/python/check_ops.md#assert_rank_at_least)
+  * [`is_non_decreasing`](../../api_docs/python/check_ops.md#is_non_decreasing)
+  * [`is_numeric_tensor`](../../api_docs/python/check_ops.md#is_numeric_tensor)
+  * [`is_strictly_increasing`](../../api_docs/python/check_ops.md#is_strictly_increasing)
+
 * **[Constants, Sequences, and Random Values](../../api_docs/python/constant_op.md)**:
   * [`constant`](../../api_docs/python/constant_op.md#constant)
   * [`fill`](../../api_docs/python/constant_op.md#fill)
