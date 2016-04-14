@@ -1121,6 +1121,7 @@ medium_kernel_test_list = glob([
 ])
 
 sharded_kernel_test_list = glob([
+    "kernel_tests/batch_matrix_band_part_op_test.py",
     "kernel_tests/cwise_ops_test.py",
     "kernel_tests/embedding_ops_test.py",
     "kernel_tests/linalg_grad_test.py",

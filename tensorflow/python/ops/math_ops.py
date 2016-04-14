@@ -61,11 +61,12 @@ mathematical functions to your graph.
 
 ## Matrix Math Functions
 
-TensorFlow provides several operations that you can use to add basic
-mathematical functions for matrices to your graph.
+TensorFlow provides several operations that you can use to add linear algebra
+functions on matrices to your graph.
 
 @@batch_matrix_diag
 @@batch_matrix_diag_part
+@@batch_matrix_band_part
 
 @@diag
 @@diag_part

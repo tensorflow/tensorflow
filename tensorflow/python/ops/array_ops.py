@@ -842,6 +842,7 @@ def _PlaceholderShape(op):
 @ops.RegisterShape("Identity")
 @ops.RegisterShape("RefIdentity")
 @ops.RegisterShape("StopGradient")
+@ops.RegisterShape("BatchMatrixBandPart")
 def _UnchangedShape(op):
   return [op.inputs[0].get_shape()]
 
