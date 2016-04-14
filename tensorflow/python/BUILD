@@ -1116,7 +1116,6 @@ medium_kernel_test_list = glob([
     "kernel_tests/concat_op_test.py",
     "kernel_tests/division_future_test.py",
     "kernel_tests/fft_ops_test.py",
-    "kernel_tests/rnn_test.py",
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",
@@ -1124,9 +1123,13 @@ medium_kernel_test_list = glob([
 ])
 
 sharded_kernel_test_list = glob([
-    "kernel_tests/cwise_ops_test.py",
     "kernel_tests/embedding_ops_test.py",
     "kernel_tests/linalg_grad_test.py",
+])
+
+exclusive_kernel_test_list = glob([
+    "kernel_tests/rnn_test.py",
+    "kernel_tests/cwise_ops_test.py",
 ])
 
 cpu_only_kernel_test_list = glob([
@@ -1219,8 +1222,15 @@ cuda_py_tests(
         ["kernel_tests/*_test.py"],
         exclude = [
             "**/reader_ops_test.py",
-        ] + cpu_only_kernel_test_list + medium_kernel_test_list + sharded_kernel_test_list,
+        ] + cpu_only_kernel_test_list + medium_kernel_test_list + sharded_kernel_test_list + exclusive_kernel_test_list,
     ),
+)
+
+cuda_py_tests(
+    name = "exclusive_kernel_tests",
+    size = "small",
+    srcs = exclusive_kernel_test_list,
+    tags = ["exclusive"],
 )
 
 cuda_py_tests(
