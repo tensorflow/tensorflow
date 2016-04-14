@@ -16,12 +16,12 @@
 #include "tensorflow/contrib/ffmpeg/kernels/ffmpeg_lib.h"
 
 #include <errno.h>
-#include <string>
-#include <tuple>
 #include <stdlib.h>
+#include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <tuple>
 #include <unistd.h>
 #include <vector>
 

@@ -20,9 +20,9 @@
 
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 using tensorflow::testing::TensorFlowSrcRoot;
