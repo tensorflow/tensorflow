@@ -21,7 +21,7 @@ future for loading older images.
   </style>
   <template>
     <template is="dom-if" if="[[imageUrl]]">
-      <img src="[[imageUrl]]" on-error="retry">
+      <img src="[[imageUrl]]" on-error="reload">
     </template>
   </template>
   <script>
@@ -35,17 +35,18 @@ future for loading older images.
       },
       reload: function() {
         var _this = this;
+        this.imageUrl = ""; // force reload
         this.imagesGenerator(this.tag, this.run).then(function(metadatas) {
           var last_metadata = _.last(metadatas);
           _this.imageUrl = last_metadata.url;
-        })
+        });
       },
       ready: function() {
-        this.reload();
-      },
-      retry: function() {
-        this.imageUrl = ""; // force reload
-        this.reload();
+        // Need to test so that it will not error if it is constructed w/o
+        // all properties (so that it's possible to use stub to mock it out)
+        if (this.run != null && this.tag != null && this.imagesGenerator != null) {
+          this.reload();
+        }
       },
     });
   </script>

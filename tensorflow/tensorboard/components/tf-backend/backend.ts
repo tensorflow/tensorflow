@@ -58,7 +58,7 @@ module TF.Backend {
     height: number;
     url: string;
   }
-  
+
 
   export var TYPES = [
     'scalar', 'histogram', 'compressedHistogram', 'graph', 'image',
