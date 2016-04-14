@@ -16,9 +16,9 @@ Variables, Constants and also to build, load and run Graphs.
 
 ##### Python Graph generated and executed on Go
 
-This is just an example that shows how to interact with the provided API
+This is just an example that shows how to interact with the provided API.
 
-In order to generate a valid Graph you can use the next Python code
+In order to generate a valid Graph you can use the next Python code:
 
 ```python
 import tensorflow as tf

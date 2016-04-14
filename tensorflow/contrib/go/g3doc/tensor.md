@@ -50,7 +50,7 @@ The supported data types are:
 
 ```Go
 Example:
-	// Create a new tensor with a ingle dimension of 3
+	// Create a new tensor with a ingle dimension of 3.
 	t2, _ := tensorflow.NewTensorWithShape([][]int64{{3}}, []int64{3, 4, 5})
 	fmt.Println(t2.AsInt64())
 

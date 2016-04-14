@@ -24,8 +24,8 @@ type Graph struct {
 	variables    map[string]*Tensor
 }
 
-// GraphNode Representation of one of the nodes of the TensorFlow Graph a
-// node takes zero or more Tensors, performs some computation, and
+// GraphNode Representation of one of the nodes of the TensorFlow Graph.
+// A node takes zero or more Tensors, performs some computation, and
 // produces zero or more Tensors.
 type GraphNode struct {
 	ref          *pb.NodeDef
@@ -76,221 +76,223 @@ func LoadGraphFromTextFile(path string) (gr *Graph, err error) {
 	return NewGraphFromText(string(graphStr))
 }
 
-// Op Adds a new Node to the Graph with the specified operation, this
-// operation performs some internal check of the specified and expected
-// attributes for the operation and try to deduct the corresponding DataTypes
-// in case of they are not specified.
+// Op Adds a new Node to the Graph with the specified operation, this function
+// could return an error if any of the mandatory attributes is not be present
+// or the value is not the expected for this attribute.
 func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
+	var op *pb.OpDef
+	var opFound bool
+
 	if err = gr.loadAvailableOps(); err != nil {
 		return
 	}
 
-	if op, ok := gr.availableOps[strings.ToLower(opName)]; ok {
-		if len(op.InputArg) != len(input) {
-			err = &ErrInvalidAmounthOfInputs{
-				operation:  opName,
-				opInputs:   len(op.InputArg),
-				specInputs: len(input),
-			}
-			return
-		}
-		inputs := make([]string, len(input))
-		for i, inNode := range input {
-			if op.InputArg[i].IsRef {
-				if inNode.ref == nil {
-					err = &ErrExpectedVarAsinput{
-						operation: opName,
-						inputPos:  i,
-					}
-					return
-				}
-				inputs[i] = inNode.ref.Name
-			} else {
-				inputs[i] = inNode.def.Name
-			}
-		}
-		node = &GraphNode{
-			def: &pb.NodeDef{
-				Name:   name,
-				Op:     opName,
-				Input:  inputs,
-				Device: device,
-				Attr:   make(map[string]*pb.AttrValue),
-			},
-			outDataTypes: make(map[string]DataType),
-		}
-
-		if attrs == nil {
-			attrs = make(map[string]interface{})
-		}
-		gr.matchTypes(input, node, attrs, op)
-
-		for _, attr := range op.Attr {
-			// Check if the attribute is specified, if it is not
-			// and don't have a default value, return an error
-			if v, ok := attrs[attr.Name]; ok {
-				switch attr.Type {
-				case "type":
-					dt, ok := v.(DataType)
-					if !ok {
-						return nil, &ErrInvalidAttrValue{
-							operation:  opName,
-							attribName: attr.Name,
-						}
-					}
-					node.def.Attr[attr.Name] = &pb.AttrValue{
-						Value: &pb.AttrValue_Type{
-							Type: pb.DataType(dt),
-						},
-					}
-				case "string":
-					st, ok := v.(string)
-					if !ok {
-						return nil, &ErrInvalidAttrValue{
-							operation:  opName,
-							attribName: attr.Name,
-						}
-					}
-					node.def.Attr[attr.Name] = &pb.AttrValue{
-						Value: &pb.AttrValue_S{
-							S: []byte(st),
-						},
-					}
-				case "tensor":
-					t, ok := v.(*Tensor)
-					if !ok {
-						return nil, &ErrInvalidAttrValue{
-							operation:  opName,
-							attribName: attr.Name,
-						}
-					}
-
-					tp := &pb.TensorProto{
-						Dtype:         t.Dtype,
-						TensorShape:   t.TensorShape,
-						TensorContent: t.TensorContent,
-					}
-					switch t.DataType() {
-					case DtFloat:
-						tp.FloatVal, _ = t.AsFloat32()
-					case DtDouble:
-						tp.DoubleVal, _ = t.AsFloat64()
-					case DtInt8, DtInt16, DtInt32, DtUint8:
-						tp.IntVal, _ = t.AsInt32()
-					case DtInt64:
-						tp.Int64Val, _ = t.AsInt64()
-					case DtBool:
-						tp.BoolVal, _ = t.AsBool()
-					case DtString:
-						tp.StringVal, _ = t.AsStr()
-					default:
-						err = &ErrTensorTypeNotSupported{
-							tensotType: t.DataType(),
-						}
-						return
-					}
-
-					node.def.Attr[attr.Name] = &pb.AttrValue{
-						Value: &pb.AttrValue_Tensor{
-							Tensor: tp,
-						},
-					}
-				case "func":
-					f, ok := v.(*pb.NameAttrList)
-					if !ok {
-						return nil, &ErrInvalidAttrValue{
-							operation:  opName,
-							attribName: attr.Name,
-						}
-					}
-					node.def.Attr[attr.Name] = &pb.AttrValue{
-						Value: &pb.AttrValue_Func{
-							Func: f,
-						},
-					}
-				case "int":
-					i, ok := v.(int64)
-					if !ok {
-						return nil, &ErrInvalidAttrValue{
-							operation:  opName,
-							attribName: attr.Name,
-						}
-					}
-					node.def.Attr[attr.Name] = &pb.AttrValue{
-						Value: &pb.AttrValue_I{
-							I: i,
-						},
-					}
-				case "bool":
-					b, ok := v.(bool)
-					if !ok {
-						return nil, &ErrInvalidAttrValue{
-							operation:  opName,
-							attribName: attr.Name,
-						}
-					}
-					node.def.Attr[attr.Name] = &pb.AttrValue{
-						Value: &pb.AttrValue_B{
-							B: b,
-						},
-					}
-				case "float":
-					f, ok := v.(float32)
-					if !ok {
-						return nil, &ErrInvalidAttrValue{
-							operation:  opName,
-							attribName: attr.Name,
-						}
-					}
-					node.def.Attr[attr.Name] = &pb.AttrValue{
-						Value: &pb.AttrValue_F{
-							F: f,
-						},
-					}
-				case "shape":
-					s, ok := v.(*pb.TensorShapeProto)
-					if !ok {
-						return nil, &ErrInvalidAttrValue{
-							operation:  opName,
-							attribName: attr.Name,
-						}
-					}
-					node.def.Attr[attr.Name] = &pb.AttrValue{
-						Value: &pb.AttrValue_Shape{
-							Shape: s,
-						},
-					}
-				case "list(type)", "list(int)", "list(shape)", "list(float)":
-					lv, ok := v.(*pb.AttrValue_ListValue)
-					if !ok {
-						return nil, &ErrInvalidAttrValue{
-							operation:  opName,
-							attribName: attr.Name,
-						}
-					}
-					node.def.Attr[attr.Name] = &pb.AttrValue{
-						Value: &pb.AttrValue_List{
-							List: lv,
-						},
-					}
-				}
-			} else {
-				if attr.DefaultValue == nil {
-					return nil, &ErrMandatoryAttributeNotSpecified{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-			}
-		}
-
-		gr.def.Node = append(gr.def.Node, node.def)
-	} else {
+	if op, opFound = gr.availableOps[strings.ToLower(opName)]; !opFound {
 		err = &ErrOperationNotFound{
 			op: opName,
 		}
 		return
 	}
+
+	if len(op.InputArg) != len(input) {
+		err = &ErrInvalidAmounthOfInputs{
+			operation:  opName,
+			opInputs:   len(op.InputArg),
+			specInputs: len(input),
+		}
+		return
+	}
+	inputs := make([]string, len(input))
+	for i, inNode := range input {
+		if op.InputArg[i].IsRef {
+			if inNode.ref == nil {
+				err = &ErrExpectedVarAsinput{
+					operation: opName,
+					inputPos:  i,
+				}
+				return
+			}
+			inputs[i] = inNode.ref.Name
+		} else {
+			inputs[i] = inNode.def.Name
+		}
+	}
+	node = &GraphNode{
+		def: &pb.NodeDef{
+			Name:   name,
+			Op:     opName,
+			Input:  inputs,
+			Device: device,
+			Attr:   make(map[string]*pb.AttrValue),
+		},
+		outDataTypes: make(map[string]DataType),
+	}
+
+	if attrs == nil {
+		attrs = make(map[string]interface{})
+	}
+	gr.matchTypes(input, node, attrs, op)
+
+	for _, attr := range op.Attr {
+		// Check if the attribute is specified, if it is not
+		// and don't have a default value, return an error
+		if v, ok := attrs[attr.Name]; ok {
+			switch attr.Type {
+			case "type":
+				dt, ok := v.(DataType)
+				if !ok {
+					return nil, &ErrInvalidAttrValue{
+						operation:  opName,
+						attribName: attr.Name,
+					}
+				}
+				node.def.Attr[attr.Name] = &pb.AttrValue{
+					Value: &pb.AttrValue_Type{
+						Type: pb.DataType(dt),
+					},
+				}
+			case "string":
+				st, ok := v.(string)
+				if !ok {
+					return nil, &ErrInvalidAttrValue{
+						operation:  opName,
+						attribName: attr.Name,
+					}
+				}
+				node.def.Attr[attr.Name] = &pb.AttrValue{
+					Value: &pb.AttrValue_S{
+						S: []byte(st),
+					},
+				}
+			case "tensor":
+				t, ok := v.(*Tensor)
+				if !ok {
+					return nil, &ErrInvalidAttrValue{
+						operation:  opName,
+						attribName: attr.Name,
+					}
+				}
+
+				tp := &pb.TensorProto{
+					Dtype:         t.Dtype,
+					TensorShape:   t.TensorShape,
+					TensorContent: t.TensorContent,
+				}
+				switch t.DataType() {
+				case DtFloat:
+					tp.FloatVal, _ = t.AsFloat32()
+				case DtDouble:
+					tp.DoubleVal, _ = t.AsFloat64()
+				case DtInt8, DtInt16, DtInt32, DtUint8:
+					tp.IntVal, _ = t.AsInt32()
+				case DtInt64:
+					tp.Int64Val, _ = t.AsInt64()
+				case DtBool:
+					tp.BoolVal, _ = t.AsBool()
+				case DtString:
+					tp.StringVal, _ = t.AsStr()
+				default:
+					err = &ErrTensorTypeNotSupported{
+						tensotType: t.DataType(),
+					}
+					return
+				}
+
+				node.def.Attr[attr.Name] = &pb.AttrValue{
+					Value: &pb.AttrValue_Tensor{
+						Tensor: tp,
+					},
+				}
+			case "func":
+				f, ok := v.(*pb.NameAttrList)
+				if !ok {
+					return nil, &ErrInvalidAttrValue{
+						operation:  opName,
+						attribName: attr.Name,
+					}
+				}
+				node.def.Attr[attr.Name] = &pb.AttrValue{
+					Value: &pb.AttrValue_Func{
+						Func: f,
+					},
+				}
+			case "int":
+				i, ok := v.(int64)
+				if !ok {
+					return nil, &ErrInvalidAttrValue{
+						operation:  opName,
+						attribName: attr.Name,
+					}
+				}
+				node.def.Attr[attr.Name] = &pb.AttrValue{
+					Value: &pb.AttrValue_I{
+						I: i,
+					},
+				}
+			case "bool":
+				b, ok := v.(bool)
+				if !ok {
+					return nil, &ErrInvalidAttrValue{
+						operation:  opName,
+						attribName: attr.Name,
+					}
+				}
+				node.def.Attr[attr.Name] = &pb.AttrValue{
+					Value: &pb.AttrValue_B{
+						B: b,
+					},
+				}
+			case "float":
+				f, ok := v.(float32)
+				if !ok {
+					return nil, &ErrInvalidAttrValue{
+						operation:  opName,
+						attribName: attr.Name,
+					}
+				}
+				node.def.Attr[attr.Name] = &pb.AttrValue{
+					Value: &pb.AttrValue_F{
+						F: f,
+					},
+				}
+			case "shape":
+				s, ok := v.(*pb.TensorShapeProto)
+				if !ok {
+					return nil, &ErrInvalidAttrValue{
+						operation:  opName,
+						attribName: attr.Name,
+					}
+				}
+				node.def.Attr[attr.Name] = &pb.AttrValue{
+					Value: &pb.AttrValue_Shape{
+						Shape: s,
+					},
+				}
+			case "list(type)", "list(int)", "list(shape)", "list(float)":
+				lv, ok := v.(*pb.AttrValue_ListValue)
+				if !ok {
+					return nil, &ErrInvalidAttrValue{
+						operation:  opName,
+						attribName: attr.Name,
+					}
+				}
+				node.def.Attr[attr.Name] = &pb.AttrValue{
+					Value: &pb.AttrValue_List{
+						List: lv,
+					},
+				}
+			}
+		} else {
+			if attr.DefaultValue == nil {
+				return nil, &ErrMandatoryAttributeNotSpecified{
+					operation:  opName,
+					attribName: attr.Name,
+				}
+			}
+		}
+	}
+
+	gr.def.Node = append(gr.def.Node, node.def)
 
 	return
 }

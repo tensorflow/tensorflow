@@ -30,10 +30,10 @@ path.
 ```Go
 Example:
 	// Load the graph from from a file who contains a previously generated
-	// graph as text file
+	// graph as text file.
 	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
 	
-	// Create the session and extend the Graph on it
+	// Create the session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()
 	s.ExtendGraph(graph)
 
@@ -128,10 +128,9 @@ Example:
 func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error)
 ```
 
-Op Adds a new Node to the Graph with the specified operation, this operation
-performs some internal check of the specified and expected attributes for the
-operation and try to deduct the corresponding DataTypes in case of they are not
-specified.
+Op Adds a new Node to the Graph with the specified operation, this function
+could return an error if any of the mandatory attributes is not be present or
+the value is not the expected for this attribute.
 
 ```Go
 Example:
@@ -175,7 +174,7 @@ must be fed with data on execution.
 ```Go
 Example:
 	graph := tensorflow.NewGraph()
-	// Adds a placeholder named "input1" that must allocate a three elements
+	// Adds a placeholder named "input1" that must allocate a three element
 	// DtInt32 tensor.
 	graph.Placeholder("input1", tensorflow.DtInt32, []int64{3}, []string{})
 
@@ -213,16 +212,16 @@ Example:
 	
 	// Add the two inputs.
 	add, _ := graph.Op("Add", "add_tensors", []*tensorflow.GraphNode{input1, input2}, "", map[string]interface{}{})
-	// Store the result on the input1 varable
+	// Store the result on the input1 varable.
 	graph.Op("Assign", "assign_inp1", []*tensorflow.GraphNode{input1, add}, "", map[string]interface{}{})
 	
 	s, _ := tensorflow.NewSession()
-	// Initialize all the variable in memory, on this case only the
+	// Initialize all the variables in memory, in this case only the
 	// 'input1' variable.
 	s.ExtendAndInitializeAllVariables(graph)
 	
 	// Runs ten times the 'assign_inp1"' that will run also the 'Add'
-	// operation since it inputs depends on the result of the 'Add'
+	// operation since it input depends on the result of the 'Add'
 	// operation.
 	// The variable 'input1' will be returned and printed on each
 	// execution.

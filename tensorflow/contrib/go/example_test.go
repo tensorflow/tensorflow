@@ -98,7 +98,7 @@ func ExampleGraph_Variable() {
 
 	// Add the two inputs.
 	add, _ := graph.Op("Add", "add_tensors", []*tensorflow.GraphNode{input1, input2}, "", map[string]interface{}{})
-	// Store the result on the input1 varable
+	// Store the result on the input1 varable.
 	graph.Op("Assign", "assign_inp1", []*tensorflow.GraphNode{input1, add}, "", map[string]interface{}{})
 
 	s, _ := tensorflow.NewSession()
@@ -119,7 +119,7 @@ func ExampleGraph_Variable() {
 
 func ExampleSession_ExtendAndInitializeAllVariables() {
 	graph := tensorflow.NewGraph()
-	// Create a Variable that will be initialized with the values []int32{1, 2, 3, 4}
+	// Create a Variable that will be initialized with the values []int32{1, 2, 3, 4} .
 	graph.Variable("input1", []int32{1, 2, 3, 4})
 
 	s, _ := tensorflow.NewSession()
@@ -130,20 +130,20 @@ func ExampleSession_ExtendAndInitializeAllVariables() {
 
 func ExampleSession_ExtendGraph() {
 	// Load the graph from from a file who contains a previously generated
-	// graph as text file
+	// graph as text file.
 	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
 
-	// Create the session and extend the Graph on it
+	// Create the session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()
 	s.ExtendGraph(graph)
 }
 
 func ExampleLoadGraphFromTextFile() {
 	// Load the graph from from a file who contains a previously generated
-	// graph as text file
+	// graph as text file.
 	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
 
-	// Create the session and extend the Graph on it
+	// Create the session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()
 	s.ExtendGraph(graph)
 }
@@ -162,12 +162,12 @@ func ExampleSession_Run() {
 	out, _ := s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
 
 	// The first of the output corresponds to the node 'input1' specified
-	// on the second param
+	// on the second param.
 	fmt.Println(out[0])
 }
 
 func ExampleNewTensorWithShape() {
-	// Create a new tensor with a ingle dimension of 3
+	// Create a new tensor with a ingle dimension of 3.
 	t2, _ := tensorflow.NewTensorWithShape([][]int64{{3}}, []int64{3, 4, 5})
 	fmt.Println(t2.AsInt64())
 }
