@@ -82,7 +82,7 @@ func ExampleGraph_Constant() {
 
 func ExampleGraph_Placeholder() {
 	graph := tensorflow.NewGraph()
-	// Adds a placeholder named "input1" that must allocate a three elements
+	// Adds a placeholder named "input1" that must allocate a three element
 	// DtInt32 tensor.
 	graph.Placeholder("input1", tensorflow.DtInt32, []int64{3}, []string{})
 }
@@ -102,12 +102,12 @@ func ExampleGraph_Variable() {
 	graph.Op("Assign", "assign_inp1", []*tensorflow.GraphNode{input1, add}, "", map[string]interface{}{})
 
 	s, _ := tensorflow.NewSession()
-	// Initialize all the variable in memory, on this case only the
+	// Initialize all the variables in memory, in this case only the
 	// 'input1' variable.
 	s.ExtendAndInitializeAllVariables(graph)
 
 	// Runs ten times the 'assign_inp1"' that will run also the 'Add'
-	// operation since it inputs depends on the result of the 'Add'
+	// operation since it input depends on the result of the 'Add'
 	// operation.
 	// The variable 'input1' will be returned and printed on each
 	// execution.

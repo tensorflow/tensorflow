@@ -1,8 +1,8 @@
-# TensorFlow for Go
+# TensorFlow Go API
 
-This package provides a high-level Go API for TensorFlow, this package
-provides the necessary tools to create and manipulate Tensors, Variables,
-Constants as also to build, load and run Graphs.
+TensorFlow. This package provides a high-level Go API for TensorFlow, this
+package provides the necessary tools to create and manipulate Tensors,
+Variables, Constants and also to build, load and run Graphs.
 
 ## API documentation
 * [Session](g3doc/session.md): Encapsulates the environment in which Operation
@@ -32,7 +32,7 @@ with tf.Session() as sess:
 ```
 
 The previous code prepares two placeholders with names 'input1' and
-'input2' respectively and other tensor used as output of the addition of the
+'input2' respectively, and other tensor used as output of the addition of the
 two placeholders. At the end, it dumps the graph as text into a text file with
 path:
 '/tmp/graph/test_graph.pb'.
@@ -82,7 +82,7 @@ func main() {
 	}
 
 	// Load the graph from the file that we generated from Python on the
-	previous step
+	// previous step
 	graph, err := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
 	if err != nil {
 		log.Fatal("Problem reading the graph from the text file, Error:", err)
@@ -134,14 +134,13 @@ func main() {
 }
 ```
 
-As you can see from the previous code creates two Tensors to be processed by the
-previously generated Graph, after the execution returns the Tensor with the
-result.
+The previous code creates two Tensors to be processed by the previously
+generated Graph, after the execution returns the Tensor with the result.
 
 ### Image Recognition
 
-This is a really complete code example that shows how to generate Graphs on
-Go and execute them:
+This is a complete code example that shows how to generate Graphs on Go and
+execute them:
 
 [Image Recognition](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/g3doc/tutorials/image_recognition/index.md#usage-with-the-go-api)
 
