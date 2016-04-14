@@ -2177,7 +2177,7 @@ class Graph(object):
           else:
             ret._set_device(colocation_op.device)
 
-      all_colocation_groups = list(set(all_colocation_groups))
+      all_colocation_groups = sorted(set(all_colocation_groups))
       ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
 
@@ -2755,6 +2755,11 @@ class Graph(object):
       # on CPU 0.
     ```
 
+    **N.B.** The device scope may be overridden by op wrappers or
+    other library code. For example, a variable assignment op
+    `v.assign()` must be colocated with the `tf.Variable` `v`, and
+    incompatible device scopes will be ignored.
+
     Args:
       device_name_or_function: The device name or function to use in
         the context.
@@ -2762,6 +2767,7 @@ class Graph(object):
     Returns:
       A context manager that specifies the default device to use for newly
       created ops.
+
     """
     if (device_name_or_function is not None
         and not callable(device_name_or_function)):
