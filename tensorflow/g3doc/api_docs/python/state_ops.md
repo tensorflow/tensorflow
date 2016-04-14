@@ -1033,7 +1033,7 @@ create variables contingent on certain conditions.
 
 - - -
 
-### `tf.get_variable(name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None)` {#get_variable}
+### `tf.get_variable(name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None, validate_shape=True)` {#get_variable}
 
 Gets an existing variable with these parameters or create a new one.
 
@@ -1073,6 +1073,9 @@ then by default no regularization is performed).
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
     Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+*  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
+      value of unknown shape. If True, the default, the shape of initial_value
+      must be known.
 
 ##### Returns:
 
@@ -1119,7 +1122,7 @@ Creates a new VariableScope with the given properties.
 
 - - -
 
-#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None)` {#VariableScope.get_variable}
+#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, validate_shape=True)` {#VariableScope.get_variable}
 
 Gets an existing variable with this name or create a new one.
 
