@@ -52,7 +52,8 @@ class _VariableStore(object):
 
   def get_variable(self, name, shape=None, dtype=dtypes.float32,
                    initializer=None, regularizer=None, reuse=None,
-                   trainable=True, collections=None, caching_device=None):
+                   trainable=True, collections=None, caching_device=None,
+                   validate_shape=True):
     """Gets an existing variable with these parameters or create a new one.
 
     If a variable with the given name is already stored, we return the stored
@@ -86,6 +87,9 @@ class _VariableStore(object):
         device.  If not `None`, caches on another device.  Typical use is to
         cache on the device where the Ops using the Variable reside, to
         deduplicate copying through `Switch` and other conditional statements.
+      validate_shape: If False, allows the variable to be initialized with a
+        value of unknown shape. If True, the default, the shape of initial_value
+        must be known.
 
     Returns:
       The created or existing variable.
@@ -155,8 +159,8 @@ class _VariableStore(object):
                            trainable=trainable,
                            collections=collections,
                            caching_device=caching_device,
-                           dtype=variable_dtype)
-
+                           dtype=variable_dtype,
+                           validate_shape=validate_shape)
     self._vars[name] = v
     logging.info("Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)
@@ -243,7 +247,8 @@ class VariableScope(object):
 
   def get_variable(self, var_store, name, shape=None, dtype=dtypes.float32,
                    initializer=None, regularizer=None,
-                   trainable=True, collections=None, caching_device=None):
+                   trainable=True, collections=None, caching_device=None,
+                   validate_shape=True):
     """Gets an existing variable with this name or create a new one."""
     if initializer is None:
       initializer = self._initializer
@@ -259,7 +264,8 @@ class VariableScope(object):
       return var_store.get_variable(
           full_name, shape=shape, dtype=dtype, initializer=initializer,
           regularizer=regularizer, reuse=self.reuse, trainable=trainable,
-          collections=collections, caching_device=caching_device)
+          collections=collections, caching_device=caching_device,
+          validate_shape=validate_shape)
 
 
 _VARSTORE_KEY = ("__variable_store",)
@@ -287,7 +293,7 @@ def _get_default_variable_store():
 
 def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                  regularizer=None, trainable=True,
-                 collections=None):
+                 collections=None, validate_shape=True):
   """Gets an existing variable with these parameters or create a new one.
 
   This function prefixes the name with the current variable scope
@@ -324,6 +330,9 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     collections: List of graph collections keys to add the Variable to.
       Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+    validate_shape: If False, allows the variable to be initialized with a
+        value of unknown shape. If True, the default, the shape of initial_value
+        must be known.
 
   Returns:
     The created or existing variable.
@@ -336,7 +345,7 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
   return get_variable_scope().get_variable(
       _get_default_variable_store(), name, shape=shape, dtype=dtype,
       initializer=initializer, regularizer=regularizer, trainable=trainable,
-      collections=collections)
+      collections=collections, validate_shape=validate_shape)
 
 
 @contextlib.contextmanager
