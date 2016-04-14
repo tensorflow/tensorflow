@@ -19,7 +19,7 @@
 # The PIP installation is done using the --user flag.
 #
 # Usage:
-#   pip.sh CONTAINER_TYPE [--test_tutorials]
+#   pip.sh CONTAINER_TYPE [--test_tutorials] [--integration_tests]
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
@@ -39,9 +39,11 @@
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
 #
-# I the --test_tutorials flag is set, it will cause the script to run the
+# If the --test_tutorials flag is set, it will cause the script to run the
 # tutorial tests (see test_tutorials.sh) after the PIP
-# installation and the Python unit tests-on-install step.
+# installation and the Python unit tests-on-install step. Likewise,
+# --integration_tests will cause the integration tests (integration_tests.sh)
+# to run.
 #
 
 INSTALL_EXTRA_PIP_PACKAGES=${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}
@@ -73,6 +75,13 @@ DO_TEST_TUTORIALS=0
 for ARG in $@; do
   if [[ "${ARG}" == "--test_tutorials" ]]; then
     DO_TEST_TUTORIALS=1
+  fi
+done
+
+DO_INTEGRATION_TESTS=0
+for ARG in $@; do
+  if [[ "${ARG}" == "--integration_tests" ]]; then
+    DO_INTEGRATION_TESTS=1
   fi
 done
 
@@ -191,6 +200,12 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then
   "${DIR}/test_tutorials.sh" --virtualenv || \
       die "PIP tutorial tests-on-install FAILED"
+fi
+
+# Optional: Run integration tests
+if [[ "${DO_INTEGRATION_TESTS}" == "1" ]]; then
+  "${DIR}/integration_tests.sh" --virtualenv || \
+      die "Integration tests on install FAILED"
 fi
 
 deactivate || \
