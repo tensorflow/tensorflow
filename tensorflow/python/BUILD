@@ -771,6 +771,7 @@ py_library(
         "ops/array_grad.py",
         "ops/array_ops.py",
         "ops/candidate_sampling_ops.py",
+        "ops/check_ops.py",
         "ops/clip_ops.py",
         "ops/control_flow_grad.py",
         "ops/control_flow_ops.py",

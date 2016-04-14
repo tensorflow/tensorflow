@@ -31,6 +31,7 @@ from tensorflow.python.ops import tensor_array_grad
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.array_ops import *
+from tensorflow.python.ops.check_ops import *
 from tensorflow.python.ops.clip_ops import *
 # TODO(vrv): Switch to import * once we're okay with exposing the module.
 from tensorflow.python.ops.control_flow_ops import group
