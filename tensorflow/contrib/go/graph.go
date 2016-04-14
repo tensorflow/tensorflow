@@ -594,13 +594,9 @@ func (gr *Graph) loadAvailableOps() (err error) {
 	if len(gr.availableOps) != 0 {
 		return
 	}
-	opsStr, err := ioutil.ReadFile(cOpsProtobufDefsPath)
-	if err != nil {
-		return
-	}
 
 	ops := new(pb.OpList)
-	err = proto.UnmarshalText(string(opsStr), ops)
+	err = proto.UnmarshalText(string(pb.COpsDef), ops)
 	for _, op := range ops.Op {
 		gr.availableOps[strings.ToLower(op.Name)] = op
 	}
