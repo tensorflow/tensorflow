@@ -35,9 +35,6 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "sdca_op_kernels",
-    srcs = [
-        "ops/sdca_ops.cc",
-    ],
     deps = [
         "//tensorflow/contrib/linear_optimizer/kernels:sdca_ops",
         "//tensorflow/core:framework",
