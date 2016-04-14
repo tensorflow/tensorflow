@@ -35,13 +35,13 @@ is high)
     <style include="scrollbar-style"></style>
     <div id="fullContainer" class="container scrollbar">
       <div id="topRow" class="container">
-        <div class="noshrink" id="paddingCell"></div>
+        <div class="noshrink cell" id="paddingCell"></div>
         <template
           is="dom-repeat"
           items="[[runs]]"
           as="run"
         >
-        <div class="run-name-cell noshrink">
+        <div class="run-name-cell cell noshrink">
           <span>[[run]]</span>
         </div>
       </template>
@@ -53,7 +53,7 @@ is high)
           as="tag"
         >
           <div class="image-row container noshrink">
-            <div class="tag-name-cell noshrink">
+            <div class="tag-name-cell cell noshrink">
               <span class="tag-name">[[tag]]</span>
             </div>
             <template
@@ -61,7 +61,7 @@ is high)
               items="[[runs]]"
               as="run"
             >
-              <div class="image-cell noshrink">
+              <div class="image-cell cell noshrink">
                 <template is="dom-if" if="[[_exists(run, tag, runToImages.*)]]">
                   <tf-image-loader
                     id="loader"
@@ -104,14 +104,16 @@ is high)
         height: 100%;
         width: 100%;
       }
+      .cell {
+        margin-right: 10px;
+      }
       .image-row {
         flex-direction: row;
-        padding-top: 5px;
+        padding-top: 10px;
       }
       .image-cell {
         width: 300px;
         height: 300px;
-        border: 1px solid black;
       }
       .tag-name-cell {
         height: 300px;
