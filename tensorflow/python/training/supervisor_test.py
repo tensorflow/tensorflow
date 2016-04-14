@@ -60,6 +60,53 @@ class SupervisorTest(tf.test.TestCase):
       sess.close()
       sv.stop()
 
+  def testManagedSession(self):
+    logdir = self._TestDir("managed_session")
+    with tf.Graph().as_default():
+      my_op = tf.constant(1.0)
+      sv = tf.train.Supervisor(logdir=logdir)
+      with sv.managed_session("") as sess:
+        for _ in xrange(10):
+          sess.run(my_op)
+      # Supervisor has been stopped.
+      self.assertTrue(sv.should_stop())
+
+  def testManagedSessionUserError(self):
+    logdir = self._TestDir("managed_user_error")
+    with tf.Graph().as_default():
+      my_op = tf.constant(1.0)
+      sv = tf.train.Supervisor(logdir=logdir)
+      last_step = None
+      with self.assertRaisesRegexp(RuntimeError, "failing here"):
+        with sv.managed_session("") as sess:
+          for step in xrange(10):
+            last_step = step
+            if step == 1:
+              raise RuntimeError("failing here")
+            else:
+              sess.run(my_op)
+      # Supervisor has been stopped.
+      self.assertTrue(sv.should_stop())
+      self.assertEqual(1, last_step)
+
+  def testManagedSessionIgnoreOutOfRangeError(self):
+    logdir = self._TestDir("managed_out_of_range")
+    with tf.Graph().as_default():
+      my_op = tf.constant(1.0)
+      sv = tf.train.Supervisor(logdir=logdir)
+      last_step = None
+      with sv.managed_session("") as sess:
+        for step in xrange(10):
+          last_step = step
+          if step == 3:
+            raise tf.errors.OutOfRangeError(my_op.op.node_def, my_op.op,
+                                            "all done")
+          else:
+            sess.run(my_op)
+      # Supervisor has been stopped.  OutOfRangeError was not thrown.
+      self.assertTrue(sv.should_stop())
+      self.assertEqual(3, last_step)
+
   def testSessionConfig(self):
     logdir = self._TestDir("basics")
     with tf.Graph().as_default():
