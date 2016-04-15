@@ -132,6 +132,34 @@ check_existence file "${TEST_SERVER_DOCKER_FILE}"
 sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${TEST_SERVER_DOCKER_FILE}"
 
 
+# Updates to be made if there are major / minor version changes
+MAJOR_MINOR_CHANGE=0
+if [[ ${OLD_MAJOR} != ${MAJOR} ]] || [[ ${OLD_MINOR} != ${MINOR} ]]; then
+  MAJOR_MINOR_CHANGE=1
+
+  OLD_R_MAJOR_MINOR="r${OLD_MAJOR}\.${OLD_MINOR}"
+  R_MAJOR_MINOR="r${MAJOR}\.${MINOR}"
+
+  echo "Detected Major.Minor change. "\
+"Updating pattern ${OLD_R_MAJOR_MINOR} to ${R_MAJOR_MINOR} in additional files"
+
+  # Update tensorflow/tensorboard/README.md
+  TENSORBOARD_README_MD="${TF_SRC_DIR}/tensorboard/README.md"
+  check_existence file "${TENSORBOARD_README_MD}"
+  sed -i -r -e "s/${OLD_R_MAJOR_MINOR}/${R_MAJOR_MINOR}/g" \
+      "${TENSORBOARD_README_MD}"
+
+  # Update dockerfiles
+  DEVEL_DOCKERFILE="${TF_SRC_DIR}/tools/docker/Dockerfile.devel"
+  check_existence file "${DEVEL_DOCKERFILE}"
+  sed -i -r -e "s/${OLD_R_MAJOR_MINOR}/${R_MAJOR_MINOR}/g" "${DEVEL_DOCKERFILE}"
+
+  GPU_DEVEL_DOCKERFILE="${TF_SRC_DIR}/tools/docker/Dockerfile.devel-gpu"
+  check_existence file "${GPU_DEVEL_DOCKERFILE}"
+  sed -i -r -e "s/${OLD_R_MAJOR_MINOR}/${R_MAJOR_MINOR}/g" \
+      "${GPU_DEVEL_DOCKERFILE}"
+fi
+
 echo "Major: ${OLD_MAJOR} -> ${MAJOR}"
 echo "Minor: ${OLD_MINOR} -> ${MINOR}"
 echo "Patch: ${OLD_PATCH} -> ${PATCH}"
@@ -151,4 +179,21 @@ if [[ ! -z "${LINGER_STRS}" ]]; then
 else
   echo "No lingering old version strings found in source directory "\
 "\"${TF_SRC_DIR}/\". Good."
+fi
+
+if [[ ${MAJOR_MINOR_CHANGE} == "1" ]]; then
+  LINGER_R_STRS=$(grep -rnoH "${OLD_R_MAJOR_MINOR}" "${TF_SRC_DIR}")
+
+  if [[ ! -z "${LINGER_R_STRS}" ]]; then
+    echo "WARNING: Below are potentially instances of lingering old "\
+"major.minor release string (${OLD_R_MAJOR_MINOR}) in source directory "\
+"\"${TF_SRC_DIR}/\" that are not updated by this script. "\
+"Please check them manually!"
+    for LINGER_R_STR in ${LINGER_R_STRS}; do
+      echo "${LINGER_R_STR}"
+    done
+  else
+    echo "No lingering old instances of ${OLD_R_MAJOR_MINOR} found in source "\
+"directory \"${TF_SRC_DIR}/\". Good."
+  fi
 fi

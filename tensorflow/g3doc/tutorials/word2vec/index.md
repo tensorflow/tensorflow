@@ -108,7 +108,8 @@ $$
 
 where \\(\text{score}(w\_t, h)\\) computes the compatibility of word \\(w\_t\\)
 with the context \\(h\\) (a dot product is commonly used). We train this model
-by maximizing its log-likelihood on the training set, i.e. by maximizing
+by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function) 
+on the training set, i.e. by maximizing
 
 $$
 \begin{align}
@@ -129,8 +130,8 @@ context \\(h\\), *at every training step*.
 
 On the other hand, for feature learning in word2vec we do not need a full
 probabilistic model. The CBOW and skip-gram models are instead trained using a
-binary classification objective (logistic regression) to discriminate the real
-target words \\(w_t\\) from \\(k\\) imaginary (noise) words \\(\tilde w\\), in the
+binary classification objective ([logistic regression](https://en.wikipedia.org/wiki/Logistic_regression)) 
+to discriminate the real target words \\(w_t\\) from \\(k\\) imaginary (noise) words \\(\tilde w\\), in the
 same context. We illustrate this below for a CBOW model. For skip-gram the
 direction is simply inverted.
 
