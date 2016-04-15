@@ -29,7 +29,7 @@ describe('tf-tensorboard tests', () => {
         }
         it(`${name}: calling reload reloads dashboard`, function(done) {
           tensorboard.$.tabs.set('selected', tabIndex);
-          setTimeout(function() {  // let the dom-if and related logic fire
+          d3.select(tensorboard).on('rendered', function() {
             var called = false;
             tensorboard.selectedDashboard().reload = function() {
               called = true;
