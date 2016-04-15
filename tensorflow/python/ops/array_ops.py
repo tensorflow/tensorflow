@@ -614,10 +614,10 @@ def zeros(shape, dtype=dtypes.float32, name=None):
     A `Tensor` with all elements set to zero.
   """
   with ops.op_scope([shape], name, "zeros") as name:
-    if isinstance(shape, list):
+    if isinstance(shape, (list, tuple)):
       output = constant(0, shape=shape, dtype=dtype, name=name)
     else:
-      shape = ops.convert_to_tensor(shape, name="shape")
+      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
       output = fill(shape, constant(0, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype
   return output
@@ -710,10 +710,10 @@ def ones(shape, dtype=dtypes.float32, name=None):
     A `Tensor` with all elements set to 1.
   """
   with ops.op_scope([shape], name, "ones") as name:
-    if isinstance(shape, list):
+    if isinstance(shape, (list, tuple)):
       output = constant(1, shape=shape, dtype=dtype, name=name)
     else:
-      shape = ops.convert_to_tensor(shape, name="shape")
+      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
       output = fill(shape, constant(1, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype
   return output
