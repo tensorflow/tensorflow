@@ -519,8 +519,9 @@ def variable_scope(name_or_scope, reuse=None, initializer=None,
 
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
-def variable_op_scope(values, name_or_scope, default_name, initializer=None,
-                      regularizer=None, caching_device=None, reuse=None):
+def variable_op_scope(values, name_or_scope, default_name=None,
+                      initializer=None, regularizer=None, caching_device=None,
+                      reuse=None):
   """Returns a context manager for defining an op that creates variables.
 
   This context manager validates that the given `values` are from the
@@ -552,7 +553,8 @@ def variable_op_scope(values, name_or_scope, default_name, initializer=None,
     name_or_scope: The name argument that is passed to the op function,
       this name_or_scope is not uniquified in the variable scope.
     default_name: The default name to use if the `name_or_scope` argument is
-      `None`, this name will be uniquified.
+      `None`, this name will be uniquified. If name_or_scope is provided it
+      won't be used and therefore it is not required and can be None.
     initializer: The  default initializer to pass to variable scope.
     regularizer: The default regularizer for variables within this scope.
     caching_device: The default caching device for variables within this scope.
@@ -568,8 +570,8 @@ def variable_op_scope(values, name_or_scope, default_name, initializer=None,
       a reuse scope, or if reuse is not `None` or `True`.
     TypeError: when the types of some arguments are not appropriate.
   """
-  if default_name is None:
-    raise TypeError("default_name cannot be None")
+  if default_name is None and not name_or_scope:
+    raise TypeError("If default_name is None then name_or_scope is required")
   g = ops._get_graph_from_inputs(values)  # pylint: disable=protected-access
   with g.as_default():
     if name_or_scope:
