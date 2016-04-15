@@ -348,6 +348,8 @@ struct UnaryFunctor<CPUDevice, Functor> {
   REGISTER(OP, D, N, F, T0)
 #define REGISTER9(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
   REGISTER(OP, D, N, F, T0)
+#define REGISTER10(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) \
+  REGISTER(OP, D, N, F, T0)
 #else  // !defined(__ANDROID_TYPES_SLIM__)
 #define REGISTER2(OP, D, N, F, T0, T1) \
   REGISTER(OP, D, N, F, T0)            \
@@ -373,6 +375,9 @@ struct UnaryFunctor<CPUDevice, Functor> {
 #define REGISTER9(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
   REGISTER5(OP, D, N, F, T0, T1, T2, T3, T4)                       \
   REGISTER4(OP, D, N, F, T5, T6, T7, T8)
+#define REGISTER10(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) \
+  REGISTER5(OP, D, N, F, T0, T1, T2, T3, T4)                            \
+  REGISTER5(OP, D, N, F, T5, T6, T7, T8, T9)
 #endif  // defined(__ANDROID_TYPES_SLIM__)
 
 }  // end namespace tensorflow

@@ -101,7 +101,7 @@ _HostCast requires its input and produces its output in host memory.
 REGISTER_OP("Abs")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {half, float, double, int32, int64}")
     .Doc(R"doc(
 Computes the absolute value of a tensor.
 
@@ -132,7 +132,7 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
 // Declares cwise unary operations signature: 't -> 't
 #define UNARY()                      \
   Input("x: T").Output("y: T").Attr( \
-      "T: {float, double, int32, complex64, int64}")
+      "T: {half, float, double, int32, complex64, int64}")
 
 REGISTER_OP("Neg")
     .UNARY()
@@ -238,7 +238,7 @@ Computes cos of x element-wise.
 REGISTER_OP("IsNan")
     .Input("x: T")
     .Output("y: bool")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Doc(R"doc(
 Returns which elements of x are NaN.
 )doc");
@@ -246,7 +246,7 @@ Returns which elements of x are NaN.
 REGISTER_OP("IsInf")
     .Input("x: T")
     .Output("y: bool")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Doc(R"doc(
 Returns which elements of x are Inf.
 )doc");
@@ -254,7 +254,7 @@ Returns which elements of x are Inf.
 REGISTER_OP("IsFinite")
     .Input("x: T")
     .Output("y: bool")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Doc(R"doc(
 Returns which elements of x are finite.
 )doc");
@@ -262,7 +262,7 @@ Returns which elements of x are finite.
 REGISTER_OP("Sign")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double, int32, int64, complex64}")
+    .Attr("T: {half, float, double, int32, int64, complex64}")
     .Doc(R"doc(
 Returns an element-wise indication of the sign of a number.
 
@@ -274,7 +274,7 @@ For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 REGISTER_OP("Floor")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Doc(R"doc(
 Returns element-wise largest integer not greater than x.
 )doc");
@@ -282,7 +282,7 @@ Returns element-wise largest integer not greater than x.
 REGISTER_OP("Ceil")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Doc(R"doc(
 Returns element-wise smallest integer in not less than x.
 )doc");
@@ -291,11 +291,11 @@ Returns element-wise smallest integer in not less than x.
 
 #define BINARY_MORE()                              \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {float, double, uint8, int8, int16, int32, int64, complex64}")
+      "T: {half, float, double, uint8, int8, int16, int32, int64, complex64}")
 
 #define BINARY_FEWER()                             \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {float, double, int32, complex64, int64}")
+      "T: {half, float, double, int32, complex64, int64}")
 
 // TODO(mrry): Restore `SetIsCommutative()` for non-string types.
 REGISTER_OP("Add")
@@ -303,7 +303,7 @@ REGISTER_OP("Add")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {float, double, uint8, int8, int16, int32, int64, complex64, "
+        "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
         "string}")
     .Doc(R"doc(
 Returns x + y element-wise.
@@ -344,7 +344,7 @@ REGISTER_OP("Maximum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {half, float, double, int32, int64}")
     .SetIsCommutative()
     .Doc(R"doc(
 Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
@@ -354,7 +354,7 @@ REGISTER_OP("Minimum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {half, float, double, int32, int64}")
     .SetIsCommutative()
     .Doc(R"doc(
 Returns the min of x and y (i.e. x < y ? x : y) element-wise, broadcasts.
@@ -373,7 +373,7 @@ REGISTER_OP("Pow")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {float, double, int32, complex64, int64}")
+    .Attr("T: {half, float, double, int32, complex64, int64}")
     .Doc(R"doc(
 Computes the power of one value to another.
 
@@ -468,24 +468,24 @@ Returns the truth value of (x >= y) element-wise.
 
 // --------------------------------------------------------------------------
 
-#define COMPARISON()                                                     \
-  Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr( \
-      "T: {float, double, uint8, int8, int16, int32, int64, complex64, " \
+#define EQUALITY_COMPARISON()                                                  \
+  Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr(       \
+      "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, " \
       "quint8, qint8, qint32, string}")
 
 REGISTER_OP("Equal")
-    .COMPARISON()
+    .EQUALITY_COMPARISON()
     .Doc(R"doc(
 Returns the truth value of (x == y) element-wise.
 )doc");
 
 REGISTER_OP("NotEqual")
-    .COMPARISON()
+    .EQUALITY_COMPARISON()
     .Doc(R"doc(
 Returns the truth value of (x != y) element-wise.
 )doc");
 
-#undef COMPARISON
+#undef EQUALITY_COMPARISON
 
 // --------------------------------------------------------------------------
 
