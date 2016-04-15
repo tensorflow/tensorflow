@@ -218,7 +218,7 @@ $ source activate tensorflow
 (tensorflow)$  # Your prompt should change
 
 # Ubuntu/Linux 64-bit, CPU only:
-(tensorflow)$ pip install --ignore-insalled --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
+(tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled:
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
@@ -227,7 +227,7 @@ $ source activate tensorflow
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py2-none-any.whl
 ```
 
-and again for python3:
+and again for Python 3:
 
 ```bash
 $ source activate tensorflow
