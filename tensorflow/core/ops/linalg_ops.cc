@@ -46,34 +46,38 @@ output: Shape is `[...]`.
 REGISTER_OP("MatrixInverse")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("adjoint: bool = False")
+    .Attr("T: {double, float}")
     .Doc(R"doc(
-Calculates the inverse of a square invertible matrix.
+Calculates the inverse of a square invertible matrix or its adjoint (conjugate
+transpose).
 
-The op uses the Cholesky decomposition if the matrix is symmetric positive
-definite and LU decomposition with partial pivoting otherwise.
+The op uses LU decomposition with partial pivoting to compute the inverse.
 
 If the matrix is not invertible there is no guarantee what the op does. It
 may detect the condition and raise an exception or it may simply return a
 garbage result.
 
 input: Shape is `[M, M]`.
-output: Shape is `[M, M]` containing the matrix inverse of the input.
+output: Shape is `[M, M]`. If `adjoint` is `False` then `output` contains the
+matrix inverse of `input`. If `adjoint` is `True` then `output` contains the
+matrix inverse of the adjoint of `input`.
 )doc");
 
 REGISTER_OP("BatchMatrixInverse")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("adjoint: bool = False")
+    .Attr("T: {double, float}")
     .Doc(R"doc(
-Calculates the inverse of square invertible matrices.
+Calculates the inverse of square invertible matrices or their adjoints
+(conjugate transposes).
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor of the same shape as the input
 containing the inverse for all input submatrices `[..., :, :]`.
 
-The op uses the Cholesky decomposition if the matrices are symmetric positive
-definite and LU decomposition with partial pivoting otherwise.
+The op uses LU decomposition with partial pivoting to compute the inverses.
 
 If a matrix is not invertible there is no guarantee what the op does. It
 may detect the condition and raise an exception or it may simply return a
@@ -157,7 +161,7 @@ REGISTER_OP("MatrixSolve")
     .Input("rhs: T")
     .Output("output: T")
     .Attr("adjoint: bool = False")
-    .Attr("T: {float, double}")
+    .Attr("T: {double, float}")
     .Doc(R"doc(
 Solves a system of linear equations. Checks for invertibility.
 
@@ -174,7 +178,7 @@ REGISTER_OP("BatchMatrixSolve")
     .Input("rhs: T")
     .Output("output: T")
     .Attr("adjoint: bool = False")
-    .Attr("T: {float, double}")
+    .Attr("T: {double, float}")
     .Doc(R"doc(
 Solves systems of linear equations. Checks for invertibility.
 
@@ -198,7 +202,7 @@ REGISTER_OP("MatrixTriangularSolve")
     .Output("output: T")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
-    .Attr("T: {float, double}")
+    .Attr("T: {double, float}")
     .Doc(R"doc(
 Solves a system of linear equations with an upper or lower triangular matrix by
 backsubstitution.
@@ -229,7 +233,7 @@ REGISTER_OP("BatchMatrixTriangularSolve")
     .Output("output: T")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
-    .Attr("T: {float, double}")
+    .Attr("T: {double, float}")
     .Doc(R"doc(
 Solves systems of linear equations with upper or lower triangular matrices by
 backsubstitution.
@@ -262,7 +266,7 @@ REGISTER_OP("MatrixSolveLs")
     .Input("rhs: T")
     .Input("l2_regularizer: double")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {double, float}")
     .Attr("fast: bool = True")
     .Doc(R"doc(
 Solves a linear least-squares problem.
@@ -305,7 +309,7 @@ REGISTER_OP("BatchMatrixSolveLs")
     .Input("rhs: T")
     .Input("l2_regularizer: double")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {double, float}")
     .Attr("fast: bool = True")
     .Doc(R"doc(
 Solves multiple linear least-squares problems.

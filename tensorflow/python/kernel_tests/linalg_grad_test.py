@@ -156,11 +156,10 @@ if __name__ == '__main__':
                 _GetMatrixUnaryFunctorGradientTest(tf.matrix_inverse,
                                                    tf.batch_matrix_inverse,
                                                    dtype, shape))
-        # TODO(rmlarsen): Enable test for tf.batch_matrix_determinant once the
-        # gradient for it is implemented.
         setattr(MatrixUnaryFunctorGradientTest,
                 'testMatrixUnaryFunctorGradient_' + name,
-                _GetMatrixUnaryFunctorGradientTest(tf.matrix_determinant, None,
+                _GetMatrixUnaryFunctorGradientTest(tf.matrix_determinant,
+                                                   tf.batch_matrix_determinant,
                                                    dtype, shape))
 
   tf.test.main()
