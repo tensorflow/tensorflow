@@ -1815,7 +1815,7 @@ session and check if it could be initialized automatically.
 
 - - -
 
-#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None)` {#Supervisor.__init__}
+#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None, summary_writer=0)` {#Supervisor.__init__}
 
 Create a `Supervisor`.
 
@@ -1876,6 +1876,8 @@ Create a `Supervisor`.
 *  <b>`session_manager`</b>: `SessionManager`, which manages Session creation and
     recovery. If it is `None`, a default `SessionManager` will be created
     with the set of arguments passed in for backwards compatibility.
+*  <b>`summary_writer`</b>: `SummaryWriter` to use or `USE_DEFAULT`.  Can be `None`
+    to indicate that no summaries should be written.
 
 ##### Returns:
 
