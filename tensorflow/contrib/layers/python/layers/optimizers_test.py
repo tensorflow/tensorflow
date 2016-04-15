@@ -77,6 +77,14 @@ class OptimizersTest(tf.test.TestCase):
       self.assertAlmostEqual(var_value, 9.98999, 4)
       self.assertEqual(global_step_value, 1)
 
+  def testIgnoreVariablesWithNoGradients(self):
+    _, _, loss, global_step = _setup_model()
+
+    unused_variable = tf.get_variable("ignore me", [])
+
+    tf.contrib.layers.optimize_loss(
+        loss, global_step, learning_rate=0.1, optimizer="SGD")
+
 
 if __name__ == "__main__":
   tf.test.main()
