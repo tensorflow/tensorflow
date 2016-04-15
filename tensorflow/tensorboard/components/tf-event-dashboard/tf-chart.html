@@ -71,6 +71,9 @@ The wall_time is serialized as seconds since epoch.
       redraw: function() {
         this._chart.redraw();
       },
+      reload: function() {
+        this._chart.reload();
+      },
       _constructor: function(type) {
         if (type === "scalar") {
           return TF.LineChart;

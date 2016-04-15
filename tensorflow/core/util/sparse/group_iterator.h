@@ -105,6 +105,7 @@ class GroupIterable {
 
     void UpdateEndOfGroup();
     bool operator!=(const IteratorStep& rhs) const;
+    bool operator==(const IteratorStep& rhs) const;
     IteratorStep& operator++();    // prefix ++
     IteratorStep operator++(int);  // postfix ++
     Group operator*() const { return Group(iter_, loc_, next_loc_); }

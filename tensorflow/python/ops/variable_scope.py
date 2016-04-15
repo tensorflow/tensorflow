@@ -52,7 +52,8 @@ class _VariableStore(object):
 
   def get_variable(self, name, shape=None, dtype=dtypes.float32,
                    initializer=None, regularizer=None, reuse=None,
-                   trainable=True, collections=None, caching_device=None):
+                   trainable=True, collections=None, caching_device=None,
+                   validate_shape=True):
     """Gets an existing variable with these parameters or create a new one.
 
     If a variable with the given name is already stored, we return the stored
@@ -86,6 +87,9 @@ class _VariableStore(object):
         device.  If not `None`, caches on another device.  Typical use is to
         cache on the device where the Ops using the Variable reside, to
         deduplicate copying through `Switch` and other conditional statements.
+      validate_shape: If False, allows the variable to be initialized with a
+        value of unknown shape. If True, the default, the shape of initial_value
+        must be known.
 
     Returns:
       The created or existing variable.
@@ -155,8 +159,8 @@ class _VariableStore(object):
                            trainable=trainable,
                            collections=collections,
                            caching_device=caching_device,
-                           dtype=variable_dtype)
-
+                           dtype=variable_dtype,
+                           validate_shape=validate_shape)
     self._vars[name] = v
     logging.info("Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)
@@ -243,7 +247,8 @@ class VariableScope(object):
 
   def get_variable(self, var_store, name, shape=None, dtype=dtypes.float32,
                    initializer=None, regularizer=None,
-                   trainable=True, collections=None, caching_device=None):
+                   trainable=True, collections=None, caching_device=None,
+                   validate_shape=True):
     """Gets an existing variable with this name or create a new one."""
     if initializer is None:
       initializer = self._initializer
@@ -259,7 +264,8 @@ class VariableScope(object):
       return var_store.get_variable(
           full_name, shape=shape, dtype=dtype, initializer=initializer,
           regularizer=regularizer, reuse=self.reuse, trainable=trainable,
-          collections=collections, caching_device=caching_device)
+          collections=collections, caching_device=caching_device,
+          validate_shape=validate_shape)
 
 
 _VARSTORE_KEY = ("__variable_store",)
@@ -287,7 +293,7 @@ def _get_default_variable_store():
 
 def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                  regularizer=None, trainable=True,
-                 collections=None):
+                 collections=None, validate_shape=True):
   """Gets an existing variable with these parameters or create a new one.
 
   This function prefixes the name with the current variable scope
@@ -324,6 +330,9 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     collections: List of graph collections keys to add the Variable to.
       Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+    validate_shape: If False, allows the variable to be initialized with a
+        value of unknown shape. If True, the default, the shape of initial_value
+        must be known.
 
   Returns:
     The created or existing variable.
@@ -336,7 +345,7 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
   return get_variable_scope().get_variable(
       _get_default_variable_store(), name, shape=shape, dtype=dtype,
       initializer=initializer, regularizer=regularizer, trainable=trainable,
-      collections=collections)
+      collections=collections, validate_shape=validate_shape)
 
 
 @contextlib.contextmanager
@@ -510,8 +519,9 @@ def variable_scope(name_or_scope, reuse=None, initializer=None,
 
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
-def variable_op_scope(values, name_or_scope, default_name, initializer=None,
-                      regularizer=None, caching_device=None, reuse=None):
+def variable_op_scope(values, name_or_scope, default_name=None,
+                      initializer=None, regularizer=None, caching_device=None,
+                      reuse=None):
   """Returns a context manager for defining an op that creates variables.
 
   This context manager validates that the given `values` are from the
@@ -543,7 +553,8 @@ def variable_op_scope(values, name_or_scope, default_name, initializer=None,
     name_or_scope: The name argument that is passed to the op function,
       this name_or_scope is not uniquified in the variable scope.
     default_name: The default name to use if the `name_or_scope` argument is
-      `None`, this name will be uniquified.
+      `None`, this name will be uniquified. If name_or_scope is provided it
+      won't be used and therefore it is not required and can be None.
     initializer: The  default initializer to pass to variable scope.
     regularizer: The default regularizer for variables within this scope.
     caching_device: The default caching device for variables within this scope.
@@ -559,8 +570,8 @@ def variable_op_scope(values, name_or_scope, default_name, initializer=None,
       a reuse scope, or if reuse is not `None` or `True`.
     TypeError: when the types of some arguments are not appropriate.
   """
-  if default_name is None:
-    raise TypeError("default_name cannot be None")
+  if default_name is None and not name_or_scope:
+    raise TypeError("If default_name is None then name_or_scope is required")
   g = ops._get_graph_from_inputs(values)  # pylint: disable=protected-access
   with g.as_default():
     if name_or_scope:

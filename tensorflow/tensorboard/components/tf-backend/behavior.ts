@@ -5,7 +5,7 @@ module TF.Backend {
       /** Data type. One of TF.Backend.TYPES */
       dataType: {
         type: String,
-        observer: "_throwErrorOnUnrecognizedType",
+        observer: '_throwErrorOnUnrecognizedType',
       },
 
       /** TF.Backend.Backend for data loading. */
@@ -42,15 +42,13 @@ module TF.Backend {
       },
 
       /** Promise provider for the data. Useful for passing to subcomponents */
-      dataProvider: {
-        type: Function,
-        computed: "_getDataProvider(dataType, backend)"
-      },
+      dataProvider:
+          {type: Function, computed: '_getDataProvider(dataType, backend)'},
 
       /** Has the dashboard loaded yet? */
       loadState: {
         type: String,
-        value: "noload", // [noload, pending, loaded, failure]
+        value: 'noload',  // [noload, pending, loaded, failure]
         readOnly: true,
       },
 
@@ -67,12 +65,26 @@ module TF.Backend {
       }
 
     },
-    observers: ["_do_autoLoad(dataType, backend, autoLoad)"],
+    observers: ['_do_autoLoad(dataType, backend, autoLoad)'],
+    /**
+     * Reloading works in two steps:
+     * Backend reload, which gets metadata on available runs, tags, etc from
+     *   the backend.
+     * Frontend reload, which loads new data for each chart or visual display.
+     * Backend reload logic is provided by this behaivor. The frontend reload
+     *   logic should be provided elsewhere, since it is component-specific.
+     * To keep things simple and consistent, we do the backend reload first,
+     *   and the frontend reload afterwards.
+     */
+    reload: function() {
+      return this.backendReload().then(
+          (x) => { return this.frontendReload(); });
+    },
     /**
      * Load data from backend and then set run2tag, tags, runs, and loadState.
      * Returns a promise that resolves/rejects when data is loaded.
      */
-    reload: function() {
+    backendReload: function() {
       if (this.dataType == null) {
         throw new Error("TF.Backend.Behavior: Need a dataType to reload.");
       }
@@ -83,6 +95,11 @@ module TF.Backend {
       this._setLoadState("pending");
       return runsRoute().then((x) => {
         this._setLoadState("loaded");
+        if (_.isEqual(x, this.run2tag)) {
+          // If x and run2tag are equal, let's avoid updating everything
+          // since that can needlessly trigger run changes, reloads, etc
+          return x;
+        }
         this._setRun2tag(x);
         var tags = TF.Backend.getTags(x);
         this._setDataNotFound(tags.length === 0);

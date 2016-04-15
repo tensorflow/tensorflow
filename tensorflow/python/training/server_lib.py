@@ -238,6 +238,7 @@ class ClusterSpec(object):
     elif isinstance(cluster, ClusterSpec):
       self._cluster_def = tensorflow_server_pb2.ClusterDef()
       self._cluster_def.MergeFrom(cluster.as_cluster_def())
+      self._cluster_spec = {}
       for job_def in self._cluster_def.job:
         self._cluster_spec[job_def.name] = [t for t in job_def.tasks.values()]
     else:
@@ -306,4 +307,3 @@ class ClusterSpec(object):
           raise TypeError(
               "Task address %r must be bytes or unicode" % task_address)
         job_def.tasks[i] = task_address
-

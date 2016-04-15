@@ -38,6 +38,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "contrib_ops_op_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/contrib/linear_optimizer:sdca_ops_op_lib",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

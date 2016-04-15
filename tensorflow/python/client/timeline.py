@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import copy
 import json
 
 import six  # pylint: disable=unused-import
@@ -26,6 +28,29 @@ import six  # pylint: disable=unused-import
 # "platform_test", which includes also includes the "platform"
 # dependency.  This is why the logging import here is okay.
 from tensorflow.python.platform import logging
+
+
+class AllocationMaximum(collections.namedtuple(
+    'AllocationMaximum', ('timestamp', 'num_bytes', 'tensors'))):
+  """Stores the maximum allocation for a given allocator within the timelne.
+
+  Parameters:
+    timestamp: `tensorflow::Env::NowMicros()` when this maximum was reached.
+    num_bytes: the total memory used at this time.
+    tensors: the set of tensors allocated at this time.
+  """
+  pass
+
+
+class StepStatsAnalysis(collections.namedtuple(
+    'StepStatsAnalysis', ('chrome_trace', 'allocator_maximums'))):
+  """Stores the step stats analysis output.
+
+  Parameters:
+    chrome_trace: A dict containing the chrome trace analysis.
+    allocator_maximums: A dict mapping allocator names to AllocationMaximum.
+  """
+  pass
 
 
 class _ChromeTraceFormatter(object):
@@ -345,6 +370,7 @@ class Timeline(object):
     self._next_flow_id = 0
     self._flow_starts = {}  # tensor_name -> (timestamp, pid, tid)
     self._alloc_times = {}  # tensor_name -> ( time, allocator, size )
+    self._allocator_maximums = {}  # allocator name => maximum bytes long
 
   def _alloc_pid(self):
     """Allocate a process Id."""
@@ -528,19 +554,47 @@ class Timeline(object):
       if allocator not in allocations:
         allocations[allocator] = []
       num_bytes = tensor.num_bytes
-      allocations[allocator].append((tensor.create_time, num_bytes))
-      allocations[allocator].append((tensor.last_unref, -num_bytes))
+      allocations[allocator].append((tensor.create_time, num_bytes, name))
+      allocations[allocator].append((tensor.last_unref, -num_bytes, name))
+
+    alloc_maxes = {}
 
     # Generate a counter series showing total allocations for each allocator.
     for allocator in allocations:
       alloc_list = allocations[allocator]
       alloc_list.sort()
       total_bytes = 0
-      for time, num_bytes in alloc_list:
+      alloc_tensor_set = set()
+      alloc_maxes[allocator] = AllocationMaximum(
+          timestamp=0, num_bytes=0, tensors=set())
+      for time, num_bytes, name in alloc_list:
         total_bytes += num_bytes
+        if num_bytes < 0:
+          alloc_tensor_set.discard(name)
+        else:
+          alloc_tensor_set.add(name)
+
+        if total_bytes > alloc_maxes[allocator].num_bytes:
+          alloc_maxes[allocator] = AllocationMaximum(
+              timestamp=time,
+              num_bytes=total_bytes,
+              tensors=copy.deepcopy(alloc_tensor_set))
+
         self._chrome_trace.emit_counter('Memory', allocator,
                                         self._allocators_pid, time, allocator,
                                         total_bytes)
+    self._allocator_maximums = alloc_maxes
+
+  def analyze_step_stats(self, show_dataflow=True, show_memory=True):
+    self._allocate_pids()
+    self._assign_lanes()
+    self._analyze_tensors(show_memory)
+    self._show_compute(show_dataflow)
+    if show_memory:
+      self._show_memory_counters()
+    return StepStatsAnalysis(
+        chrome_trace=self._chrome_trace,
+        allocator_maximums=self._allocator_maximums)
 
   def generate_chrome_trace_format(self, show_dataflow=True, show_memory=True):
     """Produces a trace in Chrome Trace Format.
@@ -554,11 +608,7 @@ class Timeline(object):
     Returns:
       A JSON formatted string in Chrome Trace format.
     """
-    self._allocate_pids()
-    self._assign_lanes()
-    self._analyze_tensors(show_memory)
-    self._show_compute(show_dataflow)
-    if show_memory:
-      self._show_memory_counters()
+    step_stats_analysis = self.analyze_step_stats(
+        show_dataflow=show_dataflow, show_memory=show_memory)
 
-    return self._chrome_trace.format_to_string(pretty=True)
+    return step_stats_analysis.chrome_trace.format_to_string(pretty=True)

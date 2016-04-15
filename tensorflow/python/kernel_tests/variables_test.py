@@ -302,6 +302,14 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertEqual(var.op.device, init_op.device)
       sess.run(init_op)
 
+  def testColocation(self):
+    with tf.device("/job:ps"):
+      var = tf.Variable(0, name="v")
+    with tf.device("/job:worker/task:7"):
+      assign_op = var.assign(1)
+    self.assertDeviceEqual("/job:ps", assign_op.device)
+    self.assertEqual([b"loc:@v"], assign_op.op.colocation_groups())
+
   def testInitializerFunction(self):
     value = [[-42], [133.7]]
     shape = [2, 1]

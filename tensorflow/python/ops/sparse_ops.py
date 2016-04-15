@@ -901,7 +901,7 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
 
   Args:
     serialized_sparse: 2-D `Tensor` of type `string` of shape `[N, 3]`.
-      The serialized and packed `SparseTensor' objects.
+      The serialized and packed `SparseTensor` objects.
     dtype: The `dtype` of the serialized `SparseTensor` objects.
     rank: (optional) Python int, the rank of the `SparseTensor` objects.
     name: A name prefix for the returned tensors (optional)

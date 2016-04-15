@@ -60,8 +60,55 @@ class SupervisorTest(tf.test.TestCase):
       sess.close()
       sv.stop()
 
+  def testManagedSession(self):
+    logdir = self._TestDir("managed_session")
+    with tf.Graph().as_default():
+      my_op = tf.constant(1.0)
+      sv = tf.train.Supervisor(logdir=logdir)
+      with sv.managed_session("") as sess:
+        for _ in xrange(10):
+          sess.run(my_op)
+      # Supervisor has been stopped.
+      self.assertTrue(sv.should_stop())
+
+  def testManagedSessionUserError(self):
+    logdir = self._TestDir("managed_user_error")
+    with tf.Graph().as_default():
+      my_op = tf.constant(1.0)
+      sv = tf.train.Supervisor(logdir=logdir)
+      last_step = None
+      with self.assertRaisesRegexp(RuntimeError, "failing here"):
+        with sv.managed_session("") as sess:
+          for step in xrange(10):
+            last_step = step
+            if step == 1:
+              raise RuntimeError("failing here")
+            else:
+              sess.run(my_op)
+      # Supervisor has been stopped.
+      self.assertTrue(sv.should_stop())
+      self.assertEqual(1, last_step)
+
+  def testManagedSessionIgnoreOutOfRangeError(self):
+    logdir = self._TestDir("managed_out_of_range")
+    with tf.Graph().as_default():
+      my_op = tf.constant(1.0)
+      sv = tf.train.Supervisor(logdir=logdir)
+      last_step = None
+      with sv.managed_session("") as sess:
+        for step in xrange(10):
+          last_step = step
+          if step == 3:
+            raise tf.errors.OutOfRangeError(my_op.op.node_def, my_op.op,
+                                            "all done")
+          else:
+            sess.run(my_op)
+      # Supervisor has been stopped.  OutOfRangeError was not thrown.
+      self.assertTrue(sv.should_stop())
+      self.assertEqual(3, last_step)
+
   def testSessionConfig(self):
-    logdir = self._TestDir("basics")
+    logdir = self._TestDir("session_config")
     with tf.Graph().as_default():
       with tf.device("/cpu:1"):
         my_op = tf.constant([1.0])
@@ -74,7 +121,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.stop()
 
   def testChiefCanWriteEvents(self):
-    logdir = self._TestDir("basics")
+    logdir = self._TestDir("can_write")
     with tf.Graph().as_default():
       summ = tf.scalar_summary(["c1", "c2", "c3"], tf.constant([1.0, 2.0, 3.0]))
       sv = tf.train.Supervisor(is_chief=True, logdir=logdir, summary_op=None)
@@ -138,6 +185,62 @@ class SupervisorTest(tf.test.TestCase):
       sess = sv.prepare_or_wait_for_session("")
       with self.assertRaisesRegexp(RuntimeError, "requires a summary writer"):
         sv.summary_computed(sess, sess.run(summ))
+
+  def testLogdirButExplicitlyNoSummaryWriter(self):
+    logdir = self._TestDir("explicit_no_summary_writer")
+    with tf.Graph().as_default():
+      tf.Variable([1.0], name="foo")
+      const = tf.constant([1.0, 2.0, 3.0])
+      summ = tf.scalar_summary(["c1", "c2", "c3"], const)
+      sv = tf.train.Supervisor(logdir=logdir, summary_writer=None)
+      sess = sv.prepare_or_wait_for_session("")
+      # Check that a checkpoint is still be generated.
+      self._wait_for_glob(sv.save_path, 3.0)
+      # Check that we cannot write a summary
+      with self.assertRaisesRegexp(RuntimeError, "requires a summary writer"):
+        sv.summary_computed(sess, sess.run(summ))
+
+  def testNoLogdirButExplicitSummaryWriter(self):
+    logdir = self._TestDir("explicit_summary_writer")
+    with tf.Graph().as_default():
+      const = tf.constant([1.0, 2.0, 3.0])
+      summ = tf.scalar_summary(["c1", "c2", "c3"], const)
+      sw = tf.train.SummaryWriter(logdir)
+      sv = tf.train.Supervisor(logdir="", summary_op=None, summary_writer=sw)
+      sess = sv.prepare_or_wait_for_session("")
+      sv.summary_computed(sess, sess.run(summ))
+      sess.close()
+      # Wait to make sure everything is written to file before stopping.
+      time.sleep(1)
+      sv.stop()
+
+    # Check the summary was written to 'logdir'
+    rr = _summary_iterator(logdir)
+
+    # The first event should list the file_version.
+    ev = next(rr)
+    self.assertEquals("brain.Event:2", ev.file_version)
+
+    # The next one has the graph.
+    ev = next(rr)
+    ev_graph = tf.GraphDef()
+    ev_graph.ParseFromString(ev.graph_def)
+    self.assertProtoEquals(sess.graph.as_graph_def(add_shapes=True), ev_graph)
+
+    # The next one should have the values from the summary.
+    ev = next(rr)
+    self.assertProtoEquals("""
+      value { tag: 'c1' simple_value: 1.0 }
+      value { tag: 'c2' simple_value: 2.0 }
+      value { tag: 'c3' simple_value: 3.0 }
+      """, ev.summary)
+
+    # The next one should be a stop message if we closed cleanly.
+    ev = next(rr)
+    self.assertEquals(tf.SessionLog.STOP, ev.session_log.status)
+
+    # We should be done.
+    self.assertRaises(StopIteration, lambda: next(rr))
 
   def testNoLogdirSucceeds(self):
     with tf.Graph().as_default():

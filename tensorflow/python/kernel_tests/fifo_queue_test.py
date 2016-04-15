@@ -1149,6 +1149,16 @@ class FIFOQueueTest(tf.test.TestCase):
       for (input_elem, output_elem) in zip(input_tuple, output_tuple):
         self.assertAllEqual(input_elem, output_elem)
 
+  def testDeviceColocation(self):
+    with tf.device("/job:ps"):
+      q = tf.FIFOQueue(32, [tf.int32], name="q")
+
+    with tf.device("/job:worker/task:7"):
+      dequeued_t = q.dequeue()
+
+    self.assertDeviceEqual("/job:ps", dequeued_t.device)
+    self.assertEqual([b"loc:@q"], dequeued_t.op.colocation_groups())
+
 
 class FIFOQueueWithTimeoutTest(tf.test.TestCase):
 
