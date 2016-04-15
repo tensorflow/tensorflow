@@ -80,37 +80,32 @@ func LoadGraphFromTextFile(path string) (gr *Graph, err error) {
 // could return an error if any of the mandatory attributes is not be present
 // or the value is not the expected for this attribute.
 func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
-	var op *pb.OpDef
-	var opFound bool
-
 	if err = gr.loadAvailableOps(); err != nil {
 		return
 	}
 
-	if op, opFound = gr.availableOps[strings.ToLower(opName)]; !opFound {
-		err = &ErrOperationNotFound{
+	op, opFound := gr.availableOps[strings.ToLower(opName)]
+	if !opFound {
+		return nil, &ErrOperationNotFound{
 			op: opName,
 		}
-		return
 	}
 
 	if len(op.InputArg) != len(input) {
-		err = &ErrInvalidAmounthOfInputs{
+		return nil, &ErrInvalidAmounthOfInputs{
 			operation:  opName,
 			opInputs:   len(op.InputArg),
 			specInputs: len(input),
 		}
-		return
 	}
 	inputs := make([]string, len(input))
 	for i, inNode := range input {
 		if op.InputArg[i].IsRef {
 			if inNode.ref == nil {
-				err = &ErrExpectedVarAsinput{
+				return nil, &ErrExpectedVarAsinput{
 					operation: opName,
 					inputPos:  i,
 				}
-				return
 			}
 			inputs[i] = inNode.ref.Name
 		} else {
@@ -135,155 +130,20 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 
 	for _, attr := range op.Attr {
 		// Check if the attribute is specified, if it is not
-		// and don't have a default value, return an error
+		// and doesn't have a default value, return an error since it
+		// is mandatory
 		if v, ok := attrs[attr.Name]; ok {
-			switch attr.Type {
-			case "type":
-				dt, ok := v.(DataType)
-				if !ok {
-					return nil, &ErrInvalidAttrValue{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-				node.def.Attr[attr.Name] = &pb.AttrValue{
-					Value: &pb.AttrValue_Type{
-						Type: pb.DataType(dt),
-					},
-				}
-			case "string":
-				st, ok := v.(string)
-				if !ok {
-					return nil, &ErrInvalidAttrValue{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-				node.def.Attr[attr.Name] = &pb.AttrValue{
-					Value: &pb.AttrValue_S{
-						S: []byte(st),
-					},
-				}
-			case "tensor":
-				t, ok := v.(*Tensor)
-				if !ok {
-					return nil, &ErrInvalidAttrValue{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-
-				tp := &pb.TensorProto{
-					Dtype:         t.Dtype,
-					TensorShape:   t.TensorShape,
-					TensorContent: t.TensorContent,
-				}
-				switch t.DataType() {
-				case DtFloat:
-					tp.FloatVal, _ = t.AsFloat32()
-				case DtDouble:
-					tp.DoubleVal, _ = t.AsFloat64()
-				case DtInt8, DtInt16, DtInt32, DtUint8:
-					tp.IntVal, _ = t.AsInt32()
-				case DtInt64:
-					tp.Int64Val, _ = t.AsInt64()
-				case DtBool:
-					tp.BoolVal, _ = t.AsBool()
-				case DtString:
-					tp.StringVal, _ = t.AsStr()
-				default:
-					err = &ErrTensorTypeNotSupported{
-						tensotType: t.DataType(),
-					}
-					return
-				}
-
-				node.def.Attr[attr.Name] = &pb.AttrValue{
-					Value: &pb.AttrValue_Tensor{
-						Tensor: tp,
-					},
-				}
-			case "func":
-				f, ok := v.(*pb.NameAttrList)
-				if !ok {
-					return nil, &ErrInvalidAttrValue{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-				node.def.Attr[attr.Name] = &pb.AttrValue{
-					Value: &pb.AttrValue_Func{
-						Func: f,
-					},
-				}
-			case "int":
-				i, ok := v.(int64)
-				if !ok {
-					return nil, &ErrInvalidAttrValue{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-				node.def.Attr[attr.Name] = &pb.AttrValue{
-					Value: &pb.AttrValue_I{
-						I: i,
-					},
-				}
-			case "bool":
-				b, ok := v.(bool)
-				if !ok {
-					return nil, &ErrInvalidAttrValue{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-				node.def.Attr[attr.Name] = &pb.AttrValue{
-					Value: &pb.AttrValue_B{
-						B: b,
-					},
-				}
-			case "float":
-				f, ok := v.(float32)
-				if !ok {
-					return nil, &ErrInvalidAttrValue{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-				node.def.Attr[attr.Name] = &pb.AttrValue{
-					Value: &pb.AttrValue_F{
-						F: f,
-					},
-				}
-			case "shape":
-				s, ok := v.(*pb.TensorShapeProto)
-				if !ok {
-					return nil, &ErrInvalidAttrValue{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-				node.def.Attr[attr.Name] = &pb.AttrValue{
-					Value: &pb.AttrValue_Shape{
-						Shape: s,
-					},
-				}
-			case "list(type)", "list(int)", "list(shape)", "list(float)":
-				lv, ok := v.(*pb.AttrValue_ListValue)
-				if !ok {
-					return nil, &ErrInvalidAttrValue{
-						operation:  opName,
-						attribName: attr.Name,
-					}
-				}
-				node.def.Attr[attr.Name] = &pb.AttrValue{
-					Value: &pb.AttrValue_List{
-						List: lv,
-					},
+			node.def.Attr[attr.Name] = gr.castAttrValue(attr.Type, v)
+			if node.def.Attr[attr.Name] == nil {
+				return nil, &ErrInvalidAttrValue{
+					operation:  opName,
+					attribName: attr.Name,
 				}
 			}
 		} else {
-			if attr.DefaultValue == nil {
+			if attr.DefaultValue != nil {
+				node.def.Attr[attr.Name] = attr.DefaultValue
+			} else {
 				return nil, &ErrMandatoryAttributeNotSpecified{
 					operation:  opName,
 					attribName: attr.Name,
@@ -294,24 +154,7 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 
 	gr.def.Node = append(gr.def.Node, node.def)
 
-	return
-}
-
-// Constant Creates a tensor that is added as a constant to the Graph with the
-// specified name.
-func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error) {
-	ts, err := NewTensor(data)
-	if err != nil {
-		return
-	}
-	gr.constants[name] = ts
-
-	op, err = gr.Op("Const", name, nil, "", map[string]interface{}{
-		"dtype": ts.DataType(),
-		"value": ts,
-	})
-
-	return
+	return node, nil
 }
 
 // Variable Creates a variable operation and adds it to the graph. A variable
@@ -522,6 +365,125 @@ func (e *ErrInputOutputDataTypeMismatch) Error() string {
 		e.outDt, e.inDt)
 }
 
+// castAttrValue Returns an pb.AttrValue that contains the corresponding
+// pb.AttrValue_* according to the type specified. Returns nil if the data type
+// of the provided value can't be allocated on the AttrValue type
+func (gr *Graph) castAttrValue(attrType string, v interface{}) (attrVal *pb.AttrValue) {
+	switch attrType {
+	case "type":
+		if dt, ok := v.(DataType); ok {
+			return &pb.AttrValue{
+				Value: &pb.AttrValue_Type{
+					Type: pb.DataType(dt),
+				},
+			}
+		}
+	case "string":
+		if st, ok := v.(string); ok {
+			return &pb.AttrValue{
+				Value: &pb.AttrValue_S{
+					S: []byte(st),
+				},
+			}
+		}
+	case "tensor":
+		if t, ok := v.(*Tensor); ok {
+			tp := &pb.TensorProto{
+				Dtype:         t.Dtype,
+				TensorShape:   t.TensorShape,
+				TensorContent: t.TensorContent,
+			}
+			switch t.DataType() {
+			case DtFloat:
+				tp.FloatVal, _ = t.AsFloat32()
+			case DtDouble:
+				tp.DoubleVal, _ = t.AsFloat64()
+			case DtInt8, DtInt16, DtInt32, DtUint8:
+				tp.IntVal, _ = t.AsInt32()
+			case DtInt64:
+				tp.Int64Val, _ = t.AsInt64()
+			case DtBool:
+				tp.BoolVal, _ = t.AsBool()
+			case DtString:
+				tp.StringVal, _ = t.AsStr()
+			default:
+				return
+			}
+
+			return &pb.AttrValue{
+				Value: &pb.AttrValue_Tensor{
+					Tensor: tp,
+				},
+			}
+		}
+	case "func":
+		if f, ok := v.(*pb.NameAttrList); ok {
+			return &pb.AttrValue{
+				Value: &pb.AttrValue_Func{
+					Func: f,
+				},
+			}
+		}
+	case "int":
+		if i, ok := v.(int64); ok {
+			return &pb.AttrValue{
+				Value: &pb.AttrValue_I{
+					I: i,
+				},
+			}
+		}
+	case "bool":
+		if b, ok := v.(bool); ok {
+			return &pb.AttrValue{
+				Value: &pb.AttrValue_B{
+					B: b,
+				},
+			}
+		}
+	case "float":
+		if f, ok := v.(float32); ok {
+			return &pb.AttrValue{
+				Value: &pb.AttrValue_F{
+					F: f,
+				},
+			}
+		}
+	case "shape":
+		if s, ok := v.(*pb.TensorShapeProto); ok {
+			return &pb.AttrValue{
+				Value: &pb.AttrValue_Shape{
+					Shape: s,
+				},
+			}
+		}
+	case "list(type)", "list(int)", "list(shape)", "list(float)":
+		if lv, ok := v.(*pb.AttrValue_ListValue); ok {
+			return &pb.AttrValue{
+				Value: &pb.AttrValue_List{
+					List: lv,
+				},
+			}
+		}
+	}
+
+	return nil
+}
+
+// Constant Creates a tensor that is added as a constant to the Graph with the
+// specified name.
+func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error) {
+	ts, err := NewTensor(data)
+	if err != nil {
+		return
+	}
+	gr.constants[name] = ts
+
+	return gr.Op("Const", name, nil, "", map[string]interface{}{
+		"dtype": ts.DataType(),
+		"value": ts,
+	})
+}
+
 // matchTypes Matches all the input/output parameters with their corresponding
 // data types specified on the attribues or deducting the data type from other
 // parameters, this method can return an error in case of the matching is not
@@ -530,10 +492,9 @@ func (e *ErrInputOutputDataTypeMismatch) Error() string {
 func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *pb.OpDef) (err error) {
 	// Associate the data type tags with the input data types
 	for i, arg := range op.InputArg {
-		if arg.TypeAttr != "" {
-			if inType, ok := input[i].outDataTypes[input[i].def.Name]; ok && inType != DtInvalid {
-				attrs[arg.TypeAttr] = inType
-			}
+		inType, inTypeDefined := input[i].outDataTypes[input[i].def.Name]
+		if inTypeDefined && inType != DtInvalid && arg.TypeAttr != "" {
+			attrs[arg.TypeAttr] = inType
 		}
 	}
 	for _, arg := range op.OutputArg {
@@ -549,10 +510,11 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 		}
 	}
 
+	// Now assign all the types we got from the inputs/ouputs to their
+	// binded attributes
 	for _, attr := range op.Attr {
 		if attr.Type == "type" {
 			if _, isTypeProvided := attrs[attr.Name]; !isTypeProvided {
-				// Try to get the type form inputs/outputs
 				if inOutDt, inOutDef := attrs[attr.Name]; inOutDef {
 					attrs[attr.Name] = inOutDt
 				} else {
@@ -564,7 +526,8 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 		}
 	}
 
-	// Assign the corresonding data types to the output params
+	// Assign the corresonding data types from the attributes to the output
+	// params
 	for i, arg := range op.OutputArg {
 		var outDt DataType
 
@@ -581,6 +544,8 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 		if len(op.OutputArg) == 1 {
 			outNode.outDataTypes[outNode.def.Name] = outDt
 		} else {
+			// This is a node with more than one output, in this
+			// case the name format is: <name:incremental_id>
 			outNode.outDataTypes[fmt.Sprintf("%s:%d", outNode.def.Name, i)] = outDt
 		}
 	}
