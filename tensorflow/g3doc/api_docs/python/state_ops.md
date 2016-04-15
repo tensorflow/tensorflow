@@ -1270,7 +1270,7 @@ then all its sub-scopes become reusing as well.
 
 - - -
 
-### `tf.variable_op_scope(values, name_or_scope, default_name, initializer=None, regularizer=None, caching_device=None, reuse=None)` {#variable_op_scope}
+### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, reuse=None)` {#variable_op_scope}
 
 Returns a context manager for defining an op that creates variables.
 
@@ -1305,7 +1305,8 @@ def my_op_with_vars(a, b, scope=None):
 *  <b>`name_or_scope`</b>: The name argument that is passed to the op function,
     this name_or_scope is not uniquified in the variable scope.
 *  <b>`default_name`</b>: The default name to use if the `name_or_scope` argument is
-    `None`, this name will be uniquified.
+    `None`, this name will be uniquified. If name_or_scope is provided it
+    won't be used and therefore it is not required and can be None.
 *  <b>`initializer`</b>: The  default initializer to pass to variable scope.
 *  <b>`regularizer`</b>: The default regularizer for variables within this scope.
 *  <b>`caching_device`</b>: The default caching device for variables within this scope.
