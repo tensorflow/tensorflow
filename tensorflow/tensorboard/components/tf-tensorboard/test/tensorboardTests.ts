@@ -1,37 +1,67 @@
-describe("end-to-end test", () => {
-  let assert = chai.assert;
+describe('tf-tensorboard tests', () => {
   window.HTMLImports.whenReady(() => {
-    let tabs: polymer.Base = <any> d3.select("#tabs").node();
-    let tb = d3.select("tf-tensorboard");
-    let tabNames: string[] = [];
-    // Find all the tabs.
-    d3.selectAll("#tabs paper-tab").each(function(d, i) {
-      tabNames.push(this.dataset.mode);
+    let assert = chai.assert;
+    let demoRouter = TF.Backend.router('data', true);
+    function makeTensorBoard() {
+      let tensorboard: any = fixture('testElementFixture');
+      tensorboard.router = demoRouter;
+      return tensorboard;
+    }
+    var tensorboard;
+    beforeEach(function() { tensorboard = makeTensorBoard(); });
+
+    it('specified tabs are correct', function(done) {
+      setTimeout(function() {
+        var tabs = tensorboard.$.tabs.getElementsByTagName('paper-tab');
+        var tabMode = Array.prototype.map.call(tabs, (x) => x.dataMode);
+        assert.deepEqual(tabMode, TF.TensorBoard.TABS, 'mode is correct');
+        var tabText =
+            Array.prototype.map.call(tabs, (x) => x.innerText.toLowerCase());
+        assert.deepEqual(tabText, TF.TensorBoard.TABS, 'text is correct');
+        done();
+      });
     });
 
-    // In case we move the tabs to a different place in the DOM
-    // and the query selector above becomes incorrect.
-    assert.isTrue(tabNames.length >= 4, "at least four tabs were found");
-
-    function testTab(tabIndex: number) {
-      it(`selecting ${tabNames[tabIndex]} tab`, done => {
-        // Every dashboard emits a rendered event when it is done rendering.
-        tb.on("rendered", () => done());
-        tabs.set("selected", tabIndex);
-      });
-    }
-    // Listen for when the default tab has rendered and test other tabs after.
-    tb.on("rendered", () => {
-      // The default tab already rendered. Test everything else.
-      // If a bug happened while rendering the default tab, the test would
-      // have failed. Re-selecting the default tab and listening for
-      // "rendered" event won't work since the content is not re-stamped.
-      let selected = +tabs.get("selected");
-      for (let i = 0; i < tabNames.length; i++) {
-        if (i !== selected) {
-          testTab(i);
+    describe('non-graph tabs: reloading the selected dashboard', function() {
+      TF.TensorBoard.TABS.forEach((name, tabIndex) => {
+        if (name === 'graphs') {
+          return;
         }
-      }
+        it(`${name}: calling reload reloads dashboard`, function(done) {
+          tensorboard.$.tabs.set('selected', tabIndex);
+          setTimeout(function() {  // let the dom-if and related logic fire
+            var called = false;
+            tensorboard.selectedDashboard().reload = function() {
+              called = true;
+            };
+            tensorboard.reload();
+            assert.isFalse(
+                tensorboard.$$('#reload-button').disabled,
+                'reload button not disabled');
+            assert.isTrue(called, `reload was called`);
+            done();
+          });
+        });
+      });
+    });
+
+    it('reload is disabled for graph dashboard', function(done) {
+      var idx = TF.TensorBoard.TABS.indexOf('graphs');
+      assert.notEqual(idx, -1, 'graphs was found');
+      tensorboard.$.tabs.set('selected', idx);
+      setTimeout(
+          function() {  // async so that the queued tab change will happen
+            var called = false;
+            tensorboard.selectedDashboard().reload = function() {
+              called = true;
+            };
+            tensorboard.reload();
+            assert.isTrue(
+                tensorboard.$$('#reload-button').disabled,
+                'reload button disabled');
+            assert.isFalse(called, `reload was not called`);
+            done();
+          });
     });
   });
 });

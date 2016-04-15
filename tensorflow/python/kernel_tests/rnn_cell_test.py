@@ -134,6 +134,39 @@ class RNNCellTest(tf.test.TestCase):
           self.assertTrue(
               float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) > 1e-6)
 
+  def testTFLSTMCell(self):
+    with self.test_session() as sess:
+      num_units = 8
+      state_size = num_units * 2
+      batch_size = 3
+      input_size = 4
+      feature_size = 2
+      frequency_skip = 1
+      num_shifts = (input_size - feature_size) / frequency_skip + 1
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([batch_size, input_size])
+        m = tf.zeros([batch_size, state_size*num_shifts])
+        output, state = tf.nn.rnn_cell.TFLSTMCell(
+            num_units=num_units, feature_size=feature_size,
+            frequency_skip=frequency_skip, forget_bias=1.0)(x, m)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run([output, state],
+                       {x.name: np.array([[1., 1., 1., 1.,],
+                                          [2., 2., 2., 2.], [3., 3., 3., 3.]]),
+                        m.name: 0.1 * np.ones((batch_size, state_size*(
+                            num_shifts)))})
+        self.assertEqual(len(res), 2)
+        # The numbers in results were not calculated, this is mostly just a
+        # smoke test.
+        self.assertEqual(res[0].shape, (batch_size, num_units*num_shifts))
+        self.assertEqual(res[1].shape, (batch_size, state_size*num_shifts))
+        # Different inputs so different outputs and states
+        for i in range(1, batch_size):
+          self.assertTrue(
+              float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) > 1e-6)
+          self.assertTrue(
+              float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) > 1e-6)
+
   def testOutputProjectionWrapper(self):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
@@ -155,7 +188,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 3])
         cell = tf.nn.rnn_cell.InputProjectionWrapper(
-            tf.nn.rnn_cell.GRUCell(3), 2)
+            tf.nn.rnn_cell.GRUCell(3), num_proj=3)
         g, new_m = cell(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([g, new_m], {x.name: np.array([[1., 1.]]),

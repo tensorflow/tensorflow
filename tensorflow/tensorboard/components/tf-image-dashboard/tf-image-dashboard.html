@@ -1,7 +1,7 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="tf-image-grid.html">
-<link rel="import" href="../tf-dashboard-common/tf-no-data-warning.html">
+<link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
 
 <!--
@@ -15,7 +15,7 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
         show-warning="[[dataNotFound]]"
       ></tf-no-data-warning>
       <tf-image-grid
-        id="imageGrid"
+        id="imagegrid"
         run-to-images="[[run2tag]]"
         images-generator="[[dataProvider]]"
         tags="[[tags]]"
@@ -46,7 +46,10 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
       properties: {
         dataType: {value: "image"},
       },
-      behaviors: [TF.Backend.Behavior],
+      behaviors: [
+        TF.Dashboard.ReloadBehavior("tf-image-loader"),
+        TF.Backend.Behavior
+      ],
       attached: function() {
         this.async(function() {
           this.fire("rendered");

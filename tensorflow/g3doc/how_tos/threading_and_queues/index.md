@@ -20,7 +20,11 @@ end of the queue. Slowly, the numbers on the queue increase.
 `Enqueue`, `EnqueueMany`, and `Dequeue` are special nodes. They take a pointer
 to the queue instead of a normal value, allowing them to change it. We recommend
 you think of these as being like methods of the queue. In fact, in the Python
-API, they are methods of the queue object (eg. `q.enqueue(...)`).
+API, they are methods of the queue object (e.g. `q.enqueue(...)`).
+
+**N.B.** Queue methods (such as `q.enqueue(...)`) *must* run on the same device
+as the queue. Incompatible device placement directives will be ignored when
+creating these operations.
 
 Now that you have a bit of a feel for queues, let's dive into the details...
 

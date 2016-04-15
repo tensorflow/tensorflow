@@ -35,9 +35,6 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "sdca_op_kernels",
-    srcs = [
-        "ops/sdca_ops.cc",
-    ],
     deps = [
         "//tensorflow/contrib/linear_optimizer/kernels:sdca_ops",
         "//tensorflow/core:framework",
@@ -61,7 +58,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/sdca_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["noasan"],  # b/27757760
     deps = [
         ":sdca_ops_py",
         "//tensorflow:tensorflow_py",

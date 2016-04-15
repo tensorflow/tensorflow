@@ -129,6 +129,17 @@ gtl::iterator_range<NeighborIter> Node::in_nodes() const {
                          NeighborIter(in_edges_.end(), true));
 }
 
+void Node::MaybeCopyOnWrite() {
+  // Properties may be shared between Nodes. Make a copy if so.
+  if (!props_->RefCountIsOne()) {
+    Properties* new_props =
+        new Properties(props_->op_def_, props_->node_def_, props_->input_types_,
+                       props_->output_types_);
+    props_->Unref();
+    props_ = new_props;
+  }
+}
+
 // Node::Properties
 
 Node::Properties::Properties(const OpDef* op_def, const NodeDef& node_def,

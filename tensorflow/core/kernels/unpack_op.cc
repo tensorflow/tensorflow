@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -48,7 +49,11 @@ class UnpackOp : public OpKernel {
 
     auto output_shape = input_shape;
     output_shape.RemoveDim(0);
-    const int32 output_size = output_shape.num_elements();
+    const int64 output_size = output_shape.num_elements();
+    OP_REQUIRES(
+        context, FastBoundsCheck(output_size,
+                                 std::numeric_limits<Eigen::DenseIndex>::max()),
+        errors::InvalidArgument("output size must fit in Eigen DenseIndex"));
 
     // Special case: Aligned, so we can share the underlying buffer.
     //

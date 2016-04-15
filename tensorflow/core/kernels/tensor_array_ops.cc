@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/kernels/tensor_array.h"
@@ -702,9 +703,13 @@ class TensorArrayUnpackOp : public OpKernel {
 
     TensorShape element_shape(tensor_value->shape());
 
+    OP_REQUIRES(ctx, FastBoundsCheck(element_shape.dim_size(0),
+                                     std::numeric_limits<int32>::max()),
+                errors::InvalidArgument("tensor dim0 too large to unpack"));
+
     // If dynamic size, we may have to resize the TensorArray to fit.
     if (dynamic_size && array_size < element_shape.dim_size(0)) {
-      array_size = element_shape.dim_size(0);
+      array_size = static_cast<int32>(element_shape.dim_size(0));
     }
 
     OP_REQUIRES(
@@ -801,12 +806,16 @@ class TensorArraySplitOp : public OpKernel {
                 errors::InvalidArgument(
                     "Expected lengths to be a vector, received shape: ",
                     tensor_lengths->shape().DebugString()));
+    OP_REQUIRES(ctx, FastBoundsCheck(tensor_lengths->NumElements(),
+                                     std::numeric_limits<int32>::max()),
+                errors::InvalidArgument(
+                    "Expected lengths to have < max int32 entries"));
 
+    int32 num_tensors = static_cast<int32>(tensor_lengths->NumElements());
     auto tensor_lengths_t = tensor_lengths->vec<int64>();
     std::vector<int64> cumulative_lengths;
-    int32 num_tensors = tensor_lengths->NumElements();
     cumulative_lengths.reserve(num_tensors);
-    int32 total_length = 0;
+    int64 total_length = 0;
     for (int i = 0; i < num_tensors; ++i) {
       total_length += tensor_lengths_t(i);
       cumulative_lengths.push_back(total_length);
@@ -865,7 +874,7 @@ class TensorArraySplitOp : public OpKernel {
       Tensor* tensor_value_i;
       PersistentTensor persistent_tensor;
 
-      int32 previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
+      int64 previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
       Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, previous_length, 0};
       Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, tensor_lengths_t(i),
                                                 elements_per_row};

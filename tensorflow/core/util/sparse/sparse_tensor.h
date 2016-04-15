@@ -51,12 +51,12 @@ class SparseTensor {
         dims_(GetDimsFromIx(ix)) {
     CHECK_EQ(ix.dtype(), DT_INT64) << "indices must be type int64 but got: "
                                    << ix.dtype();
-    CHECK(TensorShapeUtils::IsMatrix(ix.shape()))
-        << "indices must be a matrix, but got: " << ix.shape().DebugString();
     CHECK(TensorShapeUtils::IsVector(vals.shape()))
         << "vals must be a vec, but got: " << vals.shape().DebugString();
     CHECK_EQ(ix.shape().dim_size(0), vals.shape().dim_size(0))
         << "indices and values rows (indexing dimension) must match.";
+    CHECK_EQ(order.size(), dims_) << "Order length must be SparseTensor rank.";
+    CHECK_EQ(shape.dims(), dims_) << "Shape rank must be SparseTensor rank.";
   }
 
   std::size_t num_entries() const { return ix_.dim_size(0); }
@@ -102,7 +102,7 @@ class SparseTensor {
   // Precondition: order()[0..group_ix.size()] == group_ix.
   //
   // See the README.md in this directory for more usage information.
-  GroupIterable group(const VarDimArray& group_ix) {
+  GroupIterable group(const VarDimArray& group_ix) const {
     CHECK_LE(group_ix.size(), dims_);
     for (std::size_t di = 0; di < group_ix.size(); ++di) {
       CHECK_GE(group_ix[di], 0) << "Group dimension out of range";
@@ -149,7 +149,8 @@ class SparseTensor {
 
  private:
   static int GetDimsFromIx(const Tensor& ix) {
-    CHECK(TensorShapeUtils::IsMatrix(ix.shape()));
+    CHECK(TensorShapeUtils::IsMatrix(ix.shape()))
+        << "indices must be a matrix, but got: " << ix.shape().DebugString();
     return ix.dim_size(1);
   }
 

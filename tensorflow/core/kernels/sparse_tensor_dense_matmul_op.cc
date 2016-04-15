@@ -215,12 +215,11 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, ADJ_A, ADJ_B> {
   // Vectorize certain operations above this size.
   static const std::size_t kNumVectorize = 32;
 
-  static EIGEN_ALWAYS_INLINE void Compute(const CPUDevice& d,
-                                          typename TTypes<T>::Matrix out,
-                                          TTypes<int64>::ConstMatrix a_indices,
-                                          typename TTypes<T>::ConstVec a_values,
-                                          typename TTypes<T>::ConstMatrix b,
-                                          typename TTypes<T>::Vec scratch) {
+  static void Compute(const CPUDevice& d, typename TTypes<T>::Matrix out,
+                      TTypes<int64>::ConstMatrix a_indices,
+                      typename TTypes<T>::ConstVec a_values,
+                      typename TTypes<T>::ConstMatrix b,
+                      typename TTypes<T>::Vec scratch) {
     const std::size_t nnz = a_values.size();
     const std::size_t rhs_right = (ADJ_B ? b.dimension(0) : b.dimension(1));
     const std::size_t lhs_right = (ADJ_B ? b.dimension(1) : b.dimension(0));
@@ -248,22 +247,33 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, ADJ_A, ADJ_B> {
         }
       }
     } else {
-      for (std::size_t i = 0; i < nnz; ++i) {
-        const int64 m = internal::SubtleMustCopy(a_indices(i, lhs_index_a));
-        const int64 k = internal::SubtleMustCopy(a_indices(i, rhs_index_a));
-        const T a_value = (ADJ_A) ? MaybeConj(a_values(i)) : a_values(i);
-        CHECK_LT(m, out.dimension(0));
-        if (ADJ_B) {
-          CHECK_LT(k, b.dimension(1));
-          out.template chip<0>(m) +=
-              b.template chip<1>(k).unaryExpr(
-                  Eigen::internal::scalar_conjugate_op<T>()) *
-              a_value;
-        } else {
-          CHECK_LT(k, b.dimension(0));
-          out.template chip<0>(m) += b.template chip<0>(k) * a_value;
-        }
+      // Vectorization via Eigen.
+      const int b_chip_index = ADJ_B ? 1 : 0;
+
+#define LOOP_NNZ(b_passed)                                               \
+  for (std::size_t i = 0; i < nnz; ++i) {                                \
+    const int64 m = internal::SubtleMustCopy(a_indices(i, lhs_index_a)); \
+    const int64 k = internal::SubtleMustCopy(a_indices(i, rhs_index_a)); \
+    const T a_value = (ADJ_A) ? MaybeConj(a_values(i)) : a_values(i);    \
+    CHECK_LT(m, out.dimension(0));                                       \
+    CHECK_LT(k, lhs_right);                                              \
+    out.template chip<0>(m) +=                                           \
+        b_passed.template chip<b_chip_index>(k) * a_value;               \
+  }
+
+      if (ADJ_B) {
+        // Perform transpose and conjugation on B once, since we chip out B's
+        // columns in the nnz loop.
+        Eigen::array<int, 2> shuffle(1, 0);  // preserve dimension order
+        Eigen::Tensor<T, 2, Eigen::ColMajor> col_major_conj_b =
+            b.swap_layout().shuffle(shuffle).unaryExpr(
+                Eigen::internal::scalar_conjugate_op<T>());
+
+        LOOP_NNZ(col_major_conj_b);
+      } else {
+        LOOP_NNZ(b);
       }
+#undef LOOP_NNZ
     }
   }
 };

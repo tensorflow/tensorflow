@@ -227,7 +227,7 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
   template struct BiasGPU<T>; \
   template struct BiasGradGPU<T>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DEFINE_GPU_SPECS);
 
 }  // end namespace tensorflow
 
