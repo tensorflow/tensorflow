@@ -43,7 +43,7 @@ w = tf.Variable(<initial-value>, name=<optional-name>)
 y = tf.matmul(w, ...another variable or tensor...)
 
 # The overloaded operators are available too.
-z = tf.sigmoid(w + b)
+z = tf.sigmoid(w + y)
 
 # Assign a new value to the variable with `assign()` or a related method.
 w.assign(w + 1.0)
@@ -120,9 +120,12 @@ variable to its initial value.
 ##### Args:
 
 
-*  <b>`initial_value`</b>: A `Tensor`, or Python object convertible to a `Tensor`.
-    The initial value for the Variable. Must have a shape specified unless
-    `validate_shape` is set to False.
+*  <b>`initial_value`</b>: A `Tensor`, or Python object convertible to a `Tensor`,
+    which is the initial value for the Variable. The initial value must have
+    a shape specified unless `validate_shape` is set to False. Can also be a
+    callable with no argument that returns the initial value when called. In
+    that case, `dtype` must be specified. (Note that initializer functions
+    from init_ops.py must first be bound to a shape before being used here.)
 *  <b>`trainable`</b>: If `True`, the default, also adds the variable to the graph
     collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
     the default list of variables to use by the `Optimizer` classes.

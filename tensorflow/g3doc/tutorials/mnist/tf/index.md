@@ -293,7 +293,7 @@ The user code controls the training per step, and the simplest loop that
 can do useful training is:
 
 ```python
-for step in xrange(max_steps):
+for step in xrange(FLAGS.max_steps):
     sess.run(train_op)
 ```
 

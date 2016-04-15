@@ -319,6 +319,20 @@ class Conv2DTest(tf.test.TestCase):
                        strides=[1, 2], padding="VALID",
                        expected=expected_output)
 
+  def testConv2DKernelSmallerThanStrideValid(self):
+    expected_output = [65, 95, 275, 305]
+    self._VerifyValues(tensor_in_sizes=[1, 7, 7, 1],
+                       filter_in_sizes=[2, 2, 1, 1],
+                       strides=[3, 3], padding="VALID",
+                       expected=expected_output)
+
+  def testConv2DKernelSmallerThanStrideSame(self):
+    expected_output = [1, 3, 7, 9]
+    self._VerifyValues(tensor_in_sizes=[1, 3, 3, 1],
+                       filter_in_sizes=[1, 1, 1, 1],
+                       strides=[2, 2], padding="SAME",
+                       expected=expected_output)
+
   # Testing for backprops
   def _RunAndVerifyBackpropInput(self, input_sizes, filter_sizes, output_sizes,
                                  strides, padding, expected, data_format,
@@ -862,21 +876,6 @@ class Conv2DTest(tf.test.TestCase):
                                           shape=[21, 20, 3, 2]),
                     strides=[1, 1, 1, 1], padding="SAME")
 
-    # Stride larger than filter.
-    with self.assertRaisesRegexp(ValueError,
-                                 "stride must be less than or equal to filter"):
-      tf.nn.conv2d(tf.placeholder(tf.float32,
-                                          shape=[32, 20, 20, 3]),
-                    tf.placeholder(tf.float32,
-                                          shape=[4, 5, 3, 2]),
-                    strides=[1, 5, 5, 1], padding="SAME")
-    with self.assertRaisesRegexp(ValueError,
-                                 "stride must be less than or equal to filter"):
-      tf.nn.conv2d(tf.placeholder(tf.float32,
-                                          shape=[32, 20, 20, 3]),
-                    tf.placeholder(tf.float32,
-                                          shape=[5, 4, 3, 2]),
-                    strides=[1, 5, 5, 1], padding="SAME")
 
 
 # This is only a very simple test. More comprehensive tests live in

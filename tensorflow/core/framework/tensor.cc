@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -711,6 +712,38 @@ void Tensor::FillDescription(TensorDescription* description) const {
     buf_->FillAllocationDescription(
         description->mutable_allocation_description());
   }
+}
+
+gtl::InlinedVector<int64, 5> Tensor::ComputeFlatInnerDims(
+    int64 num_out_dims) const {
+  gtl::InlinedVector<int64, 5> out_dims(num_out_dims, 0);
+  const int64 num_elements = NumElements();
+  if (num_elements != 0) {
+    int64 prod_out_dims = 1;
+    for (int64 out_dim = num_out_dims - 1; out_dim > 0; --out_dim) {
+      const int64 in_dim = out_dim + (dims() - num_out_dims);
+      out_dims[out_dim] =
+          (in_dim >= dims() || in_dim < 0) ? 1 : dim_size(in_dim);
+      prod_out_dims *= out_dims[out_dim];
+    }
+    out_dims[0] = num_elements / prod_out_dims;
+  }
+  return out_dims;
+}
+
+gtl::InlinedVector<int64, 5> Tensor::ComputeFlatOuterDims(
+    int64 num_out_dims) const {
+  gtl::InlinedVector<int64, 5> out_dims(num_out_dims, 0);
+  const int64 num_elements = NumElements();
+  if (num_elements != 0) {
+    int64 prod_out_dims = 1;
+    for (int64 out_dim = 0; out_dim < num_out_dims - 1; ++out_dim) {
+      out_dims[out_dim] = out_dim >= dims() ? 1 : dim_size(out_dim);
+      prod_out_dims *= out_dims[out_dim];
+    }
+    out_dims[num_out_dims - 1] = num_elements / prod_out_dims;
+  }
+  return out_dims;
 }
 
 }  // namespace tensorflow

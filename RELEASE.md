@@ -1,3 +1,46 @@
+# Release 0.8.0
+
+## Major Features and Improvements
+
+* Added a distributed runtime using GRPC
+* Move skflow to `contrib/learn`
+* Better linear optimizer in `contrib/linear_optimizer`
+* Random forest implementation in `contrib/tensor_forest`
+* CTC loss and decoders in `contrib/ctc`
+* Basic support for `half` data type
+* Better support for loading user ops (see examples in `contrib/`)
+* Allow use of (non-blocking) Eigen threadpool with `TENSORFLOW_USE_EIGEN_THREADPOOL` define
+* Add an extension mechanism for adding network file system support
+* TensorBoard displays metadata stats (running time, memory usage and device used) and tensor shapes
+
+## Big Fixes and Other Changes
+
+* Utility for inspecting checkpoints
+* Basic tracing and timeline support
+* Allow building against cuDNN 5 (not incl. RNN/LSTM support) 
+* Added instructions and binaries for ProtoBuf library with fast serialization and without 64MB limit
+* Added special functions
+* `bool`-strictness: Tensors have to be explictly compared to `None`
+* Shape strictness: all fed values must have a shape that is compatible with the tensor they are replacing
+* Exposed `tf.while_loop` (deprecated `control_flow_ops.While`)
+* run() now takes RunOptions and RunMetadata, which enable timing stats
+* Fixed lots of potential overflow problems in op kernels
+* Various performance improvements, especially for RNNs and convolutions
+* Many bugfixes
+* Nightly builds, tutorial tests, many test improvements
+* New examples: transfer learning and deepdream ipython notebook
+* Added tutorials, many documentation fixes.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Abhinav Upadhyay, Aggelos Avgerinos, Alan Wu, Alexander G. de G. Matthews, Aleksandr Yahnev, @amchercashin, Andy Kitchen, Aurelien Geron, Awni Hannun, @BanditCat, Bas Veeling, Cameron Chen, @cg31, Cheng-Lung Sung, Christopher Bonnett, Dan Becker, Dan Van Boxel, Daniel Golden, Danijar Hafner, Danny Goodman, Dave Decker, David Dao, David Kretch, Dongjoon Hyun, Dustin Dorroh, @e-lin, Eurico Doirado, Erik Erwitt, Fabrizio Milo, @gaohuazuo, Iblis Lin, Igor Babuschkin, Isaac Hodes, Isaac Turner, Iván Vallés, J Yegerlehner, Jack Zhang, James Wexler, Jan Zikes, Jay Young, Jeff Hodges, @jmtatsch, Johnny Lim, Jonas Meinertz Hansen, Kanit Wongsuphasawat, Kashif Rasul, Ken Shirriff, Kenneth Mitchner, Kenta Yonekura, Konrad Magnusson, Konstantin Lopuhin, @lahwran, @lekaha, @liyongsea, Lucas Adams, @makseq, Mandeep Singh, @manipopopo, Mark Amery, Memo Akten, Michael Heilman, Michael Peteuil, Nathan Daly, Nicolas Fauchereau, @ninotoshi, Olav Nymoen, @panmari, @papelita1234, Pedro Lopes, Pranav Sailesh Mani, RJ Ryan, Rob Culliton, Robert DiPietro, @ronrest, Sam Abrahams, Sarath Shekkizhar, Scott Graham, Sebastian Raschka, Sung Kim, Surya Bhupatiraju, Syed Ahmed, Till Hoffmann, @timsl, @urimend, @vesnica, Vlad Frolov, Vlad Zagorodniy, Wei-Ting Kuo, Wenjian Huang, William Dmitri Breaden Madden, Wladimir Schmidt, Yuwen Yan, Yuxin Wu, Yuya Kusakabe, @zhongzyd, @znah.
+
+We are also grateful to all who filed issues or helped resolve them, asked and 
+answered questions, and were part of inspiring discussions. 
+
+
 # Release 0.7.1
 
 ## Bug Fixes and Other Changes

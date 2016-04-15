@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.contrib import ctc
 from tensorflow.contrib import distributions
 from tensorflow.contrib import framework
+from tensorflow.contrib import grid_rnn
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
 from tensorflow.contrib import linear_optimizer

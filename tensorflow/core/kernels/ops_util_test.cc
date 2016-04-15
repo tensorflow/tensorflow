@@ -129,12 +129,6 @@ class OpsUtilTest : public ::testing::Test {
   }
 };
 
-// Test stride > ksize fails with INVALID_ARGUMENT.
-TEST_F(OpsUtilTest, Get2dOutputSizeInvalidTest) {
-  padding_struct pad_struct = {{3, 3, 1, 2, 2, 2, SAME}, {3, 3, 1, 1, 1, 1}};
-  VerifyGet2dOutputSizeBoundaries(pad_struct, error::INVALID_ARGUMENT);
-}
-
 TEST_F(OpsUtilTest, Get2dOutputSizeNegativeSizeTest) {
   padding_struct pad_struct = {{1, 1, 3, 3, 1, 1, VALID}, {-1, -1, 0, 0, 0, 0}};
   VerifyGet2dOutputSizeBoundaries(pad_struct, error::INVALID_ARGUMENT);

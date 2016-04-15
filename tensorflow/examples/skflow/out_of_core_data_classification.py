@@ -40,7 +40,7 @@ X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, 
 X_train, y_train, X_test, y_test = [pd.DataFrame(data) for data in [X_train, y_train, X_test, y_test]]
 X_train, y_train, X_test, y_test = [dd.from_pandas(data, npartitions=2) for data in [X_train, y_train, X_test, y_test]]
 
-# Intialize a TensorFlow linear classifier
+# Initialize a TensorFlow linear classifier
 classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
 
 # Fit the model using training set
