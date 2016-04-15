@@ -129,6 +129,12 @@ class Node {
             IsNextIteration());
   }
 
+  template <typename T>
+  void AddAttr(const string& name, const T& val) {
+    MaybeCopyOnWrite();
+    SetAttrValue(val, &((*props_->node_def_.mutable_attr())[name]));
+  }
+
  private:
   friend class Graph;
   Node();
@@ -140,7 +146,7 @@ class Node {
                const DataTypeSlice inputs, const DataTypeSlice outputs);
 
     const OpDef* op_def_;  // not owned
-    const NodeDef node_def_;
+    NodeDef node_def_;
     const DataTypeVector input_types_;
     const DataTypeVector output_types_;
 
@@ -159,6 +165,10 @@ class Node {
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
   void Clear();
+  // Make a copy of the Node's props_ if props_ is shared with
+  // other nodes. This must be called before mutating properties,
+  // e.g. in AddAttr.
+  void MaybeCopyOnWrite();
 
   // A set of mutually exclusive classes for different kinds of nodes,
   // class_ is initialized in the Node::Initialize routine based on the
