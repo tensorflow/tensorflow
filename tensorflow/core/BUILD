@@ -759,6 +759,7 @@ cc_library(
         "lib/random/random_distributions.h",
         "lib/random/weighted_picker.h",
         "lib/strings/ordered_code.h",
+        "lib/strings/proto_text_util.h",
         "lib/strings/regexp.h",
         "lib/strings/scanner.h",
         "platform/denormal.h",
