@@ -33,11 +33,15 @@ func ExampleGraph_Op() {
 	}
 }
 
-func ExampleNewTensor() {
+func ExampleNewTensor_slice() {
 	tensorflow.NewTensor([][]int64{
 		{1, 2, 3, 4},
 		{5, 6, 7, 8},
 	})
+}
+
+func ExampleNewTensor_scalar() {
+	tensorflow.NewTensor("Hello TensorFlow")
 }
 
 func ExampleNewGraphFromText() {
@@ -83,8 +87,8 @@ func ExampleGraph_Constant() {
 func ExampleGraph_Placeholder() {
 	graph := tensorflow.NewGraph()
 	// Adds a placeholder named "input1" that must allocate a three element
-	// DtInt32 tensor.
-	graph.Placeholder("input1", tensorflow.DtInt32, []int64{3}, []string{})
+	// DTInt32 tensor.
+	graph.Placeholder("input1", tensorflow.DTInt32, []int64{3})
 }
 
 func ExampleGraph_Variable() {
@@ -113,7 +117,7 @@ func ExampleGraph_Variable() {
 	// execution.
 	for i := 0; i < 10; i++ {
 		out, _ = s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
-		fmt.Println(out[0].AsInt32())
+		fmt.Println(out[0].Int32())
 	}
 }
 
@@ -169,7 +173,7 @@ func ExampleSession_Run() {
 func ExampleNewTensorWithShape() {
 	// Create a new tensor with a ingle dimension of 3.
 	t2, _ := tensorflow.NewTensorWithShape([][]int64{{3}}, []int64{3, 4, 5})
-	fmt.Println(t2.AsInt64())
+	fmt.Println(t2.Int64())
 }
 
 func ExampleTensor_GetVal() {

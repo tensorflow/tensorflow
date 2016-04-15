@@ -6,7 +6,7 @@ type Graph struct {
 }
 ```
 
-Graph Representation of the computation graph.
+A Graph is the representation of the computation graph.
 
 ## Graph Constructors
 
@@ -16,7 +16,7 @@ Graph Representation of the computation graph.
 func LoadGraphFromFile(path string) (gr *Graph, err error)
 ```
 
-LoadGraphFromFile Loads a Graph from the file on the specified path.
+LoadGraphFromFile loads a Graph from the file on the specified path.
 
 ### LoadGraphFromTextFile
 
@@ -24,7 +24,7 @@ LoadGraphFromFile Loads a Graph from the file on the specified path.
 func LoadGraphFromTextFile(path string) (gr *Graph, err error)
 ```
 
-LoadGraphFromTextFile Loads a Graph as plain text from the file on the specified
+LoadGraphFromTextFile loads a Graph as plain text from the file on the specified
 path.
 
 ```Go
@@ -46,7 +46,7 @@ Example:
 func NewGraph() *Graph
 ```
 
-NewGraph Returns an initialized instance of the Graph struct.
+NewGraph returns an initialized instance of the Graph struct.
 
 ### NewGraphFromText
 
@@ -54,7 +54,7 @@ NewGraph Returns an initialized instance of the Graph struct.
 func NewGraphFromText(graphStr string) (gr *Graph, err error)
 ```
 
-NewGraphFromText Returns a new graph populated with the deserialization of the
+NewGraphFromText returns a new graph populated with the deserialization of the
 provided graph string.
 
 ```Go
@@ -90,21 +90,13 @@ Example:
 
 ## Graph Methods
 
-#### AsStr
-
-```go
-func (gr *Graph) AsStr() []byte
-```
-
-AsStr Returns the current graph serialized so it can be exported.
-
 #### Constant
 
 ```go
 func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error)
 ```
 
-Constant Creates a tensor that is added as a constant to the Graph with the
+Constant creates a tensor that is added as a constant to the Graph with the
 specified name.
 
 ```Go
@@ -128,7 +120,7 @@ Example:
 func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error)
 ```
 
-Op Adds a new Node to the Graph with the specified operation, this function
+Op adds a new Node to the Graph with the specified operation, this function
 could return an error if any of the mandatory attributes is not be present or
 the value is not the expected for this attribute.
 
@@ -165,21 +157,29 @@ Example:
 #### Placeholder
 
 ```go
-func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64, dimNames []string) (op *GraphNode)
+func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64) (op *GraphNode)
 ```
 
-Placeholder Adds a placeholder to the Graph, a placeholder is an operation that
+Placeholder adds a placeholder to the Graph, a placeholder is an operation that
 must be fed with data on execution.
 
 ```Go
 Example:
 	graph := tensorflow.NewGraph()
 	// Adds a placeholder named "input1" that must allocate a three element
-	// DtInt32 tensor.
-	graph.Placeholder("input1", tensorflow.DtInt32, []int64{3}, []string{})
+	// DTInt32 tensor.
+	graph.Placeholder("input1", tensorflow.DTInt32, []int64{3})
 
 
 ```
+
+#### Str
+
+```go
+func (gr *Graph) Str() []byte
+```
+
+Str returns the current graph serialized so it can be exported.
 
 #### String
 
@@ -187,7 +187,7 @@ Example:
 func (gr *Graph) String() string
 ```
 
-String Returns a string representation of this graph, used for debugging
+String returns a string representation of this graph, used for debugging
 proposals.
 
 #### Variable
@@ -196,7 +196,7 @@ proposals.
 func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, err error)
 ```
 
-Variable Creates a variable operation and adds it to the graph. A variable is a
+Variable creates a variable operation and adds it to the graph. A variable is a
 type of tensor that holds state in the form of a tensor that persists across
 steps.
 
@@ -227,7 +227,7 @@ Example:
 	// execution.
 	for i := 0; i < 10; i++ {
 	    out, _ = s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
-	    fmt.Println(out[0].AsInt32())
+	    fmt.Println(out[0].Int32())
 	}
 
 

@@ -26,7 +26,7 @@ func TestNewSession(t *testing.T) {
 	}
 
 	if len(output) != len(outputs) {
-		t.Fatal("There was", len(outputs), "expected outputs, but:", len(output), "obtained")
+		t.Fatal("Expected outputs: 2, but got:", len(output))
 	}
 }
 
@@ -36,20 +36,17 @@ func TestInputParams(t *testing.T) {
 
 	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
-		t.Error("Problem trying create a new tensor, Error:", err)
-		t.FailNow()
+		t.Fatal("Error creating a new tensor:", err)
 	}
 
 	t2, err := tf.NewTensorWithShape([][]int64{{3}}, inputSlice2)
 	if err != nil {
-		t.Error("Problem trying create a new tensor, Error:", err)
-		t.FailNow()
+		t.Fatal("Error creating a new tensor:", err)
 	}
 
 	graph, err := tf.LoadGraphFromTextFile("test_data/add_three_dim_graph.pb")
 	if err != nil {
-		t.Error("Problem trying read the graph from the origin file, Error:", err)
-		t.FailNow()
+		t.Fatal("Error reading the graph from the origin file:", err)
 	}
 
 	s, err := tf.NewSession()
@@ -63,23 +60,20 @@ func TestInputParams(t *testing.T) {
 	}
 	out, err := s.Run(input, []string{"output"}, nil)
 	if err != nil {
-		t.Error("Problem trying to run the saved graph, Error:", err)
-		t.FailNow()
+		t.Fatal("Error running the saved graph:", err)
 	}
 
 	if len(out) != 1 {
-		t.Errorf("The expected number of outputs is 1 but: %d returned", len(out))
-		t.FailNow()
+		t.Fatal("Expected number of outputs is 1, but got:", len(out))
 	}
 
 	for i := 0; i < len(inputSlice1); i++ {
 		val, err := out[0].GetVal(i)
 		if err != nil {
-			t.Error("Error trying to read the output tensor, Error:", err)
-			t.FailNow()
+			t.Fatal("Error reading the output tensor:", err)
 		}
 		if val != inputSlice1[i]+inputSlice2[i] {
-			t.Errorf("The sum of the two elements: %d + %d doesn't match with the returned value: %d", inputSlice1[i], inputSlice2[i], val)
+			t.Errorf("The sum of the 2 elements: %d + %d doesn't match the returned value: %d", inputSlice1[i], inputSlice2[i], val)
 		}
 	}
 }
@@ -106,20 +100,17 @@ func TestInputMultDimParams(t *testing.T) {
 
 	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
-		t.Error("Problem trying create a new tensor, Error:", err)
-		t.FailNow()
+		t.Fatal("Error creating a new tensor:", err)
 	}
 
 	t2, err := tf.NewTensor(inputSlice2)
 	if err != nil {
-		t.Error("Problem trying create a new tensor, Error:", err)
-		t.FailNow()
+		t.Fatal("Error creating a new tensor:", err)
 	}
 
 	graph, err := tf.LoadGraphFromTextFile("test_data/test_graph_multi_dim.pb")
 	if err != nil {
-		t.Error("Problem trying read the graph from the origin file, Error:", err)
-		t.FailNow()
+		t.Fatal("Error reading the graph from the origin file:", err)
 	}
 
 	s, err := tf.NewSession()
@@ -133,25 +124,26 @@ func TestInputMultDimParams(t *testing.T) {
 	}
 	out, err := s.Run(input, []string{"output"}, nil)
 	if err != nil {
-		t.Error("Problem trying to run the saved graph, Error:", err)
-		t.FailNow()
+		t.Fatal("Error running the saved graph:", err)
 	}
 
 	if len(out) != 1 {
-		t.Errorf("The expected number of outputs is 1 but: %d returned", len(out))
-		t.FailNow()
+		t.Fatal("Expected number of outputs is 1, but got:", len(out))
 	}
 
-	for x := 0; x < len(inputSlice1); x++ {
-		for y := 0; y < len(inputSlice1[0]); y++ {
-			for z := 0; z < len(inputSlice1[0][0]); z++ {
+	lenDimX := len(inputSlice1)
+	lenDimY := len(inputSlice1[0])
+	lenDimZ := len(inputSlice1[0][0])
+
+	for x := 0; x < lenDimX; x++ {
+		for y := 0; y < lenDimY; y++ {
+			for z := 0; z < lenDimZ; z++ {
 				val, err := out[0].GetVal(x, y, z)
 				if err != nil {
-					t.Error("Error trying to read the output tensor, Error:", err)
-					t.FailNow()
+					t.Fatal("Error reading the output tensor:", err)
 				}
 				if val != inputSlice1[x][y][z]+inputSlice2[x][y][z] {
-					t.Errorf("The sum of the two elements: %d + %d doesn't match with the returned value: %d", inputSlice1[x][y][z], inputSlice2[x][y][z], val)
+					t.Errorf("The sum of the 2 elements: %d + %d doesn't match the returned value: %d", inputSlice1[x][y][z], inputSlice2[x][y][z], val)
 				}
 			}
 		}

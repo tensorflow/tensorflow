@@ -1,7 +1,6 @@
 package tensorflow
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -15,7 +14,7 @@ const (
 	cOpsProtobufDefsPath = "/usr/local/tensorlow/ops.pbtxt"
 )
 
-// Graph Representation of the computation graph.
+// A Graph is the representation of the computation graph.
 type Graph struct {
 	def *pb.GraphDef
 
@@ -24,8 +23,8 @@ type Graph struct {
 	variables    map[string]*Tensor
 }
 
-// GraphNode Representation of one of the nodes of the TensorFlow Graph.
-// A node takes zero or more Tensors, performs some computation, and
+// A GraphNode is the representation of one of the nodes of the TensorFlow
+// Graph. A node takes zero or more Tensors, performs some computation, and
 // produces zero or more Tensors.
 type GraphNode struct {
 	ref          *pb.NodeDef
@@ -33,7 +32,7 @@ type GraphNode struct {
 	outDataTypes map[string]DataType
 }
 
-// NewGraph Returns an initialized instance of the Graph struct.
+// NewGraph returns an initialized instance of the Graph struct.
 func NewGraph() *Graph {
 	return &Graph{
 		def:          new(pb.GraphDef),
@@ -43,7 +42,7 @@ func NewGraph() *Graph {
 	}
 }
 
-// NewGraphFromText Returns a new graph populated with the deserialization of
+// NewGraphFromText returns a new graph populated with the deserialization of
 // the provided graph string.
 func NewGraphFromText(graphStr string) (gr *Graph, err error) {
 	gr = NewGraph()
@@ -52,7 +51,7 @@ func NewGraphFromText(graphStr string) (gr *Graph, err error) {
 	return
 }
 
-// LoadGraphFromFile Loads a Graph from the file on the specified path.
+// LoadGraphFromFile loads a Graph from the file on the specified path.
 func LoadGraphFromFile(path string) (gr *Graph, err error) {
 	graphStr, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -65,7 +64,7 @@ func LoadGraphFromFile(path string) (gr *Graph, err error) {
 	return
 }
 
-// LoadGraphFromTextFile Loads a Graph as plain text from the file on the specified
+// LoadGraphFromTextFile loads a Graph as plain text from the file on the specified
 // path.
 func LoadGraphFromTextFile(path string) (gr *Graph, err error) {
 	graphStr, err := ioutil.ReadFile(path)
@@ -76,7 +75,7 @@ func LoadGraphFromTextFile(path string) (gr *Graph, err error) {
 	return NewGraphFromText(string(graphStr))
 }
 
-// Op Adds a new Node to the Graph with the specified operation, this function
+// Op adds a new Node to the Graph with the specified operation, this function
 // could return an error if any of the mandatory attributes is not be present
 // or the value is not the expected for this attribute.
 func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
@@ -157,7 +156,7 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 	return node, nil
 }
 
-// Variable Creates a variable operation and adds it to the graph. A variable
+// Variable creates a variable operation and adds it to the graph. A variable
 // is a type of tensor that holds state in the form of a tensor that persists
 // across steps.
 func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, err error) {
@@ -214,23 +213,19 @@ func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, 
 
 	op, err = gr.Op("Identity", name+"/read", []*GraphNode{variable}, "", nil)
 
-	// For reference this variable, use the variable as it.
 	op.ref = variable.def
 
 	return
 }
 
-// String Returns a string representation of this graph, used for debugging
+// String returns a string representation of this graph, used for debugging
 // proposals.
 func (gr *Graph) String() string {
-	var bufStr bytes.Buffer
-	proto.MarshalText(&bufStr, gr.def)
-
-	return bufStr.String()
+	return proto.MarshalTextString(gr.def)
 }
 
-// addInitializationGraphOp Add the initialization operation to the graph to
-// cover all the added variables
+// addInitializationGraphOp add the initialization operation to the graph to
+// cover all the added variables.
 func (gr *Graph) addInitializationGraphOp() {
 	inputs := make([]string, len(gr.variables))
 	i := 0
@@ -246,9 +241,9 @@ func (gr *Graph) addInitializationGraphOp() {
 	})
 }
 
-// Placeholder Adds a placeholder to the Graph, a placeholder is an
+// Placeholder adds a placeholder to the Graph, a placeholder is an
 // operation that must be fed with data on execution.
-func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64, dimNames []string) (op *GraphNode) {
+func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64) (op *GraphNode) {
 	op = &GraphNode{
 		outDataTypes: map[string]DataType{
 			name: dataType,
@@ -273,10 +268,6 @@ func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64, dimNa
 		shape.Dim[i] = &pb.TensorShapeProto_Dim{
 			Size: dim,
 		}
-
-		if len(dimNames) == len(dims) {
-			shape.Dim[i].Name = dimNames[i]
-		}
 	}
 
 	op.def.Attr["shape"] = &pb.AttrValue{
@@ -290,14 +281,14 @@ func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64, dimNa
 	return
 }
 
-// AsStr Returns the current graph serialized so it can be exported.
-func (gr *Graph) AsStr() []byte {
+// Str returns the current graph serialized so it can be exported.
+func (gr *Graph) Str() []byte {
 	result, _ := proto.Marshal(gr.def)
 
 	return result
 }
 
-// ErrExpectedVarAsinput The specified operation is not defined.
+// ErrExpectedVarAsinput the specified operation is not defined.
 type ErrExpectedVarAsinput struct {
 	operation string
 	inputPos  int
@@ -305,11 +296,11 @@ type ErrExpectedVarAsinput struct {
 
 func (e *ErrExpectedVarAsinput) Error() string {
 	return fmt.Sprintf(
-		"The expected input value at pos %d for the operation '%s' must be of type Variable",
+		"The input value at pos %d for the operation '%s' must be of type Variable",
 		e.inputPos, e.operation)
 }
 
-// ErrOperationNotFound The specified operation is not defined.
+// ErrOperationNotFound the specified operation is not defined.
 type ErrOperationNotFound struct {
 	op string
 }
@@ -318,7 +309,7 @@ func (e *ErrOperationNotFound) Error() string {
 	return fmt.Sprintf("Operation '%s' not defined", e.op)
 }
 
-// ErrInvalidAmounthOfInputs The number of inputs doesn't corresponds with the
+// ErrInvalidAmounthOfInputs the number of inputs doesn't corresponds with the
 // expected for this operation.
 type ErrInvalidAmounthOfInputs struct {
 	operation  string
@@ -327,11 +318,11 @@ type ErrInvalidAmounthOfInputs struct {
 }
 
 func (e *ErrInvalidAmounthOfInputs) Error() string {
-	return fmt.Sprintf("Inputs required for operation '%s': %d, but %d provided",
+	return fmt.Sprintf("Inputs required for operation '%s' %d, but %d provided",
 		e.operation, e.opInputs, e.specInputs)
 }
 
-// ErrMandatoryAttributeNotSpecified A mandatory attribute for this operation
+// ErrMandatoryAttributeNotSpecified a mandatory attribute for this operation
 // was not specified.
 type ErrMandatoryAttributeNotSpecified struct {
 	operation  string
@@ -339,35 +330,35 @@ type ErrMandatoryAttributeNotSpecified struct {
 }
 
 func (e *ErrMandatoryAttributeNotSpecified) Error() string {
-	return fmt.Sprintf("The attribute '%s' is mandatory for the operation: '%s'",
+	return fmt.Sprintf("The attribute '%s' is mandatory for operation '%s'",
 		e.attribName, e.operation)
 }
 
-// ErrInvalidAttrValue The data type of the value for this attribute is not valid.
+// ErrInvalidAttrValue the data type of the value for this attribute is not valid.
 type ErrInvalidAttrValue struct {
 	operation  string
 	attribName string
 }
 
 func (e *ErrInvalidAttrValue) Error() string {
-	return fmt.Sprintf("The attribute '%s' value provided for operation: '%s' is not valid",
+	return fmt.Sprintf("The attribute '%s' value provided for operation '%s' is not valid",
 		e.attribName, e.operation)
 }
 
-// ErrInputOutputDataTypeMismatch The output data type doesn't match with the input one.
+// ErrInputOutputDataTypeMismatch the output data type doesn't match with the input one.
 type ErrInputOutputDataTypeMismatch struct {
-	outDt DataType
-	inDt  DataType
+	outDT DataType
+	inDT  DataType
 }
 
 func (e *ErrInputOutputDataTypeMismatch) Error() string {
 	return fmt.Sprintf("The output datatype '%s' doesn't correspond with the input data type '%s'",
-		e.outDt, e.inDt)
+		e.outDT, e.inDT)
 }
 
-// castAttrValue Returns an pb.AttrValue that contains the corresponding
+// castAttrValue returns an pb.AttrValue that contains the corresponding
 // pb.AttrValue_* according to the type specified. Returns nil if the data type
-// of the provided value can't be allocated on the AttrValue type
+// of the provided value can't be allocated on the AttrValue type.
 func (gr *Graph) castAttrValue(attrType string, v interface{}) (attrVal *pb.AttrValue) {
 	switch attrType {
 	case "type":
@@ -394,18 +385,18 @@ func (gr *Graph) castAttrValue(attrType string, v interface{}) (attrVal *pb.Attr
 				TensorContent: t.TensorContent,
 			}
 			switch t.DataType() {
-			case DtFloat:
-				tp.FloatVal, _ = t.AsFloat32()
-			case DtDouble:
-				tp.DoubleVal, _ = t.AsFloat64()
-			case DtInt8, DtInt16, DtInt32, DtUint8:
-				tp.IntVal, _ = t.AsInt32()
-			case DtInt64:
-				tp.Int64Val, _ = t.AsInt64()
-			case DtBool:
-				tp.BoolVal, _ = t.AsBool()
-			case DtString:
-				tp.StringVal, _ = t.AsStr()
+			case DTFloat:
+				tp.FloatVal, _ = t.Float32()
+			case DTDouble:
+				tp.DoubleVal, _ = t.Float64()
+			case DTInt8, DTInt16, DTInt32, DTUint8:
+				tp.IntVal, _ = t.Int32()
+			case DTInt64:
+				tp.Int64Val, _ = t.Int64()
+			case DTBool:
+				tp.BoolVal, _ = t.Bool()
+			case DTString:
+				tp.StringVal, _ = t.Str()
 			default:
 				return
 			}
@@ -469,7 +460,7 @@ func (gr *Graph) castAttrValue(attrType string, v interface{}) (attrVal *pb.Attr
 	return nil
 }
 
-// Constant Creates a tensor that is added as a constant to the Graph with the
+// Constant creates a tensor that is added as a constant to the Graph with the
 // specified name.
 func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error) {
 	ts, err := NewTensor(data)
@@ -484,26 +475,27 @@ func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err err
 	})
 }
 
-// matchTypes Matches all the input/output parameters with their corresponding
-// data types specified on the attribues or deducting the data type from other
-// parameters, this method can return an error in case of the matching is not
-// possible, for instance if two input paramters mas have the same data type
-// but one is int and the other float.
+// matchTypes matches all the input/output parameters with their corresponding
+// data types specified on the attribues or deducing the data type from other
+// parameters. This method can return an error if the matching is not possible,
+// for instance if two input paramters must have the same data type but one is
+// int and the other float.
 func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *pb.OpDef) (err error) {
-	// Associate the data type tags with the input data types
+	// On this part the data type tags are associated with the data type
+	// input data types
 	for i, arg := range op.InputArg {
 		inType, inTypeDefined := input[i].outDataTypes[input[i].def.Name]
-		if inTypeDefined && inType != DtInvalid && arg.TypeAttr != "" {
+		if inTypeDefined && inType != DTInvalid && arg.TypeAttr != "" {
 			attrs[arg.TypeAttr] = inType
 		}
 	}
 	for _, arg := range op.OutputArg {
 		argType := DataType(arg.Type)
-		if arg.TypeAttr != "" && argType != DtInvalid {
+		if arg.TypeAttr != "" && argType != DTInvalid {
 			if inType, defined := attrs[arg.TypeAttr]; defined && inType.(DataType) != argType {
 				return &ErrInputOutputDataTypeMismatch{
-					outDt: argType,
-					inDt:  inType.(DataType),
+					outDT: argType,
+					inDT:  inType.(DataType),
 				}
 			}
 			attrs[arg.TypeAttr] = arg.Type
@@ -511,12 +503,12 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 	}
 
 	// Now assign all the types we got from the inputs/ouputs to their
-	// binded attributes
+	// bound attributes
 	for _, attr := range op.Attr {
 		if attr.Type == "type" {
 			if _, isTypeProvided := attrs[attr.Name]; !isTypeProvided {
-				if inOutDt, inOutDef := attrs[attr.Name]; inOutDef {
-					attrs[attr.Name] = inOutDt
+				if inOutDT, inOutDef := attrs[attr.Name]; inOutDef {
+					attrs[attr.Name] = inOutDT
 				} else {
 					if attr.DefaultValue != nil {
 						attrs[attr.Name] = attr.DefaultValue.GetType()
@@ -526,45 +518,49 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 		}
 	}
 
-	// Assign the corresonding data types from the attributes to the output
-	// params
+	// Assign the corresponding data types from the attributes to the
+	// output params
 	for i, arg := range op.OutputArg {
-		var outDt DataType
+		var outDT DataType
 
 		argType := DataType(arg.Type)
-		if argType != DtInvalid {
-			outDt = argType
+		if argType != DTInvalid {
+			outDT = argType
 		} else {
 			if arg.TypeAttr != "" {
-				if dT, definedDt := attrs[arg.TypeAttr]; definedDt {
-					outDt = dT.(DataType)
+				if dT, definedDT := attrs[arg.TypeAttr]; definedDT {
+					outDT = dT.(DataType)
 				}
 			}
 		}
 		if len(op.OutputArg) == 1 {
-			outNode.outDataTypes[outNode.def.Name] = outDt
+			outNode.outDataTypes[outNode.def.Name] = outDT
 		} else {
 			// This is a node with more than one output, in this
 			// case the name format is: <name:incremental_id>
-			outNode.outDataTypes[fmt.Sprintf("%s:%d", outNode.def.Name, i)] = outDt
+			outNode.outDataTypes[fmt.Sprintf("%s:%d", outNode.def.Name, i)] = outDT
 		}
 	}
 
-	return
+	return nil
 }
 
-// loadAvailableOps Loads all the available operation definitions from local
-// protobuf file on the system specified on the constant cOpsProtobufDefsPath.
+// loadAvailableOps loads all the available operation definitions from a
+// constant stored in: proto/tf_ops_def.go that contains a string with all the
+// operation definitions.
 func (gr *Graph) loadAvailableOps() (err error) {
 	if len(gr.availableOps) != 0 {
-		return
+		return nil
 	}
 
 	ops := new(pb.OpList)
 	err = proto.UnmarshalText(string(pb.COpsDef), ops)
+	if err != nil {
+		return err
+	}
 	for _, op := range ops.Op {
 		gr.availableOps[strings.ToLower(op.Name)] = op
 	}
 
-	return
+	return nil
 }

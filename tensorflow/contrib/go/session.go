@@ -7,8 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
-// Session A Session instance lets a caller drive a TensorFlow graph
-// computation.
+// A Session instance lets a caller drive a TensorFlow graph computation.
 type Session struct {
 	ops     TF_SessionOptions
 	session TF_Session
@@ -29,15 +28,17 @@ func NewSession() (s *Session, err error) {
 		),
 	}
 
-	err = s.statusToError(status)
+	if err = s.statusToError(status); err != nil {
+		return nil, err
+	}
 
 	// Release the C allocated memory when the instance is destroyed
 	runtime.SetFinalizer(s, (*Session).FreeAllocMem)
 
-	return
+	return s, nil
 }
 
-// Run Runs the operations on the target nodes, or all the operations if not
+// Run runs the operations on the target nodes, or all the operations if not
 // targets are specified. the Parameter Input in a dictionary where the key is
 // the tensor name on the graph, and the value the Tensor. The parameter
 // outputs is used to specify the tensors from the graph to be returned in the
@@ -83,7 +84,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 	return result, s.statusToError(status)
 }
 
-// ExtendGraph Loads the graph definition on the session.
+// ExtendGraph loads the graph definition on the session.
 func (s *Session) ExtendGraph(graph *Graph) (err error) {
 	status := TF_NewStatus()
 	defer TF_DeleteStatus(status)
@@ -98,7 +99,7 @@ func (s *Session) ExtendGraph(graph *Graph) (err error) {
 	return s.statusToError(status)
 }
 
-// ExtendAndInitializeAllVariables Adds the "init" op to the graph in order to
+// ExtendAndInitializeAllVariables adds the "init" op to the graph in order to
 // initialize all the variables, loads the graph definition on the session
 // and executes the "init" op.
 func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) (err error) {
@@ -106,14 +107,14 @@ func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) (err error) {
 	// initialize all the variables
 	graph.addInitializationGraphOp()
 	if err = s.ExtendGraph(graph); err != nil {
-		return
+		return err
 	}
 	_, err = s.Run(nil, nil, []string{"init"})
 
-	return
+	return nil
 }
 
-// FreeAllocMem Method defined to be invoked by the Go garbage collector before
+// FreeAllocMem method defined to be invoked by the Go garbage collector before
 // release this instance releasing the C++ allocated memory.
 func (s *Session) FreeAllocMem() {
 	TF_DeleteSession(s.session, s.status)
@@ -121,7 +122,7 @@ func (s *Session) FreeAllocMem() {
 	TF_DeleteSessionOptions(s.ops)
 }
 
-// ErrStatusTf Error message comming out from the TensorFlow C++ libraries.
+// ErrStatusTf error message comming out from the TensorFlow C++ libraries.
 type ErrStatusTf struct {
 	code    TF_Code
 	message string
@@ -131,7 +132,7 @@ func (e *ErrStatusTf) Error() string {
 	return fmt.Sprintf("tensorflow: %d: %v", e.code, e.message)
 }
 
-// statusToError Converts a TF_Status returned by a C execution into a Go Error.
+// statusToError converts a TF_Status returned by a C execution into a Go Error.
 func (s *Session) statusToError(status TF_Status) error {
 	code := TF_GetCode(status)
 	message := TF_Message(status)

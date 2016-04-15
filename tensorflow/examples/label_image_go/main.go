@@ -20,8 +20,8 @@ limitations under the License.
 // the graph, and interpret the results.
 //
 // It's designed to have as few dependencies and be as clear as possible, so
-// it's more verbose than it could be in production code. The errors maagement
-// while building the Graph had been ommited in order to make the code less
+// it's more verbose than it could be in production code. The errors management
+// while building the Graph has been ommited in order to make the code less
 // verbose, but for production code is recomended to check the returned errors
 // on each step.
 //
@@ -39,6 +39,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
@@ -50,17 +51,17 @@ const (
 	cInputMean   = 128
 	cInputStd    = 128
 
-	// cInceptionGraphFile This is the path of the graph who contains the
+	// cInceptionGraphFile This is the path of the graph that contains the
 	// model.
 	cInceptionGraphFile = "tensorflow/examples/label_image_go/data/tensorflow_inception_graph.pb"
 	// cLabelsFile File path that contains a label per line.
 	cLabelsFile = "tensorflow/examples/label_image_go/data/imagenet_comp_graph_label_strings.txt"
 
-	// cLabelsToShow Amounth of best match labels to be returned per image.
+	// cLabelsToShow Number of best match labels to be returned per image.
 	cLabelsToShow = 5
 )
 
-// readTensorFromImageFile Given an image file name, read in the data, try to
+// readTensorFromImageFile reads the data from the given an image file name, try to
 // decode it as an image, resize it to the requested size, and then scale the
 // values as desired.
 func readTensorFromImageFile(filePath string) *tf.Tensor {
@@ -74,7 +75,7 @@ func readTensorFromImageFile(filePath string) *tf.Tensor {
 	fileReader, _ := graph.Op("ReadFile", "file_reader", []*tf.GraphNode{fileNameNode}, "", nil)
 
 	// Now try to figure out what kind of file it is and decode it.
-	if filePath[len(filePath)-4:] == ".png" {
+	if filepath.Ext(filePath) == ".png" {
 		imageReader, _ = graph.Op("DecodePng", "png_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
 			"channels": int64(3),
 		})
@@ -88,7 +89,7 @@ func readTensorFromImageFile(filePath string) *tf.Tensor {
 	// Now cast the image data to float so we can do normal math on it. In
 	// the attributes we have to specify the output datatype that we want.
 	floatCaster, _ := graph.Op("Cast", "float_caster", []*tf.GraphNode{imageReader}, "", map[string]interface{}{
-		"DstT": tf.DtFloat,
+		"DstT": tf.DTFloat,
 	})
 
 	// The convention for image ops in TensorFlow is that all images are expected
@@ -97,14 +98,14 @@ func readTensorFromImageFile(filePath string) *tf.Tensor {
 	// have to add a batch dimension of 1 to the start with ExpandDims operation.
 	dimIndex, _ := graph.Constant("dim_index", []int32{0})
 	dimsExpander, _ := graph.Op("ExpandDims", "dims_expander", []*tf.GraphNode{floatCaster, dimIndex}, "", map[string]interface{}{
-		"T":   tf.DtFloat,
+		"T":   tf.DTFloat,
 		"dim": 0,
 	})
 
 	// Bilinearly resize the image to fit the required dimensions.
 	sizeDims, _ := graph.Constant("size_dims", []int32{cInputWidth, cInputHeight})
 	size, _ := graph.Op("ResizeBilinear", "size", []*tf.GraphNode{dimsExpander, sizeDims}, "", map[string]interface{}{
-		"T": tf.DtFloat,
+		"T": tf.DTFloat,
 	})
 
 	// Subtract the mean and divide by the scale.
@@ -128,7 +129,7 @@ func readTensorFromImageFile(filePath string) *tf.Tensor {
 		log.Fatalf("The expected number of outputs is 1 but: %d returned", len(out))
 	}
 
-	// The outputs are sorted in the same order than they was specfied on
+	// The outputs are sorted in the same order than they were specfied in
 	// the second param of the Run method
 	return out[0]
 }
@@ -144,7 +145,7 @@ func getTopLabels(outputs *tf.Tensor, labels int32) (indexes, scores *tf.Tensor)
 	for i := 0; i < outputs.NumDims(); i++ {
 		dims[i] = int64(outputs.Dim(i))
 	}
-	normalized := graph.Placeholder("normalized_placeholder", tf.DtFloat, dims, nil)
+	normalized := graph.Placeholder("normalized_placeholder", tf.DTFloat, dims)
 
 	// Here instead of using a placeholder to send and input we are using a
 	// constant that is oing to be part of the graph
@@ -178,7 +179,7 @@ func main() {
 	s, _ := tf.NewSession()
 	s.ExtendGraph(graph)
 
-	// Get the image from disk as a float array of numbers, resized and
+	// Get the image from disk as an array of floats, resized and
 	// normalized to the specifications the main graph expects.
 	resizedTensor := readTensorFromImageFile(imagePath)
 

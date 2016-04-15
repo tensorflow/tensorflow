@@ -6,7 +6,7 @@ type Session struct {
 }
 ```
 
-Session A Session instance lets a caller drive a TensorFlow graph computation.
+A Session instance lets a caller drive a TensorFlow graph computation.
 
 ## Session Constructors
 
@@ -26,7 +26,7 @@ NewSession initializes a new TensorFlow session.
 func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) (err error)
 ```
 
-ExtendAndInitializeAllVariables Adds the "init" op to the graph in order to
+ExtendAndInitializeAllVariables adds the "init" op to the graph in order to
 initialize all the variables, loads the graph definition on the session and
 executes the "init" op.
 
@@ -50,7 +50,7 @@ Example:
 func (s *Session) ExtendGraph(graph *Graph) (err error)
 ```
 
-ExtendGraph Loads the graph definition on the session.
+ExtendGraph loads the graph definition on the session.
 
 ```Go
 Example:
@@ -71,7 +71,7 @@ Example:
 func (s *Session) FreeAllocMem()
 ```
 
-FreeAllocMem Method defined to be invoked by the Go garbage collector before
+FreeAllocMem method defined to be invoked by the Go garbage collector before
 release this instance releasing the C++ allocated memory.
 
 #### Run
@@ -80,7 +80,7 @@ release this instance releasing the C++ allocated memory.
 func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []string) ([]*Tensor, error)
 ```
 
-Run Runs the operations on the target nodes, or all the operations if not
+Run runs the operations on the target nodes, or all the operations if not
 targets are specified. the Parameter Input in a dictionary where the key is the
 tensor name on the graph, and the value the Tensor. The parameter outputs is
 used to specify the tensors from the graph to be returned in the same order as

@@ -24,8 +24,7 @@ func getTensorFromGraph(t *testing.T, graphStr string) *tf.Tensor {
 	}
 
 	if len(output) != 1 {
-		t.Fatalf("The expexted number of tensors is 1 but there was %d tensors returned", len(output))
-		t.FailNow()
+		t.Fatalf("Expexted 1 tensor, but got: %d tensors", len(output))
 	}
 
 	return output[0]
@@ -67,20 +66,17 @@ func TestStrDecode(t *testing.T) {
 		version: 5`, string(expectedResult[0]), string(expectedResult[1]), string(expectedResult[2])),
 	)
 
-	result, err := tensor.AsStr()
+	result, err := tensor.Str()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into string slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into string slice:", err)
 	}
 
 	if len(result) != 3 {
-		t.Errorf("The expected number of strings returned was 3, but %d was returned", len(result))
-		t.FailNow()
+		t.Fatal("Expected number of strings 3, but got:", len(result))
 	}
 
 	if !reflect.DeepEqual(expectedResult, result) {
-		t.Errorf("The returned values doesn't coeesponds with the expected strings:", expectedResult, result)
-		t.FailNow()
+		t.Fatalf("Returned values doesn't coresponds with the expected strings:", expectedResult, result)
 	}
 }
 
@@ -111,20 +107,17 @@ func TestFloat32Decode(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsFloat32()
+	result, err := tensor.Float32()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into float32 slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into float32 slice:", err)
 	}
 
 	if len(result) != 1 {
-		t.Error("The expected length for the returned slice is 1 but the returned slice length was:", len(result))
-		t.FailNow()
+		t.Fatal("Expected length for the returned slice: 1, but got:", len(result))
 	}
 
 	if result[0] != expectedResult {
-		t.Errorf("The expected value is: %f, but the returned is: %f", expectedResult, result[0])
-		t.FailNow()
+		t.Fatalf("Expected value: %f, but got: %f", expectedResult, result[0])
 	}
 }
 
@@ -155,20 +148,17 @@ func TestFloat64Decode(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsFloat64()
+	result, err := tensor.Float64()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into float64 slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into float64 slice:", err)
 	}
 
 	if len(result) != 1 {
-		t.Error("The expected length for the returned slice is 1 but the returned slice length was:", len(result))
-		t.FailNow()
+		t.Fatal("Expected length for the returned slice: 1, but got:", len(result))
 	}
 
 	if result[0] != expectedResult {
-		t.Errorf("The expected value is: %f, but the returned is: %f", expectedResult, result[0])
-		t.FailNow()
+		t.Fatalf("Expected value is: %f, but got: %f", expectedResult, result[0])
 	}
 }
 
@@ -199,20 +189,17 @@ func TestInt32Decode(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsInt32()
+	result, err := tensor.Int32()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into int32 slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into int32 slice:", err)
 	}
 
 	if len(result) != 1 {
-		t.Error("The expected length for the returned slice is 1 but the returned slice length was:", len(result))
-		t.FailNow()
+		t.Fatal("Expected length for the returned slice is 1, but got:", len(result))
 	}
 
 	if result[0] != expectedResult {
-		t.Errorf("The expected value is: %d, but the returned is: %d", expectedResult, result[0])
-		t.FailNow()
+		t.Fatalf("Expected value is: %d, but got: %d", expectedResult, result[0])
 	}
 }
 
@@ -243,20 +230,17 @@ func TestInt64Decode(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsInt64()
+	result, err := tensor.Int64()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into int64 slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into int64 slice:", err)
 	}
 
 	if len(result) != 1 {
-		t.Error("The expected length for the returned slice is 1 but the returned slice length was:", len(result))
-		t.FailNow()
+		t.Fatal("Expected length for the returned slice: 1, but got:", len(result))
 	}
 
 	if result[0] != expectedResult {
-		t.Errorf("The expected value is: %d, but the returned is: %d", expectedResult, result[0])
-		t.FailNow()
+		t.Fatalf("Expected value is: %d, but got: %d", expectedResult, result[0])
 	}
 }
 
@@ -299,15 +283,13 @@ func TestMultDimFloat32Decode(t *testing.T) {
 		}
 	`)
 
-	result, err := tensor.AsFloat32()
+	result, err := tensor.Float32()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into float32 slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into float32 slice:", err)
 	}
 
 	if len(result) != 12 {
-		t.Error("The expected length for the returned slice is 12 but the returned slice length was:", len(result))
-		t.FailNow()
+		t.Fatal("Expected length for the returned slice: 12, but got:", len(result))
 	}
 
 	for x := 0; x < len(expectedResult); x++ {
@@ -319,14 +301,13 @@ func TestMultDimFloat32Decode(t *testing.T) {
 				}
 				valueFloat := value.(float32)
 				if valueFloat != expectedResult[x][y][z] {
-					t.Errorf(
-						"The expected value for position: %d %d %d is: %f but the one returned was: %f",
+					t.Fatalf(
+						"Expected value for position: %d %d %d: %f, but got: %f",
 						x,
 						y,
 						z,
 						expectedResult[x][y][z],
 						valueFloat)
-					t.FailNow()
 				}
 			}
 		}
@@ -360,66 +341,19 @@ func TestUint8Decode(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsInt32()
+	result, err := tensor.Int32()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into uint8 slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into uint8 slice:", err)
 	}
 
 	if len(result) != 1 {
-		t.Error("The expected length for the returned slice is 1 but the returned slice length was:", len(result))
-		t.FailNow()
+		t.Fatal("Expected length for the returned slice: 1, but got:", len(result))
 	}
 
 	if result[0] != expectedResult {
-		t.Errorf("The expected value is: %d, but the returned is: %d", expectedResult, result[0])
-		t.FailNow()
+		t.Fatalf("Expected value: %d, but got: %d", expectedResult, result[0])
 	}
 }
-
-/*func TestUint16Decode(t *testing.T) {
-	expectedResult := uint16(321)
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_UINT16
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_UINT16
-						tensor_shape {
-						}
-						int_val: %d
-					}
-				}
-			}
-		}
-		version: 5`, expectedResult),
-	)
-
-	result, err := tensor.AsUint16()
-	if err != nil {
-		t.Error("Problem trying to cast a tensor into uint16 slice, Error:", err)
-		t.FailNow()
-	}
-
-	if len(result) != 1 {
-		t.Error("The expected length for the returned slice is 1 but the returned slice length was:", len(result))
-		t.FailNow()
-	}
-
-	if result[0] != expectedResult {
-		t.Errorf("The expected value is: %d, but the returned is: %d", expectedResult, result[0])
-		t.FailNow()
-	}
-}*/
 
 func TestInt16(t *testing.T) {
 	expectedResult := int32(21)
@@ -448,20 +382,17 @@ func TestInt16(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsInt32()
+	result, err := tensor.Int32()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into int16 slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into int16 slice:", err)
 	}
 
 	if len(result) != 1 {
-		t.Error("The expected length for the returned slice is 1 but the returned slice length was:", len(result))
-		t.FailNow()
+		t.Fatal("Expected length for the returned slice is: 1, but got:", len(result))
 	}
 
 	if result[0] != expectedResult {
-		t.Errorf("The expected value is: %d, but the returned is: %d", expectedResult, result[0])
-		t.FailNow()
+		t.Fatalf("Expected value is: %d, but got: %d", expectedResult, result[0])
 	}
 }
 
@@ -492,20 +423,17 @@ func TestInt8(t *testing.T) {
 		version: 5`, expectedResult),
 	)
 
-	result, err := tensor.AsInt32()
+	result, err := tensor.Int32()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into int8 slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into int8 slice:", err)
 	}
 
 	if len(result) != 1 {
-		t.Error("The expected length for the returned slice is 1 but the returned slice length was:", len(result))
-		t.FailNow()
+		t.Fatal("Expected length for the returned slice: 1, but got:", len(result))
 	}
 
 	if result[0] != expectedResult {
-		t.Errorf("The expected value is: %d, but the returned is: %d", expectedResult, result[0])
-		t.FailNow()
+		t.Fatalf("Expected value is: %d, but got: %d", expectedResult, result[0])
 	}
 }
 
@@ -539,24 +467,25 @@ func TestBool(t *testing.T) {
 				}
 			}
 		}
-		version: 5`, expectedResult[0], expectedResult[1], expectedResult[2], expectedResult[3]),
+		version: 5`,
+		expectedResult[0],
+		expectedResult[1],
+		expectedResult[2],
+		expectedResult[3]),
 	)
 
-	result, err := tensor.AsBool()
+	result, err := tensor.Bool()
 	if err != nil {
-		t.Error("Problem trying to cast a tensor into bool slice, Error:", err)
-		t.FailNow()
+		t.Fatal("Error casting tensor into bool slice:", err)
 	}
 
 	if len(result) != 4 {
-		t.Error("The expected length for the returned slice is 4 but the returned slice length was:", len(result))
-		t.FailNow()
+		t.Fatal("Expected length for the returned slice: 4, but got:", len(result))
 	}
 
 	for i, v := range expectedResult {
 		if result[i] != v {
-			t.Errorf("The expected value is: %d, but the returned is: %d", v, result[i])
-			t.FailNow()
+			t.Fatalf("Expected value is: %d, but got: %d", v, result[i])
 		}
 	}
 }
@@ -573,8 +502,7 @@ func TestTensor(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Error("Problem trying to instance the Tensor, Error:", err)
-		t.FailNow()
+		t.Fatal("Error instancing the Tensor:", err)
 	}
 
 	tensorToCompare := getTensorFromGraph(t, fmt.Sprintf(`
@@ -611,20 +539,17 @@ func TestTensor(t *testing.T) {
 		version: 5`),
 	)
 
-	tensorSlice, err := tensorToCompare.AsInt64()
+	tensorSlice, err := tensorToCompare.Int64()
 	if err != nil {
-		t.Error("Problem trying to get the tensor as slice of integers, Error:", err)
-		t.FailNow()
+		t.Fatal("Error getting the tensor as slice of integers:", err)
 	}
 
-	resultSlice, err := tensor.AsInt64()
+	resultSlice, err := tensor.Int64()
 	if err != nil {
-		t.Error("Problem trying to get the tensor as slice of integers, Error:", err)
-		t.FailNow()
+		t.Fatal("Error getting the tensor as slice of integers:", err)
 	}
 
 	if !reflect.DeepEqual(tensorSlice, resultSlice) {
-		t.Error("The returned values doesn't coeesponds with the expected strings:", tensorSlice, resultSlice)
-		t.FailNow()
+		t.Fatal("The returned values doesn't coeesponds with the expected strings:", tensorSlice, resultSlice)
 	}
 }
