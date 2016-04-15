@@ -94,3 +94,7 @@ class CopyOpsTest(tf.test.TestCase):
         v2 = self.test_session.run(y1, {x1: 5})
 
         assert v1 == v2
+
+
+if __name__ == "__main__":
+    tf.test.main()
