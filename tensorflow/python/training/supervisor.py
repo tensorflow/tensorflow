@@ -238,7 +238,8 @@ class Supervisor(object):
                summary_op=USE_DEFAULT, saver=USE_DEFAULT,
                global_step=USE_DEFAULT, save_summaries_secs=120,
                save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120,
-               checkpoint_basename="model.ckpt", session_manager=None):
+               checkpoint_basename="model.ckpt", session_manager=None,
+               summary_writer=USE_DEFAULT):
     """Create a `Supervisor`.
 
     Args:
@@ -296,6 +297,8 @@ class Supervisor(object):
       session_manager: `SessionManager`, which manages Session creation and
         recovery. If it is `None`, a default `SessionManager` will be created
         with the set of arguments passed in for backwards compatibility.
+      summary_writer: `SummaryWriter` to use or `USE_DEFAULT`.  Can be `None`
+        to indicate that no summaries should be written.
 
     Returns:
       A `Supervisor`.
@@ -317,23 +320,26 @@ class Supervisor(object):
     self._recovery_wait_secs = recovery_wait_secs
     self._stop_grace_secs = stop_grace_secs
 
-    # Only chief supervisors write event files, so only chief supervisors
-    # should have event-writing properties. Set to None for non-chiefs.
+    # Set all attributes related to checkpointing and writing events to None.
+    # Afterwards, set them appropriately for chief supervisors, as these are
+    # the only supervisors that can write checkpoints and events.
+    self._logdir = None
+    self._save_summaries_secs = None
+    self._save_model_secs = None
+    self._save_path = None
+    self._summary_writer = None
+
     if self._is_chief:
       self._logdir = logdir
       self._save_summaries_secs = save_summaries_secs
       self._save_model_secs = save_model_secs
-    else:
-      self._logdir = None
-      self._save_summaries_secs = None
-      self._save_model_secs = None
-
-    if self._is_chief and self._logdir:
-      self._save_path = os.path.join(self._logdir, checkpoint_basename)
-      self._summary_writer = summary_io.SummaryWriter(self._logdir)
-    else:
-      self._save_path = None
-      self._summary_writer = None
+      if self._logdir:
+        self._save_path = os.path.join(self._logdir, checkpoint_basename)
+      if summary_writer is Supervisor.USE_DEFAULT:
+        if self._logdir:
+          self._summary_writer = summary_io.SummaryWriter(self._logdir)
+      else:
+        self._summary_writer = summary_writer
 
     self._init_session_manager(session_manager=session_manager)
     self._verify_setup()
@@ -619,7 +625,7 @@ class Supervisor(object):
                       "passed to the SessionManager")
       return
 
-    if self._global_step is not None:
+    if self._global_step is not None and self._summary_writer:
       # Only add the session log if we keep track of global step.
       # TensorBoard cannot use START message for purging expired events
       # if there is no step value.
@@ -629,10 +635,11 @@ class Supervisor(object):
           current_step)
 
     threads = []
-    if self._summary_op is not None and self._save_summaries_secs:
-      threads.append(SVSummaryThread(self, sess))
-    if self._global_step is not None and self._save_summaries_secs:
-      threads.append(SVStepCounterThread(self, sess))
+    if self._save_summaries_secs and self._summary_writer:
+      if self._summary_op is not None:
+        threads.append(SVSummaryThread(self, sess))
+      if self._global_step is not None:
+        threads.append(SVStepCounterThread(self, sess))
     if self.saver and self._save_model_secs:
       threads.append(SVTimerCheckpointThread(self, sess))
     for t in threads:
