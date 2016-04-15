@@ -142,9 +142,9 @@ generated Graph, after the execution returns the Tensor with the result.
 This is a complete code example that shows how to generate Graphs on Go and
 execute them:
 
-[Image Recognition](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/g3doc/tutorials/image_recognition/index.md#usage-with-the-go-api)
+[Image Recognition](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/tutorials/image_recognition/index.md#usage-with-the-go-api)
 
-[Code](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/examples/label_image_go/main.go)
+[Code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image_go/main.go)
 
 ## Troubleshooting
 
