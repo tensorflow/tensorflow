@@ -418,5 +418,5 @@ new_git_repository(
   name = "webcomponentsjs",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymer/webcomponentsjs.git",
-  tag = "v0.7.21",
+  tag = "v0.7.22",
 )
