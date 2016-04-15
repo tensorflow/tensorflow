@@ -3,7 +3,7 @@
 by [Alexander Mordvintsev](mailto:moralex@google.com)
 
 This directory contains Jupyter notebook that demonstrates a number of Convolutional Neural Network 
-image generation techiques implemented with TensorFlow:
+image generation techniques implemented with TensorFlow:
 
 - visualizing individual feature channels and their combinations to explore the space of patterns learned by the neural network (see [GoogLeNet](http://storage.googleapis.com/deepdream/visualz/tensorflow_inception/index.html) and [VGG16](http://storage.googleapis.com/deepdream/visualz/vgg16/index.html) galleries)
 - embedding TensorBoard graph visualizations into Jupyter notebooks
