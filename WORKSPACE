@@ -103,7 +103,7 @@ new_git_repository(
   name = "iron_collapse",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-collapse.git",
-  tag = "v1.0.6",
+  tag = "v1.0.8",
 )
 
 new_git_repository(
@@ -159,7 +159,7 @@ new_git_repository(
   name = "iron_input",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-input.git",
-  tag = "v1.0.9",
+  tag = "1.0.10",
 )
 
 new_git_repository(
@@ -187,7 +187,7 @@ new_git_repository(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-overlay-behavior.git",
-  tag = "v1.6.2",
+  tag = "v1.6.3",
 )
 
 new_git_repository(
@@ -251,6 +251,20 @@ new_git_repository(
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-checkbox.git",
   tag = "v1.1.3",
+)
+
+new_git_repository(
+  name = "paper_dialog",
+  build_file = "bower.BUILD",
+  remote = "https://github.com/polymerelements/paper-dialog.git",
+  tag = "v1.0.4",
+)
+
+new_git_repository(
+  name = "paper_dialog_behavior",
+  build_file = "bower.BUILD",
+  remote = "https://github.com/polymerelements/paper-dialog-behavior.git",
+  tag = "v1.2.5",
 )
 
 new_git_repository(
@@ -320,7 +334,7 @@ new_git_repository(
   name = "paper_radio_button",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-radio-button.git",
-  tag = "v1.1.1",
+  tag = "v1.1.2",
 )
 
 new_git_repository(
