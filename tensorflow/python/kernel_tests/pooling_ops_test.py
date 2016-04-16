@@ -870,9 +870,9 @@ class PoolingTest(tf.test.TestCase):
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.
     for pool_func in [tf.nn.max_pool, tf.nn.avg_pool]:
-      p = tf.nn.max_pool(tf.placeholder(tf.float32),
-                         ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
-                         padding="SAME")
+      p = pool_func(tf.placeholder(tf.float32),
+                    ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+                    padding="SAME")
       self.assertEqual([None, None, None, None], p.get_shape().as_list())
     p, am = tf.nn.max_pool_with_argmax(
         tf.placeholder(tf.float32),

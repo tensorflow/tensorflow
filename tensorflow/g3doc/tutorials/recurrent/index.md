@@ -172,9 +172,10 @@ final_state = state
 ## Run the Code
 
 We are assuming you have already installed via the pip package, have cloned the
-tensorflow git repository, and are in the root of the git tree. (If building
-from source, build the `tensorflow/models/rnn/ptb:ptb_word_lm` target using
-bazel).
+tensorflow git repository, and are in the root of the git tree. (If [building
+from source](
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#installing-from-sources), build the `tensorflow/models/rnn/ptb:ptb_word_lm` target using
+[bazel](https://github.com/bazelbuild/bazel)).
 
 Next:
 ```

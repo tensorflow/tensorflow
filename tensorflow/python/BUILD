@@ -125,7 +125,6 @@ cc_binary(
     srcs = ["framework/test_file_system.cc"],
     linkopts = select({
         "//conditions:default": [
-            "-Wl,-Bsymbolic",
             "-lm",
         ],
         "//tensorflow:darwin": [],
@@ -772,6 +771,7 @@ py_library(
         "ops/array_grad.py",
         "ops/array_ops.py",
         "ops/candidate_sampling_ops.py",
+        "ops/check_ops.py",
         "ops/clip_ops.py",
         "ops/control_flow_grad.py",
         "ops/control_flow_ops.py",
@@ -1075,7 +1075,6 @@ py_test(
     size = "small",
     srcs = ["client/session_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["noasan"],
     deps = [
         ":framework",
         ":framework_test_lib",
@@ -1124,6 +1123,7 @@ medium_kernel_test_list = glob([
 ])
 
 sharded_kernel_test_list = glob([
+    "kernel_tests/batch_matrix_band_part_op_test.py",
     "kernel_tests/cwise_ops_test.py",
     "kernel_tests/embedding_ops_test.py",
     "kernel_tests/linalg_grad_test.py",

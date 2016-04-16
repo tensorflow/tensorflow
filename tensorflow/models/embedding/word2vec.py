@@ -420,7 +420,7 @@ class Word2Vec(object):
         last_summary_time = now
       if now - last_checkpoint_time > opts.checkpoint_interval:
         self.saver.save(self._session,
-                        opts.save_path + "model",
+                        os.path.join(opts.save_path, "model.ckpt"),
                         global_step=step.astype(int))
         last_checkpoint_time = now
       if epoch != initial_epoch:

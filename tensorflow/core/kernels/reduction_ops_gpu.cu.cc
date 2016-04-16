@@ -83,6 +83,8 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T> > {
   DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::MaxReducer<T>);  \
   DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::ProdReducer<T>)
 
+DEFINE_FOR_ALL_REDUCERS(Eigen::half);
+DEFINE_FOR_ALL_REDUCERS(int32);
 DEFINE_FOR_ALL_REDUCERS(float);
 DEFINE_FOR_ALL_REDUCERS(double);
 #undef DEFINE_FOR_ALL_REDUCERS

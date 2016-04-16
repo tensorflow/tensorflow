@@ -70,6 +70,7 @@ def all_libraries(module_to_name, members, documented):
   return [
       # Splits of module 'tf'.
       library("framework", "Building Graphs", framework_lib),
+      library("check_ops", "Asserts and boolean checks."),
       library("constant_op", "Constants, Sequences, and Random Values",
               prefix=PREFIX_TEXT),
       library("state_ops", "Variables",

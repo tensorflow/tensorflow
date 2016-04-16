@@ -559,6 +559,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
+        "common_runtime/gpu/gpu_tracer.cc",
     ] + glob(
         [
             "client/**/*.cc",
@@ -758,6 +759,7 @@ cc_library(
         "lib/random/random_distributions.h",
         "lib/random/weighted_picker.h",
         "lib/strings/ordered_code.h",
+        "lib/strings/proto_text_util.h",
         "lib/strings/regexp.h",
         "lib/strings/scanner.h",
         "platform/denormal.h",
@@ -973,11 +975,50 @@ tf_cuda_library(
     deps = [
         ":core_cpu_internal",
         ":framework",
+        ":gpu_tracer",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
     ],
     alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "cupti_wrapper",
+    srcs = [
+        "common_runtime/gpu/cupti_wrapper.cc",
+    ],
+    hdrs = [
+        "common_runtime/gpu/cupti_wrapper.h",
+    ],
+    copts = tf_copts(),
+    cuda_deps = [
+        ":stream_executor",
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:cupti_headers",
+    ],
+    data = ["//third_party/gpus/cuda:cupti_dsos"],
+)
+
+tf_cuda_library(
+    name = "gpu_tracer",
+    srcs = [
+        "common_runtime/gpu/gpu_tracer.cc",
+    ],
+    hdrs = [
+        "common_runtime/gpu/gpu_tracer.h",
+    ],
+    copts = tf_copts(),
+    cuda_deps = [
+        ":cupti_wrapper",
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:cupti_headers",
+    ],
+    deps = [
+        ":core_cpu_internal",
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 tf_cuda_library(
@@ -1190,6 +1231,7 @@ tf_cc_tests(
             # Run by tests below
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_stream_util_test.cc",
+            "common_runtime/gpu/gpu_tracer_test.cc",
         ],
     ),
     deps = [
@@ -1456,6 +1498,33 @@ tf_cc_test(
         "//tensorflow/core/kernels:shape_ops",
         "//tensorflow/core/kernels:tile_ops",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/gpu/gpu_tracer_test",
+    size = "small",
+    args = ["--heap_check=local"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":gpu_tracer",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

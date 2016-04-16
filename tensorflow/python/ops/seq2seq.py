@@ -483,8 +483,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
         It is a 2D Tensor of shape [batch_size x cell.state_size].
 
   Raises:
-    ValueError: when num_heads is not positive, there are no inputs, or shapes
-      of attention_states are not set.
+    ValueError: when num_heads is not positive, there are no inputs, shapes
+      of attention_states are not set, or input size cannot be inferred
+      from the input.
   """
   if not decoder_inputs:
     raise ValueError("Must provide at least 1 input to attention decoder.")
@@ -551,7 +552,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
         with variable_scope.variable_scope("loop_function", reuse=True):
           inp = loop_function(prev, i)
       # Merge input and previous attentions into one vector of the right size.
-      x = rnn_cell.linear([inp] + attns, cell.input_size, True)
+      input_size = inp.get_shape().with_rank(2)[1]
+      if input_size.value is None:
+        raise ValueError("Could not infer input size from input: %s" % inp.name)
+      x = rnn_cell.linear([inp] + attns, input_size, True)
       # Run the RNN.
       cell_output, state = cell(x, state)
       # Run the attention mechanism.

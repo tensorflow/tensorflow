@@ -1033,7 +1033,7 @@ create variables contingent on certain conditions.
 
 - - -
 
-### `tf.get_variable(name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None)` {#get_variable}
+### `tf.get_variable(name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None, validate_shape=True)` {#get_variable}
 
 Gets an existing variable with these parameters or create a new one.
 
@@ -1073,6 +1073,9 @@ then by default no regularization is performed).
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
     Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+*  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
+      value of unknown shape. If True, the default, the shape of initial_value
+      must be known.
 
 ##### Returns:
 
@@ -1119,7 +1122,7 @@ Creates a new VariableScope with the given properties.
 
 - - -
 
-#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None)` {#VariableScope.get_variable}
+#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, validate_shape=True)` {#VariableScope.get_variable}
 
 Gets an existing variable with this name or create a new one.
 
@@ -1267,7 +1270,7 @@ then all its sub-scopes become reusing as well.
 
 - - -
 
-### `tf.variable_op_scope(values, name_or_scope, default_name, initializer=None, regularizer=None, caching_device=None, reuse=None)` {#variable_op_scope}
+### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, reuse=None)` {#variable_op_scope}
 
 Returns a context manager for defining an op that creates variables.
 
@@ -1302,7 +1305,8 @@ def my_op_with_vars(a, b, scope=None):
 *  <b>`name_or_scope`</b>: The name argument that is passed to the op function,
     this name_or_scope is not uniquified in the variable scope.
 *  <b>`default_name`</b>: The default name to use if the `name_or_scope` argument is
-    `None`, this name will be uniquified.
+    `None`, this name will be uniquified. If name_or_scope is provided it
+    won't be used and therefore it is not required and can be None.
 *  <b>`initializer`</b>: The  default initializer to pass to variable scope.
 *  <b>`regularizer`</b>: The default regularizer for variables within this scope.
 *  <b>`caching_device`</b>: The default caching device for variables within this scope.

@@ -41,12 +41,15 @@ class Scanner {
   enum CharClass {
     // NOTE: When adding a new CharClass, update the AllCharClasses ScannerTest
     // in scanner_test.cc
+    ALL,
     DIGIT,
     LETTER,
     LETTER_DIGIT,
+    LETTER_DIGIT_DASH_UNDERSCORE,
     LETTER_DIGIT_DASH_DOT_SLASH,             // SLASH is / only, not backslash
     LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE,  // SLASH is / only, not backslash
     LETTER_DIGIT_DOT,
+    LETTER_DIGIT_DOT_PLUS_MINUS,
     LETTER_DIGIT_DOT_UNDERSCORE,
     LETTER_DIGIT_UNDERSCORE,
     LOWERLETTER,
@@ -141,6 +144,9 @@ class Scanner {
     return cur_.empty() ? default_value : cur_[0];
   }
 
+  // Returns false if there are no remaining characters to consume.
+  int empty() const { return cur_.empty(); }
+
   // Returns true if the input string successfully matched. When true is
   // returned, the remaining string is returned in <remaining> and the captured
   // string returned in <capture>, if non-NULL.
@@ -170,12 +176,16 @@ class Scanner {
 
   static bool Matches(CharClass clz, char ch) {
     switch (clz) {
+      case ALL:
+        return true;
       case DIGIT:
         return IsDigit(ch);
       case LETTER:
         return IsLetter(ch);
       case LETTER_DIGIT:
         return IsLetter(ch) || IsDigit(ch);
+      case LETTER_DIGIT_DASH_UNDERSCORE:
+        return (IsLetter(ch) || IsDigit(ch) || ch == '-' || ch == '_');
       case LETTER_DIGIT_DASH_DOT_SLASH:
         return IsLetter(ch) || IsDigit(ch) || ch == '-' || ch == '.' ||
                ch == '/';
@@ -184,6 +194,9 @@ class Scanner {
                 ch == '/' || ch == '_');
       case LETTER_DIGIT_DOT:
         return IsLetter(ch) || IsDigit(ch) || ch == '.';
+      case LETTER_DIGIT_DOT_PLUS_MINUS:
+        return IsLetter(ch) || IsDigit(ch) || ch == '+' || ch == '-' ||
+               ch == '.';
       case LETTER_DIGIT_DOT_UNDERSCORE:
         return IsLetter(ch) || IsDigit(ch) || ch == '.' || ch == '_';
       case LETTER_DIGIT_UNDERSCORE:

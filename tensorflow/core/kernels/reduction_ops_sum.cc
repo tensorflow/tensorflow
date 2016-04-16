@@ -40,6 +40,7 @@ REGISTER_KERNEL_BUILDER(
           .TypeConstraint<type>("T")        \
           .HostMemory("reduction_indices"), \
       ReductionOp<GPUDevice, type, Eigen::internal::SumReducer<type>>);
+REGISTER_GPU_KERNELS(Eigen::half);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
 #undef REGISTER_GPU_KERNELS

@@ -40,11 +40,20 @@ from tensorflow.python.framework import ops
 # pylint: enable=g-import-not-at-top
 
 
+def ExtractBitsFromFloat16(x):
+  return np.asscalar(np.asarray(x, dtype=np.float16).view(np.uint16))
+
+
+def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
+  tensor_proto.half_val.extend([
+      ExtractBitsFromFloat16(x) for x in proto_values])
+
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
       # TODO(sesse): We should have a
       # fast_tensor_util.AppendFloat16ArrayToTensorProto,
       # but it seems np.float16_t doesn't exist?
+      np.float16: SlowAppendFloat16ArrayToTensorProto,
       np.float32: fast_tensor_util.AppendFloat32ArrayToTensorProto,
       np.float64: fast_tensor_util.AppendFloat64ArrayToTensorProto,
       np.int32: fast_tensor_util.AppendInt32ArrayToTensorProto,
@@ -66,9 +75,6 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 else:
-
-  def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.float_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendFloat32ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.float_val.extend([np.asscalar(x) for x in proto_values])

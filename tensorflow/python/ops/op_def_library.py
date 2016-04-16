@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -236,6 +238,27 @@ class _OpInfo(object):
           raise TypeError(
               "Attr '%s' of '%s' used as a number_attr but has type %s" %
               (arg.number_attr, op_def.name, attr_type))
+
+
+# pylint: disable=g-doc-return-or-yield
+@contextlib.contextmanager
+def _MaybeColocateWith(inputs):
+  """A context manager for (maybe) colocating with a list of input tensors.
+
+  Args:
+    inputs: A list of `Tensor` or `Operation` objects.
+
+  Returns:
+    A context manager.
+  """
+  if not inputs:
+    yield
+  else:
+    # NOTE(mrry): The `ops.colocate_with()` function accepts only a single
+    # op or tensor, so we create one context manager per element in the list.
+    with ops.colocate_with(inputs[0]), _MaybeColocateWith(inputs[1:]):
+      yield
+# pylint: enable=g-doc-return-or-yield
 
 
 class OpDefLibrary(object):
@@ -648,14 +671,20 @@ class OpDefLibrary(object):
         raise TypeError("apply_op() got unexpected keyword arguments: " +
                         ", ".join(sorted(keywords.keys())))
 
-      # Add Op to graph
-      if output_structure:
-        op = g.create_op(op_type_name, inputs, output_types, name=scope,
-                         input_types=input_types, attrs=attr_protos,
-                         op_def=op_def)
-        outputs = op.outputs
-        return _Restructure(ops.convert_n_to_tensor(outputs), output_structure)
-      else:
-        return g.create_op(op_type_name, inputs, output_types, name=scope,
+      # NOTE(mrry): We add an explicit colocation constraint between
+      # the newly created op and any of its reference-typed inputs.
+      must_colocate_inputs = [val for arg, val in zip(op_def.input_arg, inputs)
+                              if arg.is_ref]
+      with _MaybeColocateWith(must_colocate_inputs):
+        # Add Op to graph
+        if output_structure:
+          op = g.create_op(op_type_name, inputs, output_types, name=scope,
                            input_types=input_types, attrs=attr_protos,
                            op_def=op_def)
+          outputs = op.outputs
+          return _Restructure(ops.convert_n_to_tensor(outputs),
+                              output_structure)
+        else:
+          return g.create_op(op_type_name, inputs, output_types, name=scope,
+                             input_types=input_types, attrs=attr_protos,
+                             op_def=op_def)
