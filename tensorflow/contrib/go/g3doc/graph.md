@@ -10,36 +10,6 @@ A Graph is the representation of the computation graph.
 
 ## Graph Constructors
 
-### LoadGraphFromFile
-
-```go
-func LoadGraphFromFile(path string) (gr *Graph, err error)
-```
-
-LoadGraphFromFile loads a Graph from the file on the specified path.
-
-### LoadGraphFromTextFile
-
-```go
-func LoadGraphFromTextFile(path string) (gr *Graph, err error)
-```
-
-LoadGraphFromTextFile loads a Graph as plain text from the file on the specified
-path.
-
-```Go
-Example:
-	// Load the graph from from a file who contains a previously generated
-	// graph as text file.
-	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
-	
-	// Create the session and extend the Graph on it.
-	s, _ := tensorflow.NewSession()
-	s.ExtendGraph(graph)
-
-
-```
-
 ### NewGraph
 
 ```go
@@ -48,42 +18,26 @@ func NewGraph() *Graph
 
 NewGraph returns an initialized instance of the Graph struct.
 
-### NewGraphFromText
+### NewGraphFromReader
 
 ```go
-func NewGraphFromText(graphStr string) (gr *Graph, err error)
+func NewGraphFromReader(reader io.Reader, asText bool) (gr *Graph, err error)
 ```
 
-NewGraphFromText returns a new graph populated with the deserialization of the
-provided graph string.
+NewGraphFromReader reads from reader until an error or EOF and loads the content
+into a new graph. Use the asText parameter to specify if the graph from the
+reader is provided in Text format.
 
 ```Go
 Example:
-	graph, err := tensorflow.NewGraphFromText(`
-	    node {
-	        name: "output"
-	        op: "Const"
-	        attr {
-	            key: "dtype"
-	            value {
-	                type: DT_FLOAT
-	            }
-	        }
-	        attr {
-	            key: "value"
-	            value {
-	                tensor {
-	                    dtype: DT_FLOAT
-	                    tensor_shape {
-	                    }
-	                    float_val: 1.5 
-	                }
-	            }
-	        }
-	    }
-	    version: 5`)
+	// Load the graph from from a file who contains a previously generated
+	// graph as text file.
+	reader, _ := os.Open("/tmp/graph/test_graph.pb")
+	graph, _ := tensorflow.NewGraphFromReader(reader, true)
 	
-	fmt.Println(graph, err)
+	// Create the session and extend the Graph on it.
+	s, _ := tensorflow.NewSession()
+	s.ExtendGraph(graph)
 
 
 ```

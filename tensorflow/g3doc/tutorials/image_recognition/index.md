@@ -595,13 +595,13 @@ apply the same transformations before you feed images into the main graph.
 This is a simple example of creating a small TensorFlow graph dynamically in Go
 but for the pre-trained Inception model we want to load a much larger definition from
 a file. You can see how we do that in the 
-[`LoadGraphFromFile()`](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/examples/label_image_go/main.go#L174)
+[`NewGraphFromReader()`](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/examples/label_image_go/main.go#L174)
 function.
 
-As you can see the lines below the `LoadGraphFromFile` invocation are similar to the
-previously used to run the graph we defined, but on this case we are loading the graph
-from a file stored on disk, and adding the result of the previous execution as input
-of this new one.
+On the lines below the `NewGraphFromReader` invocation are similar to the
+previously used to run the graph we defined, but on this case we are loading
+the graph from a file stored on disk, and adding the result of the previous
+execution as input of this new one.
 
 The first parameter of the Run function corresponds to the map with the tensors to be
 used to feed the Graph, the key of each tensor on this map has to match with the name
@@ -609,7 +609,8 @@ of the node where they are going to be used.
 
 ```Go
 // First we load and initialize the model.
-graph, _ := tf.LoadGraphFromFile(cInceptionGraphFile)
+reader, _ := os.Open(cInceptionGraphFile)
+graph, _ := tf.NewGraphFromReader(reader, false)
 
 s, _ := tf.NewSession()
 s.ExtendGraph(graph)
@@ -675,7 +676,8 @@ if len(os.Args) < 2 {
 imagePath := os.Args[1]
 
 // First we load and initialize the model.
-graph, _ := tf.LoadGraphFromFile(cInceptionGraphFile)
+reader, _ := os.Open(cInceptionGraphFile)
+graph, _ := tf.NewGraphFromReader(reader, false)
 
 s, _ := tf.NewSession()
 s.ExtendGraph(graph)

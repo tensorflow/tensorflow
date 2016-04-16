@@ -1,25 +1,18 @@
 package tensorflow_test
 
 import (
+	"os"
 	"testing"
 
 	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
 func TestNewSession(t *testing.T) {
-	graph, err := tf.LoadGraphFromTextFile("test_data/tests_constants_outputs.pb")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err := tf.NewSession()
-	if err := s.ExtendGraph(graph); err != nil {
-		t.Fatal(err)
-	}
+	s := loadAndExtendGraphFromFile(t, "test_data/tests_constants_outputs.pb")
 	outputs := []string{
 		"output1",
 		"output2",
 	}
-
 	output, err := s.Run(nil, outputs, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +27,8 @@ func TestInputParams(t *testing.T) {
 	inputSlice1 := []int64{1, 2, 3}
 	inputSlice2 := []int64{3, 4, 5}
 
+	s := loadAndExtendGraphFromFile(t, "test_data/add_three_dim_graph.pb")
+
 	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
 		t.Fatal("Error creating a new tensor:", err)
@@ -42,16 +37,6 @@ func TestInputParams(t *testing.T) {
 	t2, err := tf.NewTensorWithShape([][]int64{{3}}, inputSlice2)
 	if err != nil {
 		t.Fatal("Error creating a new tensor:", err)
-	}
-
-	graph, err := tf.LoadGraphFromTextFile("test_data/add_three_dim_graph.pb")
-	if err != nil {
-		t.Fatal("Error reading the graph from the origin file:", err)
-	}
-
-	s, err := tf.NewSession()
-	if err := s.ExtendGraph(graph); err != nil {
-		t.Fatal(err)
 	}
 
 	input := map[string]*tf.Tensor{
@@ -108,15 +93,7 @@ func TestInputMultDimParams(t *testing.T) {
 		t.Fatal("Error creating a new tensor:", err)
 	}
 
-	graph, err := tf.LoadGraphFromTextFile("test_data/test_graph_multi_dim.pb")
-	if err != nil {
-		t.Fatal("Error reading the graph from the origin file:", err)
-	}
-
-	s, err := tf.NewSession()
-	if err := s.ExtendGraph(graph); err != nil {
-		t.Fatal(err)
-	}
+	s := loadAndExtendGraphFromFile(t, "test_data/test_graph_multi_dim.pb")
 
 	input := map[string]*tf.Tensor{
 		"input1": t1,
@@ -148,4 +125,25 @@ func TestInputMultDimParams(t *testing.T) {
 			}
 		}
 	}
+}
+
+func loadAndExtendGraphFromFile(t *testing.T, filePath string) (s *tf.Session) {
+	s, err := tf.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reader, err := os.Open(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, err := tf.NewGraphFromReader(reader, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ExtendGraph(graph); err != nil {
+		t.Fatal(err)
+	}
+
+	return s
 }

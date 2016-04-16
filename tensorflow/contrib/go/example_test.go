@@ -2,6 +2,8 @@ package tensorflow_test
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
@@ -45,7 +47,7 @@ func ExampleNewTensor_scalar() {
 }
 
 func ExampleNewGraphFromText() {
-	graph, err := tensorflow.NewGraphFromText(`
+	graph, err := tensorflow.NewGraphFromReader(strings.NewReader(`
 		node {
 			name: "output"
 			op: "Const"
@@ -67,7 +69,7 @@ func ExampleNewGraphFromText() {
 				}
 			}
 		}
-		version: 5`)
+		version: 5`), true)
 
 	fmt.Println(graph, err)
 }
@@ -133,19 +135,21 @@ func ExampleSession_ExtendAndInitializeAllVariables() {
 }
 
 func ExampleSession_ExtendGraph() {
-	// Load the graph from from a file who contains a previously generated
-	// graph as text file.
-	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
+	graph := tensorflow.NewGraph()
+	// Adds a placeholder named "input1" that must allocate a three element
+	// DTInt32 tensor.
+	graph.Placeholder("placeholder", tensorflow.DTInt32, []int64{3})
 
 	// Create the session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()
 	s.ExtendGraph(graph)
 }
 
-func ExampleLoadGraphFromTextFile() {
+func ExampleNewGraphFromReader() {
 	// Load the graph from from a file who contains a previously generated
 	// graph as text file.
-	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
+	reader, _ := os.Open("/tmp/graph/test_graph.pb")
+	graph, _ := tensorflow.NewGraphFromReader(reader, true)
 
 	// Create the session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()

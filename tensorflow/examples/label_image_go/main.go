@@ -174,7 +174,8 @@ func main() {
 	imagePath := os.Args[1]
 
 	// First we load and initialize the model.
-	graph, _ := tf.LoadGraphFromFile(cInceptionGraphFile)
+	reader, _ := os.Open(cInceptionGraphFile)
+	graph, _ := tf.NewGraphFromReader(reader, false)
 
 	s, _ := tf.NewSession()
 	s.ExtendGraph(graph)

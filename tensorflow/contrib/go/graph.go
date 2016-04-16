@@ -2,6 +2,7 @@ package tensorflow
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"strings"
 
@@ -42,37 +43,23 @@ func NewGraph() *Graph {
 	}
 }
 
-// NewGraphFromText returns a new graph populated with the deserialization of
-// the provided graph string.
-func NewGraphFromText(graphStr string) (gr *Graph, err error) {
-	gr = NewGraph()
-	err = proto.UnmarshalText(graphStr, gr.def)
-
-	return
-}
-
-// LoadGraphFromFile loads a Graph from the file on the specified path.
-func LoadGraphFromFile(path string) (gr *Graph, err error) {
-	graphStr, err := ioutil.ReadFile(path)
+// NewGraphFromReader reads from reader until an error or EOF and loads the
+// content into a new graph. Use the asText parameter to specify if the graph
+// from the reader is provided in Text format.
+func NewGraphFromReader(reader io.Reader, asText bool) (gr *Graph, err error) {
+	graphStr, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	gr = NewGraph()
-	err = proto.Unmarshal(graphStr, gr.def)
-
-	return
-}
-
-// LoadGraphFromTextFile loads a Graph as plain text from the file on the specified
-// path.
-func LoadGraphFromTextFile(path string) (gr *Graph, err error) {
-	graphStr, err := ioutil.ReadFile(path)
-	if err != nil {
-		return
+	if asText {
+		err = proto.UnmarshalText(string(graphStr), gr.def)
+	} else {
+		err = proto.Unmarshal(graphStr, gr.def)
 	}
 
-	return NewGraphFromText(string(graphStr))
+	return gr, err
 }
 
 // Op adds a new Node to the Graph with the specified operation, this function

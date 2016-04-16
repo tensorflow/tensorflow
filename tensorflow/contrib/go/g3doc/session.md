@@ -54,9 +54,10 @@ ExtendGraph loads the graph definition on the session.
 
 ```Go
 Example:
-	// Load the graph from from a file who contains a previously generated
-	// graph as text file.
-	graph, _ := tensorflow.LoadGraphFromTextFile("/tmp/graph/test_graph.pb")
+	graph := tensorflow.NewGraph()
+	// Adds a placeholder named "input1" that must allocate a three element
+	// DTInt32 tensor.
+	graph.Placeholder("placeholder", tensorflow.DTInt32, []int64{3})
 	
 	// Create the session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()

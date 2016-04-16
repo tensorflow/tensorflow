@@ -3,13 +3,14 @@ package tensorflow_test
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
 func getTensorFromGraph(t *testing.T, dType, shapeVal string) *tf.Tensor {
-	graph, err := tf.NewGraphFromText(fmt.Sprintf(`
+	graph, err := tf.NewGraphFromReader(strings.NewReader(fmt.Sprintf(`
 		node {
 			name: "output"
 			op: "Const"
@@ -30,7 +31,7 @@ func getTensorFromGraph(t *testing.T, dType, shapeVal string) *tf.Tensor {
 			}
 		}
 		version: 5`,
-		dType, dType, shapeVal))
+		dType, dType, shapeVal)), true)
 	if err != nil {
 		t.Fatal(err)
 	}
