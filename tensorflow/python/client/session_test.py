@@ -169,7 +169,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testFetchScalar(self):
     with session.Session() as s:
-      for scalar in np.int32, np.int64, np.float32, np.float64:
+      for scalar in np.int32, np.int64, np.float16, np.float32, np.float64:
         x = scalar(7)
         y = scalar(8)
         tf_x = constant_op.constant(x, shape=[])
@@ -678,7 +678,8 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testFeedAndFetch(self):
     with session.Session():
-      for dtype in [dtypes.float32,
+      for dtype in [dtypes.float16,
+                    dtypes.float32,
                     dtypes.float64,
                     dtypes.int32,
                     dtypes.uint8,

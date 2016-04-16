@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
@@ -319,11 +320,16 @@ Status DirectSession::Run(const RunOptions& run_options,
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
 
+  std::unique_ptr<GPUTracer> tracer;
   if (run_options.trace_level() == RunOptions::FULL_TRACE ||
       options_.config.graph_options().build_cost_model()) {
     args.stats_collector = new StepStatsCollector(
         run_metadata->mutable_step_stats(), &cost_models_);
     run_state.collector = args.stats_collector;
+    if (tracer && run_options.trace_level() == RunOptions::FULL_TRACE) {
+      tracer.reset(CreateGPUTracer());
+      tracer->Start();
+    }
   }
 
   for (const auto& item : executors_and_keys->items) {
@@ -333,6 +339,10 @@ Status DirectSession::Run(const RunOptions& run_options,
   WaitForNotification(&run_state, run_options.timeout_in_ms() > 0
                                       ? run_options.timeout_in_ms()
                                       : operation_timeout_in_ms_);
+  if (tracer) {
+    tracer->Stop();
+    tracer->Collect(args.stats_collector);
+  }
 
   {
     mutex_lock l(run_state.mu_);

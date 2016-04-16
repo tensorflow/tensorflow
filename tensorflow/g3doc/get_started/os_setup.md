@@ -20,10 +20,13 @@ We support different ways to install TensorFlow:
    Python programs on your machine.
 *  [Virtualenv install](#virtualenv-installation): Install TensorFlow in its own
    directory, not impacting any existing Python programs on your machine.
+*  [Anaconda install](#anaconda-installation): Install TensorFlow in its own
+   environment for those running the Anaconda Python distribution.  Does not
+   impact existing Python programs on your machine.
 *  [Docker install](#docker-installation): Run TensorFlow in a Docker container
    isolated from all other programs on your machine.
 
-If you are familiar with Pip, Virtualenv, or Docker, please feel free to adapt
+If you are familiar with Pip, Virtualenv, Anaconda, or Docker, please feel free to adapt
 the instructions to your particular needs.  The names of the pip and Docker
 images are listed in the corresponding installation sections.
 
@@ -173,6 +176,93 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh.
 ...
 # When you are done using TensorFlow, deactivate the environment.
 (tensorflow)$ deactivate
+```
+
+## Anaconda environment installation
+
+[Anaconda](https://www.continuum.io/why-anaconda) is a Python distribution that
+includes a large number of standard numeric and scientific computing packages.
+Anaconda uses a package manager called "conda" that has its own 
+[environment system](http://conda.pydata.org/docs/using/envs.html) similar to Virtualenv.
+
+As with Virtualenv, conda environments keep the dependencies required by
+different Python projects in separate places.  The Anaconda environment
+installation of TensorFlow will not override pre-existing version of the Python
+packages needed by TensorFlow.
+
+*  Install Anaconda.
+*  Create a conda environment.
+*  Activate the conda environment and install TensorFlow in it.
+*  After the install you will activate the conda environment each time you
+   want to use TensorFlow.
+
+Install Anaconda:
+
+Follow the instructions on the [Anaconda download site](https://www.continuum.io/downloads)
+
+Create a conda environment called `tensorflow`:
+
+```bash
+# Python 2.7
+$ conda create -n tensorflow python=2.7
+
+# Python 3.5
+$ conda create -n tensorflow python=3.5
+```
+
+Activate the environment and use pip to install TensorFlow inside it.
+Use the `--ignore-installed` flag to prevent errors about `easy_install`.
+
+```bash
+$ source activate tensorflow
+(tensorflow)$  # Your prompt should change
+
+# Ubuntu/Linux 64-bit, CPU only:
+(tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
+
+# Ubuntu/Linux 64-bit, GPU enabled:
+(tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
+
+# Mac OS X, CPU only:
+(tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py2-none-any.whl
+```
+
+and again for Python 3:
+
+```bash
+$ source activate tensorflow
+(tensorflow)$  # Your prompt should change
+
+# Ubuntu/Linux 64-bit, CPU only:
+(tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
+
+# Ubuntu/Linux 64-bit, GPU enabled:
+(tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
+
+# Mac OS X, CPU only:
+(tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py3-none-any.whl
+```
+
+With the conda environment activated, you can now
+[test your installation](#test-the-tensorflow-installation).
+
+When you are done using TensorFlow, deactivate the environment.
+
+```bash
+(tensorflow)$ source deactivate
+
+$  # Your prompt should change back
+```
+
+To use TensorFlow later you will have to activate the conda environment again:
+
+```bash
+$ source activate tensorflow
+(tensorflow)$  # Your prompt should change.
+# Run Python programs that use TensorFlow.
+...
+# When you are done using TensorFlow, deactivate the environment.
+(tensorflow)$ source deactivate
 ```
 
 ## Docker installation

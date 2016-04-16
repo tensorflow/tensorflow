@@ -40,35 +40,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename T>
-inline typename TTypes<T, 3>::ConstTensor flat_inner_dims_matrix(
-    const Tensor& t) {
-  int64 last_size = t.dims() > 1 ? t.dim_size(t.dims() - 1) : 1;
-  int64 but_last_size = t.dims() > 1 ? t.dim_size(t.dims() - 2) : 1;
-  if (last_size * but_last_size == 0) {
-    DCHECK_EQ(t.NumElements(), 0);
-    // Return something empty, avoiding divide by 0
-    return t.shaped<T, 3>({0, 0, 0});
-  } else {
-    return t.shaped<T, 3>({t.NumElements() / (but_last_size * last_size),
-                           but_last_size, last_size});
-  }
-}
-
-template <typename T>
-inline typename TTypes<T, 3>::Tensor flat_inner_dims_matrix(Tensor* t) {
-  int64 last_size = t->dims() > 1 ? t->dim_size(t->dims() - 1) : 1;
-  int64 but_last_size = t->dims() > 1 ? t->dim_size(t->dims() - 2) : 1;
-  if (last_size * but_last_size == 0) {
-    DCHECK_EQ(t->NumElements(), 0);
-    // Return something empty, avoiding divide by 0
-    return t->shaped<T, 3>({0, 0, 0});
-  } else {
-    return t->shaped<T, 3>({t->NumElements() / (but_last_size * last_size),
-                            but_last_size, last_size});
-  }
-}
-
 template <typename Device, typename T>
 class BatchMatrixDiagPartOp : public OpKernel {
  public:
@@ -95,7 +66,7 @@ class BatchMatrixDiagPartOp : public OpKernel {
             "input's last two dimensions must be equal, received shape: ",
             input.shape().DebugString()));
 
-    auto input_reshaped = flat_inner_dims_matrix<T>(input);
+    auto input_reshaped = input.flat_inner_dims<T, 3>();
 
     TensorShape output_shape = input_shape;
     output_shape.RemoveDim(rank - 1);
@@ -103,7 +74,7 @@ class BatchMatrixDiagPartOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-    auto output_reshaped = output->flat_inner_dims<T>();
+    auto output_reshaped = output->flat_inner_dims<T, 2>();
 
     functor::BatchMatrixDiagPart<Device, T>::Compute(
         context->eigen_device<Device>(), input_reshaped, output_reshaped);
@@ -133,7 +104,7 @@ class BatchMatrixDiagOp : public OpKernel {
 
     // Check to make sure the last two dimensions have the same value
     const int64 k = input_shape.dim_size(rank - 1);
-    auto input_reshaped = input.flat_inner_dims<T>();
+    auto input_reshaped = input.flat_inner_dims<T, 2>();
 
     TensorShape output_shape = input_shape;
     output_shape.AddDim(k);
@@ -141,7 +112,7 @@ class BatchMatrixDiagOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-    auto output_reshaped = flat_inner_dims_matrix<T>(output);
+    auto output_reshaped = output->flat_inner_dims<T, 3>();
 
     functor::BatchMatrixDiag<Device, T>::Compute(
         context->eigen_device<Device>(), input_reshaped, output_reshaped);

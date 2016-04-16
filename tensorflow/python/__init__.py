@@ -99,6 +99,7 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -120,10 +121,10 @@ _whitelist = set([app, compat, contrib, errors, flags, gfile, image,
 # Export all symbols directly accessible from 'tf.' by drawing on the doc
 # strings of other modules.
 __all__ = make_all(__name__,
-                   [framework_lib, array_ops, client_lib, constant_op,
-                    control_flow_ops, functional_ops, histogram_ops, io_ops,
-                    math_ops, nn, script_ops, session_ops, sparse_ops,
-                    state_ops, string_ops, train])
+                   [framework_lib, array_ops, client_lib, check_ops,
+                    constant_op, control_flow_ops, functional_ops,
+                    histogram_ops, io_ops, math_ops, nn, script_ops,
+                    session_ops, sparse_ops, state_ops, string_ops, train])
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through

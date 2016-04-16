@@ -23,7 +23,7 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `string`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `string`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -41,7 +41,7 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -59,7 +59,7 @@ Returns x * y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -77,7 +77,7 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -258,7 +258,7 @@ I.e., \\(y = -x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -279,7 +279,7 @@ For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -298,7 +298,7 @@ I.e., \\(y = 1 / x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -317,7 +317,7 @@ I.e., \\(y = x * x = x^2\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -360,7 +360,7 @@ I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -379,7 +379,7 @@ I.e., \\(y = 1 / \sqrt{x}\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -423,7 +423,7 @@ Computes exponential of x element-wise.  \\(y = e^x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -442,7 +442,7 @@ I.e., \\(y = \log_e x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -459,7 +459,7 @@ Returns element-wise smallest integer in not less than x.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -476,7 +476,7 @@ Returns element-wise largest integer not greater than x.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -493,7 +493,7 @@ Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -511,7 +511,7 @@ Returns the min of x and y (i.e. x < y ? x : y) element-wise, broadcasts.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -529,7 +529,7 @@ Computes cos of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -546,7 +546,7 @@ Computes sin of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -592,7 +592,7 @@ Computes the log of the absolute value of `Gamma(x)` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -611,7 +611,7 @@ Computes Psi, the derivative of Lgamma (the log of the absolute value of
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -628,7 +628,7 @@ Computes the Gauss error function of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -645,7 +645,7 @@ Computes the complementary error function of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -662,7 +662,7 @@ Returns (x - y)(x - y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -738,8 +738,8 @@ Gamma function.
 
 ## Matrix Math Functions
 
-TensorFlow provides several operations that you can use to add basic
-mathematical functions for matrices to your graph.
+TensorFlow provides several operations that you can use to add linear algebra
+functions on matrices to your graph.
 
 - - -
 
@@ -833,6 +833,69 @@ which has shape (2, 4)
   A `Tensor`. Has the same type as `input`.
   The extracted diagonal(s) having shape
   `diagonal.shape = input.shape[:-1]`.
+
+
+- - -
+
+### `tf.batch_matrix_band_part(input, num_lower, num_upper, name=None)` {#batch_matrix_band_part}
+
+Copy a tensor setting everything outside a central band in each innermost matrix
+
+to zero.
+
+The `band` part is computed as follows:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor with the same shape where
+
+`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
+
+The indicator function 'in_band(m, n)` is one if
+`(num_lower < 0 || (m-n) <= num_lower)) &&
+(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.
+
+For example:
+
+```prettyprint
+# if 'input' is [[ 0,  1,  2, 3]
+                 [-1,  0,  1, 2]
+                 [-2, -1,  0, 1]
+                 [-3, -2, -1, 0]],
+
+tf.batch_matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+                                             [-1,  0,  1, 2]
+                                             [ 0, -1,  0, 1]
+                                             [ 0,  0, -1, 0]],
+
+tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+                                            [-1,  0,  1, 0]
+                                            [-2, -1,  0, 1]
+                                            [ 0, -2, -1, 0]]
+```
+
+Useful special cases:
+
+```prettyprint
+ tf.batch_matrix_band_part(input, 0, -1) ==> Upper triangular part.
+ tf.batch_matrix_band_part(input, -1, 0) ==> Lower triangular part.
+ tf.batch_matrix_band_part(input, 0, 0) ==> Diagonal.
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Rank `k` tensor.
+*  <b>`num_lower`</b>: A `Tensor` of type `int64`.
+    0-D tensor. Number of subdiagonals to keep. If negative, keep entire
+    lower triangle.
+*  <b>`num_upper`</b>: A `Tensor` of type `int64`.
+    0-D tensor. Number of superdiagonals to keep. If negative, keep
+    entire upper triangle.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  Rank `k` tensor of the same shape as input. The extracted banded tensor.
 
 
 

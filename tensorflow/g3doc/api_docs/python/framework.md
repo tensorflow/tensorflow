@@ -268,6 +268,11 @@ with g.device(matmul_on_gpu):
   # on CPU 0.
 ```
 
+**N.B.** The device scope may be overridden by op wrappers or
+other library code. For example, a variable assignment op
+`v.assign()` must be colocated with the `tf.Variable` `v`, and
+incompatible device scopes will be ignored.
+
 ##### Args:
 
 

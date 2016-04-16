@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
@@ -120,8 +121,8 @@ bool GenerateRandomCrop(int original_width, int original_height,
   const float max_area =
       max_relative_crop_area * original_width * original_height;
 
-  int height = lrintf(sqrt(min_area / aspect_ratio));
-  int max_height = lrintf(sqrt(max_area / aspect_ratio));
+  int height = static_cast<int>(lrintf(sqrt(min_area / aspect_ratio)));
+  int max_height = static_cast<int>(lrintf(sqrt(max_area / aspect_ratio)));
 
   if (lrintf(max_height * aspect_ratio) > original_width) {
     // We must find the smallest max_height satisfying
@@ -143,7 +144,7 @@ bool GenerateRandomCrop(int original_width, int original_height,
     // [0, max_height - height].
     height += random->Uniform(max_height - height + 1);
   }
-  int width = lrintf(height * aspect_ratio);
+  int width = static_cast<int>(lrintf(height * aspect_ratio));
   DCHECK_LE(width, original_width);
 
   // Let us not fail if rounding error causes the area to be
@@ -152,7 +153,7 @@ bool GenerateRandomCrop(int original_width, int original_height,
   float area = static_cast<float>(width * height);
   if (area < min_area) {
     height += 1;
-    width = lrintf(height * aspect_ratio);
+    width = static_cast<int>(lrintf(height * aspect_ratio));
     area = width * height;
   }
 
@@ -161,7 +162,7 @@ bool GenerateRandomCrop(int original_width, int original_height,
   // Try first with a slightly smaller rectangle first.
   if (area > max_area) {
     height -= 1;
-    width = lrintf(height * aspect_ratio);
+    width = static_cast<int>(lrintf(height * aspect_ratio));
     area = width * height;
   }
 
@@ -247,14 +248,20 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
                 errors::InvalidArgument("image_size must be 1-dimensional",
                                         image_size.shape().DebugString()));
     OP_REQUIRES(context, image_size.dim_size(0) == 3,
-                errors::InvalidArgument("image_size must be 3-dimensional",
+                errors::InvalidArgument("image_size must contain 3 elements",
                                         image_size.shape().DebugString()));
 
     // Note image_size_data(2) is the depth and unused.
-    typename TTypes<T, 1>::ConstTensor image_size_data =
-        image_size.tensor<T, 1>();
-    const int32 height = image_size_data(0);
-    const int32 width = image_size_data(1);
+    const uint64 height_raw = internal::SubtleMustCopy(image_size.flat<T>()(0));
+    const uint64 width_raw = internal::SubtleMustCopy(image_size.flat<T>()(1));
+    OP_REQUIRES(context,
+                FastBoundsCheck(height_raw, std::numeric_limits<int32>::max()),
+                errors::InvalidArgument("image height cannot be >= int32 max"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(width_raw, std::numeric_limits<int32>::max()),
+                errors::InvalidArgument("image width cannot be >= int32 max"));
+    const int32 height = static_cast<int32>(height_raw);
+    const int32 width = static_cast<int32>(width_raw);
 
     // Ensure that the supplied bounding boxes are sane and convert them to
     // Rectangles.
@@ -398,7 +405,7 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
            .TypeConstraint<type>("T"),                       \
       SampleDistortedBoundingBoxOp<type>)
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 }  // namespace tensorflow

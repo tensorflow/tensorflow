@@ -61,11 +61,12 @@ mathematical functions to your graph.
 
 ## Matrix Math Functions
 
-TensorFlow provides several operations that you can use to add basic
-mathematical functions for matrices to your graph.
+TensorFlow provides several operations that you can use to add linear algebra
+functions on matrices to your graph.
 
 @@batch_matrix_diag
 @@batch_matrix_diag_part
+@@batch_matrix_band_part
 
 @@diag
 @@diag_part
@@ -537,6 +538,7 @@ _TRUEDIV_TABLE = {
     dtypes.int16: dtypes.float32,
     dtypes.int32: dtypes.float64,
     dtypes.int64: dtypes.float64,
+    dtypes.float16: None,
     dtypes.float32: None,
     dtypes.float64: None,
     dtypes.complex64: None,
@@ -945,14 +947,14 @@ def trace(x, name=None):
   """ Compute the trace of a tensor `x`.
 
   `trace(x)` returns the sum of along the diagonal.
-  
+
   For example:
 
   ```python
   # 'x' is [[1, 1],
   #         [1, 1]]
   tf.trace(x) ==> 2
-  
+
   # 'x' is [[1,2,3],
   #         [4,5,6],
   #         [7,8,9]]
@@ -1185,6 +1187,8 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
                      "accumulate_n. Pass the shape argument, or set the shape "
                      "of at least one of the inputs.")
   with ops.op_scope(inputs, name, "AccumulateN") as name:
+    if len(inputs) == 1:
+      return inputs[0]
     var = gen_state_ops._temporary_variable(shape=shape, dtype=tensor_dtype)
     var_name = var.op.name
     var = state_ops.assign(var, array_ops.zeros_like(inputs[0]))

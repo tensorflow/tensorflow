@@ -262,6 +262,7 @@ tf_kernel_libraries(
         "concat_op",
         "constant_op",
         "diag_op",
+        "batch_matrix_band_part_op",
         "batch_matrix_diag_op",
         "edit_distance_op",
         "gather_nd_op",
@@ -672,6 +673,7 @@ tf_kernel_libraries(
         "sample_distorted_bounding_box_op",
     ],
     deps = [
+        ":bounds_check",
         ":eigen_helpers",
         ":image_resizer_state",
         "//tensorflow/core:framework",
@@ -907,6 +909,23 @@ tf_cc_test(
         ":cross_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_add_op_test",
+    size = "small",
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sparse_add_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1263,7 +1282,6 @@ tf_kernel_libraries(
 tf_cuda_cc_tests(
     size = "small",
     tests = [
-        "sparse_add_op_test",
         "sparse_tensor_dense_matmul_op_test",
         "sparse_to_dense_op_test",
         "sparse_xent_op_test",
