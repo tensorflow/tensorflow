@@ -45,15 +45,6 @@ namespace {
 // Note that on the generated code, various pieces are not optimized - for
 // example: map input and output, Cord input and output, comparisons against
 // the field names (it's a loop over all names), and tracking of has_seen.
-//
-// The generated API has, for enums and messages defined in the proto file:
-// 1. For each message:
-//    * ProtoDebugString(m): same as msg.DebugString()
-//    * ProtoShortDebugString(m): same as msg.ShorDebugString()
-//    * ProtoParseFromString(s, m): same as TextFormat.ParseFromString(s, &m);
-// 2. For each enum:
-//    * EnumName_<EnumTypeName>(enum_value): same as <EnumTypeName>(enum_value)
-//      in proto.
 class Generator {
  public:
   Generator(const string& tf_header_prefix)
