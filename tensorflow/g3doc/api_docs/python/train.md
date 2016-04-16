@@ -1762,22 +1762,6 @@ every 60 seconds, so we launch it with `sv.loop()`.
       sess.run(my_train_op)
   ```
 
-A common set of threads that must be started as the `QueueRunner` threads
-typically used for preprocessing inputs.  The supervisor provides a
-convenience method named `start_queue_runners()` to do that.
-
-  ```python
-  ...build the model with a QueueRunner to prefetch inputs...
-  qr = QueueRunner(input_queue, [enqueue_op])
-  ...
-  sv = Supervisor(logdir='/tmp/mydir')
-  with sv.managed_session(FLAGS.master) as sess:
-    # Start the queue runner threads.
-    sv.start_queue_runners(sess, [qr])
-    while not sv.should_stop():
-      sess.run(my_train_op)
-  ```
-
 ##### Launching fewer services
 
 `managed_session()` launches the "summary" and "checkpoint" threads which use
@@ -1901,7 +1885,6 @@ The context manager is typically used as follows:
 def train():
   sv = tf.train.Supervisor(...)
   with sv.managed_session(<master>) as sess:
-    sv.start_queue_runners(sess)
     for step in xrange(..):
       if sv.should_stop():
         break
@@ -1970,8 +1953,8 @@ manager to start the standard services.
 *  <b>`wait_for_checkpoint`</b>: Whether we should wait for the availability of a
     checkpoint before creating Session. Defaults to False.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for the session to become available.
-*  <b>`start_standard_services`</b>: Whether to start the standard services,
-    such as checkpoint, summary and step counter.
+*  <b>`start_standard_services`</b>: Whether to start the standard services and the
+    queue runners.
 
 ##### Returns:
 
@@ -2015,6 +1998,11 @@ on the parameters to the constructor and may include:
 #### `tf.train.Supervisor.start_queue_runners(sess, queue_runners=None)` {#Supervisor.start_queue_runners}
 
 Start threads for `QueueRunners`.
+
+Note that the queue runners collected in the graph key `QUEUE_RUNNERS`
+are already started automatically when you create a session with the
+supervisor, so unless you have non-collected queue runners to start
+you do not need to call this explicitely.
 
 ##### Args:
 
@@ -2063,11 +2051,10 @@ This does not close the session.
 
 
 *  <b>`threads`</b>: Optional list of threads to join with the coordinator.  If
-    `None`, defaults to the threads running the standard services plus the
-    threads started for `QueueRunners` if `start_queue_runners()` was
-    called.  To wait on an additional set of threads, pass the list in this
-    parameter and they will be merged with the internal list of running
-    services.
+    `None`, defaults to the threads running the standard services, the
+    threads started for `QueueRunners`, and the threads started by the
+    `loop()` method.  To wait on additional threads, pass the
+    list in this parameter.
 *  <b>`close_summary_writer`</b>: Whether to close the `summary_writer`.  Defaults to
     `True` if the summary writer was created by the supervisor, `False`
     otherwise.
@@ -2170,8 +2157,8 @@ manager to start the standard services.
 *  <b>`wait_for_checkpoint`</b>: Whether we should wait for the availability of a
     checkpoint before creating Session. Defaults to False.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for the session to become available.
-*  <b>`start_standard_services`</b>: Whether to start the standard services,
-    such as checkpoint, summary and step counter.
+*  <b>`start_standard_services`</b>: Whether to start the standard services and the
+    queue runners.
 
 ##### Returns:
 
@@ -2212,6 +2199,11 @@ See `Coordinator.should_stop()`.
 #### `tf.train.Supervisor.StartQueueRunners(sess, queue_runners=None)` {#Supervisor.StartQueueRunners}
 
 Start threads for `QueueRunners`.
+
+Note that the queue runners collected in the graph key `QUEUE_RUNNERS`
+are already started automatically when you create a session with the
+supervisor, so unless you have non-collected queue runners to start
+you do not need to call this explicitely.
 
 ##### Args:
 
@@ -2270,11 +2262,10 @@ This does not close the session.
 
 
 *  <b>`threads`</b>: Optional list of threads to join with the coordinator.  If
-    `None`, defaults to the threads running the standard services plus the
-    threads started for `QueueRunners` if `start_queue_runners()` was
-    called.  To wait on an additional set of threads, pass the list in this
-    parameter and they will be merged with the internal list of running
-    services.
+    `None`, defaults to the threads running the standard services, the
+    threads started for `QueueRunners`, and the threads started by the
+    `loop()` method.  To wait on additional threads, pass the
+    list in this parameter.
 *  <b>`close_summary_writer`</b>: Whether to close the `summary_writer`.  Defaults to
     `True` if the summary writer was created by the supervisor, `False`
     otherwise.
