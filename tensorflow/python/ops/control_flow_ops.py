@@ -314,14 +314,21 @@ def _convert_tensorarrays_to_flows(tensors_or_tensor_arrays):
           for ta in tensors_or_tensor_arrays]
 
 
+def _make_tensor_array(ta, t_or_flow):
+  new_ta = tensor_array_ops.TensorArray(
+      dtype=ta.dtype, handle=ta.handle, flow=t_or_flow,
+      infer_shape=ta._infer_shape)
+  new_ta._elem_shape = ta._elem_shape
+  return new_ta
+
+
 def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
   if len(tensors_or_tensorarrays) != len(tensors_or_flows):
     raise ValueError(
         "Lengths of original Tensor list and new list do not match: %d vs. %d"
         % (len(tensors_or_tensorarrays), len(tensors_or_flows)))
   return [
-      tensor_array_ops.TensorArray(
-          dtype=ta.dtype, handle=ta.handle, flow=t_or_flow)
+      _make_tensor_array(ta, t_or_flow)
       if isinstance(ta, tensor_array_ops.TensorArray)
       else t_or_flow
       for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)]
