@@ -32,3 +32,4 @@ from tensorflow.contrib import metrics
 from tensorflow.contrib import skflow
 from tensorflow.contrib import testing
 from tensorflow.contrib import util
+from tensorflow.contrib import copy_graph

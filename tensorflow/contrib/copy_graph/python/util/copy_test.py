@@ -33,8 +33,10 @@ class CopyVariablesTest(tf.test.TestCase):
         with graph1.as_default():
             #Define a Variable in graph1
             some_var = tf.Variable(2)
+            #Initialize session
+            sess1 = tf.Session()
             #Initialize the Variable
-            self.test_session.run(tf.initialize_all_variables())
+            tf.initialize_all_variables().run(session=sess1)
 
         #Make a copy of some_var in the defsult scope in graph2
         copy1 = tf.contrib.copy_graph.copy_variable_to_graph(
@@ -46,12 +48,15 @@ class CopyVariablesTest(tf.test.TestCase):
 
         #Initialize both the copies
         with graph2.as_default():
-            self.test_session.run(tf.initialize_all_variables())
+            #Initialize Session
+            sess2 = tf.Session()
+            #Initialize the Variables
+            tf.initialize_all_variables().run(session=sess2)
 
         #Ensure values in all three variables are the same
-        v1 = self.test_session.run(some_var)
-        v2 = self.test_session.run(copy1)
-        v3 = self.test_session.run(copy2)
+        v1 = some_var.eval(session=sess1)
+        v2 = copy1.eval(session=sess2)
+        v3 = copy2.eval(session=sess2)
 
         assert isinstance(copy1, tf.Variable)
         assert isinstance(copy2, tf.Variable)
@@ -69,8 +74,10 @@ class CopyOpsTest(tf.test.TestCase):
             b = tf.constant(4.0)
             ax = tf.mul(x, a)
             y = tf.add(ax, b)
+            #Initialize session
+            sess1 = tf.Session()
             #Initialize the Variable
-            self.test_session.run(tf.initialize_all_variables())
+            tf.initialize_all_variables().run(session=sess1)
 
         #First, initialize a as a Variable in graph2
         a1 = tf.contrib.copy_graph.copy_variable_to_graph(
@@ -78,7 +85,10 @@ class CopyOpsTest(tf.test.TestCase):
 
         #Initialize a1 in graph2
         with graph2.as_default():
-            self.test_session.run(tf.initialize_all_variables())
+            #Initialize session
+            sess2 = tf.Session()
+            #Initialize the Variable
+            tf.initialize_all_variables().run(session=sess2)
 
         #Initialize a copy of y in graph2
         y1 = tf.contrib.copy_graph.copy_op_to_graph(
@@ -90,8 +100,8 @@ class CopyOpsTest(tf.test.TestCase):
 
         #Compare values of y & y1 for a sample input
         #and check if they match
-        v1 = self.test_session.run(y, {x: 5})
-        v2 = self.test_session.run(y1, {x1: 5})
+        v1 = y.eval({x: 5}, session=sess1)
+        v2 = y1.eval({x1: 5}, session=sess2)
 
         assert v1 == v2
 

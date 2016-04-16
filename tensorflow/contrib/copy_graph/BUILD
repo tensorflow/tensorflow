@@ -12,13 +12,13 @@ py_library(
     srcs = [
         "__init__.py",
         "python/util/__init__.py",
-        "python/util/copy.py",
+        "python/util/copy_elements.py",
     ],
     srcs_version = "PY2AND3",
 )
 
 py_test(
-    name = "copy_graph_test",
+    name = "copy_test",
     srcs = glob(["python/util/copy_test.py"]),
     srcs_version = "PY2AND3",
     deps = [
