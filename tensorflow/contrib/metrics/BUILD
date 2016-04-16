@@ -18,7 +18,7 @@ py_library(
 
 cuda_py_tests(
     name = "histogram_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/histogram_ops_test.py"],
     additional_deps = [
         ":metrics_py",

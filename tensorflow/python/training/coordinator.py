@@ -24,6 +24,7 @@ import time
 
 import six
 
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import logging
 from tensorflow.python.util import compat
 
@@ -135,6 +136,38 @@ class Coordinator(object):
     # a tuple containing exception (type, value, traceback).
     self._exc_info_to_raise = None
 
+  def _filter_exception(self, ex):
+    """Check if the exception indicated in 'ex' should be ignored.
+
+    This method examines `ex` to check if it is an exception that should be
+    reported to the users.  If yes, it returns `ex` as is, otherwise it returns
+    None.
+
+    The code returns None for exceptions that are used for control flow such as
+    the OutOfRangeError raised by the dequeue operations to indicate that a
+    queue was closed after its contents were dequeued.
+
+    Args:
+      ex: None, an `Exception`, or a Python `exc_info` tuple as returned by
+        `sys.exc_info()`.
+
+    Returns:
+      ex or None.
+    """
+    if isinstance(ex, tuple):
+      ex2 = ex[1]
+    else:
+      ex2 = ex
+    # OutOfRangeError is used to indicate "end of input".  We do not want to
+    # report an exception for it.  TODO(touts): Likely also need to ignore
+    # some of the Aborted and Cancelled exceptions raised by queue ops after
+    # queues are closed, but this can only be done after these exceptions have
+    # been clearly identified.
+    if isinstance(ex2, (errors.OutOfRangeError)):
+      # Ignore the exception.
+      ex = None
+    return ex
+
   def request_stop(self, ex=None):
     """Request that the threads stop.
 
@@ -149,6 +182,7 @@ class Coordinator(object):
         `sys.exc_info()`.  If this is the first call to `request_stop()` the
         corresponding exception is recorded and re-raised from `join()`.
     """
+    ex = self._filter_exception(ex)
     with self._lock:
       if not self._stop_event.is_set():
         if ex and self._exc_info_to_raise is None:

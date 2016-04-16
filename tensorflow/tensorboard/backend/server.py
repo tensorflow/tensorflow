@@ -43,9 +43,6 @@ TENSORBOARD_SIZE_GUIDANCE = {
     event_accumulator.HISTOGRAMS: 1,
 }
 
-# How often to reload new data after the latest load (secs)
-LOAD_INTERVAL = 60
-
 
 def ParseEventFilesSpec(logdir):
   """Parses `logdir` into a map from paths to run group names.
@@ -107,9 +104,7 @@ def ReloadMultiplexer(multiplexer, path_to_run):
   logging.info('Multiplexer done loading. Load took %0.1f secs', duration)
 
 
-def StartMultiplexerReloadingThread(multiplexer,
-                                    path_to_run,
-                                    load_interval=LOAD_INTERVAL):
+def StartMultiplexerReloadingThread(multiplexer, path_to_run, load_interval):
   """Starts a thread to automatically reload the given multiplexer.
 
   The thread will reload the multiplexer by calling `ReloadMultiplexer` every

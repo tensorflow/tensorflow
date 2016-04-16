@@ -139,6 +139,16 @@ else
   # Assume: PYTHON_BIN_PATH is exported by the script above
 fi
 
+# Obtain the path to head/ghead binary (for log file printing)
+HEAD_BIN="ghead"
+if [[ -z $(which "${HEAD_BIN}") ]]; then
+  # This is not Mac (which uses coreutils/ghead), use head.
+  HEAD_BIN="head"
+  if [[ -z $(which "${HEAD_BIN}") ]]; then
+     die "Unable to obtain path to head or ghead"
+  fi
+fi
+
 if [[ -z "${PYTHON_BIN_PATH}" ]]; then
   die "PYTHON_BIN_PATH was not provided. If this is not virtualenv, "\
 "did you run configure?"
@@ -371,7 +381,7 @@ while true; do
 
       echo "  Log @: ${TEST_LOGS[K]}"
       echo "============== BEGINS failure log content =============="
-      head --lines=-1 "${TEST_LOGS[K]}"
+      "${HEAD_BIN}" --lines=-1 "${TEST_LOGS[K]}"
       echo "============== ENDS failure log content =============="
       echo ""
     fi

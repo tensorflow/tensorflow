@@ -231,11 +231,16 @@ TEST_F(ScannerTest, DefaultCapturesAll) {
 }
 
 TEST_F(ScannerTest, AllCharClasses) {
+  EXPECT_EQ(256, ClassStr(Scanner::ALL).size());
   EXPECT_EQ("0123456789", ClassStr(Scanner::DIGIT));
   EXPECT_EQ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
             ClassStr(Scanner::LETTER));
   EXPECT_EQ("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
             ClassStr(Scanner::LETTER_DIGIT));
+  EXPECT_EQ(
+      "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_"
+      "abcdefghijklmnopqrstuvwxyz",
+      ClassStr(Scanner::LETTER_DIGIT_DASH_UNDERSCORE));
   EXPECT_EQ(
       "-./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       "abcdefghijklmnopqrstuvwxyz",
@@ -246,6 +251,8 @@ TEST_F(ScannerTest, AllCharClasses) {
       ClassStr(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE));
   EXPECT_EQ(".0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
             ClassStr(Scanner::LETTER_DIGIT_DOT));
+  EXPECT_EQ("+-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+            ClassStr(Scanner::LETTER_DIGIT_DOT_PLUS_MINUS));
   EXPECT_EQ(".0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz",
             ClassStr(Scanner::LETTER_DIGIT_DOT_UNDERSCORE));
   EXPECT_EQ("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz",

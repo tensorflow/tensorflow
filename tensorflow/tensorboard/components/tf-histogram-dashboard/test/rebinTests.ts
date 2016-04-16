@@ -16,7 +16,7 @@ limitations under the License.
 module TF.Histogram {
   let assert = chai.assert;
 
-  describe("Rebin", function() {
+  describe('Rebin', function() {
 
     var assertHistogramEquality = function(h1, h2) {
       h1.forEach(function(b1, i) {
@@ -25,7 +25,7 @@ module TF.Histogram {
         assert.closeTo(b1.dx, b2.dx, 1e-10);
         assert.closeTo(b1.y, b2.y, 1e-10);
       });
-    }
+    };
 
     //
     // Rebinning
@@ -71,5 +71,4 @@ module TF.Histogram {
     });
 
   });
-
 }

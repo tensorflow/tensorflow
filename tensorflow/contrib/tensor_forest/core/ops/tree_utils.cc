@@ -35,12 +35,15 @@ int32 BestFeature(const Tensor& total_counts, const Tensor& split_counts,
       accumulator, accumulator + 1).unaligned_flat<float>();
   const auto splits = split_counts.Slice(
       accumulator, accumulator + 1).unaligned_flat<float>();
-  Eigen::array<int, 1> bcast({num_splits});
+  Eigen::array<int, 1> bcast;
+  bcast[0] = num_splits;
   const auto rights = tc.broadcast(bcast) - splits;
 
   for (int i = 0; i < num_splits; i++) {
-    Eigen::array<int, 1> offsets = {i * num_classes};
-    Eigen::array<int, 1> extents = {num_classes};
+    Eigen::array<int, 1> offsets;
+    offsets[0] = i * num_classes;
+    Eigen::array<int, 1> extents;
+    extents[0] = num_classes;
     float score = WeightedGiniImpurity(splits.slice(offsets, extents)) +
         WeightedGiniImpurity(rights.slice(offsets, extents));
 

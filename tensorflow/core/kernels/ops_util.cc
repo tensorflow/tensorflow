@@ -38,11 +38,6 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
                               int row_stride, int col_stride, Padding padding,
                               int* new_height, int* new_width, int* pad_top,
                               int* pad_bottom, int* pad_left, int* pad_right) {
-  // Cannot have strides larger than the patch size.
-  if (row_stride > filter_height || col_stride > filter_width) {
-    return errors::InvalidArgument(
-        "stride must be less than or equal to kernel size");
-  }
   switch (padding) {
     case Padding::VALID:
       *new_height = ceil((in_height - filter_height + 1.f) /

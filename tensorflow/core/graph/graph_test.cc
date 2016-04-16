@@ -205,6 +205,29 @@ TEST_F(GraphTest, Type) {
   VerifyGraphStats();
 }
 
+TEST_F(GraphTest, AddAttr) {
+  Node* n1 = AddNodeWithName("A");
+
+  n1->AddAttr("_a", "new_attr");
+
+  string attr;
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->def(), "_a", &attr));
+  EXPECT_EQ("new_attr", attr);
+
+  Node* n2 = graph_.CopyNode(n1);
+
+  n1->AddAttr("_b", "new_attr_2");
+
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->def(), "_a", &attr));
+  EXPECT_EQ("new_attr", attr);
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->def(), "_b", &attr));
+  EXPECT_EQ("new_attr_2", attr);
+
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n2->def(), "_a", &attr));
+  EXPECT_EQ("new_attr", attr);
+  EXPECT_NE(Status::OK(), GetNodeAttr(n2->def(), "_b", &attr));
+}
+
 // Convert edge iteration results into a sorted string.
 static string EdgeIter(const Graph& g) {
   std::vector<std::pair<int, int> > edges;

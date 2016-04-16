@@ -99,6 +99,7 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -106,8 +107,10 @@ from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import string_ops
 
 
 # Don't export modules except for the few we really want
@@ -118,9 +121,10 @@ _whitelist = set([app, compat, contrib, errors, flags, gfile, image,
 # Export all symbols directly accessible from 'tf.' by drawing on the doc
 # strings of other modules.
 __all__ = make_all(__name__,
-                   [framework_lib, array_ops, client_lib, constant_op,
-                    control_flow_ops, functional_ops, histogram_ops, io_ops,
-                    math_ops, nn, script_ops, sparse_ops, state_ops, train])
+                   [framework_lib, array_ops, client_lib, check_ops,
+                    constant_op, control_flow_ops, functional_ops,
+                    histogram_ops, io_ops, math_ops, nn, script_ops,
+                    session_ops, sparse_ops, state_ops, string_ops, train])
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
@@ -167,7 +171,6 @@ __all__.extend([
     'sparse_matmul',
     'sparse_segment_mean_grad',
     'sparse_segment_sqrt_n_grad',
-    'string_to_hash_bucket',
     'unique_with_counts',
     'user_ops',
 ])

@@ -76,3 +76,7 @@ ops.NoGradient("Stack")
 ops.NoGradient("StackPush")
 ops.NoGradient("StackPop")
 ops.NoGradient("StackClose")
+
+ops.NoGradient("GetSessionHandle")
+ops.NoGradient("GetSessionTensor")
+ops.NoGradient("DeleteSessionTensor")

@@ -26,6 +26,7 @@ module TF {
     protected tag: string;
     protected tooltipUpdater: TooltipUpdater;
     private datasets: {[run: string]: Plottable.Dataset};
+    protected runs: string[];
 
     protected xAccessor: Plottable.Accessor<number | Date>;
     protected xScale: Plottable.QuantitativeScale<number | Date>;
@@ -54,15 +55,33 @@ module TF {
       this.buildChart(xType);
     }
 
+    /**
+     * Change the runs on the chart. The work of actually setting the dataset
+     * on the plot is deferred to the subclass because it is impl-specific.
+     * Changing runs automatically triggers a reload; this ensures that the
+     * newly selected run will have data, and that all the runs will be current
+     * (it would be weird if one run was ahead of the others, and the display
+     * depended on the order in which runs were added)
+     */
     public changeRuns(runs: string[]) {
-      throw new Error("Abstract method not implemented");
+      this.runs = runs;
+      this.reload();
     }
 
-    public getDataset(run: string) {
+    /**
+     * Reload data for each run in view.
+     */
+    public reload() {
+      this.runs.forEach((run) => {
+        var dataset = this.getDataset(run);
+        this.dataFn(this.tag, run).then((x) => dataset.data(x));
+      });
+    }
+
+    protected getDataset(run: string) {
       if (this.datasets[run] === undefined) {
         this.datasets[run] = new Plottable.Dataset([], {run: run, tag: this.tag});
       }
-      this.dataFn(this.tag, run).then((x) => this.datasets[run].data(x));
       return this.datasets[run];
     }
 
@@ -198,6 +217,7 @@ module TF {
     }
 
     public changeRuns(runs: string[]) {
+      super.changeRuns(runs);
       var datasets = runs.map((r) => this.getDataset(r));
       this.plot.datasets(datasets);
     }
@@ -207,6 +227,7 @@ module TF {
     private plots: Plottable.XYPlot<number | Date, number>[];
 
     public changeRuns(runs: string[]) {
+      super.changeRuns(runs);
       var datasets = runs.map((r) => this.getDataset(r));
       this.plots.forEach((p) => p.datasets(datasets));
     }

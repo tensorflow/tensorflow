@@ -79,6 +79,12 @@ class GrpcServerTest(tf.test.TestCase):
       self.assertEqual(0.5, min_val)
       self.assertEqual(0.5, max_val)
 
+  def testInvalidHostname(self):
+    with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, "port"):
+      _ = tf.train.Server({"local": ["localhost"]},
+                          job_name="local",
+                          task_index=0)
+
 
 class ServerDefTest(tf.test.TestCase):
 
@@ -139,6 +145,29 @@ class ServerDefTest(tf.test.TestCase):
     # Verifies round trip from Proto->Spec->Proto is correct.
     cluster_spec = tf.train.ClusterSpec(cluster_def)
     self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
+
+  def testClusterSpec(self):
+    cluster_spec = tf.train.ClusterSpec(
+        {"ps": ["ps0:2222", "ps1:2222"],
+         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
+
+    expected_proto = """
+    job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
+                     tasks { key: 1 value: 'ps1:2222' } }
+    job { name: 'worker' tasks { key: 0 value: 'worker0:2222' }
+                         tasks { key: 1 value: 'worker1:2222' }
+                         tasks { key: 2 value: 'worker2:2222' } }
+    """
+
+    self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
+    self.assertProtoEquals(
+        expected_proto, tf.train.ClusterSpec(cluster_spec).as_cluster_def())
+    self.assertProtoEquals(
+        expected_proto,
+        tf.train.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def())
+    self.assertProtoEquals(
+        expected_proto,
+        tf.train.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
 
 
 if __name__ == "__main__":

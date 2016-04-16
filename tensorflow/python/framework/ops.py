@@ -1871,6 +1871,14 @@ class Graph(object):
     self._colocation_stack = []
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
+    # A map of tensor handle placeholder to tensor dtype.
+    self._handle_feeders = {}
+    # A map from tensor handle to its read op.
+    self._handle_readers = {}
+    # A map from tensor handle to its move op.
+    self._handle_movers = {}
+    # A map from tensor handle to its delete op.
+    self._handle_deleters = {}
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -2169,7 +2177,7 @@ class Graph(object):
           else:
             ret._set_device(colocation_op.device)
 
-      all_colocation_groups = list(set(all_colocation_groups))
+      all_colocation_groups = sorted(set(all_colocation_groups))
       ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
 
@@ -2747,6 +2755,11 @@ class Graph(object):
       # on CPU 0.
     ```
 
+    **N.B.** The device scope may be overridden by op wrappers or
+    other library code. For example, a variable assignment op
+    `v.assign()` must be colocated with the `tf.Variable` `v`, and
+    incompatible device scopes will be ignored.
+
     Args:
       device_name_or_function: The device name or function to use in
         the context.
@@ -2754,6 +2767,7 @@ class Graph(object):
     Returns:
       A context manager that specifies the default device to use for newly
       created ops.
+
     """
     if (device_name_or_function is not None
         and not callable(device_name_or_function)):

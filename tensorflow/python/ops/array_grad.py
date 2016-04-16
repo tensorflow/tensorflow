@@ -165,6 +165,25 @@ def _DiagGrad(_, grad):
 def _DiagPartGrad(_, grad):
   return array_ops.diag(grad)
 
+
+@ops.RegisterGradient("BatchMatrixDiag")
+def _BatchMatrixDiagGrad(_, grad):
+  return array_ops.batch_matrix_diag_part(grad)
+
+
+@ops.RegisterGradient("BatchMatrixDiagPart")
+def _BatchMatrixDiagPartGrad(_, grad):
+  return array_ops.batch_matrix_diag(grad)
+
+
+@ops.RegisterGradient("BatchMatrixBandPart")
+def _BatchMatrixBandPartGrad(op, grad):
+  num_lower = op.inputs[1]
+  num_upper = op.inputs[2]
+  return (array_ops.batch_matrix_band_part(grad, num_lower, num_upper), None,
+          None)
+
+
 # Edit Distance has no gradient (but can be used to eval seq2seq or CTC).
 ops.NoGradient("EditDistance")
 

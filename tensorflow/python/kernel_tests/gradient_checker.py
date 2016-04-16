@@ -126,7 +126,7 @@ def _compute_numeric_jacobian(x, x_shape, x_data, y, y_shape, delta):
 
   # Make sure we have the right types
   x_data = np.asarray(x_data, dtype=x.dtype.as_numpy_dtype)
-  scale = np.asarray(1 / (2 * delta), dtype=y_dtype)[()]
+  scale = np.asarray(2 * delta, dtype=y_dtype)[()]
 
   jacobian = np.zeros((x_size, y_size), dtype=x_dtype)
   # For each of the entry of x, we slightly perturbs this by adding and
@@ -139,7 +139,7 @@ def _compute_numeric_jacobian(x, x_shape, x_data, y, y_shape, delta):
     x_neg = x_data.copy()
     x_neg.ravel().view(x_dtype)[row] -= delta
     y_neg = y.eval(feed_dict={x: x_neg})
-    diff = scale * (y_pos - y_neg)
+    diff = (y_pos - y_neg) / scale
     jacobian[row, :] = diff.ravel().view(y_dtype)
 
   logging.vlog(1, "Numeric Jacobian =\n%s", jacobian)
@@ -171,7 +171,8 @@ def _compute_gradient(x,
                       delta=1e-3):
   """Computes the theoretical and numerical jacobian."""
   t = dtypes.as_dtype(x.dtype)
-  allowed_types = [dtypes.float32, dtypes.float64, dtypes.complex64]
+  allowed_types = [dtypes.float16, dtypes.float32, dtypes.float64,
+                   dtypes.complex64]
   assert t.base_dtype in allowed_types, "Don't support type %s for x" % t.name
   t2 = dtypes.as_dtype(y.dtype)
   assert t2.base_dtype in allowed_types, "Don't support type %s for y" % t2.name
@@ -182,7 +183,9 @@ def _compute_gradient(x,
         x_shape, i_shape)
     x_data = x_init_value
   else:
-    if t == dtypes.float32:
+    if t == dtypes.float16:
+      dtype = np.float16
+    elif t == dtypes.float32:
       dtype = np.float32
     else:
       dtype = np.float64

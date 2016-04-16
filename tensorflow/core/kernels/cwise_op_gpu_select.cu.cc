@@ -71,6 +71,7 @@ struct BatchSelectFunctor<GPUDevice, T> {
   template struct SelectFunctor<GPUDevice, T>; \
   template struct BatchSelectFunctor<GPUDevice, T>;
 
+SELECT_FUNCTOR(Eigen::half);
 SELECT_FUNCTOR(float);
 SELECT_FUNCTOR(double);
 SELECT_FUNCTOR(int32);

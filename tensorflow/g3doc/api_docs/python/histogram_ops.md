@@ -32,6 +32,7 @@ equal width and determined by the arguments `value_range` and `nbins`.
 
 
 *  <b>`Examples`</b>: 
+
 ```python
 # Bins will be:  (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
 nbins = 5

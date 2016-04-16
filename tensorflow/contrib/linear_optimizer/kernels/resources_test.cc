@@ -164,7 +164,6 @@ TEST_F(DataByExampleTest, VisitUnavailable) {
     signal(&updated_data);
   });
   wait(&completed_visit);
-  EXPECT_FALSE(thread_pool.HasPendingClosures());
   EXPECT_TRUE(errors::IsUnavailable(status));
 }
 

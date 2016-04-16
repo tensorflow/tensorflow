@@ -125,7 +125,6 @@ cc_binary(
     srcs = ["framework/test_file_system.cc"],
     linkopts = select({
         "//conditions:default": [
-            "-Wl,-Bsymbolic",
             "-lm",
         ],
         "//tensorflow:darwin": [],
@@ -575,6 +574,9 @@ tf_gen_op_wrapper_py(
         "TensorArraySplit",
         "TensorArrayUnpack",
         "TensorArrayWrite",
+        "GetSessionHandle",
+        "GetSessionTensor",
+        "DeleteSessionTensor",
     ],
     require_shape_functions = True,
 )
@@ -769,6 +771,7 @@ py_library(
         "ops/array_grad.py",
         "ops/array_ops.py",
         "ops/candidate_sampling_ops.py",
+        "ops/check_ops.py",
         "ops/clip_ops.py",
         "ops/control_flow_grad.py",
         "ops/control_flow_ops.py",
@@ -810,6 +813,7 @@ py_library(
         "ops/rnn_cell.py",
         "ops/script_ops.py",
         "ops/seq2seq.py",
+        "ops/session_ops.py",
         "ops/sparse_grad.py",
         "ops/sparse_ops.py",
         "ops/standard_ops.py",
@@ -1071,7 +1075,6 @@ py_test(
     size = "small",
     srcs = ["client/session_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["noasan"],
     deps = [
         ":framework",
         ":framework_test_lib",
@@ -1116,9 +1119,11 @@ medium_kernel_test_list = glob([
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",
+    "kernel_tests/sparse_tensor_dense_matmul_op_test.py",
 ])
 
 sharded_kernel_test_list = glob([
+    "kernel_tests/batch_matrix_band_part_op_test.py",
     "kernel_tests/cwise_ops_test.py",
     "kernel_tests/embedding_ops_test.py",
     "kernel_tests/linalg_grad_test.py",

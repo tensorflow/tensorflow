@@ -12,9 +12,9 @@ In this tutorial we will show how to train a recurrent neural network on
 a challenging task of language modeling. The goal of the problem is to fit a
 probabilistic model which assigns probabilities to sentences. It does so by
 predicting next words in a text given a history of previous words. For this
-purpose we will use the Penn Tree Bank (PTB) dataset, which is a popular
-benchmark for measuring quality of these models, whilst being small and
-relatively fast to train.
+purpose we will use the [Penn Tree Bank](http://www.cis.upenn.edu/~treebank/)
+(PTB) dataset, which is a popular benchmark for measuring quality of these
+models, whilst being small and relatively fast to train.
 
 Language modeling is key to many interesting problems such as speech
 recognition, machine translation, or image captioning. It is also fun, too --
@@ -172,9 +172,10 @@ final_state = state
 ## Run the Code
 
 We are assuming you have already installed via the pip package, have cloned the
-tensorflow git repository, and are in the root of the git tree. (If building
-from source, build the `tensorflow/models/rnn/ptb:ptb_word_lm` target using
-bazel).
+tensorflow git repository, and are in the root of the git tree. (If [building
+from source](
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#installing-from-sources), build the `tensorflow/models/rnn/ptb:ptb_word_lm` target using
+[bazel](https://github.com/bazelbuild/bazel)).
 
 Next:
 ```

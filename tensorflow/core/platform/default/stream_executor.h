@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"

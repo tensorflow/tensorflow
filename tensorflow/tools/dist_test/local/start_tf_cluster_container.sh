@@ -70,7 +70,7 @@ fi
 COUNTER=1
 while true; do
   ((COUNTER++))
-  docker run --net=host --privileged ${DOCKER_ENV} \
+  docker run --rm --net=host --privileged ${DOCKER_ENV} \
       -v ${HOST_K8S_DIR}:/local/kubernetes \
       ${DOCKER_IMG_NAME} \
       /var/tf-k8s/local/start_local_k8s_service.sh

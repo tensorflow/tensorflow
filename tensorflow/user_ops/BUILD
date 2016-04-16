@@ -30,10 +30,6 @@ py_tests(
     size = "small",
     srcs = ["ackermann_test.py"],
     data = [":ackermann_op.so"],
-    tags = [
-        "noasan",
-        "notsan",
-    ],
 )
 
 filegroup(

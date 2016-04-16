@@ -143,7 +143,6 @@ cc_library(
         "lib/core/bits.h",
         "lib/core/casts.h",
         "lib/core/coding.h",
-        "lib/core/command_line_flags.h",  # TODO(vrv): Delete.
         "lib/core/errors.h",
         "lib/core/notification.h",
         "lib/core/status.h",
@@ -245,6 +244,7 @@ tf_cuda_library(
         "framework/register_types.h",
         "framework/resource_mgr.h",
         "framework/selective_registration.h",
+        "framework/session_state.h",
         "framework/tensor.h",
         "framework/tensor_shape.h",
         "framework/tensor_slice.h",
@@ -267,6 +267,7 @@ tf_cuda_library(
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
+        "util/stat_summarizer.h",
         "util/tensor_format.h",
         "util/tensor_slice_reader.h",
         "util/tensor_slice_reader_cache.h",
@@ -542,7 +543,6 @@ tf_cuda_library(
 
 # Android-specific BUILD targets
 load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources")
-load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources_relative")
 load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_headers")
 
 # List of protos we want on android
@@ -559,6 +559,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
+        "common_runtime/gpu/gpu_tracer.cc",
     ] + glob(
         [
             "client/**/*.cc",
@@ -589,8 +590,6 @@ filegroup(
             "lib/png/*.cc",
             "util/events_writer.cc",
             "util/events_writer.h",
-            "util/reporter.cc",
-            "util/reporter.h",
             # Exclude all protobuf/google headers except protobuf_android.h
             "platform/google/cord_coding.h",
             "platform/google/dynamic_annotations.h",
@@ -602,8 +601,6 @@ filegroup(
             "platform/google/*.cc",
             "platform/google/test_benchmark.cc",
             "platform/google/test_benchmark.h",
-            "platform/test_benchmark.h",
-            "platform/default/test_benchmark.cc",
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/*.cc",
             "common_runtime/gpu_device_factory.cc",
@@ -762,6 +759,7 @@ cc_library(
         "lib/random/random_distributions.h",
         "lib/random/weighted_picker.h",
         "lib/strings/ordered_code.h",
+        "lib/strings/proto_text_util.h",
         "lib/strings/regexp.h",
         "lib/strings/scanner.h",
         "platform/denormal.h",
@@ -856,6 +854,7 @@ filegroup(
         "framework/partial_tensor_shape.h",
         "framework/rendezvous.h",
         "framework/selective_registration.h",
+        "framework/session_state.h",
         "framework/tensor.h",
         "framework/tensor_reference.h",
         "framework/tensor_shape.h",
@@ -976,11 +975,50 @@ tf_cuda_library(
     deps = [
         ":core_cpu_internal",
         ":framework",
+        ":gpu_tracer",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
     ],
     alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "cupti_wrapper",
+    srcs = [
+        "common_runtime/gpu/cupti_wrapper.cc",
+    ],
+    hdrs = [
+        "common_runtime/gpu/cupti_wrapper.h",
+    ],
+    copts = tf_copts(),
+    cuda_deps = [
+        ":stream_executor",
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:cupti_headers",
+    ],
+    data = ["//third_party/gpus/cuda:cupti_dsos"],
+)
+
+tf_cuda_library(
+    name = "gpu_tracer",
+    srcs = [
+        "common_runtime/gpu/gpu_tracer.cc",
+    ],
+    hdrs = [
+        "common_runtime/gpu/gpu_tracer.h",
+    ],
+    copts = tf_copts(),
+    cuda_deps = [
+        ":cupti_wrapper",
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:cupti_headers",
+    ],
+    deps = [
+        ":core_cpu_internal",
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 tf_cuda_library(
@@ -1193,6 +1231,7 @@ tf_cc_tests(
             # Run by tests below
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_stream_util_test.cc",
+            "common_runtime/gpu/gpu_tracer_test.cc",
         ],
     ),
     deps = [
@@ -1268,6 +1307,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
         "//third_party/eigen3",
     ],
@@ -1458,6 +1498,33 @@ tf_cc_test(
         "//tensorflow/core/kernels:shape_ops",
         "//tensorflow/core/kernels:tile_ops",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/gpu/gpu_tracer_test",
+    size = "small",
+    args = ["--heap_check=local"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":gpu_tracer",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

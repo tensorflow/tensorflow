@@ -85,7 +85,7 @@ else:
     classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
         steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
-    # Continuesly train for 1000 steps
+    # Continuously train for 1000 steps
     while True:
         try:
             classifier.fit(X_train, y_train)

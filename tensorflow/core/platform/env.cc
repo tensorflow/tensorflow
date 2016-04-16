@@ -29,38 +29,38 @@ class FileSystemRegistryImpl : public FileSystemRegistry {
 
  private:
   mutable mutex mu_;
-  mutable std::unordered_map<string, FileSystem*> registry_ GUARDED_BY(mu_);
+  mutable std::unordered_map<string, std::unique_ptr<FileSystem>> registry_
+      GUARDED_BY(mu_);
 };
 
 void FileSystemRegistryImpl::Register(const string& scheme,
                                       FileSystemRegistry::Factory factory) {
   mutex_lock lock(mu_);
-  QCHECK(!gtl::FindOrNull(registry_, scheme)) << "File factory for " << scheme
-                                              << " already registered";
-  registry_[scheme] = factory();
+  QCHECK(
+      registry_.emplace(string(scheme), std::unique_ptr<FileSystem>(factory()))
+          .second)
+      << "File factory for " << scheme << " already registered";
 }
 
 FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
   mutex_lock lock(mu_);
-  auto fs_ptr = gtl::FindOrNull(registry_, scheme);
-  if (!fs_ptr) {
+  const auto found = registry_.find(scheme);
+  if (found == registry_.end()) {
     return nullptr;
   }
-  return *fs_ptr;
+  return found->second.get();
 }
 
 Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
     std::vector<string>* schemes) {
   mutex_lock lock(mu_);
-  for (auto const e : registry_) {
+  for (const auto& e : registry_) {
     schemes->push_back(e.first);
   }
   return Status::OK();
 }
 
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
-
-Env::~Env() { delete file_system_registry_; }
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   string scheme = GetSchemeFromURI(fname);
