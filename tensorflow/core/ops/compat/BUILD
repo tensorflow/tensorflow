@@ -16,6 +16,7 @@ cc_library(
     name = "op_compatibility_lib",
     srcs = ["op_compatibility_lib.cc"],
     hdrs = ["op_compatibility_lib.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -33,6 +34,7 @@ tf_cc_test(
     ],
     deps = [
         ":op_compatibility_lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

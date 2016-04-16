@@ -23,17 +23,21 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
-static string OpsHistoryFile() {
-  return strings::StrCat("compat/ops_history.v", TF_MAJOR_VERSION, ".pbtxt");
+static string OpsHistoryFile(const string& ops_prefix,
+                             const string& history_version) {
+  return io::JoinPath(ops_prefix, strings::StrCat("compat/ops_history.",
+                                                  history_version, ".pbtxt"));
 }
 
-OpCompatibilityLib::OpCompatibilityLib(const string& ops_prefix)
+OpCompatibilityLib::OpCompatibilityLib(const string& ops_prefix,
+                                       const string& history_version,
+                                       const std::set<string>* stable_ops)
     : ops_file_(io::JoinPath(ops_prefix, "ops.pbtxt")),
-      op_history_file_(io::JoinPath(ops_prefix, OpsHistoryFile())) {
+      op_history_file_(OpsHistoryFile(ops_prefix, history_version)),
+      stable_ops_(stable_ops) {
   // Get the sorted list of all registered OpDefs.
   printf("Getting all registered ops...\n");
   OpRegistry::Global()->Export(false, &op_list_);
@@ -48,6 +52,24 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
   // Strip docs out of op_list_.
   RemoveDescriptionsFromOpList(&op_list_);
 
+  if (stable_ops_ != nullptr) {
+    printf("Verifying no stable ops have been removed...\n");
+    // We rely on stable_ops_ and op_list_ being in sorted order.
+    auto iter = stable_ops_->begin();
+    for (int cur = 0; iter != stable_ops_->end() && cur < op_list_.op_size();
+         ++cur) {
+      const string& op_name = op_list_.op(cur).name();
+      if (op_name > *iter) {
+        return errors::InvalidArgument("Error, stable op removed: ", *iter);
+      } else if (op_name == *iter) {
+        ++iter;
+      }
+    }
+    if (iter != stable_ops_->end()) {
+      return errors::InvalidArgument("Error, stable op removed: ", *iter);
+    }
+  }
+
   OpList in_op_history;
   {  // Read op history.
     printf("Reading op history from %s...\n", op_history_file_.c_str());
@@ -61,17 +83,22 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
 
   int cur = 0;
   int start = 0;
+
   printf("Verifying updates are compatible...\n");
   // Note: Op history is in (alphabetical, oldest-first) order.
   while (cur < op_list_.op_size() && start < in_op_history.op_size()) {
-    if (op_list_.op(cur).name() < in_op_history.op(start).name()) {
+    const string& op_name = op_list_.op(cur).name();
+    if (stable_ops_ != nullptr && stable_ops_->count(op_name) == 0) {
+      // Ignore unstable op.
+    }
+    if (op_name < in_op_history.op(start).name()) {
       // New op: add it.
       if (out_op_history != nullptr) {
         *out_op_history->add_op() = op_list_.op(cur);
       }
       ++*added_ops;
       ++cur;
-    } else if (op_list_.op(cur).name() > in_op_history.op(start).name()) {
+    } else if (op_name > in_op_history.op(start).name()) {
       // Op removed: error.
       return errors::InvalidArgument("Error, removed op: ",
                                      SummarizeOpDef(in_op_history.op(start)));
@@ -79,7 +106,6 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
       // Op match.
 
       // Find all historical version of this op.
-      const string& op_name = op_list_.op(cur).name();
       int end = start + 1;
       for (; end < in_op_history.op_size(); ++end) {
         if (in_op_history.op(end).name() != op_name) break;
@@ -127,17 +153,22 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
   }
 
   // Error if missing ops.
-  if (start < in_op_history.op_size()) {
+  if (stable_ops_ == nullptr && start < in_op_history.op_size()) {
     return errors::InvalidArgument("Error, removed op: ",
                                    SummarizeOpDef(in_op_history.op(start)));
   }
 
   // Add remaining new ops.
   for (; cur < op_list_.op_size(); ++cur) {
-    if (out_op_history) {
-      *out_op_history->add_op() = op_list_.op(cur);
+    const string& op_name = op_list_.op(cur).name();
+    if (stable_ops_ != nullptr && stable_ops_->count(op_name) == 0) {
+      // Ignore unstable op.
+    } else {
+      if (out_op_history) {
+        *out_op_history->add_op() = op_list_.op(cur);
+      }
+      ++*added_ops;
     }
-    ++*added_ops;
   }
 
   return Status::OK();
