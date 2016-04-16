@@ -34,13 +34,15 @@ void TF_Run_wrapper(TF_Session* session,
   std::vector<const char*> cstring_input_tensor_names;
   std::vector<const char*> cstring_output_tensor_names;
   std::vector<const char*> cstring_target_node_names;
-  for(auto i = 0; i < input_tensor_names.size(); ++i)
-    cstring_input_tensor_names.push_back(const_cast<char*>(input_tensor_names[i].c_str()));
-  for(auto i = 0; i < output_tensor_names.size(); ++i)
-    cstring_output_tensor_names.push_back(const_cast<char*>(output_tensor_names[i].c_str()));
-  for(auto i = 0; i < target_node_names.size(); ++i)
-    cstring_target_node_names.push_back(const_cast<char*>(target_node_names[i].c_str()));
-
+  for (auto& input_name: input_tensor_names) {
+    cstring_input_tensor_names.push_back(input_name.c_str());
+  }
+  for (auto& out_name: output_tensor_names) {
+    cstring_output_tensor_names.push_back(out_name.c_str());
+  }
+  for (auto& target_name: target_node_names) {
+    cstring_target_node_names.push_back(target_name.c_str());
+  }
   
   outputs = std::vector<TF_Tensor*>(output_tensor_names.size());
 
