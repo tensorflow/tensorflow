@@ -8,8 +8,29 @@ import (
 	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
-func getTensorFromGraph(t *testing.T, graphStr string) *tf.Tensor {
-	graph, err := tf.NewGraphFromText(graphStr)
+func getTensorFromGraph(t *testing.T, dType, shapeVal string) *tf.Tensor {
+	graph, err := tf.NewGraphFromText(fmt.Sprintf(`
+		node {
+			name: "output"
+			op: "Const"
+			attr {
+				key: "dtype"
+				value {
+					type: %s
+				}
+			}
+			attr {
+				key: "value"
+				value {
+					tensor {
+						dtype: %s
+						%s
+					}
+				}
+			}
+		}
+		version: 5`,
+		dType, dType, shapeVal))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,35 +57,16 @@ func TestStrDecode(t *testing.T) {
 		[]byte("Hello2!"),
 		[]byte("Hello3!"),
 	}
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_STRING
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_STRING
-						tensor_shape {
-							dim {
-								size: 3
-							}
-						}
-						string_val: "%s"
-						string_val: "%s"
-						string_val: "%s"
-					}
-				}
+	tensor := getTensorFromGraph(t, "DT_STRING", fmt.Sprintf(`
+		tensor_shape {
+			dim {
+				size: 3
 			}
 		}
-		version: 5`, string(expectedResult[0]), string(expectedResult[1]), string(expectedResult[2])),
-	)
+		string_val: "%s"
+		string_val: "%s"
+		string_val: "%s"
+	`, string(expectedResult[0]), string(expectedResult[1]), string(expectedResult[2])))
 
 	result, err := tensor.Str()
 	if err != nil {
@@ -82,30 +84,8 @@ func TestStrDecode(t *testing.T) {
 
 func TestFloat32Decode(t *testing.T) {
 	expectedResult := float32(10.23)
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_FLOAT
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_FLOAT
-						tensor_shape {
-						}
-						float_val: %f
-					}
-				}
-			}
-		}
-		version: 5`, expectedResult),
-	)
+	tensor := getTensorFromGraph(t, "DT_FLOAT", fmt.Sprintf(`
+		float_val: %f`, expectedResult))
 
 	result, err := tensor.Float32()
 	if err != nil {
@@ -123,30 +103,7 @@ func TestFloat32Decode(t *testing.T) {
 
 func TestFloat64Decode(t *testing.T) {
 	expectedResult := float64(10.23)
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_DOUBLE
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_DOUBLE
-						tensor_shape {
-						}
-						double_val: %f
-					}
-				}
-			}
-		}
-		version: 5`, expectedResult),
-	)
+	tensor := getTensorFromGraph(t, "DT_DOUBLE", fmt.Sprintf(`double_val: %f`, expectedResult))
 
 	result, err := tensor.Float64()
 	if err != nil {
@@ -164,30 +121,7 @@ func TestFloat64Decode(t *testing.T) {
 
 func TestInt32Decode(t *testing.T) {
 	expectedResult := int32(123)
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_INT32
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_INT32
-						tensor_shape {
-						}
-						int_val: %d
-					}
-				}
-			}
-		}
-		version: 5`, expectedResult),
-	)
+	tensor := getTensorFromGraph(t, "DT_INT32", fmt.Sprintf(`int_val: %d`, expectedResult))
 
 	result, err := tensor.Int32()
 	if err != nil {
@@ -205,30 +139,7 @@ func TestInt32Decode(t *testing.T) {
 
 func TestInt64Decode(t *testing.T) {
 	expectedResult := int64(123)
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_INT64
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_INT64
-						tensor_shape {
-						}
-						int64_val: %d
-					}
-				}
-			}
-		}
-		version: 5`, expectedResult),
-	)
+	tensor := getTensorFromGraph(t, "DT_INT64", fmt.Sprintf(`int64_val: %d`, expectedResult))
 
 	result, err := tensor.Int64()
 	if err != nil {
@@ -250,37 +161,19 @@ func TestMultDimFloat32Decode(t *testing.T) {
 		{{1.10, 1.11}, {2.10, 2.11}},
 		{{1.00, 1.01}, {2.00, 2.01}},
 	}
-	tensor := getTensorFromGraph(t, `
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_FLOAT
-				}
+	tensor := getTensorFromGraph(t, "DT_FLOAT", `
+		tensor_shape {
+			dim {
+				size: 3
 			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_FLOAT
-						tensor_shape {
-							dim {
-								size: 3
-							}
-							dim {
-								size: 2
-							}
-							dim {
-								size: 2
-							}
-						}
-						tensor_content: "\000\000\200?\256G\201?\000\000\000@\327\243\000@\315\314\214?{\024\216?ff\006@=\n\007@\000\000\200?\256G\201?\000\000\000@\327\243\000@",
-					}
-				}
+			dim {
+				size: 2
+			}
+			dim {
+				size: 2
 			}
 		}
+		tensor_content: "\000\000\200?\256G\201?\000\000\000@\327\243\000@\315\314\214?{\024\216?ff\006@=\n\007@\000\000\200?\256G\201?\000\000\000@\327\243\000@",
 	`)
 
 	result, err := tensor.Float32()
@@ -316,30 +209,7 @@ func TestMultDimFloat32Decode(t *testing.T) {
 
 func TestUint8Decode(t *testing.T) {
 	expectedResult := int32(21)
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_UINT8
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_UINT8
-						tensor_shape {
-						}
-						int_val: %d
-					}
-				}
-			}
-		}
-		version: 5`, expectedResult),
-	)
+	tensor := getTensorFromGraph(t, "DT_UINT8", fmt.Sprintf(`int_val: %d`, expectedResult))
 
 	result, err := tensor.Int32()
 	if err != nil {
@@ -357,30 +227,7 @@ func TestUint8Decode(t *testing.T) {
 
 func TestInt16(t *testing.T) {
 	expectedResult := int32(21)
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_INT16
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_INT16
-						tensor_shape {
-						}
-						int_val: %d
-					}
-				}
-			}
-		}
-		version: 5`, expectedResult),
-	)
+	tensor := getTensorFromGraph(t, "DT_INT16", fmt.Sprintf(`int_val: %d`, expectedResult))
 
 	result, err := tensor.Int32()
 	if err != nil {
@@ -398,30 +245,7 @@ func TestInt16(t *testing.T) {
 
 func TestInt8(t *testing.T) {
 	expectedResult := int32(21)
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_INT8
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_INT8
-						tensor_shape {
-						}
-						int_val: %d
-					}
-				}
-			}
-		}
-		version: 5`, expectedResult),
-	)
+	tensor := getTensorFromGraph(t, "DT_INT8", fmt.Sprintf(`int_val: %d`, expectedResult))
 
 	result, err := tensor.Int32()
 	if err != nil {
@@ -439,35 +263,17 @@ func TestInt8(t *testing.T) {
 
 func TestBool(t *testing.T) {
 	expectedResult := []bool{true, false, true, false}
-	tensor := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_BOOL
-				}
-			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_BOOL
-						tensor_shape {
-							dim {
-								size: 4
-							}
-						}
-						bool_val: %t
-						bool_val: %t
-						bool_val: %t
-						bool_val: %t
-					}
-				}
+	tensor := getTensorFromGraph(t, "DT_BOOL", fmt.Sprintf(`
+		tensor_shape {
+			dim {
+				size: 4
 			}
 		}
-		version: 5`,
+		bool_val: %t
+		bool_val: %t
+		bool_val: %t
+		bool_val: %t
+	`,
 		expectedResult[0],
 		expectedResult[1],
 		expectedResult[2],
@@ -505,39 +311,20 @@ func TestTensor(t *testing.T) {
 		t.Fatal("Error instancing the Tensor:", err)
 	}
 
-	tensorToCompare := getTensorFromGraph(t, fmt.Sprintf(`
-		node {
-			name: "output"
-			op: "Const"
-			attr {
-				key: "dtype"
-				value {
-					type: DT_INT64
-				}
+	tensorToCompare := getTensorFromGraph(t, "DT_INT64", fmt.Sprintf(`
+		tensor_shape {
+			dim {
+				size: 2
 			}
-			attr {
-				key: "value"
-				value {
-					tensor {
-						dtype: DT_INT64
-						tensor_shape {
-							dim {
-								size: 2
-							}
-							dim {
-								size: 2
-							}
-							dim {
-								size: 2
-							}
-						}
-						tensor_content: "\n\000\000\000\000\000\000\000\014\000\000\000\000\000\000\000\016\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\022\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\026\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000"
-					}
-				}
+			dim {
+				size: 2
+			}
+			dim {
+				size: 2
 			}
 		}
-		version: 5`),
-	)
+		tensor_content: "\n\000\000\000\000\000\000\000\014\000\000\000\000\000\000\000\016\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\022\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\026\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000"
+	`))
 
 	tensorSlice, err := tensorToCompare.Int64()
 	if err != nil {
