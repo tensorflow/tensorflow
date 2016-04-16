@@ -975,7 +975,7 @@ def _DiagPartShape(op):
   if rank % 2 or rank > 6:
     raise ValueError("Input must have even rank <= 6, input rank is " +
                      str(rank) + "." )
-  if shape[:mid] != shape[mid:]:
+  if not shape[:mid].is_compatible_with(shape[mid:]):
     raise ValueError("Invalid shape, shape[:mid] " + str(shape[:mid]) +
                      " and shape[mid:] " + str(shape[mid:]) +
                      " do not match ")
