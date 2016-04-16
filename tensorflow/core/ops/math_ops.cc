@@ -439,7 +439,7 @@ REGISTER_OP("Zeta")
     .Output("z: T")
     .Attr("T: {float, double}")
     .Doc(R"doc(
-Compute the Hurwitz zeta function `\zeta(x, q)`.
+Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
 
 The Hurwitz zeta function is defined as:
 
@@ -454,14 +454,14 @@ REGISTER_OP("Polygamma")
     .Output("z: T")
     .Attr("T: {float, double}")
     .Doc(R"doc(
-Compute the polygamma function `\psi^{(n)}(x)`.
+Compute the polygamma function \\(\psi^{(n)}(x)\\).
 
 The polygamma function is defined as:
 
 ```
 \psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
 ```
-where `\psi(x)` is the digamma function.
+where \\(\psi(x)\\) is the digamma function.
 )doc");
 
 // --------------------------------------------------------------------------
