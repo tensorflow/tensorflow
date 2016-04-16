@@ -164,8 +164,6 @@ class DataSet(object):
 
 
 def read_data_sets(train_dir, fake_data=False, one_hot=False, dtype=dtypes.float32):
-  data_sets = base.Datasets()
-
   if fake_data:
     def fake():
       return DataSet([], [], fake_data=True, one_hot=one_hot, dtype=dtype)
