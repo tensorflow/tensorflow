@@ -142,64 +142,77 @@ def sparse_concat(concat_dim, sp_inputs, name=None):
   return ops.SparseTensor(output_ind, output_val, output_shape)
 
 
-def sparse_add(sp_a, sp_b, thresh=0):
-  """Adds two `SparseTensor` objects to produce another `SparseTensor`.
+def sparse_add(a, b, thresh=0):
+  """Adds two tensors, at least one of each is a `SparseTensor`.
 
-  The input `SparseTensor` objects' indices are assumed ordered in standard
+  If one `SparseTensor` and one `Tensor` are passed in, returns a `Tensor`.  If
+  both arguments are `SparseTensor`s, this returns a `SparseTensor`.  The order
+  of arguments does not matter.  Use vanilla `tf.add()` for adding two dense
+  `Tensor`s.
+
+  The indices of any input `SparseTensor` are assumed ordered in standard
   lexicographic order.  If this is not the case, before this step run
   `SparseReorder` to restore index ordering.
 
-  By default, if two values sum to zero at some index, the output `SparseTensor`
-  would still include that particular location in its index, storing a zero in
-  the corresponding value slot.  To override this, callers can specify `thresh`,
+  If both arguments are sparse, we perform "clipping" as follows.  By default,
+  if two values sum to zero at some index, the output `SparseTensor` would still
+  include that particular location in its index, storing a zero in the
+  corresponding value slot.  To override this, callers can specify `thresh`,
   indicating that if the sum has a magnitude strictly smaller than `thresh`, its
   corresponding value and index would then not be included.  In particular,
   `thresh == 0.0` (default) means everything is kept and actual thresholding
   happens only for a positive value.
 
-  For example, suppose the logical sum is (densified):
+  For example, suppose the logical sum of two sparse operands is (densified):
 
       [       2]
-      [.1      ]
+      [.1     0]
       [ 6   -.2]
 
   Then,
 
-      - thresh == 0 (the default): all 4 index/value pairs will be returned.
-      - thresh == 0.11: only .1 will vanish, and the remaining three index/value
-                        pairs will be returned.
-      - thresh == 0.21: both .1 and -.2 will vanish.
+      - thresh == 0 (the default): all 5 index/value pairs will be returned.
+      - thresh == 0.11: only .1 and 0  will vanish, and the remaining three
+          index/value pairs will be returned.
+      - thresh == 0.21: .1, 0, and -.2 will vanish.
 
   Args:
-    sp_a: The first input `SparseTensor`.
-    sp_b: The second input `SparseTensor`.
+    a: The first operand; `SparseTensor` or `Tensor`.
+    b: The second operand; `SparseTensor` or `Tensor`.  At least one operand
+      must be sparse.
     thresh: A 0-D `Tensor`.  The magnitude threshold that determines if an
     output value/index pair takes space.  Its dtype should match that of the
     values if they are real; if the latter are complex64/complex128, then the
     dtype should be float32/float64, correspondingly.
 
   Returns:
-    A `SparseTensor` with the same shape, representing the sum.
+    A `SparseTensor` or a `Tensor`, representing the sum.
 
   Raises:
-    TypeError: If either `sp_a` or `sp_b` is not a `SparseTensor`.
+    TypeError: If both `a` and `b` are `Tensor`s.  Use `tf.add()` instead.
   """
-  if not all(isinstance(sp_input, ops.SparseTensor) for sp_input in [sp_a,
-                                                                     sp_b]):
-    raise TypeError("All inputs must be SparseTensors")
+  if not any(isinstance(inp, ops.SparseTensor) for inp in [a, b]):
+    raise TypeError("At least one input should be SparseTensor; do you mean to"
+                    " use tf.add()?")
 
-  thresh = ops.convert_to_tensor(thresh, dtype=sp_a.values.dtype.real_dtype,
-                                 name="thresh")
-  output_ind, output_val, output_shape = (
-      gen_sparse_ops._sparse_add(sp_a.indices,
-                                 sp_a.values,
-                                 sp_a.shape,
-                                 sp_b.indices,
-                                 sp_b.values,
-                                 sp_b.shape,
-                                 thresh))
-
-  return ops.SparseTensor(output_ind, output_val, output_shape)
+  if all(isinstance(inp, ops.SparseTensor) for inp in [a, b]):
+    thresh = ops.convert_to_tensor(thresh, dtype=a.values.dtype.real_dtype,
+                                   name="thresh")
+    output_ind, output_val, output_shape = (
+        gen_sparse_ops._sparse_add(a.indices,
+                                   a.values,
+                                   a.shape,
+                                   b.indices,
+                                   b.values,
+                                   b.shape,
+                                   thresh))
+    return ops.SparseTensor(output_ind, output_val, output_shape)
+  else:
+    # swap to make `a` the SparseTensor
+    if isinstance(b, ops.SparseTensor):
+      a, b = b, a
+    return gen_sparse_ops._sparse_tensor_dense_add(
+        a.indices, a.values, a.shape, b)
 
 
 @ops.RegisterShape("SparseAdd")
@@ -211,6 +224,11 @@ def _SparseAddShape(op):  # pylint: disable=invalid-name
       tensor_shape.unknown_shape(1),
       input_shape_shape
   ]
+
+
+@ops.RegisterShape("SparseTensorDenseAdd")
+def _SparseTensorDenseAddShape(op):  # pylint: disable=invalid-name
+  return [op.inputs[3].get_shape()]
 
 
 @ops.RegisterShape("SparseAddGrad")

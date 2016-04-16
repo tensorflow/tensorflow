@@ -741,6 +741,7 @@ tf_gen_op_wrapper_py(
         "SparseSelectLastK",
         "SparseReorder",
         "SparseToDense",
+        "SparseTensorDenseAdd",
         "SparseTensorDenseMatMul",
     ],
     require_shape_functions = True,

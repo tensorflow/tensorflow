@@ -98,6 +98,13 @@ def _SparseAddGrad(op, *grads):
   return (None, a_val_grad, None, None, b_val_grad, None, None)
 
 
+@ops.RegisterGradient("SparseTensorDenseAdd")
+def _SparseTensorDenseAdd(op, out_grad):
+  sp_indices = op.inputs[0]
+  #  (sparse_indices, sparse_values, sparse_shape, dense)
+  return (None, array_ops.gather_nd(out_grad, sp_indices), None, out_grad)
+
+
 @ops.RegisterGradient("SparseTensorDenseMatMul")
 def _SparseTensorDenseMatMulGrad(op, grad):
   """Gradients for the dense tensor in the SparseTensorDenseMatMul op.
