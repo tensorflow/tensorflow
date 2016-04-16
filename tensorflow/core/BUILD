@@ -1275,6 +1275,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:bcast_ops",
         "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:concat_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",
