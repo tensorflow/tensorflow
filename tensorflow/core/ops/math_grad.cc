@@ -34,7 +34,7 @@ Status GradForUnaryCwise(FunctionDef* g, std::vector<FDH::Node> nodes) {
       // Ret val defs
       {"dx: T"},
       // Attr defs
-      {{"T: {float, double}"}},
+      {{"T: {half, float, double}"}},
       // Nodes
       nodes);
   return Status::OK();
@@ -255,7 +255,7 @@ Status GradForBinaryCwise(FunctionDef* g, std::vector<FDH::Node> body) {
       // Ret val defs
       {"dx: T", "dy: T"},
       // Attr defs
-      {{"T: {float, double}"}},
+      {{"T: {half, float, double}"}},
       // Nodes
       nodes);
   return Status::OK();
@@ -374,7 +374,7 @@ Status SelectGrad(const AttrSlice& attrs, FunctionDef* g) {
   *g = FDH::Define(
       {"c:bool", "x:T", "y:T", "dz:T"},
       {"dc:bool", "dx:T", "dy:T"},
-      {{"T: {float, double}"}},
+      {{"T: {half, float, double}"}},
       {
         {{"dc"}, "ZerosLike", {"c"}, {{"T", DT_BOOL}}, {"dz"}},
         {{"zeros"}, "ZerosLike", {"x"}, {{"T", "$T"}}, {"dz"}},
@@ -433,7 +433,7 @@ Status GradForReductionOp(FunctionDef* g, std::vector<FDH::Node> body) {
       // Ret val defs
       {"dx:T", "di:int32"},
       // Attr defs
-      {{"T: {float, double}"}},
+      {{"T: {half, float, double}"}},
       // Nodes
       nodes);
   return Status::OK();
@@ -483,7 +483,7 @@ Status MinMaxGradHelper(const string& op, const AttrSlice& attrs,
       // Ret val defs
       {"dx:T", "di:int32"},
       // Attr defs
-      {{"T: {float, double}"}},
+      {{"T: {half, float, double}"}},
       {
         // keep_dims because we need to do x == y, which requires x
         // and y are broadcastable.

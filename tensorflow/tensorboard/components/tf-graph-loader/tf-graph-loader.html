@@ -23,11 +23,6 @@ Polymer({
       notify: true,
     },
     datasets: Array,
-    hasStats: {
-      type: Boolean,
-      readOnly: true, // This property produces data.
-      notify: true
-    },
     selectedDataset: Number,
     selectedFile: {
       type: Object,
@@ -43,21 +38,41 @@ Polymer({
       readOnly: true, //readonly so outsider can't change this via binding
       notify: true
     },
-    outGraphName: {
-      type: String,
-      readOnly: true,
-      notify: true
-    },
     outHierarchyParams: {
       type: Object,
       readOnly: true,
       notify: true
     },
+    outStats: {
+      type: Object,
+      readOnly: true, // This property produces data.
+      notify: true
+    }
   },
   observers: [
-    '_selectedDatasetChanged(selectedDataset, datasets)'
+    '_selectedDatasetChanged(selectedDataset, datasets)',
+    '_readAndParseMetadata(selectedDataset, selectedMetadataTag, datasets)'
   ],
-  _parseAndConstructHierarchicalGraph: function(dataset, pbTxtFile) {
+  _readAndParseMetadata: function(datasetIndex, metadataIndex, datasets) {
+    if (metadataIndex == -1 || datasets[datasetIndex] == null ||
+        datasets[datasetIndex].runMetadata == null ||
+        datasets[datasetIndex].runMetadata[metadataIndex] == null) {
+      this._setOutStats(null);
+      return;
+    }
+    var path = datasets[datasetIndex].runMetadata[metadataIndex].path;
+    // Reset the progress bar to 0.
+    this.set('progress', {
+      value: 0,
+      msg: ''
+    });
+    var tracker = tf.getTracker(this);
+    tf.graph.parser.fetchAndParseMetadata(path, tracker)
+    .then(function(stats) {
+      this._setOutStats(stats);
+    }.bind(this));
+  },
+  _parseAndConstructHierarchicalGraph: function(path, pbTxtFile) {
     // Reset the progress bar to 0.
     this.set('progress', {
       value: 0,
@@ -76,13 +91,10 @@ Polymer({
       seriesMap: {},
     };
     this._setOutHierarchyParams(hierarchyParams);
-    var statsJson;
     var dataTracker = tf.getSubtaskTracker(tracker, 30, 'Data');
-    tf.graph.parser.readAndParseData(dataset, pbTxtFile, dataTracker)
-    .then(function(result) {
+    tf.graph.parser.fetchAndParseGraphData(path, pbTxtFile, dataTracker)
+    .then(function(graph) {
       // Build the flat graph (consists only of Op nodes).
-      var nodes = result.nodes;
-      statsJson = result.statsJson;
 
       // This is the whitelist of inputs on op types that are considered
       // reference edges. "Assign 0" indicates that the first input to
@@ -107,18 +119,11 @@ Polymer({
         outEmbeddingTypes: ['^[a-zA-Z]+Summary$'],
         refEdges: refEdges
       };
-      var graphTracker = tf.getSubtaskTracker(tracker, 20,
-          'Graph');
-      return tf.graph.build(nodes, buildParams, graphTracker);
+      var graphTracker = tf.getSubtaskTracker(tracker, 20, 'Graph');
+      return tf.graph.build(graph, buildParams, graphTracker);
     })
     .then(function(graph) {
       this._setOutGraph(graph);
-      if (statsJson) {
-        // If there are associated stats, join them with the graph.
-        tf.time('Joining stats info with graph...', function() {
-          tf.graph.joinStatsInfoWithGraph(graph, statsJson);
-        });
-      }
       var hierarchyTracker = tf.getSubtaskTracker(tracker, 50,
           'Namespace hierarchy');
       return tf.graph.hierarchy.build(graph, hierarchyParams, hierarchyTracker);
@@ -126,7 +131,6 @@ Polymer({
     .then(function(graphHierarchy) {
       // Update the properties which notify the parent with the
       // graph hierarchy and whether the data has live stats or not.
-      this._setHasStats(statsJson != null);
       this._setOutGraphHierarchy(graphHierarchy);
     }.bind(this))
     .catch(function(e) {
@@ -136,9 +140,7 @@ Polymer({
     });
   },
   _selectedDatasetChanged: function(datasetIndex, datasets) {
-    var dataset = datasets[datasetIndex];
-    this._parseAndConstructHierarchicalGraph(dataset);
-    this._setOutGraphName(dataset.name);
+    this._parseAndConstructHierarchicalGraph(datasets[datasetIndex].path);
   },
   _selectedFileChanged: function(e) {
     if (!e) {

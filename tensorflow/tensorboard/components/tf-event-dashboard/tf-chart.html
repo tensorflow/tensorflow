@@ -53,20 +53,26 @@ The wall_time is serialized as seconds since epoch.
         tag: String,
         selectedRuns: Array,
         xType: String,
-        dataCoordinator: Object,
+        dataProvider: Function,
         tooltipUpdater: Function,
         _initialized: Boolean,
       },
       observers: [
-        "_makeChart(type, tag, dataCoordinator, tooltipUpdater, xType, colorScale, _initialized)",
+        "_makeChart(type, tag, dataProvider, tooltipUpdater, xType, colorScale, _initialized)",
         "_changeRuns(_chart, selectedRuns.*)"
       ],
-      _changeRuns: function(chart, change) {
+      _changeRuns: function(chart) {
+        if (chart.tag !== this.tag) {
+          return; // hack around some weird polymer bug :(
+        }
         this._chart.changeRuns(this.selectedRuns);
         this.redraw();
       },
       redraw: function() {
         this._chart.redraw();
+      },
+      reload: function() {
+        this._chart.reload();
       },
       _constructor: function(type) {
         if (type === "scalar") {
@@ -77,13 +83,13 @@ The wall_time is serialized as seconds since epoch.
           throw new Error("Unrecognized chart type");
         }
       },
-      _makeChart: function(type, tag, dataCoordinator, tooltipUpdater, xType, colorScale, _initialized) {
+      _makeChart: function(type, tag, dataProvider, tooltipUpdater, xType, colorScale, _initialized) {
         if (!_initialized) {
           return;
         }
         if (this._chart) this._chart.destroy();
         var cns = this._constructor(type);
-        var chart = new cns(tag, dataCoordinator, tooltipUpdater, xType, colorScale);
+        var chart = new cns(tag, dataProvider, tooltipUpdater, xType, colorScale);
         var svg = d3.select(this.$.chartsvg);
         this.async(function() {
           chart.renderTo(svg);

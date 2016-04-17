@@ -370,6 +370,33 @@ class PoolingTest(tf.test.TestCase):
                        expected=[3.0, 6.0, 9.0, 12.0, 15.0, 18.0, 21.0, 24.0],
                        use_gpu=False)
 
+  def testKernelSmallerThanStride(self):
+    for use_gpu in [True, False]:
+        self._VerifyValues(tf.nn.max_pool, input_sizes=[1, 3, 3, 1],
+                           ksize=[1, 1, 1, 1], strides=[1, 2, 2, 1],
+                           padding="SAME",
+                           expected=[1, 3, 7, 9],
+                           use_gpu=use_gpu)
+
+        self._VerifyValues(tf.nn.max_pool, input_sizes=[1, 7, 7, 1],
+                           ksize=[1, 2, 2, 1], strides=[1, 3, 3, 1],
+                           padding="VALID",
+                           expected=[9, 12, 30, 33],
+                           use_gpu=use_gpu)
+
+        self._VerifyValues(tf.nn.avg_pool, input_sizes=[1, 3, 3, 1],
+                           ksize=[1, 1, 1, 1], strides=[1, 2, 2, 1],
+                           padding="SAME",
+                           expected=[1, 3, 7, 9],
+                           use_gpu=use_gpu)
+
+        self._VerifyValues(tf.nn.avg_pool, input_sizes=[1, 7, 7, 1],
+                           ksize=[1, 2, 2, 1], strides=[1, 3, 3, 1],
+                           padding="VALID",
+                           expected=[5, 8, 26, 29],
+                           use_gpu=use_gpu)
+
+
   def _testDepthwiseMaxPoolInvalidConfig(self, in_size, ksize, strides,
                                          error_msg, use_gpu=False):
     t = tf.constant(1.0, shape=in_size)
@@ -843,9 +870,9 @@ class PoolingTest(tf.test.TestCase):
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.
     for pool_func in [tf.nn.max_pool, tf.nn.avg_pool]:
-      p = tf.nn.max_pool(tf.placeholder(tf.float32),
-                         ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
-                         padding="SAME")
+      p = pool_func(tf.placeholder(tf.float32),
+                    ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+                    padding="SAME")
       self.assertEqual([None, None, None, None], p.get_shape().as_list())
     p, am = tf.nn.max_pool_with_argmax(
         tf.placeholder(tf.float32),
@@ -884,20 +911,6 @@ class PoolingTest(tf.test.TestCase):
         pool_func(tf.placeholder(tf.float32,
                                         shape=[32, 20, 20, 3]),
                   ksize=[1, 21, 20, 1], strides=[1, 1, 1, 1], padding="SAME")
-
-    # Stride larger than filter.
-    for pool_func in [tf.nn.max_pool, tf.nn.avg_pool,
-                      tf.nn.max_pool_with_argmax]:
-      with self.assertRaisesRegexp(
-          ValueError, "stride must be less than or equal to filter"):
-        pool_func(tf.placeholder(tf.float32,
-                                        shape=[32, 20, 20, 3]),
-                  ksize=[1, 5, 3, 1], strides=[1, 5, 5, 1], padding="SAME")
-      with self.assertRaisesRegexp(
-          ValueError, "stride must be less than or equal to filter"):
-        pool_func(tf.placeholder(tf.float32,
-                                        shape=[32, 20, 20, 3]),
-                  ksize=[1, 3, 5, 1], strides=[1, 5, 5, 1], padding="SAME")
 
 
 def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):

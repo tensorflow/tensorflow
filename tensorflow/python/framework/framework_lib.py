@@ -37,6 +37,7 @@
 @@get_default_graph
 @@reset_default_graph
 @@import_graph_def
+@@load_file_system_library
 @@load_op_library
 
 ## Graph collections
@@ -100,6 +101,7 @@ from tensorflow.python.framework.tensor_shape import TensorShape
 # Needed when interfacing tensorflow to new array libraries
 from tensorflow.python.framework.ops import register_tensor_conversion_function
 
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.framework.dtypes import *
 

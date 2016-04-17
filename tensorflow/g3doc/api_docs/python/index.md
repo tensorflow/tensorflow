@@ -19,6 +19,7 @@
   * [`Graph`](../../api_docs/python/framework.md#Graph)
   * [`GraphKeys`](../../api_docs/python/framework.md#GraphKeys)
   * [`import_graph_def`](../../api_docs/python/framework.md#import_graph_def)
+  * [`load_file_system_library`](../../api_docs/python/framework.md#load_file_system_library)
   * [`load_op_library`](../../api_docs/python/framework.md#load_op_library)
   * [`name_scope`](../../api_docs/python/framework.md#name_scope)
   * [`NoGradient`](../../api_docs/python/framework.md#NoGradient)
@@ -30,6 +31,19 @@
   * [`reset_default_graph`](../../api_docs/python/framework.md#reset_default_graph)
   * [`Tensor`](../../api_docs/python/framework.md#Tensor)
   * [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+
+* **[Asserts and boolean checks.](../../api_docs/python/check_ops.md)**:
+  * [`assert_less`](../../api_docs/python/check_ops.md#assert_less)
+  * [`assert_less_equal`](../../api_docs/python/check_ops.md#assert_less_equal)
+  * [`assert_negative`](../../api_docs/python/check_ops.md#assert_negative)
+  * [`assert_non_negative`](../../api_docs/python/check_ops.md#assert_non_negative)
+  * [`assert_non_positive`](../../api_docs/python/check_ops.md#assert_non_positive)
+  * [`assert_positive`](../../api_docs/python/check_ops.md#assert_positive)
+  * [`assert_rank`](../../api_docs/python/check_ops.md#assert_rank)
+  * [`assert_rank_at_least`](../../api_docs/python/check_ops.md#assert_rank_at_least)
+  * [`is_non_decreasing`](../../api_docs/python/check_ops.md#is_non_decreasing)
+  * [`is_numeric_tensor`](../../api_docs/python/check_ops.md#is_numeric_tensor)
+  * [`is_strictly_increasing`](../../api_docs/python/check_ops.md#is_strictly_increasing)
 
 * **[Constants, Sequences, and Random Values](../../api_docs/python/constant_op.md)**:
   * [`constant`](../../api_docs/python/constant_op.md#constant)
@@ -63,6 +77,7 @@
   * [`initialize_all_variables`](../../api_docs/python/state_ops.md#initialize_all_variables)
   * [`initialize_local_variables`](../../api_docs/python/state_ops.md#initialize_local_variables)
   * [`initialize_variables`](../../api_docs/python/state_ops.md#initialize_variables)
+  * [`is_variable_initialized`](../../api_docs/python/state_ops.md#is_variable_initialized)
   * [`latest_checkpoint`](../../api_docs/python/state_ops.md#latest_checkpoint)
   * [`local_variables`](../../api_docs/python/state_ops.md#local_variables)
   * [`make_template`](../../api_docs/python/state_ops.md#make_template)
@@ -138,7 +153,10 @@
   * [`batch_ifft2d`](../../api_docs/python/math_ops.md#batch_ifft2d)
   * [`batch_ifft3d`](../../api_docs/python/math_ops.md#batch_ifft3d)
   * [`batch_matmul`](../../api_docs/python/math_ops.md#batch_matmul)
+  * [`batch_matrix_band_part`](../../api_docs/python/math_ops.md#batch_matrix_band_part)
   * [`batch_matrix_determinant`](../../api_docs/python/math_ops.md#batch_matrix_determinant)
+  * [`batch_matrix_diag`](../../api_docs/python/math_ops.md#batch_matrix_diag)
+  * [`batch_matrix_diag_part`](../../api_docs/python/math_ops.md#batch_matrix_diag_part)
   * [`batch_matrix_inverse`](../../api_docs/python/math_ops.md#batch_matrix_inverse)
   * [`batch_matrix_solve`](../../api_docs/python/math_ops.md#batch_matrix_solve)
   * [`batch_matrix_solve_ls`](../../api_docs/python/math_ops.md#batch_matrix_solve_ls)
@@ -167,6 +185,8 @@
   * [`ifft`](../../api_docs/python/math_ops.md#ifft)
   * [`ifft2d`](../../api_docs/python/math_ops.md#ifft2d)
   * [`ifft3d`](../../api_docs/python/math_ops.md#ifft3d)
+  * [`igamma`](../../api_docs/python/math_ops.md#igamma)
+  * [`igammac`](../../api_docs/python/math_ops.md#igammac)
   * [`imag`](../../api_docs/python/math_ops.md#imag)
   * [`inv`](../../api_docs/python/math_ops.md#inv)
   * [`invert_permutation`](../../api_docs/python/math_ops.md#invert_permutation)
@@ -220,6 +240,10 @@
   * [`unsorted_segment_sum`](../../api_docs/python/math_ops.md#unsorted_segment_sum)
   * [`where`](../../api_docs/python/math_ops.md#where)
 
+* **[Strings](../../api_docs/python/string_ops.md)**:
+  * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
+  * [`string_to_hash_bucket`](../../api_docs/python/string_ops.md#string_to_hash_bucket)
+
 * **[Histograms](../../api_docs/python/histogram_ops.md)**:
   * [`histogram_fixed_width`](../../api_docs/python/histogram_ops.md#histogram_fixed_width)
 
@@ -251,12 +275,18 @@
   * [`tuple`](../../api_docs/python/control_flow_ops.md#tuple)
   * [`verify_tensor_all_finite`](../../api_docs/python/control_flow_ops.md#verify_tensor_all_finite)
   * [`where`](../../api_docs/python/control_flow_ops.md#where)
+  * [`while_loop`](../../api_docs/python/control_flow_ops.md#while_loop)
 
 * **[Higher Order Functions](../../api_docs/python/functional_ops.md)**:
   * [`foldl`](../../api_docs/python/functional_ops.md#foldl)
   * [`foldr`](../../api_docs/python/functional_ops.md#foldr)
   * [`map_fn`](../../api_docs/python/functional_ops.md#map_fn)
   * [`scan`](../../api_docs/python/functional_ops.md#scan)
+
+* **[Tensor Handle Operations](../../api_docs/python/session_ops.md)**:
+  * [`delete_session_tensor`](../../api_docs/python/session_ops.md#delete_session_tensor)
+  * [`get_session_handle`](../../api_docs/python/session_ops.md#get_session_handle)
+  * [`get_session_tensor`](../../api_docs/python/session_ops.md#get_session_tensor)
 
 * **[Images](../../api_docs/python/image.md)**:
   * [`adjust_brightness`](../../api_docs/python/image.md#adjust_brightness)
@@ -396,7 +426,6 @@
   * [`AbortedError`](../../api_docs/python/client.md#AbortedError)
   * [`AlreadyExistsError`](../../api_docs/python/client.md#AlreadyExistsError)
   * [`CancelledError`](../../api_docs/python/client.md#CancelledError)
-  * [`ClusterSpec`](../../api_docs/python/client.md#ClusterSpec)
   * [`DataLossError`](../../api_docs/python/client.md#DataLossError)
   * [`DeadlineExceededError`](../../api_docs/python/client.md#DeadlineExceededError)
   * [`FailedPreconditionError`](../../api_docs/python/client.md#FailedPreconditionError)
@@ -425,6 +454,7 @@
   * [`clip_by_global_norm`](../../api_docs/python/train.md#clip_by_global_norm)
   * [`clip_by_norm`](../../api_docs/python/train.md#clip_by_norm)
   * [`clip_by_value`](../../api_docs/python/train.md#clip_by_value)
+  * [`ClusterSpec`](../../api_docs/python/train.md#ClusterSpec)
   * [`Coordinator`](../../api_docs/python/train.md#Coordinator)
   * [`exponential_decay`](../../api_docs/python/train.md#exponential_decay)
   * [`ExponentialMovingAverage`](../../api_docs/python/train.md#ExponentialMovingAverage)
@@ -444,12 +474,16 @@
   * [`MomentumOptimizer`](../../api_docs/python/train.md#MomentumOptimizer)
   * [`Optimizer`](../../api_docs/python/train.md#Optimizer)
   * [`QueueRunner`](../../api_docs/python/train.md#QueueRunner)
+  * [`replica_device_setter`](../../api_docs/python/train.md#replica_device_setter)
   * [`RMSPropOptimizer`](../../api_docs/python/train.md#RMSPropOptimizer)
   * [`scalar_summary`](../../api_docs/python/train.md#scalar_summary)
+  * [`Server`](../../api_docs/python/train.md#Server)
+  * [`SessionManager`](../../api_docs/python/train.md#SessionManager)
   * [`start_queue_runners`](../../api_docs/python/train.md#start_queue_runners)
   * [`stop_gradient`](../../api_docs/python/train.md#stop_gradient)
   * [`summary_iterator`](../../api_docs/python/train.md#summary_iterator)
   * [`SummaryWriter`](../../api_docs/python/train.md#SummaryWriter)
+  * [`Supervisor`](../../api_docs/python/train.md#Supervisor)
   * [`write_graph`](../../api_docs/python/train.md#write_graph)
   * [`zero_fraction`](../../api_docs/python/train.md#zero_fraction)
 

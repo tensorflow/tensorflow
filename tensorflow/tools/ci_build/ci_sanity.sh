@@ -39,8 +39,11 @@ num_cpus() {
 do_pylint() {
   # Use this list to whitelist pylint errors
   ERROR_WHITELIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
-"tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
-"tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function already defined"
+"^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
+"^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function already defined "\
+"^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator"
+
+  echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
   PYTHON_SRC_FILES=$(find tensorflow -name '*.py')
 

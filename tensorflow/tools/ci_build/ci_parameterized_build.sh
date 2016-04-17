@@ -54,6 +54,9 @@
 #                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
 #                      PIP or BOTH).
 #                      See builds/test_tutorials.sh
+#   TF_BUILD_INTEGRATION_TESTS:
+#                      If set this will perform integration tests. See
+#                      builds/integration_tests.sh.
 #   TF_BUILD_RUN_BENCHMARKS:
 #                      If set to any non-empty and non-0 value, will perform
 #                      the benchmark tests (see *_logged_benchmark targets in
@@ -100,6 +103,7 @@ BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
+PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
@@ -137,6 +141,16 @@ echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
 
+# Function that tries to determine CUDA capability, if deviceQuery binary
+# is available on path
+function get_cuda_capability_version() {
+  if [[ ! -z $(which deviceQuery) ]]; then
+    # The first listed device is used
+    echo $(deviceQuery | grep "CUDA Capability .* version" | \
+        head -1 | awk '{print $NF}')
+  fi
+}
+
 # Process container type
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
 OPT_FLAG=""
@@ -144,6 +158,19 @@ if [[ ${CTYPE} == "cpu" ]]; then
   :
 elif [[ ${CTYPE} == "gpu" ]]; then
   OPT_FLAG="--config=cuda"
+
+  # Attempt to determine CUDA capability version and use it
+  if [[ "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}" != \
+        *"TF_CUDA_COMPUTE_CAPABILITIES="* ]]; then
+    CUDA_CAPA_VER=$(get_cuda_capability_version)
+    if [[ ! -z ${CUDA_CAPA_VER} ]]; then
+      echo "TF_CUDA_COMPUTE_CAPABILITIES is not set."
+      echo "Using CUDA capability version from deviceQuery: ${CUDA_CAPA_VER}"
+      TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
+"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e "\
+"TF_CUDA_COMPUTE_CAPABILITIES=${CUDA_CAPA_VER}"
+    fi
+  fi
 elif [[ ${CTYPE} == "android" ]]; then
   :
 else
@@ -255,6 +282,11 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
   fi
 
   PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_AGRS}"
+
+  if [[ ! -z "${TF_BUILD_INTEGRATION_TESTS}" ]] &&
+     [[ "${TF_BUILD_INTEGRATION_TESTS}" != "0" ]]; then
+    PIP_MAIN_CMD="${PIP_MAIN_CMD} ${PIP_INTEGRATION_TESTS_FLAG}"
+  fi
 
   # Add command for tutorial test
   if [[ ! -z "${TF_BUILD_TEST_TUTORIALS}" ]] &&

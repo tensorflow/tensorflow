@@ -24,8 +24,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -46,6 +48,11 @@ bool IsConstantFoldable(const Node* n,
     return false;
   }
   if (n->IsControlFlow() || n->IsSend() || n->IsRecv()) {
+    return false;
+  }
+  // TODO(yuanbyu): For now disable these session handle operations.
+  if (n->IsGetSessionHandle() || n->IsGetSessionTensor() ||
+      n->IsDeleteSessionTensor()) {
     return false;
   }
   if (n->IsSource()) {
@@ -217,8 +224,36 @@ class SimpleRendezvous : public Rendezvous {
 
 }  // namespace
 
-void ReplaceTensorWithConstant(Graph* graph, NodeAndOutput tensor,
-                               const Tensor& constant) {
+bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
+                               NodeAndOutput tensor, const Tensor& constant) {
+  // Be conservative when replacing a tensor with a constant, when not
+  // running on CPU.
+  // 1) If the destination tensor is not an int32 tensor, and has HOST_MEMORY
+  // constraint, do not replace it.
+  // 2) If the destination tensor is an int32 tensor, but has DEVICE_MEMORY
+  // constraint, do not replace it.
+  // 3) If the constant op created does not have a kernel implementation
+  // for the device, do not use it.
+  // TODO(keveman): Consider adding a new constant op that has a kernel
+  // implementation for all types, but with HostMemory constraint on it's
+  // output.
+  DeviceType device_type = partition_device
+                               ? DeviceType{partition_device->device_type()}
+                               : DEVICE_CPU;
+  if (partition_device && device_type != DEVICE_CPU) {
+    MemoryType memory_type;
+    if (!MemoryTypeForOutput(device_type, graph, tensor.first, tensor.second,
+                             &memory_type)
+             .ok()) {
+      return false;
+    }
+    bool is_int32 = tensor.first->output_type(tensor.second) == DT_INT32;
+    if ((memory_type == HOST_MEMORY && !is_int32) ||
+        (memory_type == DEVICE_MEMORY && is_int32)) {
+      return false;
+    }
+  }
+
   Node* n = tensor.first;
   std::vector<const Edge*> edges_to_remove;
   for (const Edge* out_edge : n->out_edges()) {
@@ -228,20 +263,36 @@ void ReplaceTensorWithConstant(Graph* graph, NodeAndOutput tensor,
   }
   string node_name = n->name();
   Node* constant_node;
-  TF_CHECK_OK(NodeBuilder(strings::StrCat(graph->NewName(node_name), "__cf__",
-                                          UniqueConstantId()),
-                          "Const")
-                  .Attr("dtype", constant.dtype())
-                  .Attr("value", constant)
-                  .Finalize(graph, &constant_node));
+  auto builder = NodeDefBuilder(strings::StrCat(graph->NewName(node_name),
+                                                "__cf__", UniqueConstantId()),
+                                "Const")
+                     .Attr("dtype", constant.dtype())
+                     .Attr("value", constant);
+  NodeDef def;
+  if (!builder.Finalize(&def).ok()) {
+    return false;
+  }
+  const KernelDef* kdef;
+  if (!FindKernelDef(device_type, def, &kdef, nullptr).ok()) {
+    return false;
+  }
+
+  VLOG(1) << "Replacing " << tensor.first->DebugString()
+          << " :: " << tensor.second << " with a constant";
+
+  if (!NodeBuilder(builder).Finalize(graph, &constant_node).ok()) {
+    return false;
+  }
   for (auto edge : edges_to_remove) {
     graph->AddEdge(constant_node, 0, edge->dst(), edge->dst_input());
     graph->RemoveEdge(edge);
   }
   graph->AddEdge(graph->source_node(), -1, constant_node, -1);
+  return true;
 }
 
-bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
+bool DoConstantFolding(const ConstantFoldingOptions& opts,
+                       Device* partition_device, Graph* graph) {
   DumpGraph("Before", graph);
   Device* device = GetCPUDevice();
   thread::ThreadPool* thread_pool = GetThreadPool();
@@ -345,6 +396,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
 
   // Fetch the constant tensors and replace the corresponding tensors in the
   // original graph with those constants.
+  int32 num_nodes_replaced = 0;
   for (size_t c = 0; c < fetch_nodes.size(); ++c) {
     Tensor output;
     bool is_dead;
@@ -358,15 +410,15 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts, Graph* graph) {
     if (!s.ok() || is_dead) {
       return c > 0;
     }
-    VLOG(1) << "Replacing " << tensors_to_replace[c].first->DebugString()
-            << " :: " << tensors_to_replace[c].second << " with constant "
-            << output.DebugString();
-    ReplaceTensorWithConstant(graph, tensors_to_replace[c], output);
+    if (ReplaceTensorWithConstant(graph, partition_device,
+                                  tensors_to_replace[c], output)) {
+      ++num_nodes_replaced;
+    }
   }
 
   DumpGraph("After", graph);
 
-  return true;
+  return num_nodes_replaced > 0;
 }
 
 }  // namespace tensorflow

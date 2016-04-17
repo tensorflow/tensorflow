@@ -73,7 +73,7 @@ class ListDiffOp : public OpKernel {
     for (int i = 0, p = 0; i < x_size; ++i) {
       if (y_set.count(Tx(i)) == 0) {
         OP_REQUIRES(context, p < out_size,
-                    errors::OutOfRange(
+                    errors::InvalidArgument(
                         "Tried to set output index ", p,
                         " when output Tensor only had ", out_size,
                         " elements. Check that your "

@@ -228,6 +228,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   bool IsStateful(const string& function) override;
 
+  Device* device() override { return device_; }
+
  private:
   typedef FunctionLibraryRuntimeImpl ME;
 
@@ -553,7 +555,7 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(lib, g);
+  optimizer.Optimize(lib, lib->device(), g);
 }
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
@@ -562,7 +564,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   Graph* g = new Graph(lib_def_);
   CopyGraph(*fbody->graph, g);
 
-  optimizer_.Optimize(this, &g);
+  optimizer_.Optimize(this, device(), &g);
 
   // Creates an executor based on the g.  This must be done without
   // holding mu_ because create_kernel_ calls back into the library.

@@ -396,8 +396,6 @@ GraphConstructorOptions::GraphConstructorOptions(const OptimizerOptions& opts) {
     // No optimizations performed.
   } else if (opts.opt_level() == OptimizerOptions::L1) {
     SetDoCSE(opts, true, this);
-  } else if (opts.opt_level() == OptimizerOptions::L2) {
-    SetDoCSE(opts, true, this);
     SetDoConstantFolding(opts, true, this);
   }
 }

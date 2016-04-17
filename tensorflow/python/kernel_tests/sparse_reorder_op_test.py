@@ -28,7 +28,7 @@ class SparseReorderTest(tf.test.TestCase):
   def _SparseTensorPlaceholder(self):
     return tf.SparseTensor(
         tf.placeholder(tf.int64),
-        tf.placeholder(tf.int32),
+        tf.placeholder(tf.float64),
         tf.placeholder(tf.int64))
 
   def _SparseTensorValue_5x6(self, permutation):
@@ -36,7 +36,7 @@ class SparseReorderTest(tf.test.TestCase):
         [0, 0],
         [1, 0], [1, 3], [1, 4],
         [3, 2], [3, 3]]).astype(np.int64)
-    val = np.array([0, 10, 13, 14, 32, 33]).astype(np.int32)
+    val = np.array([0, 10, 13, 14, 32, 33]).astype(np.float64)
 
     ind = ind[permutation]
     val = val[permutation]
@@ -67,6 +67,22 @@ class SparseReorderTest(tf.test.TestCase):
         self.assertAllEqual(output_val.indices, expected_output_val.indices)
         self.assertAllEqual(output_val.values, expected_output_val.values)
         self.assertAllEqual(output_val.shape, expected_output_val.shape)
+
+  def testGradients(self):
+    with self.test_session(use_gpu=False):
+      for _ in range(5):  # To test various random permutations
+        input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
+        sp_input = tf.SparseTensor(
+            input_val.indices, input_val.values, input_val.shape)
+        sp_output = tf.sparse_reorder(sp_input)
+
+        err = tf.test.compute_gradient_error(
+            sp_input.values,
+            input_val.values.shape,
+            sp_output.values,
+            input_val.values.shape,
+            x_init_value=input_val.values)
+        self.assertLess(err, 1e-11)
 
 
 if __name__ == "__main__":

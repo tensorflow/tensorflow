@@ -153,8 +153,7 @@ class MatMulTest(tf.test.TestCase):
     b = tf.placeholder(tf.float32, [36, 2])
     c = tf.placeholder(tf.float32, [37])
     with self.assertRaisesRegexp(
-        ValueError,
-        r"Dimensions Dimension\(37\) and Dimension\(36\) are not compatible"):
+        ValueError, "Dimensions 37 and 36 are not compatible"):
       tf.matmul(a, b)
     with self.assertRaisesRegexp(ValueError, "must have rank 2"):
       tf.matmul(a, c)

@@ -187,7 +187,7 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T>::ConstMatrix Tparams, \
       typename TTypes<Index>::ConstFlat Tindices,                  \
       typename TTypes<T>::Matrix Tout);                            \
-  extern template struct Gather<GPUDevice, T, Index>
+  extern template struct Gather<GPUDevice, T, Index>;
 
 #define DECLARE_GPU_SPECS(T)         \
   DECLARE_GPU_SPECS_INDEX(T, int32); \

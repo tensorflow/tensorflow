@@ -32,6 +32,7 @@ from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
@@ -238,14 +239,14 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   a probability distribution for each entry, see
   `softmax_cross_entropy_with_logits`.
 
-  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  **WARNING:** This op expects unscaled logits, since it performs a softmax
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  `logits` and must have the shape `[batch_size, num_classes]`
-  and the dtype (either `float32` or `float64`).
+  `logits` must have the shape `[batch_size, num_classes]`
+  and dtype `float32` or `float64`.
 
-  `labels` must have the shape `[batch_size]` and the dtype `int64`.
+  `labels` must have the shape `[batch_size]` and dtype `int32` or `int64`.
 
   Args:
     logits: Unscaled log probabilities.

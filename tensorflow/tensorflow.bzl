@@ -28,7 +28,6 @@ def check_version(bazel_version):
 
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
-
 load("//tensorflow/core:platform/default/build_config_root.bzl",
      "tf_cuda_tests_tags")
 
@@ -63,6 +62,7 @@ def tf_android_core_proto_sources_relative():
         "protobuf/config.proto",
         "protobuf/saver.proto",
         "util/saved_tensor_slice.proto",
+        "util/test_log.proto",
   ]
 
 # Returns the list of pb.h headers that are generated for
@@ -78,11 +78,23 @@ def if_cuda(a, b=[]):
       "//conditions:default": b,
   })
 
+def if_android_arm(a, b=[]):
+  return select({
+      "//tensorflow:android_arm": a,
+      "//conditions:default": b,
+  })
 
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
-          select({"//tensorflow:darwin": [],
+          if_android_arm(["-mfpu=neon"]) +
+          select({"//tensorflow:android": [
+                    "-std=c++11",
+                    "-DMIN_LOG_LEVEL=0",
+                    "-DTF_LEAN_BINARY",
+                    "-O2",
+                  ],
+                  "//tensorflow:darwin": [],
                   "//conditions:default": ["-pthread"]}))
 
 
@@ -205,11 +217,13 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
-def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium"):
+def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
+               suffix="", args=None):
   name = name.replace(".cc", "")
-  native.cc_test(name="%s" % (name.replace("/", "_")),
+  native.cc_test(name="%s%s" % (name.replace("/", "_"), suffix),
                  size=size,
                  srcs=["%s.cc" % (name)],
+                 args=args,
                  copts=tf_copts(),
                  data=data,
                  deps=deps,
@@ -218,10 +232,28 @@ def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium"):
                  tags=tags,)
 
 
+def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium"):
+  tf_cc_test(name=name,
+             deps=deps,
+             tags=tags + ["manual"],
+             data=data,
+             size=size)
+  tf_cc_test(name=name,
+             suffix="_gpu",
+             deps=deps + if_cuda(["//tensorflow/core:gpu_runtime"]),
+             linkstatic=if_cuda(1, 0),
+             tags=tags + tf_cuda_tests_tags(),
+             data=data,
+             size=size)
+
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium"):
+def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium", args=None):
   for t in tests:
-    tf_cc_test(t, deps, linkstatic, tags=tags, size=size)
+    tf_cc_test(t, deps, linkstatic, tags=tags, size=size, args=args)
+
+def tf_cuda_cc_tests(tests, deps, tags=[], size="medium"):
+  for t in tests:
+    tf_cuda_cc_test(t, deps, tags=tags, size=size)
 
 # Build defs for TensorFlow kernels
 
@@ -426,6 +458,12 @@ def cc_header_only_library(name, deps=[], **kwargs):
                     hdrs=[":" + name + "_gather"],
                     **kwargs)
 
+def tf_custom_op_library_additional_deps():
+  return [
+      "//google/protobuf",
+      "//third_party/eigen3",
+      "//tensorflow/core:framework_headers_lib",
+  ]
 
 # Helper to build a dynamic library (.so) from the sources containing
 # implementations of custom ops and kernels.
@@ -434,10 +472,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
       "//tensorflow/core:stream_executor_headers_lib",
       "//third_party/gpus/cuda:cudart_static",
   ]
-  deps = deps + [
-      "//third_party/eigen3",
-      "//tensorflow/core:framework_headers_lib",
-  ]
+  deps = deps + tf_custom_op_library_additional_deps()
   if gpu_srcs:
     basename = name.split(".")[0]
     cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
@@ -457,7 +492,6 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
                    linkshared=1,
                    linkopts = select({
                        "//conditions:default": [
-                           "-Wl,-Bsymbolic",
                            "-lm",
                        ],
                        "//tensorflow:darwin": [],

@@ -245,27 +245,13 @@ class TensorFlowBenchmark(Benchmark):
         name=name)
 
 
-def _run_specific_benchmark(benchmark_class):
-  benchmark = benchmark_class()
-  attrs = dir(benchmark)
-  # Only run methods of this class whose names start with "benchmark"
-  for attr in attrs:
-    if not attr.startswith("benchmark"):
-      continue
-    benchmark_fn = getattr(benchmark, attr)
-    if not callable(benchmark_fn):
-      continue
-    # Call this benchmark method
-    benchmark_fn()
-
-
 def _run_benchmarks(regex):
   """Run benchmarks that match regex `regex`.
 
   This function goes through the global benchmark registry, and matches
-  benchmark **classe names** of the form "module.name.BenchmarkClass" to
-  the given regex.  If a class matches, all of its benchmark methods
-  are run.
+  benchmark class and method names of the form
+  `module.name.BenchmarkClass.benchmarkMethod` to the given regex.
+  If a method matches, it is run.
 
   Args:
     regex: The string regular expression to match Benchmark classes against.
@@ -275,10 +261,24 @@ def _run_benchmarks(regex):
   # Match benchmarks in registry against regex
   for benchmark in registry:
     benchmark_name = "%s.%s" % (benchmark.__module__, benchmark.__name__)
-    if re.search(regex, benchmark_name):
-      # Found a match
+    attrs = dir(benchmark)
+    # Don't instantiate the benchmark class unless necessary
+    benchmark_instance = None
 
-      _run_specific_benchmark(benchmark)
+    for attr in attrs:
+      if not attr.startswith("benchmark"):
+        continue
+      candidate_benchmark_fn = getattr(benchmark, attr)
+      if not callable(candidate_benchmark_fn):
+        continue
+      full_benchmark_name = "%s.%s" % (benchmark_name, attr)
+      if regex == "all" or re.search(regex, full_benchmark_name):
+        # Instantiate the class if it hasn't been instantiated
+        benchmark_instance = benchmark_instance or benchmark()
+        # Get the method tied to the class
+        instance_benchmark_fn = getattr(benchmark_instance, attr)
+        # Call the instance method
+        instance_benchmark_fn()
 
 
 def benchmarks_main(true_main):

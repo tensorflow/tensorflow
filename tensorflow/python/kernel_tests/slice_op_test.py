@@ -75,12 +75,15 @@ class SliceTest(tf.test.TestCase):
       inp = np.random.rand(10).astype("f")
       a = tf.constant(inp, shape=[10], dtype=tf.float32)
 
-      hi = np.random.random_integers(0, 9)
+      hi = np.random.randint(0, 9)
       scalar_t = a[hi]
       scalar_val = scalar_t.eval()
       self.assertAllEqual(scalar_val, inp[hi])
 
-      lo = np.random.random_integers(0, hi)
+      if hi > 0:
+        lo = np.random.randint(0, hi)
+      else:
+        lo = 0
       slice_t = a[lo:hi]
       slice_val = slice_t.eval()
       self.assertAllEqual(slice_val, inp[lo:hi])
@@ -110,7 +113,7 @@ class SliceTest(tf.test.TestCase):
       inp = np.random.rand(4, 4).astype("f")
       a = tf.constant(inp, shape=[4, 4], dtype=tf.float32)
 
-      x, y = np.random.random_integers(0, 3, size=2).tolist()
+      x, y = np.random.randint(0, 3, size=2).tolist()
       slice_t = a[x, 0:y]
       slice_val = slice_t.eval()
     self.assertAllEqual(slice_val, inp[x, 0:y])
@@ -142,9 +145,12 @@ class SliceTest(tf.test.TestCase):
       inp = np.random.rand(4, 10, 10, 4).astype("f")
       a = tf.constant(inp, dtype=tf.float32)
 
-      x = np.random.random_integers(0, 9)
-      z = np.random.random_integers(0, 9)
-      y = np.random.random_integers(0, z)
+      x = np.random.randint(0, 9)
+      z = np.random.randint(0, 9)
+      if z > 0:
+        y = np.random.randint(0, z)
+      else:
+        y = 0
       slice_t = a[:, x, y:z, :]
       self.assertAllEqual(slice_t.eval(), inp[:, x, y:z, :])
 

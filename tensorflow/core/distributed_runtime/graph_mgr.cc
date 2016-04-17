@@ -198,7 +198,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       }
     };
 
-    optimizer.Optimize(lib, &subgraph);
+    optimizer.Optimize(lib, params.device, &subgraph);
     s = ValidateMemoryTypes(DeviceType(unit->device->device_type()), subgraph);
     if (!s.ok()) {
       delete subgraph;

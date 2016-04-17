@@ -180,11 +180,11 @@ def GenerateConfig(num_workers,
         port=port,
         worker_id=worker,
         docker_image=docker_image,
-        cluster_spec=WorkerClusterSpec(num_workers,
-                                       num_param_servers,
-                                       port))
+        cluster_spec=WorkerClusterSpecString(num_workers,
+                                             num_param_servers,
+                                             port))
     config += '---\n'
-    if worker == 0 and request_load_balancer:
+    if request_load_balancer:
       config += WORKER_LB_SVC.format(port=port,
                                      worker_id=worker)
     else:
@@ -197,9 +197,9 @@ def GenerateConfig(num_workers,
         port=port,
         param_server_id=param_server,
         docker_image=docker_image,
-        cluster_spec=ParamServerClusterSpec(num_workers,
-                                            num_param_servers,
-                                            port))
+        cluster_spec=ParamServerClusterSpecString(num_workers,
+                                                  num_param_servers,
+                                                  port))
     config += '---\n'
     config += PARAM_SERVER_SVC.format(port=port,
                                       param_server_id=param_server)
@@ -208,23 +208,23 @@ def GenerateConfig(num_workers,
   return config
 
 
-def WorkerClusterSpec(num_workers,
+def WorkerClusterSpecString(num_workers,
+                            num_param_servers,
+                            port):
+  """Generates worker cluster spec."""
+  return ClusterSpecString(num_workers, num_param_servers, port)
+
+
+def ParamServerClusterSpecString(num_workers,
+                                 num_param_servers,
+                                 port):
+  """Generates parameter server spec."""
+  return ClusterSpecString(num_workers, num_param_servers, port)
+
+
+def ClusterSpecString(num_workers,
                       num_param_servers,
                       port):
-  """Generates worker cluster spec."""
-  return ClusterSpec(num_workers, num_param_servers, port)
-
-
-def ParamServerClusterSpec(num_workers,
-                           num_param_servers,
-                           port):
-  """Generates parameter server spec."""
-  return ClusterSpec(num_workers, num_param_servers, port)
-
-
-def ClusterSpec(num_workers,
-                num_param_servers,
-                port):
   """Generates general cluster spec."""
   spec = 'worker|'
   for worker in range(num_workers):

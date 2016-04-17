@@ -57,13 +57,13 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
-
 # pylint: enable=wildcard-import
+
+
 # pylint: disable=protected-access
-
-
 def sparse_concat(concat_dim, sp_inputs, name=None):
   """Concatenates a list of `SparseTensor` along the specified dimension.
 
@@ -901,7 +901,7 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
 
   Args:
     serialized_sparse: 2-D `Tensor` of type `string` of shape `[N, 3]`.
-      The serialized and packed `SparseTensor' objects.
+      The serialized and packed `SparseTensor` objects.
     dtype: The `dtype` of the serialized `SparseTensor` objects.
     rank: (optional) Python int, the rank of the `SparseTensor` objects.
     name: A name prefix for the returned tensors (optional)

@@ -181,6 +181,13 @@ TEST_F(ScannerTest, CaptureAndGetResult) {
   EXPECT_TRUE(scan.GetResult(&remaining, &match));
   EXPECT_EQ("second", remaining.ToString());
   EXPECT_EQ("first", match.ToString());
+
+  scan.RestartCapture().One(Scanner::LETTER).One(Scanner::LETTER);
+  remaining = "";
+  match = "";
+  EXPECT_TRUE(scan.GetResult(&remaining, &match));
+  EXPECT_EQ("cond", remaining.ToString());
+  EXPECT_EQ("se", match.ToString());
 }
 
 // Tests that if StopCapture is not called, then calling GetResult, then
@@ -224,11 +231,16 @@ TEST_F(ScannerTest, DefaultCapturesAll) {
 }
 
 TEST_F(ScannerTest, AllCharClasses) {
+  EXPECT_EQ(256, ClassStr(Scanner::ALL).size());
   EXPECT_EQ("0123456789", ClassStr(Scanner::DIGIT));
   EXPECT_EQ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
             ClassStr(Scanner::LETTER));
   EXPECT_EQ("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
             ClassStr(Scanner::LETTER_DIGIT));
+  EXPECT_EQ(
+      "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_"
+      "abcdefghijklmnopqrstuvwxyz",
+      ClassStr(Scanner::LETTER_DIGIT_DASH_UNDERSCORE));
   EXPECT_EQ(
       "-./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       "abcdefghijklmnopqrstuvwxyz",
@@ -239,6 +251,8 @@ TEST_F(ScannerTest, AllCharClasses) {
       ClassStr(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE));
   EXPECT_EQ(".0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
             ClassStr(Scanner::LETTER_DIGIT_DOT));
+  EXPECT_EQ("+-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+            ClassStr(Scanner::LETTER_DIGIT_DOT_PLUS_MINUS));
   EXPECT_EQ(".0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz",
             ClassStr(Scanner::LETTER_DIGIT_DOT_UNDERSCORE));
   EXPECT_EQ("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz",

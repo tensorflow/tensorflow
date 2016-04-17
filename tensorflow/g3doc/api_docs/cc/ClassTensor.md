@@ -14,19 +14,19 @@ Default Tensor constructor. Creates a 1-dimension, 0-element float tensor.
 
 #### `tensorflow::Tensor::Tensor(DataType type, const TensorShape &shape)` {#tensorflow_Tensor_Tensor}
 
-Creates a Tensor of the given `type` and `shape`.
+Creates a Tensor of the given `type` and `shape`. If LogMemory::IsEnabled() the allocation is logged as coming from an unknown kernel and step. Calling the Tensor constructor directly from within an Op is deprecated: use the OpKernelConstruction/OpKernelContext allocate_* methods to allocate a new tensor, which record the kernel and step.
 
 The underlying buffer is allocated using a ` CPUAllocator `.
 
 #### `tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape)` {#tensorflow_Tensor_Tensor}
 
-Creates a tensor with the input `type` and `shape`, using the allocator `a` to allocate the underlying buffer.
+Creates a tensor with the input `type` and `shape`, using the allocator `a` to allocate the underlying buffer. If LogMemory::IsEnabled() the allocation is logged as coming from an unknown kernel and step. Calling the Tensor constructor directly from within an Op is deprecated: use the OpKernelConstruction/OpKernelContext allocate_* methods to allocate a new tensor, which record the kernel and step.
 
 `a` must outlive the lifetime of this Tensor .
 
 #### `tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape, const AllocationAttributes &allocation_attr)` {#tensorflow_Tensor_Tensor}
 
-Creates a tensor with the input `type` and `shape`, using the allocator `a` and the specified "allocation_attr" to allocate the underlying buffer.
+Creates a tensor with the input `type` and `shape`, using the allocator `a` and the specified "allocation_attr" to allocate the underlying buffer. If the kernel and step are known allocation_attr.allocation_will_be_logged should be set to true and LogMemory::RecordTensorAllocation should be called after the tensor is constructed. Calling the Tensor constructor directly from within an Op is deprecated: use the OpKernelConstruction/OpKernelContext allocate_* methods to allocate a new tensor, which record the kernel and step.
 
 `a` must outlive the lifetime of this Tensor .
 
@@ -168,15 +168,7 @@ Use these methods when you know the data type and the number of dimensions of th
 
 Example:
 
-```c++ typedef float T;
-Tensor my_mat(...built with Shape{rows: 3, cols: 5}...);
-auto mat = my_mat.matrix<T>();    // 2D Eigen::Tensor, 3 x 5.
-auto mat = my_mat.tensor<T, 2>(); // 2D Eigen::Tensor, 3 x 5.
-auto vec = my_mat.vec<T>();       // CHECK fails as my_mat is 2D.
-auto vec = my_mat.tensor<T, 3>(); // CHECK fails as my_mat is 2D.
-auto mat = my_mat.matrix<int32>();// CHECK fails as type mismatch.
-
-```
+{c++}   typedef float T;  Tensor my_mat(...built with Shape{rows: 3, cols: 5}...);  auto mat = my_mat.matrix<T>(); // 2D Eigen::Tensor, 3 x 5.  auto mat = my_mat.tensor<T, 2>(); // 2D Eigen::Tensor, 3 x 5.  auto vec = my_mat.vec<T>(); // CHECK fails as my_mat is 2D.  auto vec = my_mat.tensor<T, 3>(); // CHECK fails as my_mat is 2D.  auto mat = my_mat.matrix<int32>();// CHECK fails as type mismatch.
 
 #### `TTypes<T>::Matrix tensorflow::Tensor::matrix()` {#TTypes_T_Matrix_tensorflow_Tensor_matrix}
 
@@ -190,7 +182,7 @@ auto mat = my_mat.matrix<int32>();// CHECK fails as type mismatch.
 
 
 
-#### `TTypes<T>::Flat tensorflow::Tensor::flat()` {#TTypes_T_Flat_tensorflow_Tensor_flat}
+#### `TTypes< T >::Flat tensorflow::Tensor::flat()` {#TTypes_T_Flat_tensorflow_Tensor_flat}
 
 Return the tensor data as an `Eigen::Tensor` of the data type and a specified shape.
 
@@ -198,22 +190,7 @@ These methods allow you to access the data with the dimensions and sizes of your
 
 Example:
 
-```c++ typedef float T;
-Tensor my_ten(...built with Shape{planes: 4, rows: 3, cols: 5}...);
-// 1D Eigen::Tensor, size 60:
-auto flat = my_ten.flat<T>();
-// 2D Eigen::Tensor 12 x 5:
-auto inner = my_ten.flat_inner_dims<T>();
-// 2D Eigen::Tensor 4 x 15:
-auto outer = my_ten.shaped<T, 2>({4, 15});
-// CHECK fails, bad num elements:
-auto outer = my_ten.shaped<T, 2>({4, 8});
-// 3D Eigen::Tensor 6 x 5 x 2:
-auto weird = my_ten.shaped<T, 3>({6, 5, 2});
-// CHECK fails, type mismatch:
-auto bad   = my_ten.flat<int32>();
-
-```
+{c++}   typedef float T;  Tensor my_ten(...built with Shape{planes: 4, rows: 3, cols: 5}...);  // 1D Eigen::Tensor, size 60:  auto flat = my_ten.flat<T>();  // 2D Eigen::Tensor 12 x 5:  auto inner = my_ten.flat_inner_dims<T>();  // 2D Eigen::Tensor 4 x 15:  auto outer = my_ten.shaped<T, 2>({4, 15});  // CHECK fails, bad num elements:  auto outer = my_ten.shaped<T, 2>({4, 8});  // 3D Eigen::Tensor 6 x 5 x 2:  auto weird = my_ten.shaped<T, 3>({6, 5, 2});  // CHECK fails, type mismatch:  auto bad = my_ten.flat<int32>();
 
 #### `TTypes<T>::UnalignedFlat tensorflow::Tensor::unaligned_flat()` {#TTypes_T_UnalignedFlat_tensorflow_Tensor_unaligned_flat}
 
@@ -269,7 +246,7 @@ Const versions of all the methods above.
 
 
 
-#### `TTypes<T>::ConstFlat tensorflow::Tensor::flat() const` {#TTypes_T_ConstFlat_tensorflow_Tensor_flat}
+#### `TTypes< T >::ConstFlat tensorflow::Tensor::flat() const` {#TTypes_T_ConstFlat_tensorflow_Tensor_flat}
 
 
 
@@ -287,7 +264,7 @@ Const versions of all the methods above.
 
 
 
-#### `TTypes<T>::ConstMatrix tensorflow::Tensor::flat_outer_dims() const` {#TTypes_T_ConstMatrix_tensorflow_Tensor_flat_outer_dims}
+#### `TTypes< T >::ConstMatrix tensorflow::Tensor::flat_outer_dims() const` {#TTypes_T_ConstMatrix_tensorflow_Tensor_flat_outer_dims}
 
 
 
@@ -337,7 +314,7 @@ The returned ` StringPiece ` may point to memory location on devices that the CP
 
 NOTE: The underlying tensor buffer is refcounted, so the lifetime of the contents mapped by the ` StringPiece ` matches the lifetime of the buffer; callers should arrange to make sure the buffer does not get destroyed while the ` StringPiece ` is still used.
 
-REQUIRES: `DataTypeCanUseMemcpy( dtype() )`.
+REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
 
 #### `void tensorflow::Tensor::UnsafeCopyFromInternal(const Tensor &, const TensorShape &)` {#void_tensorflow_Tensor_UnsafeCopyFromInternal}
 

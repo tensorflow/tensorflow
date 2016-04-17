@@ -130,7 +130,7 @@ class ScatterUpdateOp : public OpKernel {
                     "indices has too many elements for ",
                     DataTypeString(DataTypeToEnum<Index>::v()), " indexing: ",
                     N_big, " > ", std::numeric_limits<Index>::max()));
-    const Index N = indices.NumElements();
+    const Index N = static_cast<Index>(indices.NumElements());
     OP_REQUIRES(
         c, params.dim_size(0) <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("params.shape[0] too large for ",
@@ -166,8 +166,9 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
                    typename TTypes<T>::Matrix params,
                    typename TTypes<T>::ConstMatrix updates,
                    typename TTypes<Index>::ConstFlat indices) {
-    const Index N = indices.size();
-    const Index limit = params.dimension(0);
+    // indices and params sizes were validated in DoCompute().
+    const Index N = static_cast<Index>(indices.size());
+    const Index limit = static_cast<Index>(params.dimension(0));
     for (Index i = 0; i < N; i++) {
       // Grab the index and check its validity.  An earlier version of the
       // code checked it and then grabbed it from memory a second time, which
@@ -216,8 +217,8 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_CPU);
 
 #define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ADD_SUB_GPU);
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ADD_SUB_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_UPDATE_GPU);
 
 #endif  // GOOGLE_CUDA
 
@@ -253,7 +254,7 @@ namespace functor {
   DECLARE_GPU_SPECS_INDEX(T, int32); \
   DECLARE_GPU_SPECS_INDEX(T, int64);
 
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
 
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_SPECS_INDEX

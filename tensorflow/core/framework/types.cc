@@ -206,7 +206,9 @@ DataTypeVector NumberTypes() {
 
 #elif defined(__ANDROID_TYPES_FULL__)
 
-DataTypeVector RealNumberTypes() { return {DT_FLOAT, DT_INT32, DT_INT64}; }
+DataTypeVector RealNumberTypes() {
+  return {DT_FLOAT, DT_INT32, DT_INT64, DT_HALF};
+}
 
 DataTypeVector NumberTypes() {
   return {DT_FLOAT,  DT_INT32,  DT_INT64, DT_QINT8,

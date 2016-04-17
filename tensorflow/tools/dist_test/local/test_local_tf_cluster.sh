@@ -20,15 +20,34 @@
 # This script assumes that a TensorFlow cluster is already running on the
 # local machine and can be controlled by the "kubectl" binary.
 #
-# Usage: test_local_tf_cluster.sh
+# Usage: test_local_tf_cluster.sh <NUM_WORKERS> <NUM_PARAMETER_SERVERS>
+#                                 [--sync-replicas]
 #
+# --sync-replicas
+#   Use the synchronized-replica mode. The parameter updates from the replicas
+#   (workers) will be aggregated before applied, which avoids stale parameter
+#   updates.
 
 export GCLOUD_BIN=/usr/local/bin/gcloud
 export TF_DIST_LOCAL_CLUSTER=1
 
-# TODO(cais): Do not hard-code the numbers of workers and ps
-NUM_WORKERS=2
-NUM_PARAMETER_SERVERS=2
+# Parse input arguments
+if [[ $# == 0 ]] || [[ $# == 1 ]]; then
+  echo "Usage: $0 <NUM_WORKERS> <NUM_PARAMETER_SERVERS>"
+  exit 1
+fi
+
+NUM_WORKERS=$1
+NUM_PARAMETER_SERVERS=$2
+
+SYNC_REPLICAS_FLAG=""
+if [[ $3 == "--sync-replicas" ]]; then
+  SYNC_REPLICAS_FLAG="--sync-replicas"
+fi
+
+echo "NUM_WORKERS: ${NUM_WORKERS}"
+echo "NUM_PARAMETER_SERVERS: ${NUM_PARAMETER_SERVERS}"
+echo "SYNC_REPLICAS_FLAG: ${SYNC_REPLICAS_FLAG}"
 
 # Get current script directory
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,13 +92,28 @@ if [[ -z "${DOCKER_CONTAINER_ID}" ]]; then
   die "FAILED to determine worker0 Docker container ID"
 fi
 
-export TF_DIST_GRPC_SERVER_URL="grpc://tf-worker0:2222"
-GRPC_ENV="TF_DIST_GRPC_SERVER_URL=${TF_DIST_GRPC_SERVER_URL}"
+WORKER_URLS=""
+IDX=0
+while true; do
+  WORKER_URLS="${WORKER_URLS},grpc://tf-worker${IDX}:2222"
 
-docker exec \
-    ${DOCKER_CONTAINER_ID} \
-    /bin/bash -c \
-    "${GRPC_ENV} /var/tf-k8s/scripts/dist_test.sh"
+  ((IDX++))
+  if [[ ${IDX} == ${NUM_WORKERS} ]]; then
+    break
+  fi
+done
+
+echo "Worker URLs: ${WORKER_URLS}"
+
+export TF_DIST_GRPC_SERVER_URLS="${WORKER_URLS}"
+GRPC_ENV="TF_DIST_GRPC_SERVER_URLS=${TF_DIST_GRPC_SERVER_URLS}"
+
+CMD="${GRPC_ENV} /var/tf-k8s/scripts/dist_test.sh "\
+"--num-workers ${NUM_WORKERS} "\
+"--num-parameter-servers ${NUM_PARAMETER_SERVERS} "\
+"${SYNC_REPLICAS_FLAG}"
+
+docker exec ${DOCKER_CONTAINER_ID} /bin/bash -c "${CMD}"
 
 if [[ $? != "0" ]]; then
   die "Test of local k8s TensorFlow cluster FAILED"

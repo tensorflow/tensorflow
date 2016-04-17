@@ -23,9 +23,7 @@ MAINTAINER Shanqing Cai <cais@google.com>
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y \
-        bc \
         curl \
-        dnsutils \
         python-numpy \
         python-pip \
         && \
@@ -36,24 +34,13 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     python get-pip.py && \
     rm get-pip.py
 
-# Install TensorFlow CPU version.
+# Install TensorFlow CPU version from nightly build
 RUN pip --no-cache-dir install \
-    http://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_CONTAINER_TYPE=CPU,TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-0.7.1-cp27-none-linux_x86_64.whl
+    http://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_CONTAINER_TYPE=CPU,TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
 
 # Copy files, including the GRPC server binary at
 # server/grpc_tensorflow_server.py
 ADD . /var/tf-k8s
-
-# Download MNIST data for tests
-RUN mkdir -p /tmp/mnist-data
-RUN curl -o /tmp/mnist-data/train-labels-idx1-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz
-RUN curl -o /tmp/mnist-data/train-images-idx3-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz
-RUN curl -o /tmp/mnist-data/t10k-labels-idx1-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz
-RUN curl -o /tmp/mnist-data/t10k-images-idx3-ubyte.gz \
-    http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz
 
 # Container entry point
 ENTRYPOINT ["/var/tf-k8s/server/grpc_tensorflow_server.py"]

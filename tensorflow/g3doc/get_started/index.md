@@ -37,7 +37,7 @@ sess = tf.Session()
 sess.run(init)
 
 # Fit the line.
-for step in xrange(201):
+for step in range(201):
     sess.run(train)
     if step % 20 == 0:
         print(step, sess.run(W), sess.run(b))
@@ -77,3 +77,4 @@ TensorFlow features.
 * [Download and Setup](../get_started/os_setup.md)
 * [Basic Usage](../get_started/basic_usage.md)
 * [TensorFlow Mechanics 101](../tutorials/mnist/tf/index.md)
+* [Tinker with a neural network in your browser](http://playground.tensorflow.org)

@@ -237,6 +237,14 @@ class VariableOpTest(tf.test.TestCase):
           result = tf.mul(var, var)
       self.assertAllClose([4.0], result.eval())
 
+  def testIsVariableInitialized(self):
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu):
+        v0 = state_ops.variable_op([1, 2], tf.float32)
+        self.assertEqual(False, tf.is_variable_initialized(v0).eval())
+        tf.assign(v0, [[2.0, 3.0]]).eval()
+        self.assertEqual(True, tf.is_variable_initialized(v0).eval())
+
 
 if __name__ == "__main__":
   tf.test.main()

@@ -23,8 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -54,6 +56,7 @@ REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
   REGISTER_KERNEL_BUILDER(                                            \
       Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
+REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
@@ -119,6 +122,7 @@ struct SetZeroFunctor<CPUDevice, T> {
 };
 
 #define DEFINE_SETZERO_CPU(T) template struct SetZeroFunctor<CPUDevice, T>
+DEFINE_SETZERO_CPU(Eigen::half);
 DEFINE_SETZERO_CPU(float);
 DEFINE_SETZERO_CPU(double);
 DEFINE_SETZERO_CPU(int32);
@@ -143,6 +147,10 @@ class FillOp : public OpKernel {
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         Tvalue.shape().DebugString()));
     auto dims = Tdims.flat<int32>();
+    OP_REQUIRES(context,
+                FastBoundsCheck(dims.size(), TensorShape::MaxDimensions()),
+                errors::InvalidArgument("dims must have size < ",
+                                        TensorShape::MaxDimensions()));
     for (int i = 0; i < dims.size(); i++) {
       OP_REQUIRES(context, dims(i) >= 0,
                   errors::InvalidArgument("dims[", i, "] = ", dims(i),
@@ -151,7 +159,7 @@ class FillOp : public OpKernel {
     TensorShape shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 reinterpret_cast<const int32*>(dims.data()),
-                                dims.size(), &shape));
+                                static_cast<int>(dims.size()), &shape));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     functor::FillFunctor<Device, T> functor;
@@ -172,6 +180,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
@@ -218,6 +227,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")

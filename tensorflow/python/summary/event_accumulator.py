@@ -18,17 +18,15 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import os.path
 import threading
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf.config_pb2 import RunMetadata
 from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
 from tensorflow.python.summary.impl import directory_watcher
-from tensorflow.python.summary.impl import event_file_loader
-from tensorflow.python.summary.impl import gcs
-from tensorflow.python.summary.impl import gcs_file_loader
+from tensorflow.python.summary.impl import io_wrapper
 from tensorflow.python.summary.impl import reservoir
 
 namedtuple = collections.namedtuple
@@ -86,7 +84,7 @@ STORE_EVERYTHING_SIZE_GUIDANCE = {
 
 def IsTensorFlowEventsFile(path):
   """Check the path name to see if it is probably a TF Events file."""
-  return 'tfevents' in path
+  return 'tfevents' in os.path.basename(path)
 
 
 class EventAccumulator(object):
@@ -521,11 +519,11 @@ class EventAccumulator(object):
 
     If by_tags is True, purge all events that occurred after the given
     event.step, but only for the tags that the event has. Non-sequential
-    event.steps suggest that a Tensorflow restart occured, and we discard
+    event.steps suggest that a Tensorflow restart occurred, and we discard
     the out-of-order events to display a consistent view in TensorBoard.
 
     Discarding by tags is the safer method, when we are unsure whether a restart
-    has occured, given that threading in supervisor can cause events of
+    has occurred, given that threading in supervisor can cause events of
     different tags to arrive with unsynchronized step values.
 
     If by_tags is False, then purge all events with event.step greater than the
@@ -581,20 +579,14 @@ def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
 
 def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
-  if gcs.IsGCSPath(path):
-    provider = directory_watcher.SequentialGCSProvider(
-        path,
-        path_filter=IsTensorFlowEventsFile)
-    return directory_watcher.DirectoryWatcher(provider,
-                                              gcs_file_loader.GCSFileLoader)
-  elif gfile.IsDirectory(path):
-    provider = directory_watcher.SequentialGFileProvider(
-        path,
-        path_filter=IsTensorFlowEventsFile)
-    return directory_watcher.DirectoryWatcher(provider,
-                                              event_file_loader.EventFileLoader)
+  if IsTensorFlowEventsFile(path):
+    return io_wrapper.CreateFileLoader(path)
   else:
-    return event_file_loader.EventFileLoader(path)
+    provider = directory_watcher.SequentialFileProvider(
+        path,
+        path_filter=IsTensorFlowEventsFile)
+    return directory_watcher.DirectoryWatcher(provider,
+                                              io_wrapper.CreateFileLoader)
 
 
 def _ParseFileVersion(file_version):

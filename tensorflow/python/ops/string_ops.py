@@ -13,20 +13,85 @@
 # limitations under the License.
 # ==============================================================================
 
-"""String Ops."""
+"""## Hashing
+
+String hashing ops take a string input tensor and map each element to an
+integer.
+
+@@string_to_hash_bucket
+
+## Joining
+
+String joining ops concatenate elements of input string tensors to produce a new
+string tensor.
+
+@@reduce_join
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import common_shapes
+# pylint: disable=unused-import
 from tensorflow.python.ops import gen_string_ops
+# pylint: enable=unused-import
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
 # pylint: enable=wildcard-import
 
 ops.NoGradient("StringToHashBucket")
+ops.NoGradient("ReduceJoin")
 
 ops.RegisterShape("StringToHashBucket")(common_shapes.unchanged_shape)
+
+
+@ops.RegisterShape("ReduceJoin")
+def _ReduceJoinShape(op):
+  """Shape function for the ReduceJoin op."""
+  input_shape = op.inputs[0].get_shape()
+  reduction_indices = np.ravel(tensor_util.constant_value(op.inputs[1]))
+  keep_dims = op.get_attr("keep_dims")
+
+  if input_shape.ndims is None:
+    return [tensor_shape.unknown_shape()]
+
+  if input_shape.ndims == 0:
+    raise ValueError("Input string tensor cannot be a scalar.")
+
+  true_indices = set()
+  for reduction_index in reduction_indices:
+    if reduction_index is None:
+      return [tensor_shape.unknown_shape()]
+
+    if (reduction_index < -input_shape.ndims or
+        reduction_index >= input_shape.ndims):
+      raise ValueError("Invalid reduction dimension %d for input with %d "
+                       "dimensions" % (reduction_index, input_shape.ndims))
+
+    true_index = reduction_index % input_shape.ndims
+    if true_index in true_indices:
+      raise ValueError("Duplicate reduction index %d." % reduction_index)
+
+    if input_shape.dims[true_index] == 0:
+      raise ValueError("Cannot reduce dimension %d with size 0." %
+                       reduction_index)
+
+    true_indices.add(true_index)
+
+  returned_dims = []
+  for i, dim in enumerate(input_shape.dims):
+    if i in true_indices:
+      if keep_dims:
+        returned_dims.append(1)
+    else:
+      returned_dims.append(dim)
+
+  return [tensor_shape.TensorShape(returned_dims)]
+

@@ -136,6 +136,27 @@ class ConcatOpTest(tf.test.TestCase):
     self._testRandom(tf.bfloat16)
     self._testRandom(tf.bfloat16, use_gpu=True)
 
+  def testInvalidConcatDimTypeAndShape(self):
+    a = tf.Variable(tf.constant(1.0, shape=[1]))
+    b = tf.Variable(tf.constant(2.0, shape=[1]))
+    with self.assertRaises(ValueError):
+      tf.concat(a, b)
+    with self.assertRaises(TypeError):
+      tf.concat(4.2, 1)
+    with self.assertRaises(ValueError):
+      tf.concat(a, 1)
+    with self.assertRaises(TypeError):
+      tf.concat(a, [a, b])
+    with self.assertRaises(ValueError):
+      tf.concat([3], [a, b])
+    with self.assertRaises(ValueError):
+      tf.concat(0, [])
+    # An integer tensor for shape dim should throw no error.
+    tf.concat(tf.constant(0, shape=[]), 1)
+    # A non-scalar tensor for shape should throw ValueError.
+    with self.assertRaises(ValueError):
+      tf.concat(tf.constant(0, shape=[1]), 1)
+
   def _testGradientsSimple(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       inp = []

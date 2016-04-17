@@ -125,6 +125,7 @@ void CostModel::Ensure(int id) {
     count_.resize(id + 1);
     time_.resize(id + 1);
     max_mem_usage_.resize(id + 1);
+    max_exec_time_.resize(id + 1);
     output_port_alias_.resize(id + 1);
   }
 }
@@ -245,6 +246,21 @@ Bytes CostModel::MaxSize(const Node* node, int slot) const {
     return Bytes(0);
   }
   return max_mem_usage_[id].output_port_mem[slot];
+}
+
+void CostModel::RecordMaxExecutionTime(const Node* node, Microseconds time) {
+  const int id = Id(node);
+  if (id < 0) return;
+  Ensure(id);
+  max_exec_time_[id] = std::max(max_exec_time_[id], time);
+}
+
+Microseconds CostModel::MaxExecutionTime(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0 || static_cast<size_t>(id) >= max_exec_time_.size()) {
+    return Microseconds(0);
+  }
+  return max_exec_time_[id];
 }
 
 void CostModel::RecordAliases(const Node* node, int output_slot,

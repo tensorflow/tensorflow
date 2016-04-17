@@ -19,7 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-DEFINE_BINARY6(greater_equal, float, double, int64, uint8, int8, int16);
+DEFINE_BINARY7(greater_equal, Eigen::half, float, double, int64, uint8, int8,
+               int16);
 }  // namespace functor
 }  // namespace tensorflow
 

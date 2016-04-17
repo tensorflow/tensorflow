@@ -103,6 +103,19 @@ class BenchmarkTest(tf.test.TestCase):
     self.assertTrue(_ran_somebenchmark_2[0])
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
+    _ran_somebenchmark_1[0] = False
+    _ran_somebenchmark_2[0] = False
+    _ran_somebenchmark_but_shouldnt[0] = False
+
+    # Test running a specific method of SomeRandomBenchmark
+    if benchmark.TEST_REPORTER_TEST_ENV in os.environ:
+      del os.environ[benchmark.TEST_REPORTER_TEST_ENV]
+    benchmark._run_benchmarks("SomeRandom.*1$")
+
+    self.assertTrue(_ran_somebenchmark_1[0])
+    self.assertFalse(_ran_somebenchmark_2[0])
+    self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
+
   def testReportingBenchmark(self):
     tempdir = tf.test.get_temp_dir()
     try:

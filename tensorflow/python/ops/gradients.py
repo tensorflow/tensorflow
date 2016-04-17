@@ -638,13 +638,13 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
                       "or all IndexedSlices")
     # Aggregate multiple gradients, and convert [] to None.
     if out_grad:
-      if all([isinstance(g, ops.Tensor) for g in out_grad if g is not None]):
+      if len(out_grad) < 2:
+        used = "nop"
+        out_grads[i] = out_grad[0]
+      elif all([isinstance(g, ops.Tensor) for g in out_grad if g is not None]):
         tensor_shape = _AccumulatorShape(out_grad)
-        if len(out_grad) < 2:
-          used = "nop"
-          out_grads[i] = out_grad[0]
-        elif (aggregation_method == AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
-              and len(out_grad) > 2 and tensor_shape.is_fully_defined()):
+        if (aggregation_method == AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
+            and len(out_grad) > 2 and tensor_shape.is_fully_defined()):
           # The benefit of using AccumulateN is that its inputs can be combined
           # in any order and this can allow the expression to be evaluated with
           # a smaller memory footprint.  When used with gpu_allocator_retry,

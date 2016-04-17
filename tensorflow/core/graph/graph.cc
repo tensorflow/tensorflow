@@ -95,6 +95,9 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
   SET_CLASS(NC_VARIABLE, ts, "Variable", "");
   SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
+  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandle", "");
+  SET_CLASS(NC_GET_SESSION_TENSOR, ts, "GetSessionTensor", "");
+  SET_CLASS(NC_DELETE_SESSION_TENSOR, ts, "DeleteSessionTensor", "");
   if (class_ == NC_UNINITIALIZED) {
     class_ = NC_OTHER;  // Catch all
   }
@@ -124,6 +127,17 @@ gtl::iterator_range<NeighborIter> Node::out_nodes() const {
 gtl::iterator_range<NeighborIter> Node::in_nodes() const {
   return gtl::make_range(NeighborIter(in_edges_.begin(), true),
                          NeighborIter(in_edges_.end(), true));
+}
+
+void Node::MaybeCopyOnWrite() {
+  // Properties may be shared between Nodes. Make a copy if so.
+  if (!props_->RefCountIsOne()) {
+    Properties* new_props =
+        new Properties(props_->op_def_, props_->node_def_, props_->input_types_,
+                       props_->output_types_);
+    props_->Unref();
+    props_ = new_props;
+  }
 }
 
 // Node::Properties

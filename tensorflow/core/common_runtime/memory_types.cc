@@ -82,4 +82,19 @@ Status ValidateMemoryTypes(DeviceType device_type, const Graph* g) {
   return Status::OK();
 }
 
+Status MemoryTypeForOutput(DeviceType device_type, const Graph* g,
+                           const Node* n, int index, MemoryType* memory_type) {
+  MemoryTypeVector inp_mvec;
+  MemoryTypeVector out_mvec;
+  TF_RETURN_IF_ERROR(MemoryTypesForNode(g->op_registry(), device_type, n->def(),
+                                        &inp_mvec, &out_mvec));
+  if (out_mvec.size() <= index) {
+    return errors::Internal("Trying to get the memory type for ", index,
+                            "'th output of node ", n->DebugString(),
+                            " that has only ", out_mvec.size(), " outputs");
+  }
+  *memory_type = out_mvec[index];
+  return Status::OK();
+}
+
 }  // end namespace tensorflow

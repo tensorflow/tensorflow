@@ -38,8 +38,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
-from tensorflow.python.util import compat
 from tensorflow.python.platform import logging
+from tensorflow.python.util import compat
 
 
 def _convert_stack(stack):
@@ -955,6 +955,32 @@ class SparseTensor(object):
     return "SparseTensor(indices=%s, values=%s, shape=%s)" % (
         self._indices, self._values, self._shape)
 
+  def eval(self, feed_dict=None, session=None):
+    """Evaluates this sparse tensor in a `Session`.
+
+    Calling this method will execute all preceding operations that
+    produce the inputs needed for the operation that produces this
+    tensor.
+
+    *N.B.* Before invoking `SparseTensor.eval()`, its graph must have been
+    launched in a session, and either a default session must be
+    available, or `session` must be specified explicitly.
+
+    Args:
+      feed_dict: A dictionary that maps `Tensor` objects to feed values.
+        See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
+        description of the valid feed values.
+      session: (Optional.) The `Session` to be used to evaluate this sparse
+        tensor. If none, the default session will be used.
+
+    Returns:
+      A `SparseTensorValue` object.
+
+    """
+    indices, values, shape = _eval_using_default_session(
+        [self.indices, self.values, self.shape], feed_dict, self.graph, session)
+    return SparseTensorValue(indices, values, shape)
+
 
 SparseTensorValue = collections.namedtuple("SparseTensorValue",
                                            ["indices", "values", "shape"])
@@ -1845,6 +1871,14 @@ class Graph(object):
     self._colocation_stack = []
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
+    # A map of tensor handle placeholder to tensor dtype.
+    self._handle_feeders = {}
+    # A map from tensor handle to its read op.
+    self._handle_readers = {}
+    # A map from tensor handle to its move op.
+    self._handle_movers = {}
+    # A map from tensor handle to its delete op.
+    self._handle_deleters = {}
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -2025,6 +2059,9 @@ class Graph(object):
       grad_function_name: If not None, this specifies the name of a function
                           that shall be used as the gradient function of
                           the function being added.
+
+    Raises:
+      ValueError: if another function is defined with the same name.
     """
     previous_def = self._functions.get(function_def.signature.name, None)
     if previous_def:
@@ -2140,7 +2177,7 @@ class Graph(object):
           else:
             ret._set_device(colocation_op.device)
 
-      all_colocation_groups = list(set(all_colocation_groups))
+      all_colocation_groups = sorted(set(all_colocation_groups))
       ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
 
@@ -2718,6 +2755,11 @@ class Graph(object):
       # on CPU 0.
     ```
 
+    **N.B.** The device scope may be overridden by op wrappers or
+    other library code. For example, a variable assignment op
+    `v.assign()` must be colocated with the `tf.Variable` `v`, and
+    incompatible device scopes will be ignored.
+
     Args:
       device_name_or_function: The device name or function to use in
         the context.
@@ -2725,6 +2767,7 @@ class Graph(object):
     Returns:
       A context manager that specifies the default device to use for newly
       created ops.
+
     """
     if (device_name_or_function is not None
         and not callable(device_name_or_function)):

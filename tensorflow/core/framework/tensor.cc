@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -269,6 +270,7 @@ template <>
 struct ProtoHelper<bfloat16> {
   typedef Helper<float>::RepeatedFieldType FieldType;
   static const bfloat16* Begin(const TensorProto& proto) {
+    // TODO: Isn't this wrong, given that int_val is 32 bits long?
     return reinterpret_cast<const bfloat16*>(proto.int_val().data());
   }
   static size_t NumElements(const TensorProto& proto) {
@@ -284,17 +286,10 @@ struct ProtoHelper<bfloat16> {
 
 template <>
 struct ProtoHelper<Eigen::half> {
-  typedef Helper<float>::RepeatedFieldType FieldType;
-  static const Eigen::half* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const Eigen::half*>(proto.int_val().data());
-  }
-  static size_t NumElements(const TensorProto& proto) {
-    return proto.int_val().size();
-  }
   static void Fill(const Eigen::half* data, size_t n, TensorProto* proto) {
-    proto->mutable_int_val()->Reserve(n);
+    proto->mutable_half_val()->Reserve(n);
     for (size_t i = 0; i < n; ++i) {
-      proto->mutable_int_val()->AddAlreadyReserved(data[i].x);
+      proto->mutable_half_val()->AddAlreadyReserved(data[i].x);
     }
   }
 };
@@ -341,6 +336,29 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
     std::fill_n(data + in_n, n - in_n, last);
   } else {
     std::fill_n(data, n, T());
+  }
+  return buf;
+}
+
+// fp16 is opaque to the protobuf, so we deserialize these identical to uint16
+// but with data stored in half_val instead of int_val (ie., we don't use
+// ProtoHelper<uint16>).
+template <>
+TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
+                                          int64 n) {
+  CHECK_GT(n, 0);
+  Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
+  uint16* data = buf->template base<uint16>();
+  const int64 in_n = in.half_val().size();
+  auto begin = in.half_val().begin();
+  if (n <= in_n) {
+    std::copy_n(begin, n, data);
+  } else if (in_n > 0) {
+    std::copy_n(begin, in_n, data);
+    const uint16 last = *(data + in_n - 1);
+    std::fill_n(data + in_n, n - in_n, last);
+  } else {
+    std::fill_n(data, n, 0);
   }
   return buf;
 }
@@ -694,6 +712,38 @@ void Tensor::FillDescription(TensorDescription* description) const {
     buf_->FillAllocationDescription(
         description->mutable_allocation_description());
   }
+}
+
+gtl::InlinedVector<int64, 5> Tensor::ComputeFlatInnerDims(
+    int64 num_out_dims) const {
+  gtl::InlinedVector<int64, 5> out_dims(num_out_dims, 0);
+  const int64 num_elements = NumElements();
+  if (num_elements != 0) {
+    int64 prod_out_dims = 1;
+    for (int64 out_dim = num_out_dims - 1; out_dim > 0; --out_dim) {
+      const int64 in_dim = out_dim + (dims() - num_out_dims);
+      out_dims[out_dim] =
+          (in_dim >= dims() || in_dim < 0) ? 1 : dim_size(in_dim);
+      prod_out_dims *= out_dims[out_dim];
+    }
+    out_dims[0] = num_elements / prod_out_dims;
+  }
+  return out_dims;
+}
+
+gtl::InlinedVector<int64, 5> Tensor::ComputeFlatOuterDims(
+    int64 num_out_dims) const {
+  gtl::InlinedVector<int64, 5> out_dims(num_out_dims, 0);
+  const int64 num_elements = NumElements();
+  if (num_elements != 0) {
+    int64 prod_out_dims = 1;
+    for (int64 out_dim = 0; out_dim < num_out_dims - 1; ++out_dim) {
+      out_dims[out_dim] = out_dim >= dims() ? 1 : dim_size(out_dim);
+      prod_out_dims *= out_dims[out_dim];
+    }
+    out_dims[num_out_dims - 1] = num_elements / prod_out_dims;
+  }
+  return out_dims;
 }
 
 }  // namespace tensorflow

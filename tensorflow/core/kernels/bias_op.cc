@@ -271,7 +271,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
       Name("BiasAddV1").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       BiasOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 template <typename T>
@@ -322,7 +322,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       Name("BiasAddGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       BiasGradOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA

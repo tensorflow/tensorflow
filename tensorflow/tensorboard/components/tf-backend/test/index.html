@@ -1,0 +1,41 @@
+<!-- Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+=============================================================================-->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
+  <script src="../../web-component-tester/browser.js"></script>
+  <link rel="import" href="../../polymer/polymer.html">
+</head>
+<body>
+  <test-fixture id="testElementFixture">
+    <template>
+      <test-element
+        id="test"
+      ></test-element>
+    </template>
+  </test-fixture>
+    <script src="../requestManager.js"></script>
+    <script src="../urlPathHelpers.js"></script>
+    <script src="../router.js"></script>
+    <script src="../backend.js"></script>
+    <script src="../behavior.js"></script>
+
+    <script src="requestManagerTest.js"></script>
+    <script src="backendTests.js"></script>
+    <script src="behaviorTests.js"></script>
+</body>
+</html>

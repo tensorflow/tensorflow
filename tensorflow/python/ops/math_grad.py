@@ -59,8 +59,16 @@ def _MinOrMaxGrad(op, grad):
   y = op.outputs[0]
   y = array_ops.reshape(y, new_output_shape)
   grad = array_ops.reshape(grad, new_output_shape)
+
+  # Compute the number of selected (maximum or minimum) elements in each
+  # reduction dimension. If there are multiple minimum or maximum elements
+  # then the gradient will be divided between them.
   indicators = math_ops.cast(math_ops.equal(y, inp), grad.dtype)
-  return [indicators * grad, None]
+  num_selected = array_ops.reshape(
+      math_ops.reduce_sum(indicators, op.inputs[1]),
+      new_output_shape)
+
+  return [math_ops.div(indicators, num_selected) * grad, None]
 
 
 @ops.RegisterGradient("Max")
@@ -146,28 +154,35 @@ def _SparseSegmentSqrtNGrad(op, grad):
           None, None)
 
 
+def _SegmentMinOrMaxGrad(op, grad):
+  """Gradient for SegmentMin and SegmentMax. Both share the same code."""
+  zeros = array_ops.zeros(array_ops.shape(op.inputs[0]),
+                          dtype=op.inputs[0].dtype)
+
+  # Get the number of selected (minimum or maximum) elements in each segment.
+  gathered_outputs = array_ops.gather(op.outputs[0], op.inputs[1])
+  is_selected = math_ops.equal(op.inputs[0], gathered_outputs)
+  num_selected = math_ops.segment_sum(math_ops.cast(is_selected, grad.dtype),
+                                      op.inputs[1])
+
+  # Compute the gradient for each segment. The gradient for the ith segment is
+  # divided evenly among the selected elements in that segment.
+  weighted_grads = math_ops.div(grad, num_selected)
+  gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
+
+  return math_ops.select(is_selected, gathered_grads, zeros), None
+
+
 @ops.RegisterGradient("SegmentMin")
 def _SegmentMinGrad(op, grad):
   """Gradient for SegmentMin."""
-  zeros = array_ops.zeros(array_ops.shape(op.inputs[0]),
-                          dtype=op.inputs[0].dtype)
-  gathered_grads = array_ops.gather(grad, op.inputs[1])
-  gathered_outputs = array_ops.gather(op.outputs[0], op.inputs[1])
-  return math_ops.select(math_ops.greater(op.inputs[0], gathered_outputs),
-                         zeros,
-                         gathered_grads), None
+  return _SegmentMinOrMaxGrad(op, grad)
 
 
 @ops.RegisterGradient("SegmentMax")
 def _SegmentMaxGrad(op, grad):
   """Gradient for SegmentMax."""
-  zeros = array_ops.zeros(array_ops.shape(op.inputs[0]),
-                          dtype=op.inputs[0].dtype)
-  gathered_grads = array_ops.gather(grad, op.inputs[1])
-  gathered_outputs = array_ops.gather(op.outputs[0], op.inputs[1])
-  return math_ops.select(math_ops.less(op.inputs[0], gathered_outputs),
-                         zeros,
-                         gathered_grads), None
+  return _SegmentMinOrMaxGrad(op, grad)
 
 
 @ops.RegisterGradient("UnsortedSegmentSum")
@@ -284,6 +299,29 @@ def _DigammaGrad(op, grad):  # pylint: disable=unused-argument
   raise NotImplementedError("grad(Digamma) == Polygamma(1) is not implemented")
 
 
+@ops.RegisterGradient("Igamma")
+def _IgammaGrad(op, grad):
+  """Returns gradient of igamma(a, x) with respect to a and x."""
+  # TODO(ebrevdo): Perhaps add the derivative w.r.t. a
+  a = op.inputs[0]
+  x = op.inputs[1]
+  sa = array_ops.shape(a)
+  sx = array_ops.shape(x)
+  unused_ra, rx = gen_array_ops._broadcast_gradient_args(sa, sx)
+
+  # Perform operations in log space before summing, because Gamma(a)
+  # and Gamma'(a) can grow large.
+  partial_x = math_ops.exp(-x + (a-1) * math_ops.log(x) - math_ops.lgamma(a))
+  return (None,
+          array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
+
+
+@ops.RegisterGradient("Igammac")
+def _IgammacGrad(op, grad):
+  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. a and x."""
+  return [-1 * g if g is not None else None for g in _IgammaGrad(op, grad)]
+
+
 @ops.RegisterGradient("Sigmoid")
 def _SigmoidGrad(op, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
@@ -372,7 +410,7 @@ def _DivGrad(op, grad):
   y = op.inputs[1]
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)  # pylint: disable=protected-access
   return (array_ops.reshape(math_ops.reduce_sum(grad / y, rx), sx),
           array_ops.reshape(math_ops.reduce_sum(grad *
                                          (-x / math_ops.square(y)), ry), sy))

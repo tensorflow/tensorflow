@@ -376,35 +376,40 @@ export function createMetanode(name: string, opt = {}): Metanode {
  * graph information.
  */
 export function joinStatsInfoWithGraph(graph: SlimGraph,
-    statsJson: TFStats): void {
-  _.each(statsJson.devStats, stats => {
-    _.each(stats.nodeStats, nodeStats => {
+    stats: StepStats): void {
+  _.each(stats.dev_stats, devStats => {
+    _.each(devStats.node_stats, nodeStats => {
       // Lookup the node in the graph by its original name, e.g. A. If not
       // found, lookup by the rewritten name A/(A) in case the name is both
       // a namespace and a node name.
-      let nodeName = nodeStats.nodeName in graph.nodes ?
-          nodeStats.nodeName :
-          nodeStats.nodeName + NAMESPACE_DELIM + "(" + nodeStats.nodeName + ")";
-      if (nodeName in graph.nodes) {
-        // Compute the total bytes used.
-        let totalBytes = 0;
-        if (nodeStats.memory) {
-          _.each(nodeStats.memory, alloc => {
-            if (alloc.totalBytes) {
-              totalBytes += Number(alloc.totalBytes);
-            }
-          });
-        }
-        let outputSize: number[][] = null;
-        if (nodeStats.output) {
-          outputSize = _.map(nodeStats.output, output => {
-            return _.map(output.tensorDescription.shape.dim,
-                dim => Number(dim.size));
-          });
-        }
-        graph.nodes[nodeName].stats = new NodeStats(totalBytes,
-            Number(nodeStats.allEndRelMicros), outputSize);
+      let nodeName = nodeStats.node_name in graph.nodes ?
+          nodeStats.node_name :
+          nodeStats.node_name + NAMESPACE_DELIM + "(" + nodeStats.node_name + ")";
+
+      // Couldn't find a matching node.
+      if (!(nodeName in graph.nodes)) {
+        return;
       }
+
+      // Compute the total bytes used.
+      let totalBytes = 0;
+      if (nodeStats.memory) {
+        _.each(nodeStats.memory, alloc => {
+          if (alloc.total_bytes) {
+            totalBytes += Number(alloc.total_bytes);
+          }
+        });
+      }
+      let outputSize: number[][] = null;
+      if (nodeStats.output) {
+        outputSize = _.map(nodeStats.output, output => {
+          return _.map(output.tensor_description.shape.dim,
+              dim => Number(dim.size));
+        });
+      }
+      graph.nodes[nodeName].device = devStats.device;
+      graph.nodes[nodeName].stats = new NodeStats(totalBytes,
+          Number(nodeStats.all_end_rel_micros), outputSize);
     });
   });
 }
@@ -492,7 +497,6 @@ class MetanodeImpl implements Metanode {
     this.templateId = null;
     /** Metanode which contains this node, if any */
     this.parentNode = null;
-    this.stats = new NodeStats(0, 0, null);
     this.hasNonControlEdges = false;
     this.include = InclusionType.UNSPECIFIED;
   }
@@ -622,6 +626,7 @@ class MetaedgeImpl implements Metaedge {
     // Compute the size of the tensor flowing through this
     // base edge.
     this.totalSize += MetaedgeImpl.computeSizeOfEdge(edge, h);
+    h.maxMetaEdgeSize = Math.max(h.maxMetaEdgeSize, this.totalSize);
   }
 
   private static computeSizeOfEdge(edge: BaseEdge, h: hierarchy.Hierarchy):
@@ -632,6 +637,7 @@ class MetaedgeImpl implements Metaedge {
       // a lower bound for the total size.
       return 1;
     }
+    h.hasShapeInfo = true;
     // Sum the sizes of all output tensors.
     return _(opNode.outputShapes).map(shape => {
       // If the shape is unknown, treat it as 1 when computing
@@ -705,7 +711,6 @@ class SeriesNodeImpl implements SeriesNode {
     this.parentNode = null;
     this.deviceHistogram = {};
     this.hasNonControlEdges = false;
-    this.stats = new NodeStats(0, 0, null);
     this.include = InclusionType.UNSPECIFIED;
   }
 }
@@ -750,7 +755,7 @@ function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
   }
   // We didn't find OUTPUT_SHAPES_KEY in attributes, so we don't know anything
   // about the output tensors.
-  return result;
+  return null;
 }
 
 /**

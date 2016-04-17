@@ -118,6 +118,24 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "cupti_headers",
+    hdrs = glob([
+        "**/*.h",
+    ]),
+    includes = [".", "extras/CUPTI/include/"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "cupti_dsos",
+    data = [
+        "extras/CUPTI/lib64/libcupti.so" + tf_get_cuda_version(),
+    ],
+    visibility = ["//visibility:public"],
+)
+
+
 # TODO(opensource): for now, we have to invoke the cuda_config.sh manually in the source tree.
 # This rule checks if Cuda libraries in the source tree has been properly configured.
 # The output list makes bazel runs this rule first if the Cuda files are missing.
@@ -133,28 +151,34 @@ genrule(
         "include/cuda.h",
         "include/cublas.h",
         "include/cudnn.h",
+        "extras/CUPTI/include/cupti.h",
         "lib64/libcudart_static.a",
         "lib64/libcublas.so" + tf_get_cuda_version(),
         "lib64/libcudnn.so" + tf_get_cudnn_version(),
         "lib64/libcudart.so" + tf_get_cuda_version(),
         "lib64/libcufft.so" + tf_get_cuda_version(),
+        "extras/CUPTI/lib64/libcupti.so" + tf_get_cuda_version(),
     ],
     cmd = if_cuda(
         # Under cuda config, create all the symbolic links to the actual cuda files
-        "OUTPUTDIR=`readlink -f $(@D)/../../..`; cd third_party/gpus/cuda; OUTPUTDIR=$$OUTPUTDIR ./cuda_config.sh --check;",
+        "OUTPUTDIR=`readlink -f $(@D)/../../..`; cd `dirname $(location :cuda_config.sh)`; OUTPUTDIR=$$OUTPUTDIR ./cuda_config.sh --check;",
 
         # Under non-cuda config, create all dummy files to make the build go through
         ";".join([
           "mkdir -p $(@D)/include",
           "mkdir -p $(@D)/lib64",
+          "mkdir -p $(@D)/extras/CUPTI/include",
+          "mkdir -p $(@D)/extras/CUPTI/lib64",
           "touch $(@D)/include/cuda.h",
           "touch $(@D)/include/cublas.h",
           "touch $(@D)/include/cudnn.h",
+          "touch $(@D)/extras/CUPTI/include/cupti.h",
           "touch $(@D)/lib64/libcudart_static.a",
           "touch $(@D)/lib64/libcublas.so" + tf_get_cuda_version(),
           "touch $(@D)/lib64/libcudnn.so" + tf_get_cudnn_version(),
           "touch $(@D)/lib64/libcudart.so" + tf_get_cuda_version(),
           "touch $(@D)/lib64/libcufft.so" + tf_get_cuda_version(),
+          "touch $(@D)/extras/CUPTI/lib64/libcupti.so" + tf_get_cuda_version(),
             ]),
     ),
     local = 1,
@@ -167,7 +191,7 @@ genrule(
     ],
     cmd = if_cuda(
         # Under cuda config, create the symbolic link to the actual cuda.config
-        "ln -sf `readlink -f third_party/gpus/cuda/cuda.config` $(@D)/;",
+        "configfile=$(location :cuda.config); ln -sf `readlink -f $${configfile#*/*/*/}` $(@D)/;",
 
         # Under non-cuda config, create the dummy file
         ";".join([

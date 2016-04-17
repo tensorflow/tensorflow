@@ -78,7 +78,7 @@ model).
 
 Word2vec is a particularly computationally-efficient predictive model for
 learning word embeddings from raw text. It comes in two flavors, the Continuous
-Bag-of-Words model (CBOW) and the Skip-Gram model. Algorithmically, these
+Bag-of-Words model (CBOW) and the Skip-Gram model (Chapter 3.1 and 3.2 in [Mikolov et al.](http://arxiv.org/pdf/1301.3781.pdf)). Algorithmically, these
 models are similar, except that CBOW predicts target words (e.g. 'mat') from
 source context words ('the cat sits on the'), while the skip-gram does the
 inverse and predicts source context-words from the target words. This inversion
@@ -108,7 +108,8 @@ $$
 
 where \\(\text{score}(w\_t, h)\\) computes the compatibility of word \\(w\_t\\)
 with the context \\(h\\) (a dot product is commonly used). We train this model
-by maximizing its log-likelihood on the training set, i.e. by maximizing
+by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function) 
+on the training set, i.e. by maximizing
 
 $$
 \begin{align}
@@ -129,8 +130,8 @@ context \\(h\\), *at every training step*.
 
 On the other hand, for feature learning in word2vec we do not need a full
 probabilistic model. The CBOW and skip-gram models are instead trained using a
-binary classification objective (logistic regression) to discriminate the real
-target words \\(w_t\\) from \\(k\\) imaginary (noise) words \\(\tilde w\\), in the
+binary classification objective ([logistic regression](https://en.wikipedia.org/wiki/Logistic_regression)) 
+to discriminate the real target words \\(w_t\\) from \\(k\\) imaginary (noise) words \\(\tilde w\\), in the
 same context. We illustrate this below for a CBOW model. For skip-gram the
 direction is simply inverted.
 
@@ -207,7 +208,7 @@ loss for this pair of observed and noisy examples, i.e. the objective at time
 step \\(t\\) becomes
 
 $$J^{(t)}_\text{NEG} = \log Q_\theta(D=1 | \text{the, quick}) +
-  \log(Q_\theta(D=0 | \text{sheep, quick}))$$.
+  \log(Q_\theta(D=0 | \text{sheep, quick}))$$
 
 The goal is to make an update to the embedding parameters \\(\theta\\) to improve
 (in this case, maximize) this objective function.  We do this by deriving the
