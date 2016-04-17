@@ -44,22 +44,23 @@ $ go build -o label_image tensorflow/examples/label_image_go/main.go
 That should build a binary executable that you can then run like this:
 
 ```bash
-$ ./label_image tensorflow/examples/label_image_go/data/ceres_paris.jpg
+$ ./label_image tensorflow/examples/label_image/data/grace_hopper.jpg
 ```
 
-This uses the example image on `tensorflow/examples/label_image_go/data/ceres_paris.jpg`,
+This uses the example image on `tensorflow/examples/label_image/data/grace_hopper.jpg`,
 and should output something similar to this:
 
 ```
-Labrador retriever : 0.9383322
-American Staffordshire terrier : 0.009385344
-Rhodesian ridgeback : 0.007571198
-Chesapeake Bay retriever : 0.0027833031
-golden retriever : 0.0026763931
+military uniform : 0.6472986
+suit : 0.04771947
+academic gown : 0.02324065
+bow tie : 0.015735544
+bolo tie : 0.01450234
 ```
-In this case, we're using the image of a Labrador dog, and you can
-see the network correctly spots that is a Labrador retriever, with a high
-score of 0.9.
+In this case, we're using the default image of [Admiral Grace
+Hopper](https://en.wikipedia.org/wiki/Grace_Hopper), and you can see the
+network correctly identifies she's wearing a military uniform, with a high
+score of 0.6.
 
 Next, try it out on your own images
 

@@ -447,7 +447,7 @@ unzip tensorflow/examples/label_image_go/data/inception_dec_2015.zip -d tensorfl
 Now we are ready to run the example code using the provided test image:
 
 ```bash
-go run tensorflow/examples/label_image_go/main.go tensorflow/examples/label_image_go/data/ceres_paris.jpg
+go run tensorflow/examples/label_image_go/main.go tensorflow/examples/label_image/data/grace_hopper.jpg
 ```
 
 You can also compile the code and run it:
@@ -455,16 +455,17 @@ You can also compile the code and run it:
 ```bash
 go build -o label_image tensorflow/examples/label_image_go/main.go
 
-./label_image tensorflow/examples/label_image_go/data/ceres_paris.jpg
+./label_image tensorflow/examples/label_image/data/grace_hopper.jpg
 ```
 
-In this case, we're using the image of a Labrador dog
-[Ceres in Paris](https://raw.githubusercontent.com/alonsovidales/tensorflow/go_bindings_tensors/tensorflow/examples/label_image_go/data/ceres_paris.jpg), and you can
-see the network correctly identifies that Ceres is a Labrador with a 0.9383322 score.
+In this case, we're using the default image of [Admiral Grace
+Hopper](https://en.wikipedia.org/wiki/Grace_Hopper), and you can see the
+network correctly identifies she's wearing a military uniform, with a high
+score of 0.6.
 
 
 <div style="width:45%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="https://raw.githubusercontent.com/alonsovidales/tensorflow/go_bindings_tensors/tensorflow/examples/label_image_go/data/ceres_paris.jpg">
+  <img style="width:100%" src="../../images/grace_hopper.jpg">
 </div>
 
 Next, try it out on your own images by supplying the as first parameter, e.g.

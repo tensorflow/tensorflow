@@ -26,10 +26,12 @@ limitations under the License.
 // on each step.
 //
 // To use it, run in a working directory with the
-// learning/brain/tutorials/label_image_go/data/ folder below it: go run
-// main.go <image_file>, you can use data/ceres_paris.jpg as image file which
-// contains the image of a Labrador and you should see the top five labels for
-// the example image output.
+// tensorflow/examples/label_image/ folder below it:
+//   go run tensorflow/examples/label_image_go/main.go <image_file>
+// you can use the image of "Admiral Grace Hopper"
+// tensorflow/examples/label_image/data/grace_hopper.jpg as image
+// file, and you can see the network correctly identifies she's wearing a
+// military uniform, with a high score of 0.6.
 //
 // The tensorflow_inception_graph.pb file included by default is created from
 // Inception.
