@@ -19,7 +19,7 @@ func TestNewSession(t *testing.T) {
 	}
 
 	if len(output) != len(outputs) {
-		t.Fatal("Expected outputs: 2, but got:", len(output))
+		t.Fatal("Expected outputs: 2, got:", len(output))
 	}
 }
 
@@ -31,12 +31,12 @@ func TestInputParams(t *testing.T) {
 
 	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
-		t.Fatal("Error creating a new tensor:", err)
+		t.Fatal("Error creating Tensor:", err)
 	}
 
 	t2, err := tf.NewTensorWithShape([][]int64{{3}}, inputSlice2)
 	if err != nil {
-		t.Fatal("Error creating a new tensor:", err)
+		t.Fatal("Error creating Tensor:", err)
 	}
 
 	input := map[string]*tf.Tensor{
@@ -45,20 +45,20 @@ func TestInputParams(t *testing.T) {
 	}
 	out, err := s.Run(input, []string{"output"}, nil)
 	if err != nil {
-		t.Fatal("Error running the saved graph:", err)
+		t.Fatal("Error running loaded Graph:", err)
 	}
 
 	if len(out) != 1 {
-		t.Fatal("Expected number of outputs is 1, but got:", len(out))
+		t.Fatal("Expected outputs: 1, got:", len(out))
 	}
 
 	for i := 0; i < len(inputSlice1); i++ {
 		val, err := out[0].GetVal(i)
 		if err != nil {
-			t.Fatal("Error reading the output tensor:", err)
+			t.Fatal("Error reading output Tensor:", err)
 		}
 		if val != inputSlice1[i]+inputSlice2[i] {
-			t.Errorf("The sum of the 2 elements: %d + %d doesn't match the returned value: %d", inputSlice1[i], inputSlice2[i], val)
+			t.Errorf("Expected result: %d + %d, got: %d", inputSlice1[i], inputSlice2[i], val)
 		}
 	}
 }
@@ -85,12 +85,12 @@ func TestInputMultDimParams(t *testing.T) {
 
 	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
-		t.Fatal("Error creating a new tensor:", err)
+		t.Fatal("Error creating Tensor:", err)
 	}
 
 	t2, err := tf.NewTensor(inputSlice2)
 	if err != nil {
-		t.Fatal("Error creating a new tensor:", err)
+		t.Fatal("Error creating Tensor:", err)
 	}
 
 	s := loadAndExtendGraphFromFile(t, "test_data/test_graph_multi_dim.pb")
@@ -101,11 +101,11 @@ func TestInputMultDimParams(t *testing.T) {
 	}
 	out, err := s.Run(input, []string{"output"}, nil)
 	if err != nil {
-		t.Fatal("Error running the saved graph:", err)
+		t.Fatal("Error running loaded Graph:", err)
 	}
 
 	if len(out) != 1 {
-		t.Fatal("Expected number of outputs is 1, but got:", len(out))
+		t.Fatal("Expected outputs: 1, got:", len(out))
 	}
 
 	lenDimX := len(inputSlice1)
@@ -117,10 +117,10 @@ func TestInputMultDimParams(t *testing.T) {
 			for z := 0; z < lenDimZ; z++ {
 				val, err := out[0].GetVal(x, y, z)
 				if err != nil {
-					t.Fatal("Error reading the output tensor:", err)
+					t.Fatal("Error reading output Tensor:", err)
 				}
 				if val != inputSlice1[x][y][z]+inputSlice2[x][y][z] {
-					t.Errorf("The sum of the 2 elements: %d + %d doesn't match the returned value: %d", inputSlice1[x][y][z], inputSlice2[x][y][z], val)
+					t.Errorf("Expected: %d + %d, got: %d", inputSlice1[x][y][z], inputSlice2[x][y][z], val)
 				}
 			}
 		}
@@ -130,19 +130,19 @@ func TestInputMultDimParams(t *testing.T) {
 func loadAndExtendGraphFromFile(t *testing.T, filePath string) (s *tf.Session) {
 	s, err := tf.NewSession()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("Error creating Session:", err)
 	}
 
 	reader, err := os.Open(filePath)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("Error reading Graph definition file:", err)
 	}
 	graph, err := tf.NewGraphFromReader(reader, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ExtendGraph(graph); err != nil {
-		t.Fatal(err)
+		t.Fatal("Error extending the Graph into the Session:", err)
 	}
 
 	return s

@@ -1,8 +1,8 @@
 # TensorFlow Go API
 
-TensorFlow. This package provides a high-level Go API for TensorFlow, this
-package provides the necessary tools to create and manipulate Tensors,
-Variables, Constants and also to build, load and run Graphs.
+This package provides a high-level Go API for TensorFlow, providing the
+necessary tools to create and manipulate Tensors, Variables, Constants and
+also to build, load and run Graphs.
 
 ## API documentation
 * [Session](g3doc/session.md): Encapsulates the environment in which Operation
@@ -16,9 +16,9 @@ Variables, Constants and also to build, load and run Graphs.
 
 ##### Python Graph generated and executed on Go
 
-This is just an example that shows how to interact with the provided API.
+This example shows how to interact with the provided API.
 
-In order to generate a valid Graph you can use the next Python code:
+In order to generate a valid Graph, you can use the next Python code:
 
 ```python
 import tensorflow as tf
@@ -73,44 +73,44 @@ func main() {
 	// also the tensor shape from the input slice
 	t1, err := tensorflow.NewTensor(inputSlice1)
 	if err != nil {
-		log.Fatal("Problem trying create a new tensor, Error:", err)
+		log.Fatal("Error creating a new Tensor:", err)
 	}
 
 	t2, err := tensorflow.NewTensor(inputSlice2)
 	if err != nil {
-		log.Fatal("Problem trying create a new tensor, Error:", err)
+		log.Fatal("Error creating new Tensor, Error:", err)
 	}
 
-	// Load the graph from the file that we generated from Python on the
-	// previous step
+	// Load the graph from the file that we had generated from Python on
+	// the previous step
 	reader, err := os.Open("/tmp/graph/test_graph.pb")
 	if err != nil {
 		t.Fatal(err)
 	}
 	graph, err := tensorflow.NewGraphFromReader(reader, true)
 	if err != nil {
-		log.Fatal("Problem reading the graph from the text file, Error:", err)
+		log.Fatal("Error reading Graph from the text file:", err)
 	}
 
 	// Create the session and extend the Graph
 	s, err := tensorflow.NewSession()
 	if err := s.ExtendGraph(graph); err != nil {
-		log.Fatal("Problem extending the Graph, Error:", err)
+		log.Fatal("Error extending Graph:", err)
 	}
 
 	input := map[string]*tensorflow.Tensor{
 		"input1": t1,
 		"input2": t2,
 	}
-	// Execute the graph with the two input tensors, and specify the names
-	// of the tensors to be returned, for this case just one
+	// Execute the graph using two input Tensors, and specifying the names
+	// of the Tensors to be returned, for this case, just one
 	out, err := s.Run(input, []string{"output"}, nil)
 	if err != nil {
-		log.Fatal("Problem trying to run the saved graph, Error:", err)
+		log.Fatal("Error running the loaded Graph:", err)
 	}
 
 	if len(out) != 1 {
-		log.Fatalf("The expected number of outputs is 1 but: %d returned", len(out))
+		log.Fatal("Expected number of outputs: 1, but got:", len(out))
 	}
 
 	outputTensor := out[0]
@@ -118,20 +118,20 @@ func main() {
 		for y := 0; y < outputTensor.Dim(1); y++ {
 			for z := 0; z < outputTensor.Dim(2); z++ {
 				// Using GetVal we can access to the corresponding positions of
-				// the tensor as if we had been accessing to the positions in a
-				// multidimensional array, for instance GetVal(1, 2, 3) is
-				// equivalent to array[1][2][3] on a three dimensional array
+				// the tensor as if we would be working with a multidimensional
+				// array, for instance, GetVal(1,2, 3) is equivalent to
+				// array[1][2][3] on a three dimensional array
 				val, err := out[0].GetVal(x, y, z)
 				if err != nil {
-					log.Fatal("Error trying to read the output tensor, Error:", err)
+					log.Fatal("Error reading the output Tensor:", err)
 				}
 				if val != inputSlice1[x][y][z]+inputSlice2[x][y][z] {
 					log.Printf(
-						"The sum of the two elements: %d + %d doesn't match with the returned value: %d",
+						"The value of: %d + %d is not: %d",
 						inputSlice1[x][y][z], inputSlice2[x][y][z], val)
 				}
 
-				log.Println("The value value on coordinates:", x, y, z, "is:", val)
+				log.Println("Value on coordinates:", x, y, z, "is:", val)
 			}
 		}
 	}
@@ -139,7 +139,8 @@ func main() {
 ```
 
 The previous code creates two Tensors to be processed by the previously
-generated Graph, after the execution returns the Tensor with the result.
+generated Graph, after the execution it returns a Tensor with the operation
+result.
 
 ### Image Recognition
 

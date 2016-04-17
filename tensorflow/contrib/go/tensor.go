@@ -154,7 +154,8 @@ func NewTensor(data interface{}) (tensor *Tensor, err error) {
 				strings[i] = v.Index(i).String()
 			}
 			buf := encodeStrings(strings)
-			return newTensor(DTString, TensorShape{{int64(len(strings))}}, unsafe.Pointer(&(buf[0])), int64(len(buf)))
+			return newTensor(DTString, TensorShape{{int64(len(strings))}},
+				unsafe.Pointer(&(buf[0])), int64(len(buf)))
 		}
 
 		dataSer, dims, dataType, dataSize, err = serialize(data, 0, [][]int64{})
@@ -264,7 +265,7 @@ func (t *Tensor) DataSize() int64 {
 	return TF_TensorByteSize(t.tensor)
 }
 
-// Data returns the data contained in a tensor as a slice of bytes.
+// Data returns the data contained in a tensor as bytes slice.
 func (t *Tensor) Data() []byte {
 	length := t.DataSize()
 	return (*[1 << 40]byte)(unsafe.Pointer(TF_TensorData(t.tensor)))[:length:length]
@@ -275,7 +276,7 @@ func (t *Tensor) String() string {
 	return fmt.Sprintf("%v: dims:%v size:%v", t.DataType(), t.NumDims(), t.DataSize())
 }
 
-// Str returns the content of the tensor as slice of strings if the tensor
+// Str returns the Tensor content as strings slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTString
@@ -317,7 +318,7 @@ func (t *Tensor) Str() (res [][]byte, err error) {
 	return res, nil
 }
 
-// Float32 returns the content of the tensor as a slice of float32 if the tensor
+// Float32 returns the Tensor content as float32 slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTFloat
@@ -345,7 +346,7 @@ func (t *Tensor) Float32() (res []float32, err error) {
 	return res, nil
 }
 
-// Float64 returns the content of the tensor as a slice of float64 if the tensor
+// Float64 returns the Tensor content as float64 slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTDouble
@@ -373,7 +374,7 @@ func (t *Tensor) Float64() (res []float64, err error) {
 	return res, nil
 }
 
-// Int32 returns the content of the tensor as a slice of int32 if the tensor
+// Int32 returns the Tensor content as int32 slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTUint8
@@ -417,7 +418,7 @@ func (t *Tensor) Int32() (res []int32, err error) {
 	return res, nil
 }
 
-// Int64 returns the content of the tensor as a slice of int64 if the tensor
+// Int64 returns the Tensor content as int64 slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTInt64
@@ -445,7 +446,7 @@ func (t *Tensor) Int64() (res []int64, err error) {
 	return res, nil
 }
 
-// Bool returns the content of the tensor as a slice of bool if the tensor
+// Bool returns the Tensor content as boolean slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTBool
@@ -602,7 +603,7 @@ type ErrDimsOutOfTensorRange struct {
 }
 
 func (e *ErrDimsOutOfTensorRange) Error() string {
-	return fmt.Sprintf("The specified number of dimensions (%d) doesn't match with the tensor dimensions (%d)", e.specDims, e.tensorDim)
+	return fmt.Sprintf("The specified number of dimensions '%d' doesn't match with the tensor dimensions '%d'", e.specDims, e.tensorDim)
 }
 
 // ErrIndexOutOfRange the specified index is out of one of the dimensions range.
@@ -613,7 +614,7 @@ type ErrIndexOutOfRange struct {
 }
 
 func (e *ErrIndexOutOfRange) Error() string {
-	return fmt.Sprintf("The specified index %d is out of the dimension %d range: %d", e.index, e.dim, e.dimsRange)
+	return fmt.Sprintf("The specified index '%d' is out of the dimension '%d' range: '%d'", e.index, e.dim, e.dimsRange)
 }
 
 // ErrSliceExpected the argument must be an Slice.

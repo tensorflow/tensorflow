@@ -39,8 +39,8 @@ func NewSession() (s *Session, err error) {
 }
 
 // Run runs the operations on the target nodes, or all the operations if not
-// targets are specified. the Parameter Input in a dictionary where the key is
-// the tensor name on the graph, and the value the Tensor. The parameter
+// targets are specified. the Parameter Input is a dictionary where the key is
+// the Tensor name on the Graph, and the value, the Tensor. The parameter
 // outputs is used to specify the tensors from the graph to be returned in the
 // same order as they occur on the slice.
 func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []string) ([]*Tensor, error) {
@@ -84,7 +84,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 	return result, s.statusToError(status)
 }
 
-// ExtendGraph loads the graph definition on the session.
+// ExtendGraph loads the Graph definition into the Session.
 func (s *Session) ExtendGraph(graph *Graph) (err error) {
 	status := TF_NewStatus()
 	defer TF_DeleteStatus(status)
@@ -99,12 +99,12 @@ func (s *Session) ExtendGraph(graph *Graph) (err error) {
 	return s.statusToError(status)
 }
 
-// ExtendAndInitializeAllVariables adds the "init" op to the graph in order to
-// initialize all the variables, loads the graph definition on the session
+// ExtendAndInitializeAllVariables adds the "init" op to the Graph in order to
+// initialize all the variables, loads the Graph definition on the session
 // and executes the "init" op.
 func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) (err error) {
-	// Extend the initialization graph, and execute the init op, this will
-	// initialize all the variables
+	// Extend the initialization Graph, and execute the init op, this will
+	// initialize all the Variables
 	graph.addInitializationGraphOp()
 	if err = s.ExtendGraph(graph); err != nil {
 		return err

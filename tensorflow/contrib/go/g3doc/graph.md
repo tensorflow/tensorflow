@@ -30,12 +30,12 @@ reader is provided in Text format.
 
 ```Go
 Example:
-	// Load the graph from from a file who contains a previously generated
-	// graph as text file.
+	// Load the Graph from from a file who contains a previously generated
+	// Graph as text.
 	reader, _ := os.Open("/tmp/graph/test_graph.pb")
 	graph, _ := tensorflow.NewGraphFromReader(reader, true)
 	
-	// Create the session and extend the Graph on it.
+	// Create the Session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()
 	s.ExtendGraph(graph)
 
@@ -56,10 +56,10 @@ specified name.
 ```Go
 Example:
 	graph := tensorflow.NewGraph()
-	// Adds a scalar string to the graph with named 'const1'.
+	// Add scalar string to the Graph named 'const1'.
 	graph.Constant("const1", "this is a test...")
 	
-	// Adds a bidimensional constant to the graph named 'const2'.
+	// Add bidimensional Constant to the Graph named 'const2'.
 	graph.Constant("const2", [][]int64{
 	    {1, 2},
 	    {3, 4},
@@ -102,7 +102,7 @@ Example:
 	
 	for i := 0; i < len(inputSlice1); i++ {
 	    val, _ := out[0].GetVal(i)
-	    fmt.Println("The result of the operation: %d + (%d*%d) is: %d", inputSlice1[i], inputSlice2[i], additions, val)
+	    fmt.Println("The result of: %d + (%d*%d) is: %d", inputSlice1[i], inputSlice2[i], additions, val)
 	}
 
 
@@ -120,7 +120,7 @@ must be fed with data on execution.
 ```Go
 Example:
 	graph := tensorflow.NewGraph()
-	// Adds a placeholder named "input1" that must allocate a three element
+	// Add Placeholder named "input1" that must allocate a three element
 	// DTInt32 tensor.
 	graph.Placeholder("input1", tensorflow.DTInt32, []int64{3})
 
@@ -159,22 +159,22 @@ Example:
 	var out []*tensorflow.Tensor
 	
 	graph := tensorflow.NewGraph()
-	// Create a Variable that will be used as input and also as storage of
-	// the result on every execution.
+	// Create Variable that will be used as input and also as storage of
+	// the result after every execution.
 	input1, _ := graph.Variable("input1", []int32{1, 2, 3, 4})
 	input2, _ := graph.Constant("input2", []int32{5, 6, 7, 8})
 	
 	// Add the two inputs.
 	add, _ := graph.Op("Add", "add_tensors", []*tensorflow.GraphNode{input1, input2}, "", map[string]interface{}{})
-	// Store the result on the input1 varable.
+	// Store the result on input1 Varable.
 	graph.Op("Assign", "assign_inp1", []*tensorflow.GraphNode{input1, add}, "", map[string]interface{}{})
 	
 	s, _ := tensorflow.NewSession()
-	// Initialize all the variables in memory, in this case only the
-	// 'input1' variable.
+	// Initialize all the Variables in memory, in this case only the
+	// 'input1' Variable.
 	s.ExtendAndInitializeAllVariables(graph)
 	
-	// Runs ten times the 'assign_inp1"' that will run also the 'Add'
+	// Run ten times the 'assign_inp1"' that will run also the 'Add'
 	// operation since it input depends on the result of the 'Add'
 	// operation.
 	// The variable 'input1' will be returned and printed on each

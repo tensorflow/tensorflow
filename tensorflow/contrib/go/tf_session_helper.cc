@@ -49,7 +49,7 @@ void TF_Run_wrapper(TF_Session* session,
   const TF_Buffer* run_options = TF_NewBuffer();
   TF_Buffer* run_outputs = TF_NewBuffer();
 
-  // TODO: Add run_options and run_outputs
+  // TODO: Add run_options
   TF_Run(session, run_options, cstring_input_tensor_names.data(), inputs.data(), input_tensor_names.size(),
          const_cast<const char**>(cstring_output_tensor_names.data()), outputs.data(),
          output_tensor_names.size(), cstring_target_node_names.data(),

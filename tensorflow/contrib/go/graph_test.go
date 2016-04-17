@@ -19,11 +19,11 @@ func TestGraphPlaceholder(t *testing.T) {
 		"T": tf.DTInt32,
 	})
 	if err == nil {
-		t.Error("An operation with 2 mandatory parameters was added after specifying just 1")
+		t.Error("An operation with 2 mandatory parameters was added after specifying only 1")
 	}
 	_, err = graph.Op("Aajajajajdd", "output", []*tf.GraphNode{input2}, "", map[string]interface{}{})
 	if err == nil {
-		t.Error("An undefined operation was added to the graph")
+		t.Error("An undefined operation was added to the Graph")
 	}
 
 	inputSlice1 := []int32{1, 2, 3}
@@ -31,12 +31,12 @@ func TestGraphPlaceholder(t *testing.T) {
 
 	t1, err := tf.NewTensor(inputSlice1)
 	if err != nil {
-		t.Fatal("Error creating a new tensor:", err)
+		t.Fatal("Error creating new Tensor:", err)
 	}
 
 	t2, err := tf.NewTensor(inputSlice2)
 	if err != nil {
-		t.Fatal("Error creating a new tensor:", err)
+		t.Fatal("Error creating new Tensor:", err)
 	}
 
 	s, err := tf.NewSession()
@@ -51,7 +51,7 @@ func TestGraphPlaceholder(t *testing.T) {
 
 	out, err := s.Run(input, []string{"output"}, nil)
 	if err != nil {
-		t.Fatal("Error running the graph:", err)
+		t.Fatal("Error running the Graph:", err)
 	}
 
 	if len(out) != 1 {
@@ -61,10 +61,10 @@ func TestGraphPlaceholder(t *testing.T) {
 	for i := 0; i < len(inputSlice1); i++ {
 		val, err := out[0].GetVal(i)
 		if err != nil {
-			t.Fatal("Error reading the output tensor:", err)
+			t.Fatal("Error reading the output Tensor:", err)
 		}
 		if val != inputSlice1[i]+inputSlice2[i] {
-			t.Errorf("The sum of the 2 elements: %d + %d doesn't match the returned value: %d", inputSlice1[i], inputSlice2[i], val)
+			t.Errorf("Expected result: %d + %d, but got: %d", inputSlice1[i], inputSlice2[i], val)
 		}
 	}
 }
@@ -76,12 +76,12 @@ func TestGraphScalarConstant(t *testing.T) {
 
 	_, err := graph.Constant("output1", testString)
 	if err != nil {
-		t.Fatal("Error adding a scalar constant to the graph:", err)
+		t.Fatal("Error adding scalar Constant to the Graph:", err)
 	}
 
 	_, err = graph.Constant("output2", testFloat)
 	if err != nil {
-		t.Fatal("Error adding a scalar constant to the graph:", err)
+		t.Fatal("Error adding scalar Constant to the Graph:", err)
 	}
 
 	s, err := tf.NewSession()
@@ -91,11 +91,11 @@ func TestGraphScalarConstant(t *testing.T) {
 
 	out, err := s.Run(nil, []string{"output1", "output2"}, nil)
 	if err != nil {
-		t.Fatal("Error running the graph:", err)
+		t.Fatal("Error running the Graph:", err)
 	}
 
 	if len(out) != 2 {
-		t.Fatal("Expected 2 output tensors, received:", len(out))
+		t.Fatal("Expected 2 output Tensors, got:", len(out))
 	}
 
 	outStr, err := out[0].Str()
@@ -103,7 +103,7 @@ func TestGraphScalarConstant(t *testing.T) {
 		t.Error("Error reading the output:", err)
 	} else {
 		if string(outStr[0]) != testString {
-			t.Error("The returned string: \"%s\" is not the input string: \"%s\"", testString, outStr[0])
+			t.Error("Expected: '%s', got: '%s'", outStr[0], testString)
 		}
 	}
 
@@ -112,7 +112,7 @@ func TestGraphScalarConstant(t *testing.T) {
 		t.Error("Error reading the output:", err)
 	} else {
 		if outFloat[0] != testFloat {
-			t.Error("The returned float: \"%f\" is not the input 1: \"%f\"", outFloat[0], testFloat)
+			t.Error("Expected input 1: '%f', got: '%f'", testFloat, outFloat[0])
 		}
 	}
 }
@@ -127,12 +127,12 @@ func TestGraphVariableConstant(t *testing.T) {
 	graph := tf.NewGraph()
 	input1, err := graph.Variable("input1", inputSlice1)
 	if err != nil {
-		t.Fatal("Error adding a variable to the graph:", err)
+		t.Fatal("Error adding Variable to the Graph:", err)
 	}
 
 	input2, err := graph.Constant("input2", inputSlice2)
 	if err != nil {
-		t.Fatal("Error adding a constant to the graph:", err)
+		t.Fatal("Error adding Constant to the Graph:", err)
 	}
 
 	add, err := graph.Op("Add", "add_tensors", []*tf.GraphNode{input1, input2}, "", map[string]interface{}{})
@@ -142,23 +142,23 @@ func TestGraphVariableConstant(t *testing.T) {
 
 	_, err = graph.Op("Assign", "assign_inp1", []*tf.GraphNode{input1, add}, "", map[string]interface{}{})
 	if err != nil {
-		t.Fatal("Error assigning the result of the sum to the tensor:", err)
+		t.Fatal("Error assigning result of the sum to the tensor:", err)
 	}
 
 	s, err := tf.NewSession()
 	s.ExtendAndInitializeAllVariables(graph)
 	if err != nil {
-		t.Fatal("Error initializing the variables in the graph:", err)
+		t.Fatal("Error initializing Graph variables:", err)
 	}
 
 	for i := 0; i < additions; i++ {
 		out, err = s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
 		if err != nil {
-			t.Fatal("Error running the graph:", err)
+			t.Fatal("Error running Graph:", err)
 		}
 	}
 	if err != nil {
-		t.Fatal("Error running the graph:", err)
+		t.Fatal("Error running Graph:", err)
 	}
 
 	if len(out) != 1 {
@@ -171,7 +171,7 @@ func TestGraphVariableConstant(t *testing.T) {
 			t.Fatal("Error reading the output tensor:", err)
 		}
 		if val != inputSlice1[i]+(inputSlice2[i]*int32(additions)) {
-			t.Errorf("The sum of the 2 elements: %d + (%d*%d) doesn't match the returned value: %d",
+			t.Errorf("Expected: %d + (%d*%d) , got: %d",
 				inputSlice1[i], inputSlice2[i], additions, val)
 		}
 	}

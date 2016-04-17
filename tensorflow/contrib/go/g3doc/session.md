@@ -26,18 +26,18 @@ NewSession initializes a new TensorFlow session.
 func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) (err error)
 ```
 
-ExtendAndInitializeAllVariables adds the "init" op to the graph in order to
-initialize all the variables, loads the graph definition on the session and
+ExtendAndInitializeAllVariables adds the "init" op to the Graph in order to
+initialize all the variables, loads the Graph definition on the session and
 executes the "init" op.
 
 ```Go
 Example:
 	graph := tensorflow.NewGraph()
-	// Create a Variable that will be initialized with the values []int32{1, 2, 3, 4} .
+	// Create Variable that will be initialized with the values []int32{1, 2, 3, 4} .
 	graph.Variable("input1", []int32{1, 2, 3, 4})
 	
 	s, _ := tensorflow.NewSession()
-	// Initialize all the variable in memory, on this case only the
+	// Initialize all the Variables in memory, on this case only the
 	// 'input1' variable.
 	s.ExtendAndInitializeAllVariables(graph)
 
@@ -50,16 +50,16 @@ Example:
 func (s *Session) ExtendGraph(graph *Graph) (err error)
 ```
 
-ExtendGraph loads the graph definition on the session.
+ExtendGraph loads the Graph definition into the Session.
 
 ```Go
 Example:
 	graph := tensorflow.NewGraph()
-	// Adds a placeholder named "input1" that must allocate a three element
+	// Add a Placeholder named "input1" that must allocate a three element
 	// DTInt32 tensor.
 	graph.Placeholder("placeholder", tensorflow.DTInt32, []int64{3})
 	
-	// Create the session and extend the Graph on it.
+	// Create the Session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()
 	s.ExtendGraph(graph)
 
@@ -82,8 +82,8 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 ```
 
 Run runs the operations on the target nodes, or all the operations if not
-targets are specified. the Parameter Input in a dictionary where the key is the
-tensor name on the graph, and the value the Tensor. The parameter outputs is
+targets are specified. the Parameter Input is a dictionary where the key is the
+Tensor name on the Graph, and the value, the Tensor. The parameter outputs is
 used to specify the tensors from the graph to be returned in the same order as
 they occur on the slice.
 

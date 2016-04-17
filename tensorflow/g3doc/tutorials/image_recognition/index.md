@@ -492,7 +492,7 @@ training. If you have a graph that you've trained yourself, you'll just need
 to adjust the values to match whatever you used during your training process.
 
 You can see how they're applied to an image in the [`readTensorFromImageFile()`]
-(https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/examples/label_image_go/main.go#L64)
+(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image_go/main.go#L64)
 function.
 
 ```Go
@@ -596,7 +596,7 @@ apply the same transformations before you feed images into the main graph.
 This is a simple example of creating a small TensorFlow graph dynamically in Go
 but for the pre-trained Inception model we want to load a much larger definition from
 a file. You can see how we do that in the 
-[`NewGraphFromReader()`](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/examples/label_image_go/main.go#L174)
+[`NewGraphFromReader()`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image_go/main.go#L174)
 function.
 
 On the lines below the `NewGraphFromReader` invocation are similar to the
@@ -667,7 +667,7 @@ out, _ := s.Run(input, []string{"normalized:0", "normalized:1"}, nil)
 return out[1], out[0]
 ```
 
-At the end, [`main()`](https://github.com/alonsovidales/tensorflow/blob/go_bindings_tensors/tensorflow/examples/label_image_go/main.go#L170)
+At the end, [`main()`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image_go/main.go#L170)
 ties together all of these calls.
 
 ```Go

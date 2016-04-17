@@ -58,7 +58,7 @@ The supported data types are:
 
 ```Go
 Example:
-	// Create a new tensor with a ingle dimension of 3.
+	// Create Tensor with a single dimension of 3.
 	t2, _ := tensorflow.NewTensorWithShape([][]int64{{3}}, []int64{3, 4, 5})
 	fmt.Println(t2.Int64())
 
@@ -73,8 +73,8 @@ Example:
 func (t *Tensor) Bool() (res []bool, err error)
 ```
 
-Bool returns the content of the tensor as a slice of bool if the tensor type
-matches, if not returns a ErrInvalidTensorType error. The datatypes are:
+Bool returns the Tensor content as boolean slice if the tensor type matches, if
+not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTBool
 
@@ -84,7 +84,7 @@ matches, if not returns a ErrInvalidTensorType error. The datatypes are:
 func (t *Tensor) Data() []byte
 ```
 
-Data returns the data contained in a tensor as a slice of bytes.
+Data returns the data contained in a tensor as bytes slice.
 
 #### DataSize
 
@@ -116,8 +116,8 @@ Dim returns the size of the specified dimension.
 func (t *Tensor) Float32() (res []float32, err error)
 ```
 
-Float32 returns the content of the tensor as a slice of float32 if the tensor
-type matches, if not returns a ErrInvalidTensorType error. The datatypes are:
+Float32 returns the Tensor content as float32 slice if the tensor type matches,
+if not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTFloat
 
@@ -127,8 +127,8 @@ type matches, if not returns a ErrInvalidTensorType error. The datatypes are:
 func (t *Tensor) Float64() (res []float64, err error)
 ```
 
-Float64 returns the content of the tensor as a slice of float64 if the tensor
-type matches, if not returns a ErrInvalidTensorType error. The datatypes are:
+Float64 returns the Tensor content as float64 slice if the tensor type matches,
+if not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTDouble
 
@@ -173,8 +173,8 @@ Example:
 func (t *Tensor) Int32() (res []int32, err error)
 ```
 
-Int32 returns the content of the tensor as a slice of int32 if the tensor type
-matches, if not returns a ErrInvalidTensorType error. The datatypes are:
+Int32 returns the Tensor content as int32 slice if the tensor type matches, if
+not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTUint8
   - DTInt8
@@ -187,8 +187,8 @@ matches, if not returns a ErrInvalidTensorType error. The datatypes are:
 func (t *Tensor) Int64() (res []int64, err error)
 ```
 
-Int64 returns the content of the tensor as a slice of int64 if the tensor type
-matches, if not returns a ErrInvalidTensorType error. The datatypes are:
+Int64 returns the Tensor content as int64 slice if the tensor type matches, if
+not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTInt64
 
@@ -214,8 +214,8 @@ Shape returns the shape of the tensor.
 func (t *Tensor) Str() (res [][]byte, err error)
 ```
 
-Str returns the content of the tensor as slice of strings if the tensor type
-matches, if not returns a ErrInvalidTensorType error. The datatypes are:
+Str returns the Tensor content as strings slice if the tensor type matches, if
+not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTString
 
