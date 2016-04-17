@@ -817,6 +817,7 @@ py_library(
         "ops/session_ops.py",
         "ops/sparse_grad.py",
         "ops/sparse_ops.py",
+        "ops/special_math_ops.py",
         "ops/standard_ops.py",
         "ops/state_grad.py",
         "ops/state_ops.py",

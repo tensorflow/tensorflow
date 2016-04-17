@@ -1256,37 +1256,6 @@ def tanh(x, name=None):
     return gen_math_ops._tanh(x, name=name)
 
 
-# TODO(b/27419586) Change docstring for required dtype of x once int allowed
-def lbeta(x, name="lbeta"):
-  """Computes `ln(|Beta(x)|)`, reducing along the last dimension.
-
-  Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
-
-  ```Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)```
-
-  , and for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
-  `lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)`.  In other words,
-  the last dimension is treated as the `z` vector.
-
-  Note that if `z = [u, v]`, then
-  `Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt`, which defines the traditional
-  bivariate beta function.
-
-  Args:
-    x: A rank `n + 1` `Tensor` with type `float`, or `double`.
-    name: A name for the operation (optional).
-
-  Returns:
-    The logarithm of `|Beta(x)|` reducing along the last dimension.
-  """
-  with ops.op_scope([x], name):
-    x = ops.convert_to_tensor(x, name="x")
-    ndims = array_ops.size(array_ops.shape(x))
-    return (reduce_sum(
-        gen_math_ops.lgamma(x), reduction_indices=ndims - 1)
-            - gen_math_ops.lgamma(reduce_sum(x, reduction_indices=ndims - 1)))
-
-
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
 ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
 ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
