@@ -54,16 +54,14 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
       *new_width = ceil(in_width / static_cast<float>(col_stride));
       // Calculate padding for top/bottom/left/right, spilling any excess
       // padding to bottom and right.
-      const int pad_needed_height =
-          (*new_height - 1) * row_stride + filter_height - in_height;
+      const int pad_needed_height = std::max(0,
+          (*new_height - 1) * row_stride + filter_height - in_height);
       *pad_top = pad_needed_height / 2;
-      CHECK_GE(pad_needed_height, 0);
       *pad_bottom = pad_needed_height - *pad_top;
 
-      const int pad_needed_width =
-          (*new_width - 1) * col_stride + filter_width - in_width;
+      const int pad_needed_width = std::max(0,
+          (*new_width - 1) * col_stride + filter_width - in_width);
       *pad_left = pad_needed_width / 2;
-      CHECK_GE(pad_needed_width, 0);
       *pad_right = pad_needed_width - *pad_left;
       break;
   }

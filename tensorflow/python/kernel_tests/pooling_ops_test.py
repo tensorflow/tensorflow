@@ -370,24 +370,12 @@ class PoolingTest(tf.test.TestCase):
                        expected=[3.0, 6.0, 9.0, 12.0, 15.0, 18.0, 21.0, 24.0],
                        use_gpu=False)
 
-  def testKernelSmallerThanStride(self):
+  def testKernelSmallerThanStrideValid(self):
     for use_gpu in [True, False]:
-        self._VerifyValues(tf.nn.max_pool, input_sizes=[1, 3, 3, 1],
-                           ksize=[1, 1, 1, 1], strides=[1, 2, 2, 1],
-                           padding="SAME",
-                           expected=[1, 3, 7, 9],
-                           use_gpu=use_gpu)
-
         self._VerifyValues(tf.nn.max_pool, input_sizes=[1, 7, 7, 1],
                            ksize=[1, 2, 2, 1], strides=[1, 3, 3, 1],
                            padding="VALID",
                            expected=[9, 12, 30, 33],
-                           use_gpu=use_gpu)
-
-        self._VerifyValues(tf.nn.avg_pool, input_sizes=[1, 3, 3, 1],
-                           ksize=[1, 1, 1, 1], strides=[1, 2, 2, 1],
-                           padding="SAME",
-                           expected=[1, 3, 7, 9],
                            use_gpu=use_gpu)
 
         self._VerifyValues(tf.nn.avg_pool, input_sizes=[1, 7, 7, 1],
@@ -395,6 +383,21 @@ class PoolingTest(tf.test.TestCase):
                            padding="VALID",
                            expected=[5, 8, 26, 29],
                            use_gpu=use_gpu)
+
+  def testKernelSmallerThanStrideSame(self):
+    for use_gpu in [True, False]:
+        for pool_func in [tf.nn.max_pool, tf.nn.avg_pool]:
+            self._VerifyValues(pool_func, input_sizes=[1, 3, 3, 1],
+                               ksize=[1, 1, 1, 1], strides=[1, 2, 2, 1],
+                               padding="SAME",
+                               expected=[1, 3, 7, 9],
+                               use_gpu=use_gpu)
+
+            self._VerifyValues(pool_func, input_sizes=[1, 4, 4, 1],
+                               ksize=[1, 1, 1, 1], strides=[1, 2, 2, 1],
+                               padding="SAME",
+                               expected=[1, 3, 9, 11],
+                               use_gpu=use_gpu)
 
 
   def _testDepthwiseMaxPoolInvalidConfig(self, in_size, ksize, strides,
