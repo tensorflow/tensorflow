@@ -564,7 +564,7 @@ Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
 
 ```Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)```
 
-, and for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
+And for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
 `lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)`.  In other words,
 the last dimension is treated as the `z` vector.
 
@@ -581,6 +581,11 @@ bivariate beta function.
 ##### Returns:
 
   The logarithm of `|Beta(x)|` reducing along the last dimension.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` is empty with rank one or less.
 
 
 - - -
