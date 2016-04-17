@@ -101,6 +101,21 @@ echo "g++ version:"
 "${GPP_BIN}" -v
 echo ""
 
+
+IS_MAC=0
+if [[ $(uname) == "Darwin" ]]; then
+  echo "Detected Mac OS X environment"
+  IS_MAC=1
+fi
+
+EXTRA_GPP_FLAGS=""
+if [[ ${IS_MAC} == "1" ]]; then
+  # Extra flags required on Mac OS X
+  EXTRA_GPP_FLAGS="${EXTRA_GPP_FLAGS} -undefined dynamic_lookup"
+fi
+
+echo "Extra GPP flag: ${EXTRA_GPP_FLAGS}"
+
 if [[ ${IS_GPU} == "0" ]]; then
   echo "Testing user ops in CPU environment"
 
@@ -121,9 +136,12 @@ if [[ ${IS_GPU} == "0" ]]; then
   echo "Compiling user op C++ source file ${SRC_FILE}"
 
   USER_OP_SO="zero_out.so"
-  "${GPP_BIN}" -std=c++11 -shared "${SRC_FILE}" -o "${USER_OP_SO}" \
+
+  "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
+    -shared "${SRC_FILE}" -o "${USER_OP_SO}" \
     -fPIC -I "${TF_INC}" || \
     die "g++ compilation of ${SRC_FILE} FAILED"
+
 else
   echo "Testing user ops in GPU environment"
 
@@ -155,13 +173,15 @@ else
   cp "${OP_KERNEL_CC}" ./
 
   OP_KERNEL_O=$(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.o/')
-  "${NVCC_BIN}" -std=c++11 -c -o "${OP_KERNEL_O}" "${OP_KERNEL_CC}" \
+  "${NVCC_BIN}" -std=c++11 \
+      -c -o "${OP_KERNEL_O}" "${OP_KERNEL_CC}" \
       -I "${TF_INC}" -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
       die "nvcc compilation of ${OP_KERNEL_CC} FAILED"
 
   # USER_OP_SO=$(basename $(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.so/'))
   USER_OP_SO="add_one.so"
-  "${GPP_BIN}" -std=c++11 -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
+  "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
+      -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
       "${OP_KERNEL_O}" -I "${TF_INC}" -L "/usr/local/cuda/lib64" \
       -fPIC -lcudart || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
@@ -177,7 +197,7 @@ ORIG_OUTPUT=$("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; print(tf.Session
 
 # Format OUTPUT for analysis
 OUTPUT=$(echo "${ORIG_OUTPUT}" | sed -e 's/\[//g' | sed -e 's/\]//g')
-if [[ $(echo "${OUTPUT}" | wc -w) != "3" ]]; then
+if [[ $(echo "${OUTPUT}" | wc -w | sed -e 's/^ *//') != "3" ]]; then
   die "ERROR: Unexpected number of elements in user op output: \""\
 "${ORIG_OUTPUT}\""
 fi
