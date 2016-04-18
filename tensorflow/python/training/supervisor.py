@@ -223,7 +223,7 @@ class Supervisor(object):
                global_step=USE_DEFAULT, save_summaries_secs=120,
                save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120,
                checkpoint_basename="model.ckpt", session_manager=None,
-               summary_writer=USE_DEFAULT):
+               summary_writer=USE_DEFAULT, init_fn=None):
     """Create a `Supervisor`.
 
     Args:
@@ -243,7 +243,7 @@ class Supervisor(object):
       init_op: `Operation`.  Used by chief supervisors to initialize the model
         when it can not be recovered.  Defaults to an `Operation` that
         initializes all variables.  If `None`, no initialization is done
-        automatically.
+        automatically unless you pass a value for `init_fn`, see below.
       init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
         This feed dictionary will be used when `init_op` is evaluated.
       local_init_op: `Operation`. Used by all supervisors to run initializations
@@ -283,6 +283,9 @@ class Supervisor(object):
         with the set of arguments passed in for backwards compatibility.
       summary_writer: `SummaryWriter` to use or `USE_DEFAULT`.  Can be `None`
         to indicate that no summaries should be written.
+      init_fn: Optional callable used to initialize the model. Called
+        after the optional `init_op` is called.  The callable must accept one
+        argument, the session being initialized.
 
     Returns:
       A `Supervisor`.
@@ -303,6 +306,7 @@ class Supervisor(object):
     self._started_threads = []
     self._recovery_wait_secs = recovery_wait_secs
     self._stop_grace_secs = stop_grace_secs
+    self._init_fn = init_fn
 
     # Set all attributes related to checkpointing and writing events to None.
     # Afterwards, set them appropriately for chief supervisors, as these are
@@ -659,9 +663,10 @@ class Supervisor(object):
     """
     if self._is_chief:
       sess = self._session_manager.prepare_session(
-          master, self.init_op, self.saver, self._logdir,
-          wait_for_checkpoint=wait_for_checkpoint, max_wait_secs=max_wait_secs,
-          config=config, init_feed_dict=self._init_feed_dict)
+          master, init_op=self.init_op, saver=self.saver,
+          checkpoint_dir=self._logdir, wait_for_checkpoint=wait_for_checkpoint,
+          max_wait_secs=max_wait_secs, config=config,
+          init_feed_dict=self._init_feed_dict, init_fn=self._init_fn)
       self._write_graph()
       # For users who recreate the session with
       # prepare_or_wait_for_session(), we need to clear the
