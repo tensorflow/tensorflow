@@ -12,16 +12,18 @@ data flow graphs.  Nodes in the graph represent mathematical operations, while
 the graph edges represent the multidimensional data arrays (tensors) that flow
 between them.  This flexible architecture lets you deploy computation to one
 or more CPUs or GPUs in a desktop, server, or mobile device without rewriting
-code.  TensorFlow was originally developed by researchers and engineers
+code.  TensorFlow also includes TensorBoard, a data visualization toolkit.
+
+TensorFlow was originally developed by researchers and engineers
 working on the Google Brain team within Google's Machine Intelligence research
 organization for the purposes of conducting machine learning and deep neural
 networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
-**If you'd like to contribute to tensorflow, be sure to review the [contribution
+**If you'd like to contribute to TensorFlow, be sure to review the [contribution
 guidelines](CONTRIBUTING.md).**
 
-**We use [github issues](https://github.com/tensorflow/tensorflow/issues) for
+**We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs, but please see
 [Community](tensorflow/g3doc/resources/index.md#community) for general questions
 and discussion.**
