@@ -586,7 +586,7 @@ node or nodes we want to get the output from as second parameter. The function
 Run will return the outputs as []\*tensorflow.Tensor in the same order
 specified on the second input paramater
 
-This gives us a slice of `\*tensorflow.Tensor`, which in this case we know will only be a
+This gives us a slice of `*tensorflow.Tensor`, which in this case we know will only be a
 single object long. You can think of the output tensor as a multi-dimensional
 array in this context, and it holds a 299 pixel high, 299 pixel width, 3
 channel image as float values. If you have your own image-processing framework
