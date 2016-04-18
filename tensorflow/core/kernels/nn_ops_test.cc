@@ -472,6 +472,10 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
   SetConstSizesOp("input_sizes",
                   std::vector<int32>({batch, rows, cols, in_depth}),
                   graph.add_node());
+  SetConstSizesOp("filter_sizes",
+                  std::vector<int32>(
+                      {filter_rows, filter_cols, in_depth, depth_multiplier}),
+                  graph.add_node());
 
   // Now add the convolution op
   NodeDef* conv = graph.add_node();
@@ -495,7 +499,14 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
                       .Finalize(conv));
       break;
     case DEPTHWISE_CONV_OP_BACKPROP_FILTER:
-      // TODO(andydavis,jmchen) Implement backprop filter.
+      TF_CHECK_OK(NodeDefBuilder("depthwise_conv2d_backprop_filter",
+                                 "DepthwiseConv2dNativeBackpropFilter")
+                      .Input("input", 0, DT_FLOAT)
+                      .Input("filter_sizes", 0, DT_INT32)
+                      .Input("output_backprop", 0, DT_FLOAT)
+                      .Attr("strides", {1, stride, stride, 1})
+                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
+                      .Finalize(conv));
       break;
   }
   Graph* g = new Graph(OpRegistry::Global());
@@ -579,9 +590,33 @@ BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 2, VALID, conv8);
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
                         KR, "_", KC, "_", STR, "_", PAD, "_gpu"));             \
   }                                                                            \
+  static void BM_ConvFloatDepthwiseBkFilterCPU1_##LABEL(int iters) {           \
+    BM_ConvFloatDepthwise(                                                     \
+        iters, BS, R, C, ID, DM, OD, KR, KC,                                   \
+        DEPTHWISE_CONV_OP_BACKPROP_FILTER, 1, STR, PAD, false,                 \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
+                        KR, "_", KC, "_", STR, "_", PAD, "_cpu1"));            \
+  }                                                                            \
+  static void BM_ConvFloatDepthwiseBkFilterCPU4_##LABEL(int iters) {           \
+    BM_ConvFloatDepthwise(                                                     \
+        iters, BS, R, C, ID, DM, OD, KR, KC,                                   \
+        DEPTHWISE_CONV_OP_BACKPROP_FILTER, 4, STR, PAD, false,                 \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
+                        KR, "_", KC, "_", STR, "_", PAD, "_cpu4"));            \
+  }                                                                            \
+  static void BM_ConvFloatDepthwiseBkFilterGPU_##LABEL(int iters) {            \
+    BM_ConvFloatDepthwise(                                                     \
+        iters, BS, R, C, ID, DM, OD, KR, KC,                                   \
+        DEPTHWISE_CONV_OP_BACKPROP_FILTER, 4, STR, PAD, true,                  \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
+                        KR, "_", KC, "_", STR, "_", PAD, "_gpu"));             \
+  }                                                                            \
   BENCHMARK(BM_ConvFloatDepthwiseBkInCPU1_##LABEL);                            \
   BENCHMARK(BM_ConvFloatDepthwiseBkInCPU4_##LABEL);                            \
-  BENCHMARK(BM_ConvFloatDepthwiseBkInGPU_##LABEL);
+  BENCHMARK(BM_ConvFloatDepthwiseBkInGPU_##LABEL);                             \
+  BENCHMARK(BM_ConvFloatDepthwiseBkFilterCPU1_##LABEL);                        \
+  BENCHMARK(BM_ConvFloatDepthwiseBkFilterCPU4_##LABEL);                        \
+  BENCHMARK(BM_ConvFloatDepthwiseBkFilterGPU_##LABEL)
 
 // The configurations below are mostly from mobilenet models.
 BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv0);
@@ -873,9 +908,12 @@ MaxPooling Op
 static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
                        int kernel_rows, int kernel_cols, int stride,
                        Padding padding, int num_threads, const string& label) {
+  testing::UseRealTime();  // TODO XXX
   tensorflow::testing::StopTiming();
+  SessionOptions options;
+  options.config.set_intra_op_parallelism_threads(num_threads);
   std::unique_ptr<Device> device(
-      DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
+      DeviceFactory::NewDevice("CPU", options, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
   EigenThreadPoolWrapper wrapper(&threadpool);
@@ -943,6 +981,7 @@ static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
       BM_MaxPool_##BS##_##IR##_##IC##_##ND##_##KR##_##KC##_##ST##_##PT##_##TH)
 
 // Labels are taken from the 2014-July-24 version of imagenet
+/* TODO XXX
 BM_MaxPoolFwdCPU(32, 112, 112, 64, 3, 3, 2, VALID, 1, "maxpool0_VALID");
 BM_MaxPoolFwdCPU(32, 56, 56, 192, 3, 3, 2, VALID, 1, "maxpool1_VALID");
 BM_MaxPoolFwdCPU(32, 28, 28, 352, 3, 3, 2, VALID, 1, "maxpool4_VALID");
@@ -951,6 +990,7 @@ BM_MaxPoolFwdCPU(32, 112, 112, 64, 3, 3, 2, SAME, 1, "maxpool0_SAME");
 BM_MaxPoolFwdCPU(32, 56, 56, 192, 3, 3, 2, SAME, 1, "maxpool1_SAME");
 BM_MaxPoolFwdCPU(32, 28, 28, 352, 3, 3, 2, SAME, 1, "maxpool4_SAME");
 BM_MaxPoolFwdCPU(32, 14, 14, 576, 3, 3, 2, SAME, 1, "maxpool10_SAME");
+*/
 BM_MaxPoolFwdCPU(32, 112, 112, 64, 3, 3, 2, VALID, 4, "maxpool0_VALID");
 BM_MaxPoolFwdCPU(32, 56, 56, 192, 3, 3, 2, VALID, 4, "maxpool1_VALID");
 BM_MaxPoolFwdCPU(32, 28, 28, 352, 3, 3, 2, VALID, 4, "maxpool4_VALID");
