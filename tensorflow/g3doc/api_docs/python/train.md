@@ -1762,22 +1762,6 @@ every 60 seconds, so we launch it with `sv.loop()`.
       sess.run(my_train_op)
   ```
 
-A common set of threads that must be started as the `QueueRunner` threads
-typically used for preprocessing inputs.  The supervisor provides a
-convenience method named `start_queue_runners()` to do that.
-
-  ```python
-  ...build the model with a QueueRunner to prefetch inputs...
-  qr = QueueRunner(input_queue, [enqueue_op])
-  ...
-  sv = Supervisor(logdir='/tmp/mydir')
-  with sv.managed_session(FLAGS.master) as sess:
-    # Start the queue runner threads.
-    sv.start_queue_runners(sess, [qr])
-    while not sv.should_stop():
-      sess.run(my_train_op)
-  ```
-
 ##### Launching fewer services
 
 `managed_session()` launches the "summary" and "checkpoint" threads which use
@@ -1815,7 +1799,7 @@ session and check if it could be initialized automatically.
 
 - - -
 
-#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None, summary_writer=0)` {#Supervisor.__init__}
+#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None, summary_writer=0, init_fn=None)` {#Supervisor.__init__}
 
 Create a `Supervisor`.
 
@@ -1838,7 +1822,7 @@ Create a `Supervisor`.
 *  <b>`init_op`</b>: `Operation`.  Used by chief supervisors to initialize the model
     when it can not be recovered.  Defaults to an `Operation` that
     initializes all variables.  If `None`, no initialization is done
-    automatically.
+    automatically unless you pass a value for `init_fn`, see below.
 *  <b>`init_feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
     This feed dictionary will be used when `init_op` is evaluated.
 *  <b>`local_init_op`</b>: `Operation`. Used by all supervisors to run initializations
@@ -1878,6 +1862,9 @@ Create a `Supervisor`.
     with the set of arguments passed in for backwards compatibility.
 *  <b>`summary_writer`</b>: `SummaryWriter` to use or `USE_DEFAULT`.  Can be `None`
     to indicate that no summaries should be written.
+*  <b>`init_fn`</b>: Optional callable used to initialize the model. Called
+    after the optional `init_op` is called.  The callable must accept one
+    argument, the session being initialized.
 
 ##### Returns:
 
@@ -1901,7 +1888,6 @@ The context manager is typically used as follows:
 def train():
   sv = tf.train.Supervisor(...)
   with sv.managed_session(<master>) as sess:
-    sv.start_queue_runners(sess)
     for step in xrange(..):
       if sv.should_stop():
         break
@@ -1970,8 +1956,8 @@ manager to start the standard services.
 *  <b>`wait_for_checkpoint`</b>: Whether we should wait for the availability of a
     checkpoint before creating Session. Defaults to False.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for the session to become available.
-*  <b>`start_standard_services`</b>: Whether to start the standard services,
-    such as checkpoint, summary and step counter.
+*  <b>`start_standard_services`</b>: Whether to start the standard services and the
+    queue runners.
 
 ##### Returns:
 
@@ -2015,6 +2001,11 @@ on the parameters to the constructor and may include:
 #### `tf.train.Supervisor.start_queue_runners(sess, queue_runners=None)` {#Supervisor.start_queue_runners}
 
 Start threads for `QueueRunners`.
+
+Note that the queue runners collected in the graph key `QUEUE_RUNNERS`
+are already started automatically when you create a session with the
+supervisor, so unless you have non-collected queue runners to start
+you do not need to call this explicitely.
 
 ##### Args:
 
@@ -2063,11 +2054,10 @@ This does not close the session.
 
 
 *  <b>`threads`</b>: Optional list of threads to join with the coordinator.  If
-    `None`, defaults to the threads running the standard services plus the
-    threads started for `QueueRunners` if `start_queue_runners()` was
-    called.  To wait on an additional set of threads, pass the list in this
-    parameter and they will be merged with the internal list of running
-    services.
+    `None`, defaults to the threads running the standard services, the
+    threads started for `QueueRunners`, and the threads started by the
+    `loop()` method.  To wait on additional threads, pass the
+    list in this parameter.
 *  <b>`close_summary_writer`</b>: Whether to close the `summary_writer`.  Defaults to
     `True` if the summary writer was created by the supervisor, `False`
     otherwise.
@@ -2170,8 +2160,8 @@ manager to start the standard services.
 *  <b>`wait_for_checkpoint`</b>: Whether we should wait for the availability of a
     checkpoint before creating Session. Defaults to False.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for the session to become available.
-*  <b>`start_standard_services`</b>: Whether to start the standard services,
-    such as checkpoint, summary and step counter.
+*  <b>`start_standard_services`</b>: Whether to start the standard services and the
+    queue runners.
 
 ##### Returns:
 
@@ -2212,6 +2202,11 @@ See `Coordinator.should_stop()`.
 #### `tf.train.Supervisor.StartQueueRunners(sess, queue_runners=None)` {#Supervisor.StartQueueRunners}
 
 Start threads for `QueueRunners`.
+
+Note that the queue runners collected in the graph key `QUEUE_RUNNERS`
+are already started automatically when you create a session with the
+supervisor, so unless you have non-collected queue runners to start
+you do not need to call this explicitely.
 
 ##### Args:
 
@@ -2270,11 +2265,10 @@ This does not close the session.
 
 
 *  <b>`threads`</b>: Optional list of threads to join with the coordinator.  If
-    `None`, defaults to the threads running the standard services plus the
-    threads started for `QueueRunners` if `start_queue_runners()` was
-    called.  To wait on an additional set of threads, pass the list in this
-    parameter and they will be merged with the internal list of running
-    services.
+    `None`, defaults to the threads running the standard services, the
+    threads started for `QueueRunners`, and the threads started by the
+    `loop()` method.  To wait on additional threads, pass the
+    list in this parameter.
 *  <b>`close_summary_writer`</b>: Whether to close the `summary_writer`.  Defaults to
     `True` if the summary writer was created by the supervisor, `False`
     otherwise.
@@ -2555,7 +2549,7 @@ be initialized or restored.  Defaults to 30 seconds.
 
 - - -
 
-#### `tf.train.SessionManager.prepare_session(master, init_op, saver=None, checkpoint_dir=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None, init_feed_dict=None)` {#SessionManager.prepare_session}
+#### `tf.train.SessionManager.prepare_session(master, init_op=None, saver=None, checkpoint_dir=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None, init_feed_dict=None, init_fn=None)` {#SessionManager.prepare_session}
 
 Creates a `Session`. Makes sure the model is ready to be used.
 
@@ -2566,8 +2560,10 @@ no checkpoint files are available, and `wait_for_checkpoint` is
 `True`, then the process would check every `recovery_wait_secs`,
 up to `max_wait_secs`, for recovery to succeed.
 
-If the model cannot be recovered successfully, and an `init_op`
-is not `None`, the `init_op` is run to initialize the model.
+If the model cannot be recovered successfully then it is initialized by
+either running the provided `init_op`, or calling the provided `init_fn`.
+It is an error if the model cannot be recovered and neither an `init_op`
+or an `init_fn` are passed.
 
 This is a convenient function for the following, with a few error checks
 added:
@@ -2575,7 +2571,10 @@ added:
 ```python
 sess, initialized = self.recover_session(master)
 if not initialized:
-  sess.run(self.init_op)
+  if init_op:
+    sess.run(init_op, feed_dict=init_feed_dict)
+  if init_fn;
+    init_fn(sess)
 return sess
 ```
 
@@ -2583,14 +2582,18 @@ return sess
 
 
 *  <b>`master`</b>: `String` representation of the TensorFlow master to use.
-*  <b>`init_op`</b>: `Operation` used to to initialize the model.
+*  <b>`init_op`</b>: Optional `Operation` used to to initialize the model.
 *  <b>`saver`</b>: A `Saver` object used to restore a model.
 *  <b>`checkpoint_dir`</b>: Path to the checkpoint files.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for checkpoints to become available.
 *  <b>`config`</b>: Optional `ConfigProto` proto used to configure the session.
-*  <b>`init_feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
-    This feed dictionary will be used when `init_op` is evaluated.
+*  <b>`init_feed_dict`</b>: Optional dictionary that maps `Tensor` objects to feed
+    values.  This feed dictionary is passed to the session `run()` call when
+    running the init op.
+*  <b>`init_fn`</b>: Optional callable used to initialize the model. Called after the
+    optional `init_op` is called.  The callable must accept one argument,
+    the session being initialized.
 
 ##### Returns:
 

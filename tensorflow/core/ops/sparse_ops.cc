@@ -390,4 +390,23 @@ output_indices: 2-D.  `N x R` matrix with the same indices as input_indices, but
 output_values: 1-D.  `N` non-empty values corresponding to `output_indices`.
 )doc");
 
+REGISTER_OP("SparseTensorDenseAdd")
+    .Input("a_indices: Tindices")
+    .Input("a_values: T")
+    .Input("a_shape: Tindices")
+    .Input("b: T")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Doc(R"doc(
+Adds up a `SparseTensor` and a dense `Tensor`, producing a dense `Tensor`.
+
+This Op does not require `a_indices` be sorted in standard lexicographic order.
+
+a_indices: 2-D.  The `indices` of the `SparseTensor`, with shape `[nnz, ndims]`.
+a_values: 1-D.  The `values` of the `SparseTensor`, with shape `[nnz]`.
+a_shape: 1-D.  The `shape` of the `SparseTensor`, with shape `[ndims]`.
+b: `ndims`-D Tensor.  With shape `a_shape`.
+)doc");
+
 }  // namespace tensorflow

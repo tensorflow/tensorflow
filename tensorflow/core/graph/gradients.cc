@@ -156,9 +156,8 @@ class SymbolicGradientBuilder {
   // add dy as an input of the gradient function.
   std::deque<Node*> ready_;
 
-  // The set of nodes at which to stop backprop.
-  // Maps from node.id -> index of 'x_node_outputs_'
-  std::unordered_map<int, int> stop_nodes_;
+  // The set of node ids at which to stop backprop.
+  std::unordered_set<int> stop_nodes_;
 
   // Initialize pending_ and ready_.
   void InitBackprop();
@@ -190,7 +189,7 @@ SymbolicGradientBuilder::SymbolicGradientBuilder(
   x_grad_node_outputs_->resize(x_node_outputs_.size());
   stop_nodes_.reserve(x_node_outputs_.size());
   for (int i = 0; i < x_node_outputs_.size(); ++i) {
-    stop_nodes_.insert(std::make_pair(x_node_outputs_[i].node->id(), i));
+    stop_nodes_.insert(x_node_outputs_[i].node->id());
   }
 }
 
@@ -319,11 +318,9 @@ Status SymbolicGradientBuilder::Compute() {
 
     auto iter = stop_nodes_.find(n->id());
     if (iter != stop_nodes_.end()) {
-      // Stop backprop and add gradient sum to 'x_grad_node_outputs_'.
+      // Stop backprop.
       // TODO(andydavis) Support stop nodes with more than one output.
       CHECK_EQ(1, num_y);
-      const int index = iter->second;
-      (*x_grad_node_outputs_)[index] = SumGradients(x_node_outputs_[index]);
       continue;
     }
 
@@ -360,6 +357,10 @@ Status SymbolicGradientBuilder::Compute() {
       if (e->IsControlEdge()) continue;
       BackpropAlongEdge({grad, e->dst_input()}, {e->src(), e->src_output()});
     }
+  }
+
+  for (int i = 0; i < x_node_outputs_.size(); ++i) {
+    (*x_grad_node_outputs_)[i] = SumGradients(x_node_outputs_[i]);
   }
 
   return Status::OK();

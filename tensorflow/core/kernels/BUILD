@@ -1264,6 +1264,7 @@ tf_kernel_libraries(
         "sparse_concat_op",
         "sparse_reorder_op",
         "sparse_split_op",
+        "sparse_tensor_dense_add_op",
         "sparse_tensor_dense_matmul_op",
         "sparse_to_dense_op",
         "sparse_xent_op",
@@ -1272,6 +1273,7 @@ tf_kernel_libraries(
     deps = [
         ":bounds_check",
         ":fill_functor",
+        ":scatter_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:sparse_ops_op_lib",
