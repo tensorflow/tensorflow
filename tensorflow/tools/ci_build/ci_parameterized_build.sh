@@ -38,6 +38,12 @@
 #   TF_BUILD_APPEND_ARGUMENTS:
 #                      Additional command line arguments for the bazel,
 #                      pip.sh or android.sh command
+#   TF_BUILD_MAVX:
+#                      (unset | MAVX | MAVX2)
+#                      If set to MAVX or MAVX2, will cause bazel to use the
+#                      additional flag --copt=-mavx or --copt=-mavx2, to
+#                      perform AVX or AVX2 builds, respectively. This requires
+#                      AVX- or AVX2-compatible CPUs.
 #   TF_BUILD_BAZEL_TARGET:
 #                      Used to override the default bazel build target:
 #                      //tensorflow/...
@@ -124,6 +130,10 @@ TF_BUILD_PYTHON_VERSION=$(to_lower ${TF_BUILD_PYTHON_VERSION})
 TF_BUILD_IS_OPT=$(to_lower ${TF_BUILD_IS_OPT})
 TF_BUILD_IS_PIP=$(to_lower ${TF_BUILD_IS_PIP})
 
+if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
+  TF_BUILD_MAVX=$(to_lower ${TF_BUILD_MAVX})
+fi
+
 # Print parameter values
 echo "Required build parameters:"
 echo "  TF_BUILD_CONTAINER_TYPE=${TF_BUILD_CONTAINER_TYPE}"
@@ -132,6 +142,7 @@ echo "  TF_BUILD_IS_OPT=${TF_BUILD_IS_OPT}"
 echo "  TF_BUILD_IS_PIP=${TF_BUILD_IS_PIP}"
 echo "Optional build parameters:"
 echo "  TF_BUILD_DRY_RUN=${TF_BUILD_DRY_RUN}"
+echo "  TF_BUILD_MAVX=${TF_BUILD_MAVX}"
 echo "  TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
 "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}"
 echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
@@ -139,6 +150,7 @@ echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
 echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
 echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
+echo "  TF_BUILD_INTEGRATION_TESTS=${TF_BUILD_INTEGRATION_TESTS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
 
 # Function that tries to determine CUDA capability, if deviceQuery binary
@@ -215,6 +227,17 @@ else
   die "Unrecognized value in TF_BUILD_IS_OPT: \"${TF_BUILD_IS_OPT}\""
 fi
 
+# Process MAVX option
+if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
+  if [[ "${TF_BUILD_MAVX}" == "mavx" ]]; then
+    OPT_FLAG="${OPT_FLAG} --copt=-mavx"
+  elif [[ "${TF_BUILD_MAVX}" == "mavx2" ]]; then
+    OPT_FLAG="${OPT_FLAG} --copt=-mavx2"
+  else
+    die "Unsupported value in TF_BUILD_MAVX: ${TF_BUILD_MAVX}"
+  fi
+fi
+
 # Strip whitespaces from OPT_FLAG
 OPT_FLAG=$(str_strip "${OPT_FLAG}")
 
@@ -283,6 +306,12 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
 
   PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_AGRS}"
 
+  # Add flag for mavx/mavx2
+  if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
+    PIP_MAIN_CMD="${PIP_MAIN_CMD} --${TF_BUILD_MAVX}"
+  fi
+
+  # Add flag for integration tests
   if [[ ! -z "${TF_BUILD_INTEGRATION_TESTS}" ]] &&
      [[ "${TF_BUILD_INTEGRATION_TESTS}" != "0" ]]; then
     PIP_MAIN_CMD="${PIP_MAIN_CMD} ${PIP_INTEGRATION_TESTS_FLAG}"

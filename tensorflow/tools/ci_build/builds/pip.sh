@@ -19,7 +19,8 @@
 # The PIP installation is done using the --user flag.
 #
 # Usage:
-#   pip.sh CONTAINER_TYPE [--test_tutorials] [--integration_tests]
+#   pip.sh CONTAINER_TYPE [--mavx] [--mavx2]
+#                         [--test_tutorials] [--integration_tests]
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
@@ -38,6 +39,9 @@
 #
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
+#
+# Use --mavx or --mavx2 to let bazel use --copt=-mavx or --copt=-mavx2 options
+# while building the pip package, respectively.
 #
 # If the --test_tutorials flag is set, it will cause the script to run the
 # tutorial tests (see test_tutorials.sh) after the PIP
@@ -72,25 +76,37 @@ if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] && \
 fi
 
 DO_TEST_TUTORIALS=0
-for ARG in $@; do
-  if [[ "${ARG}" == "--test_tutorials" ]]; then
+DO_INTEGRATION_TESTS=0
+MAVX_FLAG=""
+while true; do
+  if [[ "${1}" == "--test_tutorials" ]]; then
     DO_TEST_TUTORIALS=1
+  elif [[ "${1}" == "--integration_tests" ]]; then
+    DO_INTEGRATION_TESTS=1
+  elif [[ "${1}" == "--mavx" ]]; then
+    MAVX_FLAG="--copt=-mavx"
+  elif [[ "${1}" == "--mavx2" ]]; then
+    MAVX_FLAG="--copt=-mavx2"
+  fi
+ 
+  shift
+  if [[ -z "${1}" ]]; then
+    break
   fi
 done
 
-DO_INTEGRATION_TESTS=0
-for ARG in $@; do
-  if [[ "${ARG}" == "--integration_tests" ]]; then
-    DO_INTEGRATION_TESTS=1
-  fi
-done
+if [[ ! -z "${MAVX_FLAG}" ]]; then
+  echo "Using MAVX flag: ${MAVX_FLAG}"
+fi
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
 if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
-  bazel build -c opt ${PIP_BUILD_TARGET} || die "Build failed."
+  bazel build -c opt ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+      die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
-  bazel build -c opt --config=cuda ${PIP_BUILD_TARGET} || die "Build failed."
+  bazel build -c opt --config=cuda ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+      die "Build failed."
   GPU_FLAG="--gpu"
 else
   die "Unrecognized container type: \"${CONTAINER_TYPE}\""
