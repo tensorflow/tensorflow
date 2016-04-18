@@ -908,10 +908,10 @@ MaxPooling Op
 static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
                        int kernel_rows, int kernel_cols, int stride,
                        Padding padding, int num_threads, const string& label) {
-  testing::UseRealTime();  // TODO XXX
   tensorflow::testing::StopTiming();
   SessionOptions options;
   options.config.set_intra_op_parallelism_threads(num_threads);
+
   std::unique_ptr<Device> device(
       DeviceFactory::NewDevice("CPU", options, "/job:a/replica:0/task:0"));
 
