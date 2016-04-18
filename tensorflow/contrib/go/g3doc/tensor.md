@@ -14,7 +14,7 @@ A Tensor holds a multi-dimensional array of elements of a single data type.
 ### NewTensor
 
 ```go
-func NewTensor(data interface{}) (tensor *Tensor, err error)
+func NewTensor(data interface{}) (*Tensor, error)
 ```
 
 NewTensor creates a new Tensor that contains the specified data. The data type
@@ -70,7 +70,7 @@ Example:
 #### Bool
 
 ```go
-func (t *Tensor) Bool() (res []bool, err error)
+func (t *Tensor) Bool() ([]bool, error)
 ```
 
 Bool returns the Tensor content as boolean slice if the tensor type matches, if
@@ -113,7 +113,7 @@ Dim returns the size of the specified dimension.
 #### Float32
 
 ```go
-func (t *Tensor) Float32() (res []float32, err error)
+func (t *Tensor) Float32() ([]float32, error)
 ```
 
 Float32 returns the Tensor content as float32 slice if the tensor type matches,
@@ -124,7 +124,7 @@ if not returns a ErrInvalidTensorType error. The datatypes are:
 #### Float64
 
 ```go
-func (t *Tensor) Float64() (res []float64, err error)
+func (t *Tensor) Float64() ([]float64, error)
 ```
 
 Float64 returns the Tensor content as float64 slice if the tensor type matches,
@@ -170,7 +170,7 @@ Example:
 #### Int32
 
 ```go
-func (t *Tensor) Int32() (res []int32, err error)
+func (t *Tensor) Int32() ([]int32, error)
 ```
 
 Int32 returns the Tensor content as int32 slice if the tensor type matches, if
@@ -184,7 +184,7 @@ not returns a ErrInvalidTensorType error. The datatypes are:
 #### Int64
 
 ```go
-func (t *Tensor) Int64() (res []int64, err error)
+func (t *Tensor) Int64() ([]int64, error)
 ```
 
 Int64 returns the Tensor content as int64 slice if the tensor type matches, if
@@ -203,7 +203,7 @@ NumDims returns the number of dimensions in tensor t.
 #### Shape
 
 ```go
-func (t *Tensor) Shape() (shape TensorShape)
+func (t *Tensor) Shape() TensorShape
 ```
 
 Shape returns the shape of the tensor.
@@ -211,7 +211,7 @@ Shape returns the shape of the tensor.
 #### Str
 
 ```go
-func (t *Tensor) Str() (res [][]byte, err error)
+func (t *Tensor) Str() ([][]byte, error)
 ```
 
 Str returns the Tensor content as strings slice if the tensor type matches, if

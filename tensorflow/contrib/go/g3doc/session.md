@@ -13,7 +13,7 @@ A Session instance lets a caller drive a TensorFlow graph computation.
 ### NewSession
 
 ```go
-func NewSession() (s *Session, err error)
+func NewSession() (*Session, error)
 ```
 
 NewSession initializes a new TensorFlow session.
@@ -23,7 +23,7 @@ NewSession initializes a new TensorFlow session.
 #### ExtendAndInitializeAllVariables
 
 ```go
-func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) (err error)
+func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) error
 ```
 
 ExtendAndInitializeAllVariables adds the "init" op to the Graph in order to
@@ -47,7 +47,7 @@ Example:
 #### ExtendGraph
 
 ```go
-func (s *Session) ExtendGraph(graph *Graph) (err error)
+func (s *Session) ExtendGraph(graph *Graph) error
 ```
 
 ExtendGraph loads the Graph definition into the Session.

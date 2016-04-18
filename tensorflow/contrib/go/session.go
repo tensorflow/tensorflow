@@ -16,10 +16,10 @@ type Session struct {
 }
 
 // NewSession initializes a new TensorFlow session.
-func NewSession() (s *Session, err error) {
+func NewSession() (*Session, error) {
 	status := TF_NewStatus()
 	ops := TF_NewSessionOptions()
-	s = &Session{
+	s := &Session{
 		ops:    ops,
 		status: status,
 		session: TF_NewSession(
@@ -28,7 +28,7 @@ func NewSession() (s *Session, err error) {
 		),
 	}
 
-	if err = s.statusToError(status); err != nil {
+	if err := s.statusToError(status); err != nil {
 		return nil, err
 	}
 
@@ -85,7 +85,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 }
 
 // ExtendGraph loads the Graph definition into the Session.
-func (s *Session) ExtendGraph(graph *Graph) (err error) {
+func (s *Session) ExtendGraph(graph *Graph) error {
 	status := TF_NewStatus()
 	defer TF_DeleteStatus(status)
 	buf, err := proto.Marshal(graph.def)
@@ -102,16 +102,16 @@ func (s *Session) ExtendGraph(graph *Graph) (err error) {
 // ExtendAndInitializeAllVariables adds the "init" op to the Graph in order to
 // initialize all the variables, loads the Graph definition on the session
 // and executes the "init" op.
-func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) (err error) {
+func (s *Session) ExtendAndInitializeAllVariables(graph *Graph) error {
 	// Extend the initialization Graph, and execute the init op, this will
 	// initialize all the Variables
 	graph.addInitializationGraphOp()
-	if err = s.ExtendGraph(graph); err != nil {
+	if err := s.ExtendGraph(graph); err != nil {
 		return err
 	}
-	_, err = s.Run(nil, nil, []string{"init"})
+	_, err := s.Run(nil, nil, []string{"init"})
 
-	return nil
+	return err
 }
 
 // FreeAllocMem method defined to be invoked by the Go garbage collector before

@@ -46,13 +46,13 @@ func NewGraph() *Graph {
 // NewGraphFromReader reads from reader until an error or EOF and loads the
 // content into a new graph. Use the asText parameter to specify if the graph
 // from the reader is provided in Text format.
-func NewGraphFromReader(reader io.Reader, asText bool) (gr *Graph, err error) {
+func NewGraphFromReader(reader io.Reader, asText bool) (*Graph, error) {
 	graphStr, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
 
-	gr = NewGraph()
+	gr := NewGraph()
 	if asText {
 		err = proto.UnmarshalText(string(graphStr), gr.def)
 	} else {
@@ -65,8 +65,8 @@ func NewGraphFromReader(reader io.Reader, asText bool) (gr *Graph, err error) {
 // Op adds a new Node to the Graph with the specified operation, this function
 // could return an error if any of the mandatory attributes is not be present
 // or the value is not the expected for this attribute.
-func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
-	if err = gr.loadAvailableOps(); err != nil {
+func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (*GraphNode, error) {
+	if err := gr.loadAvailableOps(); err != nil {
 		return nil, err
 	}
 
@@ -98,7 +98,7 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 			inputs[i] = inNode.def.Name
 		}
 	}
-	node = &GraphNode{
+	node := &GraphNode{
 		def: &pb.NodeDef{
 			Name:   name,
 			Op:     opName,
@@ -146,7 +146,7 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 // Variable creates a variable operation and adds it to the graph. A variable
 // is a type of tensor that holds state in the form of a tensor that persists
 // across steps.
-func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, err error) {
+func (gr *Graph) Variable(name string, initialData interface{}) (*GraphNode, error) {
 	var dims [][]int64
 
 	ts, err := NewTensor(initialData)
@@ -198,7 +198,10 @@ func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, 
 		return nil, err
 	}
 
-	op, err = gr.Op("Identity", name+"/read", []*GraphNode{variable}, "", nil)
+	op, err := gr.Op("Identity", name+"/read", []*GraphNode{variable}, "", nil)
+	if err != nil {
+		return nil, err
+	}
 
 	op.ref = variable.def
 
@@ -230,8 +233,8 @@ func (gr *Graph) addInitializationGraphOp() {
 
 // Placeholder adds a placeholder to the Graph, a placeholder is an
 // operation that must be fed with data on execution.
-func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64) (op *GraphNode) {
-	op = &GraphNode{
+func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64) *GraphNode {
+	op := &GraphNode{
 		outDataTypes: map[string]DataType{
 			name: dataType,
 		},
@@ -346,7 +349,7 @@ func (e *ErrInputOutputDataTypeMismatch) Error() string {
 // castAttrValue returns an pb.AttrValue that contains the corresponding
 // pb.AttrValue_* according to the type specified. Returns nil if the data type
 // of the provided value can't be allocated on the AttrValue type.
-func (gr *Graph) castAttrValue(attrType string, v interface{}) (attrVal *pb.AttrValue) {
+func (gr *Graph) castAttrValue(attrType string, v interface{}) *pb.AttrValue {
 	switch attrType {
 	case "type":
 		if dt, ok := v.(DataType); ok {
@@ -449,7 +452,7 @@ func (gr *Graph) castAttrValue(attrType string, v interface{}) (attrVal *pb.Attr
 
 // Constant creates a tensor that is added as a constant to the Graph with the
 // specified name.
-func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error) {
+func (gr *Graph) Constant(name string, data interface{}) (*GraphNode, error) {
 	ts, err := NewTensor(data)
 	if err != nil {
 		return nil, err
@@ -467,7 +470,7 @@ func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err err
 // parameters. This method can return an error if the matching is not possible,
 // for instance if two input paramters must have the same data type but one is
 // int and the other float.
-func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *pb.OpDef) (err error) {
+func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *pb.OpDef) error {
 	// On this part the data type tags are associated with the data type
 	// input data types
 	for i, arg := range op.InputArg {
@@ -535,14 +538,13 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 // loadAvailableOps loads all the available operation definitions from a
 // constant stored in: proto/tf_ops_def.go that contains a string with all the
 // operation definitions.
-func (gr *Graph) loadAvailableOps() (err error) {
+func (gr *Graph) loadAvailableOps() error {
 	if len(gr.availableOps) != 0 {
 		return nil
 	}
 
 	ops := new(pb.OpList)
-	err = proto.UnmarshalText(string(pb.COpsDef), ops)
-	if err != nil {
+	if err := proto.UnmarshalText(string(pb.COpsDef), ops); err != nil {
 		return err
 	}
 	for _, op := range ops.Op {

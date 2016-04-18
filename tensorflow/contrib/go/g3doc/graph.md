@@ -21,7 +21,7 @@ NewGraph returns an initialized instance of the Graph struct.
 ### NewGraphFromReader
 
 ```go
-func NewGraphFromReader(reader io.Reader, asText bool) (gr *Graph, err error)
+func NewGraphFromReader(reader io.Reader, asText bool) (*Graph, error)
 ```
 
 NewGraphFromReader reads from reader until an error or EOF and loads the content
@@ -47,7 +47,7 @@ Example:
 #### Constant
 
 ```go
-func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error)
+func (gr *Graph) Constant(name string, data interface{}) (*GraphNode, error)
 ```
 
 Constant creates a tensor that is added as a constant to the Graph with the
@@ -71,7 +71,7 @@ Example:
 #### Op
 
 ```go
-func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error)
+func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (*GraphNode, error)
 ```
 
 Op adds a new Node to the Graph with the specified operation, this function
@@ -111,7 +111,7 @@ Example:
 #### Placeholder
 
 ```go
-func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64) (op *GraphNode)
+func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64) *GraphNode
 ```
 
 Placeholder adds a placeholder to the Graph, a placeholder is an operation that
@@ -147,7 +147,7 @@ proposals.
 #### Variable
 
 ```go
-func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, err error)
+func (gr *Graph) Variable(name string, initialData interface{}) (*GraphNode, error)
 ```
 
 Variable creates a variable operation and adds it to the graph. A variable is a
