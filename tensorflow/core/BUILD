@@ -261,6 +261,8 @@ tf_cuda_library(
         "util/device_name_utils.h",
         "util/events_writer.h",
         "util/guarded_philox_random.h",
+        "util/memmapped_file_system.h",
+        "util/memmapped_file_system_writer.h",
         "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
