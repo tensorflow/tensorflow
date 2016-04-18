@@ -42,7 +42,11 @@ def default_monitor(verbose=1):
 
 
 class BaseMonitor(object):
-    """Base class for all learning monitors. Stores and reports training loss throughout learning
+    """Base class for all learning monitors. Stores and reports training loss throughout learning.
+
+    Note: Users can create a subclass of BaseMonitor to override the default methods such as
+    custom early stopping callback, before and after update callbacks, etc to help monitoring
+    training process.
 
     Parameters:
         print_steps: Number of steps in between printing cost.
@@ -66,18 +70,26 @@ class BaseMonitor(object):
         self.verbose = verbose
         self.epoch = None
 
+    def before_update_callback(self):
+        """Callback before update is called for each step"""
+        pass
+    def after_update_callback(self):
+        """Callback after update is called for each step"""
+        pass
+
     def update(self, global_step, step_number, training_loss,
                sess, feed_params_fn, loss_expression_tensor):
         """Adds training_loss to monitor. Triggers printed output if appropriate
 
-            global_step:
-            step_number: current step in training
-            training_loss: float value of training loss
-            sess: session for computation (used to calculate validation loss)
-            feed_params_fn: function generating dict with information like epoch. Sometimes None.
-            loss_expression_tensor: Tensor applied to validation data to calculate val loss
+            global_step: Tensor, global step of the model.
+            step_number: Current step in training.
+            training_loss: Float value of training loss.
+            sess: Session for computation (used to calculate validation loss).
+            feed_params_fn: Function generating dict with information like epoch. Sometimes None.
+            loss_expression_tensor: Tensor applied to validation data to calculate val loss.
 
         """
+        self.before_update_callback()
         self.steps = step_number
         self.global_step = global_step
         self.print_train_loss_buffer.append(training_loss)
@@ -90,6 +102,7 @@ class BaseMonitor(object):
             self.min_loss_i = self.steps
         self._set_epoch(feed_params_fn)
         self.report()
+        self.after_update_callback()
 
     def _set_last_loss_seen(self):
         """Sets last_loss_seen attribute to most recent training error"""
