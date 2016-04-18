@@ -547,13 +547,11 @@ func (t *Tensor) getValOnPos(pos int) (val interface{}, err error) {
 	case DTString:
 		vals, _ := t.Str()
 		return vals[pos], nil
-	default:
-		return nil, &ErrTensorTypeNotSupported{
-			tensotType: t.DataType(),
-		}
 	}
 
-	return
+	return nil, &ErrTensorTypeNotSupported{
+		tensotType: t.DataType(),
+	}
 }
 
 // setCMemAsAlreadyRelease indicates that the C allocated memory was already

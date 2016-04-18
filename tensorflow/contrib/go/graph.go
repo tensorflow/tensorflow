@@ -67,7 +67,7 @@ func NewGraphFromReader(reader io.Reader, asText bool) (gr *Graph, err error) {
 // or the value is not the expected for this attribute.
 func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (node *GraphNode, err error) {
 	if err = gr.loadAvailableOps(); err != nil {
-		return
+		return nil, err
 	}
 
 	op, opFound := gr.availableOps[strings.ToLower(opName)]
@@ -151,7 +151,7 @@ func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, 
 
 	ts, err := NewTensor(initialData)
 	if err != nil {
-		return
+		return nil, err
 	}
 	gr.variables[name] = ts
 
@@ -175,7 +175,7 @@ func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, 
 		"shape": shape,
 	})
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	variable, err := gr.Op("Variable", name, nil, "", map[string]interface{}{
@@ -185,7 +185,7 @@ func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, 
 		"shared_name": "",
 	})
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	variable.ref = variable.def
@@ -195,14 +195,14 @@ func (gr *Graph) Variable(name string, initialData interface{}) (op *GraphNode, 
 		"validate_shape": true,
 	})
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	op, err = gr.Op("Identity", name+"/read", []*GraphNode{variable}, "", nil)
 
 	op.ref = variable.def
 
-	return
+	return op, nil
 }
 
 // String returns a string representation of this graph, used for debugging
@@ -265,7 +265,7 @@ func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64) (op *
 
 	gr.def.Node = append(gr.def.Node, op.def)
 
-	return
+	return op
 }
 
 // Str returns the current graph serialized so it can be exported.
@@ -385,7 +385,7 @@ func (gr *Graph) castAttrValue(attrType string, v interface{}) (attrVal *pb.Attr
 			case DTString:
 				tp.StringVal, _ = t.Str()
 			default:
-				return
+				return nil
 			}
 
 			return &pb.AttrValue{
@@ -452,7 +452,7 @@ func (gr *Graph) castAttrValue(attrType string, v interface{}) (attrVal *pb.Attr
 func (gr *Graph) Constant(name string, data interface{}) (op *GraphNode, err error) {
 	ts, err := NewTensor(data)
 	if err != nil {
-		return
+		return nil, err
 	}
 	gr.constants[name] = ts
 
