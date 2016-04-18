@@ -39,6 +39,9 @@
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
 #
+# If NO_TEST_USER_OPS has any non-empty and non-0 value, the testing of user-
+# defined ops against the installation will be skipped.
+#
 # If the --test_tutorials flag is set, it will cause the script to run the
 # tutorial tests (see test_tutorials.sh) after the PIP
 # installation and the Python unit tests-on-install step. Likewise,
@@ -69,6 +72,13 @@ if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] && \
    [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]]; then
   echo "TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}: Performing 'bazel clean'"
   bazel clean
+fi
+
+DO_TEST_USER_OPS=1
+if [[ ! -z "${NO_TEST_USER_OPS}" ]] && \
+   [[ "${NO_TEST_USER_OPS}" != "0" ]]; then
+  echo "NO_TEST_USER_OPS=${NO_TEST_USER_OPS}: Will skip testing of user ops"
+  DO_TEST_USER_OPS=0
 fi
 
 DO_TEST_TUTORIALS=0
@@ -193,8 +203,15 @@ fi
 # Call test_installation.sh to perform test-on-install
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-"${DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} || \
-    die "PIP tests-on-install FAILED"
+# DEBUG
+# "${DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} || \
+#      die "PIP tests-on-install FAILED"
+
+# Test user ops
+if [[ "${DO_TEST_USER_OPS}" == "1" ]]; then
+  "${DIR}/test_user_ops.sh" --virtualenv ${GPU_FLAG} || \
+      die "PIP user-op tests-on-install FAILED"
+fi
 
 # Optional: Run the tutorial tests
 if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then
