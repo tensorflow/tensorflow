@@ -939,6 +939,7 @@ tf_cc_test(
     name = "cwise_ops_test",
     size = "small",
     deps = [
+        ":bounds_check",
         ":cwise_op",
         ":ops_testutil",
         ":ops_util",
