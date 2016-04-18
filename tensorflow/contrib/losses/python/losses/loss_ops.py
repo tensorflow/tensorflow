@@ -147,7 +147,7 @@ def _scale_losses(losses, weight):
   """
   # First, compute the sum of the losses over all elements:
   start_index = max(0, weight.get_shape().ndims)
-  reduction_indices = range(start_index, losses.get_shape().ndims)
+  reduction_indices = list(range(start_index, losses.get_shape().ndims))
   reduced_losses = math_ops.reduce_sum(losses,
                                        reduction_indices=reduction_indices)
   reduced_losses = math_ops.mul(reduced_losses, weight)
@@ -237,7 +237,7 @@ def _num_present(losses, weight, per_batch=False):
 
   # First, count the number of nonzero weights:
   if weight.get_shape().ndims >= 1:
-    reduction_indices = range(1, weight.get_shape().ndims)
+    reduction_indices = list(range(1, weight.get_shape().ndims))
     num_nonzero_per_batch = math_ops.reduce_sum(
         math_ops.to_float(math_ops.not_equal(weight, 0)),
         reduction_indices=reduction_indices)
@@ -507,7 +507,7 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
     if weight.get_shape().ndims is None:
       raise ValueError("weight.get_shape().ndims cannot be None")
 
-    reduction_indices = range(1, diffs.get_shape().ndims)
+    reduction_indices = list(range(1, diffs.get_shape().ndims))
 
     sum_squares_diff_per_batch = math_ops.reduce_sum(
         math_ops.square(diffs),
