@@ -22,7 +22,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 
-class LocalVariabletest(tf.test.TestCase):
+class LocalVariableTest(tf.test.TestCase):
 
   def test_local_variable(self):
     with self.test_session() as sess:
@@ -36,6 +36,49 @@ class LocalVariabletest(tf.test.TestCase):
       self.assertRaises(tf.OpError, sess.run, variables)
       tf.initialize_variables(variables).run()
       self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
+
+
+class GlobalStepTest(tf.test.TestCase):
+
+  def _assert_global_step(self, global_step, expected_dtype=tf.int64):
+    self.assertEquals("%s:0" % tf.GraphKeys.GLOBAL_STEP, global_step.name)
+    self.assertEquals(expected_dtype, global_step.dtype.base_dtype)
+    self.assertEquals([], global_step.get_shape().as_list())
+
+  def test_invalid_dtype(self):
+    with tf.Graph().as_default() as g:
+      self.assertEquals(None, tf.contrib.framework.get_global_step())
+      tf.Variable(
+          0.0, trainable=False, dtype=tf.float32, name=tf.GraphKeys.GLOBAL_STEP)
+      self.assertRaisesRegexp(
+          TypeError, "does not have integer type",
+          tf.contrib.framework.get_global_step)
+    self.assertRaisesRegexp(
+        TypeError, "does not have integer type",
+        tf.contrib.framework.get_global_step, g)
+
+  def test_create_global_step(self):
+    self.assertEquals(None, tf.contrib.framework.get_global_step())
+    with tf.Graph().as_default() as g:
+      global_step = tf.contrib.framework.create_global_step()
+      self._assert_global_step(global_step)
+      self.assertRaisesRegexp(
+          ValueError, "already exists", tf.contrib.framework.create_global_step)
+      self.assertRaisesRegexp(
+          ValueError, "already exists", tf.contrib.framework.create_global_step,
+          g)
+      self._assert_global_step(
+          tf.contrib.framework.create_global_step(tf.Graph()))
+
+  def test_get_global_step(self):
+    with tf.Graph().as_default() as g:
+      self.assertEquals(None, tf.contrib.framework.get_global_step())
+      tf.Variable(
+          0, trainable=False, dtype=tf.int32, name=tf.GraphKeys.GLOBAL_STEP)
+      self._assert_global_step(
+          tf.contrib.framework.get_global_step(), expected_dtype=tf.int32)
+    self._assert_global_step(
+        tf.contrib.framework.get_global_step(g), expected_dtype=tf.int32)
 
 
 if __name__ == "__main__":
