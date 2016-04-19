@@ -98,7 +98,7 @@ func TestGraphScalarConstant(t *testing.T) {
 		t.Fatal("Expected 2 output Tensors, got:", len(out))
 	}
 
-	outStr, err := out[0].Byte()
+	outStr, err := out[0].ByteSlices()
 	if err != nil {
 		t.Error("Error reading the output:", err)
 	} else {
@@ -107,7 +107,7 @@ func TestGraphScalarConstant(t *testing.T) {
 		}
 	}
 
-	outFloat, err := out[1].Float64()
+	outFloat, err := out[1].Float64s()
 	if err != nil {
 		t.Error("Error reading the output:", err)
 	} else {

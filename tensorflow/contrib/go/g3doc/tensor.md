@@ -60,23 +60,34 @@ The supported data types are:
 Example:
 	// Create Tensor with a single dimension of 3.
 	t2, _ := tensorflow.NewTensorWithShape([][]int64{{3}}, []int64{3, 4, 5})
-	fmt.Println(t2.Int64())
+	fmt.Println(t2.Int64s())
 
 
 ```
 
 ## Tensor Methods
 
-#### Bool
+#### Bools
 
 ```go
-func (t *Tensor) Bool() ([]bool, error)
+func (t *Tensor) Bools() ([]bool, error)
 ```
 
-Bool returns the Tensor content as boolean slice if the tensor type matches, if
+Bools returns the Tensor content as boolean slice if the tensor type matches, if
 not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTBool
+
+#### ByteSlices
+
+```go
+func (t *Tensor) ByteSlices() ([][]byte, error)
+```
+
+ByteSlices returns the Tensor content as strings slice if the tensor type
+matches, if not returns a ErrInvalidTensorType error. The datatypes are:
+
+  - DTString
 
 #### Data
 
@@ -110,24 +121,24 @@ func (t *Tensor) Dim(n int) int
 
 Dim returns the size of the specified dimension.
 
-#### Float32
+#### Float32s
 
 ```go
-func (t *Tensor) Float32() ([]float32, error)
+func (t *Tensor) Float32s() ([]float32, error)
 ```
 
-Float32 returns the Tensor content as float32 slice if the tensor type matches,
+Float32s returns the Tensor content as float32 slice if the tensor type matches,
 if not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTFloat
 
-#### Float64
+#### Float64s
 
 ```go
-func (t *Tensor) Float64() ([]float64, error)
+func (t *Tensor) Float64s() ([]float64, error)
 ```
 
-Float64 returns the Tensor content as float64 slice if the tensor type matches,
+Float64s returns the Tensor content as float64 slice if the tensor type matches,
 if not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTDouble
@@ -143,15 +154,13 @@ FreeAllocMem releases the C allocated memory for this tensor.
 #### GetVal
 
 ```go
-func (t *Tensor) GetVal(d ...int) (val interface{}, err error)
+func (t *Tensor) GetVal(i ...int) (val interface{}, err error)
 ```
 
 GetVal returns the value of the element contained in the specified position in
 the tensor, Ex: GetVal(1, 2, 3) is equivalent to data[1][2][3] on a
-multidimensional array.
-
-  This method returns an error if the number of dimensions is incorrect or
-  are out of range.
+multidimensional array. This method returns an error if the number of dimensions
+is incorrect or are out of range.
 
 ```Go
 Example:
@@ -167,13 +176,13 @@ Example:
 
 ```
 
-#### Int32
+#### Int32s
 
 ```go
-func (t *Tensor) Int32() ([]int32, error)
+func (t *Tensor) Int32s() ([]int32, error)
 ```
 
-Int32 returns the Tensor content as int32 slice if the tensor type matches, if
+Int32s returns the Tensor content as int32 slice if the tensor type matches, if
 not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTUint8
@@ -181,13 +190,13 @@ not returns a ErrInvalidTensorType error. The datatypes are:
   - DTInt16
   - DTInt32
 
-#### Int64
+#### Int64s
 
 ```go
-func (t *Tensor) Int64() ([]int64, error)
+func (t *Tensor) Int64s() ([]int64, error)
 ```
 
-Int64 returns the Tensor content as int64 slice if the tensor type matches, if
+Int64s returns the Tensor content as int64 slice if the tensor type matches, if
 not returns a ErrInvalidTensorType error. The datatypes are:
 
   - DTInt64
@@ -207,17 +216,6 @@ func (t *Tensor) Shape() TensorShape
 ```
 
 Shape returns the shape of the tensor.
-
-#### Str
-
-```go
-func (t *Tensor) Str() ([][]byte, error)
-```
-
-Str returns the Tensor content as strings slice if the tensor type matches, if
-not returns a ErrInvalidTensorType error. The datatypes are:
-
-  - DTString
 
 #### String
 

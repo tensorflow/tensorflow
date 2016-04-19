@@ -119,7 +119,7 @@ func ExampleGraph_Variable() {
 	// execution.
 	for i := 0; i < 10; i++ {
 		out, _ = s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
-		fmt.Println(out[0].Int32())
+		fmt.Println(out[0].Int32s())
 	}
 }
 
@@ -177,7 +177,7 @@ func ExampleSession_Run() {
 func ExampleNewTensorWithShape() {
 	// Create Tensor with a single dimension of 3.
 	t2, _ := tensorflow.NewTensorWithShape([][]int64{{3}}, []int64{3, 4, 5})
-	fmt.Println(t2.Int64())
+	fmt.Println(t2.Int64s())
 }
 
 func ExampleTensor_GetVal() {

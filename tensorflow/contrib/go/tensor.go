@@ -67,6 +67,22 @@ var (
 	DTUint8 = DataType(TF_UINT8)
 	// DTUint16 corresponds to TF_UINT16.
 	DTUint16 = DataType(TF_UINT16)
+
+	// The next data types are still not supported
+	// DTBfloat corresponds to TF_BFLOAT16.
+	DTBfloat = DataType(TF_BFLOAT16)
+	// DTComplex corresponds to TF_COMPLEX.
+	DTComplex = DataType(TF_COMPLEX)
+	// DTQint16 corresponds to TF_QINT16.
+	DTQint16 = DataType(TF_QINT16)
+	// DTQuint16 corresponds to TF_QUINT16.
+	DTQuint16 = DataType(TF_QUINT16)
+	// DTQuint32 corresponds to TF_QINT32.
+	DTQuint32 = DataType(TF_QINT32)
+	// DTQint8 corresponds to TF_QINT8.
+	DTQint8 = DataType(TF_QINT8)
+	// DTQuint8 corresponds to TF_QUINT8.
+	DTQuint8 = DataType(TF_QUINT8)
 )
 
 // NewTensorWithShape returns a new tensor with the specified type, shape and data.
@@ -246,11 +262,11 @@ func (t *Tensor) String() string {
 	return fmt.Sprintf("%v: dims:%v size:%v", t.DataType(), t.NumDims(), t.DataSize())
 }
 
-// Str returns the Tensor content as strings slice if the tensor
+// ByteSlices returns the Tensor content as strings slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTString
-func (t *Tensor) Byte() ([][]byte, error) {
+func (t *Tensor) ByteSlices() ([][]byte, error) {
 	if DTString != t.DataType() {
 		return nil, &ErrInvalidTensorType{
 			TensorType:   t.DataType(),
@@ -288,11 +304,11 @@ func (t *Tensor) Byte() ([][]byte, error) {
 	return t.StringVal, nil
 }
 
-// Float32 returns the Tensor content as float32 slice if the tensor
+// Float32s returns the Tensor content as float32 slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTFloat
-func (t *Tensor) Float32() ([]float32, error) {
+func (t *Tensor) Float32s() ([]float32, error) {
 	if DTFloat != t.DataType() {
 		return nil, &ErrInvalidTensorType{
 			TensorType:   t.DataType(),
@@ -315,11 +331,11 @@ func (t *Tensor) Float32() ([]float32, error) {
 	return t.FloatVal, nil
 }
 
-// Float64 returns the Tensor content as float64 slice if the tensor
+// Float64s returns the Tensor content as float64 slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTDouble
-func (t *Tensor) Float64() ([]float64, error) {
+func (t *Tensor) Float64s() ([]float64, error) {
 	if DTDouble != t.DataType() {
 		return nil, &ErrInvalidTensorType{
 			TensorType:   t.DataType(),
@@ -342,14 +358,14 @@ func (t *Tensor) Float64() ([]float64, error) {
 	return t.DoubleVal, nil
 }
 
-// Int32 returns the Tensor content as int32 slice if the tensor
+// Int32s returns the Tensor content as int32 slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTUint8
 //  - DTInt8
 //  - DTInt16
 //  - DTInt32
-func (t *Tensor) Int32() ([]int32, error) {
+func (t *Tensor) Int32s() ([]int32, error) {
 	if t.IntVal != nil {
 		return t.IntVal, nil
 	}
@@ -385,11 +401,11 @@ func (t *Tensor) Int32() ([]int32, error) {
 	return t.IntVal, nil
 }
 
-// Int64 returns the Tensor content as int64 slice if the tensor
+// Int64s returns the Tensor content as int64 slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTInt64
-func (t *Tensor) Int64() ([]int64, error) {
+func (t *Tensor) Int64s() ([]int64, error) {
 	if DTInt64 != t.DataType() {
 		return nil, &ErrInvalidTensorType{
 			TensorType:   t.DataType(),
@@ -412,11 +428,11 @@ func (t *Tensor) Int64() ([]int64, error) {
 	return t.Int64Val, nil
 }
 
-// Bool returns the Tensor content as boolean slice if the tensor
+// Bools returns the Tensor content as boolean slice if the tensor
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTBool
-func (t *Tensor) Bool() ([]bool, error) {
+func (t *Tensor) Bools() ([]bool, error) {
 	if DTBool != t.DataType() {
 		return nil, &ErrInvalidTensorType{
 			TensorType:   t.DataType(),
@@ -495,22 +511,22 @@ func (t *Tensor) GetVal(i ...int) (val interface{}, err error) {
 func (t *Tensor) getValOnPos(pos int) (val interface{}, err error) {
 	switch t.DataType() {
 	case DTFloat:
-		vals, _ := t.Float32()
+		vals, _ := t.Float32s()
 		return vals[pos], nil
 	case DTDouble:
-		vals, _ := t.Float64()
+		vals, _ := t.Float64s()
 		return vals[pos], nil
 	case DTInt8, DTInt16, DTInt32, DTUint8:
-		vals, _ := t.Int32()
+		vals, _ := t.Int32s()
 		return vals[pos], nil
 	case DTInt64:
-		vals, _ := t.Int64()
+		vals, _ := t.Int64s()
 		return vals[pos], nil
 	case DTBool:
-		vals, _ := t.Bool()
+		vals, _ := t.Bools()
 		return vals[pos], nil
 	case DTString:
-		vals, _ := t.Byte()
+		vals, _ := t.ByteSlices()
 		return vals[pos], nil
 	}
 

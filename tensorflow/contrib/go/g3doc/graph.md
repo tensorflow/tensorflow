@@ -68,6 +68,14 @@ Example:
 
 ```
 
+#### Marshal
+
+```go
+func (gr *Graph) Marshal() []byte
+```
+
+Marshal returns the current graph serialized so it can be exported.
+
 #### Op
 
 ```go
@@ -127,14 +135,6 @@ Example:
 
 ```
 
-#### Str
-
-```go
-func (gr *Graph) Str() []byte
-```
-
-Str returns the current graph serialized so it can be exported.
-
 #### String
 
 ```go
@@ -181,7 +181,7 @@ Example:
 	// execution.
 	for i := 0; i < 10; i++ {
 	    out, _ = s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
-	    fmt.Println(out[0].Int32())
+	    fmt.Println(out[0].Int32s())
 	}
 
 

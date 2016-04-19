@@ -379,17 +379,17 @@ func (gr *Graph) castAttrValue(attrType string, v interface{}) *pb.AttrValue {
 			}
 			switch t.DataType() {
 			case DTFloat:
-				tp.FloatVal, _ = t.Float32()
+				tp.FloatVal, _ = t.Float32s()
 			case DTDouble:
-				tp.DoubleVal, _ = t.Float64()
+				tp.DoubleVal, _ = t.Float64s()
 			case DTInt8, DTInt16, DTInt32, DTUint8:
-				tp.IntVal, _ = t.Int32()
+				tp.IntVal, _ = t.Int32s()
 			case DTInt64:
-				tp.Int64Val, _ = t.Int64()
+				tp.Int64Val, _ = t.Int64s()
 			case DTBool:
-				tp.BoolVal, _ = t.Bool()
+				tp.BoolVal, _ = t.Bools()
 			case DTString:
-				tp.StringVal, _ = t.Byte()
+				tp.StringVal, _ = t.ByteSlices()
 			default:
 				return nil
 			}

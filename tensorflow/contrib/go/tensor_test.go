@@ -69,7 +69,7 @@ func TestStrDecode(t *testing.T) {
 		string_val: "%s"
 	`, string(expectedResult[0]), string(expectedResult[1]), string(expectedResult[2])))
 
-	result, err := tensor.Byte()
+	result, err := tensor.ByteSlices()
 	if err != nil {
 		t.Fatal("Error casting Tensor into string slice:", err)
 	}
@@ -88,7 +88,7 @@ func TestFloat32Decode(t *testing.T) {
 	tensor := getTensorFromGraph(t, "DT_FLOAT", fmt.Sprintf(`
 		float_val: %f`, expectedResult))
 
-	result, err := tensor.Float32()
+	result, err := tensor.Float32s()
 	if err != nil {
 		t.Fatal("Error casting Tensor into float32 slice:", err)
 	}
@@ -106,7 +106,7 @@ func TestFloat64Decode(t *testing.T) {
 	expectedResult := float64(10.23)
 	tensor := getTensorFromGraph(t, "DT_DOUBLE", fmt.Sprintf(`double_val: %f`, expectedResult))
 
-	result, err := tensor.Float64()
+	result, err := tensor.Float64s()
 	if err != nil {
 		t.Fatal("Error casting Tensor into float64 slice:", err)
 	}
@@ -124,7 +124,7 @@ func TestInt32Decode(t *testing.T) {
 	expectedResult := int32(123)
 	tensor := getTensorFromGraph(t, "DT_INT32", fmt.Sprintf(`int_val: %d`, expectedResult))
 
-	result, err := tensor.Int32()
+	result, err := tensor.Int32s()
 	if err != nil {
 		t.Fatal("Error casting Tensor into int32 slice:", err)
 	}
@@ -142,7 +142,7 @@ func TestInt64Decode(t *testing.T) {
 	expectedResult := int64(123)
 	tensor := getTensorFromGraph(t, "DT_INT64", fmt.Sprintf(`int64_val: %d`, expectedResult))
 
-	result, err := tensor.Int64()
+	result, err := tensor.Int64s()
 	if err != nil {
 		t.Fatal("Error casting Tensor into int64 slice:", err)
 	}
@@ -177,7 +177,7 @@ func TestMultDimFloat32Decode(t *testing.T) {
 		tensor_content: "\000\000\200?\256G\201?\000\000\000@\327\243\000@\315\314\214?{\024\216?ff\006@=\n\007@\000\000\200?\256G\201?\000\000\000@\327\243\000@",
 	`)
 
-	result, err := tensor.Float32()
+	result, err := tensor.Float32s()
 	if err != nil {
 		t.Fatal("Error casting Tensor into float32 slice:", err)
 	}
@@ -212,7 +212,7 @@ func TestUint8Decode(t *testing.T) {
 	expectedResult := int32(21)
 	tensor := getTensorFromGraph(t, "DT_UINT8", fmt.Sprintf(`int_val: %d`, expectedResult))
 
-	result, err := tensor.Int32()
+	result, err := tensor.Int32s()
 	if err != nil {
 		t.Fatal("Error casting Tensor into uint8 slice:", err)
 	}
@@ -230,7 +230,7 @@ func TestInt16(t *testing.T) {
 	expectedResult := int32(21)
 	tensor := getTensorFromGraph(t, "DT_INT16", fmt.Sprintf(`int_val: %d`, expectedResult))
 
-	result, err := tensor.Int32()
+	result, err := tensor.Int32s()
 	if err != nil {
 		t.Fatal("Error casting Tensor into int16 slice:", err)
 	}
@@ -248,7 +248,7 @@ func TestInt8(t *testing.T) {
 	expectedResult := int32(21)
 	tensor := getTensorFromGraph(t, "DT_INT8", fmt.Sprintf(`int_val: %d`, expectedResult))
 
-	result, err := tensor.Int32()
+	result, err := tensor.Int32s()
 	if err != nil {
 		t.Fatal("Error casting Tensor into int8 slice:", err)
 	}
@@ -262,7 +262,7 @@ func TestInt8(t *testing.T) {
 	}
 }
 
-func TestBool(t *testing.T) {
+func TestBools(t *testing.T) {
 	expectedResult := []bool{true, false, true, false}
 	tensor := getTensorFromGraph(t, "DT_BOOL", fmt.Sprintf(`
 		tensor_shape {
@@ -281,7 +281,7 @@ func TestBool(t *testing.T) {
 		expectedResult[3]),
 	)
 
-	result, err := tensor.Bool()
+	result, err := tensor.Bools()
 	if err != nil {
 		t.Fatal("Error casting Tensor into boolean slice:", err)
 	}
@@ -327,12 +327,12 @@ func TestTensor(t *testing.T) {
 		tensor_content: "\n\000\000\000\000\000\000\000\014\000\000\000\000\000\000\000\016\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\022\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\026\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000"
 	`))
 
-	tensorSlice, err := tensorToCompare.Int64()
+	tensorSlice, err := tensorToCompare.Int64s()
 	if err != nil {
 		t.Fatal("Error getting Tensor as integer slice:", err)
 	}
 
-	resultSlice, err := tensor.Int64()
+	resultSlice, err := tensor.Int64s()
 	if err != nil {
 		t.Fatal("Error getting Tensor as integer slice:", err)
 	}
