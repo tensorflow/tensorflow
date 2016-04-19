@@ -4,8 +4,8 @@ Scikit Flow is high level API that allows to create,
 train and use deep learning models easily with well
 known Scikit Learn API.
 
-To run these examples, you need to have `scikit learn` library installed (`sudo pip install sklearn`).
-Some examples use the `pandas` library for data processing (`sudo pip install pandas`).
+To run these examples, you need to have `scikit learn` library installed (`pip install sklearn`).
+Some examples use the `pandas` library for data processing (`pip install pandas`).
 
 * [Deep Neural Network Regression with Boston Data](boston.py)
 * [Convolutional Neural Networks with Digits Data](digits.py)

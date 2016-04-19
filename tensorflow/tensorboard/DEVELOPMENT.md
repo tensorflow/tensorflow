@@ -9,7 +9,7 @@ nodejs-legacy npm`.
 
 Next, you'll want to install [gulp](http://gulpjs.com/) and
 [bower](http://bower.io/), which are used for build tooling and dependency
-management respectively. `sudo npm install -g gulp bower` will install them
+management respectively. `npm install -g gulp bower` will install them
 globally for convenience.
 
 Then, cd into the TensorBoard directory:
