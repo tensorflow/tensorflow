@@ -201,6 +201,48 @@ def uniform_unit_scaling_initializer(factor=1.0, seed=None,
   return _initializer
 
 
+def sharded_uniform_unit_scaling_initializer(
+    shape, factor=1.0, seed=None, dtype=dtypes.float32):
+  """Returns a uniform_unit_scaling_initializer with scale based on `shape`.
+
+  This initializer works identically to `uniform_unit_scaling_initializer`,
+  but the scale is based on a predefined shape.  This is useful when a
+  `Variable` is being partitioned across several shards, and each shard
+  has a smaller shape than the whole.  Since the shards are usually
+  concatenated when used, the scale should be based on the shape of the whole.
+
+  See the documentation of `uniform_unit_scaling_initializer` for details
+  on how the scale of the input variance is kept constant.
+
+  Args:
+    shape: A list or tuple of ints to use for the scaling calculation.
+    factor: Float.  A multiplicative factor by which the values will be scaled.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+    dtype: The data type. Only floating point types are supported.
+
+  Returns:
+    An initializer that generates sub-tensors of a unit variance tensor
+    (so long as that tensor is not being sharded along its innermost dimension).
+
+  Raises:
+    ValueError: if `dtype` is not a floating point type.
+  """
+  def _initializer(sub_tensor_shape, dtype=_assert_float_dtype(dtype)):
+    input_size = 1.0
+    # As in uniform_unit_scaling_initializer, we assume that the innermost
+    # dimension determines the entity whose empirical variance we wish
+    # to keep unit norm.  This code also assumes that the sharding
+    # has not been performed on the innermost axis.
+    for dim in shape[:-1]:
+      input_size *= float(dim)
+    max_val = math.sqrt(3 / input_size) * factor
+    return random_ops.random_uniform(sub_tensor_shape, -max_val, max_val,
+                                     dtype, seed=seed)
+  return _initializer
+
+
 # TODO(vrv): Unhide when we are ready to expose this publicly.
 def _random_walk(shape, nonlinearity, dtype=dtypes.float32, seed=None,
                  name="random_walk"):
