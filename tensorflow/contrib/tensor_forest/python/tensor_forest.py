@@ -25,26 +25,6 @@ from tensorflow.contrib.tensor_forest.python.ops import inference_ops
 from tensorflow.contrib.tensor_forest.python.ops import training_ops
 
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-
-
-# Default parameter values.  These are all only used if the corresponding
-# parameter is not specified when constructing the ForestHParams.
-flags.DEFINE_integer('num_trees', 100, 'Number of trees in forest')
-flags.DEFINE_integer('max_nodes', 10000, 'Maxmimum number of tree nodes.')
-flags.DEFINE_float(
-    'samples_to_decide', 25.0,
-    'Only decide on a split, or only fully use a leaf, after this many '
-    'training samples have been seen.')
-flags.DEFINE_float('bagging_fraction', 1.0,
-                   'Use this fraction of the input, randomly chosen, to train '
-                   'each tree in the forest.')
-flags.DEFINE_integer(
-    'num_splits_to_consider', 0,
-    'If non-zero, consider this many candidates for a splitting '
-    'rule at a fertile node.')
-
 # If tree[i][0] equals this value, then i is a leaf node.
 LEAF_NODE = -1
 
@@ -64,7 +44,20 @@ LEAF_NODE = -1
 class ForestHParams(object):
   """A base class for holding hyperparameters and calculating good defaults."""
 
-  def __init__(self, **kwargs):
+  def __init__(self, num_trees=100, max_nodes=10000, bagging_fraction=1.0,
+               samples_to_decide=25, max_depth=0, num_splits_to_consider=0,
+               max_fertile_nodes=0, split_after_samples=0,
+               valid_leaf_threshold=0, **kwargs):
+    self.num_trees = num_trees
+    self.max_nodes = max_nodes
+    self.bagging_fraction = bagging_fraction
+    self.samples_to_decide = samples_to_decide
+    self.max_depth = max_depth
+    self.num_splits_to_consider = num_splits_to_consider
+    self.max_fertile_nodes = max_fertile_nodes
+    self.split_after_samples = split_after_samples
+    self.valid_leaf_threshold = valid_leaf_threshold
+
     for name, value in kwargs.items():
       setattr(self, name, value)
 
@@ -76,24 +69,21 @@ class ForestHParams(object):
     # Fail fast if num_classes isn't set.
     _ = getattr(self, 'num_classes')
 
-    self.bagging_fraction = getattr(self, 'bagging_fraction',
-                                    FLAGS.bagging_fraction)
-
-    self.num_trees = getattr(self, 'num_trees', FLAGS.num_trees)
-    self.max_nodes = getattr(self, 'max_nodes', FLAGS.max_nodes)
+    self.training_library_base_dir = getattr(
+        self, 'training_library_base_dir', '')
+    self.inference_library_base_dir = getattr(
+        self, 'inference_library_base_dir', '')
 
     # Allow each tree to be unbalanced by up to a factor of 2.
-    self.max_depth = getattr(self, 'max_depth',
-                             int(2 * math.ceil(math.log(self.max_nodes, 2))))
+    self.max_depth = (self.max_depth or
+                      int(2 * math.ceil(math.log(self.max_nodes, 2))))
 
     # The Random Forest literature recommends sqrt(# features) for
     # classification problems, and p/3 for regression problems.
     # TODO(thomaswc): Consider capping this for large number of features.
-    self.num_splits_to_consider = getattr(self, 'num_splits_to_consider',
-                                          FLAGS.num_splits_to_consider)
-    if not self.num_splits_to_consider:
-      self.num_splits_to_consider = max(10, int(
-          math.ceil(math.sqrt(self.num_features))))
+    self.num_splits_to_consider = (
+        self.num_splits_to_consider or
+        max(10, int(math.ceil(math.sqrt(self.num_features)))))
 
     # max_fertile_nodes doesn't effect performance, only training speed.
     # We therefore set it primarily based upon space considerations.
@@ -103,7 +93,7 @@ class ForestHParams(object):
     num_fertile = int(math.ceil(self.max_nodes / self.num_splits_to_consider))
     # But always use at least 1000 accumulate slots.
     num_fertile = max(num_fertile, 1000)
-    self.max_fertile_nodes = getattr(self, 'max_fertile_nodes', num_fertile)
+    self.max_fertile_nodes = self.max_fertile_nodes or num_fertile
     # But it also never needs to be larger than the number of leaves,
     # which is max_nodes / 2.
     self.max_fertile_nodes = min(self.max_fertile_nodes,
@@ -111,14 +101,11 @@ class ForestHParams(object):
 
     # split_after_samples and valid_leaf_threshold should be about the same.
     # Therefore, if either is set, use it to set the other.  Otherwise, fall
-    # back on FLAGS.samples_to_decide.
-    samples_to_decide = (
-        getattr(self, 'split_after_samples',
-                getattr(self, 'valid_leaf_threshold', FLAGS.samples_to_decide)))
-    self.split_after_samples = getattr(self, 'split_after_samples',
-                                       samples_to_decide)
-    self.valid_leaf_threshold = getattr(self, 'valid_leaf_threshold',
-                                        samples_to_decide)
+    # back on samples_to_decide.
+    samples_to_decide = self.split_after_samples or self.samples_to_decide
+
+    self.split_after_samples = self.split_after_samples or samples_to_decide
+    self.valid_leaf_threshold = self.valid_leaf_threshold or samples_to_decide
 
     # We have num_splits_to_consider slots to fill, and we want to spend
     # approximately split_after_samples samples initializing them.
@@ -249,9 +236,12 @@ class RandomForestGraphs(object):
     tf.logging.info(self.params.__dict__)
     self.variables = variables or ForestTrainingVariables(
         self.params, device_assigner=self.device_assigner)
-    self.trees = [RandomTreeGraphs(self.variables[i], self.params,
-                                   training_ops.Load(), inference_ops.Load())
-                  for i in range(self.params.num_trees)]
+    self.trees = [
+        RandomTreeGraphs(
+            self.variables[i], self.params,
+            training_ops.Load(self.params.training_library_base_dir),
+            inference_ops.Load(self.params.inference_library_base_dir))
+        for i in range(self.params.num_trees)]
 
   def training_graph(self, input_data, input_labels):
     """Constructs a TF graph for training a random forest.

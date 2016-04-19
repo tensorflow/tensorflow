@@ -234,6 +234,8 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
   // constraint, do not replace it.
   // 3) If the constant op created does not have a kernel implementation
   // for the device, do not use it.
+  // 4) If the size of the constant in bytes is too large (> 10M), do not
+  // replace it. This prevents the size of the Graph from growing too large.
   // TODO(keveman): Consider adding a new constant op that has a kernel
   // implementation for all types, but with HostMemory constraint on it's
   // output.
@@ -252,6 +254,9 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
         (memory_type == DEVICE_MEMORY && is_int32)) {
       return false;
     }
+  }
+  if (constant.TotalBytes() > 10 * 1024 * 1024) {
+    return false;
   }
 
   Node* n = tensor.first;

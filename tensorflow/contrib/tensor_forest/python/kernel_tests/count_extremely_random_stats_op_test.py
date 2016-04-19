@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow  # pylint: disable=unused-import
+import tensorflow as tf
 
 from tensorflow.contrib.tensor_forest.python.ops import training_ops
 
@@ -46,6 +46,29 @@ class CountExtremelyRandomStatsTest(test_util.TensorFlowTestCase):
                self.input_data, self.input_labels, self.tree,
                self.tree_thresholds, self.node_map,
                self.split_features, self.split_thresholds, num_classes=4))
+
+      self.assertAllEqual(
+          [[1., 1., 1., 1.], [1., 1., 0., 0.], [0., 0., 1., 1.]],
+          pcw_node.eval())
+      self.assertAllEqual([[0, 0, 0]], pcw_splits_indices.eval())
+      self.assertAllEqual([1.], pcw_splits_delta.eval())
+      self.assertAllEqual([[0, 1], [0, 0]], pcw_totals_indices.eval())
+      self.assertAllEqual([1., 1.], pcw_totals_delta.eval())
+      self.assertAllEqual([1, 1, 2, 2], leaves.eval())
+
+  def testThreaded(self):
+    with self.test_session(
+        config=tf.ConfigProto(intra_op_parallelism_threads=2)):
+      (pcw_node, pcw_splits_indices, pcw_splits_delta, pcw_totals_indices,
+       pcw_totals_delta,
+       leaves) = (self.ops.count_extremely_random_stats(self.input_data,
+                                                        self.input_labels,
+                                                        self.tree,
+                                                        self.tree_thresholds,
+                                                        self.node_map,
+                                                        self.split_features,
+                                                        self.split_thresholds,
+                                                        num_classes=4))
 
       self.assertAllEqual([[1., 1., 1., 1.], [1., 1., 0., 0.],
                            [0., 0., 1., 1.]],

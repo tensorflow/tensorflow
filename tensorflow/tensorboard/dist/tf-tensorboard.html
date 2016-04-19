@@ -18,6 +18,88 @@ Instead, use `gulp regenerate` to create a new version with your changes.
 -->
 
 <html><head><meta charset="UTF-8">
+<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+var TF;
+(function (TF) {
+    var TensorBoard;
+    (function (TensorBoard) {
+        TensorBoard.TABS = ['events', 'images', 'graphs', 'histograms'];
+    })(TensorBoard = TF.TensorBoard || (TF.TensorBoard = {}));
+})(TF || (TF = {}));
+</script>
+<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+var TF;
+(function (TF) {
+    var TensorBoard;
+    (function (TensorBoard) {
+        TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY = 'TF.TensorBoard.autoReloadEnabled';
+        var getAutoReloadFromLocalStorage = function () {
+            var val = window.localStorage.getItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY);
+            return val === 'true' || val == null; // defaults to true
+        };
+        TensorBoard.AutoReloadBehavior = {
+            properties: {
+                autoReloadEnabled: {
+                    type: Boolean,
+                    observer: '_autoReloadObserver',
+                    value: getAutoReloadFromLocalStorage,
+                },
+                _autoReloadId: {
+                    type: Number,
+                },
+                autoReloadIntervalSecs: {
+                    type: Number,
+                    value: 120,
+                },
+            },
+            detached: function () { window.clearTimeout(this._autoReloadId); },
+            _autoReloadObserver: function (autoReload) {
+                window.localStorage.setItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY, autoReload);
+                if (autoReload) {
+                    var _this = this;
+                    this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
+                }
+                else {
+                    window.clearTimeout(this._autoReloadId);
+                }
+            },
+            _doAutoReload: function () {
+                if (this.reload == null) {
+                    throw new Error('AutoReloadBehavior requires a reload method');
+                }
+                this.reload();
+                this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
+            }
+        };
+    })(TensorBoard = TF.TensorBoard || (TF.TensorBoard = {}));
+})(TF || (TF = {}));
+</script>
 </head><body><div hidden="" by-vulcanize="">
 <dom-module id="tf-tooltip-coordinator" assetpath="../tf-event-dashboard/">
   <script>
@@ -550,222 +632,6 @@ Instead, use `gulp regenerate` to create a new version with your changes.
   </script>
 </dom-module>
 
-<dom-module id="tf-dashboard-layout" assetpath="../tf-dashboard-common/">
-  <template>
-    <div id="sidebar">
-      <content select=".sidebar"></content>
-    </div>
-
-    <div id="center" class="scrollbar">
-      <content select=".center"></content>
-    </div>
-    <style include="scrollbar-style"></style>
-    <style>
-      #sidebar {
-        width: inherit;
-        height: 100%;
-        overflow: ellipsis;
-        flex-grow: 0;
-        flex-shrink: 0;
-      }
-
-      #center {
-        height: 100%;
-        overflow-y: scroll;
-        flex-grow: 1;
-        flex-shrink: 1;
-      }
-
-      .tf-graph-dashboard #center {
-        background: white;
-      }
-
-      :host {
-        display: flex;
-        flex-direction: row;
-        height: 100%;
-      }
-    </style>
-  </template>
-  <script>
-    Polymer({
-      is: "tf-dashboard-layout",
-    });
-  </script>
-</dom-module>
-<dom-module id="dashboard-style" assetpath="../tf-dashboard-common/">
-  <template>
-    <style>
-      .card {
-        height: 200px;
-        width: 300px;
-        display: flex;
-        flex-direction: column;
-        margin: 5px;
-        padding: 0 30px 30px 0;
-        -webkit-user-select: none;
-        -moz-user-select: none;
-        position: relative;
-      }
-
-      .card .card-title {
-        flex-grow: 0;
-        flex-shrink: 0;
-        margin-bottom: 10px;
-        font-size: 14px;
-        text-overflow: ellipsis;
-        overflow: hidden;
-      }
-
-      .card .card-content {
-        flex-grow: 1;
-        flex-shrink: 1;
-        display: flex;
-      }
-      .card .card-bottom-row {
-        flex-grow: 0;
-        flex-shrink: 0;
-        padding-left: 10px;
-        padding-right: 10px;
-      }
-
-      .card.selected {
-        height: 400px;
-        width: 100%;
-      }
-
-      [shift] {
-        bottom: 20px !important;
-      }
-
-      .expand-button {
-        position: absolute;
-        left: 0px;
-        bottom: 20px;
-        color: #2196F3;
-        display: block;
-      }
-
-      #content-container{
-        display: block;
-      }
-
-      .sidebar {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        margin-right: 20px;
-      }
-
-      #categorizer {
-        flex-shrink: 0;
-      }
-
-      #xTypeSelector {
-        flex-shrink: 0;
-        margin: 20px 0;
-      }
-
-      #runSelector {
-        flex-shrink: 1;
-        flex-grow: 1;
-      }
-
-      .sidebar-section {
-        border-top: solid 1px rgba(0, 0, 0, 0.12);
-        padding: 20px 0px 20px 30px;
-      }
-
-      .sidebar-section:first-child {
-        border: none;
-      }
-
-      .sidebar-section:last-child {
-        flex-grow: 1;
-        display: flex;
-      }
-
-      paper-checkbox {
-        --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
-        --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
-        font-size: 14px;
-      }
-
-    </style>
-  </template>
-</dom-module>
-
-<dom-module id="tf-downloader" assetpath="../tf-dashboard-common/">
-  <template>
-    <paper-dropdown-menu no-label-float="true" label="run to download" selected-item-label="{{_run}}">
-      <paper-menu class="dropdown-content">
-        <template is="dom-repeat" items="[[_runs]]">
-          <paper-item no-label-float="true">[[item]]</paper-item>
-        </template>
-      </paper-menu>
-    </paper-dropdown-menu>
-    <a download="[[_csvName(_run)]]" href="[[_csvUrl(_run, urlFn)]]">CSV</a>
-    <a download="[[_jsonName(_run)]]" href="[[_jsonUrl(_run, urlFn)]]">JSON</a>
-    <style>
-      :host {
-        display: block;
-      }
-      paper-dropdown-menu {
-        width: 220px;
-        --paper-input-container-label: {
-          font-size: 10px;
-        }
-        --paper-input-container-input: {
-          font-size: 10px;
-        }
-      }
-      a {
-        font-size: 10px;
-        border-radius: 3px;
-        border: 1px solid #EEE;
-      }
-      paper-input {
-        font-size: 22px;
-      }
-    </style>
-  </template>
-  <script>
-    Polymer({
-      is: "tf-downloader",
-      properties: {
-        _run: String,
-        _runs: {
-          type: Array,
-          computed: "_computeRuns(runToTag.*, selectedRuns.*)",
-        },
-        selectedRuns: Array,
-        runToTag: Object,
-        tag: String,
-        urlFn: Function,
-      },
-      _computeRuns: function(runToTagChange, selectedRunsChange) {
-        var runToTag = this.runToTag;
-        var tag = this.tag;
-        return this.selectedRuns.filter(function(x) {
-          return runToTag[x].indexOf(tag) !== -1;
-        })
-      },
-      _csvUrl: function(_run, urlFn) {
-        return urlFn(this.tag, _run) + "&format=csv";
-      },
-      _jsonUrl: function(_run, urlFn) {
-        return urlFn(this.tag, _run);
-      },
-      _csvName: function(_run) {
-        return "run_" + _run + ",tag_" + this.tag + ".csv";
-      },
-      _jsonName: function(_run) {
-        return "run-" + _run + "-tag-" + this.tag + ".json";
-      },
-    });
-  </script>
-</dom-module>
-
 
 <dom-module id="tf-regex-group" assetpath="../tf-regex-group/">
   <template>
@@ -1268,15 +1134,32 @@ var TF;
             this.tooltipUpdater = tooltipUpdater;
             this.buildChart(xType);
         }
+        /**
+         * Change the runs on the chart. The work of actually setting the dataset
+         * on the plot is deferred to the subclass because it is impl-specific.
+         * Changing runs automatically triggers a reload; this ensures that the
+         * newly selected run will have data, and that all the runs will be current
+         * (it would be weird if one run was ahead of the others, and the display
+         * depended on the order in which runs were added)
+         */
         BaseChart.prototype.changeRuns = function (runs) {
-            throw new Error("Abstract method not implemented");
+            this.runs = runs;
+            this.reload();
+        };
+        /**
+         * Reload data for each run in view.
+         */
+        BaseChart.prototype.reload = function () {
+            var _this = this;
+            this.runs.forEach(function (run) {
+                var dataset = _this.getDataset(run);
+                _this.dataFn(_this.tag, run).then(function (x) { return dataset.data(x); });
+            });
         };
         BaseChart.prototype.getDataset = function (run) {
-            var _this = this;
             if (this.datasets[run] === undefined) {
                 this.datasets[run] = new Plottable.Dataset([], { run: run, tag: this.tag });
             }
-            this.dataFn(this.tag, run).then(function (x) { return _this.datasets[run].data(x); });
             return this.datasets[run];
         };
         BaseChart.prototype.addCrosshairs = function (plot, yAccessor) {
@@ -1399,6 +1282,7 @@ var TF;
         };
         LineChart.prototype.changeRuns = function (runs) {
             var _this = this;
+            _super.prototype.changeRuns.call(this, runs);
             var datasets = runs.map(function (r) { return _this.getDataset(r); });
             this.plot.datasets(datasets);
         };
@@ -1412,6 +1296,7 @@ var TF;
         }
         HistogramChart.prototype.changeRuns = function (runs) {
             var _this = this;
+            _super.prototype.changeRuns.call(this, runs);
             var datasets = runs.map(function (r) { return _this.getDataset(r); });
             this.plots.forEach(function (p) { return p.datasets(datasets); });
         };
@@ -1569,6 +1454,9 @@ var TF;
       redraw: function() {
         this._chart.redraw();
       },
+      reload: function() {
+        this._chart.reload();
+      },
       _constructor: function(type) {
         if (type === "scalar") {
           return TF.LineChart;
@@ -1701,6 +1589,222 @@ var TF;
 
 </dom-module>
 
+<dom-module id="tf-dashboard-layout" assetpath="../tf-dashboard-common/">
+  <template>
+    <div id="sidebar">
+      <content select=".sidebar"></content>
+    </div>
+
+    <div id="center" class="scrollbar">
+      <content select=".center"></content>
+    </div>
+    <style include="scrollbar-style"></style>
+    <style>
+      #sidebar {
+        width: inherit;
+        height: 100%;
+        overflow: ellipsis;
+        flex-grow: 0;
+        flex-shrink: 0;
+      }
+
+      #center {
+        height: 100%;
+        overflow-y: scroll;
+        flex-grow: 1;
+        flex-shrink: 1;
+      }
+
+      .tf-graph-dashboard #center {
+        background: white;
+      }
+
+      :host {
+        display: flex;
+        flex-direction: row;
+        height: 100%;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-dashboard-layout",
+    });
+  </script>
+</dom-module>
+<dom-module id="dashboard-style" assetpath="../tf-dashboard-common/">
+  <template>
+    <style>
+      .card {
+        height: 200px;
+        width: 300px;
+        display: flex;
+        flex-direction: column;
+        margin: 5px;
+        padding: 0 30px 30px 0;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        position: relative;
+      }
+
+      .card .card-title {
+        flex-grow: 0;
+        flex-shrink: 0;
+        margin-bottom: 10px;
+        font-size: 14px;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+
+      .card .card-content {
+        flex-grow: 1;
+        flex-shrink: 1;
+        display: flex;
+      }
+      .card .card-bottom-row {
+        flex-grow: 0;
+        flex-shrink: 0;
+        padding-left: 10px;
+        padding-right: 10px;
+      }
+
+      .card.selected {
+        height: 400px;
+        width: 100%;
+      }
+
+      [shift] {
+        bottom: 20px !important;
+      }
+
+      .expand-button {
+        position: absolute;
+        left: 0px;
+        bottom: 20px;
+        color: #2196F3;
+        display: block;
+      }
+
+      #content-container{
+        display: block;
+      }
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        margin-right: 20px;
+      }
+
+      #categorizer {
+        flex-shrink: 0;
+      }
+
+      #xTypeSelector {
+        flex-shrink: 0;
+        margin: 20px 0;
+      }
+
+      #runSelector {
+        flex-shrink: 1;
+        flex-grow: 1;
+      }
+
+      .sidebar-section {
+        border-top: solid 1px rgba(0, 0, 0, 0.12);
+        padding: 20px 0px 20px 30px;
+      }
+
+      .sidebar-section:first-child {
+        border: none;
+      }
+
+      .sidebar-section:last-child {
+        flex-grow: 1;
+        display: flex;
+      }
+
+      paper-checkbox {
+        --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
+        --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
+        font-size: 14px;
+      }
+
+    </style>
+  </template>
+</dom-module>
+
+<dom-module id="tf-downloader" assetpath="../tf-dashboard-common/">
+  <template>
+    <paper-dropdown-menu no-label-float="true" label="run to download" selected-item-label="{{_run}}">
+      <paper-menu class="dropdown-content">
+        <template is="dom-repeat" items="[[_runs]]">
+          <paper-item no-label-float="true">[[item]]</paper-item>
+        </template>
+      </paper-menu>
+    </paper-dropdown-menu>
+    <a download="[[_csvName(_run)]]" href="[[_csvUrl(_run, urlFn)]]">CSV</a>
+    <a download="[[_jsonName(_run)]]" href="[[_jsonUrl(_run, urlFn)]]">JSON</a>
+    <style>
+      :host {
+        display: block;
+      }
+      paper-dropdown-menu {
+        width: 220px;
+        --paper-input-container-label: {
+          font-size: 10px;
+        }
+        --paper-input-container-input: {
+          font-size: 10px;
+        }
+      }
+      a {
+        font-size: 10px;
+        border-radius: 3px;
+        border: 1px solid #EEE;
+      }
+      paper-input {
+        font-size: 22px;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-downloader",
+      properties: {
+        _run: String,
+        _runs: {
+          type: Array,
+          computed: "_computeRuns(runToTag.*, selectedRuns.*)",
+        },
+        selectedRuns: Array,
+        runToTag: Object,
+        tag: String,
+        urlFn: Function,
+      },
+      _computeRuns: function(runToTagChange, selectedRunsChange) {
+        var runToTag = this.runToTag;
+        var tag = this.tag;
+        return this.selectedRuns.filter(function(x) {
+          return runToTag[x].indexOf(tag) !== -1;
+        })
+      },
+      _csvUrl: function(_run, urlFn) {
+        return urlFn(this.tag, _run) + "&format=csv";
+      },
+      _jsonUrl: function(_run, urlFn) {
+        return urlFn(this.tag, _run);
+      },
+      _csvName: function(_run) {
+        return "run_" + _run + ",tag_" + this.tag + ".csv";
+      },
+      _jsonName: function(_run) {
+        return "run-" + _run + "-tag-" + this.tag + ".json";
+      },
+    });
+  </script>
+</dom-module>
+
 <dom-module id="tf-no-data-warning" assetpath="../tf-dashboard-common/">
   <template>
     <template is="dom-if" if="[[showWarning]]">
@@ -1782,6 +1886,36 @@ var TF;
     });
   </script>
 </dom-module>
+<script>var TF;
+(function (TF) {
+    var Dashboard;
+    (function (Dashboard) {
+        /**
+         * ReloadBehavior: A simple behavior for dashboards where the
+         * frontendReload() function should find every child element with a
+         * given tag name (e.g. "tf-chart" or "tf-image-loader")
+         * and call a `reload` method on that child.
+         * May later extend it so it has more sophisticated logic, e.g. reloading
+         * only tags that are in view.
+         */
+        function ReloadBehavior(tagName) {
+            return {
+                properties: {
+                    reloadTag: {
+                        type: String,
+                        value: tagName,
+                    },
+                },
+                frontendReload: function () {
+                    var elements = this.getElementsByTagName(this.reloadTag);
+                    Array.prototype.forEach.call(elements, function (x) { x.reload(); });
+                },
+            };
+        }
+        Dashboard.ReloadBehavior = ReloadBehavior;
+    })(Dashboard = TF.Dashboard || (TF.Dashboard = {}));
+})(TF || (TF = {}));
+</script>
 <script>/* Copyright 2015 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -2081,7 +2215,10 @@ var TF;
 (function (TF) {
     var Backend;
     (function (Backend_1) {
-        Backend_1.TYPES = ["scalar", "histogram", "compressedHistogram", "graph", "image", "runMetadata"];
+        Backend_1.TYPES = [
+            'scalar', 'histogram', 'compressedHistogram', 'graph', 'image',
+            'runMetadata'
+        ];
         /**
          * The Backend class provides a convenient and typed interface to the backend.
          *
@@ -2116,7 +2253,7 @@ var TF;
              * available.
              */
             Backend.prototype.scalarRuns = function () {
-                return this.runs().then(function (x) { return _.mapValues(x, "scalars"); });
+                return this.runs().then(function (x) { return _.mapValues(x, 'scalars'); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for histogram data.
@@ -2124,7 +2261,7 @@ var TF;
              * available.
              */
             Backend.prototype.histogramRuns = function () {
-                return this.runs().then(function (x) { return _.mapValues(x, "histograms"); });
+                return this.runs().then(function (x) { return _.mapValues(x, 'histograms'); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for image data.
@@ -2132,7 +2269,7 @@ var TF;
              * available.
              */
             Backend.prototype.imageRuns = function () {
-                return this.runs().then(function (x) { return _.mapValues(x, "images"); });
+                return this.runs().then(function (x) { return _.mapValues(x, 'images'); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for compressedHistogram
@@ -2141,7 +2278,7 @@ var TF;
              * available.
              */
             Backend.prototype.compressedHistogramRuns = function () {
-                return this.runs().then(function (x) { return _.mapValues(x, "compressedHistograms"); });
+                return this.runs().then(function (x) { return _.mapValues(x, 'compressedHistograms'); });
             };
             /**
              * Return a promise showing list of runs that contain graphs.
@@ -2149,9 +2286,7 @@ var TF;
              * available.
              */
             Backend.prototype.graphRuns = function () {
-                return this.runs().then(function (x) {
-                    return _.keys(x).filter(function (k) { return x[k].graph; });
-                });
+                return this.runs().then(function (x) { return _.keys(x).filter(function (k) { return x[k].graph; }); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for run_metadata objects.
@@ -2159,7 +2294,7 @@ var TF;
              * available.
              */
             Backend.prototype.runMetadataRuns = function () {
-                return this.runs().then(function (x) { return _.mapValues(x, "run_metadata"); });
+                return this.runs().then(function (x) { return _.mapValues(x, 'run_metadata'); });
             };
             /**
              * Return a promise of a graph string from the backend.
@@ -2184,8 +2319,7 @@ var TF;
                 var p;
                 var url = this.router.histograms(tag, run);
                 p = this.requestManager.request(url);
-                return p.then(map(detupler(createHistogram)))
-                    .then(function (histos) {
+                return p.then(map(detupler(createHistogram))).then(function (histos) {
                     return histos.map(function (histo, i) {
                         return {
                             wall_time: histo.wall_time,
@@ -2235,9 +2369,7 @@ var TF;
         }());
         Backend_1.Backend = Backend;
         /** Given a RunToTag, return sorted array of all runs */
-        function getRuns(r) {
-            return _.keys(r).sort();
-        }
+        function getRuns(r) { return _.keys(r).sort(); }
         Backend_1.getRuns = getRuns;
         /** Given a RunToTag, return array of all tags (sorted + dedup'd) */
         function getTags(r) {
@@ -2278,9 +2410,7 @@ var TF;
             };
         }
         ;
-        function createScalar(x) {
-            return { scalar: x };
-        }
+        function createScalar(x) { return { scalar: x }; }
         ;
         function createHistogram(x) {
             return {
@@ -2296,9 +2426,9 @@ var TF;
         ;
         /**
          * Takes histogram data as stored by tensorboard backend and converts it to
-         * the standard d3 histogram data format to make it more compatible and easier to
-         * visualize. When visualizing histograms, having the left edge and width makes
-         * things quite a bit easier.
+         * the standard d3 histogram data format to make it more compatible and easier
+         * to visualize. When visualizing histograms, having the left edge and width
+         * makes things quite a bit easier.
          *
          * @param {histogram} Histogram - A histogram from tensorboard backend.
          * @return {HistogramBin[]} - Each bin has an x (left edge), a dx (width), and a y (count).
@@ -2307,7 +2437,7 @@ var TF;
          */
         function convertBins(histogram) {
             if (histogram.bucketRightEdges.length !== histogram.bucketCounts.length) {
-                throw (new Error("Edges and counts are of different lengths."));
+                throw (new Error('Edges and counts are of different lengths.'));
             }
             var previousRightEdge = histogram.min;
             return histogram.bucketRightEdges.map(function (rightEdge, i) {
@@ -2318,11 +2448,7 @@ var TF;
                 var right = Math.min(histogram.max, rightEdge);
                 // Store rightEdgeValue for next iteration
                 previousRightEdge = rightEdge;
-                return {
-                    x: left,
-                    dx: right - left,
-                    y: histogram.bucketCounts[i]
-                };
+                return { x: left, dx: right - left, y: histogram.bucketCounts[i] };
             });
         }
         Backend_1.convertBins = convertBins;
@@ -2339,7 +2465,7 @@ var TF;
                 /** Data type. One of TF.Backend.TYPES */
                 dataType: {
                     type: String,
-                    observer: "_throwErrorOnUnrecognizedType",
+                    observer: '_throwErrorOnUnrecognizedType',
                 },
                 /** TF.Backend.Backend for data loading. */
                 backend: {
@@ -2370,14 +2496,11 @@ var TF;
                     notify: true,
                 },
                 /** Promise provider for the data. Useful for passing to subcomponents */
-                dataProvider: {
-                    type: Function,
-                    computed: "_getDataProvider(dataType, backend)"
-                },
+                dataProvider: { type: Function, computed: '_getDataProvider(dataType, backend)' },
                 /** Has the dashboard loaded yet? */
                 loadState: {
                     type: String,
-                    value: "noload",
+                    value: 'noload',
                     readOnly: true,
                 },
                 /**
@@ -2392,12 +2515,26 @@ var TF;
                     readOnly: true,
                 }
             },
-            observers: ["_do_autoLoad(dataType, backend, autoLoad)"],
+            observers: ['_do_autoLoad(dataType, backend, autoLoad)'],
+            /**
+             * Reloading works in two steps:
+             * Backend reload, which gets metadata on available runs, tags, etc from
+             *   the backend.
+             * Frontend reload, which loads new data for each chart or visual display.
+             * Backend reload logic is provided by this behaivor. The frontend reload
+             *   logic should be provided elsewhere, since it is component-specific.
+             * To keep things simple and consistent, we do the backend reload first,
+             *   and the frontend reload afterwards.
+             */
+            reload: function () {
+                var _this = this;
+                return this.backendReload().then(function (x) { return _this.frontendReload(); });
+            },
             /**
              * Load data from backend and then set run2tag, tags, runs, and loadState.
              * Returns a promise that resolves/rejects when data is loaded.
              */
-            reload: function () {
+            backendReload: function () {
                 var _this = this;
                 if (this.dataType == null) {
                     throw new Error("TF.Backend.Behavior: Need a dataType to reload.");
@@ -2409,6 +2546,11 @@ var TF;
                 this._setLoadState("pending");
                 return runsRoute().then(function (x) {
                     _this._setLoadState("loaded");
+                    if (_.isEqual(x, _this.run2tag)) {
+                        // If x and run2tag are equal, let's avoid updating everything
+                        // since that can needlessly trigger run changes, reloads, etc
+                        return x;
+                    }
                     _this._setRun2tag(x);
                     var tags = TF.Backend.getTags(x);
                     _this._setDataNotFound(tags.length === 0);
@@ -2494,7 +2636,10 @@ var TF;
   <script>
     Polymer({
       is: "tf-event-dashboard",
-      behaviors: [TF.Backend.Behavior],
+      behaviors: [
+        TF.Dashboard.ReloadBehavior("tf-chart"),
+        TF.Backend.Behavior,
+      ],
       properties: {
         dataType: {value: "scalar"},
         router: Object,
@@ -2599,7 +2744,10 @@ var TF;
   <script>
     Polymer({
       is: "tf-histogram-dashboard",
-      behaviors: [TF.Backend.Behavior],
+      behaviors: [
+        TF.Dashboard.ReloadBehavior("tf-chart"),
+        TF.Backend.Behavior,
+      ],
       properties: {
         _visibleTags: {
           type: Array,
@@ -2661,11 +2809,12 @@ var TF;
     width: 100%;
     height: 100%;
     image-rendering: pixelated;
+    border: 1px solid #555;
   }
   </style>
   <template>
     <template is="dom-if" if="[[imageUrl]]">
-      <img src="[[imageUrl]]" on-error="retry">
+      <img src="[[imageUrl]]" on-error="reload">
     </template>
   </template>
   <script>
@@ -2679,17 +2828,18 @@ var TF;
       },
       reload: function() {
         var _this = this;
+        this.imageUrl = ""; // force reload
         this.imagesGenerator(this.tag, this.run).then(function(metadatas) {
           var last_metadata = _.last(metadatas);
           _this.imageUrl = last_metadata.url;
-        })
+        });
       },
       ready: function() {
-        this.reload();
-      },
-      retry: function() {
-        this.imageUrl = ""; // force reload
-        this.reload();
+        // Need to test so that it will not error if it is constructed w/o
+        // all properties (so that it's possible to use stub to mock it out)
+        if (this.run != null && this.tag != null && this.imagesGenerator != null) {
+          this.reload();
+        }
       },
     });
   </script>
@@ -2700,9 +2850,9 @@ var TF;
     <style include="scrollbar-style"></style>
     <div id="fullContainer" class="container scrollbar">
       <div id="topRow" class="container">
-        <div class="noshrink" id="paddingCell"></div>
+        <div class="noshrink cell" id="paddingCell"></div>
         <template is="dom-repeat" items="[[runs]]" as="run">
-        <div class="run-name-cell noshrink">
+        <div class="run-name-cell cell noshrink">
           <span>[[run]]</span>
         </div>
       </template>
@@ -2710,11 +2860,11 @@ var TF;
       <div id="bottomContainer" class="container">
         <template is="dom-repeat" items="[[tags]]" as="tag">
           <div class="image-row container noshrink">
-            <div class="tag-name-cell noshrink">
+            <div class="tag-name-cell cell noshrink">
               <span class="tag-name">[[tag]]</span>
             </div>
             <template is="dom-repeat" items="[[runs]]" as="run">
-              <div class="image-cell noshrink">
+              <div class="image-cell cell noshrink">
                 <template is="dom-if" if="[[_exists(run, tag, runToImages.*)]]">
                   <tf-image-loader id="loader" run="[[run]]" tag="[[tag]]" images-generator="[[imagesGenerator]]">
                   </tf-image-loader>
@@ -2752,14 +2902,16 @@ var TF;
         height: 100%;
         width: 100%;
       }
+      .cell {
+        margin-right: 10px;
+      }
       .image-row {
         flex-direction: row;
-        padding-top: 5px;
+        padding-top: 10px;
       }
       .image-cell {
         width: 300px;
         height: 300px;
-        border: 1px solid black;
       }
       .tag-name-cell {
         height: 300px;
@@ -2807,7 +2959,7 @@ var TF;
   <template>
     <div class="center">
       <tf-no-data-warning data-type="image" show-warning="[[dataNotFound]]"></tf-no-data-warning>
-      <tf-image-grid id="imageGrid" run-to-images="[[run2tag]]" images-generator="[[dataProvider]]" tags="[[tags]]" runs="[[runs]]"></tf-image-grid>
+      <tf-image-grid id="imagegrid" run-to-images="[[run2tag]]" images-generator="[[dataProvider]]" tags="[[tags]]" runs="[[runs]]"></tf-image-grid>
     </div>
 
     <style>
@@ -2833,7 +2985,10 @@ var TF;
       properties: {
         dataType: {value: "image"},
       },
-      behaviors: [TF.Backend.Behavior],
+      behaviors: [
+        TF.Dashboard.ReloadBehavior("tf-image-loader"),
+        TF.Backend.Behavior
+      ],
       attached: function() {
         this.async(function() {
           this.fire("rendered");
@@ -10664,7 +10819,7 @@ Polymer({
           (<span>[[_totalPredecessors]]</span>)
           <iron-list class="sub-list" id="inputsList" items="[[_predecessors.regular]]">
             <template>
-              <tf-node-list-item class="non-control-list-item" card-node="[[_node]]" item-node="[[_getNode(item, graphHierarchy)]]" edge-label="[[_getPredEdgeLabel(item)]]" item-render-info="[[_getRenderInfo(item, renderHierarchy)]]" name="[[item]]" item-type="predecessors" color-by="[[colorBy]]" template-index="[[_templateIndex]]">
+              <tf-node-list-item class="non-control-list-item" card-node="[[_node]]" item-node="[[item.node]]" edge-label="[[item.edgeLabel]]" item-render-info="[[item.renderInfo]]" name="[[item.name]]" item-type="predecessors" color-by="[[colorBy]]" template-index="[[_templateIndex]]">
               </tf-node-list-item>
             </template>
           </iron-list>
@@ -10679,7 +10834,7 @@ Polymer({
                 <template is="dom-if" if="{{_openedControlPred}}" restamp="true">
                   <iron-list class="sub-list" items="[[_predecessors.control]]">
                     <template>
-                      <tf-node-list-item card-node="[[_node]]" item-node="[[_getNode(item, graphHierarchy)]]" item-render-info="[[_getRenderInfo(item, renderHierarchy)]]" name="[[item]]" item-type="predecessors" color-by="[[colorBy]]" template-index="[[_templateIndex]]">
+                      <tf-node-list-item card-node="[[_node]]" item-node="[[item.node]]" item-render-info="[[item.renderInfo]]" name="[[item.name]]" item-type="predecessors" color-by="[[colorBy]]" template-index="[[_templateIndex]]">
                       </tf-node-list-item>
                     </template>
                   </iron-list>
@@ -10694,7 +10849,7 @@ Polymer({
           (<span>[[_totalSuccessors]]</span>)
           <iron-list class="sub-list" id="outputsList" items="[[_successors.regular]]">
             <template>
-              <tf-node-list-item class="non-control-list-item" card-node="[[_node]]" item-node="[[_getNode(item, graphHierarchy)]]" edge-label="[[_getSuccEdgeLabel(item)]]" item-render-info="[[_getRenderInfo(item, renderHierarchy)]]" name="[[item]]" item-type="successor" color-by="[[colorBy]]" template-index="[[_templateIndex]]">
+              <tf-node-list-item class="non-control-list-item" card-node="[[_node]]" item-node="[[item.node]]" edge-label="[[item.edgeLabel]]" item-render-info="[[item.renderInfo]]" name="[[item.name]]" item-type="successor" color-by="[[colorBy]]" template-index="[[_templateIndex]]">
               </tf-node-list-item>
             </template>
           </iron-list>
@@ -10709,7 +10864,7 @@ Polymer({
                 <template is="dom-if" if="{{_openedControlSucc}}" restamp="true">
                   <iron-list class="sub-list" items="[[_successors.control]]">
                     <template>
-                      <tf-node-list-item card-node="[[_node]]" item-node="[[_getNode(item, graphHierarchy)]]" item-render-info="[[_getRenderInfo(item, renderHierarchy)]]" name="[[item]]" item-type="successors" color-by="[[colorBy]]" template-index="[[_templateIndex]]">
+                      <tf-node-list-item card-node="[[_node]]" item-node="[[item.node]]" item-render-info="[[item.renderInfo]]" name="[[item.name]]" item-type="successors" color-by="[[colorBy]]" template-index="[[_templateIndex]]">
                       </tf-node-list-item>
                     </template>
                   </iron-list>
@@ -10872,11 +11027,40 @@ Polymer({
         },
         _getSuccessors: function(node, hierarchy) {
           this.async(this._resizeList.bind(this, "#inputsList"));
-          return node ? hierarchy.getSuccessors(node.name) : [[], []];
+          if (!node) {
+            return {regular: [], control: []}
+          }
+          return this._convertEdgeListToEdgeInfoList(
+            hierarchy.getSuccessors(node.name), false);
         },
         _getPredecessors: function(node, hierarchy) {
           this.async(this._resizeList.bind(this, "#outputsList"));
-          return node ? hierarchy.getPredecessors(node.name) : [[], []];
+          if (!node) {
+            return {regular: [], control: []}
+          }
+          return this._convertEdgeListToEdgeInfoList(
+            hierarchy.getPredecessors(node.name), true);
+        },
+        _convertEdgeListToEdgeInfoList: function(list, isPredecessor) {
+          return {
+            regular: list.regular.map(function(name) {
+              return {
+                name: name,
+                node: this._getNode(name, this.graphHierarchy),
+                edgeLabel: isPredecessor
+                  ? this._getPredEdgeLabel(name)
+                  : this._getSuccEdgeLabel(name),
+                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
+              }
+            }, this),
+            control: list.control.map(function(name) {
+              return {
+                name: name,
+                node: this._getNode(name, this.graphHierarchy),
+                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
+              }
+            }, this)
+          };
         },
         _getSubnodes: function(node) {
           return node && node.metagraph ? node.metagraph.nodes() : null;
@@ -11767,41 +11951,50 @@ Polymer({
 </script>
 </div><dom-module id="tf-tensorboard">
   <template>
+    <paper-dialog with-backdrop="" id="settings">
+      <h2>Settings</h2>
+      <paper-checkbox id="auto-reload-checkbox" checked="{{autoReloadEnabled}}">
+        Reload data every <span>[[autoReloadIntervalSecs]]</span>s.
+      </paper-checkbox>
+    </paper-dialog>
     <paper-header-panel>
       <paper-toolbar id="toolbar">
         <div id="toolbar-content">
           <div class="toolbar-title">TensorBoard</div>
           <paper-tabs selected="{{modeIndex}}" noink="" class="tabs" id="tabs">
-            <paper-tab data-mode="events">Events</paper-tab>
-            <paper-tab data-mode="images">Images</paper-tab>
-            <paper-tab data-mode="graphs">Graph</paper-tab>
-            <paper-tab data-mode="histograms">Histograms</paper-tab>
+            <template is="dom-repeat" items="[[tabs]]">
+              <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+            </template>
           </paper-tabs>
           <div class="global-actions">
+            <paper-icon-button icon="refresh" on-tap="reload" disabled$="[[_modeIsGraphs(mode)]]" id="reload-button"></paper-icon-button>
+            <paper-icon-button icon="settings" on-tap="openSettings" id="settings-button"></paper-icon-button>
             <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md" tabindex="-1">
               <paper-icon-button icon="help-outline"></paper-icon-button>
             </a>
           </div>
         </div>
       </paper-toolbar>
+
       <div id="content" class="fit">
-        <template is="dom-if" if="[[eventDashboard(mode)]]">
-          <tf-event-dashboard id="eventDash" backend="[[_backend]]" router="[[router]]"></tf-event-dashboard>
+        <template is="dom-if" if="[[_modeIsEvents(mode)]]">
+          <tf-event-dashboard id="events" backend="[[_backend]]" router="[[router]]"></tf-event-dashboard>
         </template>
 
-        <template is="dom-if" if="[[imageDashboard(mode)]]">
-          <tf-image-dashboard id="imageDash" backend="[[_backend]]"></tf-image-dashboard>
+        <template is="dom-if" if="[[_modeIsImages(mode)]]">
+          <tf-image-dashboard id="images" backend="[[_backend]]"></tf-image-dashboard>
         </template>
 
-        <template is="dom-if" if="[[graphDashboard(mode)]]">
-          <tf-graph-dashboard id="graphDash" backend="[[_backend]]" router="[[router]]"></tf-graph-dashboard>
+        <template is="dom-if" if="[[_modeIsGraphs(mode)]]">
+          <tf-graph-dashboard id="graphs" backend="[[_backend]]" router="[[router]]"></tf-graph-dashboard>
         </template>
 
-        <template is="dom-if" if="[[histogramDashboard(mode)]]">
-          <tf-histogram-dashboard id="histogramDash" backend="[[_backend]]"></tf-histogram-dashboard>
+        <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
+          <tf-histogram-dashboard id="histograms" backend="[[_backend]]"></tf-histogram-dashboard>
         </template>
       </div>
     </paper-header-panel>
+
     <style>
       :host {
         height: 100%;
@@ -11820,11 +12013,11 @@ Polymer({
         text-rendering: optimizeLegibility;
         letter-spacing: -0.025em;
         font-weight: 500;
-        width: 340px;
+        flex-grow: 2;
       }
 
       .tabs {
-        width: 400px;
+        flex-grow: 1;
         text-transform: uppercase;
         height: 100%;
       }
@@ -11835,6 +12028,8 @@ Polymer({
 
       .global-actions {
         flex-grow: 2;
+        display: inline-flex; /* Ensure that icons stay aligned */
+        justify-content: flex-end;
         text-align: right;
         color: white;
       }
@@ -11855,12 +12050,17 @@ Polymer({
       #content {
         height: 100%;
       }
+      [disabled] {
+        opacity: 0.2;
+        color: white;
+      }
 
     </style>
   </template>
   <script>
     Polymer({
       is: "tf-tensorboard",
+      behaviors: [TF.TensorBoard.AutoReloadBehavior],
       properties: {
         router: {
           type: Object,
@@ -11873,14 +12073,20 @@ Polymer({
         // Which tab is selected (events, graph, images etc).
         mode: {
           type: String,
-          computed: '_getModeFromIndex(modeIndex)'
+          computed: '_getModeFromIndex(modeIndex)',
+          notify: true,
         },
         // If true, tab switching in TensorBoard will not update
         // location hash. Hash update interferes with selenium tests.
         noHash: {
           type: Boolean,
           value: false
-        }
+        },
+        tabs: {
+          type: Array,
+          readOnly: true,
+          value: TF.TensorBoard.TABS,
+        },
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
@@ -11892,22 +12098,26 @@ Polymer({
       _makeBackend: function(router) {
         return new TF.Backend.Backend(router);
       },
-      eventDashboard: function(mode) {
+      _modeIsEvents: function(mode) {
         return mode === "events";
       },
-      imageDashboard: function(mode) {
+      _modeIsImages: function(mode) {
         return mode === "images";
       },
-      graphDashboard: function(mode) {
+      _modeIsGraphs: function(mode) {
         return mode === "graphs";
       },
-      histogramDashboard: function(mode) {
+      _modeIsHistograms: function(mode) {
         return mode === "histograms";
       },
+      selectedDashboard: function() {
+        var dashboard = this.$$("#" + this.mode);
+        if (dashboard == null) {
+          throw new Error(`Unable to find dashboard for mode: ${this.mode}`);
+        }
+        return dashboard;
+      },
       ready: function() {
-        this.tabs = [].slice.call(this.querySelectorAll('paper-tab')).map(function(a) {
-          return a.dataset.mode;
-        });
         this._getModeFromHash();
         window.addEventListener('hashchange', function() {
           this._getModeFromHash();
@@ -11924,6 +12134,15 @@ Polymer({
         if (modeIndex != -1 && modeIndex != this.modeIndex) {
           this.set('modeIndex', modeIndex);
         }
+      },
+      reload: function() {
+        if (this.mode === "graphs") {
+          return;
+        }
+        this.selectedDashboard().reload();
+      },
+      openSettings: function() {
+        this.$.settings.open();
       },
     });
   </script>

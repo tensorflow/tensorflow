@@ -258,6 +258,15 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   LOG(INFO) << "Alloc stats: \n" << stats.DebugString();
 }
 
+TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
+  GPUBFCAllocator a(0, 1UL << 60);
+  GPUBFCAllocator b(0, 1UL << 60);
+  void* amem = a.AllocateRaw(1, 1);
+  void* bmem = b.AllocateRaw(1, 1 << 30);
+  a.DeallocateRaw(amem);
+  b.DeallocateRaw(bmem);
+}
+
 static void BM_Allocation(int iters) {
   GPUBFCAllocator a(0, 1uLL << 33);
   // Exercise a few different allocation sizes

@@ -1,5 +1,7 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-tabs/paper-tabs.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
+<link rel="import" href="../paper-checkbox/paper-checkbox.html">
 <link rel="import" href="../paper-toolbar/paper-toolbar.html">
 <link rel="import" href="../paper-button/paper-button.html">
 <link rel="import" href="../paper-header-panel/paper-header-panel.html">
@@ -17,8 +19,15 @@ It implements a toolbar (via paper-header-panel and paper-toolbar) that
 allows the user to toggle between various dashboards.
 -->
 <script src="tensorboard.js"></script>
+<script src="autoReloadBehavior.js"></script>
 <dom-module id="tf-tensorboard">
   <template>
+    <paper-dialog with-backdrop id="settings">
+      <h2>Settings</h2>
+      <paper-checkbox id="auto-reload-checkbox" checked="{{autoReloadEnabled}}">
+        Reload data every <span>[[autoReloadIntervalSecs]]</span>s.
+      </paper-checkbox>
+    </paper-dialog>
     <paper-header-panel>
       <paper-toolbar id="toolbar">
         <div id="toolbar-content">
@@ -35,12 +44,18 @@ allows the user to toggle between various dashboards.
               disabled$="[[_modeIsGraphs(mode)]]"
               id="reload-button"
             ></paper-icon-button>
+            <paper-icon-button
+              icon="settings"
+              on-tap="openSettings"
+              id="settings-button"
+            ></paper-icon-button>
             <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md" tabindex="-1">
               <paper-icon-button icon="help-outline"></paper-icon-button>
             </a>
           </div>
         </div>
       </paper-toolbar>
+
       <div id="content" class="fit">
         <template is="dom-if" if="[[_modeIsEvents(mode)]]">
           <tf-event-dashboard
@@ -73,6 +88,7 @@ allows the user to toggle between various dashboards.
         </template>
       </div>
     </paper-header-panel>
+
     <style>
       :host {
         height: 100%;
@@ -91,11 +107,11 @@ allows the user to toggle between various dashboards.
         text-rendering: optimizeLegibility;
         letter-spacing: -0.025em;
         font-weight: 500;
-        width: 340px;
+        flex-grow: 2;
       }
 
       .tabs {
-        width: 400px;
+        flex-grow: 1;
         text-transform: uppercase;
         height: 100%;
       }
@@ -106,6 +122,8 @@ allows the user to toggle between various dashboards.
 
       .global-actions {
         flex-grow: 2;
+        display: inline-flex; /* Ensure that icons stay aligned */
+        justify-content: flex-end;
         text-align: right;
         color: white;
       }
@@ -136,6 +154,7 @@ allows the user to toggle between various dashboards.
   <script>
     Polymer({
       is: "tf-tensorboard",
+      behaviors: [TF.TensorBoard.AutoReloadBehavior],
       properties: {
         router: {
           type: Object,
@@ -161,7 +180,7 @@ allows the user to toggle between various dashboards.
           type: Array,
           readOnly: true,
           value: TF.TensorBoard.TABS,
-        }
+        },
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
@@ -215,6 +234,9 @@ allows the user to toggle between various dashboards.
           return;
         }
         this.selectedDashboard().reload();
+      },
+      openSettings: function() {
+        this.$.settings.open();
       },
     });
   </script>
