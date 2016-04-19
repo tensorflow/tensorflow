@@ -22,6 +22,7 @@ from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.platform import app
 from tensorflow.python.platform import logging
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.util import compat
 
 
@@ -31,6 +32,7 @@ class EventFileLoader(object):
   def __init__(self, file_path):
     if file_path is None:
       raise ValueError('A file path is required')
+    file_path = resource_loader.readahead_file_path(file_path)
     logging.debug('Opening a record reader pointing at %s', file_path)
     self._reader = pywrap_tensorflow.PyRecordReader_New(
         compat.as_bytes(file_path), 0)

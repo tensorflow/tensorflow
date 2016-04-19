@@ -144,14 +144,19 @@ class _VariableStore(object):
     with ops.control_dependencies(None):
       if initializing_from_value:
         init_val = initializer
+        variable_dtype = None
       else:
-        with ops.name_scope(name + "/Initializer/"):
-          init_val = initializer(shape.as_list(), dtype=dtype)
+        init_val = lambda: initializer(shape.as_list(), dtype=dtype)
+        variable_dtype = dtype.base_dtype
 
     # Create the variable.
-    v = variables.Variable(init_val, name=name, trainable=trainable,
+    v = variables.Variable(initial_value=init_val,
+                           name=name,
+                           trainable=trainable,
                            collections=collections,
-                           caching_device=caching_device)
+                           caching_device=caching_device,
+                           dtype=variable_dtype)
+
     self._vars[name] = v
     logging.info("Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)

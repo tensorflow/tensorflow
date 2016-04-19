@@ -94,10 +94,13 @@ class OpsTestBase : public ::testing::Test {
   // and output types as output.
   //
   // Returns the status of initialization.
-  Status InitOp() {
+  Status InitOp() { return InitOpWithGraphVersion(TF_GRAPH_DEF_VERSION); }
+
+  // Only use this directly if you have a deprecated op that you need to test.
+  Status InitOpWithGraphVersion(int graph_def_version) {
     Status status;
     kernel_ = CreateOpKernel(device_type_, device_.get(), allocator(),
-                             node_def_, TF_GRAPH_DEF_VERSION, &status);
+                             node_def_, graph_def_version, &status);
     if (kernel_ != nullptr) input_types_ = kernel_->input_types();
     return status;
   }

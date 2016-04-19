@@ -44,9 +44,9 @@ REGISTER_OP("TreePredictions")
 
   input_data: The training batch's features as a 2-d tensor; `input_data[i][j]`
    gives the j-th feature of the i-th input.
-  tree:= A 2-d int32 tensor.  `tree[0][i]` gives the index of the left child
-   of the i-th node, `tree[0][i] + 1` gives the index of the right child of
-   the i-th node, and `tree[1][i]` gives the index of the feature used to
+  tree:= A 2-d int32 tensor.  `tree[i][0]` gives the index of the left child
+   of the i-th node, `tree[i][0] + 1` gives the index of the right child of
+   the i-th node, and `tree[i][1]` gives the index of the feature used to
    split the i-th node.
   tree_thresholds: `tree_thresholds[i]` is the value used to split the i-th
    node.
