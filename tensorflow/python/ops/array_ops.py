@@ -968,21 +968,18 @@ def _DiagPartShape(op):
     A single-element list containing the shape of the output.
 
   Raises:
-    ValueError: If input has odd rank or greater than 6
+    ValueError: If input has odd rank or greater than 6, or the first and
+    second halves of the shape are incompatible.
 
   """
-  shape = op.inputs[0].get_shape()
-  rank = len(shape)
+  input_shape = op.inputs[0].get_shape().with_rank_at_most(6)
+  rank = input_shape.ndims
+  if rank is None:
+    return [tensor_shape.unknown_shape()]
+  if rank % 2:
+    raise ValueError("Input must be even rank, got rank = " + str(rank) + ".")
   mid = rank // 2
-  if rank % 2 or rank > 6:
-    raise ValueError("Input must have even rank <= 6, input rank is " +
-                     str(rank) + "." )
-  if not shape[:mid].is_compatible_with(shape[mid:]):
-    raise ValueError("Invalid shape, shape[:mid] " + str(shape[:mid]) +
-                     " and shape[mid:] " + str(shape[mid:]) +
-                     " do not match ")
-  input_shape = shape.with_rank_at_most(6)
-  return [input_shape[:len(input_shape) // 2]]
+  return [input_shape[:mid].merge_with(input_shape[mid:])]
 
 @ops.RegisterShape("ExpandDims")
 def _ExpandDimsShape(op):
