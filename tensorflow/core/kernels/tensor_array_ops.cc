@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/kernels/tensor_array.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -106,7 +107,6 @@ class TensorArrayCreationOp : public OpKernel {
     TensorArray* output_tensor_array;
     OP_REQUIRES_OK(ctx, CreateTensorArray(ctx, rm, &tensor_array_output_handle,
                                           &output_tensor_array));
-
     ctx->set_output_ref(0, output_tensor_array->mu(),
                         output_tensor_array->handle());
   }
@@ -218,6 +218,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     TensorArray* tensor_array;
     int32 array_size;
     TF_RETURN_IF_ERROR(rm->Lookup(container, tensor_array_name, &tensor_array));
+    core::ScopedUnref unref(tensor_array);
 
     // Once gradients are being calculated, the forward TensorArray
     // may no longer be resized by new Writes.
@@ -243,6 +244,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
 
     Status s = rm->LookupOrCreate<TensorArray>(
         output_handle(0), output_handle(1), output_tensor_array, creator);
+    (*output_tensor_array)->Unref();
 
     return s;
   }
@@ -288,6 +290,7 @@ class TensorArrayWriteOp : public OpKernel {
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    core::ScopedUnref unref(tensor_array);
     const int32 index = tensor_index->scalar<int32>()();
     OP_REQUIRES(
         ctx, tensor_value->dtype() == tensor_array->ElemType(),
@@ -349,6 +352,7 @@ class TensorArrayReadOp : public OpKernel {
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    core::ScopedUnref unref(tensor_array);
 
     const int32 index = tensor_index->scalar<int32>()();
     OP_REQUIRES(
@@ -406,6 +410,8 @@ class TensorArrayPackOp : public OpKernel {
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+
+    core::ScopedUnref unref(tensor_array);
     int32 array_size;
     OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
     OP_REQUIRES(
@@ -532,6 +538,7 @@ class TensorArrayConcatOp : public OpKernel {
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    core::ScopedUnref unref(tensor_array);
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
         errors::InvalidArgument(
@@ -686,6 +693,7 @@ class TensorArrayUnpackOp : public OpKernel {
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    core::ScopedUnref unref(tensor_array);
     const Tensor* tensor_value;
     OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
 
@@ -788,6 +796,7 @@ class TensorArraySplitOp : public OpKernel {
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    core::ScopedUnref unref(tensor_array);
     const Tensor* tensor_value;
     OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
     const Tensor* tensor_lengths;
@@ -926,6 +935,7 @@ class TensorArraySizeOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     TensorArray* tensor_array;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    core::ScopedUnref unref(tensor_array);
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, tensor_array->Size(&(output->scalar<int32>()())));
@@ -956,6 +966,7 @@ class TensorArrayCloseOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     TensorArray* tensor_array;
     OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    core::ScopedUnref unref(tensor_array);
     // Instead of deleting this TA from the ResourceManager, we just
     // clear it away and mark it as closed.  The remaining memory
     // consumed store its mutex and handle Tensor.  This will be

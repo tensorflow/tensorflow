@@ -54,6 +54,9 @@
 #                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
 #                      PIP or BOTH).
 #                      See builds/test_tutorials.sh
+#   TF_BUILD_INTEGRATION_TESTS:
+#                      If set this will perform integration tests. See
+#                      builds/integration_tests.sh.
 #   TF_BUILD_RUN_BENCHMARKS:
 #                      If set to any non-empty and non-0 value, will perform
 #                      the benchmark tests (see *_logged_benchmark targets in
@@ -100,6 +103,7 @@ BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
+PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
@@ -278,6 +282,11 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
   fi
 
   PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_AGRS}"
+
+  if [[ ! -z "${TF_BUILD_INTEGRATION_TESTS}" ]] &&
+     [[ "${TF_BUILD_INTEGRATION_TESTS}" != "0" ]]; then
+    PIP_MAIN_CMD="${PIP_MAIN_CMD} ${PIP_INTEGRATION_TESTS_FLAG}"
+  fi
 
   # Add command for tutorial test
   if [[ ! -z "${TF_BUILD_TEST_TUTORIALS}" ]] &&

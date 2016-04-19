@@ -32,7 +32,7 @@ X_train, X_test, y_train, y_test = cross_validation.train_test_split(X, y,
 scaler = preprocessing.StandardScaler()
 X_train = scaler.fit_transform(X_train)
 
-# Build 2 layer fully connected DNN with 10, 10 units respecitvely.
+# Build 2 layer fully connected DNN with 10, 10 units respectively.
 regressor = skflow.TensorFlowDNNRegressor(hidden_units=[10, 10],
     steps=5000, learning_rate=0.1, batch_size=1)
 

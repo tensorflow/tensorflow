@@ -19,4 +19,4 @@ set -e
 mkdir -p build
 cd build
 cmake -DCMAKE_BUILD_TYPE=Release ../tensorflow/contrib/cmake
-make all test
+make all

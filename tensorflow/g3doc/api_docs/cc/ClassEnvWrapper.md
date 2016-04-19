@@ -24,69 +24,21 @@ Returns the target to which this Env forwards all calls.
 
 
 
-#### `Status tensorflow::EnvWrapper::NewRandomAccessFile(const string &f, RandomAccessFile **r) override` {#Status_tensorflow_EnvWrapper_NewRandomAccessFile}
+#### `Status tensorflow::EnvWrapper::GetFileSystemForFile(const string &fname, FileSystem **result) override` {#Status_tensorflow_EnvWrapper_GetFileSystemForFile}
 
-Creates a brand new random access read-only file with the specified name.
-
-On success, stores a pointer to the new file in *result and returns OK. On failure stores NULL in *result and returns non-OK. If the file does not exist, returns a non-OK status.
-
-The returned file may be concurrently accessed by multiple threads.
-
-#### `Status tensorflow::EnvWrapper::NewWritableFile(const string &f, WritableFile **r) override` {#Status_tensorflow_EnvWrapper_NewWritableFile}
-
-Creates an object that writes to a new file with the specified name.
-
-Deletes any existing file with the same name and creates a new file. On success, stores a pointer to the new file in *result and returns OK. On failure stores NULL in *result and returns non-OK.
-
-The returned file will only be accessed by one thread at a time.
-
-#### `Status tensorflow::EnvWrapper::NewAppendableFile(const string &f, WritableFile **r) override` {#Status_tensorflow_EnvWrapper_NewAppendableFile}
-
-Creates an object that either appends to an existing file, or writes to a new file (if the file does not exist to begin with).
-
-On success, stores a pointer to the new file in *result and returns OK. On failure stores NULL in *result and returns non-OK.
-
-The returned file will only be accessed by one thread at a time.
-
-#### `bool tensorflow::EnvWrapper::FileExists(const string &f) override` {#bool_tensorflow_EnvWrapper_FileExists}
-
-Returns true iff the named file exists.
+Returns the FileSystem object to handle operations on the file specified by &apos;fname&apos;. The FileSystem object is used as the implementation for the file system related (non-virtual) functions that follow. Returned FileSystem object is still owned by the Env object and will.
 
 
 
-#### `Status tensorflow::EnvWrapper::GetChildren(const string &dir, std::vector< string > *r) override` {#Status_tensorflow_EnvWrapper_GetChildren}
+#### `Status tensorflow::EnvWrapper::GetRegisteredFileSystemSchemes(std::vector< string > *schemes) override` {#Status_tensorflow_EnvWrapper_GetRegisteredFileSystemSchemes}
 
-Stores in *result the names of the children of the specified directory. The names are relative to "dir".
-
-Original contents of *results are dropped.
-
-#### `Status tensorflow::EnvWrapper::DeleteFile(const string &f) override` {#Status_tensorflow_EnvWrapper_DeleteFile}
-
-Deletes the named file.
+Returns the file system schemes registered for this Env .
 
 
 
-#### `Status tensorflow::EnvWrapper::CreateDir(const string &d) override` {#Status_tensorflow_EnvWrapper_CreateDir}
-
-Creates the specified directory.
+#### `void tensorflow::EnvWrapper::RegisterFileSystem(const string &scheme, FileSystemRegistry::Factory factory) override` {#void_tensorflow_EnvWrapper_RegisterFileSystem}
 
 
-
-#### `Status tensorflow::EnvWrapper::DeleteDir(const string &d) override` {#Status_tensorflow_EnvWrapper_DeleteDir}
-
-Deletes the specified directory.
-
-
-
-#### `Status tensorflow::EnvWrapper::GetFileSize(const string &f, uint64 *s) override` {#Status_tensorflow_EnvWrapper_GetFileSize}
-
-Stores the size of `fname` in `*file_size`.
-
-
-
-#### `Status tensorflow::EnvWrapper::RenameFile(const string &s, const string &t) override` {#Status_tensorflow_EnvWrapper_RenameFile}
-
-Renames file src to target. If target already exists, it will be replaced.
 
 
 

@@ -82,15 +82,15 @@ flags.DEFINE_boolean(
     "interactive", False,
     "If true, enters an IPython interactive session to play with the trained "
     "model. E.g., try model.analogy('france', 'paris', 'russia') and "
-    "model.nearby(['proton', 'elephant', 'maxwell']")
+    "model.nearby(['proton', 'elephant', 'maxwell'])")
 flags.DEFINE_integer("statistics_interval", 5,
                      "Print statistics every n seconds.")
 flags.DEFINE_integer("summary_interval", 5,
                      "Save training summary to file every n seconds (rounded "
-                     "up to statistics interval.")
+                     "up to statistics interval).")
 flags.DEFINE_integer("checkpoint_interval", 600,
                      "Checkpoint the model (i.e. save the parameters) every n "
-                     "seconds (rounded up to statistics interval.")
+                     "seconds (rounded up to statistics interval).")
 
 FLAGS = flags.FLAGS
 
@@ -420,7 +420,7 @@ class Word2Vec(object):
         last_summary_time = now
       if now - last_checkpoint_time > opts.checkpoint_interval:
         self.saver.save(self._session,
-                        opts.save_path + "model",
+                        os.path.join(opts.save_path, "model.ckpt"),
                         global_step=step.astype(int))
         last_checkpoint_time = now
       if epoch != initial_epoch:

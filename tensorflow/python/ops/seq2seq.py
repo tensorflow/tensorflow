@@ -449,7 +449,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
     initial_state: 2D Tensor [batch_size x cell.state_size].
     attention_states: 3D Tensor [batch_size x attn_length x attn_size].
     cell: rnn_cell.RNNCell defining the cell function and size.
-    output_size: Size of the output vectors; if None, we use output_size.
+    output_size: Size of the output vectors; if None, we use cell.output_size.
     num_heads: Number of attention heads that read from attention_states.
     loop_function: If not None, this function will be applied to i-th output
       in order to generate i+1-th input, and decoder_inputs will be ignored,

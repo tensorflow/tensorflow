@@ -119,10 +119,8 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
         raise ValueError("If no initial_state is provided, dtype must be.")
       state = cell.zero_state(batch_size, dtype)
 
-    if sequence_length is not None:
-      sequence_length = math_ops.to_int32(sequence_length)
-
     if sequence_length is not None:  # Prepare variables
+      sequence_length = math_ops.to_int32(sequence_length)
       zero_output = array_ops.zeros(
           array_ops.pack([batch_size, cell.output_size]), inputs[0].dtype)
       zero_output.set_shape(

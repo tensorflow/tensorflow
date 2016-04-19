@@ -272,7 +272,7 @@ struct LaunchConvOp<GPUDevice, T> {
     if (use_cudnn) {
       Tensor input = input_param;
       if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 &&
-          data_format == FORMAT_NHWC) {
+          row_stride == 1 && col_stride == 1 && data_format == FORMAT_NHWC) {
         // 1x1 filter, so call cublas directly.
         const uint64 m =
             input.dim_size(0) * input.dim_size(1) * input.dim_size(2);

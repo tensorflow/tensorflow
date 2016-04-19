@@ -1,4 +1,4 @@
-FROM b.gcr.io/tensorflow/tensorflow:latest
+FROM gcr.io/tensorflow/tensorflow:latest
 MAINTAINER Vincent Vanhoucke <vanhoucke@google.com>
 RUN pip install scikit-learn
 RUN rm -rf /notebooks/*

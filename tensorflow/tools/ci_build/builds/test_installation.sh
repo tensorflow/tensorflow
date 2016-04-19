@@ -263,7 +263,7 @@ SKIP_COUNTER=0
 FAILED_TESTS=""
 FAILED_TEST_LOGS=""
 
-N_JOBS=$(grep -c ^processor /proc/cpuinfo)  # TODO(cais): Turn into argument / env var
+N_JOBS=$(grep -c ^processor /proc/cpuinfo)
 if [[ -z ${N_JOBS} ]]; then
   # Try the Mac way of getting number of CPUs
   N_JOBS=$(sysctl -n hw.ncpu)

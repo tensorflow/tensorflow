@@ -22,10 +22,13 @@ from __future__ import print_function
 from tensorflow.contrib import ctc
 from tensorflow.contrib import distributions
 from tensorflow.contrib import framework
+from tensorflow.contrib import grid_rnn
 from tensorflow.contrib import layers
+from tensorflow.contrib import learn
 from tensorflow.contrib import linear_optimizer
 from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics
+from tensorflow.contrib import skflow
 from tensorflow.contrib import testing
 from tensorflow.contrib import util

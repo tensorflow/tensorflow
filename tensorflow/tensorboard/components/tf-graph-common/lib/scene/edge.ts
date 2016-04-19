@@ -266,7 +266,7 @@ export function appendEdge(edgeGroup, d: EdgeData,
       "xlink:href": "#" + pathId,
       "startOffset": "50%",
       "text-anchor": "middle",
-      "dominant-baseline": baseline
+      "dominant-baseline": "central"
   }).text(labelForEdge);
 };
 

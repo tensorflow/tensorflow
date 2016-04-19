@@ -101,7 +101,7 @@ def bias_add_shape(op):
       data_format = op.get_attr("data_format")
     except ValueError:
       data_format = None
-    if data_format == "NCHW":
+    if data_format == b"NCHW":
       # Merge the length of bias_shape into the third-to-last dimension.
       output_shape = input_shape[0:-3].concatenate(
           input_shape[-3].merge_with(bias_shape[0])).concatenate(
@@ -122,7 +122,7 @@ def bias_add_grad_shape(op):
   except ValueError:
     data_format = None
 
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     output_shape = input_shape[-3]
   else:
     output_shape = input_shape[-1]
@@ -149,10 +149,6 @@ def get2d_conv_output_size(input_height, input_width, filter_height,
           "filter must not be larger than the input: "
           "Filter: [%sx%s] Input: [%sx%s]"
           % (filter_height, filter_width, input_height, input_width))
-    if row_stride > filter_height or col_stride > filter_width:
-      raise ValueError("stride must be less than or equal to filter size",
-                       "stride: [%sx%s] filter: [%sx%s]"
-                       % (row_stride, col_stride, filter_height, filter_width))
 
     # Compute number of rows in the output, based on the padding.
     if input_height.value is None or filter_height.value is None:
@@ -207,7 +203,7 @@ def conv2d_shape(op):
   except ValueError:
     data_format = None
 
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     # Convert input shape to the dfeault NHWC for inference.
     input_shape = [input_shape[0], input_shape[2], input_shape[3],
                    input_shape[1]]
@@ -222,7 +218,7 @@ def conv2d_shape(op):
   # Check that the input depths are compatible.
   input_shape[3].assert_is_compatible_with(filter_shape[2])
 
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     stride_b, stride_d, stride_r, stride_c = op.get_attr("strides")
   else:
     stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
@@ -238,7 +234,7 @@ def conv2d_shape(op):
       in_rows, in_cols, filter_rows, filter_cols, stride_r, stride_c, padding)
 
   output_shape = [batch_size, out_rows, out_cols, depth_out]
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     # Convert output shape back to NCHW.
     output_shape = [output_shape[0], output_shape[3], output_shape[1],
                     output_shape[2]]
@@ -389,12 +385,12 @@ def avg_pool_shape(op):
   except ValueError:
     data_format = None
 
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     # Convert input shape to the dfeault NHWC for inference.
     input_shape = [input_shape[0], input_shape[2], input_shape[3],
                    input_shape[1]]
 
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     ksize_b, ksize_d, ksize_r, ksize_c = op.get_attr("ksize")
     stride_b, stride_d, stride_r, stride_c = op.get_attr("strides")
   else:
@@ -422,7 +418,7 @@ def avg_pool_shape(op):
       in_rows, in_cols, ksize_r, ksize_c, stride_r, stride_c, padding)
 
   output_shape = [batch_size, out_rows, out_cols, depth]
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     # Convert output shape back to NCHW.
     output_shape = [output_shape[0], output_shape[3], output_shape[1],
                     output_shape[2]]
@@ -456,12 +452,12 @@ def max_pool_shape(op):
   except ValueError:
     data_format = None
 
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     # Convert input shape to the default NHWC for inference.
     input_shape = [input_shape[0], input_shape[2], input_shape[3],
                    input_shape[1]]
 
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     ksize_b, ksize_d, ksize_r, ksize_c = op.get_attr("ksize")
     stride_b, stride_d, stride_r, stride_c = op.get_attr("strides")
   else:
@@ -501,7 +497,7 @@ def max_pool_shape(op):
                        "to equal the depth stride.")
     output_shape = [batch_size, in_rows, in_cols, depth // ksize_d]
 
-  if data_format == "NCHW":
+  if data_format == b"NCHW":
     # Convert output shape back to NCHW.
     output_shape = [output_shape[0], output_shape[3], output_shape[1],
                     output_shape[2]]

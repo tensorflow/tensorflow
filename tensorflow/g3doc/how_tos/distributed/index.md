@@ -213,12 +213,12 @@ def main(_):
   if FLAGS.job_name == "ps":
     server.join()
   elif FLAGS.job_name == "worker":
-    
+
     # Assigns ops to the local worker by default.
     with tf.device(tf.train.replica_device_setter(
         worker_device="/job:worker/task:%d" % FLAGS.task_index,
         cluster=cluster)):
-        
+
       # Build model...
       loss = ...
       global_step = tf.Variable(0)

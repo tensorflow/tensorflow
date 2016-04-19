@@ -23,7 +23,9 @@ File | Purpose
 
 Simply run the `fully_connected_feed.py` file directly to start training:
 
-`python fully_connected_feed.py`
+```bash
+python fully_connected_feed.py
+```
 
 ## Prepare the Data
 
@@ -67,7 +69,7 @@ rest of the graph and into which the actual training examples will be fed.
 
 ```python
 images_placeholder = tf.placeholder(tf.float32, shape=(batch_size,
-                                                       IMAGE_PIXELS))
+                                                       mnist.IMAGE_PIXELS))
 labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size))
 ```
 
@@ -99,14 +101,14 @@ The `inference()` function builds the graph as far as needed to
 return the tensor that would contain the output predictions.
 
 It takes the images placeholder as input and builds on top
-of it a pair of fully connected layers with ReLu activation followed by a ten
+of it a pair of fully connected layers with [ReLu](https://en.wikipedia.org/wiki/Rectifier_(neural_networks)) activation followed by a ten
 node linear layer specifying the output logits.
 
 Each layer is created beneath a unique [`tf.name_scope`](../../../api_docs/python/framework.md#name_scope)
 that acts as a prefix to the items created within that scope.
 
 ```python
-with tf.name_scope('hidden1') as scope:
+with tf.name_scope('hidden1'):
 ```
 
 Within the defined scope, the weights and biases to be used by each of these
@@ -167,27 +169,12 @@ Finally, the `logits` tensor that will contain the output is returned.
 The `loss()` function further builds the graph by adding the required loss
 ops.
 
-First, the values from the `labels_placeholder` are encoded as a tensor of 1-hot
-values. For example, if the class identifier is '3' the value is converted to:
-<br>`[0, 0, 0, 1, 0, 0, 0, 0, 0, 0]`
+First, the values from the `labels_placeholder` are converted to 64-bit integers. Then, a [`tf.nn.sparse_softmax_cross_entropy_with_logits`](../../../api_docs/python/nn.md#sparse_softmax_cross_entropy_with_logits) op is added to automatically produce 1-hot labels from the `labels_placeholder` and compare the output logits from the `inference()` function with those 1-hot labels.
 
 ```python
-batch_size = tf.size(labels)
-labels = tf.expand_dims(labels, 1)
-indices = tf.expand_dims(tf.range(0, batch_size, 1), 1)
-concated = tf.concat(1, [indices, labels])
-onehot_labels = tf.sparse_to_dense(
-    concated, tf.pack([batch_size, NUM_CLASSES]), 1.0, 0.0)
-```
-
-A [`tf.nn.softmax_cross_entropy_with_logits`](../../../api_docs/python/nn.md#softmax_cross_entropy_with_logits)
-op is then added to compare the output logits from the `inference()` function
-and the 1-hot labels.
-
-```python
-cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits,
-                                                        onehot_labels,
-                                                        name='xentropy')
+labels = tf.to_int64(labels)
+cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+    logits, labels, name='xentropy')
 ```
 
 It then uses [`tf.reduce_mean`](../../../api_docs/python/math_ops.md#reduce_mean)
@@ -208,7 +195,7 @@ And the tensor that will then contain the loss value is returned.
 ### Training
 
 The `training()` function adds the operations needed to minimize the loss via
-gradient descent.
+[Gradient Descent](https://en.wikipedia.org/wiki/Gradient_descent).
 
 Firstly, it takes the loss tensor from the `loss()` function and hands it to a
 [`tf.scalar_summary`](../../../api_docs/python/train.md#scalar_summary),
@@ -224,7 +211,7 @@ Next, we instantiate a [`tf.train.GradientDescentOptimizer`](../../../api_docs/p
 responsible for applying gradients with the requested learning rate.
 
 ```python
-optimizer = tf.train.GradientDescentOptimizer(FLAGS.learning_rate)
+optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 ```
 
 We then generate a single variable to contain a counter for the global
@@ -306,7 +293,7 @@ The user code controls the training per step, and the simplest loop that
 can do useful training is:
 
 ```python
-for step in xrange(max_steps):
+for step in xrange(FLAGS.max_steps):
     sess.run(train_op)
 ```
 
@@ -324,7 +311,8 @@ In the `fill_feed_dict()` function, the given `DataSet` is queried for its next
 filled containing the next images and labels.
 
 ```python
-images_feed, labels_feed = data_set.next_batch(FLAGS.batch_size)
+images_feed, labels_feed = data_set.next_batch(FLAGS.batch_size,
+                                               FLAGS.fake_data)
 ```
 
 A python dictionary object is then generated with the placeholders as keys and
@@ -385,8 +373,7 @@ may be instantiated to write the events files, which
 contain both the graph itself and the values of the summaries.
 
 ```python
-summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                        graph_def=sess.graph_def)
+summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 ```
 
 Lastly, the events file will be updated with new summary values every time the
@@ -465,14 +452,6 @@ do_eval(sess,
 
 ### Build the Eval Graph
 
-Before opening the default Graph, the test data should have been fetched by
-calling the `get_data(train=False)` function with the parameter set to grab
-the test dataset.
-
-```python
-test_all_images, test_all_labels = get_data(train=False)
-```
-
 Before entering the training loop, the Eval op should have been built
 by calling the `evaluation()` function from `mnist.py` with the same
 logits/labels parameters as the `loss()` function.
@@ -508,7 +487,7 @@ The `true_count` variable simply accumulates all of the predictions that the
 calculated from simply dividing by the total number of examples.
 
 ```python
-precision = float(true_count) / float(num_examples)
-print '  Num examples: %d  Num correct: %d  Precision @ 1: %0.02f' % (
-    num_examples, true_count, precision)
+precision = true_count / num_examples
+print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
+      (num_examples, true_count, precision))
 ```

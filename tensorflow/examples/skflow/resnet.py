@@ -83,7 +83,7 @@ def res_net(x, y, activation=tf.nn.relu):
 
             # 1x1 convolution responsible for reducing dimension
             with tf.variable_scope(name + '/conv_in'):
-                conv = skflow.ops.conv2d(net, block.num_filters,
+                conv = skflow.ops.conv2d(net, block.bottleneck_size,
                                          [1, 1], [1, 1, 1, 1],
                                          padding='VALID',
                                          activation=activation,

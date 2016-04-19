@@ -31,7 +31,7 @@ def my_model(X, y):
     CUDNN 6.5 V2 from NVIDIA need to be installed beforehand. 
     """
     with tf.device('/gpu:1'):
-    	layers = skflow.ops.dnn(X, [10, 20, 10], keep_prob=0.5)
+    	layers = skflow.ops.dnn(X, [10, 20, 10], dropout=0.5)
     with tf.device('/gpu:2'):
     	return skflow.models.logistic_regression(layers, y)
 

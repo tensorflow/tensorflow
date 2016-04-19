@@ -405,6 +405,54 @@ TEST(EigenSpatialConvolutionsTest, StridedSpatialConvolution) {
   }
 }
 
+TEST(EigenSpatialConvolutionsTest, KernelSmallerThanStride) {
+  const int input_depth = 2;
+  const int input_rows = 3;
+  const int input_cols = 3;
+  const int num_batches = 5;
+  const int output_depth = 6;
+  const int patch_rows = 1;
+  const int patch_cols = 1;
+  const int output_rows = 2;
+  const int output_cols = 2;
+
+  Tensor<float, 4> input(input_depth, input_rows, input_cols, num_batches);
+  Tensor<float, 4> kernel(output_depth, input_depth, patch_rows, patch_cols);
+  Tensor<float, 4> result(output_depth, output_rows, output_cols, num_batches);
+  input = input.constant(11.0f) + input.random();
+  kernel = kernel.constant(2.0f) + kernel.random();
+  result.setRandom();
+
+  // Apply a spatial convolution using a 1x1 kernel, valid padding, and a stride
+  // of 2.
+  int stride = 2;
+  result = SpatialConvolution(input, kernel, stride, stride, PADDING_VALID);
+
+  EXPECT_EQ(result.dimension(0), output_depth);
+  EXPECT_EQ(result.dimension(1), output_rows);
+  EXPECT_EQ(result.dimension(2), output_cols);
+  EXPECT_EQ(result.dimension(3), num_batches);
+
+  for (int b = 0; b < num_batches; ++b) {
+    for (int od = 0; od < output_depth; ++od) {
+      for (int i = 0; i < output_rows; ++i) {
+        for (int j = 0; j < output_cols; ++j) {
+          float expected = 0.0f;
+          for (int c = 0; c < patch_cols; ++c) {
+            for (int r = 0; r < patch_rows; ++r) {
+              for (int id = 0; id < input_depth; ++id) {
+                expected += input(id, r + stride * i, c + stride * j, b) *
+                            kernel(od, id, r, c);
+              }
+            }
+          }
+          EigenApprox(result(od, i, j, b), expected);
+        }
+      }
+    }
+  }
+}
+
 TEST(EigenSpatialConvolutionsTest, StridedSpatialConvolutionRowMajor) {
   const int input_depth = 10;
   const int input_rows = 5;

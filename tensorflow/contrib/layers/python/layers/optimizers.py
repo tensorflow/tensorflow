@@ -87,10 +87,16 @@ def optimize_loss(loss,
     loss = control_flow_ops.with_dependencies([loss_averages_op], loss)
 
   # Learning rate variable, with possible decay.
-  lr = vs.get_variable("learning_rate",
-                       [],
-                       trainable=False,
-                       initializer=init_ops.constant_initializer(learning_rate))
+  if isinstance(learning_rate, ops.Tensor) and len(learning_rate.get_shape()) == 0:
+    lr = learning_rate
+  elif isinstance(learning_rate, float):
+    lr = vs.get_variable("learning_rate",
+                         [],
+                         trainable=False,
+                         initializer=init_ops.constant_initializer(learning_rate))
+  else:
+    raise ValueError("Learning rate should be 0d Tensor or float. Got %s" %
+        str(learning_rate))
   if learning_rate_decay_fn is not None:
     lr = learning_rate_decay_fn(lr, global_step)
 
@@ -149,3 +155,4 @@ def optimize_loss(loss,
   train_tensor = control_flow_ops.with_dependencies([grad_updates], final_loss)
 
   return train_tensor
+

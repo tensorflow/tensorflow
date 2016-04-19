@@ -130,13 +130,7 @@ def _SliceHelper(tensor, slice_spec):
   sizes = []
   squeeze_dims = []
   for dim, s in enumerate(slice_spec):
-    if isinstance(s, int):
-      if s < 0:
-        raise NotImplementedError("Negative indices are currently unsupported")
-      indices.append(s)
-      sizes.append(1)
-      squeeze_dims.append(dim)
-    elif isinstance(s, _baseslice):
+    if isinstance(s, _baseslice):
       if s.step not in (None, 1):
         raise NotImplementedError(
             "Steps other than 1 are not currently supported")
@@ -161,7 +155,15 @@ def _SliceHelper(tensor, slice_spec):
     elif s is Ellipsis:
       raise NotImplementedError("Ellipsis is not currently supported")
     else:
-      raise TypeError("Bad slice index %s of type %s" % (s, type(s)))
+      try:
+        s = int(s)
+      except TypeError:
+        raise TypeError("Bad slice index %s of type %s" % (s, type(s)))
+      if s < 0:
+        raise NotImplementedError("Negative indices are currently unsupported")
+      indices.append(s)
+      sizes.append(1)
+      squeeze_dims.append(dim)
   sliced = slice(tensor, indices, sizes)
   if squeeze_dims:
     return squeeze(sliced, squeeze_dims=squeeze_dims)
@@ -561,7 +563,7 @@ def transpose(a, perm=None, name="transpose"):
   #           [[7  8  9]
   #            [10 11 12]]]
   # Take the transpose of the matrices in dimension-0
-  tf.transpose(b, perm=[0, 2, 1]) ==> [[[1  4]
+  tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
                                         [2  5]
                                         [3  6]]
 

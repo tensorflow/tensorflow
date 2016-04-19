@@ -311,18 +311,14 @@ y_ = tf.placeholder(tf.float32, [None, 10])
 Then we can implement the cross-entropy, \\(-\sum y'\log(y)\\):
 
 ```python
-cross_entropy = -tf.reduce_sum(y_*tf.log(y))
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
 ```
 
 First, `tf.log` computes the logarithm of each element of `y`. Next, we multiply
-each element of `y_` with the corresponding element of `tf.log(y)`. Finally,
-`tf.reduce_sum` adds all the elements of the tensor.
-
-Note that this isn't just the cross-entropy of the truth with a single
-prediction, but the sum of the cross-entropies for all the images we looked at.
-In this example, we have 100 images in each batch: how well we are doing on 100
-data points is a much better description of how good our model is than a single
-data point.
+each element of `y_` with the corresponding element of `tf.log(y)`. Then 
+`tf.reduce_sum` adds the elements in the second dimension of y, due to the 
+`reduction_indices=[1]` parameter. Finally,  `tf.reduce_mean` computes the mean
+over all the examples in the batch.
 
 Now that we know what we want our model to do, it's very easy to have TensorFlow
 train it to do so.
@@ -334,11 +330,11 @@ minimize. Then it can apply your choice of optimization algorithm to modify the
 variables and reduce the cost.
 
 ```python
-train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
+train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 ```
 
 In this case, we ask TensorFlow to minimize `cross_entropy` using the gradient
-descent algorithm with a learning rate of 0.01. Gradient descent is a simple
+descent algorithm with a learning rate of 0.5. Gradient descent is a simple
 procedure, where TensorFlow simply shifts each variable a little bit in the
 direction that reduces the cost. But TensorFlow also provides
 [many other optimization algorithms]
@@ -415,7 +411,7 @@ Finally, we ask for our accuracy on our test data.
 print(sess.run(accuracy, feed_dict={x: mnist.test.images, y_: mnist.test.labels}))
 ```
 
-This should be about 91%.
+This should be about 92%.
 
 Is that good? Well, not really. In fact, it's pretty bad. This is because we're
 using a very simple model. With some small changes, we can get to
