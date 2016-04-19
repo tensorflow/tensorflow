@@ -117,7 +117,7 @@ func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
 	v := reflect.ValueOf(data)
 	if v.Kind() != reflect.Slice {
 		return nil, &ErrSliceExpected{
-			dataType: v.Kind().String(),
+			DataType: v.Kind().String(),
 		}
 	}
 
@@ -214,7 +214,7 @@ func NewTensor(data interface{}) (*Tensor, error) {
 		dataPtr = reflect.ValueOf(auxTensor.StringVal).Pointer()
 	default:
 		return nil, &ErrTensorTypeNotSupported{
-			tensotType: dataType,
+			TensotType: dataType,
 		}
 	}
 
@@ -287,8 +287,8 @@ func (t *Tensor) String() string {
 func (t *Tensor) Str() ([][]byte, error) {
 	if DTString != t.DataType() {
 		return nil, &ErrInvalidTensorType{
-			tensorType:   t.DataType(),
-			expectedType: DTString,
+			TensorType:   t.DataType(),
+			ExpectedType: DTString,
 		}
 	}
 
@@ -329,8 +329,8 @@ func (t *Tensor) Str() ([][]byte, error) {
 func (t *Tensor) Float32() ([]float32, error) {
 	if DTFloat != t.DataType() {
 		return nil, &ErrInvalidTensorType{
-			tensorType:   t.DataType(),
-			expectedType: DTFloat,
+			TensorType:   t.DataType(),
+			ExpectedType: DTFloat,
 		}
 	}
 
@@ -356,8 +356,8 @@ func (t *Tensor) Float32() ([]float32, error) {
 func (t *Tensor) Float64() ([]float64, error) {
 	if DTDouble != t.DataType() {
 		return nil, &ErrInvalidTensorType{
-			tensorType:   t.DataType(),
-			expectedType: DTDouble,
+			TensorType:   t.DataType(),
+			ExpectedType: DTDouble,
 		}
 	}
 
@@ -409,8 +409,8 @@ func (t *Tensor) Int32() ([]int32, error) {
 		}
 	default:
 		return nil, &ErrInvalidTensorType{
-			tensorType:   t.DataType(),
-			expectedType: DTInt32,
+			TensorType:   t.DataType(),
+			ExpectedType: DTInt32,
 		}
 	}
 
@@ -426,8 +426,8 @@ func (t *Tensor) Int32() ([]int32, error) {
 func (t *Tensor) Int64() ([]int64, error) {
 	if DTInt64 != t.DataType() {
 		return nil, &ErrInvalidTensorType{
-			tensorType:   t.DataType(),
-			expectedType: DTInt64,
+			TensorType:   t.DataType(),
+			ExpectedType: DTInt64,
 		}
 	}
 
@@ -453,8 +453,8 @@ func (t *Tensor) Int64() ([]int64, error) {
 func (t *Tensor) Bool() ([]bool, error) {
 	if DTBool != t.DataType() {
 		return nil, &ErrInvalidTensorType{
-			tensorType:   t.DataType(),
-			expectedType: DTBool,
+			TensorType:   t.DataType(),
+			ExpectedType: DTBool,
 		}
 	}
 
@@ -475,47 +475,47 @@ func (t *Tensor) Bool() ([]bool, error) {
 // GetVal returns the value of the element contained in the specified position
 // in the tensor, Ex: GetVal(1, 2, 3) is equivalent to data[1][2][3] on a
 // multidimensional array.
-//  This method returns an error if the number of dimensions is incorrect or
-//  are out of range.
-func (t *Tensor) GetVal(d ...int) (val interface{}, err error) {
-	if len(d) != t.NumDims() {
+// This method returns an error if the number of dimensions is incorrect or
+// are out of range.
+func (t *Tensor) GetVal(i ...int) (val interface{}, err error) {
+	if len(i) != t.NumDims() {
 		return nil, &ErrDimsOutOfTensorRange{
-			tensorDim: t.NumDims(),
-			specDims:  len(d),
+			TensorDim: t.NumDims(),
+			SpecDims:  len(i),
 		}
 	}
 
 	pos := 0
 	if t.dimWeights != nil {
-		for i, w := range t.dimWeights {
-			pos += d[i] * w
+		for d, w := range t.dimWeights {
+			pos += i[d] * w
 		}
 	} else {
 		// Calculate the cumulative weight for each dimension, the
 		// weight is the number of elements before the first of the
 		// elements on this dimension
-		t.dimWeights = make([]int, len(d))
-		pos = d[len(d)-1]
-		if pos >= t.Dim(len(d)-1) {
+		t.dimWeights = make([]int, len(i))
+		pos = i[len(i)-1]
+		if pos >= t.Dim(len(i)-1) {
 			return nil, &ErrIndexOutOfRange{
-				dim:       len(d) - 1,
-				index:     pos,
-				dimsRange: t.Dim(len(d) - 1),
+				Dim:       len(i) - 1,
+				Index:     pos,
+				DimsRange: t.Dim(len(i) - 1),
 			}
 		}
-		t.dimWeights[len(d)-1] = 1
+		t.dimWeights[len(i)-1] = 1
 
 		lastWeight := 0
-		for i := len(d) - 2; i >= 0; i-- {
-			lastWeight += t.Dim(i + 1)
-			t.dimWeights[i] = lastWeight
-			pos += d[i] * lastWeight
+		for d := len(i) - 2; d >= 0; d-- {
+			lastWeight += t.Dim(d + 1)
+			t.dimWeights[d] = lastWeight
+			pos += i[d] * lastWeight
 
-			if d[i] >= t.Dim(i) {
+			if i[d] >= t.Dim(d) {
 				return nil, &ErrIndexOutOfRange{
-					dim:       i,
-					index:     pos,
-					dimsRange: t.Dim(i),
+					Dim:       d,
+					Index:     pos,
+					DimsRange: t.Dim(d),
 				}
 			}
 		}
@@ -549,7 +549,7 @@ func (t *Tensor) getValOnPos(pos int) (val interface{}, err error) {
 	}
 
 	return nil, &ErrTensorTypeNotSupported{
-		tensotType: t.DataType(),
+		TensotType: t.DataType(),
 	}
 }
 
@@ -572,64 +572,66 @@ func (t *Tensor) FreeAllocMem() {
 	}
 }
 
-// ErrInvalidTensorType the data type of the tensor is not compatible
-// with the expected data type on this function.
+// ErrInvalidTensorType is returned when the data type of the tensor is not
+// compatible with the expected data type on this function.
 type ErrInvalidTensorType struct {
-	tensorType   DataType
-	expectedType DataType
+	TensorType   DataType
+	ExpectedType DataType
 }
 
 func (e *ErrInvalidTensorType) Error() string {
-	return fmt.Sprintf("Invalid tensor data type, tensor data type: '%s', required data type: '%s'", e.tensorType, e.expectedType)
+	return fmt.Sprintf("Invalid tensor data type, tensor data type: '%s', required data type: '%s'", e.TensorType, e.ExpectedType)
 }
 
-// ErrTensorTypeNotSupported the tensor type is still not supported.
+// ErrTensorTypeNotSupported is returned when the tensor type is still not
+// supported.
 type ErrTensorTypeNotSupported struct {
-	tensotType DataType
+	TensotType DataType
 }
 
 func (e *ErrTensorTypeNotSupported) Error() string {
-	return fmt.Sprintf("The tensor data type '%s' is still not supported", e.tensotType)
+	return fmt.Sprintf("The tensor data type '%s' is still not supported", e.TensotType)
 }
 
-// ErrDimsOutOfTensorRange the specified number of dimensions doesn't
-// match with the tensor dimensions.
+// ErrDimsOutOfTensorRange is returned when the specified number of dimensions
+// doesn't match with the tensor dimensions.
 type ErrDimsOutOfTensorRange struct {
-	tensorDim int
-	specDims  int
+	TensorDim int
+	SpecDims  int
 }
 
 func (e *ErrDimsOutOfTensorRange) Error() string {
-	return fmt.Sprintf("The specified number of dimensions '%d' doesn't match with the tensor dimensions '%d'", e.specDims, e.tensorDim)
+	return fmt.Sprintf("The specified number of dimensions '%d' doesn't match with the tensor dimensions '%d'", e.SpecDims, e.TensorDim)
 }
 
-// ErrIndexOutOfRange the specified index is out of one of the dimensions range.
+// ErrIndexOutOfRange is returned when the specified index is out of one of the
+// dimensions range.
 type ErrIndexOutOfRange struct {
-	dim       int
-	index     int
-	dimsRange int
+	Dim       int
+	Index     int
+	DimsRange int
 }
 
 func (e *ErrIndexOutOfRange) Error() string {
-	return fmt.Sprintf("The specified index '%d' is out of the dimension '%d' range: '%d'", e.index, e.dim, e.dimsRange)
+	return fmt.Sprintf("The specified index '%d' is out of the dimension '%d' range: '%d'", e.Index, e.Dim, e.DimsRange)
 }
 
-// ErrSliceExpected the argument must be an Slice.
+// ErrSliceExpected is returned when the argument must be an Slice.
 type ErrSliceExpected struct {
-	dataType string
+	DataType string
 }
 
 func (e *ErrSliceExpected) Error() string {
-	return fmt.Sprintf("The argument must be a Slice, but the data type is: '%s'", e.dataType)
+	return fmt.Sprintf("The argument must be a Slice, but the data type is: '%s'", e.DataType)
 }
 
-// ErrDataTypeNotSupported the data type is not suported.
+// ErrDataTypeNotSupported is returned when the data type is not suported.
 type ErrDataTypeNotSupported struct {
-	dataType string
+	DataType string
 }
 
 func (e *ErrDataTypeNotSupported) Error() string {
-	return fmt.Sprintf("The type of the provided data is not suported: '%s'", e.dataType)
+	return fmt.Sprintf("The type of the provided data is not suported: '%s'", e.DataType)
 }
 
 func serialize(data interface{}, deep int, dimsIn [][]int64) (ser []interface{}, dims [][]int64, dataType DataType, dataSize int64, err error) {
@@ -694,7 +696,7 @@ func getDataTypeFromReflect(refType reflect.Kind, dataSize int64) (DataType, err
 	}
 
 	return DTInvalid, &ErrDataTypeNotSupported{
-		dataType: refType.String(),
+		DataType: refType.String(),
 	}
 }
 

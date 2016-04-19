@@ -122,14 +122,14 @@ func (s *Session) FreeAllocMem() {
 	TF_DeleteSessionOptions(s.ops)
 }
 
-// ErrStatusTf error message comming out from the TensorFlow C++ libraries.
+// ErrStatusTf is an error message comming out from the TensorFlow C++ libraries.
 type ErrStatusTf struct {
-	code    TF_Code
-	message string
+	Code    TF_Code
+	Message string
 }
 
 func (e *ErrStatusTf) Error() string {
-	return fmt.Sprintf("tensorflow: %d: %v", e.code, e.message)
+	return fmt.Sprintf("tensorflow: %d: %v", e.Code, e.Message)
 }
 
 // statusToError converts a TF_Status returned by a C execution into a Go Error.
@@ -139,8 +139,8 @@ func (s *Session) statusToError(status TF_Status) error {
 
 	if code != 0 {
 		return &ErrStatusTf{
-			code:    code,
-			message: message,
+			Code:    code,
+			Message: message,
 		}
 	}
 

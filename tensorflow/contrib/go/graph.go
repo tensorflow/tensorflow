@@ -73,15 +73,15 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 	op, opFound := gr.availableOps[strings.ToLower(opName)]
 	if !opFound {
 		return nil, &ErrOperationNotFound{
-			op: opName,
+			Op: opName,
 		}
 	}
 
 	if len(op.InputArg) != len(input) {
 		return nil, &ErrInvalidAmounthOfInputs{
-			operation:  opName,
-			opInputs:   len(op.InputArg),
-			specInputs: len(input),
+			Operation:  opName,
+			OpInputs:   len(op.InputArg),
+			SpecInputs: len(input),
 		}
 	}
 	inputs := make([]string, len(input))
@@ -89,8 +89,8 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 		if op.InputArg[i].IsRef {
 			if inNode.ref == nil {
 				return nil, &ErrExpectedVarAsinput{
-					operation: opName,
-					inputPos:  i,
+					Operation: opName,
+					InputPos:  i,
 				}
 			}
 			inputs[i] = inNode.ref.Name
@@ -122,8 +122,8 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 			node.def.Attr[attr.Name] = gr.castAttrValue(attr.Type, v)
 			if node.def.Attr[attr.Name] == nil {
 				return nil, &ErrInvalidAttrValue{
-					operation:  opName,
-					attribName: attr.Name,
+					Operation:  opName,
+					AttribName: attr.Name,
 				}
 			}
 		} else {
@@ -131,8 +131,8 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 				node.def.Attr[attr.Name] = attr.DefaultValue
 			} else {
 				return nil, &ErrMandatoryAttributeNotSpecified{
-					operation:  opName,
-					attribName: attr.Name,
+					Operation:  opName,
+					AttribName: attr.Name,
 				}
 			}
 		}
@@ -271,79 +271,82 @@ func (gr *Graph) Placeholder(name string, dataType DataType, dims []int64) *Grap
 	return op
 }
 
-// Str returns the current graph serialized so it can be exported.
-func (gr *Graph) Str() []byte {
+// Marshal returns the current graph serialized so it can be exported.
+func (gr *Graph) Marshal() []byte {
 	result, _ := proto.Marshal(gr.def)
 
 	return result
 }
 
-// ErrExpectedVarAsinput the specified operation is not defined.
+// ErrExpectedVarAsinput is returned when the input value on an operation is
+// not a Variable and it must be a Variable.
 type ErrExpectedVarAsinput struct {
-	operation string
-	inputPos  int
+	Operation string
+	InputPos  int
 }
 
 func (e *ErrExpectedVarAsinput) Error() string {
 	return fmt.Sprintf(
 		"The input value at pos %d for the operation '%s' must be of type Variable",
-		e.inputPos, e.operation)
+		e.InputPos, e.Operation)
 }
 
-// ErrOperationNotFound the specified operation is not defined.
+// ErrOperationNotFound is returned when the specified operation is not defined.
 type ErrOperationNotFound struct {
-	op string
+	Op string
 }
 
 func (e *ErrOperationNotFound) Error() string {
-	return fmt.Sprintf("Operation '%s' not defined", e.op)
+	return fmt.Sprintf("Operation '%s' not defined", e.Op)
 }
 
-// ErrInvalidAmounthOfInputs the number of inputs doesn't corresponds with the
-// expected for this operation.
+// ErrInvalidAmounthOfInputs is returned when the number of inputs doesn't
+// corresponds with the expected for this operation.
 type ErrInvalidAmounthOfInputs struct {
-	operation  string
-	opInputs   int
-	specInputs int
+	Operation  string
+	OpInputs   int
+	SpecInputs int
 }
 
 func (e *ErrInvalidAmounthOfInputs) Error() string {
 	return fmt.Sprintf("Inputs required for operation '%s' %d, but %d provided",
-		e.operation, e.opInputs, e.specInputs)
+		e.Operation, e.OpInputs, e.SpecInputs)
 }
 
-// ErrMandatoryAttributeNotSpecified a mandatory attribute for this operation
-// was not specified.
+// ErrMandatoryAttributeNotSpecified is returned when a mandatory attribute for
+// this operation was not specified.
 type ErrMandatoryAttributeNotSpecified struct {
-	operation  string
-	attribName string
+	Operation  string
+	AttribName string
 }
 
 func (e *ErrMandatoryAttributeNotSpecified) Error() string {
 	return fmt.Sprintf("The attribute '%s' is mandatory for operation '%s'",
-		e.attribName, e.operation)
+		e.AttribName, e.Operation)
 }
 
-// ErrInvalidAttrValue the data type of the value for this attribute is not valid.
+// ErrInvalidAttrValue is returned when the data type of the value for this
+// attribute is not valid.
 type ErrInvalidAttrValue struct {
-	operation  string
-	attribName string
+	Operation  string
+	AttribName string
 }
 
 func (e *ErrInvalidAttrValue) Error() string {
 	return fmt.Sprintf("The attribute '%s' value provided for operation '%s' is not valid",
-		e.attribName, e.operation)
+		e.AttribName, e.Operation)
 }
 
-// ErrInputOutputDataTypeMismatch the output data type doesn't match with the input one.
+// ErrInputOutputDataTypeMismatch is returned when the output data type doesn't
+// match with the input one.
 type ErrInputOutputDataTypeMismatch struct {
-	outDT DataType
-	inDT  DataType
+	OutDT DataType
+	InDT  DataType
 }
 
 func (e *ErrInputOutputDataTypeMismatch) Error() string {
 	return fmt.Sprintf("The output datatype '%s' doesn't correspond with the input data type '%s'",
-		e.outDT, e.inDT)
+		e.OutDT, e.InDT)
 }
 
 // castAttrValue returns an pb.AttrValue that contains the corresponding
@@ -484,8 +487,8 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 		if arg.TypeAttr != "" && argType != DTInvalid {
 			if inType, defined := attrs[arg.TypeAttr]; defined && inType.(DataType) != argType {
 				return &ErrInputOutputDataTypeMismatch{
-					outDT: argType,
-					inDT:  inType.(DataType),
+					OutDT: argType,
+					InDT:  inType.(DataType),
 				}
 			}
 			attrs[arg.TypeAttr] = arg.Type
