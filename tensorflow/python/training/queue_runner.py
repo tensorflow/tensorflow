@@ -258,9 +258,8 @@ class QueueRunner(object):
     """
     with self._lock:
       if self._runs > 0:
-        raise RuntimeError(
-            "Threads are already running from a previous call to Threads() "
-            "for this queue runner.")
+        # Already started: no new threads to return.
+        return []
       self._runs = len(self._enqueue_ops)
       self._exceptions_raised = []
 

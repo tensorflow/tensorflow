@@ -501,6 +501,8 @@ def gradients(ys,
           in_grads = [None] * len(op.inputs)
         for t_in, in_grad in zip(op.inputs, in_grads):
           if in_grad is not None:
+            if isinstance(in_grad, ops.Tensor):
+              in_grad.set_shape(t_in.get_shape())
             _SetGrad(grads, t_in, in_grad)
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=False)

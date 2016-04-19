@@ -23,6 +23,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.ops import tensor_array_ops
@@ -832,6 +833,71 @@ class TensorArrayCPUTest(tf.test.TestCase):
     self.assertEqual(
         "foo/gradients/bar/gradients_0",
         self._grad_source_for_name("foo/gradients/bar/gradients_0/baz"))
+
+  def testWriteShape(self):
+    with self.test_session():
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=3, infer_shape=True)
+      c0 = tf.constant([4.0, 5.0])
+      w0 = ta.write(0, c0)
+      r0 = w0.read(0)
+      self.assertAllEqual(c0.get_shape(), r0.get_shape())
+
+      c1 = tf.constant([6.0, 7.0])
+      w1 = w0.write(1, c1)
+      r0 = w1.read(0)
+      r1 = w1.read(1)
+      self.assertAllEqual(c0.get_shape(), r0.get_shape())
+      self.assertAllEqual(c1.get_shape(), r1.get_shape())
+
+      c2 = tf.constant([4.0, 5.0, 6.0])
+      with self.assertRaises(ValueError):
+        w0.write(0, c2)
+
+  def testUnpackShape(self):
+    with self.test_session():
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo",
+          size=0, dynamic_size=True, infer_shape=True)
+      value = tf.constant([[1.0, -1.0], [10.0, -10.0], [100.0, -100.0]])
+      w0 = ta.unpack(value)
+      r0 = w0.read(0)
+      self.assertAllEqual((2,), r0.get_shape())
+
+      c1 = tf.constant([4.0, 5.0])
+      w1 = w0.write(3, c1)
+      r1 = w1.read(0)
+      self.assertAllEqual(c1.get_shape(), r1.get_shape())
+
+      c2 = tf.constant([4.0, 5.0, 6.0])
+      with self.assertRaises(ValueError):
+        w1.write(4, c2)
+
+  def testSplitShape(self):
+    with self.test_session():
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo",
+          size=0, dynamic_size=True, infer_shape=True)
+      value = tf.constant([[1.0, -1.0], [2.0, -2.0], [3.0, -3.0]])
+      w0 = ta.split(value, [1, 1, 1])
+      r0 = w0.read(0)
+      self.assertAllEqual((1, 2), r0.get_shape())
+
+      ta1 = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo1",
+          size=0, dynamic_size=True, infer_shape=True)
+      w0 = ta1.split(value, [1, 2])
+      r0 = w0.read(0)
+      self.assertAllEqual(r0.get_shape(), tensor_shape.unknown_shape())
+
+  def testWriteUnknownShape(self):
+    with self.test_session():
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=3, infer_shape=True)
+      c0 = tf.placeholder(tf.float32)
+      w0 = ta.write(0, c0)
+      r0 = w0.read(0)
+      self.assertAllEqual(r0.get_shape(), tensor_shape.unknown_shape())
 
 
 class TensorArrayGPUTest(TensorArrayCPUTest):

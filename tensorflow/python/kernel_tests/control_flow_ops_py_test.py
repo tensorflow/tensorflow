@@ -25,7 +25,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -904,14 +903,14 @@ class ControlFlowTest(tf.test.TestCase):
   def testWhileGrad_Shape(self):
     with self.test_session():
       x = tf.placeholder(tf.float32, shape=[None])
-      v = tf.constant(2.0, name="v")
+      v = tf.constant([2.0], name="v")
       n = tf.constant(0, name="n")
       c = lambda i, v: tf.less(i, 5)
       b = lambda i, v: [i + 1, tf.mul(x, v)]
       r = tf.while_loop(c, b, [n, v], parallel_iterations=1)
 
       r = tf.gradients(r[1], x)[0]
-      self.assertEqual(r.get_shape(), tensor_shape.unknown_shape())
+      self.assertEqual([None], r.get_shape().as_list())
       self.assertAllClose([810.0, 2560.0], r.eval(feed_dict={x: [3.0, 4.0]}))
 
   def testWhileGrad_MultipleUses(self):

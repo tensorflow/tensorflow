@@ -23,6 +23,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_data_flow_ops
@@ -54,8 +55,8 @@ class TensorArray(object):
   """
 
   def __init__(self, dtype, size=None, dynamic_size=None,
-               clear_after_read=None, tensor_array_name=None,
-               handle=None, flow=None, name=None):
+               clear_after_read=None, tensor_array_name=None, handle=None,
+               flow=None, infer_shape=False, name=None):
     """Construct a new TensorArray or wrap an existing TensorArray handle.
 
     Args:
@@ -74,6 +75,7 @@ class TensorArray(object):
         is set, tensor_array_name should be None.
       flow: (optional) A float `Tensor` scalar coming from an existing
         TensorArray.flow.
+      infer_shape: (optional) If True, shape inference is enabled.
       name: A name for the operation (optional).
 
     Raises:
@@ -102,6 +104,11 @@ class TensorArray(object):
     dynamic_size = dynamic_size or False
 
     self._dtype = dtype
+    self._infer_shape = infer_shape
+    # Record the current static shape for the array elements. The first
+    # write adds the shape of the tensor it writes, and all subsequent
+    # writes checks for shape equality.
+    self._elem_shape = []
     with ops.op_scope([handle, size, flow], name, "TensorArray") as scope:
       if handle is not None:
         self._handle = handle
@@ -168,6 +175,8 @@ class TensorArray(object):
       value = gen_data_flow_ops._tensor_array_read(
           handle=self._handle, index=index, flow_in=self._flow,
           dtype=self._dtype, name=name)
+      if self._elem_shape:
+        value.set_shape(self._elem_shape[0].dims)
       return value
 
   def write(self, index, value, name=None):
@@ -181,6 +190,9 @@ class TensorArray(object):
     Returns:
       A new TensorArray object with flow that ensures the write occurs.
       Use this object all for subsequent operations.
+
+    Raises:
+      ValueError: if there are more writers than specified.
     """
     with ops.colocate_with(self._handle):
       flow_out = gen_data_flow_ops._tensor_array_write(
@@ -188,6 +200,16 @@ class TensorArray(object):
           name=name)
       ta = TensorArray(dtype=self._dtype, handle=self._handle)
       ta._flow = flow_out
+      ta._infer_shape = self._infer_shape
+      ta._elem_shape = self._elem_shape
+      if ta._infer_shape:
+        with ops.op_scope([self._handle, value], name, "TensorArrayWrite"):
+          val_shape = ops.convert_to_tensor(value).get_shape()
+        if ta._elem_shape:
+          if not val_shape == ta._elem_shape[0]:
+            raise ValueError("Shape inference failed.")
+        else:
+          ta._elem_shape.append(val_shape)
       return ta
 
   def pack(self, name=None):
@@ -205,7 +227,8 @@ class TensorArray(object):
       value = gen_data_flow_ops._tensor_array_pack(
           handle=self._handle, flow_in=self._flow, dtype=self._dtype,
           name=name)
-
+      if self._elem_shape and self._elem_shape[0].dims:
+        value.set_shape([None] + self._elem_shape[0].dims)
       return value
 
   def concat(self, name=None):
@@ -224,6 +247,8 @@ class TensorArray(object):
       value, _ = gen_data_flow_ops._tensor_array_concat(
           handle=self._handle, flow_in=self._flow, dtype=self._dtype,
           name=name)
+      if self._elem_shape and self._elem_shape[0].dims:
+        value.set_shape([None] + self._elem_shape[0].dims[1:])
       return value
 
   def unpack(self, value, name=None):
@@ -236,6 +261,9 @@ class TensorArray(object):
     Returns:
       A new TensorArray object with flow that ensures the unpack occurs.
       Use this object all for subsequent operations.
+
+    Raises:
+      ValueError: if the shape inference fails.
     """
     with ops.colocate_with(self._handle):
       flow_out = gen_data_flow_ops._tensor_array_unpack(
@@ -243,6 +271,20 @@ class TensorArray(object):
           name=name)
       ta = TensorArray(dtype=self._dtype, handle=self._handle)
       ta._flow = flow_out
+      ta._infer_shape = self._infer_shape
+      ta._elem_shape = self._elem_shape
+      if ta._infer_shape:
+        with ops.op_scope(
+            [self._handle, value], name, "TensorArrayUnpack"):
+          value = ops.convert_to_tensor(value)
+        val_shape = tensor_shape.unknown_shape()
+        if value.get_shape().dims:
+          val_shape = tensor_shape.TensorShape(value.get_shape().dims[1:])
+        if ta._elem_shape:
+          if not val_shape == ta._elem_shape[0]:
+            raise ValueError("Shape inference failed.")
+        else:
+          ta._elem_shape.append(val_shape)
       return ta
 
   def split(self, value, lengths, name=None):
@@ -257,16 +299,37 @@ class TensorArray(object):
     Returns:
       A new TensorArray object with flow that ensures the split occurs.
       Use this object all for subsequent operations.
+
+    Raises:
+      ValueError: if the shape inference fails.
     """
     with ops.colocate_with(self._handle):
       with ops.op_scope(
           [self._handle, value, lengths], name, "TensorArraySplit"):
-        lengths = math_ops.to_int64(lengths)
+        lengths_64 = math_ops.to_int64(lengths)
       flow_out = gen_data_flow_ops._tensor_array_split(
-          handle=self._handle, value=value, lengths=lengths, flow_in=self._flow,
-          name=name)
+          handle=self._handle, value=value, lengths=lengths_64,
+          flow_in=self._flow, name=name)
       ta = TensorArray(dtype=self._dtype, handle=self._handle)
       ta._flow = flow_out
+      ta._infer_shape = self._infer_shape
+      ta._elem_shape = self._elem_shape
+      if ta._infer_shape:
+        with ops.op_scope(
+            [self._handle, value], name, "TensorArraySplit"):
+          value = ops.convert_to_tensor(value)
+          lengths = ops.convert_to_tensor(lengths)
+        val_shape = tensor_shape.unknown_shape()
+        clengths = tensor_util.constant_value(lengths)
+        if  value.get_shape().dims:
+          if clengths is not None and clengths.max() == clengths.min():
+            val_shape = tensor_shape.TensorShape(
+                [clengths[0]] + value.get_shape().dims[1:])
+        if ta._elem_shape:
+          if not val_shape == ta._elem_shape[0]:
+            raise ValueError("Shape inference failed.")
+        else:
+          ta._elem_shape.append(val_shape)
       return ta
 
   def size(self, name=None):

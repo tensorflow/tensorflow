@@ -1472,17 +1472,24 @@ op {
     type_attr: "T"
   }
   attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "T"
     type: "type"
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
-  summary: "Calculates the inverse of square invertible matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses the Cholesky decomposition if the matrices are symmetric positive\ndefinite and LU decomposition with partial pivoting otherwise.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+  summary: "Calculates the inverse of square invertible matrices or their adjoints"
+  description: "(conjugate transposes).\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses LU decomposition with partial pivoting to compute the inverses.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
   name: "BatchMatrixSolve"
@@ -1514,8 +1521,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
@@ -1548,8 +1555,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
@@ -1601,8 +1608,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
@@ -5519,21 +5526,28 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, M]` containing the matrix inverse of the input."
+    description: "Shape is `[M, M]`. If `adjoint` is `False` then `output` contains the\nmatrix inverse of `input`. If `adjoint` is `True` then `output` contains the\nmatrix inverse of the adjoint of `input`."
     type_attr: "T"
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   attr {
     name: "T"
     type: "type"
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
-  summary: "Calculates the inverse of a square invertible matrix."
-  description: "The op uses the Cholesky decomposition if the matrix is symmetric positive\ndefinite and LU decomposition with partial pivoting otherwise.\n\nIf the matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+  summary: "Calculates the inverse of a square invertible matrix or its adjoint (conjugate"
+  description: "transpose).\n\nThe op uses LU decomposition with partial pivoting to compute the inverse.\n\nIf the matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
   name: "MatrixSolve"
@@ -5565,8 +5579,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
@@ -5598,8 +5612,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
@@ -5651,8 +5665,8 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
@@ -10670,6 +10684,67 @@ op {
   }
   summary: "Split a `SparseTensor` into `num_split` tensors along one dimension."
   description: "If the `shape[split_dim]` is not an integer multiple of `num_split`. Slices\n`[0 : shape[split_dim] % num_split]` gets one extra dimension.\nFor example, if `split_dim = 1` and `num_split = 2` and the input is\n\n    input_tensor = shape = [2, 7]\n    [    a   d e  ]\n    [b c          ]\n\nGraphically the output tensors are:\n\n    output_tensor[0] = shape = [2, 4]\n    [    a  ]\n    [b c    ]\n\n    output_tensor[1] = shape = [2, 3]\n    [ d e  ]\n    [      ]"
+}
+op {
+  name: "SparseTensorDenseAdd"
+  input_arg {
+    name: "a_indices"
+    description: "2-D.  The `indices` of the `SparseTensor`, with shape `[nnz, ndims]`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "a_values"
+    description: "1-D.  The `values` of the `SparseTensor`, with shape `[nnz]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_shape"
+    description: "1-D.  The `shape` of the `SparseTensor`, with shape `[ndims]`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "b"
+    description: "`ndims`-D Tensor.  With shape `a_shape`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Adds up a `SparseTensor` and a dense `Tensor`, producing a dense `Tensor`."
+  description: "This Op does not require `a_indices` be sorted in standard lexicographic order."
 }
 op {
   name: "SparseTensorDenseMatMul"

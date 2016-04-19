@@ -267,6 +267,17 @@ class SupervisorTest(tf.test.TestCase):
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       sv.stop()
 
+  def testInitFn(self):
+    logdir = self._TestDir("default_init_op")
+    with tf.Graph().as_default():
+      v = tf.Variable([1.0, 2.0, 3.0])
+      def _init_fn(sess):
+        sess.run(v.initializer)
+      sv = tf.train.Supervisor(logdir=logdir, init_op=None, init_fn=_init_fn)
+      sess = sv.prepare_or_wait_for_session("")
+      self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
+      sv.stop()
+
   def testInitOpWithFeedDict(self):
     logdir = self._TestDir("feed_dict_init_op")
     with tf.Graph().as_default():
