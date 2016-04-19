@@ -12,10 +12,6 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//third_party/py/numpy",
-        "//third_party/py/pandas",
-        "//third_party/py/setuptools",
-        "//third_party/py/sklearn",
         "//tensorflow/contrib/learn",
     ],
 )
