@@ -512,6 +512,7 @@
   * [`summarize_collection`](../../api_docs/python/contrib.layers.md#summarize_collection)
   * [`summarize_tensor`](../../api_docs/python/contrib.layers.md#summarize_tensor)
   * [`summarize_tensors`](../../api_docs/python/contrib.layers.md#summarize_tensors)
+  * [`variance_scaling_initializer`](../../api_docs/python/contrib.layers.md#variance_scaling_initializer)
   * [`xavier_initializer`](../../api_docs/python/contrib.layers.md#xavier_initializer)
   * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
 
