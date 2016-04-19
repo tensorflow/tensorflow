@@ -57,6 +57,18 @@ class GlobalStepTest(tf.test.TestCase):
         TypeError, "does not have integer type",
         tf.contrib.framework.get_global_step, g)
 
+  def test_invalid_shape(self):
+    with tf.Graph().as_default() as g:
+      self.assertEquals(None, tf.contrib.framework.get_global_step())
+      tf.Variable(
+          [0], trainable=False, dtype=tf.int32, name=tf.GraphKeys.GLOBAL_STEP)
+      self.assertRaisesRegexp(
+          TypeError, "not scalar",
+          tf.contrib.framework.get_global_step)
+    self.assertRaisesRegexp(
+        TypeError, "not scalar",
+        tf.contrib.framework.get_global_step, g)
+
   def test_create_global_step(self):
     self.assertEquals(None, tf.contrib.framework.get_global_step())
     with tf.Graph().as_default() as g:
