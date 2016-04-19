@@ -32,26 +32,6 @@ const (
 // A DataType represents the type of the data contained in a Tensor
 type DataType pb.DataType
 
-// A TensorInterface is the interface implemented by Tensors.
-type TensorInterface interface {
-	Data() []byte
-	DataSize() int64
-	DataType() DataType
-	GetVal(d ...int) (val interface{}, err error)
-
-	Dim(n int) int
-	NumDims() int
-
-	Bool() (res []bool, err error)
-	Float32() (res []float32, err error)
-	Float64() (res []float64, err error)
-	Int32() (res []int32, err error)
-	Int64() (res []int64, err error)
-	Str() (res [][]byte, err error)
-
-	String() string
-}
-
 // A Tensor holds a multi-dimensional array of elements of a single data type.
 type Tensor struct {
 	pb.TensorProto
@@ -67,12 +47,8 @@ type TensorShape [][]int64
 var (
 	// DTInvalid Invalid tensor DataType.
 	DTInvalid = DataType(0)
-	// DTBfloat corresponds to TF_BFLOAT16.
-	DTBfloat = DataType(TF_BFLOAT16)
 	// DTBool corresponds to TF_BOOL.
 	DTBool = DataType(TF_BOOL)
-	// DTComplex corresponds to TF_COMPLEX.
-	DTComplex = DataType(TF_COMPLEX)
 	// DTFloat corresponds to TF_FLOAT.
 	DTFloat = DataType(TF_FLOAT)
 	// DTDouble corresponds to TF_DOUBLE.
@@ -85,16 +61,6 @@ var (
 	DTInt32 = DataType(TF_INT32)
 	// DTInt64 corresponds to TF_INT64.
 	DTInt64 = DataType(TF_INT64)
-	// DTQint16 corresponds to TF_QINT16.
-	DTQint16 = DataType(TF_QINT16)
-	// DTQuint16 corresponds to TF_QUINT16.
-	DTQuint16 = DataType(TF_QUINT16)
-	// DTQuint32 corresponds to TF_QINT32.
-	DTQuint32 = DataType(TF_QINT32)
-	// DTQint8 corresponds to TF_QINT8.
-	DTQint8 = DataType(TF_QINT8)
-	// DTQuint8 corresponds to TF_QUINT8.
-	DTQuint8 = DataType(TF_QUINT8)
 	// DTString corresponds to TF_STRING.
 	DTString = DataType(TF_STRING)
 	// DTUint8 corresponds to TF_UINT8.
@@ -284,7 +250,7 @@ func (t *Tensor) String() string {
 // type matches, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTString
-func (t *Tensor) Str() ([][]byte, error) {
+func (t *Tensor) Byte() ([][]byte, error) {
 	if DTString != t.DataType() {
 		return nil, &ErrInvalidTensorType{
 			TensorType:   t.DataType(),
@@ -544,7 +510,7 @@ func (t *Tensor) getValOnPos(pos int) (val interface{}, err error) {
 		vals, _ := t.Bool()
 		return vals[pos], nil
 	case DTString:
-		vals, _ := t.Str()
+		vals, _ := t.Byte()
 		return vals[pos], nil
 	}
 

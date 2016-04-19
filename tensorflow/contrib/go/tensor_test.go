@@ -69,7 +69,7 @@ func TestStrDecode(t *testing.T) {
 		string_val: "%s"
 	`, string(expectedResult[0]), string(expectedResult[1]), string(expectedResult[2])))
 
-	result, err := tensor.Str()
+	result, err := tensor.Byte()
 	if err != nil {
 		t.Fatal("Error casting Tensor into string slice:", err)
 	}

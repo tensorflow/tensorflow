@@ -389,7 +389,7 @@ func (gr *Graph) castAttrValue(attrType string, v interface{}) *pb.AttrValue {
 			case DTBool:
 				tp.BoolVal, _ = t.Bool()
 			case DTString:
-				tp.StringVal, _ = t.Str()
+				tp.StringVal, _ = t.Byte()
 			default:
 				return nil
 			}
