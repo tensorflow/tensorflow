@@ -203,8 +203,7 @@ class TensorArray(object):
       ta._infer_shape = self._infer_shape
       ta._elem_shape = self._elem_shape
       if ta._infer_shape:
-        with ops.op_scope([self._handle, value], name, "TensorArrayWrite"):
-          val_shape = ops.convert_to_tensor(value).get_shape()
+        val_shape = flow_out.op.inputs[2].get_shape()
         if ta._elem_shape:
           if not val_shape == ta._elem_shape[0]:
             raise ValueError("Shape inference failed.")
@@ -274,17 +273,15 @@ class TensorArray(object):
       ta._infer_shape = self._infer_shape
       ta._elem_shape = self._elem_shape
       if ta._infer_shape:
-        with ops.op_scope(
-            [self._handle, value], name, "TensorArrayUnpack"):
-          value = ops.convert_to_tensor(value)
-        val_shape = tensor_shape.unknown_shape()
-        if value.get_shape().dims:
-          val_shape = tensor_shape.TensorShape(value.get_shape().dims[1:])
+        val_shape = flow_out.op.inputs[1].get_shape()
+        elem_shape = tensor_shape.unknown_shape()
+        if val_shape.dims:
+          elem_shape = tensor_shape.TensorShape(val_shape.dims[1:])
         if ta._elem_shape:
-          if not val_shape == ta._elem_shape[0]:
+          if not elem_shape == ta._elem_shape[0]:
             raise ValueError("Shape inference failed.")
         else:
-          ta._elem_shape.append(val_shape)
+          ta._elem_shape.append(elem_shape)
       return ta
 
   def split(self, value, lengths, name=None):
@@ -315,21 +312,18 @@ class TensorArray(object):
       ta._infer_shape = self._infer_shape
       ta._elem_shape = self._elem_shape
       if ta._infer_shape:
-        with ops.op_scope(
-            [self._handle, value], name, "TensorArraySplit"):
-          value = ops.convert_to_tensor(value)
-          lengths = ops.convert_to_tensor(lengths)
-        val_shape = tensor_shape.unknown_shape()
-        clengths = tensor_util.constant_value(lengths)
-        if  value.get_shape().dims:
+        val_shape = flow_out.op.inputs[1].get_shape()
+        clengths = tensor_util.constant_value(flow_out.op.inputs[2])
+        elem_shape = tensor_shape.unknown_shape()
+        if val_shape.dims:
           if clengths is not None and clengths.max() == clengths.min():
-            val_shape = tensor_shape.TensorShape(
-                [clengths[0]] + value.get_shape().dims[1:])
+            elem_shape = tensor_shape.TensorShape(
+                [clengths[0]] + val_shape.dims[1:])
         if ta._elem_shape:
-          if not val_shape == ta._elem_shape[0]:
+          if not elem_shape == ta._elem_shape[0]:
             raise ValueError("Shape inference failed.")
         else:
-          ta._elem_shape.append(val_shape)
+          ta._elem_shape.append(elem_shape)
       return ta
 
   def size(self, name=None):
