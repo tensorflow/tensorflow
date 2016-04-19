@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2015 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for evaluation metrics and summary statistics.
+"""A module containing TensorFlow ops whose API may change in the future."""
 
-## This package provides Ops for evaluation metrics and summary statistics.
-
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,line-too-long,g-importing-member,wildcard-import
-from tensorflow.contrib.metrics.python.metrics import *
-from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
+# pylint: disable=wildcard-import
+from tensorflow.contrib.metrics.python.metrics.classification import *
