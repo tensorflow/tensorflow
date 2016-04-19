@@ -31,34 +31,35 @@ from tensorflow.python.ops import math_ops
 
 def _ReductionGradAssist(op):
   """Reduction grads have much in common, so factor the commonality out."""
+  # Essentially, calculates the output shape as if keep_dims is set to True.
   inp = op.inputs[0]                                # Example:
   input_shape = array_ops.shape(inp)                # [2, 3, 5, 7]
   input_rank = array_ops.rank(inp)                  # 4
   indices = op.inputs[1]                            # [1, 2]
   indices_shape = array_ops.shape(indices)          # [2]
-  new_output_shape = data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
+  output_shape_kept_dims = data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
       [math_ops.range(input_rank),                  # [0, 1, 2, 3]
        indices],                                    # [1, 2]
       [input_shape,                                 # [2, 3, 5, 7]
        array_ops.fill(indices_shape, 1)])           # [1, 1]
-  return inp, new_output_shape, input_shape
+  return inp, output_shape_kept_dims, input_shape
 
 
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""
-  _, new_output_shape, input_shape = _ReductionGradAssist(op)
-  tile_scaling = input_shape // new_output_shape
-  grad = array_ops.reshape(grad, new_output_shape)
+  _, output_shape_kept_dims, input_shape = _ReductionGradAssist(op)
+  tile_scaling = input_shape // output_shape_kept_dims
+  grad = array_ops.reshape(grad, output_shape_kept_dims)
   return [array_ops.tile(grad, tile_scaling), None]
 
 
 def _MinOrMaxGrad(op, grad):
   """Gradient for Max or Max. Amazingly it's precisely the same code."""
-  inp, new_output_shape, _ = _ReductionGradAssist(op)
+  inp, output_shape_kept_dims, _ = _ReductionGradAssist(op)
   y = op.outputs[0]
-  y = array_ops.reshape(y, new_output_shape)
-  grad = array_ops.reshape(grad, new_output_shape)
+  y = array_ops.reshape(y, output_shape_kept_dims)
+  grad = array_ops.reshape(grad, output_shape_kept_dims)
 
   # Compute the number of selected (maximum or minimum) elements in each
   # reduction dimension. If there are multiple minimum or maximum elements
@@ -66,7 +67,7 @@ def _MinOrMaxGrad(op, grad):
   indicators = math_ops.cast(math_ops.equal(y, inp), grad.dtype)
   num_selected = array_ops.reshape(
       math_ops.reduce_sum(indicators, op.inputs[1]),
-      new_output_shape)
+      output_shape_kept_dims)
 
   return [math_ops.div(indicators, num_selected) * grad, None]
 
@@ -97,9 +98,9 @@ def _MeanGrad(op, grad):
 def _ProdGrad(op, grad):
   """Gradient for Prod."""
   # TODO(kearnes): this gives NaNs for 0s in the input tensor
-  _, new_output_shape, input_shape = _ReductionGradAssist(op)
-  tile_scaling = input_shape // new_output_shape
-  grad = array_ops.reshape(grad * op.outputs[0], new_output_shape)
+  _, output_shape_kept_dims, input_shape = _ReductionGradAssist(op)
+  tile_scaling = input_shape // output_shape_kept_dims
+  grad = array_ops.reshape(grad * op.outputs[0], output_shape_kept_dims)
   grad = math_ops.div(array_ops.tile(grad, tile_scaling), op.inputs[0])
   return grad, None
 
