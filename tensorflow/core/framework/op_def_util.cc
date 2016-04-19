@@ -18,6 +18,7 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -155,12 +156,12 @@ OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def) {
   return nullptr;
 }
 
-#define VALIDATE(EXPR, ...)                                       \
-  do {                                                            \
-    if (!(EXPR)) {                                                \
-      return errors::InvalidArgument(__VA_ARGS__, "; in OpDef: ", \
-                                     op_def.ShortDebugString());  \
-    }                                                             \
+#define VALIDATE(EXPR, ...)                                          \
+  do {                                                               \
+    if (!(EXPR)) {                                                   \
+      return errors::InvalidArgument(__VA_ARGS__, "; in OpDef: ",    \
+                                     ProtoShortDebugString(op_def)); \
+    }                                                                \
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
