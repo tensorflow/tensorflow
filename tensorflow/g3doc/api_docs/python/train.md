@@ -1955,6 +1955,7 @@ on the parameters to the constructor and may include:
 ##### Raises:
 
 
+*  <b>`RuntimeError`</b>: If called with a non-chief Supervisor.
 *  <b>`ValueError`</b>: If not `logdir` was passed to the constructor as the
     services need a log directory.
 
@@ -2182,6 +2183,7 @@ on the parameters to the constructor and may include:
 ##### Raises:
 
 
+*  <b>`RuntimeError`</b>: If called with a non-chief Supervisor.
 *  <b>`ValueError`</b>: If not `logdir` was passed to the constructor as the
     services need a log directory.
 
@@ -2409,7 +2411,7 @@ Start threads for `QueueRunners`.
 
 #### `tf.train.Supervisor.summary_op` {#Supervisor.summary_op}
 
-Return the Summary Tensor used by the supervisor.
+Return the Summary Tensor used by the chief supervisor.
 
 ##### Returns:
 
@@ -2420,7 +2422,7 @@ Return the Summary Tensor used by the supervisor.
 
 #### `tf.train.Supervisor.summary_writer` {#Supervisor.summary_writer}
 
-Return the SummaryWriter used by the supervisor.
+Return the SummaryWriter used by the chief supervisor.
 
 ##### Returns:
 

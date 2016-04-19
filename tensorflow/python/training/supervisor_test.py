@@ -73,12 +73,11 @@ class SupervisorTest(tf.test.TestCase):
       sess.close()
       sv.stop()
 
-  def testSummary(self):
+  def testChiefCanWriteEvents(self):
     logdir = self._TestDir("basics")
     with tf.Graph().as_default():
-      const = tf.constant([1.0, 2.0, 3.0])
-      summ = tf.scalar_summary(["c1", "c2", "c3"], const)
-      sv = tf.train.Supervisor(logdir=logdir, summary_op=None)
+      summ = tf.scalar_summary(["c1", "c2", "c3"], tf.constant([1.0, 2.0, 3.0]))
+      sv = tf.train.Supervisor(is_chief=True, logdir=logdir, summary_op=None)
       sess = sv.prepare_or_wait_for_session("")
       sv.summary_computed(sess, sess.run(summ))
       sess.close()
@@ -113,13 +112,31 @@ class SupervisorTest(tf.test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
+  def testNonChiefCannotWriteEvents(self):
+
+    def _summary_computed():
+      with tf.Graph().as_default():
+        sv = tf.train.Supervisor(is_chief=False)
+        sess = sv.prepare_or_wait_for_session("")
+        summ = tf.scalar_summary(["c1", "c2"], tf.constant([1.0, 2.0]))
+        sv.summary_computed(sess, sess.run(summ))
+
+    def _start_standard_services():
+      with tf.Graph().as_default():
+        sv = tf.train.Supervisor(is_chief=False)
+        sess = sv.prepare_or_wait_for_session("")
+        sv.start_standard_services(sess)
+
+    self.assertRaises(RuntimeError, _summary_computed)
+    self.assertRaises(RuntimeError, _start_standard_services)
+
   def testNoLogdirButWantSummary(self):
     with tf.Graph().as_default():
       const = tf.constant([1.0, 2.0, 3.0])
       summ = tf.scalar_summary(["c1", "c2", "c3"], const)
       sv = tf.train.Supervisor(logdir="", summary_op=None)
       sess = sv.prepare_or_wait_for_session("")
-      with self.assertRaisesRegexp(RuntimeError, "requires a logdir"):
+      with self.assertRaisesRegexp(RuntimeError, "requires a summary writer"):
         sv.summary_computed(sess, sess.run(summ))
 
   def testNoLogdirSucceeds(self):

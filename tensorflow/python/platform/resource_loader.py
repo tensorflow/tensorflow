@@ -79,3 +79,7 @@ def get_path_to_datafile(path):
   """
   data_files_path = os.path.dirname(inspect.getfile(sys._getframe(1)))
   return os.path.join(data_files_path, path)
+
+def readahead_file_path(path, unused_readahead=None):
+  """Readahead files not implemented; simply returns given path."""
+  return path
