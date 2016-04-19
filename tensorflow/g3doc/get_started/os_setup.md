@@ -49,37 +49,37 @@ Install pip (or pip3 for python3) if it is not already installed:
 $ sudo apt-get install python-pip python-dev
 
 # Mac OS X
-$ sudo easy_install pip
+$ easy_install pip
 ```
 
 Install TensorFlow:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only:
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
 # other versions, see "Install from sources" below.
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
-$ sudo easy_install --upgrade six
-$ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py2-none-any.whl
+$ easy_install --upgrade six
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py2-none-any.whl
 ```
 
 For python3:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only:
-$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
 # other versions, see "Install from sources" below.
-$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
-$ sudo easy_install --upgrade six
-$ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py3-none-any.whl
+$ easy_install --upgrade six
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/tensorflow-0.8.0rc0-py3-none-any.whl
 ```
 
 NOTE: If you are upgrading from a previous installation of TensorFlow < 0.7.1,
@@ -114,7 +114,7 @@ $ sudo apt-get install python-pip python-dev python-virtualenv
 
 # Mac OS X
 $ sudo easy_install pip
-$ sudo pip install --upgrade virtualenv
+$ pip install --upgrade virtualenv
 ```
 
 Create a Virtualenv environment in the directory `~/tensorflow`:
@@ -575,16 +575,16 @@ You can install the python dependencies using easy_install or pip. Using
 easy_install, run
 
 ```bash
-$ sudo easy_install -U six
-$ sudo easy_install -U numpy
-$ sudo easy_install wheel
+$ easy_install -U six
+$ easy_install -U numpy
+$ easy_install wheel
 ```
 
 We also recommend the [ipython](https://ipython.org) enhanced python shell,
 which you can install as follows:
 
 ```bash
-$ sudo easy_install ipython
+$ easy_install ipython
 ```
 
 #### Configure the installation
@@ -804,7 +804,7 @@ You can resolve the issue in one of the following ways:
 * Upgrade the Python installation with the current version of `six`:
 
 ```bash
-$ sudo easy_install -U six
+$ easy_install -U six
 ```
 
 * Install TensorFlow with a separate Python library:
@@ -822,7 +822,7 @@ On El Capitan, "six" is a special package that can't be modified, and this
 error is reported when "pip install" tried to modify this package. To fix use
 "ignore_installed" flag, ie
 
-sudo pip install --ignore-installed six https://storage.googleapis.com/....
+pip install --ignore-installed six https://storage.googleapis.com/....
 
 
 ### Mac OS X: TypeError: `__init__()` got an unexpected keyword argument 'syntax'
