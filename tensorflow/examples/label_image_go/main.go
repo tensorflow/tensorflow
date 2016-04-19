@@ -211,8 +211,8 @@ func main() {
 	labels := strings.Split(string(labelsStr), "\n")
 
 	for i := 0; i < cLabelsToShow; i++ {
-		index, _ := indexTens.GetVal(0, i)
-		score, _ := scoresTens.GetVal(0, i)
+		index, _ := indexTens.GetVal(0, int64(i))
+		score, _ := scoresTens.GetVal(0, int64(i))
 		fmt.Println(labels[index.(int32)], ":", score)
 	}
 }

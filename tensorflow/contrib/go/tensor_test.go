@@ -206,9 +206,13 @@ func TestMultDimFloat32Decode(t *testing.T) {
 			}
 		}
 	}
+	_, err = tensor.GetVal(1, 0, 2)
+	if err == nil {
+		t.Error("Expected ErrIndexOutOfRange")
+	}
 	_, err = tensor.GetVal(999, 999, 999)
 	if err == nil {
-		t.Error("Expected error getting undefined position")
+		t.Error("Expected ErrIndexOutOfRange")
 	}
 }
 

@@ -459,40 +459,31 @@ func (t *Tensor) GetVal(i ...int64) (val interface{}, err error) {
 		}
 	}
 
-	pos := int64(0)
-	if t.dimWeights != nil {
-		for d, w := range t.dimWeights {
-			pos += i[d] * w
-		}
-	} else {
+	if t.dimWeights == nil {
 		// Calculate the cumulative weight for each dimension, the
 		// weight is the number of elements before the first of the
 		// elements on this dimension
 		t.dimWeights = make([]int64, len(i))
-		pos = i[len(i)-1]
-		if pos >= t.Dim(len(i)-1) {
-			return nil, &ErrIndexOutOfRange{
-				Dim:       len(i) - 1,
-				Index:     pos,
-				DimsRange: t.Dim(len(i) - 1),
-			}
-		}
 		t.dimWeights[len(i)-1] = 1
 
 		lastWeight := int64(0)
 		for d := len(i) - 2; d >= 0; d-- {
 			lastWeight += t.Dim(d + 1)
 			t.dimWeights[d] = lastWeight
-			pos += i[d] * lastWeight
 
-			if i[d] >= t.Dim(d) {
-				return nil, &ErrIndexOutOfRange{
-					Dim:       d,
-					Index:     pos,
-					DimsRange: t.Dim(d),
-				}
+		}
+	}
+
+	pos := int64(0)
+	for d, w := range t.dimWeights {
+		if i[d] >= t.Dim(d) {
+			return nil, &ErrIndexOutOfRange{
+				Dim:       d,
+				Index:     pos,
+				DimsRange: t.Dim(d),
 			}
 		}
+		pos += i[d] * w
 	}
 
 	return t.getValOnPos(pos)
