@@ -37,12 +37,12 @@ type Tensor struct {
 	pb.TensorProto
 
 	tensor      TF_Tensor
-	dimWeights  []int
+	dimWeights  []int64
 	memReleased bool
 }
 
 // A TensorShape represents the shape of a Tensor.
-type TensorShape [][]int64
+type TensorShape []int64
 
 var (
 	// DTInvalid Invalid tensor DataType.
@@ -125,7 +125,7 @@ func NewTensor(data interface{}) (*Tensor, error) {
 	var dataSer []interface{}
 	var dataSize int64
 	var dataType DataType
-	var dims [][]int64
+	var dims []int64
 	var err error
 
 	v := reflect.ValueOf(data)
@@ -137,18 +137,18 @@ func NewTensor(data interface{}) (*Tensor, error) {
 				strings[i] = v.Index(i).String()
 			}
 			buf := encodeStrings(strings)
-			return newTensor(DTString, TensorShape{{int64(len(strings))}},
+			return newTensor(DTString, TensorShape{int64(len(strings))},
 				unsafe.Pointer(&(buf[0])), int64(len(buf)))
 		}
 
-		dataSer, dims, dataType, dataSize, err = serialize(data, 0, [][]int64{})
+		dataSer, dims, dataType, dataSize, err = serialize(data, 0, []int64{})
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		// Scalar tensor
 		dataSer = []interface{}{data}
-		dims = [][]int64{}
+		dims = []int64{}
 		dataSize = int64(v.Type().Size())
 		if dataType, err = getDataTypeFromReflect(v.Kind(), dataSize); err != nil {
 			return nil, err
@@ -230,20 +230,20 @@ func (t *Tensor) NumDims() int {
 func (t *Tensor) Shape() TensorShape {
 	if t.NumDims() == 0 {
 		// This is a scalar tensor
-		return [][]int64{}
+		return []int64{}
 	}
 
-	shape := make([][]int64, t.NumDims())
+	shape := make([]int64, t.NumDims())
 	for i := 0; i < t.NumDims(); i++ {
-		shape[i] = []int64{int64(t.Dim(i))}
+		shape[i] = t.Dim(i)
 	}
 
 	return shape
 }
 
 // Dim returns the size of the specified dimension.
-func (t *Tensor) Dim(n int) int {
-	return int(TF_Dim(t.tensor, n))
+func (t *Tensor) Dim(n int) int64 {
+	return int64(TF_Dim(t.tensor, n))
 }
 
 // DataSize returns the size of the data in bytes contained in a tensor.
@@ -262,8 +262,8 @@ func (t *Tensor) String() string {
 	return fmt.Sprintf("%v: dims:%v size:%v", t.DataType(), t.NumDims(), t.DataSize())
 }
 
-// ByteSlices returns the Tensor content as strings slice if the tensor
-// type matches, if not returns a ErrInvalidTensorType error.
+// ByteSlices returns the Tensor content as a slice of byte slices if the
+// tensor contains strings, if not returns a ErrInvalidTensorType error.
 // The datatypes are:
 //  - DTString
 func (t *Tensor) ByteSlices() ([][]byte, error) {
@@ -305,9 +305,7 @@ func (t *Tensor) ByteSlices() ([][]byte, error) {
 }
 
 // Float32s returns the Tensor content as float32 slice if the tensor
-// type matches, if not returns a ErrInvalidTensorType error.
-// The datatypes are:
-//  - DTFloat
+// type is DTFloat, if not returns a ErrInvalidTensorType error.
 func (t *Tensor) Float32s() ([]float32, error) {
 	if DTFloat != t.DataType() {
 		return nil, &ErrInvalidTensorType{
@@ -332,9 +330,7 @@ func (t *Tensor) Float32s() ([]float32, error) {
 }
 
 // Float64s returns the Tensor content as float64 slice if the tensor
-// type matches, if not returns a ErrInvalidTensorType error.
-// The datatypes are:
-//  - DTDouble
+// type is DTDouble, if not returns a ErrInvalidTensorType error.
 func (t *Tensor) Float64s() ([]float64, error) {
 	if DTDouble != t.DataType() {
 		return nil, &ErrInvalidTensorType{
@@ -359,12 +355,12 @@ func (t *Tensor) Float64s() ([]float64, error) {
 }
 
 // Int32s returns the Tensor content as int32 slice if the tensor
-// type matches, if not returns a ErrInvalidTensorType error.
-// The datatypes are:
+// type is:
 //  - DTUint8
 //  - DTInt8
 //  - DTInt16
 //  - DTInt32
+// if not returns a ErrInvalidTensorType error.
 func (t *Tensor) Int32s() ([]int32, error) {
 	if t.IntVal != nil {
 		return t.IntVal, nil
@@ -402,9 +398,7 @@ func (t *Tensor) Int32s() ([]int32, error) {
 }
 
 // Int64s returns the Tensor content as int64 slice if the tensor
-// type matches, if not returns a ErrInvalidTensorType error.
-// The datatypes are:
-//  - DTInt64
+// type is DTInt64, if not returns a ErrInvalidTensorType error.
 func (t *Tensor) Int64s() ([]int64, error) {
 	if DTInt64 != t.DataType() {
 		return nil, &ErrInvalidTensorType{
@@ -429,9 +423,7 @@ func (t *Tensor) Int64s() ([]int64, error) {
 }
 
 // Bools returns the Tensor content as boolean slice if the tensor
-// type matches, if not returns a ErrInvalidTensorType error.
-// The datatypes are:
-//  - DTBool
+// type is DTBool, if not returns a ErrInvalidTensorType error.
 func (t *Tensor) Bools() ([]bool, error) {
 	if DTBool != t.DataType() {
 		return nil, &ErrInvalidTensorType{
@@ -459,7 +451,7 @@ func (t *Tensor) Bools() ([]bool, error) {
 // multidimensional array.
 // This method returns an error if the number of dimensions is incorrect or
 // are out of range.
-func (t *Tensor) GetVal(i ...int) (val interface{}, err error) {
+func (t *Tensor) GetVal(i ...int64) (val interface{}, err error) {
 	if len(i) != t.NumDims() {
 		return nil, &ErrDimsOutOfTensorRange{
 			TensorDim: t.NumDims(),
@@ -467,7 +459,7 @@ func (t *Tensor) GetVal(i ...int) (val interface{}, err error) {
 		}
 	}
 
-	pos := 0
+	pos := int64(0)
 	if t.dimWeights != nil {
 		for d, w := range t.dimWeights {
 			pos += i[d] * w
@@ -476,7 +468,7 @@ func (t *Tensor) GetVal(i ...int) (val interface{}, err error) {
 		// Calculate the cumulative weight for each dimension, the
 		// weight is the number of elements before the first of the
 		// elements on this dimension
-		t.dimWeights = make([]int, len(i))
+		t.dimWeights = make([]int64, len(i))
 		pos = i[len(i)-1]
 		if pos >= t.Dim(len(i)-1) {
 			return nil, &ErrIndexOutOfRange{
@@ -487,7 +479,7 @@ func (t *Tensor) GetVal(i ...int) (val interface{}, err error) {
 		}
 		t.dimWeights[len(i)-1] = 1
 
-		lastWeight := 0
+		lastWeight := int64(0)
 		for d := len(i) - 2; d >= 0; d-- {
 			lastWeight += t.Dim(d + 1)
 			t.dimWeights[d] = lastWeight
@@ -508,7 +500,7 @@ func (t *Tensor) GetVal(i ...int) (val interface{}, err error) {
 
 // getValOnPos returns the value of one of the elements of the Tensor on the
 // specified position
-func (t *Tensor) getValOnPos(pos int) (val interface{}, err error) {
+func (t *Tensor) getValOnPos(pos int64) (val interface{}, err error) {
 	switch t.DataType() {
 	case DTFloat:
 		vals, _ := t.Float32s()
@@ -590,8 +582,8 @@ func (e *ErrDimsOutOfTensorRange) Error() string {
 // dimensions range.
 type ErrIndexOutOfRange struct {
 	Dim       int
-	Index     int
-	DimsRange int
+	Index     int64
+	DimsRange int64
 }
 
 func (e *ErrIndexOutOfRange) Error() string {
@@ -616,12 +608,12 @@ func (e *ErrDataTypeNotSupported) Error() string {
 	return fmt.Sprintf("The type of the provided data is not suported: '%s'", e.DataType)
 }
 
-func serialize(data interface{}, deep int, dimsIn [][]int64) (ser []interface{}, dims [][]int64, dataType DataType, dataSize int64, err error) {
+func serialize(data interface{}, deep int, dimsIn []int64) (ser []interface{}, dims []int64, dataType DataType, dataSize int64, err error) {
 	v := reflect.ValueOf(data)
 	dims = dimsIn
 
 	if len(dims) == deep {
-		dims = append(dims, []int64{int64(v.Len())})
+		dims = append(dims, int64(v.Len()))
 	}
 	// Check the value of the elements in this slice. If they are slices,
 	// recursively serialize them, otherwise add the results.
@@ -688,25 +680,17 @@ func newTensor(dataType DataType, shape TensorShape, data unsafe.Pointer, size i
 	var tensorShape *pb.TensorShapeProto
 
 	// Move the data to C allocated memory
-	shapes := 0
-	for _, v := range shape {
-		shapes += len(v)
-	}
 	if len(shape) > 0 {
 		tensorShape = &pb.TensorShapeProto{
 			Dim: make([]*pb.TensorShapeProto_Dim, len(shape)),
 		}
-		llDims = make([]C.longlong, shapes)
-		i := 0
-		for _, v := range shape {
+		llDims = make([]C.longlong, len(shape))
+		for i, s := range shape {
 			tensorShape.Dim[i] = &pb.TensorShapeProto_Dim{
-				Size: v[0],
+				Size: s,
 			}
 
-			for _, s := range v {
-				llDims[i] = C.longlong(s)
-				i++
-			}
+			llDims[i] = C.longlong(s)
 		}
 	} else {
 		// This is a scalar

@@ -30,7 +30,7 @@ func ExampleGraph_Op() {
 	}
 
 	for i := 0; i < len(inputSlice1); i++ {
-		val, _ := out[0].GetVal(i)
+		val, _ := out[0].GetVal(int64(i))
 		fmt.Println("The result of: %d + (%d*%d) is: %d", inputSlice1[i], inputSlice2[i], additions, val)
 	}
 }
@@ -76,10 +76,10 @@ func ExampleNewGraphFromText() {
 
 func ExampleGraph_Constant() {
 	graph := tensorflow.NewGraph()
-	// Add scalar string to the Graph named 'const1'.
+	// Add a scalar string node named 'const1' to the Graph.
 	graph.Constant("const1", "this is a test...")
 
-	// Add bidimensional Constant to the Graph named 'const2'.
+	// Add bidimensional Constant named 'const2' to the Graph.
 	graph.Constant("const2", [][]int64{
 		{1, 2},
 		{3, 4},
@@ -88,7 +88,7 @@ func ExampleGraph_Constant() {
 
 func ExampleGraph_Placeholder() {
 	graph := tensorflow.NewGraph()
-	// Add Placeholder named "input1" that must allocate a three element
+	// Add Placeholder named 'input1' that must allocate a three element
 	// DTInt32 tensor.
 	graph.Placeholder("input1", tensorflow.DTInt32, []int64{3})
 }
@@ -136,7 +136,7 @@ func ExampleSession_ExtendAndInitializeAllVariables() {
 
 func ExampleSession_ExtendGraph() {
 	graph := tensorflow.NewGraph()
-	// Add a Placeholder named "input1" that must allocate a three element
+	// Add a Placeholder named 'input1' that must allocate a three element
 	// DTInt32 tensor.
 	graph.Placeholder("placeholder", tensorflow.DTInt32, []int64{3})
 
@@ -176,7 +176,7 @@ func ExampleSession_Run() {
 
 func ExampleNewTensorWithShape() {
 	// Create Tensor with a single dimension of 3.
-	t2, _ := tensorflow.NewTensorWithShape([][]int64{{3}}, []int64{3, 4, 5})
+	t2, _ := tensorflow.NewTensorWithShape([]int64{3}, []int64{3, 4, 5})
 	fmt.Println(t2.Int64s())
 }
 

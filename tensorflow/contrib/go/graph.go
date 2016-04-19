@@ -147,7 +147,7 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 // is a type of tensor that holds state in the form of a tensor that persists
 // across steps.
 func (gr *Graph) Variable(name string, initialData interface{}) (*GraphNode, error) {
-	var dims [][]int64
+	var dims []int64
 
 	ts, err := NewTensor(initialData)
 	if err != nil {
@@ -157,7 +157,7 @@ func (gr *Graph) Variable(name string, initialData interface{}) (*GraphNode, err
 
 	shape := new(pb.TensorShapeProto)
 	if ts.NumDims() == 0 {
-		dims = [][]int64{{1}}
+		dims = []int64{1}
 	} else {
 		dims = ts.Shape()
 	}
@@ -165,7 +165,7 @@ func (gr *Graph) Variable(name string, initialData interface{}) (*GraphNode, err
 	shape.Dim = make([]*pb.TensorShapeProto_Dim, len(dims))
 	for i, dim := range dims {
 		shape.Dim[i] = &pb.TensorShapeProto_Dim{
-			Size: dim[i],
+			Size: dim,
 		}
 	}
 

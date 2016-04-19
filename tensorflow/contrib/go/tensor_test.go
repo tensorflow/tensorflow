@@ -189,7 +189,7 @@ func TestMultDimFloat32Decode(t *testing.T) {
 	for x := 0; x < len(expectedResult); x++ {
 		for y := 0; y < len(expectedResult[x]); y++ {
 			for z := 0; z < len(expectedResult[x][y]); z++ {
-				value, err := tensor.GetVal(x, y, z)
+				value, err := tensor.GetVal(int64(x), int64(y), int64(z))
 				if err != nil {
 					t.Error("Error returned when accessing to position:", x, y, z, "Error:", err)
 				}
@@ -205,6 +205,10 @@ func TestMultDimFloat32Decode(t *testing.T) {
 				}
 			}
 		}
+	}
+	_, err = tensor.GetVal(999, 999, 999)
+	if err == nil {
+		t.Error("Expected error getting undefined position")
 	}
 }
 

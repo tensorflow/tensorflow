@@ -59,7 +59,7 @@ func TestGraphPlaceholder(t *testing.T) {
 	}
 
 	for i := 0; i < len(inputSlice1); i++ {
-		val, err := out[0].GetVal(i)
+		val, err := out[0].GetVal(int64(i))
 		if err != nil {
 			t.Fatal("Error reading the output Tensor:", err)
 		}
@@ -166,7 +166,7 @@ func TestGraphVariableConstant(t *testing.T) {
 	}
 
 	for i := 0; i < len(inputSlice1); i++ {
-		val, err := out[0].GetVal(i)
+		val, err := out[0].GetVal(int64(i))
 		if err != nil {
 			t.Fatal("Error reading the output tensor:", err)
 		}

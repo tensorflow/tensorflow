@@ -34,7 +34,7 @@ func TestInputParams(t *testing.T) {
 		t.Fatal("Error creating Tensor:", err)
 	}
 
-	t2, err := tf.NewTensorWithShape([][]int64{{3}}, inputSlice2)
+	t2, err := tf.NewTensorWithShape([]int64{3}, inputSlice2)
 	if err != nil {
 		t.Fatal("Error creating Tensor:", err)
 	}
@@ -53,7 +53,7 @@ func TestInputParams(t *testing.T) {
 	}
 
 	for i := 0; i < len(inputSlice1); i++ {
-		val, err := out[0].GetVal(i)
+		val, err := out[0].GetVal(int64(i))
 		if err != nil {
 			t.Fatal("Error reading output Tensor:", err)
 		}
@@ -115,7 +115,7 @@ func TestInputMultDimParams(t *testing.T) {
 	for x := 0; x < lenDimX; x++ {
 		for y := 0; y < lenDimY; y++ {
 			for z := 0; z < lenDimZ; z++ {
-				val, err := out[0].GetVal(x, y, z)
+				val, err := out[0].GetVal(int64(x), int64(y), int64(z))
 				if err != nil {
 					t.Fatal("Error reading output Tensor:", err)
 				}
