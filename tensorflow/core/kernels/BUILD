@@ -918,13 +918,17 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "sparse_add_op_test",
+tf_cc_tests(
     size = "small",
+    tests = [
+        "sparse_add_op_test",
+        "sparse_reduce_sum_op_test",
+    ],
     deps = [
         ":ops_testutil",
         ":ops_util",
         ":sparse_add_op",
+        ":sparse_reduce_sum_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1262,6 +1266,7 @@ tf_kernel_libraries(
         "sparse_add_grad_op",
         "sparse_add_op",
         "sparse_concat_op",
+        "sparse_reduce_sum_op",
         "sparse_reorder_op",
         "sparse_split_op",
         "sparse_tensor_dense_add_op",

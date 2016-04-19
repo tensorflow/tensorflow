@@ -460,6 +460,56 @@ def sparse_to_dense(sparse_indices,
                                          name=name)
 
 
+def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
+  """Computes the sum of elements across dimensions of a SparseTensor.
+
+  This Op takes a SparseTensor and is the sparse counterpart to
+  `tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`
+  instead of a sparse one.
+
+  Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+  with length 1.
+
+  If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+  with a single element is returned.
+
+  For example:
+
+  ```python
+  # 'x' represents [[1, ?, 1]
+  #                 [?, 1, ?]]
+  # where ? is implictly-zero.
+  tf.sparse_reduce_sum(x) ==> 3
+  tf.sparse_reduce_sum(x, 0) ==> [1, 1, 1]
+  tf.sparse_reduce_sum(x, 1) ==> [2, 1]
+  tf.sparse_reduce_sum(x, 1, keep_dims=True) ==> [[2], [1]]
+  tf.sparse_reduce_sum(x, [0, 1]) ==> 3
+  ```
+
+  Args:
+    sp_input: The SparseTensor to reduce. Should have numeric type.
+    reduction_axes: The dimensions to reduce; list or scalar. If `None` (the
+      default), reduces all dimensions.
+    keep_dims: If true, retain reduced dimensions with length 1.
+
+  Returns:
+    The reduced Tensor.
+  """
+  return gen_sparse_ops.sparse_reduce_sum(sp_input.indices,
+                                          sp_input.values,
+                                          sp_input.shape,
+                                          math_ops._ReductionDims(
+                                              sp_input, reduction_axes),
+                                          keep_dims)
+
+
+@ops.RegisterShape("SparseReduceSum")
+def _SparseReduceSumShape(unused_op):  # pylint: disable=invalid-name
+  return [tensor_shape.unknown_shape()]
+
+
 def sparse_tensor_to_dense(sp_input,
                            default_value=0,
                            validate_indices=True,

@@ -709,6 +709,9 @@ def _ReductionDims(x, reduction_indices):
   if reduction_indices is not None:
     return reduction_indices
   else:
+    # TODO(zongheng): remove this once rank() supports SparseTensor.
+    if isinstance(x, ops.SparseTensor):
+      return range(0, array_ops.size(x.shape))
     return range(0, array_ops.rank(x))
 
 

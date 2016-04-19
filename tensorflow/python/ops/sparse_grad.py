@@ -26,12 +26,9 @@ from tensorflow.python.ops import sparse_ops
 
 
 ops.NoGradient("SparseAddGrad")
-
-
-ops.NoGradient("SparseToDense")
-
-
 ops.NoGradient("SparseConcat")
+ops.NoGradient("SparseReduceSum")
+ops.NoGradient("SparseToDense")
 
 
 @ops.RegisterGradient("SparseReorder")
