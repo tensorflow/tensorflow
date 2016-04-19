@@ -32,6 +32,19 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/gaussian_test.py"],
     additional_deps = [
         ":distributions_py",
+        "//third_party/py/scipy",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "mvn_test",
+    size = "small",
+    srcs = ["python/kernel_tests/mvn_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/scipy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -43,6 +56,7 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/gaussian_conjugate_posteriors_test.py"],
     additional_deps = [
         ":distributions_py",
+        "//third_party/py/scipy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
