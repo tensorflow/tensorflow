@@ -153,6 +153,15 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
           "B", shape=[4 * self._num_units],
           initializer=array_ops.zeros_initializer, dtype=dtype)
 
+      # Diagonal connections
+      if self._use_peepholes:
+        w_f_diag = vs.get_variable(
+            "W_F_diag", shape=[self._num_units], dtype=dtype)
+        w_i_diag = vs.get_variable(
+            "W_I_diag", shape=[self._num_units], dtype=dtype)
+        w_o_diag = vs.get_variable(
+            "W_O_diag", shape=[self._num_units], dtype=dtype)
+
       # initialize the first freq state to be zero
       m_prev_freq = array_ops.zeros([int(inputs.get_shape()[0]),
                                      self._num_units], dtype)
@@ -166,15 +175,6 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
                                            m_prev_freq])
         lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
         i, j, f, o = array_ops.split(1, 4, lstm_matrix)
-
-        # Diagonal connections
-        if self._use_peepholes:
-          w_f_diag = vs.get_variable(
-              "W_F_diag", shape=[self._num_units], dtype=dtype)
-          w_i_diag = vs.get_variable(
-              "W_I_diag", shape=[self._num_units], dtype=dtype)
-          w_o_diag = vs.get_variable(
-              "W_O_diag", shape=[self._num_units], dtype=dtype)
 
         if self._use_peepholes:
           c = (sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
