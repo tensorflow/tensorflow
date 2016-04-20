@@ -7192,7 +7192,43 @@ op {
     description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
   }
   summary: "Dequeues n tuples of one or more tensors from the given queue."
-  description: "This operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until n elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
+  description: "If the queue is closed and there are fewer than n elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until n elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
+}
+op {
+  name: "QueueDequeueUpTo"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "n"
+    description: "The number of tuples to dequeue."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "components"
+    description: "One or more tensors that were dequeued as a tuple."
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a tuple."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Dequeues n tuples of one or more tensors from the given queue."
+  description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, the remaining elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
 }
 op {
   name: "QueueEnqueue"
