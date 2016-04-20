@@ -272,6 +272,33 @@ class VariableStoreTest(tf.test.TestCase):
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope4/scope2/")
 
+  def testVarScopeObjectReuse(self):
+    with self.test_session():
+      vs = None
+      with tf.variable_scope("jump", reuse=True) as scope:
+        vs = scope
+
+      with tf.variable_scope(vs) as jump:
+        self.assertTrue(jump.reuse)
+
+      with tf.variable_scope(vs, reuse=True) as jump_reuse:
+        self.assertTrue(jump_reuse.reuse)
+
+      with tf.variable_scope(vs, reuse=False) as jump_no_reuse:
+        self.assertFalse(jump_no_reuse.reuse)
+
+      with tf.variable_scope("jump", reuse=False) as scope:
+        vs = scope
+
+      with tf.variable_scope(vs) as jump:
+        self.assertFalse(jump.reuse)
+
+      with tf.variable_scope(vs, reuse=True) as jump_reuse:
+        self.assertTrue(jump_reuse.reuse)
+
+      with tf.variable_scope(vs, reuse=False) as jump_no_reuse:
+        self.assertFalse(jump_no_reuse.reuse)
+
   def testVarOpScope(self):
     with self.test_session():
       with tf.name_scope("scope1"):

@@ -790,9 +790,8 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
   get_variable_scope()  # Ensure that a default exists, then get a pointer.
   # Get the reference to the collection as we want to modify it in place.
   default_varscope = ops.get_collection_ref(_VARSCOPE_KEY)
+  old = default_varscope[0]
   try:
-    old = default_varscope[0]
-    reuse = reuse or old.reuse  # Re-using is inherited by sub-scopes.
     if isinstance(name_or_scope, VariableScope):
       name_scope = name_or_scope._name_scope  # pylint: disable=protected-access
       # Handler for the case when we jump to a shared scope.
@@ -800,7 +799,8 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
       #   a copy of the provided shared scope, possibly with changed reuse
       #   and initializer, if the user requested this.
       default_varscope[0] = VariableScope(
-          reuse, name=name_or_scope.name,
+          name_or_scope.reuse if reuse is None else reuse,
+          name=name_or_scope.name,
           initializer=name_or_scope.initializer,
           regularizer=name_or_scope.regularizer,
           caching_device=name_or_scope.caching_device,
@@ -819,6 +819,7 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
       #   VariableScope with name extended by the provided one, and inherited
       #   reuse and initializer (except if the user provided values to set).
       new_name = old.name + "/" + name_or_scope if old.name else name_or_scope
+      reuse = reuse or old.reuse  # Re-using is inherited by sub-scopes.
       default_varscope[0] = VariableScope(
           reuse, name=new_name,
           initializer=old.initializer,
