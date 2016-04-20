@@ -103,6 +103,7 @@
   * [`zeros_initializer`](../../api_docs/python/state_ops.md#zeros_initializer)
 
 * **[Tensor Transformations](../../api_docs/python/array_ops.md)**:
+  * [`batch_to_space`](../../api_docs/python/array_ops.md#batch_to_space)
   * [`bitcast`](../../api_docs/python/array_ops.md#bitcast)
   * [`boolean_mask`](../../api_docs/python/array_ops.md#boolean_mask)
   * [`cast`](../../api_docs/python/array_ops.md#cast)
@@ -125,6 +126,7 @@
   * [`shape_n`](../../api_docs/python/array_ops.md#shape_n)
   * [`size`](../../api_docs/python/array_ops.md#size)
   * [`slice`](../../api_docs/python/array_ops.md#slice)
+  * [`space_to_batch`](../../api_docs/python/array_ops.md#space_to_batch)
   * [`space_to_depth`](../../api_docs/python/array_ops.md#space_to_depth)
   * [`split`](../../api_docs/python/array_ops.md#split)
   * [`squeeze`](../../api_docs/python/array_ops.md#squeeze)
