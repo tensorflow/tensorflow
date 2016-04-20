@@ -154,6 +154,10 @@ op {
     }
   }
   summary: "Deprecated. Disallowed in GraphDef version >= 2."
+  deprecation {
+    version: 2
+    explanation: "Use AdjustContrastv2 instead"
+  }
 }
 op {
   name: "AdjustContrastv2"
@@ -1681,6 +1685,10 @@ op {
   }
   summary: "Batch normalization."
   description: "This op is deprecated. Prefer `tf.nn.batch_normalization`."
+  deprecation {
+    version: 9
+    explanation: "Use tf.nn.batch_normalization()"
+  }
 }
 op {
   name: "BatchNormWithGlobalNormalizationGrad"
@@ -1768,6 +1776,10 @@ op {
   }
   summary: "Gradients for batch normalization."
   description: "This op is deprecated. See `tf.nn.batch_normalization`."
+  deprecation {
+    version: 9
+    explanation: "Use tf.nn.batch_normalization()"
+  }
 }
 op {
   name: "BatchSelfAdjointEig"
@@ -7370,6 +7382,10 @@ op {
   }
   summary: "Randomly crop `image`."
   description: "`size` is a 1-D int64 tensor with 2 elements representing the crop height and\nwidth.  The values must be non negative.\n\nThis Op picks a random location in `image` and crops a `height` by `width`\nrectangle from that location.  The random location is picked so the cropped\narea will fit inside the original image."
+  deprecation {
+    version: 8
+    explanation: "Random crop is now pure Python"
+  }
   is_stateful: true
 }
 op {
@@ -11925,6 +11941,10 @@ op {
   }
   summary: "Returns the gradient of `Tile`."
   description: "Since `Tile` takes an input and repeats the input `multiples` times\nalong each dimension, `TileGrad` takes in `multiples` and aggregates\neach repeated tile of `input` into `output`."
+  deprecation {
+    version: 3
+    explanation: "TileGrad has been replaced with reduce_sum"
+  }
 }
 op {
   name: "TopK"
@@ -11976,6 +11996,10 @@ op {
   }
   summary: "Finds values and indices of the `k` largest elements for the last dimension."
   description: "If the input is a vector (rank-1), finds the `k` largest entries in the vector\nand outputs their values and indices as vectors.  Thus `values[j]` is the\n`j`-th largest entry in `input`, and its index is `indices[j]`.\n\nFor matrices (resp. higher rank input), computes the top `k` entries in each\nrow (resp. vector along the last dimension).  Thus,\n\n    values.shape = indices.shape = input.shape[:-1] + [k]\n\nIf two elements are equal, the lower-index element appears first.\n\nIf `k` varies dynamically, use `TopKV2` below."
+  deprecation {
+    version: 7
+    explanation: "Use TopKV2 instead"
+  }
 }
 op {
   name: "TopKV2"
