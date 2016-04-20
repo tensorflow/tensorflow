@@ -13,6 +13,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/ctc:ctc_py",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/framework:framework_py",
