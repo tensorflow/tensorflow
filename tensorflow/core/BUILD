@@ -642,7 +642,6 @@ cc_library(
         }),
     hdrs = ANDROID_TF_LITE_HDRS,
     copts = tf_copts() + ["-Os"],
-    defines = ["TENSORFLOW_USE_EIGEN_THREADPOOL"],
     tags = [
         "manual",
         "notap",
@@ -771,7 +770,6 @@ cc_library(
         "platform/tracing.h",
     ],
     copts = tf_copts(),
-    defines = ["TENSORFLOW_USE_EIGEN_THREADPOOL"],
     linkopts = ["-ldl"],
     deps = [
         ":protos_all_cc",
