@@ -309,8 +309,8 @@ class _VariableStore(object):
 
       with ops.op_scope([], name + "/PartitionedVariableList"):
         if initializer is None:
-          init = init_ops.sharded_uniform_unit_scaling_initializer(
-              shape.as_list())
+          init = init_ops.uniform_unit_scaling_initializer(
+              full_shape=shape.as_list())
           init_shape = var_shape
         elif callable(initializer):
           init = initializer

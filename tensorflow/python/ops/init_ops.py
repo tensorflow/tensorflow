@@ -156,7 +156,7 @@ def truncated_normal_initializer(mean=0.0, stddev=1.0, seed=None,
 
 
 def uniform_unit_scaling_initializer(factor=1.0, seed=None,
-                                     dtype=dtypes.float32):
+                                     dtype=dtypes.float32, full_shape=None):
   """Returns an initializer that generates tensors without scaling variance.
 
   When initializing a deep network, it is in principle advantageous to keep
@@ -175,12 +175,21 @@ def uniform_unit_scaling_initializer(factor=1.0, seed=None,
   and the calculation of constants. In section 2.3 there, the constants were
   numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
+  If the shape tuple `full_shape` is provided, the scale will be calculated from
+  this predefined shape.  This is useful when a `Variable` is being partitioned
+  across several shards, and each shard has a smaller shape than the whole.
+  Since the shards are usually concatenated when used, the scale should be
+  based on the shape of the whole.
+
   Args:
     factor: Float.  A multiplicative factor by which the values will be scaled.
     seed: A Python integer. Used to create random seeds. See
       [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
       for behavior.
     dtype: The data type. Only floating point types are supported.
+    full_shape: Tuple or list of integers.  The shape used for calculating
+      scale normalization (instead of the shape passed at creation time).
+      Useful when creating sharded variables via partitioning.
 
   Returns:
     An initializer that generates tensors with unit variance.
@@ -189,56 +198,15 @@ def uniform_unit_scaling_initializer(factor=1.0, seed=None,
     ValueError: if `dtype` is not a floating point type.
   """
   def _initializer(shape, dtype=_assert_float_dtype(dtype)):
+    scale_shape = full_shape if full_shape is not None else shape
     input_size = 1.0
     # Estimating input size is not possible to do perfectly, but we try.
     # The estimate, obtained by multiplying all dimensions but the last one,
     # is the right thing for matrix multiply and convolutions (see above).
-    for dim in shape[:-1]:
+    for dim in scale_shape[:-1]:
       input_size *= float(dim)
     max_val = math.sqrt(3 / input_size) * factor
     return random_ops.random_uniform(shape, -max_val, max_val,
-                                     dtype, seed=seed)
-  return _initializer
-
-
-def sharded_uniform_unit_scaling_initializer(
-    shape, factor=1.0, seed=None, dtype=dtypes.float32):
-  """Returns a uniform_unit_scaling_initializer with scale based on `shape`.
-
-  This initializer works identically to `uniform_unit_scaling_initializer`,
-  but the scale is based on a predefined shape.  This is useful when a
-  `Variable` is being partitioned across several shards, and each shard
-  has a smaller shape than the whole.  Since the shards are usually
-  concatenated when used, the scale should be based on the shape of the whole.
-
-  See the documentation of `uniform_unit_scaling_initializer` for details
-  on how the scale of the input variance is kept constant.
-
-  Args:
-    shape: A list or tuple of ints to use for the scaling calculation.
-    factor: Float.  A multiplicative factor by which the values will be scaled.
-    seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
-      for behavior.
-    dtype: The data type. Only floating point types are supported.
-
-  Returns:
-    An initializer that generates sub-tensors of a unit variance tensor
-    (so long as that tensor is not being sharded along its innermost dimension).
-
-  Raises:
-    ValueError: if `dtype` is not a floating point type.
-  """
-  def _initializer(sub_tensor_shape, dtype=_assert_float_dtype(dtype)):
-    input_size = 1.0
-    # As in uniform_unit_scaling_initializer, we assume that the innermost
-    # dimension determines the entity whose empirical variance we wish
-    # to keep unit norm.  This code also assumes that the sharding
-    # has not been performed on the innermost axis.
-    for dim in shape[:-1]:
-      input_size *= float(dim)
-    max_val = math.sqrt(3 / input_size) * factor
-    return random_ops.random_uniform(sub_tensor_shape, -max_val, max_val,
                                      dtype, seed=seed)
   return _initializer
 

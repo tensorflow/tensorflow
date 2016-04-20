@@ -61,7 +61,6 @@ create variables contingent on certain conditions.
 @@truncated_normal_initializer
 @@random_uniform_initializer
 @@uniform_unit_scaling_initializer
-@@sharded_uniform_unit_scaling_initializer
 @@zeros_initializer
 @@ones_initializer
 
