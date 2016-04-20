@@ -72,13 +72,6 @@ def tf_android_core_proto_headers():
   return ["//tensorflow/core/" + p.replace(".proto", ".pb.h")
           for p in tf_android_core_proto_sources_relative()]
 
-# Returns the list of protos for which proto_text headers should be generated.
-#
-# util/test_log.proto is excluded because it uses google.any, which is not
-# supported well in proto_text.
-def tf_proto_text_protos_relative():
-  return [p for p in tf_android_core_proto_sources_relative()
-          if p not in ("util/test_log.proto")]
 
 def if_cuda(a, b=[]):
   return select({
@@ -598,22 +591,3 @@ def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[], shard_
   test_tags = tf_cuda_tests_tags()
   py_tests(name=name, size=size, srcs=srcs, additional_deps=additional_deps,
            data=data, tags=test_tags, shard_count=shard_count)
-
-# Creates a genrule named <name> for running tools/proto_text's generator to make
-# the proto_text functions, for the protos passed in <srcs>.
-#
-# Return a struct with fields (hdrs, srcs) containing the names of the
-# generated files.
-def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs):
-  out_hdrs = ([p.replace(".proto", ".pb_text.h") for p in srcs] +
-              [p.replace(".proto", ".pb_text-impl.h") for p in srcs])
-  out_srcs = [p.replace(".proto", ".pb_text.cc") for p in srcs]
-  native.genrule(
-        name = name,
-        srcs = srcs,
-        outs = out_hdrs + out_srcs,
-        cmd = "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
-              "$(@D) " + srcs_relative_dir + " $(SRCS)",
-        tools = ["//tensorflow/tools/proto_text:gen_proto_text_functions"],
-    )
-  return struct(hdrs=out_hdrs, srcs=out_srcs)

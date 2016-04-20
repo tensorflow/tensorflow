@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/saved_tensor_slice.pb.h"
-#include "tensorflow/core/util/saved_tensor_slice.pb_text.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
@@ -98,7 +97,7 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
     // The same tensor has been registered -- we verify that the shapes and the
     // type agree.
     const SavedSliceMeta& ssm = sts_.meta().tensor(index);
-    CHECK_EQ(name, ssm.name()) << ProtoShortDebugString(ssm);
+    CHECK_EQ(name, ssm.name()) << ssm.ShortDebugString();
     TensorShape ssm_shape(ssm.shape());
     if (!shape.IsSameSize(ssm_shape)) {
       return errors::Internal("Mismatching shapes: existing tensor = ",

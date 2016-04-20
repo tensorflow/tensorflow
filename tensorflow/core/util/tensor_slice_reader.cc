@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 #include <vector>
-#include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -319,7 +318,7 @@ const string TensorSliceReader::DebugString() const {
   if (status().ok()) {
     for (auto e : Tensors()) {
       strings::StrAppend(&shape_str, e.first, " (",
-                         EnumName_DataType(e.second->type()), ") ",
+                         DataType_Name(e.second->type()), ") ",
                          e.second->shape().DebugString(), "\n");
     }
   }

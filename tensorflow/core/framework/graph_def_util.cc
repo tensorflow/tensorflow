@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
-#include "tensorflow/core/framework/versions.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -32,7 +31,7 @@ namespace tensorflow {
 string SummarizeGraphDef(const GraphDef& graph_def) {
   string ret;
   strings::StrAppend(&ret, "versions = ",
-                     ProtoShortDebugString(graph_def.versions()), ";\n");
+                     graph_def.versions().ShortDebugString(), ";\n");
   for (const NodeDef& node : graph_def.node()) {
     strings::StrAppend(&ret, SummarizeNodeDef(node), ";\n");
   }
