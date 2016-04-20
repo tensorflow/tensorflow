@@ -214,7 +214,10 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names):
       variable_name = node.input[0]
       variable_dict_names.append(variable_name)
       variable_names.append(variable_name + ":0")
-  returned_variables = sess.run(variable_names)
+  if variable_names:
+    returned_variables = sess.run(variable_names)
+  else:
+    returned_variables = []
   found_variables = dict(zip(variable_dict_names, returned_variables))
   logging.info("Frozen %d variables." % len(returned_variables))
 
