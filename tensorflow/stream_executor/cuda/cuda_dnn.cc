@@ -238,9 +238,6 @@ CUDNN_DNN_ROUTINE_EACH_AFTER_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 #define CUDNN_DNN_ROUTINE_EACH_R3(__macro)                    \
   __macro(cudnnAddTensor_v3)                                  \
   __macro(cudnnConvolutionBackwardData_v3)                    \
-<<<<<<< HEAD
-  __macro(cudnnConvolutionBackwardFilter_v3)                  \
-  __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)       \
   __macro(cudnnConvolutionBackwardFilter_v3)
 // clang-format on
 
@@ -252,10 +249,11 @@ CUDNN_DNN_ROUTINE_EACH_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 #if CUDNN_VERSION >= 4007
 #define CUDNN_DNN_ROUTINE_EACH_R4(__macro)                    \
   __macro(cudnnBatchNormalizationForwardTraining)             \
-  __macro(cudnnBatchNormalizationBackward)                    \
+  __macro(cudnnBatchNormalizationBackward)
 // clang-format off
 CUDNN_DNN_ROUTINE_EACH_R4(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_R4
+#endif // CUDNN_VERSION >= 4007
 
 // APIs in R5
 // clang-format off
