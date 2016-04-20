@@ -4141,6 +4141,29 @@ op {
   }
 }
 op {
+  name: "BatchToSpace"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "crops"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "block_size"
+    type: "int"
+  }
+}
+op {
   name: "BiasAdd"
   input_arg {
     name: "value"
@@ -16122,6 +16145,29 @@ op {
         type: DT_HALF
       }
     }
+  }
+}
+op {
+  name: "SpaceToBatch"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "block_size"
+    type: "int"
   }
 }
 op {
