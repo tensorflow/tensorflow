@@ -195,7 +195,7 @@ CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
 CUDNN_INSTALL_PATH="$CUDNN_INSTALL_PATH"
 
 # The Cuda SDK version that should be used in this build (empty to use libcudart.so symlink)
-TF_CUDA_VERSION=$TF_CUDA_EXT
+TF_CUDA_VERSION=$TF_CUDA_VERSION
 
 # The Cudnn version that should be used in this build
 TF_CUDNN_VERSION=$TF_CUDNN_VERSION

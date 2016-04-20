@@ -4,6 +4,7 @@ load("/tensorflow/tensorflow", "if_cuda")
 load("platform", "cuda_library_path")
 load("platform", "cuda_static_library_path")
 load("platform", "cudnn_library_path")
+load("platform", "cupti_library_path")
 load("platform", "readlink_command")
 
 package(default_visibility = ["//visibility:public"])
@@ -54,9 +55,11 @@ cc_library(
     includes = ["include/"],
     linkopts = [
         "-ldl",
-        "-lrt",
         "-lpthread",
-    ],
+    ] + select({
+        "//tensorflow:darwin": [],
+        "//conditions:default": ["-lrt"]
+    }),
     visibility = ["//visibility:public"],
 )
 
@@ -136,7 +139,7 @@ cc_library(
 cc_library(
     name = "cupti_dsos",
     data = [
-        "extras/CUPTI/lib64/libcupti.so" + tf_get_cuda_version(),
+        cupti_library_path(),
     ],
     visibility = ["//visibility:public"],
 )
@@ -197,7 +200,7 @@ genrule(
     ],
     cmd = if_cuda(
         # Under cuda config, create the symbolic link to the actual cuda.config
-        "configfile=$(location :cuda.config); ln -sf `{} -f $${configfile#*/*/*/}` $(@D)/;".format(readlink_command()),
+        "configfile=$(location :cuda.config); ln -sf `{} -f $${{configfile#*/*/*/}}` $(@D)/;".format(readlink_command()),
 
         # Under non-cuda config, create the dummy file
         ";".join([

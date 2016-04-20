@@ -108,6 +108,7 @@ function CheckAndLinkToSrcTree {
 OSNAME=`uname -s`
 if [ "$OSNAME" == "Linux" ]; then
   CUDA_LIB_PATH="lib64"
+  CUDA_CUPTI_LIB_DIR="extras/CUPTI/lib64"
   CUDA_RT_LIB_PATH="lib64/libcudart.so.${TF_CUDA_VERSION}"
   CUDA_RT_LIB_STATIC_PATH="lib64/libcudart_static.a"
   CUDA_BLAS_LIB_PATH="lib64/libcublas.so.${TF_CUDA_VERSION}"
@@ -118,6 +119,7 @@ if [ "$OSNAME" == "Linux" ]; then
   READLINK_CMD="readlink"
 elif [ "$OSNAME" == "Darwin" ]; then
   CUDA_LIB_PATH="lib"
+  CUDA_CUPTI_LIB_DIR="extras/CUPTI/lib"
   CUDA_RT_LIB_PATH="lib/libcudart.${TF_CUDA_VERSION}.dylib"
   CUDA_RT_LIB_STATIC_PATH="lib/libcudart_static.a"
   CUDA_BLAS_LIB_PATH="lib/libcublas.${TF_CUDA_VERSION}.dylib"
@@ -138,6 +140,7 @@ if [ "$CHECK_ONLY" == "1" ]; then
   CheckAndLinkToSrcTree CudnnError $CUDA_DNN_LIB_PATH
   CheckAndLinkToSrcTree CudaError $CUDA_RT_LIB_PATH
   CheckAndLinkToSrcTree CudaError $CUDA_FFT_LIB_PATH
+  CheckAndLinkToSrcTree CudaError $CUDA_CUPTI_LIB_PATH
   exit 0
 fi
 
@@ -210,7 +213,7 @@ LinkAllFiles ${CUDA_TOOLKIT_PATH}/nvvm $OUTPUTDIR/third_party/gpus/cuda/nvvm || 
 echo "Setting up CUPTI include"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/extras/CUPTI/include $OUTPUTDIR/third_party/gpus/cuda/extras/CUPTI/include || exit -1
 echo "Setting up CUPTI lib64"
-LinkAllFiles ${CUDA_TOOLKIT_PATH}/extras/CUPTI/lib64 $OUTPUTDIR/third_party/gpus/cuda/extras/CUPTI/lib64 || exit -1
+LinkAllFiles ${CUDA_TOOLKIT_PATH}/${CUDA_CUPTI_LIB_DIR} $OUTPUTDIR/third_party/gpus/cuda/${CUDA_CUPTI_LIB_DIR} || exit -1
 
 # Set up symbolic link for cudnn
 ln -sf $CUDNN_HEADER_DIR/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1

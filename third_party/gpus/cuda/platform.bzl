@@ -26,6 +26,12 @@ def cudnn_library_path(version = cudnn_sdk_version()):
     else:
         return "lib64/libcudnn.so.{}".format(version)
 
+def cupti_library_path(version = cuda_sdk_version()):
+    if PLATFORM == "Darwin":
+        return "extras/CUPTI/lib/libcupti.{}.dylib".format(version)
+    else:
+        return "extras/CUPTI/lib64/libcupti.so.{}".format(version)
+
 def readlink_command():
     if PLATFORM == "Darwin":
         return "greadlink"
