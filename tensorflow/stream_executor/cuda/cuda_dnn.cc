@@ -399,28 +399,14 @@ class ScopedFilterDescriptor {
                  << ToString(status);
     }
 
-#if CUDNN_VERSION >= 5000
-    cudnnTensorFormat_t format;
-    switch (batch_descriptor.layout()) {
-      case dnn::DataLayout::kBatchYXDepth:
-        format = CUDNN_TENSOR_NHWC;
-        break;
-      case dnn::DataLayout::kBatchDepthYX:
-        format = CUDNN_TENSOR_NCHW;
-        break;
-      default:
-        LOG(FATAL) << "Unsupported tensor format "
-                   << DataLayoutString(batch_descriptor.layout());
-        break;
-    }
-#endif
-
     // TODO(b/23032134): Even if the filter layout is not supported,
-    // cudnnSetFilter4DDescriptor will return CUDNN_STATUS_SUCCESS because it
+    // cudnnSetFilter4DDescriptor_v4 will return CUDNN_STATUS_SUCCESS because it
     // does not take layout as an input. Maybe force cuDNN by giving wrong
     // inputs intentionally?
+    cudnnTensorFormat_t format;
     switch (filter_descriptor.layout()) {
       case dnn::FilterLayout::kOutputInputYX:
+        format = CUDNN_TENSOR_NCHW;
         break;
       default:
         LOG(FATAL) << "Unsupported filter format "
