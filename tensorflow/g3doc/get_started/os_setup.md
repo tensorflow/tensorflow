@@ -182,7 +182,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh.
 (tensorflow)$ deactivate
 ```
 
-## Anaconda environment installation
+## Anaconda installation
 
 [Anaconda](https://www.continuum.io/why-anaconda) is a Python distribution that
 includes a large number of standard numeric and scientific computing packages.
@@ -210,8 +210,8 @@ Create a conda environment called `tensorflow`:
 # Python 2.7
 $ conda create -n tensorflow python=2.7
 
-# Python 3.5
-$ conda create -n tensorflow python=3.5
+# Python 3.4
+$ conda create -n tensorflow python=3.4
 ```
 
 Activate the environment and use pip to install TensorFlow inside it.
