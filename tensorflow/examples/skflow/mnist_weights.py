@@ -28,7 +28,7 @@ from tensorflow.contrib import skflow
 
 ### Download and load MNIST data.
 
-mnist = input_data.read_data_sets('MNIST_data')
+mnist = skflow.datasets.load_dataset('mnist')
 
 ### Linear classifier.
 
