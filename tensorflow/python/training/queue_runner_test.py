@@ -156,7 +156,7 @@ class QueueRunnerTest(tf.test.TestCase):
       # the queue to be closed and the enqueue to terminate.
       coord.join(threads, stop_grace_period_secs=0.05)
 
-  def testNoMultiThreads(self):
+  def testIgnoreMultiStarts(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
       zero64 = tf.constant(0, dtype=tf.int64)
@@ -168,10 +168,8 @@ class QueueRunnerTest(tf.test.TestCase):
       qr = tf.train.QueueRunner(queue, [count_up_to])
       threads = []
       threads.extend(qr.create_threads(sess, coord=coord))
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Threads are already running"):
-        threads.extend(qr.create_threads(sess, coord=coord))
+      new_threads = qr.create_threads(sess, coord=coord)
+      self.assertEqual([], new_threads)
       coord.request_stop()
       coord.join(threads, stop_grace_period_secs=0.5)
 

@@ -18,6 +18,7 @@
 // only op that involves tree traversal, and is constructed so that it can
 // be run in parallel on separate batches of data.
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
 
@@ -25,10 +26,12 @@
 #include "tensorflow/core/framework/op_kernel.h"
 
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
 using std::get;
+using std::make_pair;
 using std::make_tuple;
 using std::pair;
 using std::tuple;
@@ -41,6 +44,71 @@ using tensorforest::FREE_NODE;
 using tensorforest::DecideNode;
 using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
+
+// A data structure to store the results of parallel tree traversal.
+struct InputDataResult {
+  // A list of each node that was visited.
+  std::vector<int32> node_indices;
+  // The accumulator of the leaf that a data point ended up at, or -1 if none.
+  int32 leaf_accumulator;
+  // The left-branch taken candidate splits.
+  std::vector<int32> split_adds;
+  // If the candidate splits for the leaf that a data point arrived at
+  // were initialized or not, which determines if we add this to total
+  // pcw counts or not.
+  bool splits_initialized;
+};
+
+void Evaluate(const Tensor& input_data, const Tensor& input_labels,
+              const Tensor& tree_tensor, const Tensor& tree_thresholds,
+              const Tensor& node_to_accumulator,
+              const Tensor& candidate_split_features,
+              const Tensor& candidate_split_thresholds,
+              InputDataResult* results, int64 start, int64 end) {
+  const auto tree = tree_tensor.tensor<int32, 2>();
+  const auto thresholds = tree_thresholds.unaligned_flat<float>();
+  const auto node_map = node_to_accumulator.unaligned_flat<int32>();
+  const auto split_features = candidate_split_features.tensor<int32, 2>();
+  const auto split_thresholds = candidate_split_thresholds.tensor<float, 2>();
+
+  const int32 num_splits = candidate_split_features.shape().dim_size(1);
+
+  for (int i = start; i < end; ++i) {
+    const Tensor point = input_data.Slice(i, i + 1);
+    int node_index = 0;
+    results[i].splits_initialized = false;
+    while (true) {
+      results[i].node_indices.push_back(node_index);
+      int32 left_child = tree(node_index, CHILDREN_INDEX);
+      if (left_child == LEAF_NODE) {
+        const int32 accumulator = node_map(node_index);
+        results[i].leaf_accumulator = accumulator;
+        // If the leaf is not fertile or is not yet initialized, we don't
+        // count it in the candidate/total split per-class-weights because
+        // it won't have any candidate splits yet.
+        if (accumulator >= 0 &&
+            IsAllInitialized(candidate_split_features.Slice(
+                accumulator, accumulator + 1))) {
+          results[i].splits_initialized = true;
+          for (int split = 0; split < num_splits; split++) {
+            if (!DecideNode(point, split_features(accumulator, split),
+                            split_thresholds(accumulator, split))) {
+              results[i].split_adds.push_back(split);
+            }
+          }
+        }
+        break;
+      } else if (left_child == FREE_NODE) {
+        LOG(ERROR) << "Reached a free node, not good.";
+        results[i].node_indices.push_back(FREE_NODE);
+        break;
+      }
+      node_index =
+          left_child + DecideNode(point, tree(node_index, FEATURE_INDEX),
+                                  thresholds(node_index));
+    }
+  }
+}
 
 REGISTER_OP("CountExtremelyRandomStats")
   .Attr("num_classes: int32")
@@ -176,7 +244,31 @@ class CountExtremelyRandomStats : public OpKernel {
             "candidate_split_features and candidate_split_thresholds should be "
             "the same shape."));
 
-    const int32 num_splits = candidate_split_features.shape().dim_size(1);
+    // Evaluate input data in parallel.
+    const int64 num_data = input_data.shape().dim_size(0);
+    std::unique_ptr<InputDataResult[]> results(new InputDataResult[num_data]);
+    auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
+    int num_threads = worker_threads->num_threads;
+    if (num_threads <= 1) {
+      Evaluate(input_data, input_labels, tree_tensor, tree_thresholds,
+               node_to_accumulator, candidate_split_features,
+               candidate_split_thresholds, results.get(), 0, num_data);
+    } else {
+      auto work = [&input_data, &input_labels, &tree_tensor, &tree_thresholds,
+                   &node_to_accumulator, &candidate_split_features,
+                   &candidate_split_thresholds, &num_data,
+                   &results](int64 start, int64 end) {
+        CHECK(start <= end);
+        CHECK(end <= num_data);
+        Evaluate(input_data, input_labels, tree_tensor, tree_thresholds,
+                 node_to_accumulator, candidate_split_features,
+                 candidate_split_thresholds, results.get(), start, end);
+      };
+      Shard(num_threads, worker_threads->workers, num_data, 100, work);
+    }
+
+    // Set output tensors.
+    const auto labels = input_labels.unaligned_flat<int32>();
 
     // node pcw delta
     Tensor* output_node_pcw_delta = nullptr;
@@ -196,58 +288,28 @@ class CountExtremelyRandomStats : public OpKernel {
                                             &output_leaves));
     auto out_leaves = output_leaves->unaligned_flat<int32>();
 
-    const auto tree = tree_tensor.tensor<int32, 2>();
-    const auto thresholds = tree_thresholds.unaligned_flat<float>();
-    const auto labels = input_labels.unaligned_flat<int32>();
-    const auto node_map = node_to_accumulator.unaligned_flat<int32>();
-    const auto split_features = candidate_split_features.tensor<int32, 2>();
-    const auto split_thresholds = candidate_split_thresholds.tensor<float, 2>();
-
-    const int32 num_data = input_data.shape().dim_size(0);
-
     // <accumulator, class> -> count delta
     std::unordered_map<pair<int32, int32>, int32, PairIntHash> total_delta;
     // <accumulator, split, class> -> count delta
     std::unordered_map<tuple<int32, int32, int32>,
         int32, TupleIntHash> split_delta;
-    for (int i = 0; i < num_data; i++) {
-      const Tensor point = input_data.Slice(i, i+1);
-      int node_index = 0;
-      while (true) {
-        const int32 label = labels(i);
-        ++out_node(node_index, label);
-        int32 left_child = tree(node_index, CHILDREN_INDEX);
-        if (left_child == LEAF_NODE) {
-          out_leaves(i) = node_index;
-          const int32 accumulator = node_map(node_index);
-          // If the leaf is not fertile or is not yet initialized, we don't
-          // count it in the candidate/total split per-class-weights because
-          // it won't have any candidate splits yet.
-          if (accumulator >= 0 &&
-              IsAllInitialized(
-                  candidate_split_features.Slice(accumulator,
-                                                 accumulator + 1))) {
-            ++total_delta[std::make_pair(accumulator, label)];
-            for (int split = 0; split < num_splits; split++) {
-              if (!DecideNode(point, split_features(accumulator, split),
-                              split_thresholds(accumulator, split))) {
-                ++split_delta[make_tuple(accumulator, split, label)];
-              }
-            }
-          }
-          break;
-        } else if (left_child == FREE_NODE) {
-          LOG(ERROR) << "Reached a free node, not good.";
-          out_leaves(i) = FREE_NODE;
-          break;
+
+    for (int32 i = 0; i < num_data; ++i) {
+      const int32 label = labels(i);
+      const int32 accumulator = results[i].leaf_accumulator;
+      for (const int32 node : results[i].node_indices) {
+        ++out_node(node, label);
+      }
+      out_leaves(i) = results[i].node_indices.back();
+      if (accumulator >= 0 && results[i].splits_initialized) {
+        ++total_delta[make_pair(accumulator, label)];
+        for (const int32 split : results[i].split_adds) {
+          ++split_delta[make_tuple(accumulator, split, label)];
         }
-        node_index = left_child +
-            DecideNode(point, tree(node_index, FEATURE_INDEX),
-                       thresholds(node_index));
       }
     }
 
-     // candidate splits pcw indices
+    // candidate splits pcw indices
     Tensor* output_candidate_pcw_indices = nullptr;
     TensorShape candidate_pcw_shape;
     candidate_pcw_shape.AddDim(split_delta.size());

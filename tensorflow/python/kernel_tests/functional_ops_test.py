@@ -90,5 +90,29 @@ class FunctionalOpsTest(tf.test.TestCase):
       r = tf.gradients(r, v)[0]
       self.assertAllEqual(873.0, r.eval())
 
+  def testFoldShape(self):
+    with self.test_session():
+      x = tf.constant([[1, 2, 3], [4, 5, 6]])
+      def fn(_, current_input):
+        return current_input
+      initializer = tf.constant([0, 0, 0])
+      y = tf.foldl(fn, x, initializer=initializer)
+      self.assertAllEqual(y.get_shape(), y.eval().shape)
+
+  def testMapShape(self):
+    with self.test_session():
+      x = tf.constant([[1, 2, 3], [4, 5, 6]])
+      y = tf.map_fn(lambda e: e, x)
+      self.assertAllEqual(y.get_shape(), y.eval().shape)
+
+  def testScanShape(self):
+    with self.test_session():
+      x = tf.constant([[1, 2, 3], [4, 5, 6]])
+      def fn(_, current_input):
+        return current_input
+      initializer = tf.constant([0, 0, 0])
+      y = tf.scan(fn, x, initializer=initializer)
+      self.assertAllEqual(y.get_shape(), y.eval().shape)
+
 if __name__ == "__main__":
   tf.test.main()

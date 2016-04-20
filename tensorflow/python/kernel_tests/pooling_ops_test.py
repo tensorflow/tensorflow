@@ -399,7 +399,6 @@ class PoolingTest(tf.test.TestCase):
                                expected=[1, 3, 9, 11],
                                use_gpu=use_gpu)
 
-
   def _testDepthwiseMaxPoolInvalidConfig(self, in_size, ksize, strides,
                                          error_msg, use_gpu=False):
     t = tf.constant(1.0, shape=in_size)

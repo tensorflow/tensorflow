@@ -29,6 +29,7 @@
     "gulp-header": "~1.7.1",
     "gulp-rename": "~1.2.2",
     "gulp-typings": "~1.1.0",
-    "gulp-bower": "0.0.13"
+    "gulp-bower": "0.0.13",
+    "typings": "~0.7.12"
   }
 }

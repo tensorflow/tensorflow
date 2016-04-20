@@ -50,7 +50,7 @@ static bool g_compute_graph_initialized = false;
 
 static int g_tensorflow_input_size;  // The image size for the mognet input.
 static int g_image_mean;  // The image mean.
-static StatSummarizer g_stats;
+static std::unique_ptr<StatSummarizer> g_stats;
 
 // For basic benchmarking.
 static int g_num_runs = 0;
@@ -89,7 +89,6 @@ TENSORFLOW_METHOD(initializeTensorflow)(
     jint num_classes, jint mognet_input_size, jint image_mean) {
   g_num_runs = 0;
   g_timing_total_us = 0;
-  g_stats.Reset();
   g_frequency_start.Reset();
   g_frequency_end.Reset();
 
@@ -126,6 +125,8 @@ TENSORFLOW_METHOD(initializeTensorflow)(
 
   LOG(INFO) << "Reading file to proto: " << model_cstr;
   ReadFileToProto(asset_manager, model_cstr, &tensorflow_graph);
+
+  g_stats.reset(new StatSummarizer(tensorflow_graph));
 
   LOG(INFO) << "Creating session.";
   tensorflow::Status s = session->Create(tensorflow_graph);
@@ -274,8 +275,8 @@ static std::string ClassifyImage(const RGBA* const bitmap_src,
     if (kLogDetailedStats) {
       LOG(INFO) << "CPU frequency start: " << g_frequency_start;
       LOG(INFO) << "CPU frequency end:   " << g_frequency_end;
-      g_stats.ProcessStepStats(stats);
-      g_stats.PrintStepStats();
+      g_stats->ProcessStepStats(stats);
+      g_stats->PrintStepStats();
     }
 
     if (kSaveStepStats) {

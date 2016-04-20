@@ -23,6 +23,6 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import, line-too-long
 from tensorflow.contrib.distributions.python.ops import gaussian_conjugate_posteriors
+from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.gaussian import *
 # from tensorflow.contrib.distributions.python.ops.dirichlet import *  # pylint: disable=line-too-long
-# from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *  # pylint: disable=line-too-long

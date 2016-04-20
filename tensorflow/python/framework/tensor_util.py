@@ -85,6 +85,9 @@ else:
   def SlowAppendIntArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.int_val.extend([np.asscalar(x) for x in proto_values])
 
+  def SlowAppendQIntArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.int_val.extend([np.asscalar(x[0]) for x in proto_values])
+
   def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
 
@@ -118,9 +121,9 @@ else:
       np.complex128: SlowAppendComplex128ArrayToTensorProto,
       np.object: SlowAppendObjectArrayToTensorProto,
       np.bool: SlowAppendBoolArrayToTensorProto,
-      dtypes.qint8.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
-      dtypes.quint8.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
-      dtypes.qint32.as_numpy_dtype: SlowAppendIntArrayToTensorProto,
+      dtypes.qint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.quint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.qint32.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 
@@ -320,6 +323,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
   if dtype:
     dtype = dtypes.as_dtype(dtype)
 
+  is_quantized = (dtype in [dtypes.qint8, dtypes.quint8, dtypes.qint32])
+
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
     if dtype:
@@ -337,8 +342,14 @@ def make_tensor_proto(values, dtype=None, shape=None):
     else:
       _AssertCompatible(values, dtype)
       nparray = np.array(values, dtype=np_dt)
-      if list(nparray.shape) != _GetDenseDimensions(values):
-        raise ValueError("Argument must be a dense tensor: %s" % values)
+      # check to them.
+      # We need to pass in quantized values as tuples, so don't apply the shape
+      if (list(nparray.shape) != _GetDenseDimensions(values) and
+          not is_quantized):
+        raise ValueError("""Argument must be a dense tensor: %s"""
+                         """ - got shape %s, but wanted %s.""" % (
+                             values, list(nparray.shape),
+                             _GetDenseDimensions(values)))
     # python/numpy default float type is float64. We prefer float32 instead.
     if (nparray.dtype == np.float64) and dtype is None:
       nparray = nparray.astype(np.float32)
@@ -354,7 +365,7 @@ def make_tensor_proto(values, dtype=None, shape=None):
 
   # If dtype was specified and is a quantized type, we convert
   # numpy_dtype back into the quantized version.
-  if dtype in [dtypes.qint8, dtypes.quint8, dtypes.qint32]:
+  if is_quantized:
     numpy_dtype = dtype
 
   if dtype is not None and not dtype.base_dtype == numpy_dtype.base_dtype:

@@ -578,6 +578,10 @@ string BFCAllocator::RenderOccupancy() {
     total_region_size += region.memory_size();
   }
 
+  if (total_region_size == 0) {
+    return "<allocator contains no memory>";
+  }
+
   // Start out with everything empty
   RenderRegion(rendered, resolution, total_region_size, 0, nullptr, nullptr,
                total_region_size, '_');

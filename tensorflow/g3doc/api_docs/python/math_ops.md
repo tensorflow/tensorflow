@@ -564,7 +564,7 @@ Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
 
 ```Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)```
 
-, and for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
+And for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
 `lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)`.  In other words,
 the last dimension is treated as the `z` vector.
 
@@ -581,6 +581,11 @@ bivariate beta function.
 ##### Returns:
 
   The logarithm of `|Beta(x)|` reducing along the last dimension.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` is empty with rank one or less.
 
 
 - - -
@@ -1035,7 +1040,7 @@ tf.transpose(x, perm=[1, 0]) ==> [[1 4]
 #           [[7  8  9]
 #            [10 11 12]]]
 # Take the transpose of the matrices in dimension-0
-tf.transpose(b, perm=[0, 2, 1]) ==> [[[1  4]
+tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
                                       [2  5]
                                       [3  6]]
 
@@ -1195,12 +1200,13 @@ for all input submatrices `[..., :, :]`.
 
 - - -
 
-### `tf.matrix_inverse(input, name=None)` {#matrix_inverse}
+### `tf.matrix_inverse(input, adjoint=None, name=None)` {#matrix_inverse}
 
-Calculates the inverse of a square invertible matrix.
+Calculates the inverse of a square invertible matrix or its adjoint (conjugate
 
-The op uses the Cholesky decomposition if the matrix is symmetric positive
-definite and LU decomposition with partial pivoting otherwise.
+transpose).
+
+The op uses LU decomposition with partial pivoting to compute the inverse.
 
 If the matrix is not invertible there is no guarantee what the op does. It
 may detect the condition and raise an exception or it may simply return a
@@ -1209,28 +1215,32 @@ garbage result.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
     Shape is `[M, M]`.
+*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `input`.
-  Shape is `[M, M]` containing the matrix inverse of the input.
+  Shape is `[M, M]`. If `adjoint` is `False` then `output` contains the
+  matrix inverse of `input`. If `adjoint` is `True` then `output` contains the
+  matrix inverse of the adjoint of `input`.
 
 
 - - -
 
-### `tf.batch_matrix_inverse(input, name=None)` {#batch_matrix_inverse}
+### `tf.batch_matrix_inverse(input, adjoint=None, name=None)` {#batch_matrix_inverse}
 
-Calculates the inverse of square invertible matrices.
+Calculates the inverse of square invertible matrices or their adjoints
+
+(conjugate transposes).
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor of the same shape as the input
 containing the inverse for all input submatrices `[..., :, :]`.
 
-The op uses the Cholesky decomposition if the matrices are symmetric positive
-definite and LU decomposition with partial pivoting otherwise.
+The op uses LU decomposition with partial pivoting to compute the inverses.
 
 If a matrix is not invertible there is no guarantee what the op does. It
 may detect the condition and raise an exception or it may simply return a
@@ -1239,8 +1249,9 @@ garbage result.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
     Shape is `[..., M, M]`.
+*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1357,7 +1368,7 @@ Solves a system of linear equations. Checks for invertibility.
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
     Shape is `[M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
 *  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
@@ -1388,7 +1399,7 @@ matrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
     Shape is `[..., M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.
@@ -1427,7 +1438,7 @@ If `adjoint` is `True` then `output` satisfies the matrix equation
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
     Shape is `[M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
 *  <b>`lower`</b>: An optional `bool`. Defaults to `True`.
@@ -1466,7 +1477,7 @@ If `adjoint` is `False` then the strictly then the  innermost matrices in
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
     Shape is `[..., M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.

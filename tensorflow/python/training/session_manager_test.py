@@ -45,6 +45,14 @@ class SessionManagerTest(tf.test.TestCase):
                                 init_feed_dict={p: [1.0, 2.0, 3.0]})
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
 
+  def testPrepareSessionSucceedsWithInitFn(self):
+    with tf.Graph().as_default():
+      v = tf.Variable([125], name="v")
+      sm = tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
+      sess = sm.prepare_session("",
+                                init_fn=lambda sess: sess.run(v.initializer))
+      self.assertAllClose([125], sess.run(v))
+
   def testPrepareSessionFails(self):
     checkpoint_dir = os.path.join(self.get_temp_dir(), "prepare_session")
     checkpoint_dir2 = os.path.join(self.get_temp_dir(), "prepare_session2")
@@ -76,7 +84,8 @@ class SessionManagerTest(tf.test.TestCase):
       tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
       saver = tf.train.Saver({"v": v})
       # This should fail as there's no checkpoint within 2 seconds.
-      with self.assertRaisesRegexp(RuntimeError, "no init_op was given"):
+      with self.assertRaisesRegexp(RuntimeError,
+                                   "no init_op or init_fn was given"):
         sess = sm.prepare_session("", init_op=None, saver=saver,
                                   checkpoint_dir=checkpoint_dir,
                                   wait_for_checkpoint=True, max_wait_secs=2)
