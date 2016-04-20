@@ -67,11 +67,13 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
       np_ans, _, _, _ = np.linalg.lstsq(a, b)
       for fast in [True, False]:
         with self.test_session():
-          tf_ans = tf.matrix_solve_ls(a, b, fast=fast).eval()
-        self.assertEqual(np_ans.shape, tf_ans.shape)
+          tf_ans = tf.matrix_solve_ls(a, b, fast=fast)
+          ans = tf_ans.eval()
+        self.assertEqual(np_ans.shape, tf_ans.get_shape())
+        self.assertEqual(np_ans.shape, ans.shape)
 
         # Check residual norm.
-        tf_r = b - BatchMatMul(a, tf_ans)
+        tf_r = b - BatchMatMul(a, ans)
         tf_r_norm = np.sum(tf_r * tf_r)
         np_r = b - BatchMatMul(a, np_ans)
         np_r_norm = np.sum(np_r * np_r)
@@ -83,7 +85,7 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
           # slow path, because Eigen does not return a minimum norm solution.
           # TODO(rmlarsen): Enable this check for all paths if/when we fix
           # Eigen's solver.
-          self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
+          self.assertAllClose(np_ans, ans, atol=1e-5, rtol=1e-5)
 
   def _verifySolveBatch(self, x, y):
     # Since numpy.linalg.lsqr does not support batch solves, as opposed
@@ -122,20 +124,23 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
       b = y.astype(np_type)
       np_ans = BatchRegularizedLeastSquares(a, b, l2_regularizer)
       with self.test_session():
-        tf_ans = tf.matrix_solve_ls(a,
-                                    b,
-                                    l2_regularizer=l2_regularizer,
-                                    fast=True).eval()
-      self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
+        # Test with the batch version of  matrix_solve_ls on regular matrices
+        tf_ans = tf.batch_matrix_solve_ls(
+            a, b, l2_regularizer=l2_regularizer, fast=True).eval()
+        self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
+
+        # Test with the simple matrix_solve_ls on regular matrices
+        tf_ans = tf.matrix_solve_ls(
+            a, b, l2_regularizer=l2_regularizer, fast=True).eval()
+        self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
+
       # Test with a 2x3 batch of matrices.
       a = np.tile(x.astype(np_type), [2, 3, 1, 1])
       b = np.tile(y.astype(np_type), [2, 3, 1, 1])
       np_ans = BatchRegularizedLeastSquares(a, b, l2_regularizer)
       with self.test_session():
-        tf_ans = tf.batch_matrix_solve_ls(a,
-                                          b,
-                                          l2_regularizer=l2_regularizer,
-                                          fast=True).eval()
+        tf_ans = tf.batch_matrix_solve_ls(
+            a, b, l2_regularizer=l2_regularizer, fast=True).eval()
       self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
 
   def testSquare(self):
