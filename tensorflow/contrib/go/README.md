@@ -163,5 +163,5 @@ To generate this file run:
 $ go generate github.com/tensorflow/tensorflow/tensorflow/contrib/go
 ```
 
-`libtensorflow.so` will end up at `${GOPATH}/src/github.com/tensorflow/bazel-bin/tensorflow/libtensorflow.so`.
+`libtensorflow.so` will end up at `${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow/libtensorflow.so`.
 

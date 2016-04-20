@@ -55,7 +55,7 @@ ExtendGraph loads the Graph definition into the Session.
 ```Go
 Example:
 	graph := tensorflow.NewGraph()
-	// Add a Placeholder named "input1" that must allocate a three element
+	// Add a Placeholder named 'input1' that must allocate a three element
 	// DTInt32 tensor.
 	graph.Placeholder("placeholder", tensorflow.DTInt32, []int64{3})
 	
