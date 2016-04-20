@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -49,17 +50,7 @@ bool ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,
         shape_and_slice);
     return false;
   }
-  int num_dims = splits.size() - 1;
-  shape->Clear();
-  for (int i = 0; i < num_dims; ++i) {
-    int dim;
-    if (!strings::safe_strto32(splits[i], &dim)) {
-      *error = strings::StrCat("Non numerical dimension in shape_and_slice: ",
-                               shape_and_slice);
-      return false;
-    }
-    shape->AddDim(dim);
-  }
+
   // The last split is the slice specification.
   slice->Clear();
   auto status = slice->Parse(splits.back(), slice);
@@ -67,6 +58,20 @@ bool ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,
     *error = status.error_message();
     return false;
   }
+
+  // The first n-1 are the shape specification.
+  splits.pop_back();
+  shape->Clear();
+  for (const auto& s : splits) {
+    int dim;
+    if (!strings::safe_strto32(s, &dim)) {
+      *error = strings::StrCat("Non numerical dimension in shape_and_slice: ",
+                               shape_and_slice);
+      return false;
+    }
+    shape->AddDim(dim);
+  }
+
   // The specified slice must be compatible with the specified shape.
   status = slice->SliceTensorShape(*shape, shape_slice);
   if (!status.ok()) {
@@ -91,13 +96,20 @@ void SaveTensors(
             size, "elements"));
   }
 
+  // Path, names, and slices if save_slices is true.
+  const int kFixedInputs = save_slices ? 3 : 2;
   const Tensor& tensor_names_t = context->input(1);
-  const int64 N = tensor_names_t.NumElements();
+  OP_REQUIRES(context,
+              FastBoundsCheck(tensor_names_t.NumElements() + kFixedInputs,
+                              std::numeric_limits<int>::max()),
+              errors::InvalidArgument("Too many inputs to SaveTensors"));
+  const int N = static_cast<int>(tensor_names_t.NumElements());
   const string* tensor_shapes_and_slices_ptr = nullptr;
   if (save_slices) {
     const Tensor& tensor_shapes_and_slices_t = context->input(2);
     OP_REQUIRES(
-        context, tensor_shapes_and_slices_t.NumElements() == N,
+        context,
+        tensor_shapes_and_slices_t.NumElements() == static_cast<int64>(N),
         errors::InvalidArgument("Expected ", N,
                                 " elements for the tensor "
                                 "shapes and slices but got ",
@@ -105,8 +117,6 @@ void SaveTensors(
     tensor_shapes_and_slices_ptr =
         tensor_shapes_and_slices_t.flat<string>().data();
   }
-  // Path, names, and slices if save_slices is true.
-  const int kFixedInputs = save_slices ? 3 : 2;
   OP_REQUIRES(context, context->num_inputs() == N + kFixedInputs,
               errors::InvalidArgument("Expected totally ", N + kFixedInputs,
                                       " inputs as input #1 (which is a string "
@@ -123,7 +133,7 @@ void SaveTensors(
   auto tensor_names_flat = tensor_names_t.flat<string>();
 
   string error;
-  for (int64 i = 0; i < N; ++i) {
+  for (int i = 0; i < N; ++i) {
     const string& name = tensor_names_flat(i);
     const Tensor& input = context->input(i + kFixedInputs);
     TensorShape shape(input.shape());

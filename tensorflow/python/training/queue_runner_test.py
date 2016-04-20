@@ -156,7 +156,7 @@ class QueueRunnerTest(tf.test.TestCase):
       # the queue to be closed and the enqueue to terminate.
       coord.join(threads, stop_grace_period_secs=0.05)
 
-  def testNoMultiThreads(self):
+  def testIgnoreMultiStarts(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
       zero64 = tf.constant(0, dtype=tf.int64)
@@ -168,10 +168,8 @@ class QueueRunnerTest(tf.test.TestCase):
       qr = tf.train.QueueRunner(queue, [count_up_to])
       threads = []
       threads.extend(qr.create_threads(sess, coord=coord))
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Threads are already running"):
-        threads.extend(qr.create_threads(sess, coord=coord))
+      new_threads = qr.create_threads(sess, coord=coord)
+      self.assertEqual([], new_threads)
       coord.request_stop()
       coord.join(threads, stop_grace_period_secs=0.5)
 
@@ -206,6 +204,44 @@ class QueueRunnerTest(tf.test.TestCase):
     tf.train.add_queue_runner(qr)
     self.assertEqual(1, len(tf.get_collection(tf.GraphKeys.QUEUE_RUNNERS,
                                               "scope")))
+
+  def testStartQueueRunners(self):
+    # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
+    zero64 = tf.constant(0, dtype=tf.int64)
+    var = tf.Variable(zero64)
+    count_up_to = var.count_up_to(3)
+    queue = tf.FIFOQueue(10, tf.float32)
+    init_op = tf.initialize_all_variables()
+    qr = tf.train.QueueRunner(queue, [count_up_to])
+    tf.train.add_queue_runner(qr)
+    with self.test_session() as sess:
+      init_op.run()
+      threads = tf.train.start_queue_runners(sess)
+      for t in threads:
+        t.join()
+      self.assertEqual(0, len(qr.exceptions_raised))
+      # The variable should be 3.
+      self.assertEqual(3, var.eval())
+
+  def testStartQueueRunnersNonDefaultGraph(self):
+    # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
+    graph = tf.Graph()
+    with graph.as_default():
+      zero64 = tf.constant(0, dtype=tf.int64)
+      var = tf.Variable(zero64)
+      count_up_to = var.count_up_to(3)
+      queue = tf.FIFOQueue(10, tf.float32)
+      init_op = tf.initialize_all_variables()
+      qr = tf.train.QueueRunner(queue, [count_up_to])
+      tf.train.add_queue_runner(qr)
+    with self.test_session(graph=graph) as sess:
+      init_op.run()
+      threads = tf.train.start_queue_runners(sess)
+      for t in threads:
+        t.join()
+      self.assertEqual(0, len(qr.exceptions_raised))
+      # The variable should be 3.
+      self.assertEqual(3, var.eval())
 
 if __name__ == "__main__":
   tf.test.main()

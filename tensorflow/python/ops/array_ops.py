@@ -130,13 +130,7 @@ def _SliceHelper(tensor, slice_spec):
   sizes = []
   squeeze_dims = []
   for dim, s in enumerate(slice_spec):
-    if isinstance(s, int):
-      if s < 0:
-        raise NotImplementedError("Negative indices are currently unsupported")
-      indices.append(s)
-      sizes.append(1)
-      squeeze_dims.append(dim)
-    elif isinstance(s, _baseslice):
+    if isinstance(s, _baseslice):
       if s.step not in (None, 1):
         raise NotImplementedError(
             "Steps other than 1 are not currently supported")
@@ -161,7 +155,15 @@ def _SliceHelper(tensor, slice_spec):
     elif s is Ellipsis:
       raise NotImplementedError("Ellipsis is not currently supported")
     else:
-      raise TypeError("Bad slice index %s of type %s" % (s, type(s)))
+      try:
+        s = int(s)
+      except TypeError:
+        raise TypeError("Bad slice index %s of type %s" % (s, type(s)))
+      if s < 0:
+        raise NotImplementedError("Negative indices are currently unsupported")
+      indices.append(s)
+      sizes.append(1)
+      squeeze_dims.append(dim)
   sliced = slice(tensor, indices, sizes)
   if squeeze_dims:
     return squeeze(sliced, squeeze_dims=squeeze_dims)
@@ -561,7 +563,7 @@ def transpose(a, perm=None, name="transpose"):
   #           [[7  8  9]
   #            [10 11 12]]]
   # Take the transpose of the matrices in dimension-0
-  tf.transpose(b, perm=[0, 2, 1]) ==> [[[1  4]
+  tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
                                         [2  5]
                                         [3  6]]
 
@@ -614,10 +616,10 @@ def zeros(shape, dtype=dtypes.float32, name=None):
     A `Tensor` with all elements set to zero.
   """
   with ops.op_scope([shape], name, "zeros") as name:
-    if isinstance(shape, list):
+    if isinstance(shape, (list, tuple)):
       output = constant(0, shape=shape, dtype=dtype, name=name)
     else:
-      shape = ops.convert_to_tensor(shape, name="shape")
+      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
       output = fill(shape, constant(0, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype
   return output
@@ -710,10 +712,10 @@ def ones(shape, dtype=dtypes.float32, name=None):
     A `Tensor` with all elements set to 1.
   """
   with ops.op_scope([shape], name, "ones") as name:
-    if isinstance(shape, list):
+    if isinstance(shape, (list, tuple)):
       output = constant(1, shape=shape, dtype=dtype, name=name)
     else:
-      shape = ops.convert_to_tensor(shape, name="shape")
+      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
       output = fill(shape, constant(1, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype
   return output
@@ -842,6 +844,7 @@ def _PlaceholderShape(op):
 @ops.RegisterShape("Identity")
 @ops.RegisterShape("RefIdentity")
 @ops.RegisterShape("StopGradient")
+@ops.RegisterShape("BatchMatrixBandPart")
 def _UnchangedShape(op):
   return [op.inputs[0].get_shape()]
 
@@ -918,6 +921,22 @@ def _UniqueWithCountsShape(op):
   return [tensor_shape.vector(None), input_shape, tensor_shape.vector(None)]
 
 
+@ops.RegisterShape("BatchMatrixDiag")
+def _BatchMatrixDiagShape(op):
+  """Shape function for array_ops.batch_matrix_diag."""
+  diag_shape = op.inputs[0].get_shape().with_rank_at_least(1)
+  return [diag_shape.concatenate(diag_shape[-1])]
+
+
+@ops.RegisterShape("BatchMatrixDiagPart")
+def _BatchMatrixDiagPartShape(op):
+  """Shape function for array_ops.batch_matrix_diag_part."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  # Last two dims must match
+  input_shape[-1].assert_is_compatible_with(input_shape[-2])
+  return [input_shape[:-1]]
+
+
 @ops.RegisterShape("Diag")
 def _DiagShape(op):
   """Shape function for array_ops.diag.
@@ -949,21 +968,18 @@ def _DiagPartShape(op):
     A single-element list containing the shape of the output.
 
   Raises:
-    ValueError: If input has odd rank or greater than 6
+    ValueError: If input has odd rank or greater than 6, or the first and
+    second halves of the shape are incompatible.
 
   """
-  shape = op.inputs[0].get_shape()
-  rank = len(shape)
+  input_shape = op.inputs[0].get_shape().with_rank_at_most(6)
+  rank = input_shape.ndims
+  if rank is None:
+    return [tensor_shape.unknown_shape()]
+  if rank % 2:
+    raise ValueError("Input must be even rank, got rank = " + str(rank) + ".")
   mid = rank // 2
-  if rank % 2 or rank > 6:
-    raise ValueError("Input must have even rank <= 6, input rank is " +
-                     str(rank) + "." )
-  if shape[:mid] != shape[mid:]:
-    raise ValueError("Invalid shape, shape[:mid] " + str(shape[:mid]) +
-                     " and shape[mid:] " + str(shape[mid:]) +
-                     " do not match ")
-  input_shape = shape.with_rank_at_most(6)
-  return [input_shape[:len(input_shape) // 2]]
+  return [input_shape[:mid].merge_with(input_shape[mid:])]
 
 @ops.RegisterShape("ExpandDims")
 def _ExpandDimsShape(op):

@@ -15,6 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/threadpool.h"
 
+#ifdef TENSORFLOW_USE_EIGEN_THREADPOOL
+#define EIGEN_USE_THREADS
+#define EIGEN_USE_CUSTOM_THREAD_POOL
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#else
+#include <deque>
+#include <thread>
+#include <vector>
+#endif
+
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -24,26 +34,97 @@ limitations under the License.
 namespace tensorflow {
 namespace thread {
 
-struct ThreadPool::Waiter {
-  condition_variable cv;
-  bool ready;
+#ifdef TENSORFLOW_USE_EIGEN_THREADPOOL
+
+struct EigenEnvironment {
+  typedef Thread EnvThread;
+  struct Task {
+    std::function<void()> f;
+    uint64 trace_id;
+  };
+
+  Env* const env_;
+  const ThreadOptions thread_options_;
+  const string name_;
+
+  EigenEnvironment(Env* env, const ThreadOptions& thread_options,
+                   const string& name)
+      : env_(env), thread_options_(thread_options), name_(name) {}
+
+  EnvThread* CreateThread(std::function<void()> f) {
+    return env_->StartThread(thread_options_, name_, [=]() {
+      // Set the processor flag to flush denormals to zero
+      port::ScopedFlushDenormal flush;
+      f();
+    });
+  }
+
+  Task CreateTask(std::function<void()> f) {
+    uint64 id = 0;
+    if (port::Tracing::IsActive()) {
+      id = port::Tracing::UniqueId();
+      port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
+                                 id);
+    }
+    return Task{std::move(f), id};
+  }
+
+  void ExecuteTask(const Task& t) {
+    if (t.trace_id != 0) {
+      port::Tracing::ScopedActivity region(
+          port::Tracing::EventCategory::kRunClosure, t.trace_id);
+      t.f();
+    } else {
+      t.f();
+    }
+  }
 };
 
-ThreadPool::ThreadPool(Env* env, const string& name, int num_threads)
-    : ThreadPool(env, ThreadOptions(), name, num_threads) {}
+struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
+  Impl(Env* env, const ThreadOptions& thread_options, const string& name,
+       int num_threads)
+      : Eigen::ThreadPoolTempl<EigenEnvironment>(
+            num_threads, EigenEnvironment(env, thread_options, name)) {}
+};
 
-ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
+#else
+
+struct ThreadPool::Impl {
+  Impl(Env* env, const ThreadOptions& thread_options, const string& name,
+       int num_threads);
+  ~Impl();
+  void Schedule(std::function<void()> fn);
+
+ private:
+  struct Waiter {
+    condition_variable cv;
+    bool ready;
+  };
+
+  struct Task {
+    std::function<void()> fn;
+    uint64 id;
+  };
+
+  void WorkerLoop();
+
+  const string name_;
+  mutex mu_;
+  std::vector<Thread*> threads_;  // All threads
+  std::vector<Waiter*> waiters_;  // Stack of waiting threads.
+  std::deque<Task> pending_;      // Queue of pending work
+};
+
+ThreadPool::Impl::Impl(Env* env, const ThreadOptions& thread_options,
                        const string& name, int num_threads)
     : name_(name) {
-  CHECK_GE(num_threads, 1);
-  string name_prefix = "tf_" + name_;
   for (int i = 0; i < num_threads; i++) {
-    threads_.push_back(env->StartThread(thread_options, name_prefix,
-                                        [this]() { WorkerLoop(); }));
+    threads_.push_back(
+        env->StartThread(thread_options, name, [this]() { WorkerLoop(); }));
   }
 }
 
-ThreadPool::~ThreadPool() {
+ThreadPool::Impl::~Impl() {
   {
     // Wait for all work to get done.
     mutex_lock l(mu_);
@@ -66,13 +147,7 @@ ThreadPool::~ThreadPool() {
   }
 }
 
-bool ThreadPool::HasPendingClosures() const {
-  mutex_lock l(mu_);
-  return pending_.size() != 0;
-}
-
-void ThreadPool::Schedule(std::function<void()> fn) {
-  CHECK(fn != nullptr);
+void ThreadPool::Impl::Schedule(std::function<void()> fn) {
   uint64 id = 0;
   if (port::Tracing::IsActive()) {
     id = port::Tracing::UniqueId();
@@ -90,7 +165,7 @@ void ThreadPool::Schedule(std::function<void()> fn) {
   }
 }
 
-void ThreadPool::WorkerLoop() {
+void ThreadPool::Impl::WorkerLoop() {
   // Set the processor flag to flush denormals to zero
   port::ScopedFlushDenormal flush;
 
@@ -107,21 +182,39 @@ void ThreadPool::WorkerLoop() {
       }
     }
     // Pick up pending work
-    Item item = pending_.front();
+    Task t = pending_.front();
     pending_.pop_front();
-    if (item.fn == nullptr) {
+    if (t.fn == nullptr) {
       break;
     }
     mu_.unlock();
-    if (item.id != 0) {
+    if (t.id != 0) {
       port::Tracing::ScopedActivity region(
-          port::Tracing::EventCategory::kRunClosure, item.id);
-      item.fn();
+          port::Tracing::EventCategory::kRunClosure, t.id);
+      t.fn();
     } else {
-      item.fn();
+      t.fn();
     }
     mu_.lock();
   }
+}
+#endif
+
+ThreadPool::ThreadPool(Env* env, const string& name, int num_threads)
+    : ThreadPool(env, ThreadOptions(), name, num_threads) {}
+
+ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
+                       const string& name, int num_threads) {
+  CHECK_GE(num_threads, 1);
+  impl_.reset(
+      new ThreadPool::Impl(env, thread_options, "tf_" + name, num_threads));
+}
+
+ThreadPool::~ThreadPool() {}
+
+void ThreadPool::Schedule(std::function<void()> fn) {
+  CHECK(fn != nullptr);
+  impl_->Schedule(std::move(fn));
 }
 
 }  // namespace thread

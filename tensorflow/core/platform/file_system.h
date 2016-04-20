@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -35,7 +34,7 @@ class RandomAccessFile;
 class ReadOnlyMemoryRegion;
 class WritableFile;
 
-/// An generic interface for accessing a file system.
+/// A generic interface for accessing a file system.
 class FileSystem {
  public:
   FileSystem() {}
@@ -203,7 +202,7 @@ class FileSystemRegistry {
   typedef std::function<FileSystem*()> Factory;
 
   virtual ~FileSystemRegistry();
-  virtual void Register(const string& scheme, Factory factory) = 0;
+  virtual Status Register(const string& scheme, Factory factory) = 0;
   virtual FileSystem* Lookup(const string& scheme) = 0;
   virtual Status GetRegisteredFileSystemSchemes(
       std::vector<string>* schemes) = 0;

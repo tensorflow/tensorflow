@@ -61,7 +61,9 @@ def tf_android_core_proto_sources_relative():
         "lib/core/error_codes.proto",
         "protobuf/config.proto",
         "protobuf/saver.proto",
+        "util/memmapped_file_system.proto",
         "util/saved_tensor_slice.proto",
+        "util/test_log.proto",
   ]
 
 # Returns the list of pb.h headers that are generated for
@@ -77,12 +79,17 @@ def if_cuda(a, b=[]):
       "//conditions:default": b,
   })
 
+def if_android_arm(a, b=[]):
+  return select({
+      "//tensorflow:android_arm": a,
+      "//conditions:default": b,
+  })
 
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
+          if_android_arm(["-mfpu=neon"]) +
           select({"//tensorflow:android": [
-                    "-mfpu=neon",
                     "-std=c++11",
                     "-DMIN_LOG_LEVEL=0",
                     "-DTF_LEAN_BINARY",
@@ -212,11 +219,12 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
 def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
-               suffix=""):
+               suffix="", args=None):
   name = name.replace(".cc", "")
   native.cc_test(name="%s%s" % (name.replace("/", "_"), suffix),
                  size=size,
                  srcs=["%s.cc" % (name)],
+                 args=args,
                  copts=tf_copts(),
                  data=data,
                  deps=deps,
@@ -240,9 +248,9 @@ def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium"):
              size=size)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium"):
+def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium", args=None):
   for t in tests:
-    tf_cc_test(t, deps, linkstatic, tags=tags, size=size)
+    tf_cc_test(t, deps, linkstatic, tags=tags, size=size, args=args)
 
 def tf_cuda_cc_tests(tests, deps, tags=[], size="medium"):
   for t in tests:
@@ -485,7 +493,6 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
                    linkshared=1,
                    linkopts = select({
                        "//conditions:default": [
-                           "-Wl,-Bsymbolic",
                            "-lm",
                        ],
                        "//tensorflow:darwin": [],

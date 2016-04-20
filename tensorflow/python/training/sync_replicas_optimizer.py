@@ -503,8 +503,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   def get_init_tokens_op(self, num_tokens=-1):
     """Returns the op to fill the sync_token_queue with the tokens.
 
-    This is supposed to be executed in the begining of the chief/sync thread
-    so that even if the total_num_replicas is less than replicas_to_agregate,
+    This is supposed to be executed in the beginning of the chief/sync thread
+    so that even if the total_num_replicas is less than replicas_to_aggregate,
     the model can still proceed as the replicas can compute multiple steps per
     variable update. Make sure:
     `num_tokens >= replicas_to_aggregate - total_num_replicas`.

@@ -52,6 +52,7 @@ def get_module_to_name():
     tf.test: "tf.test",
     tf.contrib.layers: "tf.contrib.layers",
     tf.contrib.util: "tf.contrib.util",
+    tf.contrib.copy_graph: "tf.contrib.copy_graph",
   }
 
 def all_libraries(module_to_name, members, documented):
@@ -70,6 +71,7 @@ def all_libraries(module_to_name, members, documented):
   return [
       # Splits of module 'tf'.
       library("framework", "Building Graphs", framework_lib),
+      library("check_ops", "Asserts and boolean checks."),
       library("constant_op", "Constants, Sequences, and Random Values",
               prefix=PREFIX_TEXT),
       library("state_ops", "Variables",
@@ -81,9 +83,11 @@ def all_libraries(module_to_name, members, documented):
               exclude_symbols=["sparse_matmul", "arg_min", "arg_max",
                                "lin_space", "sparse_segment_mean_grad"],
               prefix=PREFIX_TEXT),
+      library("string_ops", "Strings", prefix=PREFIX_TEXT),
       library("histogram_ops", "Histograms"),
       library("control_flow_ops", "Control Flow", prefix=PREFIX_TEXT),
       library("functional_ops", "Higher Order Functions", prefix=PREFIX_TEXT),
+      library("session_ops", "Tensor Handle Operations", prefix=PREFIX_TEXT),
       library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"],
               prefix=PREFIX_TEXT),
       library("sparse_ops", "Sparse Tensors",
@@ -121,6 +125,8 @@ def all_libraries(module_to_name, members, documented):
       library("test", "Testing", tf.test),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
+      library("contrib.copy_graph", "Copying Graph Elements (contrib)", 
+              tf.contrib.copy_graph),
   ]
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",

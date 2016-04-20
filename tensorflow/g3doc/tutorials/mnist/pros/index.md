@@ -335,7 +335,8 @@ h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
 #### Dropout
 
-To reduce overfitting, we will apply dropout before the readout layer.
+To reduce overfitting, we will apply [dropout](
+https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf) before the readout layer.
 We create a `placeholder` for the probability that a neuron's output is kept
 during dropout. This allows us to turn dropout on during training, and turn it
 off during testing.

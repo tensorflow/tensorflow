@@ -26,12 +26,9 @@ from tensorflow.python.ops import sparse_ops
 
 
 ops.NoGradient("SparseAddGrad")
-
-
-ops.NoGradient("SparseToDense")
-
-
 ops.NoGradient("SparseConcat")
+ops.NoGradient("SparseReduceSum")
+ops.NoGradient("SparseToDense")
 
 
 @ops.RegisterGradient("SparseReorder")
@@ -96,6 +93,13 @@ def _SparseAddGrad(op, *grads):
   b_val_grad.set_shape(op.inputs[4].get_shape())
   # (a_indices, a_values, a_shape, b_indices, b_values, b_shape, thresh)
   return (None, a_val_grad, None, None, b_val_grad, None, None)
+
+
+@ops.RegisterGradient("SparseTensorDenseAdd")
+def _SparseTensorDenseAdd(op, out_grad):
+  sp_indices = op.inputs[0]
+  #  (sparse_indices, sparse_values, sparse_shape, dense)
+  return (None, array_ops.gather_nd(out_grad, sp_indices), None, out_grad)
 
 
 @ops.RegisterGradient("SparseTensorDenseMatMul")

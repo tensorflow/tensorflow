@@ -130,11 +130,12 @@ namespace functor {
   void DenseUpdate<GPUDevice, T, OP>::operator()(          \
       const GPUDevice& d, typename TTypes<T>::Flat params, \
       typename TTypes<T>::ConstFlat update);               \
-  extern template struct DenseUpdate<GPUDevice, T, OP>
+  extern template struct DenseUpdate<GPUDevice, T, OP>;
 #define DECLARE_GPU_SPEC(T)                         \
   DECLARE_GPU_SPEC_FOR_OP(T, DenseUpdateType::ADD); \
   DECLARE_GPU_SPEC_FOR_OP(T, DenseUpdateType::SUB)
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_FOR_OP
 }  // namespace functor

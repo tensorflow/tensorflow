@@ -268,6 +268,11 @@ with g.device(matmul_on_gpu):
   # on CPU 0.
 ```
 
+**N.B.** The device scope may be overridden by op wrappers or
+other library code. For example, a variable assignment op
+`v.assign()` must be colocated with the `tf.Variable` `v`, and
+incompatible device scopes will be ignored.
+
 ##### Args:
 
 
@@ -393,13 +398,20 @@ a collection several times.
 
 Returns a list of values in the collection with the given `name`.
 
+This is different from `get_collection_ref()` which always returns the
+actual collection list if it exists in that it returns a new list each time
+it is called.
+
 ##### Args:
 
 
 *  <b>`name`</b>: The key for the collection. For example, the `GraphKeys` class
     contains many standard names for collections.
 *  <b>`scope`</b>: (Optional.) If supplied, the resulting list is filtered to include
-    only items whose name begins with this string.
+    only items whose `name` attribute matches using `re.match`. Items
+    without a `name` attribute are never returned if a scope is supplied and
+    the choice or `re.match` means that a `scope` without special tokens
+    filters by prefix.
 
 ##### Returns:
 
@@ -1793,7 +1805,10 @@ for more details.
 *  <b>`key`</b>: The key for the collection. For example, the `GraphKeys` class
     contains many standard names for collections.
 *  <b>`scope`</b>: (Optional.) If supplied, the resulting list is filtered to include
-    only items whose name begins with this string.
+    only items whose `name` attribute matches using `re.match`. Items
+    without a `name` attribute are never returned if a scope is supplied and
+    the choice or `re.match` means that a `scope` without special tokens
+    filters by prefix.
 
 ##### Returns:
 

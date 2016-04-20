@@ -37,11 +37,11 @@ TUT_TESTS="mnist_softmax mnist_with_summaries cifar10_train "\
 "word2vec_test word2vec_optimized_test ptb_word_lm translate_test"
 
 if [[ -z "${TUT_TESTS_BLACKLIST}" ]]; then
-  TUT_TESTS_BLACKLIST=""
+  TF_BUILD_TUT_TEST_BLACKLIST=""
 fi
 echo ""
 echo "=== Testing tutorials ==="
-echo "TUT_TESTS_BLACKLIST = \"${TUT_TESTS_BLACKLIST}\""
+echo "TF_BUILD_TUT_TEST_BLACKLIST = \"${TF_BUILD_TUT_TEST_BLACKLIST}\""
 
 # Timeout (in seconds) for each tutorial test
 TIMEOUT=1800
@@ -346,7 +346,7 @@ for TUT_TEST in ${TUT_TESTS[@]}; do
   ((COUNTER++))
   STAT_STR="(${COUNTER} / ${NUM_TUT_TESTS})"
 
-  if [[ "${TUT_TESTS_BLACKLIST}" == *"${TUT_TEST}"* ]]; then
+  if [[ "${TF_BUILD_TUT_TEST_BLACKLIST}" == *"${TUT_TEST}"* ]]; then
     ((SKIPPED_COUNTER++))
     echo "${STAT_STR} Blacklisted tutorial test SKIPPED: ${TUT_TEST}"
     continue

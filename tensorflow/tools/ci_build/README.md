@@ -14,7 +14,7 @@ run continuous integration [ci.tensorflow.org](http://ci.tensorflow.org).
    You can run all the jobs **without docker** if you are on mac or on linux
    and you just don't want docker. Just install all the dependencies from
    [os_setup.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md).
-   Then run any of the one liners bellow without the
+   Then run any of the one liners below without the
    `tensorflow/tools/ci_build/ci_build.sh` in them.
 
 2. Clone tensorflow repository.
@@ -50,7 +50,7 @@ tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
 
 # build and run gpu tests (note if you get unstable results you may be running
 # out of gpu memory - if so add "--jobs=1" argument)
-tensorflow/tools/ci_build/ci_build.sh GPU test build -c opt --config=cuda //tensorflow/...
+tensorflow/tools/ci_build/ci_build.sh GPU bazel test -c opt --config=cuda //tensorflow/...
 
 # build pip with gpu support
 tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU

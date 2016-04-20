@@ -27,7 +27,8 @@ namespace tensorflow {
 namespace {
 
 void WriteUpdateTo(const string& directory) {
-  OpCompatibilityLib compatibility(directory);
+  OpCompatibilityLib compatibility(
+      directory, strings::StrCat("v", TF_MAJOR_VERSION), nullptr);
 
   // Write full copy of all ops to ops.pbtxt.
   Env* env = Env::Default();

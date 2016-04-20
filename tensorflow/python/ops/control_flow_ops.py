@@ -25,6 +25,7 @@ the execution of operations and add conditional dependencies to your graph.
 @@count_up_to
 @@cond
 @@case
+@@while_loop
 
 ## Logical Operators
 
@@ -257,6 +258,7 @@ def merge(inputs, name=None):
       else:
         dense_shape = None
       return ops.IndexedSlices(values, indices, dense_shape), chosen_index
+# pylint: enable=protected-access
 
 
 def _SwitchRefOrTensor(data, pred, name="Switch"):
@@ -312,14 +314,21 @@ def _convert_tensorarrays_to_flows(tensors_or_tensor_arrays):
           for ta in tensors_or_tensor_arrays]
 
 
+def _make_tensor_array(ta, t_or_flow):
+  new_ta = tensor_array_ops.TensorArray(
+      dtype=ta.dtype, handle=ta.handle, flow=t_or_flow,
+      infer_shape=ta._infer_shape)
+  new_ta._elem_shape = ta._elem_shape
+  return new_ta
+
+
 def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
   if len(tensors_or_tensorarrays) != len(tensors_or_flows):
     raise ValueError(
         "Lengths of original Tensor list and new list do not match: %d vs. %d"
         % (len(tensors_or_tensorarrays), len(tensors_or_flows)))
   return [
-      tensor_array_ops.TensorArray(
-          dtype=ta.dtype, handle=ta.handle, flow=t_or_flow)
+      _make_tensor_array(ta, t_or_flow)
       if isinstance(ta, tensor_array_ops.TensorArray)
       else t_or_flow
       for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)]
@@ -970,9 +979,8 @@ class ControlFlowContext(object):
     """
     while_ctxt = self.GetWhileContext()
     if while_ctxt is not None:
-      # pylint: disable=protected-access
       op._add_control_input(while_ctxt.GetControlPivot().op)
-      # pylint: enable=protected-access
+  # pylint: enable=protected-access
 
 
 class CondContext(ControlFlowContext):
@@ -1070,10 +1078,13 @@ class CondContext(ControlFlowContext):
   def BuildCondBranch(self, fn):
     """Add the subgraph defined by fn() to the graph."""
     r = fn()
+    original_r = r
     result = []
     if r is not None:
       if not isinstance(r, list) and not isinstance(r, _basetuple):
         r = [r]
+        original_r = [original_r]
+      r = _convert_tensorarrays_to_flows(r)
       for v in r:
         real_v = v
         if isinstance(v, ops.Operation):
@@ -1092,7 +1103,7 @@ class CondContext(ControlFlowContext):
           if external_v is not None:
             real_v = external_v
         result.append(real_v)
-    return result
+    return original_r, result
 
 
 def cond(pred, fn1, fn2, name=None):
@@ -1123,7 +1134,7 @@ def cond(pred, fn1, fn2, name=None):
     y = tf.constant(5)
     def f1(): return tf.mul(x, 17)
     def f2(): return tf.add(y, 23)
-    r = cond(math_ops.less(x, y), f1, f2)
+    r = cond(tf.less(x, y), f1, f2)
     # r is set to f1().
     # Operations in f2 (e.g., tf.add) are not executed.
   ```
@@ -1146,14 +1157,14 @@ def cond(pred, fn1, fn2, name=None):
     # Build the graph for the true branch in a new context.
     context_t = CondContext(pred, pivot_1, branch=1)
     context_t.Enter()
-    res_t = context_t.BuildCondBranch(fn1)
+    orig_res, res_t = context_t.BuildCondBranch(fn1)
     context_t.ExitResult(res_t)
     context_t.Exit()
 
     # Build the graph for the false branch in a new context.
     context_f = CondContext(pred, pivot_2, branch=0)
     context_f.Enter()
-    res_f = context_f.BuildCondBranch(fn2)
+    _, res_f = context_f.BuildCondBranch(fn2)
     context_f.ExitResult(res_f)
     context_f.Exit()
 
@@ -1172,6 +1183,7 @@ def cond(pred, fn1, fn2, name=None):
         raise ValueError("Outputs of fn1 and fn2 must have the same type: "
                          "%s, %s" % (val_x.dtype.name, val_y.dtype.name))
     merges = [merge([x[0], x[1]])[0] for x in zip(res_f, res_t)]
+    merges = _convert_flows_to_tensorarrays(orig_res, merges)
     return merges[0] if len(merges) == 1 else merges
 
 
@@ -1314,9 +1326,10 @@ class WhileContext(ControlFlowContext):
       else:
         # Control edges must be in the same context.
         for x in op.control_inputs:
+
           assert x._get_control_flow_context() == self, (
               "Control inputs must come from Operations in the same while "
-              "loop context (not an outer context).")
+              "loop context (not an outer context)." + str(x))
       for x in op.outputs:
         self._values.add(x.name)
     else:
@@ -1447,11 +1460,60 @@ class WhileContext(ControlFlowContext):
 
     add_acc = math_ops.add(switch_acc[1], value)
     next_acc = _NextIteration(add_acc)
-    merge_acc.op._update_input(1, next_acc)
+    merge_acc.op._update_input(1, next_acc)  # pylint: disable=protected-access
 
     acc_result = exit(switch_acc[0], name="b_acc")
     self.ExitResult([acc_result])
     return acc_result
+
+  def AddBackPropIndexedSlicesAccumulator(self, value):
+    """This is used for accumulating gradients that are IndexedSlices.
+
+    This is essentially the equavalent of AddBackPropAccumulator but optimized
+    for things like updating embeddings from within a while loop.
+
+    Args:
+      value: The partial gradients represented as an IndexedSlices.
+
+    Returns:
+      The accumulated IndexedSlices gradient of the loop invariant.
+    """
+    values = value.values
+    indices = value.indices
+
+    self.Exit()
+    shape = tensor_shape.TensorShape([tensor_shape.Dimension(1)] +
+                                     values.get_shape().dims[1:])
+    if not shape.is_fully_defined():
+      shape = None
+    if self.outer_context: self.outer_context.Enter()
+    values_acc = constant_op.constant(0, values.dtype, shape=shape,
+                                      name="b_acc")
+    if not shape:
+      values_acc._shape = shape  # pylint: disable=protected-access
+    indices_acc = constant_op.constant([0], indices.dtype)
+    if self.outer_context: self.outer_context.Exit()
+    self.Enter()
+    self.AddName(values_acc.name)
+    self.AddName(indices_acc.name)
+    enter_acc = [_Enter(x, self._name, is_constant=False,
+                        parallel_iterations=self._parallel_iterations,
+                        name="b_acc") for x in [indices_acc, values_acc]]
+    merge_acc = [merge([x, x], name="b_acc")[0] for x in enter_acc]
+    switch_acc = [switch(x, self._pivot) for x in merge_acc]
+
+    # The actual accumulation.
+    acc_value = [array_ops.concat(0, [xa[1], xv])
+                 for xa, xv in zip(switch_acc, [indices, values])]
+
+    next_acc = [_NextIteration(x) for x in acc_value]
+    for xm, xn in zip(merge_acc, next_acc):
+      xm.op._update_input(1, xn)  # pylint: disable=protected-access
+
+    acc_result = [exit(x[0], name="b_acc") for x in switch_acc]
+    self.ExitResult(acc_result)
+    return ops.IndexedSlices(values=acc_result[1], indices=acc_result[0],
+                             dense_shape=self.ExitResult(value.dense_shape))
 
   def BuildLoop(self, pred, body, loop_vars):
     """Add the loop termination condition and body to the graph."""
@@ -1528,8 +1590,8 @@ class WhileContext(ControlFlowContext):
             else exit_vars_with_tensor_arrays)
 
 
-def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
-          swap_memory=False, name=None):
+def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
+               swap_memory=False, name=None):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable taking a list of tensors and returning a boolean scalar
@@ -1560,14 +1622,16 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     ValueError: if `loop_var` is empty.
 
   Example:
+
     ```python
-    i = constant(0)
-    c = lambda i: math_ops.less(i, 10)
-    b = lambda i: math_ops.add(i, 1)
-    r = While(c, b, [i])
+    i = tf.constant(0)
+    c = lambda i: tf.less(i, 10)
+    b = lambda i: tf.add(i, 1)
+    r = tf.while_loop(c, b, [i])
     ```
+
   """
-  with ops.op_scope(loop_vars, name, "While") as name:
+  with ops.op_scope(loop_vars, name, "while") as name:
     if not loop_vars:
       raise ValueError("No loop variables provided")
     if not callable(cond):
@@ -1580,6 +1644,14 @@ def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     result = context.BuildLoop(cond, body, loop_vars)
     context.Exit()
     return result
+
+
+def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
+          swap_memory=False, name=None):
+  """DEPRECATED: Use `while_loop`."""
+  return while_loop(cond=cond, body=body, loop_vars=loop_vars,
+                    parallel_iterations=parallel_iterations,
+                    back_prop=back_prop, swap_memory=swap_memory, name=name)
 
 
 def _AsTensorList(x, p):

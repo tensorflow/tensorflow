@@ -21,6 +21,15 @@ config_setting(
 )
 
 config_setting(
+    name = "android_arm",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "android_cpu": "armeabi-v7a",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
@@ -68,12 +77,12 @@ filegroup(
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/layers:all_files",
+        "//tensorflow/contrib/learn:all_files",
         "//tensorflow/contrib/linear_optimizer:all_files",
         "//tensorflow/contrib/linear_optimizer/kernels:all_files",
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
         "//tensorflow/contrib/metrics:all_files",
-        "//tensorflow/contrib/skflow:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/util:all_files",
@@ -88,6 +97,7 @@ filegroup(
         "//tensorflow/examples/how_tos/reading_data:all_files",
         "//tensorflow/examples/image_retraining:all_files",
         "//tensorflow/examples/label_image:all_files",
+        "//tensorflow/examples/skflow:all_files",
         "//tensorflow/examples/tutorials/mnist:all_files",
         "//tensorflow/examples/tutorials/word2vec:all_files",
         "//tensorflow/g3doc/how_tos/adding_an_op:all_files",
@@ -109,9 +119,11 @@ filegroup(
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/lib/python:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
+        "//tensorflow/tools/dist_test/server:all_files",
         "//tensorflow/tools/docker:all_files",
         "//tensorflow/tools/docker/notebooks:all_files",
         "//tensorflow/tools/docs:all_files",
+        "//tensorflow/tools/proto_text:all_files",
         "//tensorflow/tools/test:all_files",
         "//tensorflow/user_ops:all_files",
     ],

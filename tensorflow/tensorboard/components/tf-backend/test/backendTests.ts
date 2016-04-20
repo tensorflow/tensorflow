@@ -162,10 +162,11 @@ module TF.Backend {
       });
     }
 
-    it("Throws and error if the inputs are of different lengths", function() {
+    it('Throws and error if the inputs are of different lengths', function() {
       assert.throws(function() {
-        convertBins({bucketRightEdges:[0], bucketCounts:[1, 2], min: 1, max: 2});
-      }, "Edges and counts are of different lengths.")
+        convertBins(
+            {bucketRightEdges: [0], bucketCounts: [1, 2], min: 1, max: 2});
+      }, 'Edges and counts are of different lengths.');
     });
 
     it("Handles data with no bins", function() {

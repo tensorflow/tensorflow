@@ -61,8 +61,12 @@ mathematical functions to your graph.
 
 ## Matrix Math Functions
 
-TensorFlow provides several operations that you can use to add basic
-mathematical functions for matrices to your graph.
+TensorFlow provides several operations that you can use to add linear algebra
+functions on matrices to your graph.
+
+@@batch_matrix_diag
+@@batch_matrix_diag_part
+@@batch_matrix_band_part
 
 @@diag
 @@diag_part
@@ -534,6 +538,7 @@ _TRUEDIV_TABLE = {
     dtypes.int16: dtypes.float32,
     dtypes.int32: dtypes.float64,
     dtypes.int64: dtypes.float64,
+    dtypes.float16: None,
     dtypes.float32: None,
     dtypes.float64: None,
     dtypes.complex64: None,
@@ -704,6 +709,9 @@ def _ReductionDims(x, reduction_indices):
   if reduction_indices is not None:
     return reduction_indices
   else:
+    # TODO(zongheng): remove this once rank() supports SparseTensor.
+    if isinstance(x, ops.SparseTensor):
+      return range(0, array_ops.size(x.shape))
     return range(0, array_ops.rank(x))
 
 
@@ -942,14 +950,14 @@ def trace(x, name=None):
   """ Compute the trace of a tensor `x`.
 
   `trace(x)` returns the sum of along the diagonal.
-  
+
   For example:
 
   ```python
   # 'x' is [[1, 1],
   #         [1, 1]]
   tf.trace(x) ==> 2
-  
+
   # 'x' is [[1,2,3],
   #         [4,5,6],
   #         [7,8,9]]
@@ -1182,6 +1190,8 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
                      "accumulate_n. Pass the shape argument, or set the shape "
                      "of at least one of the inputs.")
   with ops.op_scope(inputs, name, "AccumulateN") as name:
+    if len(inputs) == 1:
+      return inputs[0]
     var = gen_state_ops._temporary_variable(shape=shape, dtype=tensor_dtype)
     var_name = var.op.name
     var = state_ops.assign(var, array_ops.zeros_like(inputs[0]))
@@ -1247,37 +1257,6 @@ def tanh(x, name=None):
   with ops.op_scope([x], name, "Tanh") as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops._tanh(x, name=name)
-
-
-# TODO(b/27419586) Change docstring for required dtype of x once int allowed
-def lbeta(x, name="lbeta"):
-  """Computes `ln(|Beta(x)|)`, reducing along the last dimension.
-
-  Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
-
-  ```Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)```
-
-  , and for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
-  `lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)`.  In other words,
-  the last dimension is treated as the `z` vector.
-
-  Note that if `z = [u, v]`, then
-  `Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt`, which defines the traditional
-  bivariate beta function.
-
-  Args:
-    x: A rank `n + 1` `Tensor` with type `float`, or `double`.
-    name: A name for the operation (optional).
-
-  Returns:
-    The logarithm of `|Beta(x)|` reducing along the last dimension.
-  """
-  with ops.op_scope([x], name):
-    x = ops.convert_to_tensor(x, name="x")
-    ndims = array_ops.size(array_ops.shape(x))
-    return (reduce_sum(
-        gen_math_ops.lgamma(x), reduction_indices=ndims - 1)
-            - gen_math_ops.lgamma(reduce_sum(x, reduction_indices=ndims - 1)))
 
 
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)

@@ -33,6 +33,11 @@ bool GroupIterable::IteratorStep::operator!=(const IteratorStep& rhs) const {
   return (rhs.loc_ != loc_);
 }
 
+bool GroupIterable::IteratorStep::operator==(const IteratorStep& rhs) const {
+  CHECK_EQ(rhs.iter_, iter_) << "Can't compare steps from different iterators";
+  return (rhs.loc_ == loc_);
+}
+
 GroupIterable::IteratorStep& GroupIterable::IteratorStep::
 operator++() {  // prefix ++
   loc_ = next_loc_;

@@ -16,15 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_OPS_COMPAT_OP_COMPATIBILITY_LIB_H_
 #define TENSORFLOW_CORE_OPS_COMPAT_OP_COMPATIBILITY_LIB_H_
 
-#include <string>
+#include <set>
+
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 class OpCompatibilityLib {
  public:
-  explicit OpCompatibilityLib(const string& ops_prefix);
+  // `ops_prefix` is a filename prefix indicating where to find the
+  //   ops files.
+  // `history_version` is used to construct the ops history file name.
+  // `*stable_ops` has an optional list of ops that we care about.
+  //   If stable_ops == nullptr, we use all registered ops.
+  //   Otherwise we ignore ops not in *stable_ops and require all ops
+  //   in *stable_ops to exist.
+  OpCompatibilityLib(const string& ops_prefix, const string& history_version,
+                     const std::set<string>* stable_ops);
 
   // Name of the file that contains the checked-in versions of ops, with docs.
   const string& ops_file() const { return ops_file_; }
@@ -45,8 +55,9 @@ class OpCompatibilityLib {
                             OpList* out_op_history);
 
  private:
-  string ops_file_;
-  string op_history_file_;
+  const string ops_file_;
+  const string op_history_file_;
+  const std::set<string>* stable_ops_;
   OpList op_list_;
 };
 

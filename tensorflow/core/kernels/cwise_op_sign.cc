@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER5(UnaryOp, CPU, "Sign", functor::sign, float, double, int32, int64,
-          complex64);
+REGISTER6(UnaryOp, CPU, "Sign", functor::sign, float, double, int32, int64,
+          complex64, Eigen::half);
 #if GOOGLE_CUDA
-REGISTER3(UnaryOp, GPU, "Sign", functor::sign, float, double, int64);
+REGISTER4(UnaryOp, GPU, "Sign", functor::sign, Eigen::half, float, double,
+          int64);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

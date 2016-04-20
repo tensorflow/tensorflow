@@ -117,6 +117,9 @@ method. A graph element can be one of the following types:
   the *i*th return value will be a
   [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
   containing the value of that sparse tensor.
+* If the *i*th element of `fetches` is produced by a `get_tensor_handle` op,
+  the *i*th return value will be a numpy ndarray containing the handle of
+  that tensor.
 
 The optional `feed_dict` argument allows the caller to override
 the value of tensors in the graph. Each key in `feed_dict` can be
@@ -620,7 +623,7 @@ Creates an `AbortedError`.
 
 ### `class tf.errors.OutOfRangeError` {#OutOfRangeError}
 
-Raised when an operation executed past the valid range.
+Raised when an operation iterates past the valid input range.
 
 This exception is raised in "end-of-file" conditions, such as when a
 [`queue.dequeue()`](../../api_docs/python/io_ops.md#QueueBase.dequeue)
