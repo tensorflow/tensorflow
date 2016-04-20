@@ -290,11 +290,13 @@ tf_kernel_libraries(
         "where_op",
     ],
     deps = [
+        ":batchtospace_op",
         ":bounds_check",
         ":concat_lib",
         ":depth_space_ops",
         ":fill_functor",
         ":ops_util",
+        ":spacetobatch_op",
         ":split_lib",
         ":transpose_functor",
         "//tensorflow/core:array_grad",
@@ -1180,6 +1182,26 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "batchtospace_op",
+    prefix = "batchtospace_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "spacetobatch_op",
+    prefix = "spacetobatch_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
