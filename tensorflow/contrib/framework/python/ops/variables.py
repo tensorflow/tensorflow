@@ -80,7 +80,6 @@ def get_global_step(graph=None):
     try:
       global_step_tensor = graph.get_tensor_by_name('global_step:0')
     except KeyError:
-      logging.warning('No tensor called "global_step" found.')
       return None
   else:
     logging.error('Multiple tensors in global_step collection.')
