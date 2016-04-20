@@ -89,6 +89,10 @@ OpKernel::OpKernel(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  NameRangesForNode(def_, context->op_def(), &input_name_map_,
                                    &output_name_map_));
+  if (context->op_def().has_deprecation()) {
+    const OpDeprecation& deprecation = context->op_def().deprecation();
+    OP_DEPRECATED(context, deprecation.version(), deprecation.explanation());
+  }
 }
 
 OpKernel::~OpKernel() {}

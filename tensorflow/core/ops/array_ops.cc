@@ -993,6 +993,7 @@ REGISTER_OP("TileGrad")
     .Input("multiples: int32")
     .Output("output: T")
     .Attr("T: type")
+    .Deprecated(3, "TileGrad has been replaced with reduce_sum")
     .Doc(R"doc(
 Returns the gradient of `Tile`.
 

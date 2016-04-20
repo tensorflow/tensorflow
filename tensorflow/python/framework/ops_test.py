@@ -1353,5 +1353,34 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     self.assertEqual("/device:CPU:0", b.device)
 
 
+class DeprecatedTest(test_util.TensorFlowTestCase):
+
+  def testSuccess(self):
+    with ops.Graph().as_default() as g:
+      g.graph_def_versions.producer = 7
+      old = test_ops.old()
+      with self.test_session(graph=g):
+        old.run()
+
+  def _error(self):
+    return ((r"Op Old is not available in GraphDef version %d\. "
+             r"It has been removed in version 8\. For reasons\.") %
+            versions.GRAPH_DEF_VERSION)
+
+  def testGraphConstructionFail(self):
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(NotImplementedError, self._error()):
+        test_ops.old()
+
+  def testGraphExecutionFail(self):
+    with ops.Graph().as_default() as g:
+      g.graph_def_versions.producer = 7
+      old = test_ops.old()
+      g.graph_def_versions.producer = versions.GRAPH_DEF_VERSION
+      with self.test_session(graph=g):
+        with self.assertRaisesOpError(self._error()):
+          old.run()
+
+
 if __name__ == "__main__":
   googletest.main()
