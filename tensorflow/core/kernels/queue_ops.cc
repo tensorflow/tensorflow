@@ -226,7 +226,8 @@ class DequeueManyOp : public QueueAccessOpKernel {
                          callback);
 
     queue->TryDequeueMany(
-        num_elements, ctx, [ctx, callback](const QueueInterface::Tuple& tuple) {
+        num_elements, ctx, false /* allow_small_batch */,
+        [ctx, callback](const QueueInterface::Tuple& tuple) {
           if (!ctx->status().ok()) {
             callback();
             return;
@@ -250,6 +251,83 @@ class DequeueManyOp : public QueueAccessOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("QueueDequeueMany").Device(DEVICE_CPU),
                         DequeueManyOp);
+
+// Defines a DequeueUpToOp, the execution of which concatenates the
+// requested number of elements from the given Queue along the 0th
+// dimension, and emits the result as a single tuple of tensors.
+//
+// The difference between this op and DequeueMany is the handling when
+// the Queue is closed.  While the DequeueMany op will return if there
+// an error when there are less than num_elements elements left in the
+// closed queue, this op will return between 1 and
+// min(num_elements, elements_remaining_in_queue), and will not block.
+// If there are no elements left, then the standard DequeueMany error
+// is returned.
+//
+// This op only works if the underlying Queue implementation accepts
+// the allow_small_batch = true parameter to TryDequeueMany.
+// If it does not, an errors::Unimplemented exception is returned.
+//
+// The op has two inputs:
+// - Input 0: the handle to a queue.
+// - Input 1: the number of elements to dequeue.
+//
+// The op has k outputs, where k is the number of components in the
+// tuples stored in the given Queue, and output i is the ith component
+// of the dequeued tuple.
+//
+// The op has one attribute: allow_small_batch.  If the Queue supports
+// it, setting this to true causes the queue to return smaller
+// (possibly zero length) batches when it is closed, up to however
+// many elements are available when the op executes.  In this case,
+// the Queue does not block when closed.
+class DequeueUpToOp : public QueueAccessOpKernel {
+ public:
+  explicit DequeueUpToOp(OpKernelConstruction* context)
+      : QueueAccessOpKernel(context) {}
+
+ protected:
+  void ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
+                    DoneCallback callback) override {
+    const Tensor& Tnum_elements = ctx->input(1);
+    int32 num_elements = Tnum_elements.flat<int32>()(0);
+
+    OP_REQUIRES_ASYNC(
+        ctx, num_elements >= 0,
+        errors::InvalidArgument("DequeueUpToOp must request a positive number "
+                                "of elements"),
+        callback);
+
+    OP_REQUIRES_OK_ASYNC(ctx, ctx->MatchSignature({DT_STRING_REF, DT_INT32},
+                                                  queue->component_dtypes()),
+                         callback);
+
+    queue->TryDequeueMany(
+        num_elements, ctx, true /* allow_small_batch */,
+        [ctx, callback](const QueueInterface::Tuple& tuple) {
+          if (!ctx->status().ok()) {
+            callback();
+            return;
+          }
+          OpOutputList output_components;
+          OP_REQUIRES_OK_ASYNC(
+              ctx, ctx->output_list("components", &output_components),
+              callback);
+          for (int i = 0; i < ctx->num_outputs(); ++i) {
+            output_components.set(i, tuple[i]);
+          }
+          callback();
+        });
+  }
+
+  ~DequeueUpToOp() override {}
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(DequeueUpToOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name("QueueDequeueUpTo").Device(DEVICE_CPU),
+                        DequeueUpToOp);
 
 // Defines a QueueCloseOp, which closes the given Queue. Closing a
 // Queue signals that no more elements will be enqueued in it.
