@@ -234,8 +234,8 @@ class BatchMatMul : public OpKernel {
                                         in1.shape().DebugString()));
     const int ndims = in0.dims();
     OP_REQUIRES(
-        ctx, ndims >= 2,
-        errors::InvalidArgument("In[0] and In[1] ndims must be >= 2: ", ndims));
+        ctx, ndims >= 3,
+        errors::InvalidArgument("In[0] and In[1] ndims must be >= 3: ", ndims));
     TensorShape out_shape;
     for (int i = 0; i < ndims - 2; ++i) {
       OP_REQUIRES(ctx, in0.dim_size(i) == in1.dim_size(i),
@@ -245,7 +245,7 @@ class BatchMatMul : public OpKernel {
                                           in1.shape().DebugString()));
       out_shape.AddDim(in0.dim_size(i));
     }
-    auto n = (ndims == 2) ? 1 : out_shape.num_elements();
+    auto n = out_shape.num_elements();
     auto d0 = in0.dim_size(ndims - 2);
     auto d1 = in0.dim_size(ndims - 1);
     Tensor in0_reshaped;

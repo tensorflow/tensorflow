@@ -25,8 +25,19 @@ import tensorflow as tf
 
 class CholeskyOpTest(tf.test.TestCase):
 
-  def _verifyCholeskyBase(self, sess, x, chol, verification):
-    chol_np, verification_np = sess.run([chol, verification])
+  def _verifyCholesky(self, x):
+    with self.test_session() as sess:
+      # Verify that LL^T == x.
+      if x.ndim == 2:
+        chol = tf.cholesky(x)
+        verification = tf.matmul(chol,
+                                 chol,
+                                 transpose_a=False,
+                                 transpose_b=True)
+      else:
+        chol = tf.batch_cholesky(x)
+        verification = tf.batch_matmul(chol, chol, adj_x=False, adj_y=True)
+      chol_np, verification_np = sess.run([chol, verification])
     self.assertAllClose(x, verification_np)
     self.assertShapeEqual(x, chol)
     # Check that the cholesky is lower triangular, and has positive diagonal
@@ -37,20 +48,6 @@ class CholeskyOpTest(tf.test.TestCase):
       for chol_matrix in chol_reshaped:
         self.assertAllClose(chol_matrix, np.tril(chol_matrix))
         self.assertTrue((np.diag(chol_matrix) > 0.0).all())
-
-  def _verifyCholesky(self, x):
-    # Verify that LL^T == x.
-    with self.test_session() as sess:
-      # Check the batch version, which works for ndim >= 2.
-      chol = tf.batch_cholesky(x)
-      verification = tf.batch_matmul(chol, chol, adj_x=False, adj_y=True)
-      self._verifyCholeskyBase(sess, x, chol, verification)
-
-      if x.ndim == 2:  # Check the simple form of cholesky
-        chol = tf.cholesky(x)
-        verification = tf.matmul(
-            chol, chol, transpose_a=False, transpose_b=True)
-        self._verifyCholeskyBase(sess, x, chol, verification)
 
   def testBasic(self):
     self._verifyCholesky(np.array([[4., -1., 2.], [-1., 6., 0], [2., 0., 5.]]))

@@ -37,23 +37,15 @@ class MatrixSolveOpTest(tf.test.TestCase):
           a = np.tile(a, batch_dims + [1, 1])
           a_np = np.tile(a_np, batch_dims + [1, 1])
           b = np.tile(b, batch_dims + [1, 1])
-
-        np_ans = np.linalg.solve(a_np, b)
         with self.test_session():
-          # Test the batch version, which works for ndim >= 2
-          tf_ans = tf.batch_matrix_solve(a, b, adjoint=adjoint)
-          out = tf_ans.eval()
-          self.assertEqual(tf_ans.get_shape(), out.shape)
-          self.assertEqual(np_ans.shape, out.shape)
-          self.assertAllClose(np_ans, out)
-
           if a.ndim == 2:
-            # Test the simple version
             tf_ans = tf.matrix_solve(a, b, adjoint=adjoint)
-            out = tf_ans.eval()
-            self.assertEqual(out.shape, tf_ans.get_shape())
-            self.assertEqual(np_ans.shape, out.shape)
-            self.assertAllClose(np_ans, out)
+          else:
+            tf_ans = tf.batch_matrix_solve(a, b, adjoint=adjoint)
+          out = tf_ans.eval()
+        np_ans = np.linalg.solve(a_np, b)
+        self.assertEqual(np_ans.shape, out.shape)
+        self.assertAllClose(np_ans, out)
 
   def testSolve(self):
     # 2x2 matrices, 2x1 right-hand side.
