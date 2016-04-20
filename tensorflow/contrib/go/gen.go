@@ -12,5 +12,6 @@
 
 // Generate the TensorFlow shared library.
 //go:generate bazel build //tensorflow:libtensorflow.so
+//go:generate sh -c "sudo cp ../../../bazel-bin/tensorflow/libtensorflow.so /usr/lib/"
 
 package tensorflow
