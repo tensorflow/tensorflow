@@ -78,13 +78,7 @@ def _BatchMatrixDeterminantGrad(op, grad):
 @ops.RegisterGradient("Cholesky")
 def _cholesky_grad(op, grad):
   """Gradient for Cholesky."""
-  return linalg_ops.cholesky_grad( op.outputs[0] , grad )
-
-
-@ops.RegisterGradient("Cholesky")
-def _cholesky_grad(op, grad):
-  """Gradient for Cholesky."""
-  return linalg_ops.cholesky_grad( op.outputs[0] , grad )
+  return linalg_ops.cholesky_grad(op.outputs[0], grad)
 
 
 @ops.RegisterGradient("MatrixSolve")
