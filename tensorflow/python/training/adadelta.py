@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
@@ -64,21 +65,31 @@ class AdadeltaOptimizer(optimizer.Optimizer):
   def _prepare(self):
     self._lr_t = ops.convert_to_tensor(self._lr, name="lr")
     self._rho_t = ops.convert_to_tensor(self._rho, name="rho")
-    self._epsilon_t = ops.convert_to_tensor(self._epsilon,
-                                                  name="epsilon")
+    self._epsilon_t = ops.convert_to_tensor(self._epsilon, name="epsilon")
 
   def _apply_dense(self, grad, var):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
     return training_ops.apply_adadelta(
-        var, accum, accum_update,
-        self._lr_t, self._rho_t, self._epsilon_t, grad,
+        var,
+        accum,
+        accum_update,
+        math_ops.cast(self._lr_t, var.dtype.base_dtype),
+        math_ops.cast(self._rho_t, var.dtype.base_dtype),
+        math_ops.cast(self._epsilon_t, var.dtype.base_dtype),
+        grad,
         use_locking=self._use_locking)
 
   def _apply_sparse(self, grad, var):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
     return training_ops.sparse_apply_adadelta(
-        var, accum, accum_update, self._lr_t,
-        self._rho_t, self._epsilon_t, grad.values,
-        grad.indices, use_locking=self._use_locking)
+        var,
+        accum,
+        accum_update,
+        math_ops.cast(self._lr_t, var.dtype.base_dtype),
+        math_ops.cast(self._rho_t, var.dtype.base_dtype),
+        math_ops.cast(self._epsilon_t, var.dtype.base_dtype),
+        grad.values,
+        grad.indices,
+        use_locking=self._use_locking)
