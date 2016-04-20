@@ -12,6 +12,17 @@ also to build, load and run Graphs.
   between operations.
 * [Tensor](g3doc/tensor.md): Typed multi-dimensional array.
 
+## Installation
+
+This package requieres to generate and compile some code, in order to do this
+is necessary to execute `go generate` after clone the repository.
+
+To generate, compile and install the package, execute:
+
+```sh
+$ TF_REPO=github.com/tensorflow/tensorflow/tensorflow/contrib/go/;go get $TF_REPO || (go generate $TF_REPO && go get $TF_REPO)
+```
+
 ## Practical Examples
 
 ##### Python Graph generated and executed on Go

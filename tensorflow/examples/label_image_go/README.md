@@ -15,6 +15,8 @@ is not packaged in the repo because of its size. Instead, you must
 first download the file to the `data` directory in the source tree:
 
 ```bash
+$ mkdir tensorflow/examples/label_image_go/data/
+
 $ wget https://storage.googleapis.com/download.tensorflow.org/models/inception_dec_2015.zip -O tensorflow/examples/label_image_go/data/inception_dec_2015.zip
 
 $ unzip tensorflow/examples/label_image_go/data/inception_dec_2015.zip -d tensorflow/examples/label_image_go/data/

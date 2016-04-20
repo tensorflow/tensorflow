@@ -44,6 +44,68 @@ type Tensor struct {
 // A TensorShape represents the shape of a Tensor.
 type TensorShape []int64
 
+// ErrInvalidTensorType is returned when the data type of the tensor is not
+// compatible with the expected data type on this function.
+type ErrInvalidTensorType struct {
+	TensorType   DataType
+	ExpectedType DataType
+}
+
+func (e *ErrInvalidTensorType) Error() string {
+	return fmt.Sprintf("Invalid tensor data type, tensor data type: '%s', required data type: '%s'", e.TensorType, e.ExpectedType)
+}
+
+// ErrTensorTypeNotSupported is returned when the tensor type is still not
+// supported.
+type ErrTensorTypeNotSupported struct {
+	TensotType DataType
+}
+
+func (e *ErrTensorTypeNotSupported) Error() string {
+	return fmt.Sprintf("The tensor data type '%s' is still not supported", e.TensotType)
+}
+
+// ErrDimsOutOfTensorRange is returned when the specified number of dimensions
+// doesn't match with the tensor dimensions.
+type ErrDimsOutOfTensorRange struct {
+	TensorDim int
+	SpecDims  int
+}
+
+func (e *ErrDimsOutOfTensorRange) Error() string {
+	return fmt.Sprintf("The specified number of dimensions '%d' doesn't match with the tensor dimensions '%d'", e.SpecDims, e.TensorDim)
+}
+
+// ErrIndexOutOfRange is returned when the specified index is out of one of the
+// dimensions range.
+type ErrIndexOutOfRange struct {
+	Dim       int
+	Index     int64
+	DimsRange int64
+}
+
+func (e *ErrIndexOutOfRange) Error() string {
+	return fmt.Sprintf("The specified index '%d' is out of the dimension '%d' range: '%d'", e.Index, e.Dim, e.DimsRange)
+}
+
+// ErrSliceExpected is returned when the argument must be an Slice.
+type ErrSliceExpected struct {
+	DataType string
+}
+
+func (e *ErrSliceExpected) Error() string {
+	return fmt.Sprintf("The argument must be a Slice, but the data type is: '%s'", e.DataType)
+}
+
+// ErrDataTypeNotSupported is returned when the data type is not suported.
+type ErrDataTypeNotSupported struct {
+	DataType string
+}
+
+func (e *ErrDataTypeNotSupported) Error() string {
+	return fmt.Sprintf("The type of the provided data is not suported: '%s'", e.DataType)
+}
+
 var (
 	// DTInvalid Invalid tensor DataType.
 	DTInvalid = DataType(0)
@@ -259,7 +321,12 @@ func (t *Tensor) Data() []byte {
 
 // String returns a human-readable string description of a Tensor.
 func (t *Tensor) String() string {
-	return fmt.Sprintf("%v: dims:%v size:%v", t.DataType(), t.NumDims(), t.DataSize())
+	shape := make([]int64, t.NumDims())
+	for i := 0; i < t.NumDims(); i++ {
+		shape[i] = t.Dim(i)
+	}
+
+	return fmt.Sprintf("DataType: %s dims: %d shape: %d", t.DataType(), t.NumDims(), shape)
 }
 
 // ByteSlices returns the Tensor content as a slice of byte slices if the
@@ -489,6 +556,48 @@ func (t *Tensor) GetVal(i ...int64) (val interface{}, err error) {
 	return t.getValOnPos(pos)
 }
 
+// String returns as string the DataType name.
+func (dt DataType) String() string {
+	switch dt {
+	case DTBool:
+		return "DTBool"
+	case DTFloat:
+		return "DTFloat"
+	case DTDouble:
+		return "DTDouble"
+	case DTInt8:
+		return "DTInt8"
+	case DTInt16:
+		return "DTInt16"
+	case DTInt32:
+		return "DTInt32"
+	case DTInt64:
+		return "DTInt64"
+	case DTString:
+		return "DTString"
+	case DTUint8:
+		return "DTUint8"
+	case DTUint16:
+		return "DTUint16"
+	case DTBfloat:
+		return "DTBfloat"
+	case DTComplex:
+		return "DTComplex"
+	case DTQint16:
+		return "DTQint16"
+	case DTQuint16:
+		return "DTQuint16"
+	case DTQuint32:
+		return "DTQuint32"
+	case DTQint8:
+		return "DTQint8"
+	case DTQuint8:
+		return "DTQuint8"
+	}
+
+	return "DTInvalid"
+}
+
 // getValOnPos returns the value of one of the elements of the Tensor on the
 // specified position
 func (t *Tensor) getValOnPos(pos int64) (val interface{}, err error) {
@@ -535,68 +644,6 @@ func (t *Tensor) FreeAllocMem() {
 	if !t.memReleased {
 		TF_DeleteTensor(t.tensor)
 	}
-}
-
-// ErrInvalidTensorType is returned when the data type of the tensor is not
-// compatible with the expected data type on this function.
-type ErrInvalidTensorType struct {
-	TensorType   DataType
-	ExpectedType DataType
-}
-
-func (e *ErrInvalidTensorType) Error() string {
-	return fmt.Sprintf("Invalid tensor data type, tensor data type: '%s', required data type: '%s'", e.TensorType, e.ExpectedType)
-}
-
-// ErrTensorTypeNotSupported is returned when the tensor type is still not
-// supported.
-type ErrTensorTypeNotSupported struct {
-	TensotType DataType
-}
-
-func (e *ErrTensorTypeNotSupported) Error() string {
-	return fmt.Sprintf("The tensor data type '%s' is still not supported", e.TensotType)
-}
-
-// ErrDimsOutOfTensorRange is returned when the specified number of dimensions
-// doesn't match with the tensor dimensions.
-type ErrDimsOutOfTensorRange struct {
-	TensorDim int
-	SpecDims  int
-}
-
-func (e *ErrDimsOutOfTensorRange) Error() string {
-	return fmt.Sprintf("The specified number of dimensions '%d' doesn't match with the tensor dimensions '%d'", e.SpecDims, e.TensorDim)
-}
-
-// ErrIndexOutOfRange is returned when the specified index is out of one of the
-// dimensions range.
-type ErrIndexOutOfRange struct {
-	Dim       int
-	Index     int64
-	DimsRange int64
-}
-
-func (e *ErrIndexOutOfRange) Error() string {
-	return fmt.Sprintf("The specified index '%d' is out of the dimension '%d' range: '%d'", e.Index, e.Dim, e.DimsRange)
-}
-
-// ErrSliceExpected is returned when the argument must be an Slice.
-type ErrSliceExpected struct {
-	DataType string
-}
-
-func (e *ErrSliceExpected) Error() string {
-	return fmt.Sprintf("The argument must be a Slice, but the data type is: '%s'", e.DataType)
-}
-
-// ErrDataTypeNotSupported is returned when the data type is not suported.
-type ErrDataTypeNotSupported struct {
-	DataType string
-}
-
-func (e *ErrDataTypeNotSupported) Error() string {
-	return fmt.Sprintf("The type of the provided data is not suported: '%s'", e.DataType)
 }
 
 func serialize(data interface{}, deep int, dimsIn []int64) (ser []interface{}, dims []int64, dataType DataType, dataSize int64, err error) {

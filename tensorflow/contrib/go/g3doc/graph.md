@@ -82,9 +82,9 @@ Marshal returns the current graph serialized so it can be exported.
 func (gr *Graph) Op(opName string, name string, input []*GraphNode, device string, attrs map[string]interface{}) (*GraphNode, error)
 ```
 
-Op adds a new Node to the Graph with the specified operation, this function
-could return an error if any of the mandatory attributes is not be present or
-the value is not the expected for this attribute.
+Op adds a new Node to the Graph with the specified operation. This function
+could return an error if any of the mandatory attributes is missing or the value
+is not the expected for this attribute.
 
 ```Go
 Example:

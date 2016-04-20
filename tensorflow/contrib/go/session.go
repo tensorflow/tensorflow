@@ -15,6 +15,16 @@ type Session struct {
 	graph   *Graph
 }
 
+// ErrStatusTf is an error message comming out from the TensorFlow C++ libraries.
+type ErrStatusTf struct {
+	Code    TF_Code
+	Message string
+}
+
+func (e *ErrStatusTf) Error() string {
+	return fmt.Sprintf("tensorflow: %d: %v", e.Code, e.Message)
+}
+
 // NewSession initializes a new TensorFlow session.
 func NewSession() (*Session, error) {
 	status := TF_NewStatus()
@@ -120,16 +130,6 @@ func (s *Session) FreeAllocMem() {
 	TF_DeleteSession(s.session, s.status)
 	TF_DeleteStatus(s.status)
 	TF_DeleteSessionOptions(s.ops)
-}
-
-// ErrStatusTf is an error message comming out from the TensorFlow C++ libraries.
-type ErrStatusTf struct {
-	Code    TF_Code
-	Message string
-}
-
-func (e *ErrStatusTf) Error() string {
-	return fmt.Sprintf("tensorflow: %d: %v", e.Code, e.Message)
 }
 
 // statusToError converts a TF_Status returned by a C execution into a Go Error.
