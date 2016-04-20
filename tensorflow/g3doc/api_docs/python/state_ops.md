@@ -1589,7 +1589,7 @@ Returns an initializer that generates tensors with a uniform distribution.
 
 - - -
 
-### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None, dtype=tf.float32)` {#uniform_unit_scaling_initializer}
+### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None, dtype=tf.float32, full_shape=None)` {#uniform_unit_scaling_initializer}
 
 Returns an initializer that generates tensors without scaling variance.
 
@@ -1609,6 +1609,12 @@ See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
 and the calculation of constants. In section 2.3 there, the constants were
 numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
+If the shape tuple `full_shape` is provided, the scale will be calculated from
+this predefined shape.  This is useful when a `Variable` is being partitioned
+across several shards, and each shard has a smaller shape than the whole.
+Since the shards are usually concatenated when used, the scale should be
+based on the shape of the whole.
+
 ##### Args:
 
 
@@ -1617,46 +1623,13 @@ numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
 *  <b>`dtype`</b>: The data type. Only floating point types are supported.
+*  <b>`full_shape`</b>: Tuple or list of integers.  The shape used for calculating
+    scale normalization (instead of the shape passed at creation time).
+    Useful when creating sharded variables via partitioning.
 
 ##### Returns:
 
   An initializer that generates tensors with unit variance.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
-
-
-- - -
-
-### `tf.sharded_uniform_unit_scaling_initializer(shape, factor=1.0, seed=None, dtype=tf.float32)` {#sharded_uniform_unit_scaling_initializer}
-
-Returns a uniform_unit_scaling_initializer with scale based on `shape`.
-
-This initializer works identically to `uniform_unit_scaling_initializer`,
-but the scale is based on a predefined shape.  This is useful when a
-`Variable` is being partitioned across several shards, and each shard
-has a smaller shape than the whole.  Since the shards are usually
-concatenated when used, the scale should be based on the shape of the whole.
-
-See the documentation of `uniform_unit_scaling_initializer` for details
-on how the scale of the input variance is kept constant.
-
-##### Args:
-
-
-*  <b>`shape`</b>: A list or tuple of ints to use for the scaling calculation.
-*  <b>`factor`</b>: Float.  A multiplicative factor by which the values will be scaled.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
-    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
-    for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
-
-##### Returns:
-
-  An initializer that generates sub-tensors of a unit variance tensor
-  (so long as that tensor is not being sharded along its innermost dimension).
 
 ##### Raises:
 

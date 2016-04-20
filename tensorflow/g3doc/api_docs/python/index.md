@@ -90,7 +90,6 @@
   * [`scatter_add`](../../api_docs/python/state_ops.md#scatter_add)
   * [`scatter_sub`](../../api_docs/python/state_ops.md#scatter_sub)
   * [`scatter_update`](../../api_docs/python/state_ops.md#scatter_update)
-  * [`sharded_uniform_unit_scaling_initializer`](../../api_docs/python/state_ops.md#sharded_uniform_unit_scaling_initializer)
   * [`sparse_mask`](../../api_docs/python/state_ops.md#sparse_mask)
   * [`trainable_variables`](../../api_docs/python/state_ops.md#trainable_variables)
   * [`truncated_normal_initializer`](../../api_docs/python/state_ops.md#truncated_normal_initializer)
