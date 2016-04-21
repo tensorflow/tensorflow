@@ -383,6 +383,7 @@
   * [`TFRecordWriter`](../../api_docs/python/python_io.md#TFRecordWriter)
 
 * **[Neural Network](../../api_docs/python/nn.md)**:
+  * [`atrous_conv2d`](../../api_docs/python/nn.md#atrous_conv2d)
   * [`avg_pool`](../../api_docs/python/nn.md#avg_pool)
   * [`batch_normalization`](../../api_docs/python/nn.md#batch_normalization)
   * [`bias_add`](../../api_docs/python/nn.md#bias_add)
