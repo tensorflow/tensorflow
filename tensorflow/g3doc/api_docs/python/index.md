@@ -519,6 +519,23 @@
   * [`xavier_initializer`](../../api_docs/python/contrib.layers.md#xavier_initializer)
   * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
 
+* **[Learn (contrib)](../../api_docs/python/contrib.learn.md)**:
+  * [`extract_dask_data`](../../api_docs/python/contrib.learn.md#extract_dask_data)
+  * [`extract_dask_labels`](../../api_docs/python/contrib.learn.md#extract_dask_labels)
+  * [`extract_pandas_data`](../../api_docs/python/contrib.learn.md#extract_pandas_data)
+  * [`extract_pandas_labels`](../../api_docs/python/contrib.learn.md#extract_pandas_labels)
+  * [`extract_pandas_matrix`](../../api_docs/python/contrib.learn.md#extract_pandas_matrix)
+  * [`RunConfig`](../../api_docs/python/contrib.learn.md#RunConfig)
+  * [`TensorFlowClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowClassifier)
+  * [`TensorFlowDNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowDNNClassifier)
+  * [`TensorFlowDNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowDNNRegressor)
+  * [`TensorFlowEstimator`](../../api_docs/python/contrib.learn.md#TensorFlowEstimator)
+  * [`TensorFlowLinearClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowLinearClassifier)
+  * [`TensorFlowLinearRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowLinearRegressor)
+  * [`TensorFlowRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRegressor)
+  * [`TensorFlowRNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowRNNClassifier)
+  * [`TensorFlowRNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRNNRegressor)
+
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
   * [`make_ndarray`](../../api_docs/python/contrib.util.md#make_ndarray)

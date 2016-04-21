@@ -43,16 +43,18 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 def get_module_to_name():
   return {
-    tf: "tf",
-    tf.errors: "tf.errors",
-    tf.image: "tf.image",
-    tf.nn: "tf.nn",
-    tf.train: "tf.train",
-    tf.python_io: "tf.python_io",
-    tf.test: "tf.test",
-    tf.contrib.layers: "tf.contrib.layers",
-    tf.contrib.util: "tf.contrib.util",
+      tf: "tf",
+      tf.errors: "tf.errors",
+      tf.image: "tf.image",
+      tf.nn: "tf.nn",
+      tf.train: "tf.train",
+      tf.python_io: "tf.python_io",
+      tf.test: "tf.test",
+      tf.contrib.layers: "tf.contrib.layers",
+      tf.contrib.learn: "tf.contrib.learn",
+      tf.contrib.util: "tf.contrib.util",
   }
+
 
 def all_libraries(module_to_name, members, documented):
   # A list of (filename, docs.Library) pairs representing the individual files
@@ -123,6 +125,7 @@ def all_libraries(module_to_name, members, documented):
       library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT),
       library("test", "Testing", tf.test),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
+      library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
   ]
 
@@ -134,6 +137,7 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
                    "SaverDef", "VariableDef", "TestCase", "GrpcServer",
                    "ClusterDef", "JobDef", "ServerDef"]
+
 
 def main(unused_argv):
   if not FLAGS.out_dir:

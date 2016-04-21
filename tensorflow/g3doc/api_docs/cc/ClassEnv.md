@@ -32,7 +32,7 @@ Returns the file system schemes registered for this Env .
 
 
 
-#### `void tensorflow::Env::RegisterFileSystem(const string &scheme, FileSystemRegistry::Factory factory)` {#void_tensorflow_Env_RegisterFileSystem}
+#### `Status tensorflow::Env::RegisterFileSystem(const string &scheme, FileSystemRegistry::Factory factory)` {#Status_tensorflow_Env_RegisterFileSystem}
 
 
 
