@@ -308,6 +308,23 @@ Status ValidateOpDef(const OpDef& op_def) {
 
 #undef VALIDATE
 
+Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
+  if (op_def.has_deprecation()) {
+    const OpDeprecation& dep = op_def.deprecation();
+    if (graph_def_version >= dep.version()) {
+      return errors::Unimplemented(
+          "Op ", op_def.name(), " is not available in GraphDef version ",
+          graph_def_version, ". It has been removed in version ", dep.version(),
+          ". ", dep.explanation(), ".");
+    } else {
+      LOG(WARNING) << "Op is deprecated."
+                   << " It will cease to work in GraphDef version "
+                   << dep.version() << ". " << dep.explanation() << ".";
+    }
+  }
+  return Status::OK();
+}
+
 namespace {
 
 string SummarizeArgs(const protobuf::RepeatedPtrField<OpDef::ArgDef>& args) {

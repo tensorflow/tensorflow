@@ -28,6 +28,10 @@ namespace tensorflow {
 // Performs a consistency check across the fields of the op_def.
 Status ValidateOpDef(const OpDef& op_def);
 
+// Check if an op is deprecated at the given GraphDef version.  If the op is
+// deprecated at a future version, a warning will be logged.
+Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version);
+
 // Validates that attr_value satisfies the type and constraints from attr.
 // REQUIRES: attr has already been validated.
 Status ValidateAttrValue(const AttrValue& attr_value,

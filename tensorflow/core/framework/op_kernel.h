@@ -1251,26 +1251,6 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
 //   ...
 // }
 
-// Declares an op deprecated, and illegal starting at GraphDef version VERSION
-// Cleverly, OP_DEPRECATED is itself deprecated for most users; instead, use
-//   REGISTER_OP(...)
-//       ...
-//       .Deprecated(version, note)
-//       ...
-#define OP_DEPRECATED(CTX, VERSION, NOTE)                                      \
-  if ((CTX)->graph_def_version() >= (VERSION)) {                               \
-    ::tensorflow::Status _s(::tensorflow::errors::Unimplemented(               \
-        "Op ", (CTX)->op_def().name(),                                         \
-        " is not available in GraphDef version ", (CTX)->graph_def_version(),  \
-        ". It has been removed in version ", (VERSION), ". ", (NOTE), "."));   \
-    (CTX)->CtxFailure(_s);                                                     \
-    return;                                                                    \
-  } else {                                                                     \
-    LOG(WARNING) << "Op is deprecated."                                        \
-                 << " It will cease to work in GraphDef version " << (VERSION) \
-                 << ". " << (NOTE) << ".";                                     \
-  }
-
 #define OP_REQUIRES(CTX, EXP, STATUS) \
   if (!TF_PREDICT_TRUE(EXP)) {        \
     (CTX)->CtxFailure((STATUS));      \

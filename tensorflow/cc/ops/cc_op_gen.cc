@@ -94,6 +94,11 @@ void WriteCCOp(const OpDef& op_def, WritableFile* h, WritableFile* cc) {
     comment = "TODO: add doc.\n";
   } else {
     comment = strings::StrCat(op_def.summary(), "\n");
+    if (op_def.has_deprecation()) {
+      strings::StrAppend(&comment, "\nDEPRECATED at GraphDef version ",
+                         op_def.deprecation().version(), ":\n",
+                         op_def.deprecation().explanation(), ".\n");
+    }
     if (!op_def.description().empty()) {
       strings::StrAppend(&comment, "\n", op_def.description(), "\n");
     }

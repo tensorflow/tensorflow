@@ -108,6 +108,8 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   NodeDef node_def;
   TF_RETURN_IF_ERROR(def_builder_.Finalize(&node_def));
   TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, def_builder_.op_def()));
+  TF_RETURN_IF_ERROR(
+      CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
   Status status;
   Node* node = graph->AddNode(node_def, &status);
   if (!status.ok()) return status;
