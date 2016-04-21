@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <set>
+#include <unordered_set>
 
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -132,6 +133,8 @@ class Generator {
   Section header_;
   Section header_impl_;
   Section cc_;
+
+  std::unordered_set<string> map_append_signatures_included_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Generator);
 };
@@ -359,7 +362,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   }
 
   // Parse from scanner - the real work here.
-  sig = StrCat(map_append ? "inline " : "", "bool ProtoParseFromScanner(",
+  sig = StrCat("bool ProtoParseFromScanner(",
                "\n    ::tensorflow::strings::Scanner* scanner, bool nested, "
                "bool close_curly,\n    ");
   const FieldDescriptor* key_type = nullptr;
@@ -372,10 +375,22 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   } else {
     StrAppend(&sig, GetQualifiedName(md), "* msg)");
   }
-  SetOutput(&header_impl_).Print(sig, ";");
+
+  if (!map_append_signatures_included_.insert(sig).second) {
+    // signature for function to append to a map of this type has
+    // already been defined in this .cc file. Don't define it again.
+    return;
+  }
+
+  if (!map_append) {
+    SetOutput(&header_impl_).Print(sig, ";");
+  }
 
   SetOutput(&cc_);
   Print().Print("namespace internal {");
+  if (map_append) {
+    Print("namespace {");
+  }
   Print().Print(sig, " {").Nest();
   if (map_append) {
     Print(GetCppClass(*key_type), " map_key;");
@@ -466,8 +481,12 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
       Print("if (open_char != '{' && open_char != '<') return false;");
       Print("scanner->One(Scanner::ALL);");
       Print("ProtoSpaceAndComments(scanner);");
-      Print("if (!", GetPackageReferencePrefix(field->message_type()->file()),
-            "internal::ProtoParseFromScanner(");
+      if (field->is_map()) {
+        Print("if (!ProtoParseFromScanner(");
+      } else {
+        Print("if (!", GetPackageReferencePrefix(field->message_type()->file()),
+              "internal::ProtoParseFromScanner(");
+      }
       Print("    scanner, true, open_char == '{', ", mutable_value_expr,
             ")) return false;");
     } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_STRING) {
@@ -553,7 +572,11 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   }
   Unnest().Print("}");
   Unnest().Print("}");
-  Unnest().Print().Print("}  // namespace internal");
+  Unnest().Print();
+  if (map_append) {
+    Print("}  // namespace");
+  }
+  Print("}  // namespace internal");
 }
 
 void Generator::AppendDebugStringFunctions(const Descriptor& md) {
@@ -617,14 +640,17 @@ void Generator::AppendMessageFunctions(const Descriptor& md) {
     return;
   }
 
-  AppendDebugStringFunctions(md);
-  AppendParseMessageFunction(md);
+  // Recurse before adding the main message function, so that internal
+  // map_append functions are available before they are needed.
   for (int i = 0; i < md.enum_type_count(); ++i) {
     AppendEnumFunctions(*md.enum_type(i));
   }
   for (int i = 0; i < md.nested_type_count(); ++i) {
     AppendMessageFunctions(*md.nested_type(i));
   }
+
+  AppendDebugStringFunctions(md);
+  AppendParseMessageFunction(md);
 }
 
 void Generator::AddNamespaceToCurrentSection(const string& package, bool open) {
