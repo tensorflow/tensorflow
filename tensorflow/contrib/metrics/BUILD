@@ -17,9 +17,9 @@ py_library(
 )
 
 cuda_py_tests(
-    name = "histogram_ops_test",
+    name = "metrics_ops_test",
     size = "medium",
-    srcs = ["python/kernel_tests/histogram_ops_test.py"],
+    srcs = glob(["python/kernel_tests/*_test.py"]),
     additional_deps = [
         ":metrics_py",
         "//tensorflow/python:framework_test_lib",
