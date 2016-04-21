@@ -34,9 +34,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 
-#define STRINGIFY(x) #x
-#define TO_STRING(x) STRINGIFY(x)
-
 namespace perftools {
 namespace gputools {
 namespace internal {
@@ -190,14 +187,6 @@ static std::vector<string>* CreatePrimordialRpaths() {
   attempted.push_back(candidate);
 
   return library_name.ToString();
-}
-
-/* static */ string DsoLoader::GetCudaToolkitVersion() {
-  return TO_STRING(CUDA_TOOLKIT_VERSION);
-}
-
-/* static */ string DsoLoader::GetCuDnnLibraryVersion() {
-  return TO_STRING(CUDNN_VERSION);
 }
 
 /* static */ string DsoLoader::GetCudaLibraryDirPath() {

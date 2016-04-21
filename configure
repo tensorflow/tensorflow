@@ -54,7 +54,6 @@ if [ "$TF_NEED_CUDA" == "0" ]; then
   exit
 fi
 
-
 # Set up which gcc nvcc should use as the host compiler
 while true; do
   fromuser=""
@@ -80,8 +79,6 @@ done
 
 # Find out where the CUDA toolkit is installed
 OSNAME=`uname -s`
-
-# 1.Ask version, path
 
 while true; do
   # Configure the Cuda SDK version to use.
@@ -210,12 +207,10 @@ perl -pi -e "s,GCC_HOST_COMPILER_PATH = \('.*'\),# \$ENV{WARNING}\nGCC_HOST_COMP
 perl -pi -e "s,PLATFORM = \".*\",PLATFORM = \"$OSNAME\",s" third_party/gpus/cuda/platform.bzl
 
 # Configure the Cuda toolkit version to work with.
-perl -pi -e "s,CUDA_VERSION = \"[0-9\.]*\",CUDA_VERSION = \"$TF_CUDA_VERSION\",s" tensorflow/core/platform/default/build_config.bzl
 perl -pi -e "s,(GetCudaVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDA_VERSION\",s" tensorflow/stream_executor/dso_loader.cc
 perl -pi -e "s,CUDA_VERSION = \"[0-9\.]*\",CUDA_VERSION = \"$TF_CUDA_VERSION\",s" third_party/gpus/cuda/platform.bzl
 
 # Configure the Cudnn version to work with.
-perl -pi -e "s,CUDNN_VERSION = \"[0-9\.]*\",CUDNN_VERSION = \"$TF_CUDNN_VERSION\",s" tensorflow/core/platform/default/build_config.bzl
 perl -pi -e "s,(GetCudnnVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDNN_VERSION\",s" tensorflow/stream_executor/dso_loader.cc
 perl -pi -e "s,CUDNN_VERSION = \"[0-9\.]*\",CUDNN_VERSION = \"$TF_CUDNN_VERSION\",s" third_party/gpus/cuda/platform.bzl
 
