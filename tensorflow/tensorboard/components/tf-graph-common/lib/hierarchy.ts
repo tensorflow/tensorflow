@@ -199,7 +199,7 @@ class HierarchyImpl implements Hierarchy {
    *
    * Continuing this example, say there was another BaseEdge A/K->Z/Y/W. When
    * we look at Z/Y's predecessors, the best we can say is ["A"] without getting
-   * into the details of which of of Z/Y's descendant nodes have predecessors to
+   * into the details of which of Z/Y's descendant nodes have predecessors to
    * which of A's descendants.
    *
    * On the other hand, for an OpNode it's clear what the final predecessors

@@ -47,7 +47,7 @@ class BaseMonitor(object):
     Parameters:
         print_steps: Number of steps in between printing cost.
         early_stopping_rounds:  Activates early stopping if this is not None.
-                                Loss needs to decrease at least every every <early_stopping_rounds>
+                                Loss needs to decrease at least every <early_stopping_rounds>
                                 round(s) to continue training. (default: None)
         verbose: Level of verbosity of output.
 
@@ -148,7 +148,7 @@ class ValidationMonitor(BaseMonitor):
         n_classes: Number of labels in output. 0 for regression
         print_steps: Number of steps in between printing cost.
         early_stopping_rounds:  Activates early stopping if this is not None.
-                                Loss needs to decrease at least every every <early_stopping_rounds>
+                                Loss needs to decrease at least every <early_stopping_rounds>
                                 round(s) to continue training. (default: None)
 
     """

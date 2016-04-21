@@ -878,7 +878,7 @@ export function build(rawNodes: tf.TFNode[], params: BuildParams,
       _.each(opNodes, opNode => {
         let normalizedName = normalizedNameDict[opNode.name] || opNode.name;
         graph.nodes[normalizedName] = opNode;
-        // Check if the node has out-embeddings. If yes, add them to to the
+        // Check if the node has out-embeddings. If yes, add them to the
         // node.
         if (opNode.name in outEmbeddings) {
           opNode.outEmbeddings = outEmbeddings[opNode.name];

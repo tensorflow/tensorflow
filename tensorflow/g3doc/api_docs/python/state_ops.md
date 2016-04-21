@@ -1275,7 +1275,7 @@ then all its sub-scopes become reusing as well.
 Returns a context manager for defining an op that creates variables.
 
 This context manager validates that the given `values` are from the
-same graph, ensures that that graph is the default graph, and pushes a
+same graph, ensures that graph is the default graph, and pushes a
 name scope and a variable scope.
 
 If `name_or_scope` is not None, it is used as is in the variable scope. If

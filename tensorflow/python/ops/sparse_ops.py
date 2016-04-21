@@ -706,7 +706,7 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None):
     if ids.dtype != dtypes.int64:
       ids = math_ops.cast(ids, dtypes.int64)
 
-    # Slice off the last dimension of indices, then then tack on the ids
+    # Slice off the last dimension of indices, then tack on the ids
     indices_columns_to_preserve = array_ops.slice(
         sp_ids.indices, [0, 0], array_ops.pack([-1, rank - 1]))
     new_indices = array_ops.concat(1, [indices_columns_to_preserve,
