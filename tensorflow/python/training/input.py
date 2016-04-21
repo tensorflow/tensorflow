@@ -819,3 +819,35 @@ def shuffle_batch_join(tensor_list_list, batch_size, capacity,
     dequeued = queue.dequeue_many(batch_size, name=name)
     dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
     return dequeued
+
+
+def shuffle_bucket_batch(tensor_list, batch_size, buckets, capacity,
+                         min_after_dequeue,  num_threads=1, seed=None,
+                         enqueue_many=False, shapes=None, shared_name=None,
+                         name=None):
+  """Creates batches by randomly shuffling tensors and bucketing.
+  """
+  with ops.op_scope(tensor_list, name, "shuffle_batch") as name:
+    tensor_list = _validate(tensor_list)
+    tensor_list, sparse_info = _serialize_sparse_tensors(
+        tensor_list, enqueue_many)
+    types = _dtypes([tensor_list])
+    shapes = _shapes([tensor_list], shapes, enqueue_many)
+    queue = data_flow_ops.RandomShuffleQueue(
+        capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
+        dtypes=types, shapes=shapes, shared_name=shared_name)
+    _enqueue(queue, tensor_list, num_threads, enqueue_many)
+
+    dequeued = queue.dequeue_many(batch_size, name=name)
+    # dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
+
+    bucketed_queue = data_flow_ops.FIFOBucketedQueue(
+        buckets=buckets, capacity=capacity, dtypes=types, shapes=shapes,
+        shared_name=shared_name)
+    _enqueue(bucketed_queue, dequeued, num_threads, batch_size)
+
+    dequeued = bucketed_queue.dequeue_many(batch_size, name=name)
+    dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
+
+    return dequeued
+
