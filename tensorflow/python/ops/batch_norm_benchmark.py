@@ -37,7 +37,7 @@ def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
   # pylint: enable=protected-access
 
 
-# Note that the naive implementation is much much slower:
+# Note that the naive implementation is much slower:
 # batch_norm = (tensor - mean) * tf.rsqrt(variance + 0.001)
 # if scale:
 #   batch_norm *= gamma

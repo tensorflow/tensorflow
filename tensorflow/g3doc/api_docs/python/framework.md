@@ -2395,7 +2395,7 @@ The value of this dimension, or None if it is unknown.
 Returns a context manager for use when defining a Python op.
 
 This context manager validates that the given `values` are from the
-same graph, ensures that that graph is the default graph, and pushes a
+same graph, ensures that graph is the default graph, and pushes a
 name scope.
 
 For example, to define a new Python op called `my_op`:
