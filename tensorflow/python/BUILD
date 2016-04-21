@@ -892,7 +892,7 @@ py_library(
     deps = ["//google/protobuf:protobuf_python"],
 )
 
-tf_proto_library_py(
+tf_proto_library(
     name = "protos_all",
     srcs = glob(
         ["**/*.proto"],
@@ -900,6 +900,7 @@ tf_proto_library_py(
             "util/protobuf/compare_test.proto",
         ],
     ),
+    go_api_version = 2,
 )
 
 tf_proto_library_py(
