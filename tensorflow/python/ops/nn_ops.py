@@ -42,6 +42,178 @@ from tensorflow.python.ops.gen_nn_ops import *
 local_response_normalization = gen_nn_ops.lrn
 
 
+def atrous_conv2d(value, filters, rate, padding, name=None):
+  """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
+
+  Computes a 2-D atrous convolution, also known as convolution with holes or
+  dilated convolution, given 4-D `value` and `filters` tensors. If the `rate`
+  parameter is equal to one, it performs regular 2-D convolution. If the `rate`
+  parameter is greater than one, it performs convolution with holes, sampling
+  the input values every `rate` pixels in the `height` and `width` dimensions.
+  This is equivalent to convolving the input with a set of upsampled filters,
+  produced by inserting `rate - 1` zeros between two consecutive values of the
+  filters along the `height` and `width` dimensions, hence the name atrous
+  convolution or convolution with holes (the French word trous means holes in
+  English).
+
+  More specifically:
+
+      output[b, i, j, k] = sum_{di, dj, q} filters[di, dj, q, k] *
+            value[b, i + rate * di, j + rate * dj, q]
+
+  Atrous convolution allows us to explicitly control how densely to compute
+  feature responses in fully convolutional networks. Used in conjunction with
+  bilinear interpolation, it offers an alternative to `conv2d_transpose` in
+  dense prediction tasks such as semantic image segmentation, optical flow
+  computation, or depth estimation. It also allows us to effectively enlarge
+  the field of view of filters without increasing the number of parameters or
+  the amount of computation.
+
+  For a description of atrous convolution and how it can be used for dense
+  feature extraction, please see: (Semantic Image Segmentation with Deep
+  Convolutional Nets and Fully Connected CRFs)[http://arxiv.org/abs/1412.7062].
+  The same operation is investigated further in (Multi-Scale Context Aggregation
+  by Dilated Convolutions)[http://arxiv.org/abs/1511.07122]. Previous works
+  that effectively use atrous convolution in different ways are, among others,
+  (OverFeat: Integrated Recognition, Localization and Detection using
+  Convolutional Networks) [http://arxiv.org/abs/1312.6229] and (Fast Image
+  Scanning with Deep Max-Pooling Convolutional Neural Networks)
+  [http://arxiv.org/abs/1302.1700]. Atrous convolution is also closely related
+  to the so-called noble identities in multi-rate signal processing.
+
+  There are many different ways to implement atrous convolution (see the refs
+  above). The implementation here reduces
+
+      atrous_conv2d(value, filters, rate, padding=padding)
+
+  to the following three operations:
+
+      paddings = ...
+      net = space_to_batch(value, paddings, block_size=rate)
+      net = conv2d(net, filters, strides=[1, 1, 1, 1], padding="VALID")
+      crops = ...
+      net = batch_to_space(net, crops, block_size=rate)
+
+  Advanced usage. Note the following optimization: A sequence of `atrous_conv2d`
+  operations with identical `rate` parameters, 'SAME' `padding`, and filters
+  with odd heights/ widths:
+
+      net = atrous_conv2d(net, filters1, rate, padding="SAME")
+      net = atrous_conv2d(net, filters2, rate, padding="SAME")
+      ...
+      net = atrous_conv2d(net, filtersK, rate, padding="SAME")
+
+  can be equivalently performed cheaper in terms of computation and memory as:
+
+      pad = ...  # padding so that the input dims are multiples of rate
+      net = space_to_batch(net, paddings=pad, block_size=rate)
+      net = conv2d(net, filters1, strides=[1, 1, 1, 1], padding="SAME")
+      net = conv2d(net, filters2, strides=[1, 1, 1, 1], padding="SAME")
+      ...
+      net = conv2d(net, filtersK, strides=[1, 1, 1, 1], padding="SAME")
+      net = batch_to_space(net, crops=pad, block_size=rate)
+
+  because a pair of consecutive `space_to_batch` and `batch_to_space` ops with
+  the same `block_size` cancel out when their respective `paddings` and `crops`
+  inputs are identical.
+
+  Args:
+    value: A 4-D `Tensor` of type `float`. It needs to be in the default "NHWC"
+      format. Its shape is `[batch, in_height, in_width, in_channels]`.
+    filters: A 4-D `Tensor` with the same type as `value` and shape
+      `[filter_height, filter_width, in_channels, out_channels]`. `filters`'
+      `in_channels` dimension must match that of `value`. Atrous convolution is
+      equivalent to standard convolution with upsampled filters with effective
+      height `filter_height + (filter_height - 1) * (rate - 1)` and effective
+      width `filter_width + (filter_width - 1) * (rate - 1)`, produced by
+      inserting `rate - 1` zeros along consecutive elements across the
+      `filters`' spatial dimensions.
+    rate: A positive int32. The stride with which we sample input values across
+      the `height` and `width` dimensions. Equivalently, the rate by which we
+      upsample the filter values by inserting zeros across the `height` and
+      `width` dimensions. In the literature, the same parameter is sometimes
+      called `input stride` or `dilation`.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    name: Optional name for the returned tensor.
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+
+  Raises:
+    ValueError: If input/output depth does not match `filters`' shape, or if
+      padding is other than `'VALID'` or `'SAME'`.
+  """
+  with ops.op_scope([value, filters], name, "atrous_conv2d") as name:
+    value = ops.convert_to_tensor(value, name="value")
+    filters = ops.convert_to_tensor(filters, name="filters")
+    value_shape = value.get_shape()
+    filter_shape = filters.get_shape()
+    if not value_shape[3].is_compatible_with(filter_shape[2]):
+      raise ValueError(
+          "value's input channels does not match filters' input channels, "
+          "{} != {}".format(value_shape[3], filter_shape[2]))
+    if rate < 1:
+      raise ValueError(
+          "rate {} cannot be less than one".format(rate))
+
+    if rate == 1:
+      value = gen_nn_ops.conv2d(input=value, filter=filters,
+                                strides=[1, 1, 1, 1], padding=padding)
+      return value
+
+    # We have two padding contributions. The first is used for converting "SAME"
+    # to "VALID". The second is required so that the height and width of the
+    # zero-padded value tensor are multiples of rate.
+
+    # Spatial dimensions of original input
+    in_height = int(value_shape[1])
+    in_width = int(value_shape[2])
+
+    # Spatial dimensions of the filters and the upsampled filters in which we
+    # introduce (rate - 1) zeros between consecutive filter values.
+    filter_height = int(filter_shape[0])
+    filter_width = int(filter_shape[1])
+    filter_height_up = filter_height + (filter_height - 1) * (rate - 1)
+    filter_width_up = filter_width + (filter_width - 1) * (rate - 1)
+
+    # Padding required to reduce to "VALID" convolution
+    if padding == "SAME":
+      pad_height = filter_height_up - 1
+      pad_width = filter_width_up - 1
+    elif padding == "VALID":
+      pad_height = 0
+      pad_width = 0
+    else:
+      raise ValueError("Invalid padding")
+    # When padding is "SAME" and the pad_height (pad_width) is odd, we pad more
+    # to bottom (right), following the same convention as conv2d().
+    pad_top = pad_height // 2
+    pad_bottom = pad_height - pad_top
+    pad_left = pad_width // 2
+    pad_right = pad_width - pad_left
+
+    # More padding so that rate divides the height and width of the input value
+    in_height = in_height + pad_top + pad_bottom
+    in_width = in_width + pad_left + pad_right
+    pad_bottom_extra = 0 if in_height % rate == 0 else rate - in_height % rate
+    pad_right_extra = 0 if in_width % rate == 0 else rate - in_width % rate
+
+    # The paddings argument to space_to_batch includes both padding components
+    space_to_batch_pad = [[pad_top, pad_bottom + pad_bottom_extra],
+                          [pad_left, pad_right + pad_right_extra]]
+    value = array_ops.space_to_batch(
+        input=value, paddings=space_to_batch_pad, block_size=rate)
+
+    value = gen_nn_ops.conv2d(input=value, filter=filters, strides=[1, 1, 1, 1],
+                              padding="VALID", name=name)
+
+    # The crops argument to batch_to_space is just the extra padding component
+    batch_to_space_crop = [[0, pad_bottom_extra], [0, pad_right_extra]]
+    value = array_ops.batch_to_space(
+        input=value, crops=batch_to_space_crop, block_size=rate)
+
+    return value
+
 def conv2d_transpose(value, filter, output_shape, strides, padding="SAME",
                      name=None):
   """The transpose of `conv2d`.
@@ -168,7 +340,6 @@ ops.RegisterShape("BiasAddV1")(common_shapes.bias_add_shape)
 
 
 ops.RegisterShape("BiasAddGradV1")(common_shapes.bias_add_grad_shape)
-
 
 
 def relu6(features, name=None):

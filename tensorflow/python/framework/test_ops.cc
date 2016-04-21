@@ -23,6 +23,8 @@ REGISTER_OP("KernelLabel").Output("result: string");
 
 REGISTER_OP("GraphDefVersion").Output("version: int32").SetIsStateful();
 
+REGISTER_OP("Old").Deprecated(8, "For reasons");
+
 namespace {
 enum KernelLabel { DEFAULT_LABEL, OVERLOAD_1_LABEL, OVERLOAD_2_LABEL };
 }  // namespace
@@ -78,5 +80,14 @@ class GraphDefVersionOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("GraphDefVersion").Device(DEVICE_CPU),
                         GraphDefVersionOp);
+
+class OldOp : public OpKernel {
+ public:
+  OldOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {}
+};
+
+REGISTER_KERNEL_BUILDER(Name("Old").Device(DEVICE_CPU), OldOp);
 
 }  // end namespace tensorflow

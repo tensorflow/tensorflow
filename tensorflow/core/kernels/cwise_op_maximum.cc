@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER5(BinaryOp, CPU, "Maximum", functor::maximum, Eigen::half, float,
+REGISTER5(BinaryOp, CPU, "Maximum", functor::maximum, float, Eigen::half,
           double, int32, int64);
 #if GOOGLE_CUDA
-REGISTER4(BinaryOp, GPU, "Maximum", functor::maximum, Eigen::half, float,
+REGISTER4(BinaryOp, GPU, "Maximum", functor::maximum, float, Eigen::half,
           double, int64);
 
 // A special GPU kernel for int32.

@@ -26,7 +26,7 @@ except ImportError:
 
 import numpy as np
 
-from tensorflow.python.platform.default import _gfile as gfile
+from tensorflow.python.platform import gfile
 
 from .categorical_vocabulary import CategoricalVocabulary
 

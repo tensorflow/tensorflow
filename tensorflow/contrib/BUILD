@@ -13,6 +13,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/ctc:ctc_py",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/framework:framework_py",
@@ -23,6 +24,7 @@ py_library(
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/skflow",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/contrib/testing:testing_py",

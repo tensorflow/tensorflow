@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -907,7 +908,7 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
     const string& partition_name = partition.first;
 
     GraphDef* graph_def = &partition.second;
-    VLOG(2) << "Created " << graph_def->DebugString() << " for "
+    VLOG(2) << "Created " << ProtoDebugString(*graph_def) << " for "
             << partition_name;
 
     // Give the device an opportunity to rewrite its subgraph.

@@ -201,9 +201,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
@@ -1530,3 +1531,26 @@ def _UnsortedSegmentSumShape(op):
 def _LinspaceShape(op):
   num = tensor_util.constant_value(op.inputs[2])
   return [tensor_shape.vector(num)]
+
+
+def reduced_shape(input_shape, axes):
+  """Helper function for reduction ops.
+
+  Args:
+    input_shape: 1-D Tensor, the shape of the Tensor being reduced.
+    axes: 1-D Tensor, the reduction axes.
+  Returns:
+    A 1-D Tensor, the output shape as if keep_dims were set to True.
+  """
+                                            # Example:
+  # cast needed for SparseTensor reductions
+  input_shape = to_int32(input_shape)       # [2, 3, 5, 7]
+  axes = to_int32(axes)                     # [1, 2]
+
+  input_rank = array_ops.size(input_shape)  # 4
+  axes_shape = array_ops.shape(axes)        # [2]
+  return gen_data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
+      [range(input_rank),                   # [0, 1, 2, 3]
+       axes],                               # [1, 2]
+      [input_shape,                         # [2, 3, 5, 7]
+       array_ops.fill(axes_shape, 1)])      # [1, 1]

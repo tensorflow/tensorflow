@@ -73,6 +73,7 @@ cc_library(
     ],
     linkopts = [
         "-Wl,-rpath,third_party/gpus/cuda/lib64",
+        "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib64",
     ],
     deps = [
         "//third_party/gpus/cuda:cudart",

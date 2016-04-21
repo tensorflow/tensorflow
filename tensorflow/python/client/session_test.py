@@ -29,6 +29,7 @@ from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -965,6 +966,14 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       with self.assertRaisesRegexp(ValueError, 'may not be fed'):
         sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
+
+  def testRunWithNoTargetsIsAnError(self):
+    with session.Session() as sess:
+      _ = constant_op.constant(5.0)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          'Must specify at least one target to fetch or execute.'):
+        sess.run([])
 
 
 if __name__ == '__main__':

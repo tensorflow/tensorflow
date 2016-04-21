@@ -83,6 +83,7 @@ message TestAllTypes {
   map<bool, NestedMessage> map_bool_to_message = 61;
   map<string, int64> map_string_to_int64 = 62;
   map<int64, string> map_int64_to_string = 63;
+  map<string, NestedMessage> another_map_string_to_message = 65;
 
   repeated int64 packed_repeated_int64 = 64 [packed = true];
 }
@@ -91,6 +92,8 @@ message TestAllTypes {
 message NestedTestAllTypes {
   NestedTestAllTypes child = 1;
   TestAllTypes payload = 2;
+
+  map<string, int64> map_string_to_int64 = 3;
 }
 
 message ForeignMessage {

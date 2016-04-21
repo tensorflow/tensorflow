@@ -134,9 +134,9 @@ def _compute_numeric_jacobian(x, x_shape, x_data, y, y_shape, delta):
   # will give us one row of the Jacobian matrix.
   for row in range(x_size):
     x_pos = x_data.copy()
+    x_neg = x_data.copy()
     x_pos.ravel().view(x_dtype)[row] += delta
     y_pos = y.eval(feed_dict={x: x_pos})
-    x_neg = x_data.copy()
     x_neg.ravel().view(x_dtype)[row] -= delta
     y_neg = y.eval(feed_dict={x: x_neg})
     diff = (y_pos - y_neg) / scale

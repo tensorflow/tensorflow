@@ -12,7 +12,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 py_library(
     name = "metrics_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
+    srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + glob(["python/metrics/*.py"]),
     srcs_version = "PY2AND3",
 )
 
@@ -22,6 +22,18 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/histogram_ops_test.py"],
     additional_deps = [
         ":metrics_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "classification_test",
+    srcs = ["python/metrics/classification_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":metrics_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
