@@ -19,7 +19,8 @@
 # The PIP installation is done using the --user flag.
 #
 # Usage:
-#   pip.sh CONTAINER_TYPE [--test_tutorials] [--integration_tests]
+#   pip.sh CONTAINER_TYPE [--mavx] [--mavx2]
+#                         [--test_tutorials] [--integration_tests]
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
@@ -39,6 +40,9 @@
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
 #
+# Use --mavx or --mavx2 to let bazel use --copt=-mavx or --copt=-mavx2 options
+# while building the pip package, respectively.
+#
 # If the --test_tutorials flag is set, it will cause the script to run the
 # tutorial tests (see test_tutorials.sh) after the PIP
 # installation and the Python unit tests-on-install step. Likewise,
@@ -48,18 +52,10 @@
 
 INSTALL_EXTRA_PIP_PACKAGES=${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}
 
-# Helper functions
-# Get the absolute path from a path
-abs_path() {
-    [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
-}
 
-
-# Exit after a failure
-die() {
-    echo $@
-    exit 1
-}
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/builds_common.sh"
 
 
 # Get the command line arguments
@@ -72,25 +68,37 @@ if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] && \
 fi
 
 DO_TEST_TUTORIALS=0
-for ARG in $@; do
-  if [[ "${ARG}" == "--test_tutorials" ]]; then
+DO_INTEGRATION_TESTS=0
+MAVX_FLAG=""
+while true; do
+  if [[ "${1}" == "--test_tutorials" ]]; then
     DO_TEST_TUTORIALS=1
+  elif [[ "${1}" == "--integration_tests" ]]; then
+    DO_INTEGRATION_TESTS=1
+  elif [[ "${1}" == "--mavx" ]]; then
+    MAVX_FLAG="--copt=-mavx"
+  elif [[ "${1}" == "--mavx2" ]]; then
+    MAVX_FLAG="--copt=-mavx2"
+  fi
+ 
+  shift
+  if [[ -z "${1}" ]]; then
+    break
   fi
 done
 
-DO_INTEGRATION_TESTS=0
-for ARG in $@; do
-  if [[ "${ARG}" == "--integration_tests" ]]; then
-    DO_INTEGRATION_TESTS=1
-  fi
-done
+if [[ ! -z "${MAVX_FLAG}" ]]; then
+  echo "Using MAVX flag: ${MAVX_FLAG}"
+fi
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
 if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
-  bazel build -c opt ${PIP_BUILD_TARGET} || die "Build failed."
+  bazel build -c opt ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+      die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
-  bazel build -c opt --config=cuda ${PIP_BUILD_TARGET} || die "Build failed."
+  bazel build -c opt --config=cuda ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+      die "Build failed."
   GPU_FLAG="--gpu"
 else
   die "Unrecognized container type: \"${CONTAINER_TYPE}\""
@@ -121,7 +129,7 @@ echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 # Build PIP Wheel file
 PIP_TEST_ROOT="pip_test"
 PIP_WHL_DIR="${PIP_TEST_ROOT}/whl"
-PIP_WHL_DIR=$(abs_path ${PIP_WHL_DIR})  # Get absolute path
+PIP_WHL_DIR=$(realpath ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
 bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} || \
     die "build_pip_package FAILED"
@@ -191,20 +199,19 @@ if [[ ! -z "${NO_TEST_ON_INSTALL}" ]] &&
 fi
 
 # Call test_installation.sh to perform test-on-install
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-"${DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} || \
+"${SCRIPT_DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} ||
     die "PIP tests-on-install FAILED"
 
 # Optional: Run the tutorial tests
 if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then
-  "${DIR}/test_tutorials.sh" --virtualenv || \
+  "${SCRIPT_DIR}/test_tutorials.sh" --virtualenv || \
       die "PIP tutorial tests-on-install FAILED"
 fi
 
 # Optional: Run integration tests
 if [[ "${DO_INTEGRATION_TESTS}" == "1" ]]; then
-  "${DIR}/integration_tests.sh" --virtualenv || \
+  "${SCRIPT_DIR}/integration_tests.sh" --virtualenv || \
       die "Integration tests on install FAILED"
 fi
 

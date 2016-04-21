@@ -44,6 +44,10 @@ TIMEOUT=1800
 INTEG_TEST_ROOT="$(mktemp -d)"
 LOGS_DIR=pip_test/integration_tests/logs
 
+# Current script directory
+SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+source "${SCRIPT_DIR}/builds_common.sh"
+
 # Helper functions
 cleanup() {
   rm -rf $INTEG_TEST_ROOT
@@ -56,49 +60,6 @@ die() {
   exit 1
 }
 
-
-realpath() {
-  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
-}
-
-
-# TODO(cais): This is similar to code in both test_tutorials.sh and
-# test_installation.sh. It should be pulled into a common library.
-run_in_directory() {
-  DEST_DIR="$1"
-  LOG_FILE="$2"
-  INTEG_SCRIPT="$3"
-  shift 3
-  SCRIPT_ARGS=("$@")
-
-  # Get the absolute path of the log file
-  LOG_FILE_ABS=$(realpath "${LOG_FILE}")
-
-  cp "${INTEG_SCRIPT}" "${DEST_DIR}"/
-  SCRIPT_BASENAME=$(basename "${INTEG_SCRIPT}")
-
-  if [[ ! -f "${DEST_DIR}/${SCRIPT_BASENAME}" ]]; then
-    echo "FAILED to copy script ${INTEG_SCRIPT} to temporary directory "\
-"${DEST_DIR}"
-    return 1
-  fi
-
-  pushd "${DEST_DIR}" > /dev/null
-
-  "${TIMEOUT_BIN}" --preserve-status ${TIMEOUT} \
-    "${PYTHON_BIN_PATH}" "${SCRIPT_BASENAME}" ${SCRIPT_ARGS[@]} 2>&1 \
-    > "${LOG_FILE_ABS}"
-
-  rm -f "${SCRIPT_BASENAME}"
-  popd > /dev/null
-
-  if [[ $? != 0 ]]; then
-    echo "Integration test \"${SCRIPT_BASENAME}\" FAILED"
-    return 1
-  fi
-
-  return 0
-}
 
 # Determine the binary path for "timeout"
 TIMEOUT_BIN="timeout"
@@ -157,76 +118,5 @@ test_ffmpeg_lib() {
 
 
 # Run the integration tests
-# TODO(cais): This is similar to code in both test_tutorials.sh and
-# test_installation.sh. It should be pulled into a common library.
-NUM_INTEG_TESTS=$(echo "${INTEG_TESTS}" | wc -w)
-INTEG_TESTS=(${INTEG_TESTS})
-
-COUNTER=0
-PASSED_COUNTER=0
-FAILED_COUNTER=0
-FAILED_TESTS=""
-FAILED_TEST_LOGS=""
-SKIPPED_COUNTER=0
-for INTEG_TEST in ${INTEG_TESTS[@]}; do
-  ((COUNTER++))
-  STAT_STR="(${COUNTER} / ${NUM_INTEG_TESTS})"
-
-  if [[ "${TF_BUILD_INTEG_TEST_BLACKLIST}" == *"${INTEG_TEST}"* ]]; then
-    ((SKIPPED_COUNTER++))
-    echo "${STAT_STR} Blacklisted integration test SKIPPED: ${INTEG_TEST}"
-    continue
-  fi
-
-  START_TIME=$(date +'%s')
-
-  LOG_FILE="${LOGS_DIR}/${INTEG_TEST}.log"
-  rm -rf ${LOG_FILE} ||
-  die "Unable to remove existing log file: ${LOG_FILE}"
-
-  "test_${INTEG_TEST}" "${LOG_FILE}"
-  TEST_RESULT=$?
-
-  END_TIME=$(date +'%s')
-  ELAPSED_TIME="$((${END_TIME} - ${START_TIME})) s"
-
-  if [[ ${TEST_RESULT} == 0 ]]; then
-    ((PASSED_COUNTER++))
-    echo "${STAT_STR} Integration test PASSED: ${INTEG_TEST} "\
-"(Elapsed time: ${ELAPSED_TIME})"
-  else
-    ((FAILED_COUNTER++))
-    FAILED_TESTS="${FAILED_TESTS} ${INTEG_TEST}"
-    FAILED_TEST_LOGS="${FAILED_TEST_LOGS} ${LOG_FILE}"
-
-    echo "${STAT_STR} Integration test FAILED: ${INTEG_TEST} "\
-"(Elapsed time: ${ELAPSED_TIME})"
-
-    echo "============== BEGINS failure log content =============="
-    cat ${LOG_FILE}
-    echo "============== ENDS failure log content =============="
-    echo ""
-  fi
-done
-
-echo "${NUM_INTEG_TESTS} integration test(s): "\
-"${PASSED_COUNTER} passed; ${FAILED_COUNTER} failed; ${SKIPPED_COUNTER} skipped"
-
-if [[ ${FAILED_COUNTER} -eq 0  ]]; then
-  echo ""
-  echo "Integration tests SUCCEEDED"
-
-  cleanup
-  exit 0
-else
-  echo "FAILED test(s):"
-  FAILED_TEST_LOGS=($FAILED_TEST_LOGS)
-  FAIL_COUNTER=0
-  for TEST_NAME in ${FAILED_TESTS}; do
-    echo "  ${TEST_NAME} (Log @: ${FAILED_TEST_LOGS[${FAIL_COUNTER}]})"
-    ((FAIL_COUNTER++))
-  done
-
-  echo ""
-  die "Integration tests FAILED"
-fi
+test_runner "integration test-on-install" \
+    "${INTEG_TESTS}" "${TF_BUILD_INTEG_TEST_BLACKLIST}" "${LOGS_DIR}"
