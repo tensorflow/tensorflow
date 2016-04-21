@@ -169,9 +169,10 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     opseg->AddHold(session);
 
     // Function library runtime.
-    unit->lib = NewFunctionLibraryRuntime(
-        unit->device, runner, def->versions().producer(), item->lib_def,
-        graph_options.optimizer_options());
+    unit->lib =
+        NewFunctionLibraryRuntime(worker_env_->device_mgr, unit->device, runner,
+                                  def->versions().producer(), item->lib_def,
+                                  graph_options.optimizer_options());
 
     // Construct the root executor for the subgraph.
     params.device = unit->device;
@@ -199,7 +200,8 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     };
 
     optimizer.Optimize(lib, params.device, &subgraph);
-    s = ValidateMemoryTypes(DeviceType(unit->device->device_type()), subgraph);
+    s = EnsureMemoryTypes(DeviceType(unit->device->device_type()),
+                          unit->device->name(), subgraph);
     if (!s.ok()) {
       delete subgraph;
       break;

@@ -1222,6 +1222,7 @@ tf_cc_tests(
             "common_runtime/gpu/*_test.cc",
             # Run by tests below
             "common_runtime/constant_folding_test.cc",
+            "common_runtime/memory_types_test.cc",
             "common_runtime/direct_session*_test.cc",
             "common_runtime/function_test.cc",
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
@@ -1284,6 +1285,31 @@ tf_cc_tests(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/memory_types_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cast_op",
+        "//third_party/eigen3",
     ],
 )
 

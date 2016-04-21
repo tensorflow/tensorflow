@@ -48,6 +48,10 @@ TEST(MemoryTypeChecker, Int32NotOk) {
   // There is no kernel for casting int32/host memory to float/device
   // memory.
   EXPECT_TRUE(errors::IsInternal(ValidateMemoryTypes(DEVICE_GPU, g)));
+
+  // But we can insert _HostSend/_HostRecv to ensure the invariant.
+  TF_EXPECT_OK(EnsureMemoryTypes(DEVICE_GPU, "/gpu:0", g));
+  TF_EXPECT_OK(ValidateMemoryTypes(DEVICE_GPU, g));
 #endif  // GOOGLE_CUDA
   delete g;
 }

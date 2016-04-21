@@ -149,7 +149,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     lib_def_ = new FunctionLibraryDefinition(proto);
     delete lib_;
     OptimizerOptions opts;
-    lib_ = NewFunctionLibraryRuntime(device_, FunctionTestSchedClosure,
+    lib_ = NewFunctionLibraryRuntime(nullptr, device_, FunctionTestSchedClosure,
                                      TF_GRAPH_DEF_VERSION, lib_def_, opts);
   }
 

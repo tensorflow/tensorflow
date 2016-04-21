@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -155,9 +157,6 @@ class ArgOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
-REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_GPU), ArgOp);
-
 class RetvalOp : public OpKernel {
  public:
   explicit RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -183,8 +182,29 @@ class RetvalOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
+REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
 REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
-REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_GPU), RetvalOp);
+
+#define REGISTER_GPU_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_Arg").Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp); \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_Retval").Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
+REGISTER_GPU_KERNELS(Eigen::half);
+REGISTER_GPU_KERNELS(float);
+REGISTER_GPU_KERNELS(double);
+#undef REGISTER_GPU_KERNELS
+
+REGISTER_KERNEL_BUILDER(Name("_Arg")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        ArgOp);
+REGISTER_KERNEL_BUILDER(Name("_Retval")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input")
+                            .TypeConstraint<int32>("T"),
+                        RetvalOp);
 
 class PassOn : public OpKernel {
  public:
@@ -208,8 +228,8 @@ static const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  public:
-  FunctionLibraryRuntimeImpl(Device* device, Runner runner,
-                             int graph_def_version,
+  FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Device* device,
+                             Runner runner, int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options);
 
@@ -233,6 +253,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  private:
   typedef FunctionLibraryRuntimeImpl ME;
 
+  const DeviceMgr* const device_mgr_;
   Device* const device_;
   Runner runner_ = nullptr;
   const int graph_def_version_;
@@ -272,10 +293,11 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
-    Device* device, Runner runner, int graph_def_version,
+    const DeviceMgr* dmgr, Device* device, Runner runner, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options)
-    : device_(device),
+    : device_mgr_(dmgr),
+      device_(device),
       runner_(runner),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
@@ -565,6 +587,12 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   CopyGraph(*fbody->graph, g);
 
   optimizer_.Optimize(this, device(), &g);
+  auto s = EnsureMemoryTypes(DeviceType(device()->device_type()),
+                             device()->name(), g);
+  if (!s.ok()) {
+    delete g;
+    return Status::OK();
+  }
 
   // Creates an executor based on the g.  This must be done without
   // holding mu_ because create_kernel_ calls back into the library.
@@ -638,12 +666,17 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = runner_;
+  // TODO(zhifengc): we can avoid creating rendez here if we know
+  // there is no send/recv nodes in the graph.
+  auto* rendez = new IntraProcessRendezvous(device_mgr_);
+  exec_args.rendezvous = rendez;
   item->exec->RunAsync(
       // Executor args
       exec_args,
       // Done callback.
-      [item, frame, rets, done](const Status& status) {
+      [item, frame, rets, rendez, done](const Status& status) {
         item->Unref();
+        rendez->Unref();
         Status s = status;
         if (s.ok()) {
           s = frame->GetRetvals(rets);
@@ -660,10 +693,10 @@ bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    Device* device, Runner runner, int graph_def_version,
+    const DeviceMgr* dmgr, Device* device, Runner runner, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return new FunctionLibraryRuntimeImpl(device, runner, graph_def_version,
+  return new FunctionLibraryRuntimeImpl(dmgr, device, runner, graph_def_version,
                                         lib_def, optimizer_options);
 }
 

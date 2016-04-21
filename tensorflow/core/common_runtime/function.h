@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -27,6 +28,7 @@ namespace tensorflow {
 
 // Creates a FunctionLibraryRuntime, which instantiates functions
 // defined in "lib_def" and executes functions on the "device".
+// "device_mgr" must contain the "device".
 //
 // The returned object does not take ownerships of "device" or
 // "lib_def".  The caller must ensure "device" and "lib_def" outlives
@@ -34,8 +36,8 @@ namespace tensorflow {
 typedef std::function<void()> Closure;
 typedef std::function<void(Closure)> Runner;
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    Device* device, Runner runner, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+    const DeviceMgr* device_mgr, Device* device, Runner runner,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an
