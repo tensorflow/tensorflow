@@ -641,12 +641,12 @@ class GradLoopState(object):
         if enter_op:
           # Special case: cur_value comes from a constant Enter node.
           cur_value = enter_op.inputs[0]
-          if self._outer_grad_state:
-            cur_grad_state = cur_grad_state.outer_grad_state
-          else:
+          cur_grad_state = cur_grad_state.outer_grad_state
+          if cur_grad_state is None:
             # We are now outside all nested loops for this gradient(),
             # so `value` is a loop invariant and there is no need to
-            # save the history of value.
+            # save the history of value. Just make cur_value to enter
+            # the right control flow context.
             real_value = self._grad_context.AddValue(cur_value)
             break
         else:
@@ -1111,6 +1111,20 @@ def cond(pred, fn1, fn2, name=None):
 
   `fn1` and `fn2` both return lists of output tensors. `fn1` and `fn2` must have
   the same non-zero number and type of outputs.
+
+  Note that the conditional execution applies only to the operations defined in
+  fn1 and fn2. Consider the following simple program:
+
+  ```python
+  z = tf.mul(a, b)
+  result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
+  ```
+
+  If x < y, the tf.add operation will be executed and tf.square
+  operation will not be executed. Since z is needed for at least one
+  branch of the cond, the tf.mul operation is always executed, unconditionally.
+  Although this behavior is consistent with the dataflow model of TensorFlow,
+  it has occasionally surprised some users who expected a lazier semantics.
 
   Args:
     pred: A scalar determining whether to return the result of `fn1` or `fn2`.
@@ -1604,6 +1618,19 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
   be appropriately forwarded between loops and during gradient calculations.
 
   While `cond` evaluates to true, `body` is executed.
+
+  `while_loop` implements non-strict semantics, enabling multiple iterations
+  to run in parallel. The maximum number of parallel iterations can be
+  controlled by `parallel_iterations`, which gives users some control over
+  memory consumption and execution order. For correct programs, `while_loop`
+  should return the same result for any parallel_iterations > 0.
+
+  For training, TensorFlow remembers the tensors that are produced in the
+  forward inference but needed in back propagation. These tensors can be a
+  main source of memory consumption and often cause OOM problems when training
+  on GPUs.  When the flag swap_memory is true, we swap out these tensors from
+  GPU to CPU.  This for example allows us to train RNN models with very long
+  sequences and large batches.
 
   Args:
     cond: The termination condition of the loop.
