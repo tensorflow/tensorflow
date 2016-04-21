@@ -28,7 +28,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adadelta algorithm. 
 
   See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
-  ([pdf](http://arxiv.org/pdf/1212.570.pdf))
+  ([pdf](http://arxiv.org/pdf/1212.5701.pdf))
  
   @@__init__
   """

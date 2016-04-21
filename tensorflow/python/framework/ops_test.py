@@ -767,6 +767,7 @@ class CollectionTest(test_util.TensorFlowTestCase):
     self.assertEqual([], g.get_collection("nothing"))
     self.assertEqual([27, blank1, blank2], g.get_collection("blah"))
     self.assertEqual([blank1], g.get_collection("blah", "prefix"))
+    self.assertEqual([blank1], g.get_collection("blah", ".*x"))
 
     # Make sure that get_collection() returns a first-level
     # copy of the collection, while get_collection_ref() returns

@@ -52,6 +52,7 @@ def get_module_to_name():
     tf.test: "tf.test",
     tf.contrib.layers: "tf.contrib.layers",
     tf.contrib.util: "tf.contrib.util",
+    tf.contrib.copy_graph: "tf.contrib.copy_graph",
   }
 
 def all_libraries(module_to_name, members, documented):
@@ -124,6 +125,8 @@ def all_libraries(module_to_name, members, documented):
       library("test", "Testing", tf.test),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
+      library("contrib.copy_graph", "Copying Graph Elements (contrib)", 
+              tf.contrib.copy_graph),
   ]
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",

@@ -25,11 +25,6 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string('training_library_base_dir', '',
-                    'Directory to look for inference library file.')
 
 TRAINING_OPS_FILE = '_training_ops.so'
 
@@ -102,12 +97,12 @@ def _UpdateFertileSlotsShape(unused_op):
 # there's not yet any guarantee that the shared object exists.
 # In which case, "import tensorflow" will always crash, even for users that
 # never use contrib.
-def Load():
+def Load(library_base_dir=''):
   """Load training ops library and return the loaded module."""
   with _ops_lock:
     global _training_ops
     if not _training_ops:
-      data_files_path = os.path.join(FLAGS.training_library_base_dir,
+      data_files_path = os.path.join(library_base_dir,
                                      tf.resource_loader.get_data_files_path())
       tf.logging.info('data path: %s', data_files_path)
       _training_ops = tf.load_op_library(os.path.join(

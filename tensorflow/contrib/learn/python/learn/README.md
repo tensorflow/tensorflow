@@ -1,32 +1,29 @@
 |License| |Join the chat at [https://gitter.im/tensorflow/skflow](https://gitter.im/tensorflow/skflow)|
 
-TF Learn (aka Scikit Flow)
-===========
+# TF Learn (aka Scikit Flow)
 
 This is a simplified interface for TensorFlow, to get people started on predictive analytics and data mining.
 
 Library covers variety of needs from linear models to *Deep Learning* applications like text and image understanding.
 
-Why *TensorFlow*? 
------------------
-- TensorFlow provides a good backbone for building different shapes of machine learning applications. 
+### Why *TensorFlow*?
+
+- TensorFlow provides a good backbone for building different shapes of machine learning applications.
 - It will continue to evolve both in the distributed direction and as general pipelinining machinery.
 
-Why *TensorFlow Learn* (Scikit Flow)? 
------------------
-- To smooth the transition from the Scikit Learn world of one-liner machine learning into the more open world of building different shapes of ML models. You can start by using fit/predict and slide into TensorFlow APIs as you are getting comfortable. 
+### Why *TensorFlow Learn* (Scikit Flow)?
+
+- To smooth the transition from the Scikit Learn world of one-liner machine learning into the more open world of building different shapes of ML models. You can start by using fit/predict and slide into TensorFlow APIs as you are getting comfortable.
 - To provide a set of reference models that would be easy to integrate with existing code.
 
-Installation
-============
+## Installation
 
 Optionally you can install Scikit Learn and Pandas for additional functionality.
 
 Then you can simply import `learn` via `from tensorflow.contrib.learn` or use `tf.contrib.learn`.
 
 
-Tutorial
---------
+### Tutorial
 
 -  `Introduction to Scikit Flow and Why You Want to Start Learning
    TensorFlow <https://medium.com/@ilblackdragon/tensorflow-tutorial-part-1-c559c63c0cb1>`__
@@ -37,27 +34,24 @@ Tutorial
 -  `Scikit Flow Key Features Illustrated <http://terrytangyuan.github.io/2016/03/14/scikit-flow-intro/>`__
 -  More coming soon.
 
-Community
----------
+### Community
+
 - Twitter `#skflow <https://twitter.com/search?q=skflow&src=typd>`__.
 - StackOverflow with `skflow tag <http://stackoverflow.com/questions/tagged/skflow>`__ for questions and struggles.
 - Github `issues <https://github.com/tensorflow/tensorflow/issues>`__ for technical discussions and feature requests. 
 - `Gitter channel <https://gitter.im/tensorflow/skflow>`__ for non-trivial discussions.
 
-Usage
------
+### Usage
 
 Below are few simple examples of the API. For more examples, please see `examples <https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/skflow>`__.
 
-General tips
-~~~~~~~~~~~~
+## General tips
 
 -  It's useful to re-scale dataset before passing to estimator to 0 mean and unit standard deviation. Stochastic Gradient Descent doesn't always do the right thing when variable are very different scale.
 
 -  Categorical variables should be managed before passing input to the estimator. 
 
-Linear Classifier
-~~~~~~~~~~~~~~~~~
+## Linear Classifier
 
 Simple linear classification:
 
@@ -71,8 +65,7 @@ Simple linear classification:
     score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
     print("Accuracy: %f" % score)
 
-Linear Regressor
-~~~~~~~~~~~~~~~~
+## Linear Regressor
 
 Simple linear regression:
 
@@ -87,8 +80,7 @@ Simple linear regression:
     score = metrics.mean_squared_error(regressor.predict(X), boston.target)
     print ("MSE: %f" % score)
 
-Deep Neural Network
-~~~~~~~~~~~~~~~~~~~
+## Deep Neural Network
 
 Example of 3 layer network with 10, 20 and 10 hidden units respectively:
 
@@ -102,8 +94,7 @@ Example of 3 layer network with 10, 20 and 10 hidden units respectively:
     score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
     print("Accuracy: %f" % score)
 
-Custom model
-~~~~~~~~~~~~
+## Custom model
 
 Example of how to pass a custom model to the TensorFlowEstimator:
 
@@ -123,8 +114,7 @@ Example of how to pass a custom model to the TensorFlowEstimator:
     score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
     print("Accuracy: %f" % score)
 
-Saving / Restoring models
-~~~~~~~~~~~~~~~~~~~~~~~~~
+## Saving / Restoring models
 
 Each estimator has a ``save`` method which takes folder path where all model information will be saved. For restoring you can just call ``learn.TensorFlowEstimator.restore(path)`` and it will return object of your class.
 
@@ -139,8 +129,7 @@ Some example code:
     new_classifier = TensorFlowEstimator.restore('/tmp/tf_examples/my_model_2')
     new_classifier.predict(...)
 
-Summaries
-~~~~~~~~~
+## Summaries
 
 To get nice visualizations and summaries you can use ``logdir`` parameter on ``fit``. It will start writing summaries for ``loss`` and histograms for variables in your model. You can also add custom summaries in your custom model function by calling ``tf.summary`` and passing Tensors to report.
 
@@ -161,8 +150,7 @@ Graph visualization: |Text classification RNN Graph|
 
 Loss visualization: |Text classification RNN Loss|
 
-More examples
--------------
+## More examples
 
 See `examples folder <https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/skflow>`__ for:
 

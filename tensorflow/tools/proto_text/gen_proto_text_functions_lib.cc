@@ -28,6 +28,7 @@ using ::tensorflow::protobuf::EnumDescriptor;
 using ::tensorflow::protobuf::FieldDescriptor;
 using ::tensorflow::protobuf::FieldOptions;
 using ::tensorflow::protobuf::FileDescriptor;
+using ::tensorflow::protobuf::OneofDescriptor;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
@@ -45,15 +46,6 @@ namespace {
 // Note that on the generated code, various pieces are not optimized - for
 // example: map input and output, Cord input and output, comparisons against
 // the field names (it's a loop over all names), and tracking of has_seen.
-//
-// The generated API has, for enums and messages defined in the proto file:
-// 1. For each message:
-//    * ProtoDebugString(m): same as msg.DebugString()
-//    * ProtoShortDebugString(m): same as msg.ShorDebugString()
-//    * ProtoParseFromString(s, m): same as TextFormat.ParseFromString(s, &m);
-// 2. For each enum:
-//    * EnumName_<EnumTypeName>(enum_value): same as <EnumTypeName>(enum_value)
-//      in proto.
 class Generator {
  public:
   Generator(const string& tf_header_prefix)
@@ -309,8 +301,22 @@ void Generator::AppendFieldAppend(const FieldDescriptor& field) {
                            "msg." + name + "(i)");
     Unnest().Print("}");
   } else {
-    AppendFieldValueAppend(field, true /* omit_default */,
-                           "msg." + name + "()");
+    const auto* oneof = field.containing_oneof();
+    if (oneof != nullptr) {
+      string camel_name = field.camelcase_name();
+      camel_name[0] = toupper(camel_name[0]);
+      Print("if (msg.", oneof->name(), "_case() == ",
+            GetQualifiedName(*oneof->containing_type()), "::k", camel_name,
+            ") {");
+      Nest();
+      AppendFieldValueAppend(field, false /* omit_default */,
+                             "msg." + name + "()");
+      Unnest();
+      Print("}");
+    } else {
+      AppendFieldValueAppend(field, true /* omit_default */,
+                             "msg." + name + "()");
+    }
   }
 }
 
@@ -585,9 +591,18 @@ void Generator::AppendDebugStringFunctions(const Descriptor& md) {
   SetOutput(&cc_);
   Print().Print("namespace internal {").Print();
   Print(sig, " {").Nest();
+  std::vector<const FieldDescriptor*> fields;
   for (int i = 0; i < md.field_count(); ++i) {
+    fields.push_back(md.field(i));
+  }
+  std::sort(fields.begin(), fields.end(),
+            [](const FieldDescriptor* left, const FieldDescriptor* right) {
+              return left->number() < right->number();
+            });
+
+  for (const FieldDescriptor* field : fields) {
     SetOutput(&cc_);
-    AppendFieldAppend(*md.field(i));
+    AppendFieldAppend(*field);
   }
   Unnest().Print("}").Print().Print("}  // namespace internal");
 }

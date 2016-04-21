@@ -24,12 +24,11 @@ from __future__ import print_function
 
 from sklearn import metrics
 import tensorflow as tf
-from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.contrib import skflow
 
 ### Download and load MNIST data.
 
-mnist = input_data.read_data_sets('MNIST_data')
+mnist = skflow.datasets.load_dataset('mnist')
 
 ### Linear classifier.
 

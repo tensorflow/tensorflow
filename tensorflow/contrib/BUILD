@@ -27,6 +27,7 @@ py_library(
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/contrib/copy_graph:copy_graph_py",
     ],
 )
 

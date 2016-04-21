@@ -405,7 +405,6 @@ TEST(EigenSpatialConvolutionsTest, StridedSpatialConvolution) {
   }
 }
 
-
 TEST(EigenSpatialConvolutionsTest, KernelSmallerThanStride) {
   const int input_depth = 2;
   const int input_rows = 3;

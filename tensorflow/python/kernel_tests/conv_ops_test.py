@@ -327,11 +327,26 @@ class Conv2DTest(tf.test.TestCase):
                        expected=expected_output)
 
   def testConv2DKernelSmallerThanStrideSame(self):
-    expected_output = [1, 3, 7, 9]
     self._VerifyValues(tensor_in_sizes=[1, 3, 3, 1],
                        filter_in_sizes=[1, 1, 1, 1],
                        strides=[2, 2], padding="SAME",
-                       expected=expected_output)
+                       expected=[1, 3, 7, 9])
+
+    self._VerifyValues(tensor_in_sizes=[1, 4, 4, 1],
+                       filter_in_sizes=[1, 1, 1, 1],
+                       strides=[2, 2], padding="SAME",
+                       expected=[1, 3, 9, 11])
+
+    self._VerifyValues(tensor_in_sizes=[1, 4, 4, 1],
+                       filter_in_sizes=[2, 2, 1, 1],
+                       strides=[3, 3], padding="SAME",
+                       expected=[44, 28, 41, 16])
+
+    # TODO this currently fails.
+    #self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
+    #                   filter_in_sizes=[2, 2, 1, 1],
+    #                   strides=[4, 4], padding="SAME",
+    #                   expected=[72, 112, 392, 432])
 
   # Testing for backprops
   def _RunAndVerifyBackpropInput(self, input_sizes, filter_sizes, output_sizes,
