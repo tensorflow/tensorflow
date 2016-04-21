@@ -661,6 +661,11 @@ class Supervisor(object):
     Returns:
       A Session object that can be used to drive the model.
     """
+    # For users who recreate the session with prepare_or_wait_for_session(), we
+    # need to clear the coordinator's stop_event so that threads managed by the
+    # coordinator can run.
+    self._coord.clear_stop()
+
     if self._is_chief:
       sess = self._session_manager.prepare_session(
           master, init_op=self.init_op, saver=self.saver,
@@ -668,11 +673,6 @@ class Supervisor(object):
           max_wait_secs=max_wait_secs, config=config,
           init_feed_dict=self._init_feed_dict, init_fn=self._init_fn)
       self._write_graph()
-      # For users who recreate the session with
-      # prepare_or_wait_for_session(), we need to clear the
-      # coordinator's stop_event so that threads managed by the
-      # coordinator can run.
-      self._coord.clear_stop()
       if start_standard_services:
         self.start_standard_services(sess)
     else:
