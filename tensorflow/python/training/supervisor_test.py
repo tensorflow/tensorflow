@@ -107,6 +107,76 @@ class SupervisorTest(tf.test.TestCase):
       self.assertTrue(sv.should_stop())
       self.assertEqual(3, last_step)
 
+  def _csv_data(self, logdir):
+    # Create a small data file with 3 CSV records.
+    data_path = os.path.join(logdir, "data.csv")
+    with open(data_path, "w") as f:
+      f.write("1,2,3\n")
+      f.write("4,5,6\n")
+      f.write("7,8,9\n")
+    return data_path
+
+  def testManagedEndOfInputOneQueue(self):
+    # Tests that the supervisor finishes without an error when using
+    # a fixed number of epochs, reading from a single queue.
+    logdir = self._TestDir("managed_end_of_input_one_queue")
+    os.makedirs(logdir)
+    data_path = self._csv_data(logdir)
+    with tf.Graph().as_default():
+      # Create an input pipeline that reads the file 3 times.
+      filename_queue = tf.train.string_input_producer([data_path], num_epochs=3)
+      reader = tf.TextLineReader()
+      _, csv = reader.read(filename_queue)
+      rec = tf.decode_csv(csv, record_defaults=[[1], [1], [1]])
+      sv = tf.train.Supervisor(logdir=logdir)
+      with sv.managed_session("") as sess:
+        while not sv.should_stop():
+          sess.run(rec)
+
+  def testManagedEndOfInputTwoQueues(self):
+    # Tests that the supervisor finishes without an error when using
+    # a fixed number of epochs, reading from two queues, the second
+    # one producing a batch from the first one.
+    logdir = self._TestDir("managed_end_of_input_two_queues")
+    os.makedirs(logdir)
+    data_path = self._csv_data(logdir)
+    with tf.Graph().as_default():
+      # Create an input pipeline that reads the file 3 times.
+      filename_queue = tf.train.string_input_producer([data_path], num_epochs=3)
+      reader = tf.TextLineReader()
+      _, csv = reader.read(filename_queue)
+      rec = tf.decode_csv(csv, record_defaults=[[1], [1], [1]])
+      shuff_rec = tf.train.shuffle_batch(rec, 1, 6, 4)
+      sv = tf.train.Supervisor(logdir=logdir)
+      with sv.managed_session("") as sess:
+        while not sv.should_stop():
+          sess.run(shuff_rec)
+
+  def testManagedMainErrorTwoQueues(self):
+    # Tests that the supervisor correctly raises a main loop
+    # error even when using multiple queues for input.
+    logdir = self._TestDir("managed_main_error_two_queues")
+    os.makedirs(logdir)
+    data_path = self._csv_data(logdir)
+    with self.assertRaisesRegexp(RuntimeError, "fail at step 3"):
+      with tf.Graph().as_default():
+        # Create an input pipeline that reads the file 3 times.
+        filename_queue = tf.train.string_input_producer([data_path],
+                                                        num_epochs=3)
+        reader = tf.TextLineReader()
+        _, csv = reader.read(filename_queue)
+        rec = tf.decode_csv(csv, record_defaults=[[1], [1], [1]])
+        shuff_rec = tf.train.shuffle_batch(rec, 1, 6, 4)
+        sv = tf.train.Supervisor(logdir=logdir)
+        with sv.managed_session("") as sess:
+          for step in range(9):
+            if sv.should_stop():
+              break
+            elif step == 3:
+              raise RuntimeError("fail at step 3")
+            else:
+              sess.run(shuff_rec)
+
   def testSessionConfig(self):
     logdir = self._TestDir("session_config")
     with tf.Graph().as_default():
