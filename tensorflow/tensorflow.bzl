@@ -15,7 +15,6 @@ def _parse_bazel_version(bazel_version):
     version_tuple += (int(number),)
   return version_tuple
 
-
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
   if "bazel_version" in dir(native) and native.bazel_version:
@@ -28,8 +27,10 @@ def check_version(bazel_version):
 
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
-load("//tensorflow/core:platform/default/build_config_root.bzl",
-     "tf_cuda_tests_tags")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 # List of proto files for android builds
 def tf_android_core_proto_sources():
@@ -105,7 +106,6 @@ def tf_copts():
                   "//tensorflow:darwin": [],
                   "//conditions:default": ["-pthread"]}))
 
-
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
 def tf_gen_op_libs(op_lib_names):
@@ -119,7 +119,6 @@ def tf_gen_op_libs(op_lib_names):
                       visibility=["//visibility:public"],
                       alwayslink=1,
                       linkstatic=1,)
-
 
 def tf_gen_op_wrapper_cc(name, out_ops_file, pkg=""):
   # Construct an op generator binary for these ops.
@@ -144,7 +143,6 @@ def tf_gen_op_wrapper_cc(name, out_ops_file, pkg=""):
       tools=[":" + tool],
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
            "$(location :" + out_ops_file + ".cc) " + include_internal))
-
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate individual C++ .cc and .h
@@ -183,7 +181,6 @@ def tf_gen_op_wrappers_cc(name,
                     copts=tf_copts(),
                     alwayslink=1,)
 
-
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
                          require_shape_functions=False):
@@ -221,7 +218,6 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
                         "//tensorflow/python:framework_for_generated_wrappers",
                     ],)
 
-
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
@@ -238,7 +234,6 @@ def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
                  linkopts=["-lpthread", "-lm"],
                  linkstatic=linkstatic,
                  tags=tags,)
-
 
 def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium"):
   tf_cc_test(name=name,
@@ -312,7 +307,6 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
 
-
 def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
                       deps=None, alwayslink=1, **kwargs):
   """A rule to build a TensorFlow OpKernel.
@@ -371,13 +365,11 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
       deps = deps,
       **kwargs)
 
-
 def tf_kernel_libraries(name, prefixes, deps=None, **kwargs):
   """Makes one target per prefix, and one target that includes them all."""
   for p in prefixes:
     tf_kernel_library(name=p, prefix=p, deps=deps, **kwargs)
   native.cc_library(name=name, deps=[":" + p for p in prefixes])
-
 
 # Bazel rules for building swig files.
 def _py_wrap_cc_impl(ctx):
@@ -411,29 +403,38 @@ def _py_wrap_cc_impl(ctx):
              progress_message="SWIGing {input}".format(input=src.path))
   return struct(files=set(outputs))
 
-
-_py_wrap_cc = rule(attrs={
-    "srcs": attr.label_list(mandatory=True,
-                            allow_files=True,),
-    "swig_includes": attr.label_list(cfg=DATA_CFG,
-                                     allow_files=True,),
-    "deps": attr.label_list(allow_files=True,
-                            providers=["cc"],),
-    "swig_deps": attr.label(default=Label(
-        "//tensorflow:swig")),  # swig_templates
-    "module_name": attr.string(mandatory=True),
-    "py_module_name": attr.string(mandatory=True),
-    "swig_binary": attr.label(default=Label("//tensorflow:swig"),
-                              cfg=HOST_CFG,
-                              executable=True,
-                              allow_files=True,),
-},
-                   outputs={
-                       "cc_out": "%{module_name}.cc",
-                       "py_out": "%{py_module_name}.py",
-                   },
-                   implementation=_py_wrap_cc_impl,)
-
+_py_wrap_cc = rule(
+    attrs = {
+        "srcs": attr.label_list(
+            mandatory = True,
+            allow_files = True,
+        ),
+        "swig_includes": attr.label_list(
+            cfg = DATA_CFG,
+            allow_files = True,
+        ),
+        "deps": attr.label_list(
+            allow_files = True,
+            providers = ["cc"],
+        ),
+        "swig_deps": attr.label(default = Label(
+            "//tensorflow:swig",  # swig_templates
+        )),
+        "module_name": attr.string(mandatory = True),
+        "py_module_name": attr.string(mandatory = True),
+        "swig_binary": attr.label(
+            default = Label("//tensorflow:swig"),
+            cfg = HOST_CFG,
+            executable = True,
+            allow_files = True,
+        ),
+    },
+    outputs = {
+        "cc_out": "%{module_name}.cc",
+        "py_out": "%{py_module_name}.py",
+    },
+    implementation = _py_wrap_cc_impl,
+)
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
@@ -442,20 +443,21 @@ def _transitive_hdrs_impl(ctx):
     outputs += dep.cc.transitive_headers
   return struct(files=outputs)
 
-
-_transitive_hdrs = rule(attrs={
-    "deps": attr.label_list(allow_files=True,
-                            providers=["cc"]),
-},
-                        implementation=_transitive_hdrs_impl,)
-
+_transitive_hdrs = rule(
+    attrs = {
+        "deps": attr.label_list(
+            allow_files = True,
+            providers = ["cc"],
+        ),
+    },
+    implementation = _transitive_hdrs_impl,
+)
 
 def transitive_hdrs(name, deps=[], **kwargs):
   _transitive_hdrs(name=name + "_gather",
                    deps=deps)
   native.filegroup(name=name,
                    srcs=[":" + name + "_gather"])
-
 
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
@@ -506,7 +508,6 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
                    }),
   )
 
-
 def tf_extension_linkopts():
   return []  # No extension link opts
 
@@ -539,7 +540,6 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                     srcs_version="PY2AND3",
                     data=[":" + cc_library_name])
 
-
 def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                tags=[], shard_count=1, additional_deps=[]):
   native.py_test(
@@ -557,7 +557,6 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
           "//tensorflow/python:kernel_tests/gradient_checker",
       ] + additional_deps,
       srcs_version="PY2AND3")
-
 
 def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                  shard_count=1, additional_deps=[]):
@@ -592,7 +591,6 @@ def py_tests(name,
                shard_count=shard_count,
                data=data,
                additional_deps=additional_deps)
-
 
 def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[], shard_count=1):
   test_tags = tf_cuda_tests_tags()
