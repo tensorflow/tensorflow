@@ -243,12 +243,9 @@ void Generator::AppendFieldValueAppend(const FieldDescriptor& field,
       CHECK(ctype == FieldOptions::CORD || ctype == FieldOptions::STRING)
           << "Unsupported ctype " << ctype;
 
-      string str_expr = field_expr;
-      if (ctype == FieldOptions::CORD) {
-        str_expr = StrCat("(", field_expr, ").ToString()");
-      }
       Print("o->", omit_default ? "AppendStringIfNotEmpty" : "AppendString",
-            "(\"", field.name(), "\", ", str_expr, ");");
+            "(\"", field.name(), "\", ProtobufStringToString(", field_expr,
+            "));");
       break;
     }
     case FieldDescriptor::CPPTYPE_ENUM:
@@ -490,19 +487,13 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
       Print("    scanner, true, open_char == '{', ", mutable_value_expr,
             ")) return false;");
     } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_STRING) {
-      if (field->options().ctype() == FieldOptions::CORD) {
-        Print("string str_value;");
-        Print(
-            "if (!parsed_colon || "
-            "!::tensorflow::strings::ProtoParseStringLiteralFromScanner(");
-        Print("    scanner, &str_value)) return false;");
-        Print(mutable_value_expr, "->CopyFrom(str_value);");
-      } else {
-        Print(
-            "if (!parsed_colon || "
-            "!::tensorflow::strings::ProtoParseStringLiteralFromScanner(");
-        Print("    scanner, ", mutable_value_expr, ")) return false;");
-      }
+      Print("string str_value;");
+      Print(
+          "if (!parsed_colon || "
+          "!::tensorflow::strings::ProtoParseStringLiteralFromScanner(");
+      Print("    scanner, &str_value)) return false;");
+      Print("SetProtobufStringSwapAllowed(&str_value, ", mutable_value_expr,
+            ");");
     } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_ENUM) {
       Print("StringPiece value;");
       Print(
