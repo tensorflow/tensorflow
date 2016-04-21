@@ -197,6 +197,14 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "bucketed_typed_queue",
+    hdrs = ["bucketed_typed_queue.h"],
+    deps = [
+        ":typed_queue",
+    ],
+)
+
+cc_library(
     name = "typed_queue",
     hdrs = ["typed_queue.h"],
     deps = [
@@ -556,6 +564,7 @@ tf_kernel_libraries(
     prefixes = [
         "dynamic_partition_op",
         "dynamic_stitch_op",
+        "fifo_bucketed_queue_op",
         "fifo_queue_op",
         "lookup_table_init_op",
         "lookup_table_op",
@@ -569,6 +578,7 @@ tf_kernel_libraries(
     deps = [
         ":bounds_check",
         ":concat_lib",
+        ":fifo_bucketed_queue",
         ":fifo_queue",
         ":initializable_lookup_table",
         ":lookup_util",
@@ -603,6 +613,19 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "fifo_bucketed_queue",
+    srcs = ["fifo_bucketed_queue.cc"],
+    hdrs = ["fifo_bucketed_queue.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":bucketed_typed_queue",
+        ":queue_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
