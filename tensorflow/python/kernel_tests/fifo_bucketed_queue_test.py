@@ -38,7 +38,7 @@ class FIFOBucketedQueueTest(tf.test.TestCase):
       attr { key: 'shared_name' value { s: '' } }
       """, q.queue_ref.op.node_def)
 
-  def testMultiEnqueueAndDequeue(self):
+  def testMultiEnqueueAndDequeueMany(self):
     with self.test_session() as sess:
       batch_size = 2
       q = tf.FIFOBucketedQueue(2, batch_size, 10, (tf.int32, tf.float32), shapes=((), ()))
@@ -54,6 +54,23 @@ class FIFOBucketedQueueTest(tf.test.TestCase):
       self.assertAllEqual(b_val, [0, 0])
       self.assertEqual(y_val[0], elems[0][1])
       self.assertEqual(y_val[1], elems[2][1])
+
+  def testMultiEnqueueManyAndDequeueMany(self):
+    with self.test_session() as sess:
+      batch_size = 2
+      q = tf.FIFOBucketedQueue(2, batch_size, 10, (tf.int32, tf.float32), shapes=((), ()))
+      bucket_ids = [0, 1, 0]
+      float_elems = [10.0, 20.0, 30.0]
+      enqueue_op = q.enqueue_many((bucket_ids, float_elems))
+      dequeued_t = q.dequeue_many(2)
+
+      enqueue_op.run()
+
+      b_val, y_val = sess.run(dequeued_t)
+
+      self.assertAllEqual(b_val, [0, 0])
+      self.assertEqual(y_val[0], float_elems[0])
+      self.assertEqual(y_val[1], float_elems[2])
 
 if __name__ == "__main__":
   tf.test.main()
