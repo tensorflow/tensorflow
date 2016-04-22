@@ -143,7 +143,7 @@ class SessionManager(object):
 
     Args:
       master: `String` representation of the TensorFlow master to use.
-      init_op: Optional `Operation` used to to initialize the model.
+      init_op: Optional `Operation` used to initialize the model.
       saver: A `Saver` object used to restore a model.
       checkpoint_dir: Path to the checkpoint files.
       wait_for_checkpoint: Whether to wait for checkpoint to become available.

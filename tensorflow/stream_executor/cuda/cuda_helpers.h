@@ -44,7 +44,7 @@ const T *CUDAMemory(const DeviceMemory<T> &mem) {
 }
 
 // Converts a (non-const) DeviceMemory pointer reference to its underlying typed
-// pointer in CUDA device device memory.
+// pointer in CUDA device memory.
 template <typename T>
 T *CUDAMemoryMutable(DeviceMemory<T> *mem) {
   return static_cast<T *>(mem->opaque());
