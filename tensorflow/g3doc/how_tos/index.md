@@ -67,6 +67,15 @@ compose in your graph, but here are the details of how to add you own custom Op.
 [View Tutorial](adding_an_op/index.md)
 
 
+## How to write TensorFlow code
+
+Tensorflow Developer Guide is set of style decisions that both developers
+and users of Tensorflow should follow to increase the readability of their code,
+reduce the number of errors, and promote consistency.
+
+[View Developer Guide](style_guide.md)
+
+
 ## Writing Documentation
 
 TensorFlow's documentation is largely generated from its source code. Here is an
