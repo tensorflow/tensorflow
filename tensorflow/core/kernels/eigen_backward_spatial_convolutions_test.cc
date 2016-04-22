@@ -390,9 +390,9 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int dy = patch_rows - 1;
   const int dx = patch_cols - 1;
 
-  const int forward_pad_x = dx - dx / 2;
-  const int forward_pad_y = dy - dy / 2;
-  const int forward_pad_z = dz - dz / 2;
+  const int forward_pad_x = dx / 2;
+  const int forward_pad_y = dy / 2;
+  const int forward_pad_z = dz / 2;
 
   for (int id = 0; id < input_depth; ++id) {
     for (int i = 0; i < input_planes; ++i) {
@@ -461,9 +461,9 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int dy = patch_rows - 1;
   const int dx = patch_cols - 1;
 
-  const int forward_pad_x = dx - dx / 2;
-  const int forward_pad_y = dy - dy / 2;
-  const int forward_pad_z = dz - dz / 2;
+  const int forward_pad_x = dx / 2;
+  const int forward_pad_y = dy / 2;
+  const int forward_pad_z = dz / 2;
 
   for (int id = 0; id < input_depth; ++id) {
     for (int i = 0; i < input_planes; ++i) {
