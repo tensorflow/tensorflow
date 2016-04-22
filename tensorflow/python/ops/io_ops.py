@@ -71,6 +71,7 @@ and some implementations.  To see an example use, see [Threading and
 Queues](../../how_tos/threading_and_queues/index.md).
 
 @@QueueBase
+@@FIFOBucketedQueue
 @@FIFOQueue
 @@RandomShuffleQueue
 

@@ -541,7 +541,7 @@ class FIFOBucketedQueue(QueueBase):
         component_types=dtypes, shapes=shapes, capacity=capacity, buckets=buckets,
         shared_name=shared_name, name=name)
 
-    super(FIFOQueue, self).__init__(dtypes, shapes, queue_ref)
+    super(FIFOBucketedQueue, self).__init__(dtypes, shapes, queue_ref)
 
 
 # TODO(josh11b): class BatchQueue(QueueBase):
@@ -571,6 +571,7 @@ ops.NoGradient("InitializeTable")
 
 ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)
 ops.RegisterShape("Queue")(common_shapes.scalar_shape)
+ops.RegisterShape("FIFOBucketedQueue")(common_shapes.scalar_shape)
 ops.RegisterShape("FIFOQueue")(common_shapes.scalar_shape)
 ops.RegisterShape("PaddingFIFOQueue")(common_shapes.scalar_shape)
 ops.RegisterShape("RandomShuffleQueue")(common_shapes.scalar_shape)
