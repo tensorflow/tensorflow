@@ -90,8 +90,11 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
     const string& op_name = op_list_.op(cur).name();
     if (stable_ops_ != nullptr && stable_ops_->count(op_name) == 0) {
       // Ignore unstable op.
-    }
-    if (op_name < in_op_history.op(start).name()) {
+      ++cur;
+      for (++cur; cur < op_list_.op_size(); ++cur) {
+        if (op_list_.op(cur).name() != op_name) break;
+      }
+    } else if (op_name < in_op_history.op(start).name()) {
       // New op: add it.
       if (out_op_history != nullptr) {
         *out_op_history->add_op() = op_list_.op(cur);
@@ -99,9 +102,16 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
       ++*added_ops;
       ++cur;
     } else if (op_name > in_op_history.op(start).name()) {
-      // Op removed: error.
-      return errors::InvalidArgument("Error, removed op: ",
-                                     SummarizeOpDef(in_op_history.op(start)));
+      if (stable_ops_ != nullptr) {
+        // Okay to remove ops from the history that have been made unstable.
+        for (++start; start < in_op_history.op_size(); ++start) {
+          if (op_name <= in_op_history.op(start).name()) break;
+        }
+      } else {
+        // Op removed: error.
+        return errors::InvalidArgument("Error, removed op: ",
+                                       SummarizeOpDef(in_op_history.op(start)));
+      }
     } else {
       // Op match.
 

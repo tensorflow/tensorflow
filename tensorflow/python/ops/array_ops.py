@@ -54,6 +54,8 @@ or join multiple tensors together.
 @@reverse_sequence
 @@reverse
 @@transpose
+@@space_to_batch
+@@batch_to_space
 @@space_to_depth
 @@depth_to_space
 @@gather
@@ -1508,6 +1510,153 @@ def _QuantizeDequantizeShape(op):
   unused_min_range = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
   unused_max_range = op.inputs[2].get_shape().merge_with(tensor_shape.scalar())
   return common_shapes.unchanged_shape(op)
+
+
+@ops.RegisterShape("SpaceToBatch")
+def _SpaceToBatchShape(op):
+  """Shape function for the SpaceToBatch op.
+
+  The output shape is determined by the following inputs/ attributes:
+
+  * input: A rank-4 tensor with shape [B, H, W, D]
+  * paddings: A 2-by-2 matrix, specified as follows:
+
+        paddings = [[pad_top, pad_bottom], [pad_left, pad_right]],
+
+    implying effective padded spatial dimensions:
+
+        Hp = pad_top + H + pad_bottom
+        Wp = pad_left + W + pad_right
+
+    Both Hp and Wp must be multiples of block_size.
+  * block_size: an int.
+
+  Its output is also a rank-4 tensor with shape:
+
+      [B*block_size*block_size, Hp/block_size, Wp/block_size, D]
+
+  Args:
+    op: A SpaceToBatch op.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If the shapes of inputs are not as expected.
+    IndexError: If block_size does not divide Wp or Hp.
+  """
+  # Check that the input tensor is 4-D.
+  try:
+    input_shape = op.inputs[0].get_shape().with_rank(4)
+  except ValueError:
+    raise ValueError(
+        "tf.space_to_batch() requires 4-D input tensor.")
+
+  # Check that the paddings tensor is a matrix with shape [2, 2].
+  try:
+    paddings_shape = op.inputs[1].get_shape().with_rank(2)
+  except ValueError:
+    raise ValueError(
+        "tf.space_to_batch() requires 2-D paddings tensor.")
+
+  if paddings_shape[0] != 2 or paddings_shape[1] != 2:
+    raise ValueError(
+        "tf.space_to_batch() requires input paddings with shape [2, 2].")
+
+  block_size = op.get_attr("block_size")
+  if block_size <= 1:
+    raise ValueError("Attribute block_size has to be > 1.")
+
+  paddings = tensor_util.constant_value(op.inputs[1])
+  if (paddings[0, 0] < 0 or paddings[0, 1] < 0 or
+      paddings[1, 0] < 0 or paddings[1, 1] < 0):
+    raise ValueError("paddings cannot be negative.")
+
+  input_height = input_shape[1] + paddings[0, 0] + paddings[0, 1]
+  input_width = input_shape[2] + paddings[1, 0] + paddings[1, 1]
+
+  if input_height % block_size > 0 or input_width % block_size > 0:
+    raise IndexError("block_size needs to divide both width and height.")
+
+  batch = input_shape[0] * block_size * block_size
+  height = input_height // block_size
+  width = input_width // block_size
+  depth = input_shape[3]
+
+  return [tensor_shape.TensorShape([batch, height, width, depth])]
+
+
+@ops.RegisterShape("BatchToSpace")
+def _BatchToSpaceShape(op):
+  """Shape function for the BatchToSpace op.
+
+  The output shape is determined by the following inputs/ attributes:
+
+  * input: A rank-4 tensor with shape
+
+        [B*block_size*block_size, Hp/block_size, Wp/block_size, D]
+
+    Note that the batch size of the input tensor must be divisible by
+    `block_size * block_size`.
+  * crops: A 2-by-2 matrix, specified as follows:
+
+        crops = [[crop_top, crop_bottom], [crop_left, crop_right]].
+
+  * block_size: an int.
+
+  Its output is also a rank-4 tensor with shape [B, H, W, D], where:
+
+      H = Hp - crop_top - crop_bottom
+      W = Wp - crop_left - crop_right
+
+  Args:
+    op: A BatchToSpace op.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If the shapes of the inputs are not as expected.
+    IndexError: If block_size*block_size does not divide the input batch size.
+  """
+  # Check that the input tensor is 4-D.
+  try:
+    input_shape = op.inputs[0].get_shape().with_rank(4)
+  except ValueError:
+    raise ValueError("tf.batch_to_space() requires 4-D input tensor.")
+
+  # Check that the crops tensor is a matrix with shape [2, 2].
+  try:
+    crops_shape = op.inputs[1].get_shape().with_rank(2)
+  except ValueError:
+    raise ValueError(
+        "tf.space_to_batch() requires 2-D crops tensor.")
+
+  if crops_shape[0] != 2 or crops_shape[1] != 2:
+    raise ValueError(
+        "tf.space_to_batch() requires input crops with shape [2, 2].")
+
+  crops = tensor_util.constant_value(op.inputs[1])
+  if (crops[0, 0] < 0 or crops[0, 1] < 0 or
+      crops[1, 0] < 0 or crops[1, 1] < 0):
+    raise ValueError("crops cannot be negative.")
+
+  block_size = op.get_attr("block_size")
+  if block_size <= 1:
+    raise ValueError("Attribute block_size has to be > 1.")
+
+  input_batch = input_shape[0]
+  if input_batch % (block_size * block_size) > 0:
+    raise IndexError("input batch must be divisible by block_size*block_size.")
+  batch = input_batch // (block_size * block_size)
+
+  height = input_shape[1] * block_size - crops[0, 0] - crops[0, 1]
+  width = input_shape[2] * block_size - crops[1, 0] - crops[1, 1]
+  if height <= 0 or width <= 0:
+    raise ValueError("Output height or width is not positive.")
+  depth = input_shape[3]
+
+  return [tensor_shape.TensorShape([batch, height, width, depth])]
 
 
 @ops.RegisterShape("SpaceToDepth")

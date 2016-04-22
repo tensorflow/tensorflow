@@ -55,8 +55,13 @@ class SparseReduceSumOp : public OpKernel {
             "Expected reduction_axes to be a scalar or a vector; got shape: ",
             reduction_axes_t->shape().DebugString()));
 
+    // TODO(zongheng): we will call Reorder() below, which will modify in-place
+    // the underlying indices and values buffers.  To avoid surprises of this
+    // kernel being stateful, we work around the above by making deep copies
+    // here.  Remove this if/when we change Reorder()'s semantics.
     const auto shape_vec = shape_t->vec<int64>();
-    SparseTensor sp(*indices_t, *values_t, TensorShape(shape_vec));
+    SparseTensor sp(tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
+                    TensorShape(shape_vec));
 
     // Calculates group_by_dims == {0, .., NDIMS-1} \ reduction_axes.
     const int ndims = static_cast<int>(shape_t->NumElements());

@@ -83,7 +83,7 @@ Status MemmappedFileSystemWriter::SaveProtobuf(
 namespace {
 
 StringPiece EncodeUint64LittleEndian(uint64 val, char* output_buffer) {
-  for (int i = 0; i < sizeof(uint64); ++i) {
+  for (unsigned int i = 0; i < sizeof(uint64); ++i) {
     output_buffer[i] = (val >> i * 8);
   }
   return {output_buffer, sizeof(uint64)};

@@ -1067,6 +1067,14 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       thread.join()
       self.assertItemsEqual(elem, results)
 
+  def testDequeueUpToFails(self):
+    with self.test_session():
+      q = tf.RandomShuffleQueue(10, 0, tf.float32, shapes=())
+      dequeued_t = q.dequeue_up_to(0)
+      with self.assertRaisesOpError(
+          r"Dequeue: Queue does not support small batches"):
+        dequeued_t.eval()
+
 
 if __name__ == "__main__":
   tf.test.main()

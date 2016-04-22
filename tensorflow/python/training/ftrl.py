@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
@@ -110,10 +111,13 @@ class FtrlOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     linear = self.get_slot(var, "linear")
     return training_ops.apply_ftrl(
-        var, accum, linear, grad, self._learning_rate_tensor,
-        self._l1_regularization_strength_tensor,
-        self._l2_regularization_strength_tensor,
-        self._learning_rate_power_tensor,
+        var, accum, linear, grad,
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._l1_regularization_strength_tensor,
+                      var.dtype.base_dtype),
+        math_ops.cast(self._l2_regularization_strength_tensor,
+                      var.dtype.base_dtype),
+        math_ops.cast(self._learning_rate_power_tensor, var.dtype.base_dtype),
         use_locking=self._use_locking)
 
   def _apply_sparse(self, grad, var):
@@ -121,8 +125,10 @@ class FtrlOptimizer(optimizer.Optimizer):
     linear = self.get_slot(var, "linear")
     return training_ops.sparse_apply_ftrl(
         var, accum, linear, grad.values, grad.indices,
-        self._learning_rate_tensor,
-        self._l1_regularization_strength_tensor,
-        self._l2_regularization_strength_tensor,
-        self._learning_rate_power_tensor,
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._l1_regularization_strength_tensor,
+                      var.dtype.base_dtype),
+        math_ops.cast(self._l2_regularization_strength_tensor,
+                      var.dtype.base_dtype),
+        math_ops.cast(self._learning_rate_power_tensor, var.dtype.base_dtype),
         use_locking=self._use_locking)

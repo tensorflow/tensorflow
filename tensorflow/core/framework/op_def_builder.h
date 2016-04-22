@@ -89,6 +89,9 @@ class OpDefBuilder {
   OpDefBuilder& SetIsStateful();
   OpDefBuilder& SetAllowsUninitializedInput();
 
+  // Deprecate the op at a certain GraphDef version.
+  OpDefBuilder& Deprecated(int version, StringPiece explanation);
+
   // Adds docs to this OpDefBuilder (and returns *this).
   // Docs have the format:
   //   <1-line summary>

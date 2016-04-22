@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
@@ -60,7 +61,8 @@ class AdagradOptimizer(optimizer.Optimizer):
     for v in var_list:
       with ops.colocate_with(v):
         val = constant_op.constant(self._initial_accumulator_value,
-                                   shape=v.get_shape())
+                                   shape=v.get_shape(),
+                                   dtype=v.dtype.base_dtype)
       self._get_or_make_slot(v, val, "accumulator", self._name)
 
   def _prepare(self):
@@ -70,11 +72,18 @@ class AdagradOptimizer(optimizer.Optimizer):
   def _apply_dense(self, grad, var):
     acc = self.get_slot(var, "accumulator")
     return training_ops.apply_adagrad(
-        var, acc, self._learning_rate_tensor, grad,
+        var,
+        acc,
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        grad,
         use_locking=self._use_locking)
 
   def _apply_sparse(self, grad, var):
     acc = self.get_slot(var, "accumulator")
     return training_ops.sparse_apply_adagrad(
-        var, acc, self._learning_rate_tensor, grad.values, grad.indices,
+        var,
+        acc,
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        grad.values,
+        grad.indices,
         use_locking=self._use_locking)

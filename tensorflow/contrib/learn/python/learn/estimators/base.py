@@ -25,7 +25,7 @@ from six import string_types
 import numpy as np
 
 from google.protobuf import text_format
-from tensorflow.python.platform.default import _gfile as gfile
+from tensorflow.python.platform import gfile
 
 from tensorflow.python.client import session
 from tensorflow.core.framework import graph_pb2

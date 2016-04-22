@@ -1,35 +1,71 @@
----
----
 <!-- This file is machine generated: DO NOT EDIT! -->
 
-# Estimators
+# Learn (contrib)
 [TOC]
 
-Scikit Flow Estimators.
+
 
 ## Other Functions and Classes
 - - -
 
-### `class skflow.TensorFlowClassifier` {#TensorFlowClassifier}
+### `class tf.contrib.learn.RunConfig` {#RunConfig}
+
+This class specifies the specific configurations for the run.
+
+Parameters:
+    tf_master: TensorFlow master. Empty string is default for local.
+    num_cores: Number of cores to be used. (default: 4)
+    verbose: Controls the verbosity, possible values:
+             0: the algorithm and debug information is muted.
+             1: trainer prints the progress.
+             2: log device placement is printed.
+    gpu_memory_fraction: Fraction of GPU memory used by the process on
+        each GPU uniformly on the same machine.
+    tf_random_seed: Random seed for TensorFlow initializers.
+        Setting this value, allows consistency between reruns.
+    keep_checkpoint_max: The maximum number of recent checkpoint files to keep.
+        As new files are created, older files are deleted.
+        If None or 0, all checkpoint files are kept.
+        Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
+    keep_checkpoint_every_n_hours: Number of hours between each checkpoint
+        to be saved. The default value of 10,000 hours effectively disables the feature.
+
+Attributes:
+    tf_master: Tensorflow master.
+    tf_config: Tensorflow Session Config proto.
+    tf_random_seed: Tensorflow random seed.
+    keep_checkpoint_max: Maximum number of checkpoints to keep.
+    keep_checkpoint_every_n_hours: Number of hours between each checkpoint.
+- - -
+
+#### `tf.contrib.learn.RunConfig.__init__(tf_master='', num_cores=4, verbose=1, gpu_memory_fraction=1, tf_random_seed=42, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
+
+
+
+
+
+- - -
+
+### `class tf.contrib.learn.TensorFlowClassifier` {#TensorFlowClassifier}
 
 TensorFlow Linear Classifier model.
 - - -
 
-#### `skflow.TensorFlowClassifier.__init__(n_classes, tf_master='', batch_size=32, steps=200, optimizer='SGD', learning_rate=0.1, class_weight=None, tf_random_seed=42, continue_training=False, config_addon=None, verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000)` {#TensorFlowClassifier.__init__}
+#### `tf.contrib.learn.TensorFlowClassifier.__init__(n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowClassifier.__init__}
 
 
 
 
 - - -
 
-#### `skflow.TensorFlowClassifier.bias_` {#TensorFlowClassifier.bias_}
+#### `tf.contrib.learn.TensorFlowClassifier.bias_` {#TensorFlowClassifier.bias_}
 
 Returns weights of the linear classifier.
 
 
 - - -
 
-#### `skflow.TensorFlowClassifier.fit(X, y, monitor=None, logdir=None)` {#TensorFlowClassifier.fit}
+#### `tf.contrib.learn.TensorFlowClassifier.fit(X, y, monitor=None, logdir=None)` {#TensorFlowClassifier.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -60,7 +96,7 @@ To restart learning, create new estimator.
 
 - - -
 
-#### `skflow.TensorFlowClassifier.get_params(deep=True)` {#TensorFlowClassifier.get_params}
+#### `tf.contrib.learn.TensorFlowClassifier.get_params(deep=True)` {#TensorFlowClassifier.get_params}
 
 Get parameters for this estimator.
 
@@ -78,7 +114,7 @@ params : mapping of string to any
 
 - - -
 
-#### `skflow.TensorFlowClassifier.get_tensor(name)` {#TensorFlowClassifier.get_tensor}
+#### `tf.contrib.learn.TensorFlowClassifier.get_tensor(name)` {#TensorFlowClassifier.get_tensor}
 
 Returns tensor by name.
 
@@ -94,7 +130,7 @@ Returns tensor by name.
 
 - - -
 
-#### `skflow.TensorFlowClassifier.get_tensor_value(name)` {#TensorFlowClassifier.get_tensor_value}
+#### `tf.contrib.learn.TensorFlowClassifier.get_tensor_value(name)` {#TensorFlowClassifier.get_tensor_value}
 
 Returns value of the tensor give by name.
 
@@ -110,7 +146,7 @@ Returns value of the tensor give by name.
 
 - - -
 
-#### `skflow.TensorFlowClassifier.partial_fit(X, y)` {#TensorFlowClassifier.partial_fit}
+#### `tf.contrib.learn.TensorFlowClassifier.partial_fit(X, y)` {#TensorFlowClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -139,7 +175,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `skflow.TensorFlowClassifier.predict(X, axis=1, batch_size=-1)` {#TensorFlowClassifier.predict}
+#### `tf.contrib.learn.TensorFlowClassifier.predict(X, axis=1, batch_size=None)` {#TensorFlowClassifier.predict}
 
 Predict class or regression for X.
 
@@ -155,7 +191,8 @@ returned.
           By default axis 1 (next after batch) is used.
           Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size member
+                variable is used.
 
 ##### Returns:
 
@@ -166,7 +203,7 @@ returned.
 
 - - -
 
-#### `skflow.TensorFlowClassifier.predict_proba(X, batch_size=-1)` {#TensorFlowClassifier.predict_proba}
+#### `tf.contrib.learn.TensorFlowClassifier.predict_proba(X, batch_size=None)` {#TensorFlowClassifier.predict_proba}
 
 Predict class probability of the input samples X.
 
@@ -175,7 +212,8 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size
+                member variable is used.
 
 ##### Returns:
 
@@ -186,7 +224,7 @@ Predict class probability of the input samples X.
 
 - - -
 
-#### `skflow.TensorFlowClassifier.restore(cls, path, config_addon=None)` {#TensorFlowClassifier.restore}
+#### `tf.contrib.learn.TensorFlowClassifier.restore(cls, path, config=None)` {#TensorFlowClassifier.restore}
 
 Restores model from give path.
 
@@ -194,7 +232,7 @@ Restores model from give path.
 
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config_addon`</b>: ConfigAddon object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
 ##### Returns:
@@ -204,7 +242,7 @@ Restores model from give path.
 
 - - -
 
-#### `skflow.TensorFlowClassifier.save(path)` {#TensorFlowClassifier.save}
+#### `tf.contrib.learn.TensorFlowClassifier.save(path)` {#TensorFlowClassifier.save}
 
 Saves checkpoints and graph to given path.
 
@@ -216,7 +254,7 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `skflow.TensorFlowClassifier.score(X, y, sample_weight=None)` {#TensorFlowClassifier.score}
+#### `tf.contrib.learn.TensorFlowClassifier.score(X, y, sample_weight=None)` {#TensorFlowClassifier.score}
 
 Returns the mean accuracy on the given test data and labels.
 
@@ -243,7 +281,7 @@ score : float
 
 - - -
 
-#### `skflow.TensorFlowClassifier.set_params(**params)` {#TensorFlowClassifier.set_params}
+#### `tf.contrib.learn.TensorFlowClassifier.set_params(**params)` {#TensorFlowClassifier.set_params}
 
 Set the parameters of this estimator.
 
@@ -259,7 +297,7 @@ self
 
 - - -
 
-#### `skflow.TensorFlowClassifier.weights_` {#TensorFlowClassifier.weights_}
+#### `tf.contrib.learn.TensorFlowClassifier.weights_` {#TensorFlowClassifier.weights_}
 
 Returns weights of the linear classifier.
 
@@ -267,14 +305,13 @@ Returns weights of the linear classifier.
 
 - - -
 
-### `class skflow.TensorFlowDNNClassifier` {#TensorFlowDNNClassifier}
+### `class tf.contrib.learn.TensorFlowDNNClassifier` {#TensorFlowDNNClassifier}
 
 TensorFlow DNN Classifier model.
 
 Parameters:
     hidden_units: List of hidden units per layer.
     n_classes: Number of classes in the target.
-    tf_master: TensorFlow master. Empty string is default for local.
     batch_size: Mini batch size.
     steps: Number of steps to run over data.
     optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -290,35 +327,29 @@ Parameters:
     class_weight: None or list of n_classes floats. Weight associated with
                  classes for loss computation. If not given, all classes are suppose to have
                  weight one.
-    tf_random_seed: Random seed for TensorFlow initializers.
-        Setting this value, allows consistency between reruns.
     continue_training: when continue_training is True, once initialized
         model will be continuely trained on every call of fit.
-    config_addon: ConfigAddon object that controls the configurations of the session,
+    config: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc.
-    max_to_keep: The maximum number of recent checkpoint files to keep.
-        As new files are created, older files are deleted.
-        If None or 0, all checkpoint files are kept.
-        Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-    keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-        to be saved. The default value of 10,000 hours effectively disables the feature.
+    dropout: When not None, the probability we will drop out a given
+             coordinate.
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.__init__(hidden_units, n_classes, tf_master='', batch_size=32, steps=200, optimizer='SGD', learning_rate=0.1, class_weight=None, tf_random_seed=42, continue_training=False, config_addon=None, verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000)` {#TensorFlowDNNClassifier.__init__}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.__init__(hidden_units, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1, dropout=None)` {#TensorFlowDNNClassifier.__init__}
 
 
 
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.bias_` {#TensorFlowDNNClassifier.bias_}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.bias_` {#TensorFlowDNNClassifier.bias_}
 
 Returns bias of the DNN's bias layers.
 
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.fit(X, y, monitor=None, logdir=None)` {#TensorFlowDNNClassifier.fit}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.fit(X, y, monitor=None, logdir=None)` {#TensorFlowDNNClassifier.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -349,7 +380,7 @@ To restart learning, create new estimator.
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.get_params(deep=True)` {#TensorFlowDNNClassifier.get_params}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.get_params(deep=True)` {#TensorFlowDNNClassifier.get_params}
 
 Get parameters for this estimator.
 
@@ -367,7 +398,7 @@ params : mapping of string to any
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.get_tensor(name)` {#TensorFlowDNNClassifier.get_tensor}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.get_tensor(name)` {#TensorFlowDNNClassifier.get_tensor}
 
 Returns tensor by name.
 
@@ -383,7 +414,7 @@ Returns tensor by name.
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.get_tensor_value(name)` {#TensorFlowDNNClassifier.get_tensor_value}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.get_tensor_value(name)` {#TensorFlowDNNClassifier.get_tensor_value}
 
 Returns value of the tensor give by name.
 
@@ -399,7 +430,7 @@ Returns value of the tensor give by name.
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.partial_fit(X, y)` {#TensorFlowDNNClassifier.partial_fit}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.partial_fit(X, y)` {#TensorFlowDNNClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -428,7 +459,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.predict(X, axis=1, batch_size=-1)` {#TensorFlowDNNClassifier.predict}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.predict(X, axis=1, batch_size=None)` {#TensorFlowDNNClassifier.predict}
 
 Predict class or regression for X.
 
@@ -444,7 +475,8 @@ returned.
           By default axis 1 (next after batch) is used.
           Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size member
+                variable is used.
 
 ##### Returns:
 
@@ -455,7 +487,7 @@ returned.
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.predict_proba(X, batch_size=-1)` {#TensorFlowDNNClassifier.predict_proba}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.predict_proba(X, batch_size=None)` {#TensorFlowDNNClassifier.predict_proba}
 
 Predict class probability of the input samples X.
 
@@ -464,7 +496,8 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size
+                member variable is used.
 
 ##### Returns:
 
@@ -475,7 +508,7 @@ Predict class probability of the input samples X.
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.restore(cls, path, config_addon=None)` {#TensorFlowDNNClassifier.restore}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.restore(cls, path, config=None)` {#TensorFlowDNNClassifier.restore}
 
 Restores model from give path.
 
@@ -483,7 +516,7 @@ Restores model from give path.
 
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config_addon`</b>: ConfigAddon object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
 ##### Returns:
@@ -493,7 +526,7 @@ Restores model from give path.
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.save(path)` {#TensorFlowDNNClassifier.save}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.save(path)` {#TensorFlowDNNClassifier.save}
 
 Saves checkpoints and graph to given path.
 
@@ -505,7 +538,7 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.score(X, y, sample_weight=None)` {#TensorFlowDNNClassifier.score}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.score(X, y, sample_weight=None)` {#TensorFlowDNNClassifier.score}
 
 Returns the mean accuracy on the given test data and labels.
 
@@ -532,7 +565,7 @@ score : float
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.set_params(**params)` {#TensorFlowDNNClassifier.set_params}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.set_params(**params)` {#TensorFlowDNNClassifier.set_params}
 
 Set the parameters of this estimator.
 
@@ -548,7 +581,7 @@ self
 
 - - -
 
-#### `skflow.TensorFlowDNNClassifier.weights_` {#TensorFlowDNNClassifier.weights_}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.weights_` {#TensorFlowDNNClassifier.weights_}
 
 Returns weights of the DNN weight layers.
 
@@ -556,13 +589,12 @@ Returns weights of the DNN weight layers.
 
 - - -
 
-### `class skflow.TensorFlowDNNRegressor` {#TensorFlowDNNRegressor}
+### `class tf.contrib.learn.TensorFlowDNNRegressor` {#TensorFlowDNNRegressor}
 
 TensorFlow DNN Regressor model.
 
 Parameters:
     hidden_units: List of hidden units per layer.
-    tf_master: TensorFlow master. Empty string is default for local.
     batch_size: Mini batch size.
     steps: Number of steps to run over data.
     optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -575,39 +607,33 @@ Parameters:
             return tf.train.exponential_decay(
                 learning_rate=0.1, global_step,
                 decay_steps=2, decay_rate=0.001)
-    tf_random_seed: Random seed for TensorFlow initializers.
-        Setting this value, allows consistency between reruns.
     continue_training: when continue_training is True, once initialized
         model will be continuely trained on every call of fit.
-    config_addon: ConfigAddon object that controls the configurations of the session,
+    config: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc.
     verbose: Controls the verbosity, possible values:
              0: the algorithm and debug information is muted.
              1: trainer prints the progress.
              2: log device placement is printed.
-    max_to_keep: The maximum number of recent checkpoint files to keep.
-        As new files are created, older files are deleted.
-        If None or 0, all checkpoint files are kept.
-        Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-    keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-        to be saved. The default value of 10,000 hours effectively disables the feature.
+    dropout: When not None, the probability we will drop out a given
+             coordinate.
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.__init__(hidden_units, n_classes=0, tf_master='', batch_size=32, steps=200, optimizer='SGD', learning_rate=0.1, tf_random_seed=42, continue_training=False, config_addon=None, verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000)` {#TensorFlowDNNRegressor.__init__}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.__init__(hidden_units, n_classes=0, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1, dropout=None)` {#TensorFlowDNNRegressor.__init__}
 
 
 
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.bias_` {#TensorFlowDNNRegressor.bias_}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.bias_` {#TensorFlowDNNRegressor.bias_}
 
 Returns bias of the DNN's bias layers.
 
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.fit(X, y, monitor=None, logdir=None)` {#TensorFlowDNNRegressor.fit}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.fit(X, y, monitor=None, logdir=None)` {#TensorFlowDNNRegressor.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -638,7 +664,7 @@ To restart learning, create new estimator.
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.get_params(deep=True)` {#TensorFlowDNNRegressor.get_params}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.get_params(deep=True)` {#TensorFlowDNNRegressor.get_params}
 
 Get parameters for this estimator.
 
@@ -656,7 +682,7 @@ params : mapping of string to any
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.get_tensor(name)` {#TensorFlowDNNRegressor.get_tensor}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.get_tensor(name)` {#TensorFlowDNNRegressor.get_tensor}
 
 Returns tensor by name.
 
@@ -672,7 +698,7 @@ Returns tensor by name.
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.get_tensor_value(name)` {#TensorFlowDNNRegressor.get_tensor_value}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.get_tensor_value(name)` {#TensorFlowDNNRegressor.get_tensor_value}
 
 Returns value of the tensor give by name.
 
@@ -688,7 +714,7 @@ Returns value of the tensor give by name.
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.partial_fit(X, y)` {#TensorFlowDNNRegressor.partial_fit}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.partial_fit(X, y)` {#TensorFlowDNNRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -717,7 +743,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.predict(X, axis=1, batch_size=-1)` {#TensorFlowDNNRegressor.predict}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.predict(X, axis=1, batch_size=None)` {#TensorFlowDNNRegressor.predict}
 
 Predict class or regression for X.
 
@@ -733,7 +759,8 @@ returned.
           By default axis 1 (next after batch) is used.
           Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size member
+                variable is used.
 
 ##### Returns:
 
@@ -744,7 +771,7 @@ returned.
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.predict_proba(X, batch_size=-1)` {#TensorFlowDNNRegressor.predict_proba}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.predict_proba(X, batch_size=None)` {#TensorFlowDNNRegressor.predict_proba}
 
 Predict class probability of the input samples X.
 
@@ -753,7 +780,8 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size
+                member variable is used.
 
 ##### Returns:
 
@@ -764,7 +792,7 @@ Predict class probability of the input samples X.
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.restore(cls, path, config_addon=None)` {#TensorFlowDNNRegressor.restore}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.restore(cls, path, config=None)` {#TensorFlowDNNRegressor.restore}
 
 Restores model from give path.
 
@@ -772,7 +800,7 @@ Restores model from give path.
 
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config_addon`</b>: ConfigAddon object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
 ##### Returns:
@@ -782,7 +810,7 @@ Restores model from give path.
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.save(path)` {#TensorFlowDNNRegressor.save}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.save(path)` {#TensorFlowDNNRegressor.save}
 
 Saves checkpoints and graph to given path.
 
@@ -794,7 +822,7 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.score(X, y, sample_weight=None)` {#TensorFlowDNNRegressor.score}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.score(X, y, sample_weight=None)` {#TensorFlowDNNRegressor.score}
 
 Returns the coefficient of determination R^2 of the prediction.
 
@@ -825,7 +853,7 @@ score : float
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.set_params(**params)` {#TensorFlowDNNRegressor.set_params}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.set_params(**params)` {#TensorFlowDNNRegressor.set_params}
 
 Set the parameters of this estimator.
 
@@ -841,7 +869,7 @@ self
 
 - - -
 
-#### `skflow.TensorFlowDNNRegressor.weights_` {#TensorFlowDNNRegressor.weights_}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.weights_` {#TensorFlowDNNRegressor.weights_}
 
 Returns weights of the DNN weight layers.
 
@@ -849,7 +877,7 @@ Returns weights of the DNN weight layers.
 
 - - -
 
-### `class skflow.TensorFlowEstimator` {#TensorFlowEstimator}
+### `class tf.contrib.learn.TensorFlowEstimator` {#TensorFlowEstimator}
 
 Base class for all TensorFlow estimators.
 
@@ -857,7 +885,6 @@ Parameters:
     model_fn: Model function, that takes input X, y tensors and outputs
               prediction and loss tensors.
     n_classes: Number of classes in the target.
-    tf_master: TensorFlow master. Empty string is default for local.
     batch_size: Mini batch size.
     steps: Number of steps to run over data.
     optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -870,35 +897,29 @@ Parameters:
             return tf.train.exponential_decay(
                 learning_rate=0.1, global_step,
                 decay_steps=2, decay_rate=0.001)
+    clip_gradients: Clip norm of the gradients to this value to stop
+                    gradient explosion.
     class_weight: None or list of n_classes floats. Weight associated with
                  classes for loss computation. If not given, all classes are suppose to have
                  weight one.
-    tf_random_seed: Random seed for TensorFlow initializers.
-        Setting this value, allows consistency between reruns.
     continue_training: when continue_training is True, once initialized
         model will be continuely trained on every call of fit.
-    config_addon: ConfigAddon object that controls the configurations of the session,
+    config: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc.
     verbose: Controls the verbosity, possible values:
              0: the algorithm and debug information is muted.
              1: trainer prints the progress.
              2: log device placement is printed.
-    max_to_keep: The maximum number of recent checkpoint files to keep.
-        As new files are created, older files are deleted.
-        If None or 0, all checkpoint files are kept.
-        Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-    keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-        to be saved. The default value of 10,000 hours effectively disables the feature.
 - - -
 
-#### `skflow.TensorFlowEstimator.__init__(model_fn, n_classes, tf_master='', batch_size=32, steps=200, optimizer='SGD', learning_rate=0.1, class_weight=None, tf_random_seed=42, continue_training=False, config_addon=None, verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000)` {#TensorFlowEstimator.__init__}
+#### `tf.contrib.learn.TensorFlowEstimator.__init__(model_fn, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, class_weight=None, continue_training=False, config=None, verbose=1)` {#TensorFlowEstimator.__init__}
 
 
 
 
 - - -
 
-#### `skflow.TensorFlowEstimator.fit(X, y, monitor=None, logdir=None)` {#TensorFlowEstimator.fit}
+#### `tf.contrib.learn.TensorFlowEstimator.fit(X, y, monitor=None, logdir=None)` {#TensorFlowEstimator.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -929,7 +950,7 @@ To restart learning, create new estimator.
 
 - - -
 
-#### `skflow.TensorFlowEstimator.get_params(deep=True)` {#TensorFlowEstimator.get_params}
+#### `tf.contrib.learn.TensorFlowEstimator.get_params(deep=True)` {#TensorFlowEstimator.get_params}
 
 Get parameters for this estimator.
 
@@ -947,7 +968,7 @@ params : mapping of string to any
 
 - - -
 
-#### `skflow.TensorFlowEstimator.get_tensor(name)` {#TensorFlowEstimator.get_tensor}
+#### `tf.contrib.learn.TensorFlowEstimator.get_tensor(name)` {#TensorFlowEstimator.get_tensor}
 
 Returns tensor by name.
 
@@ -963,7 +984,7 @@ Returns tensor by name.
 
 - - -
 
-#### `skflow.TensorFlowEstimator.get_tensor_value(name)` {#TensorFlowEstimator.get_tensor_value}
+#### `tf.contrib.learn.TensorFlowEstimator.get_tensor_value(name)` {#TensorFlowEstimator.get_tensor_value}
 
 Returns value of the tensor give by name.
 
@@ -979,7 +1000,7 @@ Returns value of the tensor give by name.
 
 - - -
 
-#### `skflow.TensorFlowEstimator.partial_fit(X, y)` {#TensorFlowEstimator.partial_fit}
+#### `tf.contrib.learn.TensorFlowEstimator.partial_fit(X, y)` {#TensorFlowEstimator.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -1008,7 +1029,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `skflow.TensorFlowEstimator.predict(X, axis=1, batch_size=-1)` {#TensorFlowEstimator.predict}
+#### `tf.contrib.learn.TensorFlowEstimator.predict(X, axis=1, batch_size=None)` {#TensorFlowEstimator.predict}
 
 Predict class or regression for X.
 
@@ -1024,7 +1045,8 @@ returned.
           By default axis 1 (next after batch) is used.
           Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size member
+                variable is used.
 
 ##### Returns:
 
@@ -1035,7 +1057,7 @@ returned.
 
 - - -
 
-#### `skflow.TensorFlowEstimator.predict_proba(X, batch_size=-1)` {#TensorFlowEstimator.predict_proba}
+#### `tf.contrib.learn.TensorFlowEstimator.predict_proba(X, batch_size=None)` {#TensorFlowEstimator.predict_proba}
 
 Predict class probability of the input samples X.
 
@@ -1044,7 +1066,8 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size
+                member variable is used.
 
 ##### Returns:
 
@@ -1055,7 +1078,7 @@ Predict class probability of the input samples X.
 
 - - -
 
-#### `skflow.TensorFlowEstimator.restore(cls, path, config_addon=None)` {#TensorFlowEstimator.restore}
+#### `tf.contrib.learn.TensorFlowEstimator.restore(cls, path, config=None)` {#TensorFlowEstimator.restore}
 
 Restores model from give path.
 
@@ -1063,7 +1086,7 @@ Restores model from give path.
 
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config_addon`</b>: ConfigAddon object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
 ##### Returns:
@@ -1073,7 +1096,7 @@ Restores model from give path.
 
 - - -
 
-#### `skflow.TensorFlowEstimator.save(path)` {#TensorFlowEstimator.save}
+#### `tf.contrib.learn.TensorFlowEstimator.save(path)` {#TensorFlowEstimator.save}
 
 Saves checkpoints and graph to given path.
 
@@ -1085,7 +1108,7 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `skflow.TensorFlowEstimator.set_params(**params)` {#TensorFlowEstimator.set_params}
+#### `tf.contrib.learn.TensorFlowEstimator.set_params(**params)` {#TensorFlowEstimator.set_params}
 
 Set the parameters of this estimator.
 
@@ -1102,26 +1125,26 @@ self
 
 - - -
 
-### `class skflow.TensorFlowLinearClassifier` {#TensorFlowLinearClassifier}
+### `class tf.contrib.learn.TensorFlowLinearClassifier` {#TensorFlowLinearClassifier}
 
 TensorFlow Linear Classifier model.
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.__init__(n_classes, tf_master='', batch_size=32, steps=200, optimizer='SGD', learning_rate=0.1, class_weight=None, tf_random_seed=42, continue_training=False, config_addon=None, verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000)` {#TensorFlowLinearClassifier.__init__}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.__init__(n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowLinearClassifier.__init__}
 
 
 
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.bias_` {#TensorFlowLinearClassifier.bias_}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.bias_` {#TensorFlowLinearClassifier.bias_}
 
 Returns weights of the linear classifier.
 
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.fit(X, y, monitor=None, logdir=None)` {#TensorFlowLinearClassifier.fit}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.fit(X, y, monitor=None, logdir=None)` {#TensorFlowLinearClassifier.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -1152,7 +1175,7 @@ To restart learning, create new estimator.
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.get_params(deep=True)` {#TensorFlowLinearClassifier.get_params}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.get_params(deep=True)` {#TensorFlowLinearClassifier.get_params}
 
 Get parameters for this estimator.
 
@@ -1170,7 +1193,7 @@ params : mapping of string to any
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.get_tensor(name)` {#TensorFlowLinearClassifier.get_tensor}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.get_tensor(name)` {#TensorFlowLinearClassifier.get_tensor}
 
 Returns tensor by name.
 
@@ -1186,7 +1209,7 @@ Returns tensor by name.
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.get_tensor_value(name)` {#TensorFlowLinearClassifier.get_tensor_value}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.get_tensor_value(name)` {#TensorFlowLinearClassifier.get_tensor_value}
 
 Returns value of the tensor give by name.
 
@@ -1202,7 +1225,7 @@ Returns value of the tensor give by name.
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.partial_fit(X, y)` {#TensorFlowLinearClassifier.partial_fit}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.partial_fit(X, y)` {#TensorFlowLinearClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -1231,7 +1254,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.predict(X, axis=1, batch_size=-1)` {#TensorFlowLinearClassifier.predict}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.predict(X, axis=1, batch_size=None)` {#TensorFlowLinearClassifier.predict}
 
 Predict class or regression for X.
 
@@ -1247,7 +1270,8 @@ returned.
           By default axis 1 (next after batch) is used.
           Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size member
+                variable is used.
 
 ##### Returns:
 
@@ -1258,7 +1282,7 @@ returned.
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.predict_proba(X, batch_size=-1)` {#TensorFlowLinearClassifier.predict_proba}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.predict_proba(X, batch_size=None)` {#TensorFlowLinearClassifier.predict_proba}
 
 Predict class probability of the input samples X.
 
@@ -1267,7 +1291,8 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size
+                member variable is used.
 
 ##### Returns:
 
@@ -1278,7 +1303,7 @@ Predict class probability of the input samples X.
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.restore(cls, path, config_addon=None)` {#TensorFlowLinearClassifier.restore}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.restore(cls, path, config=None)` {#TensorFlowLinearClassifier.restore}
 
 Restores model from give path.
 
@@ -1286,7 +1311,7 @@ Restores model from give path.
 
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config_addon`</b>: ConfigAddon object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
 ##### Returns:
@@ -1296,7 +1321,7 @@ Restores model from give path.
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.save(path)` {#TensorFlowLinearClassifier.save}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.save(path)` {#TensorFlowLinearClassifier.save}
 
 Saves checkpoints and graph to given path.
 
@@ -1308,7 +1333,7 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.score(X, y, sample_weight=None)` {#TensorFlowLinearClassifier.score}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.score(X, y, sample_weight=None)` {#TensorFlowLinearClassifier.score}
 
 Returns the mean accuracy on the given test data and labels.
 
@@ -1335,7 +1360,7 @@ score : float
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.set_params(**params)` {#TensorFlowLinearClassifier.set_params}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.set_params(**params)` {#TensorFlowLinearClassifier.set_params}
 
 Set the parameters of this estimator.
 
@@ -1351,7 +1376,7 @@ self
 
 - - -
 
-#### `skflow.TensorFlowLinearClassifier.weights_` {#TensorFlowLinearClassifier.weights_}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.weights_` {#TensorFlowLinearClassifier.weights_}
 
 Returns weights of the linear classifier.
 
@@ -1359,26 +1384,26 @@ Returns weights of the linear classifier.
 
 - - -
 
-### `class skflow.TensorFlowLinearRegressor` {#TensorFlowLinearRegressor}
+### `class tf.contrib.learn.TensorFlowLinearRegressor` {#TensorFlowLinearRegressor}
 
 TensorFlow Linear Regression model.
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.__init__(n_classes=0, tf_master='', batch_size=32, steps=200, optimizer='SGD', learning_rate=0.1, tf_random_seed=42, continue_training=False, config_addon=None, verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000)` {#TensorFlowLinearRegressor.__init__}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.__init__(n_classes=0, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowLinearRegressor.__init__}
 
 
 
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.bias_` {#TensorFlowLinearRegressor.bias_}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.bias_` {#TensorFlowLinearRegressor.bias_}
 
 Returns bias of the linear regression.
 
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.fit(X, y, monitor=None, logdir=None)` {#TensorFlowLinearRegressor.fit}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.fit(X, y, monitor=None, logdir=None)` {#TensorFlowLinearRegressor.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -1409,7 +1434,7 @@ To restart learning, create new estimator.
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.get_params(deep=True)` {#TensorFlowLinearRegressor.get_params}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.get_params(deep=True)` {#TensorFlowLinearRegressor.get_params}
 
 Get parameters for this estimator.
 
@@ -1427,7 +1452,7 @@ params : mapping of string to any
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.get_tensor(name)` {#TensorFlowLinearRegressor.get_tensor}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.get_tensor(name)` {#TensorFlowLinearRegressor.get_tensor}
 
 Returns tensor by name.
 
@@ -1443,7 +1468,7 @@ Returns tensor by name.
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.get_tensor_value(name)` {#TensorFlowLinearRegressor.get_tensor_value}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.get_tensor_value(name)` {#TensorFlowLinearRegressor.get_tensor_value}
 
 Returns value of the tensor give by name.
 
@@ -1459,7 +1484,7 @@ Returns value of the tensor give by name.
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.partial_fit(X, y)` {#TensorFlowLinearRegressor.partial_fit}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.partial_fit(X, y)` {#TensorFlowLinearRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -1488,7 +1513,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.predict(X, axis=1, batch_size=-1)` {#TensorFlowLinearRegressor.predict}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.predict(X, axis=1, batch_size=None)` {#TensorFlowLinearRegressor.predict}
 
 Predict class or regression for X.
 
@@ -1504,7 +1529,8 @@ returned.
           By default axis 1 (next after batch) is used.
           Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size member
+                variable is used.
 
 ##### Returns:
 
@@ -1515,7 +1541,7 @@ returned.
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.predict_proba(X, batch_size=-1)` {#TensorFlowLinearRegressor.predict_proba}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.predict_proba(X, batch_size=None)` {#TensorFlowLinearRegressor.predict_proba}
 
 Predict class probability of the input samples X.
 
@@ -1524,7 +1550,8 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size
+                member variable is used.
 
 ##### Returns:
 
@@ -1535,7 +1562,7 @@ Predict class probability of the input samples X.
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.restore(cls, path, config_addon=None)` {#TensorFlowLinearRegressor.restore}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.restore(cls, path, config=None)` {#TensorFlowLinearRegressor.restore}
 
 Restores model from give path.
 
@@ -1543,7 +1570,7 @@ Restores model from give path.
 
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config_addon`</b>: ConfigAddon object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
 ##### Returns:
@@ -1553,7 +1580,7 @@ Restores model from give path.
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.save(path)` {#TensorFlowLinearRegressor.save}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.save(path)` {#TensorFlowLinearRegressor.save}
 
 Saves checkpoints and graph to given path.
 
@@ -1565,7 +1592,7 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.score(X, y, sample_weight=None)` {#TensorFlowLinearRegressor.score}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.score(X, y, sample_weight=None)` {#TensorFlowLinearRegressor.score}
 
 Returns the coefficient of determination R^2 of the prediction.
 
@@ -1596,7 +1623,7 @@ score : float
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.set_params(**params)` {#TensorFlowLinearRegressor.set_params}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.set_params(**params)` {#TensorFlowLinearRegressor.set_params}
 
 Set the parameters of this estimator.
 
@@ -1612,7 +1639,7 @@ self
 
 - - -
 
-#### `skflow.TensorFlowLinearRegressor.weights_` {#TensorFlowLinearRegressor.weights_}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.weights_` {#TensorFlowLinearRegressor.weights_}
 
 Returns weights of the linear regression.
 
@@ -1620,7 +1647,7 @@ Returns weights of the linear regression.
 
 - - -
 
-### `class skflow.TensorFlowRNNClassifier` {#TensorFlowRNNClassifier}
+### `class tf.contrib.learn.TensorFlowRNNClassifier` {#TensorFlowRNNClassifier}
 
 TensorFlow RNN Classifier model.
 
@@ -1637,7 +1664,6 @@ Parameters:
     initial_state: An initial state for the RNN. This must be a tensor of appropriate type
                    and shape [batch_size x cell.state_size].
     n_classes: Number of classes in the target.
-    tf_master: TensorFlow master. Empty string is default for local.
     batch_size: Mini batch size.
     steps: Number of steps to run over data.
     optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -1653,34 +1679,27 @@ Parameters:
     class_weight: None or list of n_classes floats. Weight associated with
                  classes for loss computation. If not given, all classes are suppose to have
                  weight one.
-    tf_random_seed: Random seed for TensorFlow initializers.
-        Setting this value, allows consistency between reruns.
     continue_training: when continue_training is True, once initialized
         model will be continuely trained on every call of fit.
-    num_cores: Number of cores to be used. (default: 4)
-    max_to_keep: The maximum number of recent checkpoint files to keep.
-        As new files are created, older files are deleted.
-        If None or 0, all checkpoint files are kept.
-        Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-    keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-        to be saved. The default value of 10,000 hours effectively disables the feature.
+    config: RunConfig object that controls the configurations of the session,
+        e.g. num_cores, gpu_memory_fraction, etc.
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.__init__(rnn_size, n_classes, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, tf_master='', batch_size=32, steps=50, optimizer='SGD', learning_rate=0.1, class_weight=None, tf_random_seed=42, continue_training=False, config_addon=None, verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000)` {#TensorFlowRNNClassifier.__init__}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.__init__(rnn_size, n_classes, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNClassifier.__init__}
 
 
 
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.bias_` {#TensorFlowRNNClassifier.bias_}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.bias_` {#TensorFlowRNNClassifier.bias_}
 
 Returns bias of the rnn layer.
 
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.fit(X, y, monitor=None, logdir=None)` {#TensorFlowRNNClassifier.fit}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.fit(X, y, monitor=None, logdir=None)` {#TensorFlowRNNClassifier.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -1711,7 +1730,7 @@ To restart learning, create new estimator.
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.get_params(deep=True)` {#TensorFlowRNNClassifier.get_params}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.get_params(deep=True)` {#TensorFlowRNNClassifier.get_params}
 
 Get parameters for this estimator.
 
@@ -1729,7 +1748,7 @@ params : mapping of string to any
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.get_tensor(name)` {#TensorFlowRNNClassifier.get_tensor}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.get_tensor(name)` {#TensorFlowRNNClassifier.get_tensor}
 
 Returns tensor by name.
 
@@ -1745,7 +1764,7 @@ Returns tensor by name.
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.get_tensor_value(name)` {#TensorFlowRNNClassifier.get_tensor_value}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.get_tensor_value(name)` {#TensorFlowRNNClassifier.get_tensor_value}
 
 Returns value of the tensor give by name.
 
@@ -1761,7 +1780,7 @@ Returns value of the tensor give by name.
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.partial_fit(X, y)` {#TensorFlowRNNClassifier.partial_fit}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.partial_fit(X, y)` {#TensorFlowRNNClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -1790,7 +1809,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.predict(X, axis=1, batch_size=-1)` {#TensorFlowRNNClassifier.predict}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.predict(X, axis=1, batch_size=None)` {#TensorFlowRNNClassifier.predict}
 
 Predict class or regression for X.
 
@@ -1806,7 +1825,8 @@ returned.
           By default axis 1 (next after batch) is used.
           Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size member
+                variable is used.
 
 ##### Returns:
 
@@ -1817,7 +1837,7 @@ returned.
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.predict_proba(X, batch_size=-1)` {#TensorFlowRNNClassifier.predict_proba}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.predict_proba(X, batch_size=None)` {#TensorFlowRNNClassifier.predict_proba}
 
 Predict class probability of the input samples X.
 
@@ -1826,7 +1846,8 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size
+                member variable is used.
 
 ##### Returns:
 
@@ -1837,7 +1858,7 @@ Predict class probability of the input samples X.
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.restore(cls, path, config_addon=None)` {#TensorFlowRNNClassifier.restore}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.restore(cls, path, config=None)` {#TensorFlowRNNClassifier.restore}
 
 Restores model from give path.
 
@@ -1845,7 +1866,7 @@ Restores model from give path.
 
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config_addon`</b>: ConfigAddon object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
 ##### Returns:
@@ -1855,7 +1876,7 @@ Restores model from give path.
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.save(path)` {#TensorFlowRNNClassifier.save}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.save(path)` {#TensorFlowRNNClassifier.save}
 
 Saves checkpoints and graph to given path.
 
@@ -1867,7 +1888,7 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.score(X, y, sample_weight=None)` {#TensorFlowRNNClassifier.score}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.score(X, y, sample_weight=None)` {#TensorFlowRNNClassifier.score}
 
 Returns the mean accuracy on the given test data and labels.
 
@@ -1894,7 +1915,7 @@ score : float
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.set_params(**params)` {#TensorFlowRNNClassifier.set_params}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.set_params(**params)` {#TensorFlowRNNClassifier.set_params}
 
 Set the parameters of this estimator.
 
@@ -1910,7 +1931,7 @@ self
 
 - - -
 
-#### `skflow.TensorFlowRNNClassifier.weights_` {#TensorFlowRNNClassifier.weights_}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.weights_` {#TensorFlowRNNClassifier.weights_}
 
 Returns weights of the rnn layer.
 
@@ -1918,7 +1939,7 @@ Returns weights of the rnn layer.
 
 - - -
 
-### `class skflow.TensorFlowRNNRegressor` {#TensorFlowRNNRegressor}
+### `class tf.contrib.learn.TensorFlowRNNRegressor` {#TensorFlowRNNRegressor}
 
 TensorFlow RNN Regressor model.
 
@@ -1934,7 +1955,6 @@ Parameters:
              This saves computational time when unrolling past max sequence length.
     initial_state: An initial state for the RNN. This must be a tensor of appropriate type
                    and shape [batch_size x cell.state_size].
-    tf_master: TensorFlow master. Empty string is default for local.
     batch_size: Mini batch size.
     steps: Number of steps to run over data.
     optimizer: Optimizer name (or class), for example "SGD", "Adam",
@@ -1947,38 +1967,31 @@ Parameters:
             return tf.train.exponential_decay(
                 learning_rate=0.1, global_step,
                 decay_steps=2, decay_rate=0.001)
-    tf_random_seed: Random seed for TensorFlow initializers.
-        Setting this value, allows consistency between reruns.
     continue_training: when continue_training is True, once initialized
         model will be continuely trained on every call of fit.
-    num_cores: Number of cores to be used. (default: 4)
+    config: RunConfig object that controls the configurations of the session,
+        e.g. num_cores, gpu_memory_fraction, etc.
     verbose: Controls the verbosity, possible values:
              0: the algorithm and debug information is muted.
              1: trainer prints the progress.
              2: log device placement is printed.
-    max_to_keep: The maximum number of recent checkpoint files to keep.
-        As new files are created, older files are deleted.
-        If None or 0, all checkpoint files are kept.
-        Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-    keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-        to be saved. The default value of 10,000 hours effectively disables the feature.
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.__init__(rnn_size, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, n_classes=0, tf_master='', batch_size=32, steps=50, optimizer='SGD', learning_rate=0.1, tf_random_seed=42, continue_training=False, config_addon=None, verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000)` {#TensorFlowRNNRegressor.__init__}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.__init__(rnn_size, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, n_classes=0, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNRegressor.__init__}
 
 
 
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.bias_` {#TensorFlowRNNRegressor.bias_}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.bias_` {#TensorFlowRNNRegressor.bias_}
 
 Returns bias of the rnn layer.
 
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.fit(X, y, monitor=None, logdir=None)` {#TensorFlowRNNRegressor.fit}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.fit(X, y, monitor=None, logdir=None)` {#TensorFlowRNNRegressor.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -2009,7 +2022,7 @@ To restart learning, create new estimator.
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.get_params(deep=True)` {#TensorFlowRNNRegressor.get_params}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.get_params(deep=True)` {#TensorFlowRNNRegressor.get_params}
 
 Get parameters for this estimator.
 
@@ -2027,7 +2040,7 @@ params : mapping of string to any
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.get_tensor(name)` {#TensorFlowRNNRegressor.get_tensor}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.get_tensor(name)` {#TensorFlowRNNRegressor.get_tensor}
 
 Returns tensor by name.
 
@@ -2043,7 +2056,7 @@ Returns tensor by name.
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.get_tensor_value(name)` {#TensorFlowRNNRegressor.get_tensor_value}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.get_tensor_value(name)` {#TensorFlowRNNRegressor.get_tensor_value}
 
 Returns value of the tensor give by name.
 
@@ -2059,7 +2072,7 @@ Returns value of the tensor give by name.
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.partial_fit(X, y)` {#TensorFlowRNNRegressor.partial_fit}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.partial_fit(X, y)` {#TensorFlowRNNRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -2088,7 +2101,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.predict(X, axis=1, batch_size=-1)` {#TensorFlowRNNRegressor.predict}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.predict(X, axis=1, batch_size=None)` {#TensorFlowRNNRegressor.predict}
 
 Predict class or regression for X.
 
@@ -2104,7 +2117,8 @@ returned.
           By default axis 1 (next after batch) is used.
           Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size member
+                variable is used.
 
 ##### Returns:
 
@@ -2115,7 +2129,7 @@ returned.
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.predict_proba(X, batch_size=-1)` {#TensorFlowRNNRegressor.predict_proba}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.predict_proba(X, batch_size=None)` {#TensorFlowRNNRegressor.predict_proba}
 
 Predict class probability of the input samples X.
 
@@ -2124,7 +2138,8 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size
+                member variable is used.
 
 ##### Returns:
 
@@ -2135,7 +2150,7 @@ Predict class probability of the input samples X.
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.restore(cls, path, config_addon=None)` {#TensorFlowRNNRegressor.restore}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.restore(cls, path, config=None)` {#TensorFlowRNNRegressor.restore}
 
 Restores model from give path.
 
@@ -2143,7 +2158,7 @@ Restores model from give path.
 
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config_addon`</b>: ConfigAddon object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
 ##### Returns:
@@ -2153,7 +2168,7 @@ Restores model from give path.
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.save(path)` {#TensorFlowRNNRegressor.save}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.save(path)` {#TensorFlowRNNRegressor.save}
 
 Saves checkpoints and graph to given path.
 
@@ -2165,7 +2180,7 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.score(X, y, sample_weight=None)` {#TensorFlowRNNRegressor.score}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.score(X, y, sample_weight=None)` {#TensorFlowRNNRegressor.score}
 
 Returns the coefficient of determination R^2 of the prediction.
 
@@ -2196,7 +2211,7 @@ score : float
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.set_params(**params)` {#TensorFlowRNNRegressor.set_params}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.set_params(**params)` {#TensorFlowRNNRegressor.set_params}
 
 Set the parameters of this estimator.
 
@@ -2212,7 +2227,7 @@ self
 
 - - -
 
-#### `skflow.TensorFlowRNNRegressor.weights_` {#TensorFlowRNNRegressor.weights_}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.weights_` {#TensorFlowRNNRegressor.weights_}
 
 Returns weights of the rnn layer.
 
@@ -2220,26 +2235,26 @@ Returns weights of the rnn layer.
 
 - - -
 
-### `class skflow.TensorFlowRegressor` {#TensorFlowRegressor}
+### `class tf.contrib.learn.TensorFlowRegressor` {#TensorFlowRegressor}
 
 TensorFlow Linear Regression model.
 - - -
 
-#### `skflow.TensorFlowRegressor.__init__(n_classes=0, tf_master='', batch_size=32, steps=200, optimizer='SGD', learning_rate=0.1, tf_random_seed=42, continue_training=False, config_addon=None, verbose=1, max_to_keep=5, keep_checkpoint_every_n_hours=10000)` {#TensorFlowRegressor.__init__}
+#### `tf.contrib.learn.TensorFlowRegressor.__init__(n_classes=0, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRegressor.__init__}
 
 
 
 
 - - -
 
-#### `skflow.TensorFlowRegressor.bias_` {#TensorFlowRegressor.bias_}
+#### `tf.contrib.learn.TensorFlowRegressor.bias_` {#TensorFlowRegressor.bias_}
 
 Returns bias of the linear regression.
 
 
 - - -
 
-#### `skflow.TensorFlowRegressor.fit(X, y, monitor=None, logdir=None)` {#TensorFlowRegressor.fit}
+#### `tf.contrib.learn.TensorFlowRegressor.fit(X, y, monitor=None, logdir=None)` {#TensorFlowRegressor.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -2270,7 +2285,7 @@ To restart learning, create new estimator.
 
 - - -
 
-#### `skflow.TensorFlowRegressor.get_params(deep=True)` {#TensorFlowRegressor.get_params}
+#### `tf.contrib.learn.TensorFlowRegressor.get_params(deep=True)` {#TensorFlowRegressor.get_params}
 
 Get parameters for this estimator.
 
@@ -2288,7 +2303,7 @@ params : mapping of string to any
 
 - - -
 
-#### `skflow.TensorFlowRegressor.get_tensor(name)` {#TensorFlowRegressor.get_tensor}
+#### `tf.contrib.learn.TensorFlowRegressor.get_tensor(name)` {#TensorFlowRegressor.get_tensor}
 
 Returns tensor by name.
 
@@ -2304,7 +2319,7 @@ Returns tensor by name.
 
 - - -
 
-#### `skflow.TensorFlowRegressor.get_tensor_value(name)` {#TensorFlowRegressor.get_tensor_value}
+#### `tf.contrib.learn.TensorFlowRegressor.get_tensor_value(name)` {#TensorFlowRegressor.get_tensor_value}
 
 Returns value of the tensor give by name.
 
@@ -2320,7 +2335,7 @@ Returns value of the tensor give by name.
 
 - - -
 
-#### `skflow.TensorFlowRegressor.partial_fit(X, y)` {#TensorFlowRegressor.partial_fit}
+#### `tf.contrib.learn.TensorFlowRegressor.partial_fit(X, y)` {#TensorFlowRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -2349,7 +2364,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `skflow.TensorFlowRegressor.predict(X, axis=1, batch_size=-1)` {#TensorFlowRegressor.predict}
+#### `tf.contrib.learn.TensorFlowRegressor.predict(X, axis=1, batch_size=None)` {#TensorFlowRegressor.predict}
 
 Predict class or regression for X.
 
@@ -2365,7 +2380,8 @@ returned.
           By default axis 1 (next after batch) is used.
           Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size member
+                variable is used.
 
 ##### Returns:
 
@@ -2376,7 +2392,7 @@ returned.
 
 - - -
 
-#### `skflow.TensorFlowRegressor.predict_proba(X, batch_size=-1)` {#TensorFlowRegressor.predict_proba}
+#### `tf.contrib.learn.TensorFlowRegressor.predict_proba(X, batch_size=None)` {#TensorFlowRegressor.predict_proba}
 
 Predict class probability of the input samples X.
 
@@ -2385,7 +2401,8 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default full dataset is used.
+                it into mini batches. By default the batch_size
+                member variable is used.
 
 ##### Returns:
 
@@ -2396,7 +2413,7 @@ Predict class probability of the input samples X.
 
 - - -
 
-#### `skflow.TensorFlowRegressor.restore(cls, path, config_addon=None)` {#TensorFlowRegressor.restore}
+#### `tf.contrib.learn.TensorFlowRegressor.restore(cls, path, config=None)` {#TensorFlowRegressor.restore}
 
 Restores model from give path.
 
@@ -2404,7 +2421,7 @@ Restores model from give path.
 
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config_addon`</b>: ConfigAddon object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
 
 ##### Returns:
@@ -2414,7 +2431,7 @@ Restores model from give path.
 
 - - -
 
-#### `skflow.TensorFlowRegressor.save(path)` {#TensorFlowRegressor.save}
+#### `tf.contrib.learn.TensorFlowRegressor.save(path)` {#TensorFlowRegressor.save}
 
 Saves checkpoints and graph to given path.
 
@@ -2426,7 +2443,7 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `skflow.TensorFlowRegressor.score(X, y, sample_weight=None)` {#TensorFlowRegressor.score}
+#### `tf.contrib.learn.TensorFlowRegressor.score(X, y, sample_weight=None)` {#TensorFlowRegressor.score}
 
 Returns the coefficient of determination R^2 of the prediction.
 
@@ -2457,7 +2474,7 @@ score : float
 
 - - -
 
-#### `skflow.TensorFlowRegressor.set_params(**params)` {#TensorFlowRegressor.set_params}
+#### `tf.contrib.learn.TensorFlowRegressor.set_params(**params)` {#TensorFlowRegressor.set_params}
 
 Set the parameters of this estimator.
 
@@ -2473,9 +2490,44 @@ self
 
 - - -
 
-#### `skflow.TensorFlowRegressor.weights_` {#TensorFlowRegressor.weights_}
+#### `tf.contrib.learn.TensorFlowRegressor.weights_` {#TensorFlowRegressor.weights_}
 
 Returns weights of the linear regression.
 
+
+
+- - -
+
+### `tf.contrib.learn.extract_dask_data(data)` {#extract_dask_data}
+
+Extract data from dask.Series or dask.DataFrame for predictors
+
+
+- - -
+
+### `tf.contrib.learn.extract_dask_labels(labels)` {#extract_dask_labels}
+
+Extract data from dask.Series for labels
+
+
+- - -
+
+### `tf.contrib.learn.extract_pandas_data(data)` {#extract_pandas_data}
+
+Extract data from pandas.DataFrame for predictors
+
+
+- - -
+
+### `tf.contrib.learn.extract_pandas_labels(labels)` {#extract_pandas_labels}
+
+Extract data from pandas.DataFrame for labels
+
+
+- - -
+
+### `tf.contrib.learn.extract_pandas_matrix(data)` {#extract_pandas_matrix}
+
+Extracts numpy matrix from pandas DataFrame.
 
 

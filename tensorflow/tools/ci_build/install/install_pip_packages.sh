@@ -16,6 +16,11 @@
 
 set -e
 
+# Use pip to install scipy to get the latest version, instead of 0.13 through
+# apt-get
+pip install scipy==0.15.1
+pip3 install scipy==0.15.1
+
 pip install sklearn
 pip3 install scikit-learn
 

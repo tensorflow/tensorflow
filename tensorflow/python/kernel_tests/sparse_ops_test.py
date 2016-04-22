@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -343,7 +344,7 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
     self._compare(sp_t, reduction_axes, False)
     self._compare(sp_t, reduction_axes, True)
 
-  def testReduceSumForSparse(self):
+  def testSimpleAndRandomInputs(self):
     # [[1, ?, 1]
     #  [?, 1, ?]]
     # where ? is implictly-zero.
@@ -370,6 +371,21 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
         for d in range(1, len(dims) + 1):
           axes = np.random.choice(len(dims), size=d, replace=False).tolist()
           self._compare_all(sp_t, axes)
+
+  def testGradient(self):
+    np.random.seed(8161)
+    test_dims = [(11, 1, 5, 7, 1), (2, 2)]
+    with self.test_session(use_gpu=False):
+      for dims in test_dims:
+        sp_t, nnz = _sparsify(np.random.randn(*dims))
+        # reduce random axes from 1D to N-D
+        for d in range(1, len(dims) + 1):
+          axes = np.random.choice(len(dims), size=d, replace=False).tolist()
+          reduced = sparse_ops.sparse_reduce_sum(sp_t, axes)
+
+          err = tf.test.compute_gradient_error(sp_t.values, (nnz,), reduced,
+                                               reduced.eval().shape)
+          self.assertLess(err, 1e-3)
 
 
 if __name__ == "__main__":

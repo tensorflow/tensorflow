@@ -52,46 +52,85 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
+import math
+
+import six  # pylint: disable=unused-import
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.platform import logging
 
-__all__ = ["create_partitioned_variables"]
+__all__ = ["create_partitioned_variables", "variable_axis_size_partitioner"]
 
-def _compute_slice_dim_and_shape(full_shape, slicing):
-  """Computes which dimension is being sliced and the typical slice shape."""
 
-  slice_shape = [0] * len(full_shape)
-  slice_dim = None
-  for dim, num_slices in enumerate(slicing):
-    dim_size = full_shape[dim]
-    if num_slices <= 0 or dim_size < num_slices:
-      raise ValueError("Cannot create %d slices for size %d. shape: %s, "
-                       "slicing: %s" %
-                       (num_slices, full_shape[dim], full_shape, slicing))
-    if num_slices == 1:
-      # Not slicing in this dimension.
-      slice_shape[dim] = dim_size
-    elif slice_dim is not None:
-      # We only support slicing along one of the dimensions.
-      raise ValueError("Can only slice a variable along one dimension: "
-                       "shape: %s, slicing: %s" % (full_shape, slicing))
+def variable_axis_size_partitioner(
+    max_shard_bytes, axis=0, bytes_per_string_element=16):
+  """Get a partitioner for VariableScope to keep shards below `max_shard_bytes`.
+
+  This partitioner will shard a Variable along one axis, attempting to keep
+  the maximum shard size below `max_shard_bytes`.  In practice, this is not
+  always possible when sharding along only one axis.  When this happens,
+  this axis is sharded as much as possible (i.e., every dimension becomes
+  a separate shard).
+
+  One reasonable value for `max_shard_bytes` is `(64 << 20) - 1`, or almost
+  `64MB`, to keep below the protobuf byte limit.
+
+  Args:
+    max_shard_bytes: The maximum size any given shard is allowed to be.
+    axis: The axis to partition along.  Default: outermost axis.
+    bytes_per_string_element: If the `Variable` is of type string, this provides
+      an estimate of how large each scalar in the `Variable` is.
+
+  Returns:
+    A partition function usable as the `partitioner` argument to
+    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+
+  Raises:
+    ValueError: If any of the byte counts are non-positive.
+  """
+  if max_shard_bytes < 1 or bytes_per_string_element < 1:
+    raise ValueError(
+        "Both max_shard_bytes and bytes_per_string_element must be positive.")
+
+  def _partitioner(shape, dtype):
+    """Partitioner that partitions shards to have max_shard_bytes total size.
+
+    Args:
+      shape: A `TensorShape`.
+      dtype: A `DType`.
+
+    Returns:
+      A tuple representing how much to slice each axis in shape.
+
+    Raises:
+      ValueError: If shape is not a fully defined `TensorShape` or dtype is not
+        a `DType`.
+    """
+    if not isinstance(shape, tensor_shape.TensorShape):
+      raise ValueError("shape is not a TensorShape: %s" % shape)
+    if not shape.is_fully_defined():
+      raise ValueError("shape is not fully defined: %s" % shape)
+    if not isinstance(dtype, dtypes.DType):
+      raise ValueError("dtype is not a DType: %s" % dtype)
+
+    if dtype.base_dtype == dtypes.string:
+      element_size = bytes_per_string_element
     else:
-      # Note: We will add any extras onto the last slice, later.
-      slice_dim = dim
-      slice_shape[dim] = dim_size // num_slices
+      element_size = dtype.size
 
-  # Degenerate case: If "slicing" was all ones, pretend we are slicing along
-  # the first dimension.
-  if slice_dim is None:
-    slice_dim = 0
-  return slice_dim, slice_shape
+    partitions = [1] * shape.ndims
+    bytes_per_slice = 1.0 * (
+        shape.num_elements() / shape[axis].value) * element_size
 
+    axis_shards = bytes_per_slice / max_shard_bytes
+    axis_shards = min(shape[axis].value, max(1, int(math.ceil(axis_shards))))
+
+    partitions[axis] = axis_shards
+    return partitions
+
+  return _partitioner
 
 def create_partitioned_variables(
     shape, slicing, initializer, dtype=dtypes.float32,
@@ -137,6 +176,11 @@ def create_partitioned_variables(
   Raises:
     ValueError: If any of the arguments is malformed.
   """
+  logging.warn(
+      "create_partitioned_variables is deprecated.  Use "
+      "tf.get_variable with a partitioner set, or "
+      "tf.get_partitioned_variable_list, instead.")
+
   if len(shape) != len(slicing):
     raise ValueError("The 'shape' and 'slicing' of a partitioned Variable "
                      "must have the length: shape: %s, slicing: %s" %
@@ -144,52 +188,26 @@ def create_partitioned_variables(
   if len(shape) < 1:
     raise ValueError("A partitioned Variable must have rank at least 1: "
                      "shape: %s" % shape)
-  full_shape = tensor_shape.as_shape(shape)
-  full_shape.assert_is_fully_defined()
-  full_shape = full_shape.as_list()
 
-  slice_dim, slice_shape = _compute_slice_dim_and_shape(full_shape, slicing)
+  # Legacy: we are provided the slicing directly, so just pass it to
+  # the partitioner.
+  partitioner = lambda **unused_kwargs: slicing
 
-  vs = []
-  num_slices = slicing[slice_dim]
-  num_slices_with_excess = full_shape[slice_dim] % num_slices
+  with variable_scope.variable_op_scope(
+      [], name, "PartitionedVariable", reuse=reuse) as scope:
 
-  with variable_scope.variable_op_scope([], name,
-                                        "PartitionedVariable",
-                                        reuse=reuse) as scope:
-    full_name = scope.name
-    slice_offset = [0] * len(full_shape)
-    for i in xrange(num_slices):
-      var_shape = slice_shape[:]
-      var_offset = slice_offset[:]
-      if i < num_slices_with_excess:
-        var_shape[slice_dim] += 1
-      slice_offset[slice_dim] += var_shape[slice_dim]
+    # pylint: disable=protected-access
+    vs, _ = variable_scope._get_partitioned_variable_list(
+        name="part",
+        shape=shape,
+        dtype=dtype,
+        initializer=initializer,
+        trainable=trainable,
+        partitioner=partitioner,
+        collections=collections)
 
-      if callable(initializer):
-        init = initializer
-        init_shape = var_shape
-      elif isinstance(initializer, ops.Tensor):
-        init = array_ops.slice(initializer, var_offset, var_shape)
-        # Use the dtype of the given tensor.
-        dtype = init.dtype.base_dtype
-        init_shape = None
-      else:
-        init = ops.convert_to_tensor(initializer, dtype=dtype)
-        init = array_ops.slice(init, var_offset, var_shape)
-        init_shape = None
+    for var in vs:
+      var._save_slice_info.full_name = scope.name
+    # pylint: enable=protected-access
 
-      var = variable_scope.get_variable(name="part_%d" % i,
-                                        shape=init_shape,
-                                        dtype=dtype,
-                                        initializer=init,
-                                        trainable=trainable,
-                                        collections=collections)
-
-      # pylint: disable=protected-access
-      var._set_save_slice_info(variables.Variable.SaveSliceInfo(
-          full_name, full_shape, var_offset, var_shape))
-      # pylint: enable=protected-access
-      vs.append(var)
-    assert slice_offset[slice_dim] == full_shape[slice_dim]
   return vs

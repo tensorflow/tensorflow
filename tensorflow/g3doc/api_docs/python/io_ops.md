@@ -1488,8 +1488,8 @@ This operation concatenates queue-element component tensors along
 the 0th dimension to make a single component tensor.  All of the
 components in the dequeued tuple will have size `n` in the 0th dimension.
 
-If the queue contains fewer than `n` elements when this operation
-executes, it will block until `n` elements have been dequeued.
+If the queue is closed and there are less than `n` elements left, then an
+`OutOfRange` exception is raised.
 
 ##### Args:
 
@@ -1566,6 +1566,37 @@ Constructs a queue object from a queue reference.
     as dtypes.  If the shape of any tensors in the element are constrained,
     all must be; shapes can be None if the shapes should not be constrained.
 *  <b>`queue_ref`</b>: The queue reference, i.e. the output of the queue op.
+
+
+- - -
+
+#### `tf.QueueBase.dequeue_up_to(n, name=None)` {#QueueBase.dequeue_up_to}
+
+Dequeues and concatenates `n` elements from this queue.
+
+**Note** This operation is not supported by all queues.  If a queue does not
+support DequeueUpTo, then an Unimplemented exception is raised.
+
+This operation concatenates queue-element component tensors along the
+0th dimension to make a single component tensor.  All of the components
+in the dequeued tuple will have size `n` in the 0th dimension.
+
+If the queue is closed and there are more than `0` but less than `n`
+elements remaining, then instead of raising an `OutOfRange` exception like
+`dequeue_many`, the remaining elements are returned immediately.
+If the queue is closed and there are `0` elements left in the queue, then
+an `OutOfRange` exception is raised just like in `dequeue_many`.
+Otherwise the behavior is identical to `dequeue_many`:
+
+##### Args:
+
+
+*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The tuple of concatenated tensors that was dequeued.
 
 
 - - -
