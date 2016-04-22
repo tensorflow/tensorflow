@@ -250,6 +250,8 @@ def main(_):
         # perform *synchronous* training.
         _, step = sess.run([train_op, global_step])
 
+    # Ask for all the services to stop.
+    sv.stop()
 
 if __name__ == "__main__":
   tf.app.run()
