@@ -94,7 +94,8 @@ def if_android_arm(a, b=[]):
   })
 
 def tf_copts():
-  return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
+  return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",
+           "-DTENSORFLOW_USE_EIGEN_THREADPOOL"] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
           select({"//tensorflow:android": [
