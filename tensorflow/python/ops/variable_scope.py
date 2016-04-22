@@ -442,12 +442,13 @@ class _VariableStore(object):
 
     # Run the regularizer if requested and save the resulting loss.
     if regularizer:
-      with ops.name_scope(name + "/Regularizer/"):
-        loss = regularizer(v)
-      if loss is not None:
-        logging.info("Applied regularizer to %s and added the result %s to "
-                     "REGULARIZATION_LOSSES.", v.name, loss.name)
-        ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
+      with ops.colocate_with(v.op):
+        with ops.name_scope(name + "/Regularizer/"):
+          loss = regularizer(v)
+        if loss is not None:
+          logging.info("Applied regularizer to %s and added the result %s to "
+                       "REGULARIZATION_LOSSES.", v.name, loss.name)
+          ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
 
     return v
 
