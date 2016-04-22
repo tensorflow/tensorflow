@@ -35,6 +35,7 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 
 * [TensorFlow tutorials](https://github.com/pkmital/tensorflow_tutorials)
 * [Scikit Flow - Simplified Interface for TensorFlow](https://github.com/tensorflow/skflow)
+* [Caffe to TensorFlow model converter](https://github.com/ethereon/caffe-tensorflow)
 
 ### Development
 
