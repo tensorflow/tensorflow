@@ -17,7 +17,9 @@ FIFOBucketedQueue::FIFOBucketedQueue(
     int buckets, int capacity, int batch_size, const DataTypeVector& component_dtypes,
     const std::vector<TensorShape>& component_shapes, const string& name)
   : BucketedTypedQueue(buckets, capacity, component_dtypes, component_shapes,
-                       name), batch_size_(batch_size) {}
+                       name), batch_size_(batch_size) {
+    CHECK_GE(buckets_, 0);
+  }
 
 void FIFOBucketedQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
   DCHECK_GT(size(), size_t{0});
@@ -41,6 +43,7 @@ void FIFOBucketedQueue::TryEnqueue(
       enqueue_attempts_.emplace_back(
           1, callback, ctx, cm, token,
           [tuple, ctx, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+            LOG(WARNING) << "size vs. capacity" << size() << " " << capacity_;
             if (closed_) {
               attempt->context->SetStatus(
                   errors::Aborted("FIFOBucketedQueue '", name_, "' is closed."));
@@ -48,25 +51,28 @@ void FIFOBucketedQueue::TryEnqueue(
             }
             if (size() < capacity_) {
               // Get the bucket id.
-              auto bucket_id_ptensor =
-                  PersistentTensor(tuple[0]);
+              auto bucket_id_ptensor = PersistentTensor(tuple[0]);
               Tensor* bucket_id_tensor = bucket_id_ptensor.AccessTensor(ctx);
               int b = std::min(bucket_id_tensor->scalar<int>()(), buckets_ - 1);
+              LOG(WARNING) << "inserting into bucket " << b;
 
               bucketed_queues_[b][0].push_back(bucket_id_ptensor);
               for (int i = 1; i < num_components(); ++i) {
                 bucketed_queues_[b][i].push_back(PersistentTensor(tuple[i]));
               }
+              ++size_;
+              BatchBucketedQueuesToQueuesLocked();
               return kComplete;
             } else {
               return kNoProgress;
             }
           });
-      BatchBucketedQueuesToQueuesLocked();
     }
   }
   if (!already_cancelled) {
+    LOG(WARNING) << "wtf... " << enqueue_attempts_.size();
     FlushUnlocked();
+    LOG(WARNING) << "wtf... " << enqueue_attempts_.size();
   } else {
     ctx->SetStatus(errors::Cancelled("Enqueue operation was cancelled"));
     callback();
@@ -133,13 +139,14 @@ void FIFOBucketedQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
                 bucketed_queues_[b][i].push_back(element);
               }
               --attempt->elements_requested;
+              ++size_;
+              BatchBucketedQueuesToQueuesLocked();
               if (attempt->elements_requested == 0) {
                 return kComplete;
               }
             }
             return result;
           });
-      BatchBucketedQueuesToQueuesLocked();
     }
   }
   if (!already_cancelled) {
@@ -271,10 +278,10 @@ Status FIFOBucketedQueue::MatchesNodeDef(const NodeDef& node_def) {
 }
 
 void FIFOBucketedQueue::BatchBucketedQueuesToQueuesLocked() {
-  mutex_lock l(mu_);
-
   for (int b = 0; b < buckets_; ++b) {
-    if (bucketed_queues_[b][0].size() > batch_size_) {
+    LOG(WARNING) << batch_size_;
+    LOG(WARNING) << "bucket " << b << " " << bucketed_queues_[b][0].size();
+    if (bucketed_queues_[b][0].size() >= batch_size_) {
       // Move from bucketed_queues_ to queues_.
       for (int i = 0; i < this->num_components(); ++i) {
         for (int j = 0; j < batch_size_; ++j) {
@@ -282,6 +289,7 @@ void FIFOBucketedQueue::BatchBucketedQueuesToQueuesLocked() {
           bucketed_queues_[b][i].pop_front();
         }
       }
+      size_ -= batch_size_;
     }
   }
 }

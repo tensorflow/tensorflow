@@ -530,16 +530,17 @@ class FIFOBucketedQueue(QueueBase):
   @@__init__
   """
 
-  def __init__(self, buckets, capacity, dtypes, shapes=None, shared_name=None,
-               name="fifo_queue"):
+  def __init__(self, buckets, batch_size, capacity, dtypes, shapes=None,
+               shared_name=None, name="fifo_queue"):
     """Creates a queue that dequeues elements in a first-in first-out order
     with buckets.
     """
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     queue_ref = gen_data_flow_ops._fifo_bucketed_queue(
-        component_types=dtypes, shapes=shapes, capacity=capacity, buckets=buckets,
-        shared_name=shared_name, name=name)
+        component_types=dtypes, shapes=shapes, capacity=capacity,
+        batch_size=batch_size, buckets=buckets, shared_name=shared_name,
+        name=name)
 
     super(FIFOBucketedQueue, self).__init__(dtypes, shapes, queue_ref)
 

@@ -33,7 +33,8 @@ BucketedTypedQueue<SubQueue>::BucketedTypedQueue(
 
 template <typename SubQueue>
 Status BucketedTypedQueue<SubQueue>::Initialize() {
-  TypedQueue<SubQueue>::Initialize();
+  Status s = TypedQueue<SubQueue>::Initialize();
+  if (!s.ok()) return s;
 
   mutex_lock lock(this->mu_);
   for (int b = 0; b < buckets_; ++b) {

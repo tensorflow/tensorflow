@@ -16,7 +16,7 @@ class FIFOBucketedQueueTest(tf.test.TestCase):
 
   def testConstructor(self):
     with tf.Graph().as_default():
-      q = tf.FIFOBucketedQueue(2, 5, (tf.int32, tf.float32),
+      q = tf.FIFOBucketedQueue(2, 10, 20, (tf.int32, tf.float32),
                                shapes=(tf.TensorShape([1]),
                                        tf.TensorShape([5, 8])), name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
@@ -32,10 +32,28 @@ class FIFOBucketedQueueTest(tf.test.TestCase):
                 dim { size: 8 } }
       } } }
       attr { key: 'buckets' value { i: 2 } }
-      attr { key: 'capacity' value { i: 5 } }
+      attr { key: 'batch_size' value { i: 10 } }
+      attr { key: 'capacity' value { i: 20 } }
       attr { key: 'container' value { s: '' } }
       attr { key: 'shared_name' value { s: '' } }
       """, q.queue_ref.op.node_def)
+
+  def testMultiEnqueueAndDequeue(self):
+    with self.test_session() as sess:
+      batch_size = 2
+      q = tf.FIFOBucketedQueue(2, batch_size, 10, (tf.int32, tf.float32), shapes=((), ()))
+      elems = [(0, 10.0), (1, 20.0), (0, 30.0)]
+      enqueue_ops = [q.enqueue((x, y)) for x, y in elems]
+      dequeued_t = q.dequeue_many(2)
+
+      for enqueue_op in enqueue_ops:
+        enqueue_op.run()
+
+      b_val, y_val = sess.run(dequeued_t)
+
+      self.assertAllEqual(b_val, [0, 0])
+      self.assertEqual(y_val[0], elems[0][1])
+      self.assertEqual(y_val[1], elems[2][1])
 
 if __name__ == "__main__":
   tf.test.main()

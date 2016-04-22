@@ -37,7 +37,6 @@ class FIFOBucketedQueue
   void BatchBucketedQueuesToQueuesLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   int32 size() override {
-    mutex_lock lock(mu_);
     return size_;
   }
 
