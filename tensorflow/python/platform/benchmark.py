@@ -27,7 +27,6 @@ import time
 
 import six
 
-from google.protobuf import text_format
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import test_log_pb2
 # timeline is outside of the platform target, but is brought in by the target
@@ -71,7 +70,8 @@ def _global_report_benchmark(
     # Reporting was not requested
     return
 
-  entry = test_log_pb2.BenchmarkEntry()
+  entries = test_log_pb2.BenchmarkEntries()
+  entry = entries.entry.add()
   entry.name = name
   if iters is not None:
     entry.iters = iters
@@ -88,13 +88,13 @@ def _global_report_benchmark(
       else:
         entry.extras[k].string_value = str(v)
 
-  serialized_entry = text_format.MessageToString(entry)
+  serialized_entry = entries.SerializeToString()
 
   mangled_name = name.replace("/", "__")
   output_path = "%s%s" % (test_env, mangled_name)
   if gfile.Exists(output_path):
     raise IOError("File already exists: %s" % output_path)
-  with gfile.GFile(output_path, "w") as out:
+  with gfile.GFile(output_path, "wb") as out:
     out.write(serialized_entry)
 
 
