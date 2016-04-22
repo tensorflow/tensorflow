@@ -23,7 +23,7 @@ import traceback
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 
 __all__ = ["make_template"]

@@ -36,7 +36,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 
 class RNNCell(object):

@@ -26,7 +26,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 __all__ = [
     'assert_global_step', 'create_global_step', 'get_global_step',

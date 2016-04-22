@@ -59,7 +59,7 @@ import six  # pylint: disable=unused-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["create_partitioned_variables", "variable_axis_size_partitioner"]
 

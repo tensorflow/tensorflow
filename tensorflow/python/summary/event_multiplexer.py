@@ -23,7 +23,7 @@ import threading
 
 import six
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary.impl import io_wrapper
 

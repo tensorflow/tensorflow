@@ -19,7 +19,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import device as pydev
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 

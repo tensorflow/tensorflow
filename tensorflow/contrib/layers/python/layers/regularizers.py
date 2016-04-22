@@ -24,7 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ['l1_regularizer', 'l2_regularizer', 'sum_regularizer',
            'apply_regularization']

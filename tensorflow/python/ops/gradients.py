@@ -42,7 +42,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import functional_ops
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 # Warn the user if we convert a sparse representation to dense with at
 # least this number of elements.

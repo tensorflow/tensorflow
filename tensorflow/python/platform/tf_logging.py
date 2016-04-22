@@ -201,7 +201,9 @@ def set_verbosity(verbosity):
 
 def _get_thread_id():
   """Get id of current thread, suitable for logging as an unsigned quantity."""
+  # pylint: disable=protected-access
   thread_id = six.moves._thread.get_ident()
+  # pylint:enable=protected-access
   return thread_id & _THREAD_ID_MASK
 
 

@@ -30,7 +30,7 @@ import six
 from six.moves import BaseHTTPServer
 from six.moves import socketserver
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary.impl import gcs
 from tensorflow.tensorboard.backend import handler

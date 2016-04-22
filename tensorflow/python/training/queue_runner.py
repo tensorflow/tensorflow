@@ -23,7 +23,7 @@ import threading
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 
 class QueueRunner(object):

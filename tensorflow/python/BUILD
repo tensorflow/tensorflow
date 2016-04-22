@@ -39,7 +39,7 @@ py_library(
 
 py_library(
     name = "platform",
-    srcs = glob(["platform/**/*.py"]),
+    srcs = glob(["platform/*.py"]),
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/core:protos_all_py"],
 )
@@ -47,7 +47,6 @@ py_library(
 py_library(
     name = "platform_test",
     srcs = [
-        "platform/default/_googletest.py",
         "platform/googletest.py",
     ],
     srcs_version = "PY2AND3",
@@ -58,25 +57,13 @@ py_library(
 )
 
 py_tests(
-    name = "default_platform_tests",
+    name = "platform_tests",
     size = "small",
-    srcs = glob(["platform/default/*_test.py"]),
+    srcs = glob(["platform/*_test.py"]),
     additional_deps = [
         ":platform",
         ":platform_test",
     ],
-    prefix = "default_platform",
-)
-
-py_tests(
-    name = "google_platform_tests",
-    size = "small",
-    srcs = glob(["platform/google/*_test.py"]),
-    additional_deps = [
-        ":platform",
-        ":platform_test",
-    ],
-    prefix = "google_platform",
 )
 
 cc_library(

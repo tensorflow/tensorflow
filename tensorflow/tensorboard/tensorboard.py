@@ -26,9 +26,9 @@ import socket
 
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
-from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import status_bar
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 

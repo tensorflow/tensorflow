@@ -22,9 +22,9 @@ import os
 import shutil
 import time
 
-from tensorflow.python.platform.default import _gfile as gfile
-from tensorflow.python.platform.default import _googletest as googletest
-from tensorflow.python.platform.default import _logging as logging
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import googletest
+from tensorflow.python.platform import tf_logging as logging
 
 
 class _BaseTest(object):

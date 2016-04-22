@@ -23,7 +23,7 @@ import inspect
 import os.path
 import sys
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 
 def load_resource(path):

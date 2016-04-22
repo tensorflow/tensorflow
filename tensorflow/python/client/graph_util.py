@@ -27,7 +27,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 _VARIABLE_OPS = {
     "Assign",

@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import sys
 
-from tensorflow.python.platform.default import _googletest as googletest
+from tensorflow.python.platform import googletest
 
-from tensorflow.python.platform.default import _flags as flags
+from tensorflow.python.platform import flags
 
 
 flags.DEFINE_string("string_foo", "default_val", "HelpString")

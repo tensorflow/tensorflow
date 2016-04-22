@@ -32,7 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["VariableScope", "get_variable_scope",
            "get_variable", "variable_scope", "variable_op_scope",
