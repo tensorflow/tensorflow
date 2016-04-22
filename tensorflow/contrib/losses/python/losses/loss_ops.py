@@ -166,10 +166,12 @@ def _safe_mean(losses, num_present):
       then zero is returned.
   """
   total_loss = math_ops.reduce_sum(losses)
-  return math_ops.select(num_present > 0,
-                         math_ops.div(total_loss, num_present),
-                         array_ops.zeros_like(total_loss),
-                         name="value")
+  return math_ops.select(
+      math_ops.greater(num_present, 0),
+      math_ops.div(total_loss, math_ops.select(
+          math_ops.equal(num_present, 0), 1.0, num_present)),
+      array_ops.zeros_like(total_loss),
+      name="value")
 
 
 def _compute_weighted_loss(losses, weight):
