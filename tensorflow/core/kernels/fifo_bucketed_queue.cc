@@ -51,7 +51,7 @@ void FIFOBucketedQueue::TryEnqueue(
               auto bucket_id_ptensor =
                   PersistentTensor(tuple[0]);
               Tensor* bucket_id_tensor = bucket_id_ptensor.AccessTensor(ctx);
-              int b = bucket_id_tensor->scalar<int>()();
+              int b = std::min(bucket_id_tensor->scalar<int>()(), buckets_ - 1);
 
               bucketed_queues_[b][0].push_back(bucket_id_ptensor);
               for (int i = 1; i < num_components(); ++i) {
@@ -122,7 +122,7 @@ void FIFOBucketedQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
                   tuple, index, 0, attempt->context, &bucket_id_ptensor));
               if (!attempt->context->status().ok()) return kComplete;
               Tensor* bucket_id_tensor = bucket_id_ptensor.AccessTensor(ctx);
-              int b = bucket_id_tensor->scalar<int>()();
+              int b = std::min(bucket_id_tensor->scalar<int>()(), buckets_ - 1);
 
               bucketed_queues_[b][0].push_back(bucket_id_ptensor);
               for (int i = 1; i < num_components(); ++i) {
