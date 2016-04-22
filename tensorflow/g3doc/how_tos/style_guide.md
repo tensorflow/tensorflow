@@ -1,4 +1,4 @@
-# TensorFlow Developer Guide
+# TensorFlow Style Guide
 
 This page contains style decisions that both developers and users of Tensorflow
 should follow to increase the readability of their code, reduce the number of
@@ -183,12 +183,3 @@ Example:
                reuse=None):
       ... see implementation at tensorflow/contrib/layers/python/layers/layers.py ...
 
-
-## Estimators
-
-*Estimator* is a subclass of `learn.BaseEstimator`. This class implements a
-Tensorflow model that can be easily reusable.
-
-* The estimator's name should represent the model that it's building. For
-regressions and classifications, use `XXXClassifier` or `XXXRegressor`. For
-others (like `KMeans` or `Inception`), just use the method's name.
