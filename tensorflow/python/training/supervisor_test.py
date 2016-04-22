@@ -505,6 +505,43 @@ class SupervisorTest(tf.test.TestCase):
       self.assertEqual(0, len(sv.start_queue_runners(sess)))
       sv.stop()
 
+  def testPrepareSessionAfterStopForChief(self):
+    logdir = self._TestDir("prepare_after_stop_chief")
+    with tf.Graph().as_default():
+      sv = tf.train.Supervisor(logdir=logdir, is_chief=True)
+
+      # Create a first session and then stop.
+      sess = sv.prepare_or_wait_for_session("")
+      sv.stop()
+      sess.close()
+      self.assertTrue(sv.should_stop())
+
+      # Now create a second session and test that we don't stay stopped, until
+      # we ask to stop again.
+      sess2 = sv.prepare_or_wait_for_session("")
+      self.assertFalse(sv.should_stop())
+      sv.stop()
+      sess2.close()
+      self.assertTrue(sv.should_stop())
+
+  def testPrepareSessionAfterStopForNonChief(self):
+    logdir = self._TestDir("prepare_after_stop_nonchief")
+    with tf.Graph().as_default():
+      sv = tf.train.Supervisor(logdir=logdir, is_chief=False)
+
+      # Create a first session and then stop.
+      sess = sv.prepare_or_wait_for_session("")
+      sv.stop()
+      sess.close()
+      self.assertTrue(sv.should_stop())
+
+      # Now create a second session and test that we don't stay stopped, until
+      # we ask to stop again.
+      sess2 = sv.prepare_or_wait_for_session("")
+      self.assertFalse(sv.should_stop())
+      sv.stop()
+      sess2.close()
+      self.assertTrue(sv.should_stop())
 
 if __name__ == "__main__":
   tf.test.main()

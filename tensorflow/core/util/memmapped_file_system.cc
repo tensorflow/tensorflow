@@ -25,7 +25,7 @@ namespace {
 uint64 DecodeUint64LittleEndian(const uint8* buffer) {
   uint64 result = 0;
   for (int i = 0; i < static_cast<int>(sizeof(uint64)); ++i) {
-    result |= buffer[i] << (8 * i);
+    result |= static_cast<uint64>(buffer[i]) << (8 * i);
   }
   return result;
 }

@@ -39,7 +39,7 @@ def _UnchangedSquare(op):
 @ops.RegisterShape("BatchCholesky")
 @ops.RegisterShape("BatchMatrixInverse")
 def _BatchUnchangedSquare(op):
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
   return [input_shape]
@@ -61,7 +61,7 @@ def _MatrixDeterminantShape(op):
 
 @ops.RegisterShape("BatchMatrixDeterminant")
 def _BatchMatrixDeterminantShape(op):
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
   if input_shape.ndims is not None:
@@ -82,7 +82,7 @@ def _SelfAdjointEigShape(op):
 
 @ops.RegisterShape("BatchSelfAdjointEig")
 def _BatchSelfAdjointEigShape(op):
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
   dlist = input_shape.dims
@@ -106,8 +106,8 @@ def _SquareMatrixSolveShape(op):
 @ops.RegisterShape("BatchMatrixSolve")
 @ops.RegisterShape("BatchMatrixTriangularSolve")
 def _BatchSquareMatrixSolveShape(op):
-  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(3)
-  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(3)
+  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
   # The matrices must be square.
   lhs_shape[-1].assert_is_compatible_with(lhs_shape[-2])
   # The matrices and right-hand sides in the batch must have the same number of
@@ -127,8 +127,8 @@ def _MatrixSolveLsShape(op):
 
 @ops.RegisterShape("BatchMatrixSolveLs")
 def _BatchMatrixSolveLsShape(op):
-  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(3)
-  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(3)
+  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
   # The matrices and right-hand sides in the batch must have the same number of
   # rows.
   lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])

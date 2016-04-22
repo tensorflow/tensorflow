@@ -38,7 +38,6 @@ template <typename Device, typename T>
 class AdjustContrastOp : public OpKernel {
  public:
   explicit AdjustContrastOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_DEPRECATED(context, 2, "Use AdjustContrastv2 instead");
   }
 
   void Compute(OpKernelContext* context) override {

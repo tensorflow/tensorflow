@@ -557,6 +557,7 @@ tf_gen_op_wrapper_py(
         "QueueClose",
         "QueueDequeue",
         "QueueDequeueMany",
+        "QueueDequeueUpTo",
         "QueueEnqueue",
         "QueueEnqueueMany",
         "QueueSize",

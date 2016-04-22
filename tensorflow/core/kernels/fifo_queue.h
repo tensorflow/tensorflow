@@ -44,6 +44,7 @@ class FIFOQueue : public TypedQueue<std::deque<PersistentTensor> > {
                       DoneCallback callback) override;
   void TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) override;
   void TryDequeueMany(int num_elements, OpKernelContext* ctx,
+                      bool allow_small_batch,
                       CallbackWithTuple callback) override;
   Status MatchesNodeDef(const NodeDef& node_def) override;
 

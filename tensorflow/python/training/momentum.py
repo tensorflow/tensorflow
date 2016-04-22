@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
@@ -59,12 +60,16 @@ class MomentumOptimizer(optimizer.Optimizer):
     mom = self.get_slot(var, "momentum")
     return training_ops.apply_momentum(
         var, mom,
-        self._learning_rate_tensor, grad, self._momentum_tensor,
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        grad,
+        math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
         use_locking=self._use_locking).op
 
   def _apply_sparse(self, grad, var):
     mom = self.get_slot(var, "momentum")
     return training_ops.sparse_apply_momentum(
         var, mom,
-        self._learning_rate_tensor, grad.values, grad.indices,
-        self._momentum_tensor, use_locking=self._use_locking).op
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        grad.values, grad.indices,
+        math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
+        use_locking=self._use_locking).op

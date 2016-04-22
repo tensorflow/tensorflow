@@ -100,7 +100,7 @@ class ProtoTextOutput {
   }
 
  private:
-  void AppendFieldAndValue(const char field_name[], const string& value_text) {
+  void AppendFieldAndValue(const char field_name[], StringPiece value_text) {
     StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
               field_name, kColonSeparator, value_text);
     level_empty_ = false;

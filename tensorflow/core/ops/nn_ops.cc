@@ -85,6 +85,7 @@ REGISTER_OP("BatchNormWithGlobalNormalization")
     .Attr("T: numbertype")
     .Attr("variance_epsilon: float")
     .Attr("scale_after_normalization: bool")
+    .Deprecated(9, "Use tf.nn.batch_normalization()")
     .Doc(R"doc(
 Batch normalization.
 
@@ -121,6 +122,7 @@ REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
     .Attr("T: numbertype")
     .Attr("variance_epsilon: float")
     .Attr("scale_after_normalization: bool")
+    .Deprecated(9, "Use tf.nn.batch_normalization()")
     .Doc(R"doc(
 Gradients for batch normalization.
 
@@ -815,6 +817,7 @@ REGISTER_OP("TopK")
     .Attr("k: int >= 0")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
+    .Deprecated(7, "Use TopKV2 instead")
     .Doc(R"doc(
 Finds values and indices of the `k` largest elements for the last dimension.
 

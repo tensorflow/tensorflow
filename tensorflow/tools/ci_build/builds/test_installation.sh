@@ -100,20 +100,10 @@ echo "PY_TEST_BLACKLIST: ${PY_TEST_BLACKLIST}"
 echo "PY_TEST_GPU_BLACKLIST: ${PY_TEST_GPU_BLACKLIST}"
 
 
-# Helper functions
-# Get the absolute path from a path
-abs_path() {
-  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
-}
-
-
-die() {
-  echo $@
-  exit 1
-}
-
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/builds_common.sh"
+
 
 # Process input arguments
 IS_VIRTUALENV=0
@@ -172,12 +162,12 @@ umask 000
 
 # Directory from which the unit-test files will be run
 PY_TEST_DIR_REL="pip_test/tests"
-PY_TEST_DIR=$(abs_path ${PY_TEST_DIR_REL})  # Get absolute path
+PY_TEST_DIR=$(realpath ${PY_TEST_DIR_REL})  # Get absolute path
 rm -rf ${PY_TEST_DIR} && mkdir -p ${PY_TEST_DIR}
 
 # Create test log directory
 PY_TEST_LOG_DIR_REL=${PY_TEST_DIR_REL}/logs
-PY_TEST_LOG_DIR=$(abs_path ${PY_TEST_LOG_DIR_REL})  # Absolute path
+PY_TEST_LOG_DIR=$(realpath ${PY_TEST_LOG_DIR_REL})  # Absolute path
 
 mkdir ${PY_TEST_LOG_DIR}
 
@@ -328,11 +318,8 @@ while true; do
     TEST_LOG_REL="${PY_TEST_LOG_DIR_REL}/${TEST_FILE_PATH}.log"
     mkdir -p $(dirname ${TEST_LOG_REL})  # Create directory for log
 
-    TEST_LOG=$(abs_path ${TEST_LOG_REL})  # Absolute path
+    TEST_LOG=$(realpath ${TEST_LOG_REL})  # Absolute path
     TEST_LOGS="${TEST_LOGS} ${TEST_LOG}"
-
-    # Start the stopwatch for this test
-    START_TIME=$(date +'%s')
 
     "${SCRIPT_DIR}/py_test_delegate.sh" \
       "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &

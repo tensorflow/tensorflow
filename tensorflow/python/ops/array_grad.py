@@ -333,6 +333,22 @@ def _ReverseGrad(op, grad):
   return array_ops.reverse(grad, reverse_dims), None
 
 
+@ops.RegisterGradient("SpaceToBatch")
+def _SpaceToBatchGrad(op, grad):
+  # Its gradient is the opposite op: BatchToSpace.
+  block_size = op.get_attr("block_size")
+  return [array_ops.batch_to_space(grad, op.inputs[1], block_size=block_size),
+          None]
+
+
+@ops.RegisterGradient("BatchToSpace")
+def _BatchToSpaceGrad(op, grad):
+  # Its gradient is the opposite op: SpaceToBatch.
+  block_size = op.get_attr("block_size")
+  return [array_ops.space_to_batch(grad, op.inputs[1], block_size=block_size),
+          None]
+
+
 @ops.RegisterGradient("SpaceToDepth")
 def _SpaceToDepthGrad(op, grad):
   # Its gradient is the opposite op: DepthToSpace.

@@ -69,6 +69,7 @@ ops.NoGradient("QueueEnqueue")
 ops.NoGradient("QueueEnqueueMany")
 ops.NoGradient("QueueDequeue")
 ops.NoGradient("QueueDequeueMany")
+ops.NoGradient("QueueDequeueUpTo")
 ops.NoGradient("QueueClose")
 ops.NoGradient("QueueSize")
 
