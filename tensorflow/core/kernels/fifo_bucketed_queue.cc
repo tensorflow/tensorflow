@@ -43,7 +43,6 @@ void FIFOBucketedQueue::TryEnqueue(
       enqueue_attempts_.emplace_back(
           1, callback, ctx, cm, token,
           [tuple, ctx, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            LOG(WARNING) << "size vs. capacity" << size() << " " << capacity_;
             if (closed_) {
               attempt->context->SetStatus(
                   errors::Aborted("FIFOBucketedQueue '", name_, "' is closed."));
@@ -54,7 +53,6 @@ void FIFOBucketedQueue::TryEnqueue(
               auto bucket_id_ptensor = PersistentTensor(tuple[0]);
               Tensor* bucket_id_tensor = bucket_id_ptensor.AccessTensor(ctx);
               int b = std::min(bucket_id_tensor->scalar<int>()(), buckets_ - 1);
-              LOG(WARNING) << "inserting into bucket " << b;
 
               bucketed_queues_[b][0].push_back(bucket_id_ptensor);
               for (int i = 1; i < num_components(); ++i) {
@@ -70,9 +68,7 @@ void FIFOBucketedQueue::TryEnqueue(
     }
   }
   if (!already_cancelled) {
-    LOG(WARNING) << "wtf... " << enqueue_attempts_.size();
     FlushUnlocked();
-    LOG(WARNING) << "wtf... " << enqueue_attempts_.size();
   } else {
     ctx->SetStatus(errors::Cancelled("Enqueue operation was cancelled"));
     callback();
@@ -279,8 +275,6 @@ Status FIFOBucketedQueue::MatchesNodeDef(const NodeDef& node_def) {
 
 void FIFOBucketedQueue::BatchBucketedQueuesToQueuesLocked() {
   for (int b = 0; b < buckets_; ++b) {
-    LOG(WARNING) << batch_size_;
-    LOG(WARNING) << "bucket " << b << " " << bucketed_queues_[b][0].size();
     if (bucketed_queues_[b][0].size() >= batch_size_) {
       // Move from bucketed_queues_ to queues_.
       for (int i = 0; i < this->num_components(); ++i) {
