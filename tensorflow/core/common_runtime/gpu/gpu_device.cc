@@ -505,7 +505,7 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
                                        PerOpGpuDevice* device, int stream_id,
                                        Allocator* allocator) {
   ConcretePerOpGpuDevice* concrete_device =
-      dynamic_cast<ConcretePerOpGpuDevice*>(device);
+      static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
 #if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
   concrete_device->Reinitialize(context, streams_[stream_id].compute, allocator,
