@@ -282,6 +282,7 @@ tf_cuda_library(
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/events_writer.h",
+        "util/example_proto_helper.h",
         "util/guarded_philox_random.h",
         "util/memmapped_file_system.h",
         "util/memmapped_file_system_writer.h",
