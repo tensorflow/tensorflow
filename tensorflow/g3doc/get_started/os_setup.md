@@ -27,6 +27,8 @@ We support different ways to install TensorFlow:
    impact existing Python programs on your machine.
 *  [Docker install](#docker-installation): Run TensorFlow in a Docker container
    isolated from all other programs on your machine.
+*  [Installing from sources](#installing-from-sources): Install TensorFlow by
+   building a pip wheel that you then install using pip.
 
 If you are familiar with Pip, Virtualenv, Anaconda, or Docker, please feel free to adapt
 the instructions to your particular needs.  The names of the pip and Docker
