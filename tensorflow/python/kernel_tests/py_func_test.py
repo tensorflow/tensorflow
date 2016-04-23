@@ -144,6 +144,14 @@ class PyOpTest(tf.test.TestCase):
                                    "Unsupported object type"):
         z.eval()
 
+  def testStateful(self):
+    # Not using self.test_session(), which disables optimization.
+    with tf.Session() as sess:
+      producer = iter(range(3))
+      x, = tf.py_func(lambda: next(producer), [], [tf.int64])
+      self.assertEqual(sess.run(x), 0)
+      self.assertEqual(sess.run(x), 1)
+      self.assertEqual(sess.run(x), 2)
 
 if __name__ == "__main__":
   tf.test.main()

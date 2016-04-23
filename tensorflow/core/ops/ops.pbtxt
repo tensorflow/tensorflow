@@ -7147,6 +7147,7 @@ op {
     minimum: 1
   }
   summary: "Invokes a python function to compute func(input)->output."
+  is_stateful: true
 }
 op {
   name: "QueueClose"
