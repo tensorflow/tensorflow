@@ -161,7 +161,15 @@ void FIFOBucketedQueue::TryDequeue(OpKernelContext* ctx,
 }
 
 void FIFOBucketedQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
+                                       bool allow_small_batch,
                                        CallbackWithTuple callback) {
+  if (allow_small_batch) {
+    ctx->SetStatus(
+        errors::Unimplemented("Dequeue: Queue does not support small batches"));
+    callback(Tuple());
+    return;
+  }
+
   if (!specified_shapes()) {
     ctx->SetStatus(
         errors::InvalidArgument("FIFOBucketedQueue's DequeueMany requires the "
