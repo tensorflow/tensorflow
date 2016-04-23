@@ -24,6 +24,7 @@ py_library(
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/skflow",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",

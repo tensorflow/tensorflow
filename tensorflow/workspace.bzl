@@ -34,6 +34,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     commit = "791beff",
   )
 
+  native.git_repository(
+    name = "gemmlowp",
+    remote = "https://github.com/google/gemmlowp.git",
+    commit = "96d3acab46fbb03855ca22c2ee2bb9831ac8c83c",
+  )
+
   native.new_http_archive(
     name = "jpeg_archive",
     url = "http://www.ijg.org/files/jpegsrc.v9a.tar.gz",
