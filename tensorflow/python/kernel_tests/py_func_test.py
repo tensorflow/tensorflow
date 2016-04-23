@@ -153,5 +153,11 @@ class PyOpTest(tf.test.TestCase):
       self.assertEqual(sess.run(x), 1)
       self.assertEqual(sess.run(x), 2)
 
+  def testCOrder(self):
+    with self.test_session():
+      val = [[1, 2], [3, 4]]
+      x, = tf.py_func(lambda: np.array(val, order="F"), [], [tf.int64])
+      self.assertAllEqual(val, x.eval())
+
 if __name__ == "__main__":
   tf.test.main()

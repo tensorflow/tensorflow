@@ -62,9 +62,9 @@ class FuncRegistry(object):
     # Ensures that we return either a single numpy array or a list of numpy
     # arrays.
     if isinstance(ret, (tuple, list)):
-      ret = [np.array(x) for x in ret]
+      ret = [np.array(x, order="C") for x in ret]
     else:
-      ret = np.array(ret)
+      ret = np.array(ret, order="C")
     return ret
 
   def size(self):
