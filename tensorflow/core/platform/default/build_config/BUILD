@@ -82,7 +82,7 @@ cc_library(
     ],
     linkopts = select({
         "//third_party/gpus/cuda:darwin": [
-            "-Wl,-rpath,third_party/gpus/cuda/lib"
+            "-Wl,-rpath,third_party/gpus/cuda/lib",
             "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib"
         ],
         "//conditions:default": [
