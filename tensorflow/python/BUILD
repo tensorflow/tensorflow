@@ -502,6 +502,15 @@ tf_gen_op_wrapper_py(
 )
 
 tf_gen_op_wrapper_py(
+    name = "attention_mask_ops",
+    hidden = [
+        "AttentionMask",
+        "AttentionMaskMedian",
+    ],
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_py(
     name = "candidate_sampling_ops",
     hidden = [
         "AllCandidateSampler",
@@ -772,6 +781,7 @@ py_library(
     srcs = [
         "ops/array_grad.py",
         "ops/array_ops.py",
+        "ops/attention_mask_ops.py",
         "ops/candidate_sampling_ops.py",
         "ops/check_ops.py",
         "ops/clip_ops.py",
@@ -781,6 +791,7 @@ py_library(
         "ops/data_flow_ops.py",
         "ops/embedding_ops.py",
         "ops/gen_array_ops.py",
+        "ops/gen_attention_mask_ops.py",
         "ops/gen_control_flow_ops.py",
         "ops/gen_ctc_ops.py",
         "ops/gen_data_flow_ops.py",
@@ -833,6 +844,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":attention_mask_ops",
         ":candidate_sampling_ops",
         ":control_flow_ops",
         ":data_flow_ops",
@@ -1133,6 +1145,7 @@ sharded_kernel_test_list = glob([
 ])
 
 cpu_only_kernel_test_list = glob([
+    "kernel_tests/attention_mask_ops_test.py",
     "kernel_tests/attention_ops_test.py",
     "kernel_tests/barrier_ops_test.py",
     "kernel_tests/bcast_ops_test.py",
