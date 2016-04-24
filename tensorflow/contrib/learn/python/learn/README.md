@@ -1,8 +1,6 @@
 # TF Learn (aka Scikit Flow)
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
 [![Join the chat at https://gitter.im/tensorflow/skflow](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/tensorflow/skflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-[![PyPI version](https://badge.fury.io/py/skflow.svg)](http://badge.fury.io/py/skflow)
 
 This is a simplified interface for TensorFlow, to get people started on predictive analytics and data mining.
 
