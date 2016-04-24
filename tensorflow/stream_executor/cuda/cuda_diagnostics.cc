@@ -80,7 +80,7 @@ port::StatusOr<DriverVersion> StringToDriverVersion(const string &value) {
 
   int major;
   int minor;
-  int patch(0);
+  int patch = 0;
   if (!port::safe_strto32(pieces[0], &major)) {
     return port::Status{
         port::error::INVALID_ARGUMENT,
