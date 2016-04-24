@@ -204,7 +204,7 @@ bool IsCudnnR2() {
 CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 // clang-format off
-#if CUDNN_VERSION >= 4000
+#if CUDNN_VERSION >= 4000 && CUDNN_VERSION < 5000
 #define CUDNN_DNN_ROUTINE_EACH_R2(__macro)                \
   __macro(cudnnAddTensor_v2)                              \
   __macro(cudnnConvolutionBackwardData_v2)                \
@@ -219,21 +219,44 @@ CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 CUDNN_DNN_ROUTINE_EACH_R2(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
-// clang-format off
+// APIs available after R3:
 #if CUDNN_VERSION >= 3000
-#define CUDNN_DNN_ROUTINE_EACH_R3(__macro)                    \
+#define CUDNN_DNN_ROUTINE_EACH_AFTER_R3(__macro)              \
   __macro(cudnnGetConvolutionBackwardFilterWorkspaceSize)     \
   __macro(cudnnGetConvolutionBackwardDataAlgorithm)           \
   __macro(cudnnGetConvolutionBackwardFilterAlgorithm)         \
+  __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)
+CUDNN_DNN_ROUTINE_EACH_AFTER_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+#undef CUDNN_DNN_ROUTINE_EACH_AFTER_R3
+#endif
+
+// APIs in R3 but not in R5
+// clang-format off
+#if CUDNN_VERSION >= 3000 && CUDNN_VERSION < 5000
+#define CUDNN_DNN_ROUTINE_EACH_R3(__macro)                    \
   __macro(cudnnAddTensor_v3)                                  \
   __macro(cudnnConvolutionBackwardData_v3)                    \
-  __macro(cudnnConvolutionBackwardFilter_v3)                  \
-  __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)
+  __macro(cudnnConvolutionBackwardFilter_v3)
 // clang-format on
 
 CUDNN_DNN_ROUTINE_EACH_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 #undef CUDNN_DNN_ROUTINE_EACH_R3
 #endif
+
+// APIs in R5
+// clang-format off
+#if CUDNN_VERSION >= 5000
+#define CUDNN_DNN_ROUTINE_EACH_R5(__macro)                    \
+  __macro(cudnnCreateActivationDescriptor)                    \
+  __macro(cudnnSetActivationDescriptor)                       \
+  __macro(cudnnGetActivationDescriptor)                       \
+  __macro(cudnnDestroyActivationDescriptor)
+// clang-format on
+
+CUDNN_DNN_ROUTINE_EACH_R5(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+#undef CUDNN_DNN_ROUTINE_EACH_R5
+#endif
+
 #undef CUDNN_DNN_ROUTINE_EACH
 
 }  // namespace dynload
@@ -260,6 +283,22 @@ port::Status CudnnSupport::Init() {
   auto status = dynload::cudnnCreate(
       parent_, reinterpret_cast<cudnnHandle_t*>(&dnn_handle_));
   if (status == CUDNN_STATUS_SUCCESS) {
+    // Check whether loaded version of CuDNN matches what the source
+    // was built with.
+    size_t loaded_version = dynload::cudnnGetVersion();
+    bool library_loaded_matches_source = (loaded_version == CUDNN_VERSION);
+    if (!library_loaded_matches_source) {
+      const string error =
+          port::StrCat("Loaded cudnn library: ", loaded_version,
+                       " but source was compiled against ", CUDNN_VERSION,
+                       ".  If using a binary install, upgrade your cudnn "
+                       "library to match.  If building from sources, "
+                       "make sure the library loaded matches the "
+                       "version you specified during compile configuration.");
+      LOG(ERROR) << error;
+      return port::Status{port::error::INTERNAL, error};
+    }
+
     return port::Status::OK();
   }
 
@@ -281,6 +320,7 @@ port::Status CudnnSupport::Init() {
       }
     }
   }
+
   return port::Status{port::error::INTERNAL,
                       port::StrCat("cudnn library could not create a handle: ",
                                    ToString(status))};
@@ -349,6 +389,7 @@ class ScopedFilterDescriptor {
  public:
   ScopedFilterDescriptor(CUDAExecutor* parent,
                          const FilterDescriptor& filter_descriptor,
+                         const BatchDescriptor& batch_descriptor,
                          cudnnDataType_t elem_type)
       : parent_(parent), handle_(nullptr) {
     cudnnStatus_t status =
@@ -359,11 +400,13 @@ class ScopedFilterDescriptor {
     }
 
     // TODO(b/23032134): Even if the filter layout is not supported,
-    // cudnnSetFilter4DDescriptor will return CUDNN_STATUS_SUCCESS because it
+    // cudnnSetFilter4DDescriptor_v4 will return CUDNN_STATUS_SUCCESS because it
     // does not take layout as an input. Maybe force cuDNN by giving wrong
     // inputs intentionally?
+    cudnnTensorFormat_t format;
     switch (filter_descriptor.layout()) {
       case dnn::FilterLayout::kOutputInputYX:
+        format = CUDNN_TENSOR_NCHW;
         break;
       default:
         LOG(FATAL) << "Unsupported filter format "
@@ -372,7 +415,11 @@ class ScopedFilterDescriptor {
     }
 
     status = dynload::cudnnSetFilter4dDescriptor(
-        parent_, handle_, elem_type,
+        parent_, handle_,
+        elem_type,
+#if CUDNN_VERSION >= 5000
+        format,
+#endif
         CheckedNarrowing<int64, int>(
             filter_descriptor.output_feature_map_count()),
         CheckedNarrowing<int64, int>(
@@ -472,11 +519,16 @@ class ScopedPoolingDescriptor {
       LOG(FATAL) << "could not create cudnn pooling descriptor: "
                  << ToString(status);
     }
+
     status = dynload::cudnnSetPooling2dDescriptor(
         parent_, handle_,
         (pooling_descriptor.mode() == dnn::PoolingMode::kMaximum
              ? CUDNN_POOLING_MAX
              : CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING),
+#if CUDNN_VERSION >= 5000
+        // Always propagate nans.
+        CUDNN_PROPAGATE_NAN,
+#endif
         CheckedNarrowing<int64, int>(pooling_descriptor.window_height()),
         CheckedNarrowing<int64, int>(pooling_descriptor.window_width()),
         CheckedNarrowing<int64, int>(pooling_descriptor.vertical_padding()),
@@ -506,6 +558,77 @@ class ScopedPoolingDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(ScopedPoolingDescriptor);
 };
 
+#if CUDNN_VERSION >= 5000
+// Turns a ActivationDescriptor structure into a cudnn activation
+// descriptor handle within a scope.
+class ScopedActivationDescriptor {
+ public:
+  ScopedActivationDescriptor(CUDAExecutor* parent,
+                             dnn::ActivationMode activation_mode,
+                             double value_max)
+      : parent_(parent), handle_(nullptr) {
+    cudnnStatus_t status =
+        dynload::cudnnCreateActivationDescriptor(parent_, &handle_);
+    if (status != CUDNN_STATUS_SUCCESS) {
+      LOG(FATAL) << "could not create cudnn activation descriptor: "
+                 << ToString(status);
+    }
+
+    double relu_ceiling = 0.0;
+    cudnnActivationMode_t mode;
+    switch (activation_mode) {
+      case dnn::ActivationMode::kRelu6:
+        relu_ceiling = 6.0;
+        mode = CUDNN_ACTIVATION_CLIPPED_RELU;
+        break;
+      case dnn::ActivationMode::kReluX:
+        relu_ceiling = value_max;
+        mode = CUDNN_ACTIVATION_CLIPPED_RELU;
+        break;
+      case dnn::ActivationMode::kRelu:
+        mode = CUDNN_ACTIVATION_RELU;
+        break;
+      case dnn::ActivationMode::kSigmoid:
+        mode = CUDNN_ACTIVATION_SIGMOID;
+        break;
+      case dnn::ActivationMode::kTanh:
+        mode = CUDNN_ACTIVATION_TANH;
+        break;
+      default:
+        LOG(ERROR) << "unrecognized activation mode: "
+                   << static_cast<int>(activation_mode);
+    }
+
+    // Always propagate nans.
+    cudnnNanPropagation_t nan_propagation = CUDNN_PROPAGATE_NAN;
+    status = dynload::cudnnSetActivationDescriptor(
+        parent_, handle_,
+        mode, nan_propagation, relu_ceiling);
+    if (status != CUDNN_STATUS_SUCCESS) {
+      LOG(FATAL) << "could not set cudnn activation descriptor: "
+                 << ToString(status);
+    }
+  }
+
+  ~ScopedActivationDescriptor() {
+    cudnnStatus_t status =
+        dynload::cudnnDestroyActivationDescriptor(parent_, handle_);
+    if (status != CUDNN_STATUS_SUCCESS) {
+      LOG(ERROR) << "could not destroy cudnn activation descriptor: "
+                 << ToString(status);
+    }
+  }
+
+  cudnnActivationDescriptor_t handle() const { return handle_; }
+
+ private:
+  CUDAExecutor* parent_;                // Parent executor. Not owned.
+  cudnnActivationDescriptor_t handle_;  // Owned.
+
+  SE_DISALLOW_COPY_AND_ASSIGN(ScopedActivationDescriptor);
+};
+#endif
+
 bool CudnnSupport::DoConvolve(
     Stream* stream, const BatchDescriptor& batch_descriptor,
     const DeviceMemory<float>& input_data,
@@ -517,7 +640,8 @@ bool CudnnSupport::DoConvolve(
   ScopedTensorDescriptor input_4d{parent_, batch_descriptor, CUDNN_DATA_FLOAT};
   ScopedTensorDescriptor output_4d{parent_, output_descriptor,
                                    CUDNN_DATA_FLOAT};
-  ScopedFilterDescriptor filter{parent_, filter_descriptor, CUDNN_DATA_FLOAT};
+  ScopedFilterDescriptor filter{parent_, filter_descriptor, batch_descriptor,
+                                CUDNN_DATA_FLOAT};
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor};
 
   mutex_lock lock{dnn_handle_mutex_};
@@ -674,9 +798,11 @@ bool CudnnSupport::DoConvolveBackwardData(
                                      CUDNN_DATA_FLOAT};
   ScopedTensorDescriptor in_back_4d{parent_, input_descriptor,
                                     CUDNN_DATA_FLOAT};
-  ScopedFilterDescriptor filter{parent_, filter_descriptor, CUDNN_DATA_FLOAT};
+  ScopedFilterDescriptor filter{parent_, filter_descriptor, input_descriptor,
+                                CUDNN_DATA_FLOAT};
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor};
 
+#if CUDNN_VERSION < 5000
 #if CUDNN_VERSION >= 3000
   if (dynload::IsCudnnR2()) {
 #endif
@@ -697,6 +823,7 @@ bool CudnnSupport::DoConvolveBackwardData(
     return true;
 #if CUDNN_VERSION >= 3000
   }
+#endif
 #endif
 
 #if CUDNN_VERSION >= 3000
@@ -755,7 +882,11 @@ bool CudnnSupport::DoConvolveBackwardData(
     algo = get_algorithm(/*specify_limit=*/false);
   }
 
+#if CUDNN_VERSION >= 5000
+  status = dynload::cudnnConvolutionBackwardData(
+#else
   status = dynload::cudnnConvolutionBackwardData_v3(
+#endif
       parent_, ToHandle(dnn_handle_),
       /*alpha=*/&alpha,
       /*filterDesc=*/filter.handle(),
@@ -809,9 +940,11 @@ bool CudnnSupport::DoConvolveBackwardFilter(
   ScopedTensorDescriptor out_back_4d{parent_, output_descriptor,
         CUDNN_DATA_FLOAT};
   ScopedTensorDescriptor input_4d{parent_, input_descriptor, CUDNN_DATA_FLOAT};
-  ScopedFilterDescriptor filter{parent_, filter_descriptor, CUDNN_DATA_FLOAT};
+  ScopedFilterDescriptor filter{parent_, filter_descriptor, input_descriptor,
+                                CUDNN_DATA_FLOAT};
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor};
 
+#if CUDNN_VERSION < 5000
 #if CUDNN_VERSION >= 3000
   if (dynload::IsCudnnR2()) {
 #endif
@@ -832,6 +965,7 @@ bool CudnnSupport::DoConvolveBackwardFilter(
     return true;
 #if CUDNN_VERSION >= 3000
   }
+#endif
 #endif
 
 #if CUDNN_VERSION >= 3000
@@ -890,7 +1024,11 @@ bool CudnnSupport::DoConvolveBackwardFilter(
     algo = get_algorithm(/*specify_limit=*/false);
   }
 
+#if CUDNN_VERSION >= 5000
+  status = dynload::cudnnConvolutionBackwardFilter(
+#else
   status = dynload::cudnnConvolutionBackwardFilter_v3(
+#endif
       parent_, ToHandle(dnn_handle_), /*alpha=*/&alpha,
       /*srcDesc=*/input_4d.handle(),
       /*srcData=*/input_data.opaque(),
@@ -1063,7 +1201,7 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
   ScopedTensorDescriptor bias_descriptor{parent_, bias_dimensions,
                                          CUDNN_DATA_FLOAT};
 
-  // cudnnAddTensor_v3 is in-place, so we need to copy input_data to
+  // cudnnAddTensor after R3 is in-place, so we need to copy input_data to
   // output_data before doing the addition, unless the input and
   // output are at the same address.
   if (input_data.opaque() != output_data->opaque()) {
@@ -1090,6 +1228,8 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
 #if CUDNN_VERSION >= 3000
   if (dynload::IsCudnnR2()) {
 #endif
+
+#if CUDNN_VERSION < 5000
 #if CUDNN_VERSION >= 4000
     status = dynload::cudnnAddTensor_v2(
 #else
@@ -1098,9 +1238,15 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
         parent_, ToHandle(dnn_handle_), CUDNN_ADD_SAME_C, &alpha,
         bias_descriptor.handle(), biases.opaque(), &beta,
         input_descriptor.handle(), output_data->opaque());
+#endif  // CUDNN_VERSION < 5000
+
 #if CUDNN_VERSION >= 3000
   } else {
+#if CUDNN_VERSION >= 5000
+    status = dynload::cudnnAddTensor(
+#else
     status = dynload::cudnnAddTensor_v3(
+#endif
         parent_, ToHandle(dnn_handle_), &alpha, bias_descriptor.handle(),
         biases.opaque(), &beta, input_descriptor.handle(),
         output_data->opaque());
@@ -1127,6 +1273,11 @@ bool CudnnSupport::DoActivate(Stream* stream,
     LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
     return false;
   }
+
+#if CUDNN_VERSION >= 5000
+  ScopedActivationDescriptor activation_desc{parent_, activation_mode,
+                                             dimensions.value_max()};
+#else
   cudnnActivationMode_t mode;
   switch (activation_mode) {
     case dnn::ActivationMode::kRelu6:
@@ -1153,6 +1304,7 @@ bool CudnnSupport::DoActivate(Stream* stream,
                  << static_cast<int>(activation_mode);
       return false;
   }
+#endif
 
   ScopedTensorDescriptor input_4d{parent_, dimensions, CUDNN_DATA_FLOAT};
   // Alpha is the input scaling factor.
@@ -1160,7 +1312,13 @@ bool CudnnSupport::DoActivate(Stream* stream,
   // Beta is the output scaling factor.
   float beta = 0.0;
   status = dynload::cudnnActivationForward(
-      parent_, ToHandle(dnn_handle_), mode, &alpha, input_4d.handle(),
+      parent_, ToHandle(dnn_handle_),
+#if CUDNN_VERSION >= 5000
+      activation_desc.handle(),
+#else
+      mode,
+#endif
+      &alpha, input_4d.handle(),
       input_data.opaque(), &beta, input_4d.handle(), output_data->opaque());
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "stream " << stream
@@ -1346,7 +1504,8 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::BatchDescriptor* output_batch_descriptor) {
   ScopedTensorDescriptor input_4d{parent_, batch_descriptor, CUDNN_DATA_FLOAT};
-  ScopedFilterDescriptor filter{parent_, filter_descriptor, CUDNN_DATA_FLOAT};
+  ScopedFilterDescriptor filter{parent_, filter_descriptor, batch_descriptor,
+                                CUDNN_DATA_FLOAT};
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor};
 
   int dims[4];

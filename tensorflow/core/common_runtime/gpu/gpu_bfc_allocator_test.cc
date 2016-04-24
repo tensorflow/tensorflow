@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
@@ -255,6 +256,15 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   AllocatorStats stats;
   a.GetStats(&stats);
   LOG(INFO) << "Alloc stats: \n" << stats.DebugString();
+}
+
+TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
+  GPUBFCAllocator a(0, 1UL << 60);
+  GPUBFCAllocator b(0, 1UL << 60);
+  void* amem = a.AllocateRaw(1, 1);
+  void* bmem = b.AllocateRaw(1, 1 << 30);
+  a.DeallocateRaw(amem);
+  b.DeallocateRaw(bmem);
 }
 
 static void BM_Allocation(int iters) {

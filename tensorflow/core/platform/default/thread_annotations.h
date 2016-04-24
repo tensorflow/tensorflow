@@ -157,11 +157,6 @@ limitations under the License.
 // annotations will be ignored by the analysis.
 #define TS_UNCHECKED(x) ""
 
-// Disables warnings for a single read operation.  This can be used to do racy
-// reads of guarded data members, in cases where the race is benign.
-#define TS_UNCHECKED_READ(x) \
-  ::tensorflow::thread_safety_analysis::ts_unchecked_read(x)
-
 namespace tensorflow {
 namespace thread_safety_analysis {
 

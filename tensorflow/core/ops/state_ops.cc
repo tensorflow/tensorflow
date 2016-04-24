@@ -40,6 +40,20 @@ shared_name: If non-empty, this variable is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
 )doc");
 
+REGISTER_OP("IsVariableInitialized")
+    .Output("is_initialized: bool")
+    .Input("ref: Ref(dtype)")
+    .Attr("dtype: type")
+    .SetAllowsUninitializedInput()
+    .Doc(R"doc(
+Checks whether a tensor has been initialized.
+
+Outputs boolean scalar indicating whether the tensor has been initialized.
+
+ref: Should be from a `Variable` node. May be uninitialized.
+dtype: The type of elements in the variable tensor.
+)doc");
+
 REGISTER_OP("TemporaryVariable")
     .Output("ref: Ref(dtype)")
     .Attr("shape: shape")

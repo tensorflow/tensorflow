@@ -18,9 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python.client import server_lib
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.platform import logging
+from tensorflow.python.training import server_lib
 
 
 class _ReplicaDeviceChooser(object):
@@ -146,9 +146,9 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
   """
   if cluster is not None:
     if isinstance(cluster, server_lib.ClusterSpec):
-      cluster_spec = cluster.as_cluster_spec()
+      cluster_spec = cluster.as_dict()
     else:
-      cluster_spec = server_lib.ClusterSpec(cluster).as_cluster_spec()
+      cluster_spec = server_lib.ClusterSpec(cluster).as_dict()
     # Get ps_job_name from ps_device by striping "/job:".
     ps_job_name = ps_device.lstrip("/job:")
     if ps_job_name not in cluster_spec or cluster_spec[ps_job_name] is None:

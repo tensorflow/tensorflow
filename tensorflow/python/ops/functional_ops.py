@@ -35,6 +35,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope as vs
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_functional_ops import *
 # pylint: enable=wildcard-import
@@ -82,14 +84,21 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     # sum == 21
     ```
   """
-  with ops.op_scope([elems], name, "foldl") as name:
-    if not callable(fn):
-      raise TypeError("fn must be callable.")
+  if not callable(fn):
+    raise TypeError("fn must be callable.")
+
+  # TODO(ebrevdo): Change to using colocate_with here and in other methods.
+  with vs.variable_op_scope([elems], name, "foldl") as varscope:
+    # Any get_variable calls fn will cache the first call locally
+    # and not issue repeated network I/O requests for each iteration.
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False)
+                                            dynamic_size=False,
+                                            infer_shape=True)
     elems_ta = elems_ta.unpack(elems)
 
     if initializer is None:
@@ -102,10 +111,11 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     def compute(i, a):
       a = fn(a, elems_ta.read(i))
       return [i + 1, a]
-    _, r_a = control_flow_ops.While(lambda i, a: i < n, compute, [i, a],
-                                    parallel_iterations=parallel_iterations,
-                                    back_prop=back_prop,
-                                    swap_memory=swap_memory)
+    _, r_a = control_flow_ops.while_loop(
+        lambda i, a: i < n, compute, [i, a],
+        parallel_iterations=parallel_iterations,
+        back_prop=back_prop,
+        swap_memory=swap_memory)
     return r_a
 
 
@@ -147,14 +157,20 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     # sum == 21
     ```
   """
-  with ops.op_scope([elems], name, "foldr") as name:
-    if not callable(fn):
-      raise TypeError("fn must be callable.")
+  if not callable(fn):
+    raise TypeError("fn must be callable.")
+
+  with vs.variable_op_scope([elems], name, "foldr") as varscope:
+    # Any get_variable calls fn will cache the first call locally
+    # and not issue repeated network I/O requests for each iteration.
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False)
+                                            dynamic_size=False,
+                                            infer_shape=True)
     elems_ta = elems_ta.unpack(elems)
 
     if initializer is None:
@@ -167,10 +183,11 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       i -= 1
       a = fn(a, elems_ta.read(i))
       return [i, a]
-    _, r_a = control_flow_ops.While(lambda i, a: i > 0, compute, [i, a],
-                                    parallel_iterations=parallel_iterations,
-                                    back_prop=back_prop,
-                                    swap_memory=swap_memory)
+    _, r_a = control_flow_ops.while_loop(
+        lambda i, a: i > 0, compute, [i, a],
+        parallel_iterations=parallel_iterations,
+        back_prop=back_prop,
+        swap_memory=swap_memory)
     return r_a
 
 
@@ -210,28 +227,42 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     # squares == [1, 4, 9, 16, 25, 36]
     ```
   """
-  with ops.op_scope([elems], name, "map") as name:
-    if not callable(fn):
-      raise TypeError("fn must be callable.")
+  if not callable(fn):
+    raise TypeError("fn must be callable.")
+
+  with vs.variable_op_scope([elems], name, "map") as varscope:
+    # Any get_variable calls fn will cache the first call locally
+    # and not issue repeated network I/O requests for each iteration.
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
+
     dtype = dtype if dtype else elems.dtype
 
     # Convert elems to tensor array.
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False)
+                                            dynamic_size=False,
+                                            infer_shape=True)
     elems_ta = elems_ta.unpack(elems)
 
     i = constant_op.constant(0)
     acc_ta = tensor_array_ops.TensorArray(dtype=dtype, size=n,
-                                          dynamic_size=False)
+                                          dynamic_size=False,
+                                          infer_shape=True)
     def compute(i, ta):
       ta = ta.write(i, fn(elems_ta.read(i)))
       return [i + 1, ta]
-    _, r_a = control_flow_ops.While(lambda i, a: i < n, compute, [i, acc_ta],
-                                    parallel_iterations=parallel_iterations,
-                                    back_prop=back_prop,
-                                    swap_memory=swap_memory)
-    return r_a.pack()
+    _, r_a = control_flow_ops.while_loop(
+        lambda i, a: i < n, compute, [i, acc_ta],
+        parallel_iterations=parallel_iterations,
+        back_prop=back_prop,
+        swap_memory=swap_memory)
+    result = r_a.pack()
+    elems_dims = ops.convert_to_tensor(elems).get_shape().dims
+    result_dims = result.get_shape().dims
+    if elems_dims and result_dims:
+      result.set_shape([elems_dims[0]] + result_dims[1:])
+    return result
 
 
 def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
@@ -272,14 +303,20 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     # sum == [1, 3, 6, 10, 15, 21]
     ```
   """
-  with ops.op_scope([elems], name, "scan") as name:
-    if not callable(fn):
-      raise TypeError("fn must be callable.")
+  if not callable(fn):
+    raise TypeError("fn must be callable.")
+
+  with vs.variable_op_scope([elems], name, "scan") as varscope:
+    # Any get_variable calls fn will cache the first call locally
+    # and not issue repeated network I/O requests for each iteration.
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False)
+                                            dynamic_size=False,
+                                            infer_shape=True)
     elems_ta = elems_ta.unpack(elems)
 
     if initializer is None:
@@ -291,7 +328,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     # Create a tensor array to store the intermediate values.
     acc_ta = tensor_array_ops.TensorArray(dtype=a.dtype, size=n,
-                                          dynamic_size=False)
+                                          dynamic_size=False,
+                                          infer_shape=True)
     if initializer is None:
       acc_ta = acc_ta.write(0, a)
 
@@ -299,11 +337,16 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       a = fn(a, elems_ta.read(i))
       ta = ta.write(i, a)
       return [i + 1, a, ta]
-    _, _, r_a = control_flow_ops.While(
+    _, _, r_a = control_flow_ops.while_loop(
         lambda i, a, ta: i < n, compute, [i, a, acc_ta],
         parallel_iterations=parallel_iterations,
         back_prop=back_prop, swap_memory=swap_memory)
-    return r_a.pack()
+    result = r_a.pack()
+    elems_dims = ops.convert_to_tensor(elems).get_shape().dims
+    result_dims = result.get_shape().dims
+    if elems_dims and result_dims:
+      result.set_shape([elems_dims[0]] + result_dims[1:])
+    return result
 
 
 @ops.RegisterShape("SymbolicGradient")

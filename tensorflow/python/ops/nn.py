@@ -106,6 +106,7 @@ concatenated.
 @@conv2d
 @@depthwise_conv2d
 @@separable_conv2d
+@@atrous_conv2d
 @@conv2d_transpose
 
 ## Pooling
@@ -237,6 +238,7 @@ from tensorflow.python.ops.math_ops import tanh
 from tensorflow.python.util.all_util import make_all
 
 # Bring more nn-associated functionality into this package.
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
@@ -500,18 +502,8 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     if in_channels == 1:
       return nn_ops.conv2d(input, filter, strides, padding, name=name)
     else:
-      # Create one separate convolution per channel.
-      convs = []
-      for channel in xrange(in_channels):
-        with ops.name_scope("depth%d" % channel) as channel_scope:
-          t_in = array_ops.slice(input, [0, 0, 0, channel], [-1, -1, -1, 1],
-                                 name="slice_inputs")
-          f_in = array_ops.slice(filter, [0, 0, channel, 0], [-1, -1, 1, -1],
-                                 name="slice_params")
-          convs.append(nn_ops.conv2d(t_in, f_in,
-                                     strides, padding, name=channel_scope))
-      # Concatenate the per-channel convolutions along the channel dimension.
-      return array_ops.concat(3, convs, name=name)
+      return nn_ops.depthwise_conv2d_native(input, filter, strides, padding,
+                                            name=name)
 
 
 def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
@@ -571,13 +563,10 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
         # This would mean the separable convolutions is over-parametrized.
         assert channel_multiplier * in_channels < out_channels
     # The layout of the ops in the graph are expected to be as follows:
+    # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
-    # separable_conv2d/depthwise  // Concat op for the deptwise outputs.
-    # separable_conv2d/depthwise/depth0  // Conv2D op for depth 0
-    # separable_conv2d/depthwise/depth1  // Conv2D op for depth 1
-    # separable_conv2d/depthwise/depth2  // Conv2D op for depth 2
-    depthwise = depthwise_conv2d(input, depthwise_filter, strides,
-                                 padding, name="depthwise")
+    depthwise = nn_ops.depthwise_conv2d_native(input, depthwise_filter, strides,
+                                               padding, name="depthwise")
     return nn_ops.conv2d(depthwise, pointwise_filter, [1, 1, 1, 1],
                          padding="VALID", name=name)
 
@@ -719,9 +708,9 @@ def batch_normalization(x,
 
   As described in http://arxiv.org/abs/1502.03167.
   Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
-  `scale` \\\\(\gamma\\\\) to it, as well as an `offest` \\\\(\beta\\\\):
+  `scale` \\\\(\gamma\\\\) to it, as well as an `offset` \\\\(\\beta\\\\):
 
-  \\\\(\frac{\gamma(x-\mu)}{\sigma}+\beta\\\\)
+  \\\\(\\frac{\gamma(x-\mu)}{\sigma}+\\beta\\\\)
 
   `mean`, `variance`, `offset` and `scale` are all expected to be of one of two
   shapes:
@@ -746,7 +735,7 @@ def batch_normalization(x,
     x: Input `Tensor` of arbitrary dimensionality.
     mean: A mean `Tensor`.
     variance: A variance `Tensor`.
-    offset: An offset `Tensor`, often denoted \\\\(\beta\\\\) in equations, or
+    offset: An offset `Tensor`, often denoted \\\\(\\beta\\\\) in equations, or
       None. If present, will be added to the normalized tensor.
     scale: A scale `Tensor`, often denoted \\\\(\gamma\\\\) in equations, or
       `None`. If present, the scale is applied to the normalized tensor.

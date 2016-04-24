@@ -18,5 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=wildcard-import
-from tensorflow.contrib.losses.python.losses.loss_ops import *
+from tensorflow.contrib.losses.python.losses.loss_ops import absolute_difference
+from tensorflow.contrib.losses.python.losses.loss_ops import cosine_distance
+from tensorflow.contrib.losses.python.losses.loss_ops import log
+from tensorflow.contrib.losses.python.losses.loss_ops import sigmoid_cross_entropy
+from tensorflow.contrib.losses.python.losses.loss_ops import softmax_cross_entropy
+from tensorflow.contrib.losses.python.losses.loss_ops import sum_of_pairwise_squares
+from tensorflow.contrib.losses.python.losses.loss_ops import sum_of_squares

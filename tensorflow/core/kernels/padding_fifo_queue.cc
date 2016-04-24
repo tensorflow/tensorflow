@@ -65,7 +65,15 @@ Status PaddingFIFOQueue::GetElementComponent(
 }
 
 void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
+                                      bool allow_small_batch,
                                       CallbackWithTuple callback) {
+  if (allow_small_batch) {
+    ctx->SetStatus(
+        errors::Unimplemented("Dequeue: Queue does not support small batches"));
+    callback(Tuple());
+    return;
+  }
+
   if (num_elements == 0) {
     Tuple tuple;
     tuple.reserve(num_components());

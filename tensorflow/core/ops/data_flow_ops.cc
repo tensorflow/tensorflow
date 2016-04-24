@@ -285,6 +285,9 @@ REGISTER_OP("QueueDequeueMany")
     .Doc(R"doc(
 Dequeues n tuples of one or more tensors from the given queue.
 
+If the queue is closed and there are fewer than n elements, then an
+OutOfRange error is returned.
+
 This operation concatenates queue-element component tensors along the
 0th dimension to make a single component tensor.  All of the components
 in the dequeued tuple will have size n in the 0th dimension.
@@ -295,6 +298,42 @@ component of the dequeued tuple.
 
 N.B. If the queue is empty, this operation will block until n elements
 have been dequeued (or 'timeout_ms' elapses, if specified).
+
+handle: The handle to a queue.
+n: The number of tuples to dequeue.
+components: One or more tensors that were dequeued as a tuple.
+component_types: The type of each component in a tuple.
+timeout_ms: If the queue has fewer than n elements, this operation
+  will block for up to timeout_ms milliseconds.
+  Note: This option is not supported yet.
+)doc");
+
+REGISTER_OP("QueueDequeueUpTo")
+    .Input("handle: Ref(string)")
+    .Input("n: int32")
+    .Output("components: component_types")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("timeout_ms: int = -1")
+    .Doc(R"doc(
+Dequeues n tuples of one or more tensors from the given queue.
+
+This operation is not supported by all queues.  If a queue does not support
+DequeueUpTo, then an Unimplemented error is returned.
+
+If the queue is closed and there are more than 0 but less than n elements
+remaining, then instead of returning an OutOfRange error like
+QueueDequeueMany, the remaining elements are returned immediately.  If the queue
+is closed and there are 0 elements left in the queue, then an OutOfRange
+error is returned just like in QueueDequeueMany.  Otherwise the behavior
+is identical to QueueDequeueMany:
+
+This operation concatenates queue-element component tensors along the
+0th dimension to make a single component tensor.  All of the components
+in the dequeued tuple will have size n in the 0th dimension.
+
+This operation has k outputs, where k is the number of components in
+the tuples stored in the given queue, and output i is the ith
+component of the dequeued tuple.
 
 handle: The handle to a queue.
 n: The number of tuples to dequeue.
@@ -389,6 +428,7 @@ REGISTER_OP("TensorArray")
     .Input("size: int32")
     .Attr("dtype: type")
     .Attr("dynamic_size: bool = false")
+    .Attr("clear_after_read: bool = true")
     .Attr("tensor_array_name: string = ''")
     .Output("handle: Ref(string)")
     .SetIsStateful()
@@ -401,6 +441,9 @@ size: The size of the array.
 dtype: The type of the elements on the tensor_array.
 dynamic_size: A boolean that determines whether writes to the TensorArray
   are allowed to grow the size.  By default, this is not allowed.
+clear_after_read: If true (default), Tensors in the TensorArray are cleared
+  after being read.  This disables multiple read semantics but allows early
+  release of memory.
 tensor_array_name: Overrides the name used for the temporary tensor_array
   resource. Default value is the name of the 'TensorArray' op (which
   is guaranteed unique).
@@ -483,7 +526,7 @@ REGISTER_OP("TensorArrayRead")
     .Output("value: dtype")
     .Attr("dtype: type")
     .Doc(R"doc(
-Read an element from the TensorArray.
+Read an element from the TensorArray into output `value`.
 
 handle: The handle to a TensorArray.
 dtype: The type of the elem that is returned.
@@ -497,7 +540,7 @@ REGISTER_OP("TensorArrayPack")
     .Output("value: dtype")
     .Attr("dtype: type")
     .Doc(R"doc(
-Pack the elements from the TensorArray.
+Pack the elements from the TensorArray into output `value`.
 
 All elements must have the same shape.
 
@@ -530,12 +573,17 @@ REGISTER_OP("TensorArrayConcat")
     .Output("lengths: int64")
     .Attr("dtype: type")
     .Doc(R"doc(
-Concat the elements from the TensorArray.
+Concat the elements from the TensorArray into value `value`.
 
-Takes T elements of shapes (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...),
-  ..., (n(T-1) x d0 x d1 x ...)
+Takes `T` elements of shapes
+
+  ```
+  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)
+  ```
+
 and concatenates them into a Tensor of shape:
-  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...).
+
+  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```
 
 All elements must have the same shape (excepting the first dimension).
 
@@ -546,7 +594,7 @@ value: All of the elements in the TensorArray, concatenated along the first
   axis.
 lengths: A vector of the row sizes of the original T elements in the
   value output.  In the example above, this would be the values:
-  (n1, n2, ..., n(T-1))
+  `(n1, n2, ..., n(T-1))`.
 )doc");
 
 REGISTER_OP("TensorArraySplit")
@@ -560,15 +608,22 @@ REGISTER_OP("TensorArraySplit")
 Split the data from the input value into TensorArray elements.
 
 Assuming that `lengths` takes on values
-  (n0, n1, ..., n(T-1))
+
+  ```(n0, n1, ..., n(T-1))```
+
 and that `value` has shape
-  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...),
+
+  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```,
+
 this splits values into a TensorArray with T tensors.
 
 TensorArray index t will be the subtensor of values with starting position
-  (n0 + n1 + ... + n(t-1), 0, 0, ...)
+
+  ```(n0 + n1 + ... + n(t-1), 0, 0, ...)```
+
 and having size
-  nt x d0 x d1 x ...
+
+  ```nt x d0 x d1 x ...```
 
 handle: The handle to a TensorArray.
 value: The concatenated tensor to write to the TensorArray.
@@ -668,6 +723,37 @@ Table initializer that takes two tensors for keys and values respectively.
 table_handle: Handle to a table which will be initialized.
 keys: Keys of type Tkey.
 values: Values of type Tval. Same shape as `keys`.
+)doc");
+
+REGISTER_OP("GetSessionHandle")
+    .Input("value: T")
+    .Output("handle: string")
+    .Attr("T: type")
+    .Doc(R"doc(
+Store the input tensor in the state of the current session.
+
+value: The tensor to be stored.
+handle: The handle for the tensor stored in the session state.
+)doc");
+
+REGISTER_OP("GetSessionTensor")
+    .Input("handle: string")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .Doc(R"doc(
+Get the value of the tensor specified by its handle.
+
+handle: The handle for a tensor stored in the session state.
+value: The tensor for the given handle.
+dtype: The type of the output value.
+)doc");
+
+REGISTER_OP("DeleteSessionTensor")
+    .Input("handle: string")
+    .Doc(R"doc(
+Delete the tensor specified by its handle in the session.
+
+handle: The handle for a tensor stored in the session state.
 )doc");
 
 }  // namespace tensorflow

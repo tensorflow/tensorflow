@@ -120,6 +120,35 @@ cc_library(
     ],
 )
 
+cc_binary(
+    name = "framework/test_file_system.so",
+    srcs = ["framework/test_file_system.cc"],
+    linkopts = select({
+        "//conditions:default": [
+            "-lm",
+        ],
+        "//tensorflow:darwin": [],
+    }),
+    linkshared = 1,
+    deps = [
+        "//google/protobuf",
+        "//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+py_test(
+    name = "file_system_test",
+    size = "small",
+    srcs = ["framework/file_system_test.py"],
+    data = [":framework/test_file_system.so"],
+    main = "framework/file_system_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_test(
     name = "pywrap_status_test",
     size = "small",
@@ -527,6 +556,7 @@ tf_gen_op_wrapper_py(
         "QueueClose",
         "QueueDequeue",
         "QueueDequeueMany",
+        "QueueDequeueUpTo",
         "QueueEnqueue",
         "QueueEnqueueMany",
         "QueueSize",
@@ -545,6 +575,9 @@ tf_gen_op_wrapper_py(
         "TensorArraySplit",
         "TensorArrayUnpack",
         "TensorArrayWrite",
+        "GetSessionHandle",
+        "GetSessionTensor",
+        "DeleteSessionTensor",
     ],
     require_shape_functions = True,
 )
@@ -626,10 +659,6 @@ tf_gen_op_wrapper_py(
         "MatMul",
         "Sigmoid",
         "Tanh",
-        "Lgamma",
-        "Digamma",
-        "Erf",
-        "Erfc",
     ],
     require_shape_functions = True,
 )
@@ -713,6 +742,7 @@ tf_gen_op_wrapper_py(
         "SparseSelectLastK",
         "SparseReorder",
         "SparseToDense",
+        "SparseTensorDenseAdd",
         "SparseTensorDenseMatMul",
     ],
     require_shape_functions = True,
@@ -743,6 +773,7 @@ py_library(
         "ops/array_grad.py",
         "ops/array_ops.py",
         "ops/candidate_sampling_ops.py",
+        "ops/check_ops.py",
         "ops/clip_ops.py",
         "ops/control_flow_grad.py",
         "ops/control_flow_ops.py",
@@ -784,8 +815,10 @@ py_library(
         "ops/rnn_cell.py",
         "ops/script_ops.py",
         "ops/seq2seq.py",
+        "ops/session_ops.py",
         "ops/sparse_grad.py",
         "ops/sparse_ops.py",
+        "ops/special_math_ops.py",
         "ops/standard_ops.py",
         "ops/state_grad.py",
         "ops/state_ops.py",
@@ -847,7 +880,6 @@ py_library(
     deps = [
         ":framework",
         ":ops",
-        ":server_lib",
         ":session",
         ":training_ops",
     ],
@@ -940,13 +972,24 @@ tf_cuda_library(
     ],
 )
 
+cc_library(
+    name = "py_checkpoint_reader",
+    srcs = ["util/py_checkpoint_reader.cc"],
+    hdrs = [
+        "util/py_checkpoint_reader.h",
+    ],
+    deps = [
+        ":py_func_lib",
+        "//tensorflow/core:framework",
+    ],
+)
+
 tf_py_wrap_cc(
     name = "pywrap_tensorflow",
     srcs = ["tensorflow.i"],
     swig_includes = [
         "client/device_lib.i",
         "client/events_writer.i",
-        "client/server_lib.i",
         "client/tf_session.i",
         "framework/python_op_gen.i",
         "lib/core/py_func.i",
@@ -957,10 +1000,12 @@ tf_py_wrap_cc(
         "lib/io/py_record_writer.i",
         "platform/base.i",
         "platform/numpy.i",
+        "training/server_lib.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
     ],
     deps = [
+        ":py_checkpoint_reader",
         ":py_func_lib",
         ":py_record_reader_lib",
         ":py_record_writer_lib",
@@ -993,25 +1038,15 @@ py_library(
     ],
 )
 
-py_library(
-    name = "server_lib",
-    srcs = ["client/server_lib.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":pywrap_tensorflow",
-    ],
-)
-
 py_test(
     name = "server_lib_test",
     size = "small",
-    srcs = ["client/server_lib_test.py"],
+    srcs = ["training/server_lib_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":extra_py_tests_deps",
         ":framework",
         ":framework_test_lib",
-        ":server_lib",
         ":session",
     ],
 )
@@ -1043,7 +1078,6 @@ py_test(
     size = "small",
     srcs = ["client/session_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["noasan"],
     deps = [
         ":framework",
         ":framework_test_lib",
@@ -1088,9 +1122,11 @@ medium_kernel_test_list = glob([
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",
+    "kernel_tests/sparse_tensor_dense_matmul_op_test.py",
 ])
 
 sharded_kernel_test_list = glob([
+    "kernel_tests/batch_matrix_band_part_op_test.py",
     "kernel_tests/cwise_ops_test.py",
     "kernel_tests/embedding_ops_test.py",
     "kernel_tests/linalg_grad_test.py",
@@ -1222,6 +1258,7 @@ cuda_py_tests(
         ["training/*_test.py"],
         exclude = [
             "training/input_test.py",
+            "training/server_lib_test.py",
             "training/session_manager_test.py",
             "training/supervisor_test.py",
         ],

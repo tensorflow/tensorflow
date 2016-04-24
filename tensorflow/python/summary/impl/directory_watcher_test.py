@@ -52,7 +52,7 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     self._directory = os.path.join(self.get_temp_dir(), 'monitor_dir')
     os.mkdir(self._directory)
     self._watcher = directory_watcher.DirectoryWatcher(
-        directory_watcher.SequentialGFileProvider(self._directory), _ByteLoader)
+        directory_watcher.SequentialFileProvider(self._directory), _ByteLoader)
 
   def tearDown(self):
     shutil.rmtree(self._directory)
@@ -111,7 +111,7 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     self.assertWatcherYields(['a', 'c'])
 
   def testPathFilter(self):
-    provider = directory_watcher.SequentialGFileProvider(
+    provider = directory_watcher.SequentialFileProvider(
         self._directory,
         path_filter=lambda path: 'do_not_watch_me' not in path)
     self._watcher = directory_watcher.DirectoryWatcher(provider, _ByteLoader)

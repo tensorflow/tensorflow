@@ -16,7 +16,6 @@
 """Tensor utility functions.
 
 @@assert_same_float_dtype
-@@is_numeric_tensor
 @@assert_scalar_int
 @@local_variable
 @@reduce_sum_n
@@ -35,18 +34,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
 __all__ = [
-    'assert_same_float_dtype', 'is_numeric_tensor', 'assert_scalar_int',
-    'local_variable', 'reduce_sum_n', 'with_shape', 'with_same_shape']
-
-
-NUMERIC_TYPES = frozenset([dtypes.float32, dtypes.float64, dtypes.int8,
-                           dtypes.int16, dtypes.int32, dtypes.int64,
-                           dtypes.uint8, dtypes.qint8, dtypes.qint32,
-                           dtypes.quint8, dtypes.complex64])
-
-
-def is_numeric_tensor(tensor):
-  return isinstance(tensor, ops.Tensor) and tensor.dtype in NUMERIC_TYPES
+    'assert_same_float_dtype', 'assert_scalar_int',
+    'local_variable', 'reduce_sum_n', 'with_shape', 'with_same_shape',
+]
 
 
 def _assert_same_base_type(items, expected_type=None):

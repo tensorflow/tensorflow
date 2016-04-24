@@ -49,6 +49,11 @@ class ConstantFoldingTest : public ::testing::Test {
   }
 
   template <typename T>
+  Node* Constant(T v) {
+    return test::graph::Constant(g_.get(), test::AsScalar(v));
+  }
+
+  template <typename T>
   void ExpectNodeClose(const Node* n, gtl::ArraySlice<T> values,
                        TensorShape shape) {
     EXPECT_TRUE(n->IsConstant());
@@ -103,7 +108,7 @@ class ConstantFoldingTest : public ::testing::Test {
 
 TEST_F(ConstantFoldingTest, Basic) {
   SIMPLE_GRAPH;
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, g));
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
 
   // Nodes s1 and s2 now should now have a constant input
   EXPECT_EQ(1, s1->num_inputs());
@@ -119,7 +124,7 @@ TEST_F(ConstantFoldingTest, ConsiderFunction) {
   ConstantFoldingOptions opts;
   // Do not allow constant folding of m2
   opts.consider = [m2](const Node* n) { return m2 != n; };
-  EXPECT_TRUE(DoConstantFolding(opts, g));
+  EXPECT_TRUE(DoConstantFolding(opts, nullptr, g));
 
   // Node s1 now should now have a constant input
   EXPECT_EQ(1, s1->num_inputs());
@@ -148,7 +153,7 @@ TEST_F(ConstantFoldingTest, TwoOutputs) {
   g->AddControlEdge(b0, g->sink_node());
   g->AddControlEdge(b1, g->sink_node());
 
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, g));
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
   EXPECT_EQ(1, b0->num_inputs());
   ExpectNodeEqual<int>(*(b0->in_nodes().begin()), {0, 1}, {2});
   EXPECT_EQ(1, b1->num_inputs());
@@ -174,7 +179,7 @@ TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
 
   ConstantFoldingOptions opts;
   opts.consider = [b1_ident](const Node* n) { return b1_ident != n; };
-  EXPECT_TRUE(DoConstantFolding(opts, g));
+  EXPECT_TRUE(DoConstantFolding(opts, nullptr, g));
   // 0th output of b should have been folded.
   EXPECT_EQ(1, b0->num_inputs());
   ExpectNodeEqual<int>(*(b0->in_nodes().begin()), {0, 1}, {2});
@@ -185,6 +190,61 @@ TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
 
   EXPECT_EQ(1, b1_ident->num_inputs());
   ExpectNodeEqual<int>(*(b1_ident->in_nodes().begin()), {}, {0});
+}
+
+TEST_F(ConstantFoldingTest, TestNoReplaceOnGPU) {
+#if GOOGLE_CUDA
+  Device* device = nullptr;
+  std::vector<Device*> devices;
+  DeviceFactory::GetFactory(DEVICE_GPU)
+      ->CreateDevices(SessionOptions{}, "", &devices);
+  if (devices.size() > 0) {
+    device = devices[0];
+  }
+  if (!device) {
+    // Don't run the test if not GPUs found.
+    return;
+  }
+  Reset();
+  Graph* g = g_.get();
+  Node* s0 = Constant<float>({42.0f}, {1});
+  g->AddControlEdge(g->source_node(), s0);
+  Node* cast = test::graph::Cast(g, s0, DT_BFLOAT16);
+  Node* send = test::graph::Send(g, cast, "cast", "sender", 0, "receiver");
+
+  g->AddControlEdge(send, g->sink_node());
+
+  // No ops should be replaced, as there is no kernel for BFLOAT16 on GPU.
+  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, device, g));
+
+  // But constant folding should have replaced the cast op with a constant when
+  // running on CPU.
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
+
+  for (auto d : devices) {
+    delete d;
+  }
+#endif  // GOOGLE_CUDA
+}
+
+TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
+  Reset();
+  Graph* g = g_.get();
+  Node* s0 =
+      Constant<int>(std::vector<int>(5 * 1024 * 256, 0), {5 * 1024 * 256});
+  Node* s1 = Constant<int>(std::vector<int>(5 * 1024 * 256 + 1, 0),
+                           {5 * 1024 * 256 + 1});
+  Node* concat_dim = Constant<int>(0);
+  g->AddControlEdge(g->source_node(), s0);
+  g->AddControlEdge(g->source_node(), s1);
+  // Concat s0 and s1. The resulting tensor would be of size 10M + 1 bytes
+  Node* concat = test::graph::Concat(g, concat_dim, {s0, s1});
+  Node* concat_send =
+      test::graph::Send(g, concat, "concat_send", "sender", 0, "receiver");
+  g->AddControlEdge(concat_send, g->sink_node());
+
+  // The above concat should not have been constant folded.
+  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
 }
 
 }  // namespace

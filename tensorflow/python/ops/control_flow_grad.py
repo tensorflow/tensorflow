@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.control_flow_ops import *
 from tensorflow.python.ops.gen_control_flow_ops import *
@@ -182,7 +183,10 @@ def _EnterGrad(op, grad):
     return grad
   if op.get_attr("is_constant"):
     # Add a gradient accumulator for each loop invariant.
-    result = grad_ctxt.AddBackPropAccumulator(grad)
+    if isinstance(grad, ops.IndexedSlices):
+      result = grad_ctxt.AddBackPropIndexedSlicesAccumulator(grad)
+    else:
+      result = grad_ctxt.AddBackPropAccumulator(grad)
   else:
     result = exit(grad)
     grad_ctxt.ExitResult([result])

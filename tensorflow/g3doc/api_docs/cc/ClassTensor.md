@@ -14,19 +14,19 @@ Default Tensor constructor. Creates a 1-dimension, 0-element float tensor.
 
 #### `tensorflow::Tensor::Tensor(DataType type, const TensorShape &shape)` {#tensorflow_Tensor_Tensor}
 
-Creates a Tensor of the given `type` and `shape`.
+Creates a Tensor of the given `type` and `shape`. If LogMemory::IsEnabled() the allocation is logged as coming from an unknown kernel and step. Calling the Tensor constructor directly from within an Op is deprecated: use the OpKernelConstruction/OpKernelContext allocate_* methods to allocate a new tensor, which record the kernel and step.
 
 The underlying buffer is allocated using a ` CPUAllocator `.
 
 #### `tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape)` {#tensorflow_Tensor_Tensor}
 
-Creates a tensor with the input `type` and `shape`, using the allocator `a` to allocate the underlying buffer.
+Creates a tensor with the input `type` and `shape`, using the allocator `a` to allocate the underlying buffer. If LogMemory::IsEnabled() the allocation is logged as coming from an unknown kernel and step. Calling the Tensor constructor directly from within an Op is deprecated: use the OpKernelConstruction/OpKernelContext allocate_* methods to allocate a new tensor, which record the kernel and step.
 
 `a` must outlive the lifetime of this Tensor .
 
 #### `tensorflow::Tensor::Tensor(Allocator *a, DataType type, const TensorShape &shape, const AllocationAttributes &allocation_attr)` {#tensorflow_Tensor_Tensor}
 
-Creates a tensor with the input `type` and `shape`, using the allocator `a` and the specified "allocation_attr" to allocate the underlying buffer.
+Creates a tensor with the input `type` and `shape`, using the allocator `a` and the specified "allocation_attr" to allocate the underlying buffer. If the kernel and step are known allocation_attr.allocation_will_be_logged should be set to true and LogMemory::RecordTensorAllocation should be called after the tensor is constructed. Calling the Tensor constructor directly from within an Op is deprecated: use the OpKernelConstruction/OpKernelContext allocate_* methods to allocate a new tensor, which record the kernel and step.
 
 `a` must outlive the lifetime of this Tensor .
 
@@ -221,17 +221,17 @@ auto bad   = my_ten.flat<int32>();
 
 
 
-#### `TTypes<T>::Matrix tensorflow::Tensor::flat_inner_dims()` {#TTypes_T_Matrix_tensorflow_Tensor_flat_inner_dims}
+#### `TTypes< T, NDIMS >::Tensor tensorflow::Tensor::flat_inner_dims()` {#TTypes_T_NDIMS_Tensor_tensorflow_Tensor_flat_inner_dims}
 
 
 
-Returns the data as an Eigen::Tensor with 2 dimensions, collapsing all Tensor dimensions but the last one into the first dimension of the result.
+Returns the data as an Eigen::Tensor with NDIMS dimensions, collapsing all Tensor dimensions but the last NDIMS-1 into the first dimension of the result. If NDIMS > dims() then leading dimensions of size 1 will be added to make the output rank NDIMS.
 
-#### `TTypes<T>::Matrix tensorflow::Tensor::flat_outer_dims()` {#TTypes_T_Matrix_tensorflow_Tensor_flat_outer_dims}
+#### `TTypes< T, NDIMS >::Tensor tensorflow::Tensor::flat_outer_dims()` {#TTypes_T_NDIMS_Tensor_tensorflow_Tensor_flat_outer_dims}
 
 
 
-Returns the data as an Eigen::Tensor with 2 dimensions, collapsing all Tensor dimensions but the first one into the last dimension of the result.
+Returns the data as an Eigen::Tensor with NDIMS dimensions, collapsing all Tensor dimensions but the first NDIMS-1 into the last dimension of the result. If NDIMS > dims() then trailing dimensions of size 1 will be added to make the output rank NDIMS.
 
 #### `TTypes< T, NDIMS >::Tensor tensorflow::Tensor::shaped(gtl::ArraySlice< int64 > new_sizes)` {#TTypes_T_NDIMS_Tensor_tensorflow_Tensor_shaped}
 
@@ -281,18 +281,6 @@ Const versions of all the methods above.
 
 
 
-#### `TTypes<T>::ConstMatrix tensorflow::Tensor::flat_inner_dims() const` {#TTypes_T_ConstMatrix_tensorflow_Tensor_flat_inner_dims}
-
-
-
-
-
-#### `TTypes<T>::ConstMatrix tensorflow::Tensor::flat_outer_dims() const` {#TTypes_T_ConstMatrix_tensorflow_Tensor_flat_outer_dims}
-
-
-
-
-
 #### `TTypes< T, NDIMS >::ConstTensor tensorflow::Tensor::shaped(gtl::ArraySlice< int64 > new_sizes) const` {#TTypes_T_NDIMS_ConstTensor_tensorflow_Tensor_shaped}
 
 
@@ -306,6 +294,18 @@ Const versions of all the methods above.
 
 
 #### `TTypes< T >::ConstScalar tensorflow::Tensor::scalar() const` {#TTypes_T_ConstScalar_tensorflow_Tensor_scalar}
+
+
+
+
+
+#### `TTypes< T, NDIMS >::ConstTensor tensorflow::Tensor::flat_inner_dims() const` {#TTypes_T_NDIMS_ConstTensor_tensorflow_Tensor_flat_inner_dims}
+
+
+
+
+
+#### `TTypes< T, NDIMS >::ConstTensor tensorflow::Tensor::flat_outer_dims() const` {#TTypes_T_NDIMS_ConstTensor_tensorflow_Tensor_flat_outer_dims}
 
 
 

@@ -258,9 +258,8 @@ class QueueRunner(object):
     """
     with self._lock:
       if self._runs > 0:
-        raise RuntimeError(
-            "Threads are already running from a previous call to Threads() "
-            "for this queue runner.")
+        # Already started: no new threads to return.
+        return []
       self._runs = len(self._enqueue_ops)
       self._exceptions_raised = []
 
@@ -341,10 +340,11 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
       raise ValueError("Cannot start queue runners: No default session is "
                        "registered. Use `with sess.as_default()` or pass an "
                        "explicit session to tf.start_queue_runners(sess=sess)")
-  threads = []
-  for qr in ops.get_collection(collection):
-    threads.extend(qr.create_threads(sess, coord=coord, daemon=daemon,
-                                     start=start))
+  with sess.graph.as_default():
+    threads = []
+    for qr in ops.get_collection(collection):
+      threads.extend(qr.create_threads(sess, coord=coord, daemon=daemon,
+                                       start=start))
   return threads
 
 

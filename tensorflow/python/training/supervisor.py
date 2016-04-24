@@ -12,197 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Training helper that checkpoints models and computes summaries.
-
-The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
-and a `SessionManager` that takes care of common needs of Tensorflow
-training programs.
-
-Use for a single program:
-
-  ```python
-  with tf.Graph().as_default():
-    ...add operations to the graph...
-    # Create a Supervisor that will checkpoint the model in '/tmp/mydir'.
-    sv = Supervisor(logdir='/tmp/mydir')
-    # Get a Tensorflow session.
-    sess = sv.prepare_or_create_session(FLAGS.master)
-    # Use the session to train the graph.
-    while not sv.should_stop():
-      sess.run(<my_train_op>)
-    # Ask for all the services to stop.
-    sv.stop()
-   ```
-
-After the call to `prepare_or_create_session()`, all `Variables` in the `Graph`
-have been initialized.  In addition, a few services have been started
-to checkpoint the model and fetch summaries.
-
-If the program crashes and you restart it, the call to
-`prepare_or_create_session()` automatically reinitializes the Variables
-from most recent checkpoint.
-
-If any of the services raises an exception, it will ask the Supervisor to stop.
-In that case `should_stop()` will return True and you should stop your
-training loop.
-
-Finish by calling `stop()` to cleanly wait for the services to complete.
-If a service thread raised an exception, it is re-raised in the `stop()`
-call so your program can easily report it.
-
-
-Use for multiple replicas:
-
-To train with replicas you deploy the same program in a `Cluster`.
-One of the tasks must be identified as the *chief*: the task that handles
-initialization, checkpoints, summaries, and recovery.  The other tasks
-depend on the *chief* for these services.
-
-The only change you have to do to the single program code is to indicate
-if the program is running as the *chief*.
-
-
-  ```python
-  # Choose a task as the chief. This could be based on server_def.task_index, or
-  # job_def.name, or job_def.tasks. It's entirely up to the end user. But there
-  # can be only one *chief*.
-  is_chief = (server_def.task_index == 0)
-
-  with tf.Graph().as_default():
-    ...add operations to the graph...
-    # Create a Supervisor that uses log directory on a shared file system.
-    # Indicate if you are the 'chief'
-    sv = Supervisor(logdir='/shared_directory/...', is_chief=is_chief)
-    # Get a Session in a TensorFlow server on the cluster.
-    sess = sv.prepare_or_create_session(FLAGS.master)
-    # Use the session to train the graph.
-    while not sv.should_stop():
-      sess.run(<my_train_op>)
-    # Ask for all the services to stop.
-    sv.stop()
-  ```
-
-In the *chief* task, the `Supervisor` works exactly as in the first example
-above.  In the other tasks `prepare_or_create_session()` waits for the Model to
-have been intialized before returning a session to the training code.
-
-If one of the tasks crashes and restarts, `prepare_or_create_session()` checks
-if the Model is initialized.  If yes, it just creates a session and
-returns it to the training code that proceeds normally.  If the model
-needs to be initialized, the chief task takes care of reinitializing it;
-the other tasks just wait for the model to have been initialized.
-
-NOTE: This modified program still works fine as a single program.
-The single program marks itself as the chief.
-
-
-What *master* string to use:
-
-Whether you are running on your machine or in the cluster you can use the
-following values for the --master flag:
-
-Specifying 'local' requests a Session that uses the proto-based "Master
-interface" to run TensorFlow programs.  It does not use an RPC subsystem to
-communicate within the prcoess, and cannot communicate with remote TensorFlow
-workers.
-
-Specifying 'localhost:port' requests a Session that uses the loopback RPC
-interface, and also allows the in-process master to access remote tensorflow
-workers.
-
-
-
-Advanced use.
-
-Launching additional services.
-
-`prepare_or_create_session()` launches the Checkpoint and Summary
-services (threads).  If you need more services to run you can simply
-launch them after `prepare_or_create_session()` returns.  The Supervisor
-uses a Coordinator to help multiple threads stop together, so pass that
-coordinator ('sv.coord') to the threads you launch.
-
-Example: Start a QueueRunner to prefetch inputs.
-
-  ```python
-  ...build the model with a QueueRunner to prefetch inputs...
-  qr = QueueRunner(input_queue, [enqueue_op])
-  ...
-  sv = Supervisor(logdir='/tmp/mydir')
-  sess = sv.prepare_or_create_session(FLAGS.master)
-  # Start the queue runner threads.
-  threads = qr.create_threads(sess, sv.coord, start=True)
-  # Catch OutOfRangeError, which signals that your input queue is exhausted.
-  try:
-    while not sv.should_stop():
-      sess.run(my_train_op)
-  except tf.errors.OutOfRangeError:
-    pass
-  # Wait for the QueueRunner and service threads to complete.
-  sv.stop(threads)
-  ```
-
-Note: Starting `QueueRunner` threads is very common, to the Supervisor
-provides a convenience method named `start_queue_runners()`.  If you use
-that method you do not have to keep track of the started threads and
-can just call `stop()` normally:
-
-  ```python
-  ...build the model with a QueueRunner to prefetch inputs...
-  qr = QueueRunner(input_queue, [enqueue_op])
-  ...
-  sv = Supervisor(logdir='/tmp/mydir')
-  sess = sv.prepare_or_create_session(FLAGS.master)
-  # Start the queue runner threads.
-  sv.start_queue_runners(sess, [qr])
-  # Catch OutOfRangeError, which signals that your input queue is exhausted.
-  try:
-    while not sv.should_stop():
-      sess.run(my_train_op)
-  except tf.errors.OutOfRangeError:
-    pass
-  # Wait for the QueueRunner and service threads to complete.
-  sv.stop()
-  ```
-
-
-Launching fewer services.
-
-`prepare_or_create_session()` launches the `Summary` and `Checkpoint`
-services (threads) which use either the optionally `summary_op`
-and `saver` passed to the constructor, or default ones created
-automatically by the `Supervisor`.  If you want to run your own summary
-and checkpointing logic, disable these services by passing `None` to the
-`summary_op` and `saver` parameters.
-
-Example: Create summaries manually every 100 steps in the chief.
-
-  ```python
-  # Create a Supervisor with no automatic summaries.
-  sv = Supervisor(logdir='/tmp/mydir', is_chief=is_chief, summary_op=None)
-  # As summary_op was None, prepare_or_create_session() does not start the
-  # summary thread.
-  sess = sv.prepare_or_create_session(FLAGS.master)
-  for step in xrange(1000000):
-    if is_chief and step % 100 == 0:
-      # Create the summary every 100 chief steps.
-      sv.summary_computed(sess, sess.run(my_summary_op))
-    else:
-      # Train normally
-      sess.run(my_train_op)
-  ```
-
-
-Custom Model Initialization.
-
-`prepare_or_create_session()` only supports initializing the model by running an
-`init_op`.  If you have special initialization needs, use `local_init_op`.
-
-"""
+"""Training helper that checkpoints models and computes summaries."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import os
 import threading
 import time
@@ -218,13 +33,177 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import saver as saver_mod
+from tensorflow.python.training import session_manager as session_manager_mod
 from tensorflow.python.training import summary_io
 from tensorflow.python.training import training_util
-from tensorflow.python.training.session_manager import SessionManager
 
 
 class Supervisor(object):
-  """Training helper that checkpoints and computes summaries."""
+  """A training helper that checkpoints models and computes summaries.
+
+  The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
+  and a `SessionManager` that takes care of common needs of Tensorflow
+  training programs.
+
+  #### Use for a single program
+
+  ```python
+  with tf.Graph().as_default():
+    ...add operations to the graph...
+    # Create a Supervisor that will checkpoint the model in '/tmp/mydir'.
+    sv = Supervisor(logdir='/tmp/mydir')
+    # Get a Tensorflow session managed by the supervisor.
+    with sv.managed_session(FLAGS.master) as sess:
+      # Use the session to train the graph.
+      while not sv.should_stop():
+        sess.run(<my_train_op>)
+   ```
+
+  Within the `with sv.managed_session()` block all variables in the graph have
+  been initialized.  In addition, a few services have been started to
+  checkpoint the model and add summaries to the event log.
+
+  If the program crashes and is restarted, the managed session automatically
+  reinitialize variables from the most recent checkpoint.
+
+  The supervisor is notified of any exception raised by one of the services.
+  After an exception is raised, `should_stop()` returns `True`.  In that case
+  the training loop should also stop.  This is why the training loop has to
+  check for `sv.should_stop()`.
+
+  Exceptions that indicate that the training inputs have been exhausted,
+  `tf.errors.OutOfRange`, also cause `sv.should_stop()` to return `True` but
+  are not re-raised from the `with` block: they indicate a normal termination.
+
+  #### Use for multiple replicas
+
+  To train with replicas you deploy the same program in a `Cluster`.
+  One of the tasks must be identified as the *chief*: the task that handles
+  initialization, checkpoints, summaries, and recovery.  The other tasks
+  depend on the *chief* for these services.
+
+  The only change you have to do to the single program code is to indicate
+  if the program is running as the *chief*.
+
+  ```python
+  # Choose a task as the chief. This could be based on server_def.task_index,
+  # or job_def.name, or job_def.tasks. It's entirely up to the end user.
+  # But there can be only one *chief*.
+  is_chief = (server_def.task_index == 0)
+  server = tf.train.Server(server_def)
+
+  with tf.Graph().as_default():
+    ...add operations to the graph...
+    # Create a Supervisor that uses log directory on a shared file system.
+    # Indicate if you are the 'chief'
+    sv = Supervisor(logdir='/shared_directory/...', is_chief=is_chief)
+    # Get a Session in a TensorFlow server on the cluster.
+    with sv.managed_session(server.target) as sess:
+      # Use the session to train the graph.
+      while not sv.should_stop():
+        sess.run(<my_train_op>)
+  ```
+
+  In the *chief* task, the `Supervisor` works exactly as in the first example
+  above.  In the other tasks `sv.managed_session()` waits for the Model to have
+  been intialized before returning a session to the training code.  The
+  non-chief tasks depend on the chief taks for initializing the model.
+
+  If one of the tasks crashes and restarts, `managed_session()`
+  checks if the Model is initialized.  If yes, it just creates a session and
+  returns it to the training code that proceeds normally.  If the model needs
+  to be initialized, the chief task takes care of reinitializing it; the other
+  tasks just wait for the model to have been initialized.
+
+  NOTE: This modified program still works fine as a single program.
+  The single program marks itself as the chief.
+
+  #### What `master` string to use
+
+  Whether you are running on your machine or in the cluster you can use the
+  following values for the --master flag:
+
+  * Specifying `''` requests an in-process session that does not use RPC.
+
+  * Specifying `'local'` requests a session that uses the RPC-based
+    "Master interface" to run TensorFlow programs. See
+    [`tf.train.Server.create_local_server()`](#Server.create_local_server) for
+    details.
+
+  * Specifying `'grpc://hostname:port'` requests a session that uses
+    the RPC interface to a specific , and also allows the in-process
+    master to access remote tensorflow workers. Often, it is
+    appropriate to pass `server.target` (for some `tf.train.Server`
+    named `server).
+
+  #### Advanced use
+
+  ##### Launching additional services
+
+  `managed_session()` launches the Checkpoint and Summary services (threads).
+  If you need more services to run you can simply launch them in the block
+  controlled by `managed_session()`.
+
+  Example: Start a thread to print losses.  We want this thread to run
+  every 60 seconds, so we launch it with `sv.loop()`.
+
+    ```python
+    ...
+    sv = Supervisor(logdir='/tmp/mydir')
+    with sv.managed_session(FLAGS.master) as sess:
+      sv.loop(60, print_loss, (sess))
+      while not sv.should_stop():
+        sess.run(my_train_op)
+    ```
+
+  ##### Launching fewer services
+
+  `managed_session()` launches the "summary" and "checkpoint" threads which use
+  either the optionally `summary_op` and `saver` passed to the constructor, or
+  default ones created automatically by the supervisor.  If you want to run
+  your own summary and checkpointing logic, disable these services by passing
+  `None` to the `summary_op` and `saver` parameters.
+
+  Example: Create summaries manually every 100 steps in the chief.
+
+    ```python
+    # Create a Supervisor with no automatic summaries.
+    sv = Supervisor(logdir='/tmp/mydir', is_chief=is_chief, summary_op=None)
+    # As summary_op was None, managed_session() does not start the
+    # summary thread.
+    with sv.managed_session(FLAGS.master) as sess:
+      for step in xrange(1000000):
+        if sv.should_stop():
+          break
+        if is_chief and step % 100 == 0:
+          # Create the summary every 100 chief steps.
+          sv.summary_computed(sess, sess.run(my_summary_op))
+        else:
+          # Train normally
+          sess.run(my_train_op)
+    ```
+
+  ##### Custom model initialization
+
+  `managed_session()` only supports initializing the model by running an
+  `init_op` or restoring from the latest checkpoint.  If you have special
+  initialization needs, see how to specify a `local_init_op` when creating the
+  supervisor.  You can also use the `SessionManager` directly to create a
+  session and check if it could be initialized automatically.
+
+  @@__init__
+  @@managed_session
+  @@prepare_or_wait_for_session
+  @@start_standard_services
+  @@start_queue_runners
+  @@summary_computed
+
+  @@stop
+  @@request_stop
+  @@should_stop
+  @@stop_on_exception
+  @@wait_for_stop
+  """
 
   # Value to pass for the 'ready_op', 'init_op', 'summary_op', 'saver',
   # and 'global_step' parameters of Supervisor.__init__() to indicate that
@@ -242,8 +221,9 @@ class Supervisor(object):
                local_init_op=USE_DEFAULT, logdir=None,
                summary_op=USE_DEFAULT, saver=USE_DEFAULT,
                global_step=USE_DEFAULT, save_summaries_secs=120,
-               save_model_secs=600, recovery_wait_secs=30,
-               checkpoint_basename="model.ckpt", session_manager=None):
+               save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120,
+               checkpoint_basename="model.ckpt", session_manager=None,
+               summary_writer=USE_DEFAULT, init_fn=None):
     """Create a `Supervisor`.
 
     Args:
@@ -252,7 +232,7 @@ class Supervisor(object):
         creating a session, but the graph should not be modified by the caller
         after passing it to the supervisor.
       ready_op: `Operation` to check if the model is initialized.  This
-        operation is run by supervisors in `prepare_or_create_session()` to
+        operation is run by supervisors in `prepare_or_wait_for_session()` to
         check if the model is ready to use. The model is considered ready if
         that operation succeeds.  Defaults to the operation returned from
         `tf.assert_variables_initialized()`  If `None`, the model is not checked
@@ -263,7 +243,7 @@ class Supervisor(object):
       init_op: `Operation`.  Used by chief supervisors to initialize the model
         when it can not be recovered.  Defaults to an `Operation` that
         initializes all variables.  If `None`, no initialization is done
-        automatically.
+        automatically unless you pass a value for `init_fn`, see below.
       init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
         This feed dictionary will be used when `init_op` is evaluated.
       local_init_op: `Operation`. Used by all supervisors to run initializations
@@ -295,10 +275,17 @@ class Supervisor(object):
       recovery_wait_secs: Number of seconds between checks that the model
         is ready.  Used by supervisors when waiting for a chief supervisor
         to initialize or restore the model.  Defaults to 30 seconds.
+      stop_grace_secs: Grace period, in seconds, given to running threads to
+        stop when `stop()` is called.  Defaults to 120 seconds.
       checkpoint_basename: The basename for checkpoint saving.
       session_manager: `SessionManager`, which manages Session creation and
         recovery. If it is `None`, a default `SessionManager` will be created
         with the set of arguments passed in for backwards compatibility.
+      summary_writer: `SummaryWriter` to use or `USE_DEFAULT`.  Can be `None`
+        to indicate that no summaries should be written.
+      init_fn: Optional callable used to initialize the model. Called
+        after the optional `init_op` is called.  The callable must accept one
+        argument, the session being initialized.
 
     Returns:
       A `Supervisor`.
@@ -315,26 +302,41 @@ class Supervisor(object):
       self._init_global_step(global_step=global_step)
     self._graph = graph
     self._is_chief = is_chief
-    self._logdir = logdir
-    self._save_summaries_secs = save_summaries_secs
-    self._save_model_secs = save_model_secs
-    self._recovery_wait_secs = recovery_wait_secs
     self._coord = coordinator.Coordinator()
-    if logdir:
-      self._save_path = os.path.join(self._logdir, checkpoint_basename)
-      self._summary_writer = summary_io.SummaryWriter(self._logdir)
-    else:
-      self._save_path = None
-      self._summary_writer = None
-    self._init_session_manager(session_manager=session_manager)
     self._started_threads = []
+    self._recovery_wait_secs = recovery_wait_secs
+    self._stop_grace_secs = stop_grace_secs
+    self._init_fn = init_fn
+
+    # Set all attributes related to checkpointing and writing events to None.
+    # Afterwards, set them appropriately for chief supervisors, as these are
+    # the only supervisors that can write checkpoints and events.
+    self._logdir = None
+    self._save_summaries_secs = None
+    self._save_model_secs = None
+    self._save_path = None
+    self._summary_writer = None
+
+    if self._is_chief:
+      self._logdir = logdir
+      self._save_summaries_secs = save_summaries_secs
+      self._save_model_secs = save_model_secs
+      if self._logdir:
+        self._save_path = os.path.join(self._logdir, checkpoint_basename)
+      if summary_writer is Supervisor.USE_DEFAULT:
+        if self._logdir:
+          self._summary_writer = summary_io.SummaryWriter(self._logdir)
+      else:
+        self._summary_writer = summary_writer
+
+    self._init_session_manager(session_manager=session_manager)
     self._verify_setup()
     # The graph is not allowed to change anymore.
     graph.finalize()
 
   def _init_session_manager(self, session_manager=None):
     if session_manager is None:
-      self._session_manager = SessionManager(
+      self._session_manager = session_manager_mod.SessionManager(
           local_init_op=self._local_init_op,
           ready_op=self._ready_op, graph=self._graph,
           recovery_wait_secs=self._recovery_wait_secs)
@@ -509,7 +511,7 @@ class Supervisor(object):
 
   @property
   def summary_writer(self):
-    """Return the SummaryWriter used by the supervisor.
+    """Return the SummaryWriter used by the chief supervisor.
 
     Returns:
       A SummaryWriter.
@@ -518,7 +520,7 @@ class Supervisor(object):
 
   @property
   def summary_op(self):
-    """Return the Summary Tensor used by the supervisor.
+    """Return the Summary Tensor used by the chief supervisor.
 
     Returns:
       A string Tensor for the summary or `None`.
@@ -572,8 +574,7 @@ class Supervisor(object):
 
   def _write_graph(self):
     """Writes graph_def to `logdir` and adds it to summary if applicable."""
-    if not self._is_chief:
-      return
+    assert self._is_chief
     if self._logdir:
       training_util.write_graph(self._graph.as_graph_def(),
                                 self._logdir, "graph.pbtxt")
@@ -587,7 +588,7 @@ class Supervisor(object):
     on the parameters to the constructor and may include:
 
       - A Summary thread computing summaries every save_summaries_secs.
-      - A Checkpoint thread saving the model every every save_model_secs.
+      - A Checkpoint thread saving the model every save_model_secs.
       - A StepCounter thread measure step time.
 
     Args:
@@ -599,17 +600,20 @@ class Supervisor(object):
         sv.coord.Join(<list of threads>)
 
     Raises:
+      RuntimeError: If called with a non-chief Supervisor.
       ValueError: If not `logdir` was passed to the constructor as the
         services need a log directory.
     """
     if not self._is_chief:
-      return
+      raise RuntimeError("Only chief supervisor can start standard services. "
+                         "Because only chief supervisors can write events.")
+
     if not self._logdir:
       logging.warning("Standard services need a 'logdir' "
                       "passed to the SessionManager")
       return
 
-    if self._global_step is not None:
+    if self._global_step is not None and self._summary_writer:
       # Only add the session log if we keep track of global step.
       # TensorBoard cannot use START message for purging expired events
       # if there is no step value.
@@ -619,10 +623,11 @@ class Supervisor(object):
           current_step)
 
     threads = []
-    if self._summary_op is not None and self._save_summaries_secs:
-      threads.append(SVSummaryThread(self, sess))
-    if self._global_step is not None and self._save_summaries_secs:
-      threads.append(SVStepCounterThread(self, sess))
+    if self._save_summaries_secs and self._summary_writer:
+      if self._summary_op is not None:
+        threads.append(SVSummaryThread(self, sess))
+      if self._global_step is not None:
+        threads.append(SVStepCounterThread(self, sess))
     if self.saver and self._save_model_secs:
       threads.append(SVTimerCheckpointThread(self, sess))
     for t in threads:
@@ -633,6 +638,7 @@ class Supervisor(object):
 
   def prepare_or_wait_for_session(self, master="", config=None,
                                   wait_for_checkpoint=False,
+                                  max_wait_secs=7200,
                                   start_standard_services=True):
     """Make sure the model is ready to be used.
 
@@ -642,37 +648,48 @@ class Supervisor(object):
     manager to start the standard services.
 
     Args:
-      master: name of the TensorFlow `master` to use.  If not specified or
-        empty a 'Direct Session' is created.
+      master: name of the TensorFlow master to use.  See the `tf.Session`
+        constructor for how this is interpreted.
       config: Optional ConfigProto proto used to configure the session,
         which is passed as-is to create the session.
       wait_for_checkpoint: Whether we should wait for the availability of a
         checkpoint before creating Session. Defaults to False.
-      start_standard_services: Whether to start the standard services,
-        such as checkpoint, summary and step counter.
+      max_wait_secs: Maximum time to wait for the session to become available.
+      start_standard_services: Whether to start the standard services and the
+        queue runners.
 
     Returns:
       A Session object that can be used to drive the model.
     """
+    # For users who recreate the session with prepare_or_wait_for_session(), we
+    # need to clear the coordinator's stop_event so that threads managed by the
+    # coordinator can run.
+    self._coord.clear_stop()
+
     if self._is_chief:
       sess = self._session_manager.prepare_session(
-          master, self.init_op, self.saver, self._logdir,
-          wait_for_checkpoint=wait_for_checkpoint, config=config,
-          init_feed_dict=self._init_feed_dict)
+          master, init_op=self.init_op, saver=self.saver,
+          checkpoint_dir=self._logdir, wait_for_checkpoint=wait_for_checkpoint,
+          max_wait_secs=max_wait_secs, config=config,
+          init_feed_dict=self._init_feed_dict, init_fn=self._init_fn)
       self._write_graph()
-      # For users who recreate the session with prepare_or_create_session(), we
-      # need to clear the coordinator's stop_event so that threads managed by
-      # the coordinator can run.
-      self._coord.clear_stop()
       if start_standard_services:
         self.start_standard_services(sess)
     else:
-      sess = self._session_manager.wait_for_session(master, config=config)
-
+      sess = self._session_manager.wait_for_session(master,
+                                                    config=config,
+                                                    max_wait_secs=max_wait_secs)
+    if start_standard_services:
+      self.start_queue_runners(sess)
     return sess
 
   def start_queue_runners(self, sess, queue_runners=None):
     """Start threads for `QueueRunners`.
+
+    Note that the queue runners collected in the graph key `QUEUE_RUNNERS`
+    are already started automatically when you create a session with the
+    supervisor, so unless you have non-collected queue runners to start
+    you do not need to call this explicitely.
 
     Args:
       sess: A `Session`.
@@ -719,26 +736,27 @@ class Supervisor(object):
   def stop(self, threads=None, close_summary_writer=True):
     """Stop the services and the coordinator.
 
-    This does not Close the session.
+    This does not close the session.
 
     Args:
       threads: Optional list of threads to join with the coordinator.  If
-        `None`, defaults to the threads running the standard services plus the
-        threads started for `QueueRunners` if `start_queue_runners()` was
-        called.  To wait on an additional set of threads, pass the list in this
-        parameter and they will be merged with the internal list of running
-        services.
+        `None`, defaults to the threads running the standard services, the
+        threads started for `QueueRunners`, and the threads started by the
+        `loop()` method.  To wait on additional threads, pass the
+        list in this parameter.
       close_summary_writer: Whether to close the `summary_writer`.  Defaults to
-        `True`.
+        `True` if the summary writer was created by the supervisor, `False`
+        otherwise.
     """
     join_threads = []
     join_threads.extend(self._started_threads)
     if threads is not None:
       join_threads.extend(threads)
     self._coord.request_stop()
-    self._coord.join(join_threads)
+    self._coord.join(join_threads,
+                     stop_grace_period_secs=self._stop_grace_secs)
 
-    # Close the write last, in case one of the running threads was using it.
+    # Close the writer last, in case one of the running threads was using it.
     if close_summary_writer and self._summary_writer:
       # Stop messages are not logged with event.step,
       # since the session may have already terminated.
@@ -796,14 +814,18 @@ class Supervisor(object):
       TypeError: if 'summary' is not a Summary proto or a string.
       RuntimeError: if the Supervisor was created without a `logdir`.
     """
-    if not self._logdir:
-      raise RuntimeError("summary_computed() requires a logdir")
+    if not self._summary_writer:
+      raise RuntimeError("Writing a summary requires a summary writer.")
     if global_step is None and self.global_step is not None:
       global_step = training_util.global_step(sess, self.global_step)
-    if self._summary_writer:
-      self._summary_writer.add_summary(summary, global_step)
+    self._summary_writer.add_summary(summary, global_step)
 
   def _default_global_step_tensor(self):
+    """Returns the global_step from the default graph.
+
+    Returns:
+      The global step `Tensor` or `None`.
+    """
     try:
       gs = ops.get_default_graph().get_tensor_by_name("global_step:0")
       if gs.dtype.base_dtype in [dtypes.int32, dtypes.int64]:
@@ -827,6 +849,92 @@ class Supervisor(object):
         if op.type == "Variable" and not op.device:
           raise ValueError("When using replicas, all Variables must have "
                            "their device set: %s" % op)
+
+  # pylint: disable=g-doc-return-or-yield,broad-except
+  @contextlib.contextmanager
+  def managed_session(self, master="", config=None,
+                      start_standard_services=True):
+    """Returns a context manager for a managed session.
+
+    This context manager creates and automatically recovers a session.  It
+    optionally starts the standard services that handle checkpoints and
+    summaries.  It monitors exceptions raised from the `with` block or from the
+    services and stops the supervisor as needed.
+
+    The context manager is typically used as follows:
+
+    ```python
+    def train():
+      sv = tf.train.Supervisor(...)
+      with sv.managed_session(<master>) as sess:
+        for step in xrange(..):
+          if sv.should_stop():
+            break
+          sess.run(<my training op>)
+          ...do other things needed at each training step...
+    ```
+
+    An exception raised from the `with` block or one of the service threads is
+    raised again when the block exits.  This is done after stopping all threads
+    and closing the session.  For example, an `AbortedError` exception, raised
+    in case of preemption of one of the workers in a distributed model, is
+    raised again when the block exits.
+
+    If you want to retry the training loop in case of preemption you can do it
+    as follows:
+
+    ```python
+    def main(...):
+      while True
+        try:
+          train()
+        except tf.errors.Aborted:
+          pass
+    ```
+
+    As a special case, exceptions used for control flow, such as
+    `OutOfRangeError` which reports that input queues are exhausted, are not
+    raised again from the `with` block: they indicate a clean termination of
+    the training loop and are considered normal termination.
+
+    Args:
+      master: name of the TensorFlow master to use.  See the `tf.Session`
+        constructor for how this is interpreted.
+      config: Optional `ConfigProto` proto used to configure the session.
+        Passed as-is to create the session.
+      start_standard_services: Whether to start the standard services,
+        such as checkpoint, summary and step counter.
+
+    Returns:
+      A context manager that yields a `Session` restored from the latest
+      checkpoint or initialized from scratch if not checkpoint exists.  The
+      session is closed when the `with` block exits.
+    """
+    try:
+      sess = self.prepare_or_wait_for_session(
+          master=master, config=config,
+          start_standard_services=start_standard_services)
+      yield sess
+    except Exception as e:
+      self.request_stop(e)
+    finally:
+      try:
+        # Request all the threads to stop and wait for them to do so.  Any
+        # exception raised by the threads is raised again from stop().
+        # Passing stop_grace_period_secs is for blocked enqueue/dequeue
+        # threads which are not checking for `should_stop()`.  They
+        # will be stopped when we close the session further down.
+        self.stop()
+      finally:
+        # Close the session to finish up all pending calls.  We do not care
+        # about exceptions raised when closing.  This takes care of
+        # blocked enqueue/dequeue calls.
+        try:
+          sess.close()
+        except Exception:
+          # Silently ignore exceptions raised by close().
+          pass
+  # pylint: enable=g-doc-return-or-yield,broad-except
 
 
 class SVSummaryThread(coordinator.LooperThread):

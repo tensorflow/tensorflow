@@ -29,6 +29,7 @@ from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -169,7 +170,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testFetchScalar(self):
     with session.Session() as s:
-      for scalar in np.int32, np.int64, np.float32, np.float64:
+      for scalar in np.int32, np.int64, np.float16, np.float32, np.float64:
         x = scalar(7)
         y = scalar(8)
         tf_x = constant_op.constant(x, shape=[])
@@ -678,7 +679,8 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testFeedAndFetch(self):
     with session.Session():
-      for dtype in [dtypes.float32,
+      for dtype in [dtypes.float16,
+                    dtypes.float32,
                     dtypes.float64,
                     dtypes.int32,
                     dtypes.uint8,
@@ -964,6 +966,14 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       with self.assertRaisesRegexp(ValueError, 'may not be fed'):
         sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
+
+  def testRunWithNoTargetsIsAnError(self):
+    with session.Session() as sess:
+      _ = constant_op.constant(5.0)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          'Must specify at least one target to fetch or execute.'):
+        sess.run([])
 
 
 if __name__ == '__main__':

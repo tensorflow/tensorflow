@@ -41,6 +41,14 @@ filegroup(
 )
 
 filegroup(
+    name = "iron_a11y_announcer",
+    srcs = [
+        "index.html",
+        "iron-a11y-announcer.html",
+    ],
+)
+
+filegroup(
     name = "iron_a11y_keys_behavior",
     srcs = [
         "index.html",
@@ -337,6 +345,24 @@ filegroup(
         "index.html",
         "metadata.html",
         "paper-checkbox.html",
+    ],
+)
+
+filegroup(
+    name = "paper_dialog",
+    srcs = [
+        "index.html",
+        "paper-dialog.html",
+    ],
+)
+
+filegroup(
+    name = "paper_dialog_behavior",
+    srcs = [
+        "index.html",
+        "paper-dialog-behavior.html",
+        "paper-dialog-common.css",
+        "paper-dialog-shared-styles.html",
     ],
 )
 

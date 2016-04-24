@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import math
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
+# pylint: disable=redefined-builtin,unused-import
+from six.moves import xrange
+# pylint: enable=redefined-builtin,unused-import
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -34,14 +36,17 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
 
+from tensorflow.python.platform import logging
+
 
 class RNNCell(object):
   """Abstract object representing an RNN cell.
 
   An RNN cell, in the most abstract setting, is anything that has
   a state -- a vector of floats of size self.state_size -- and performs some
-  operation that takes inputs of size self.input_size. This operation
-  results in an output of size self.output_size and a new state.
+  operation that takes a matrix of inputs. This operation
+  results in an output matrix with self.output_size columns and a new
+  state matrix with self.state_size columns.
 
   This module provides a number of basic commonly used RNN cells, such as
   LSTM (Long Short Term Memory) or GRU (Gated Recurrent Unit), and a number
@@ -55,7 +60,7 @@ class RNNCell(object):
     """Run this RNN cell on inputs, starting from the given state.
 
     Args:
-      inputs: 2D Tensor with shape [batch_size x self.input_size].
+      inputs: 2D Tensor with shape [batch_size x input_size].
       state: 2D Tensor with shape [batch_size x self.state_size].
       scope: VariableScope for the created subgraph; defaults to class name.
 
@@ -67,18 +72,13 @@ class RNNCell(object):
     raise NotImplementedError("Abstract method")
 
   @property
-  def input_size(self):
-    """Integer: size of inputs accepted by this cell."""
+  def state_size(self):
+    """Integer: size of state used by this cell."""
     raise NotImplementedError("Abstract method")
 
   @property
   def output_size(self):
     """Integer: size of outputs produced by this cell."""
-    raise NotImplementedError("Abstract method")
-
-  @property
-  def state_size(self):
-    """Integer: size of state used by this cell."""
     raise NotImplementedError("Abstract method")
 
   def zero_state(self, batch_size, dtype):
@@ -101,19 +101,16 @@ class BasicRNNCell(RNNCell):
   """The most basic RNN cell."""
 
   def __init__(self, num_units, input_size=None):
+    if input_size is not None:
+      logging.warn("%s: The input_size parameter is deprecated." % self)
     self._num_units = num_units
-    self._input_size = num_units if input_size is None else input_size
-
-  @property
-  def input_size(self):
-    return self._input_size
-
-  @property
-  def output_size(self):
-    return self._num_units
 
   @property
   def state_size(self):
+    return self._num_units
+
+  @property
+  def output_size(self):
     return self._num_units
 
   def __call__(self, inputs, state, scope=None):
@@ -127,19 +124,16 @@ class GRUCell(RNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
 
   def __init__(self, num_units, input_size=None):
+    if input_size is not None:
+      logging.warn("%s: The input_size parameter is deprecated." % self)
     self._num_units = num_units
-    self._input_size = num_units if input_size is None else input_size
-
-  @property
-  def input_size(self):
-    return self._input_size
-
-  @property
-  def output_size(self):
-    return self._num_units
 
   @property
   def state_size(self):
+    return self._num_units
+
+  @property
+  def output_size(self):
     return self._num_units
 
   def __call__(self, inputs, state, scope=None):
@@ -176,24 +170,20 @@ class BasicLSTMCell(RNNCell):
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
-      input_size: int, The dimensionality of the inputs into the LSTM cell,
-        by default equal to num_units.
+      input_size: Deprecated and unused.
     """
+    if input_size is not None:
+      logging.warn("%s: The input_size parameter is deprecated." % self)
     self._num_units = num_units
-    self._input_size = num_units if input_size is None else input_size
     self._forget_bias = forget_bias
-
-  @property
-  def input_size(self):
-    return self._input_size
-
-  @property
-  def output_size(self):
-    return self._num_units
 
   @property
   def state_size(self):
     return 2 * self._num_units
+
+  @property
+  def output_size(self):
+    return self._num_units
 
   def __call__(self, inputs, state, scope=None):
     """Long short-term memory cell (LSTM)."""
@@ -242,7 +232,7 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
     current_size = unit_shard_size
     if i < remaining_rows:
       current_size += 1
-    shards.append(vs.get_variable(name + "_%d" % i, [current_size, shape[1]],
+    shards.append(vs.get_variable(name + "_%d" % i, [current_size] + shape[1:],
                                   dtype=dtype))
   return shards
 
@@ -250,7 +240,14 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
 class LSTMCell(RNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
-  This implementation is based on:
+  The default non-peephole implementation is based on:
+
+    http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+
+  S. Hochreiter and J. Schmidhuber.
+  "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
+
+  The peephole implementation is based on:
 
     https://research.google.com/pubs/archive/43905.pdf
 
@@ -258,8 +255,8 @@ class LSTMCell(RNNCell):
   "Long short-term memory recurrent neural network architectures for
    large scale acoustic modeling." INTERSPEECH, 2014.
 
-  It uses peep-hole connections, optional cell clipping, and an optional
-  projection layer.
+  The class uses optional peep-hole connections, optional cell clipping, and
+  an optional projection layer.
   """
 
   def __init__(self, num_units, input_size=None,
@@ -270,7 +267,7 @@ class LSTMCell(RNNCell):
 
     Args:
       num_units: int, The number of units in the LSTM cell
-      input_size: int, The dimensionality of the inputs into the LSTM cell
+      input_size: Deprecated and unused.
       use_peepholes: bool, set True to enable diagonal/peephole connections.
       cell_clip: (optional) A float value, if provided the cell state is clipped
         by this value prior to the cell output activation.
@@ -283,10 +280,12 @@ class LSTMCell(RNNCell):
       num_proj_shards: How to split the projection matrix.  If >1, the
         projection matrix is stored across num_proj_shards.
       forget_bias: Biases of the forget gate are initialized by default to 1
-        in order to reduce the scale of forgetting at the beginning of the training.
+        in order to reduce the scale of forgetting at the beginning of
+        the training.
     """
+    if input_size is not None:
+      logging.warn("%s: The input_size parameter is deprecated." % self)
     self._num_units = num_units
-    self._input_size = input_size
     self._use_peepholes = use_peepholes
     self._cell_clip = cell_clip
     self._initializer = initializer
@@ -303,16 +302,12 @@ class LSTMCell(RNNCell):
       self._output_size = num_units
 
   @property
-  def input_size(self):
-    return self._num_units if self._input_size is None else self._input_size
+  def state_size(self):
+    return self._state_size
 
   @property
   def output_size(self):
     return self._output_size
-
-  @property
-  def state_size(self):
-    return self._state_size
 
   def __call__(self, inputs, state, scope=None):
     """Run one step of LSTM.
@@ -331,9 +326,10 @@ class LSTMCell(RNNCell):
            num_units otherwise.
       - A 2D, batch x state_size, Tensor representing the new state of LSTM
         after reading "inputs" when previous state was "state".
+
     Raises:
-      ValueError: if an input_size was specified and the provided inputs have
-        a different dimension.
+      ValueError: If input size cannot be inferred from inputs via
+        static shape inference.
     """
     num_proj = self._num_units if self._num_proj is None else self._num_proj
 
@@ -341,14 +337,13 @@ class LSTMCell(RNNCell):
     m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
     dtype = inputs.dtype
-    actual_input_size = inputs.get_shape().as_list()[1]
-    if self._input_size and self._input_size != actual_input_size:
-      raise ValueError("Actual input size not same as specified: %d vs %d." %
-                       (actual_input_size, self._input_size))
+    input_size = inputs.get_shape().with_rank(2)[1]
+    if input_size.value is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
     with vs.variable_scope(scope or type(self).__name__,
                            initializer=self._initializer):  # "LSTMCell"
       concat_w = _get_concat_variable(
-          "W", [actual_input_size + num_proj, 4 * self._num_units],
+          "W", [input_size.value + num_proj, 4 * self._num_units],
           dtype, self._num_unit_shards)
 
       b = vs.get_variable(
@@ -376,7 +371,9 @@ class LSTMCell(RNNCell):
         c = (sigmoid(f + self._forget_bias) * c_prev + sigmoid(i) * tanh(j))
 
       if self._cell_clip is not None:
+        # pylint: disable=invalid-unary-operand-type
         c = clip_ops.clip_by_value(c, -self._cell_clip, self._cell_clip)
+        # pylint: enable=invalid-unary-operand-type
 
       if self._use_peepholes:
         m = sigmoid(o + w_o_diag * c) * tanh(c)
@@ -421,16 +418,12 @@ class OutputProjectionWrapper(RNNCell):
     self._output_size = output_size
 
   @property
-  def input_size(self):
-    return self._cell.input_size
+  def state_size(self):
+    return self._cell.state_size
 
   @property
   def output_size(self):
     return self._output_size
-
-  @property
-  def state_size(self):
-    return self._cell.state_size
 
   def __call__(self, inputs, state, scope=None):
     """Run the cell and output projection on inputs, starting from state."""
@@ -449,41 +442,37 @@ class InputProjectionWrapper(RNNCell):
   do the projection on this batch-concatenated sequence, then split it.
   """
 
-  def __init__(self, cell, input_size):
+  def __init__(self, cell, num_proj, input_size=None):
     """Create a cell with input projection.
 
     Args:
       cell: an RNNCell, a projection of inputs is added before it.
-      input_size: integer, the size of the inputs before projection.
+      num_proj: Python integer.  The dimension to project to.
+      input_size: Deprecated and unused.
 
     Raises:
       TypeError: if cell is not an RNNCell.
-      ValueError: if input_size is not positive.
     """
+    if input_size is not None:
+      logging.warn("%s: The input_size parameter is deprecated." % self)
     if not isinstance(cell, RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
-    if input_size < 1:
-      raise ValueError("Parameter input_size must be > 0: %d." % input_size)
     self._cell = cell
-    self._input_size = input_size
-
-  @property
-  def input_size(self):
-    return self._input_size
-
-  @property
-  def output_size(self):
-    return self._cell.output_size
+    self._num_proj = num_proj
 
   @property
   def state_size(self):
     return self._cell.state_size
 
+  @property
+  def output_size(self):
+    return self._cell.output_size
+
   def __call__(self, inputs, state, scope=None):
     """Run the input projection and then the cell."""
     # Default scope: "InputProjectionWrapper"
     with vs.variable_scope(scope or type(self).__name__):
-      projected = linear(inputs, self._cell.input_size, True)
+      projected = linear(inputs, self._num_proj, True)
     return self._cell(projected, state)
 
 
@@ -524,16 +513,12 @@ class DropoutWrapper(RNNCell):
     self._seed = seed
 
   @property
-  def input_size(self):
-    return self._cell.input_size
+  def state_size(self):
+    return self._cell.state_size
 
   @property
   def output_size(self):
     return self._cell.output_size
-
-  @property
-  def state_size(self):
-    return self._cell.state_size
 
   def __call__(self, inputs, state, scope=None):
     """Run the cell with the declared dropouts."""
@@ -581,14 +566,6 @@ class EmbeddingWrapper(RNNCell):
     self._initializer = initializer
 
   @property
-  def input_size(self):
-    return 1
-
-  @property
-  def output_size(self):
-    return self._cell.output_size
-
-  @property
   def state_size(self):
     return self._cell.state_size
 
@@ -622,28 +599,19 @@ class MultiRNNCell(RNNCell):
       cells: list of RNNCells that will be composed in this order.
 
     Raises:
-      ValueError: if cells is empty (not allowed) or if their sizes don't match.
+      ValueError: if cells is empty (not allowed).
     """
     if not cells:
       raise ValueError("Must specify at least one cell for MultiRNNCell.")
-    for i in xrange(len(cells) - 1):
-      if cells[i + 1].input_size != cells[i].output_size:
-        raise ValueError("In MultiRNNCell, the input size of each next"
-                         " cell must match the output size of the previous one."
-                         " Mismatched output size in cell %d." % i)
     self._cells = cells
-
-  @property
-  def input_size(self):
-    return self._cells[0].input_size
-
-  @property
-  def output_size(self):
-    return self._cells[-1].output_size
 
   @property
   def state_size(self):
     return sum([cell.state_size for cell in self._cells])
+
+  @property
+  def output_size(self):
+    return self._cells[-1].output_size
 
   def __call__(self, inputs, state, scope=None):
     """Run this multi-layer cell on inputs, starting from state."""
@@ -659,6 +627,51 @@ class MultiRNNCell(RNNCell):
           cur_inp, new_state = cell(cur_inp, cur_state)
           new_states.append(new_state)
     return cur_inp, array_ops.concat(1, new_states)
+
+
+class SlimRNNCell(RNNCell):
+  """A simple wrapper for slim.rnn_cells."""
+
+  def __init__(self, cell_fn):
+    """Create a SlimRNNCell from a cell_fn.
+
+    Args:
+      cell_fn: a function which takes (inputs, state, scope) and produces the
+        outputs and the new_state. Additionally when called with inputs=None and
+        state=None it should return (initial_outputs, initial_state).
+
+    Raises:
+      TypeError: if cell_fn is not callable
+      ValueError: if cell_fn cannot produce a valid initial state.
+    """
+    if not callable(cell_fn):
+      raise TypeError("cell_fn %s needs to be callable", cell_fn)
+    self._cell_fn = cell_fn
+    self._cell_name = cell_fn.func.__name__
+    init_output, init_state = self._cell_fn(None, None)
+    output_shape = init_output.get_shape()
+    state_shape = init_state.get_shape()
+    self._output_size = output_shape.with_rank(2)[1].value
+    self._state_size = state_shape.with_rank(2)[1].value
+    if self._output_size is None:
+      raise ValueError("Initial output created by %s has invalid shape %s" %
+                       (self._cell_name, output_shape))
+    if self._state_size is None:
+      raise ValueError("Initial state created by %s has invalid shape %s" %
+                       (self._cell_name, state_shape))
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  @property
+  def output_size(self):
+    return self._output_size
+
+  def __call__(self, inputs, state, scope=None):
+    scope = scope or self._cell_name
+    output, state = self._cell_fn(inputs, state, scope=scope)
+    return output, state
 
 
 def linear(args, output_size, bias, bias_start=0.0, scope=None):

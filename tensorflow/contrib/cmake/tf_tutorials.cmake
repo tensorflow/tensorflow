@@ -41,6 +41,7 @@ target_link_libraries(tf_tutorials_example_trainer PUBLIC
     ${jpeg_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${ZLIB_LIBRARIES}
+    ${CMAKE_DL_LIBS}
 )
 
 target_compile_options(tf_tutorials_example_trainer PRIVATE

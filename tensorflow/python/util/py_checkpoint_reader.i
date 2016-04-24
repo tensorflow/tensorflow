@@ -20,6 +20,7 @@ limitations under the License.
 %{
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/checkpoint_reader.h"
+#include "tensorflow/python/util/py_checkpoint_reader.h"
 %}
 
 %typemap(out) const tensorflow::checkpoint::TensorSliceReader::VarToShapeMap& {
@@ -67,23 +68,38 @@ limitations under the License.
 }
 
 %typemap(in, numinputs=0)
-    std::unique_ptr<tensorflow::checkpoint::CheckpointReader>* out_reader (
-        std::unique_ptr<tensorflow::checkpoint::CheckpointReader> temp) {
+    std::unique_ptr<tensorflow::checkpoint::PyCheckpointReader>* out_reader (
+        std::unique_ptr<tensorflow::checkpoint::PyCheckpointReader> temp) {
   $1 = &temp;
 }
 
-%typemap(out) tensorflow::Status tensorflow::checkpoint::NewCheckpointReader {
+%typemap(out) tensorflow::Status tensorflow::checkpoint::NewPyCheckpointReader {
   if (!$1.ok()) {
     RaiseStatusNotOK($1, $descriptor(tensorflow::Status*));
     SWIG_fail;
   }
 }
 
-%typemap(argout) std::unique_ptr<tensorflow::checkpoint::CheckpointReader>*
+%typemap(argout) std::unique_ptr<tensorflow::checkpoint::PyCheckpointReader>*
   out_reader {
   $result = SWIG_NewPointerObj(
-      $1->release(), $descriptor(tensorflow::checkpoint::CheckpointReader*),
+      $1->release(), $descriptor(tensorflow::checkpoint::PyCheckpointReader*),
       SWIG_POINTER_OWN);
+}
+
+%typemap(in, numinputs=0) PyObject** numpy_output (PyObject* temp) {
+  $1 = &temp;
+}
+
+%typemap(out) tensorflow::Status tensorflow::checkpoint::PyCheckpointReader::GetTensor {
+  if (!$1.ok()) {
+    RaiseStatusNotOK($1, $descriptor(tensorflow::Status*));
+    SWIG_fail;
+  }
+}
+
+%typemap(argout) PyObject** numpy_output {
+  $result = *$1;
 }
 
 %ignoreall
@@ -91,29 +107,43 @@ limitations under the License.
 %unignore tensorflow::checkpoint;
 %unignore tensorflow::checkpoint::CheckpointReader;
 %unignore tensorflow::checkpoint::CheckpointReader::~CheckpointReader;
-%unignore tensorflow::checkpoint::CheckpointReader::DebugString;
-%unignore tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap;
+%rename("debug_string") tensorflow::checkpoint::CheckpointReader::DebugString;
+%rename("get_variable_to_shape_map") tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap;
 %rename("_HasTensor") tensorflow::checkpoint::CheckpointReader::HasTensor;
+%unignore tensorflow::checkpoint::PyCheckpointReader;
+%unignore tensorflow::checkpoint::~PyCheckpointReader;
+%rename("_GetTensor") tensorflow::checkpoint::PyCheckpointReader::GetTensor;
 
 %newobject tensorflow::checkpoint::CheckpointReader::HasTensor;
 
 %extend tensorflow::checkpoint::CheckpointReader {
 %insert("python") %{
-  def HasTensor(self, tensor_str):
+  def has_tensor(self, tensor_str):
     from tensorflow.python.util import compat
     return self._HasTensor(compat.as_bytes(tensor_str))
 %}
 }
 
-%rename("_NewCheckpointReader") tensorflow::checkpoint::NewCheckpointReader;
+%rename("_NewPyCheckpointReader") tensorflow::checkpoint::NewPyCheckpointReader;
 
-%newobject tensorflow::checkpoint::NewCheckpointReader;
+%newobject tensorflow::checkpoint::NewPyCheckpointReader;
 
 %insert("python") %{
   def NewCheckpointReader(filepattern):
     from tensorflow.python.util import compat
-    return _NewCheckpointReader(compat.as_bytes(filepattern))
+    return _NewPyCheckpointReader(compat.as_bytes(filepattern))
 %}
 
+%newobject tensorflow::checkpoint::PyCheckpointReader::get_tensor;
+
+%extend tensorflow::checkpoint::PyCheckpointReader {
+%insert("python") %{
+  def get_tensor(self, tensor_str):
+    from tensorflow.python.util import compat
+    return self._GetTensor(compat.as_bytes(tensor_str))
+%}
+}
+
 %include "tensorflow/core/util/checkpoint_reader.h"
+%include "tensorflow/python/util/py_checkpoint_reader.h"
 %unignoreall

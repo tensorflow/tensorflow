@@ -34,6 +34,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
@@ -97,10 +98,10 @@ class RMSPropOptimizer(optimizer.Optimizer):
     mom = self.get_slot(var, "momentum")
     return training_ops.apply_rms_prop(
         var, rms, mom,
-        self._learning_rate_tensor,
-        self._decay_tensor,
-        self._momentum_tensor,
-        self._epsilon_tensor,
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._decay_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._epsilon_tensor, var.dtype.base_dtype),
         grad, use_locking=self._use_locking).op
 
   def _apply_sparse(self, grad, var):

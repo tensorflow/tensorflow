@@ -563,8 +563,8 @@ TEST(FunctionCallFrame, Void_Void) {
   auto a = test::AsTensor<float>({100});
   HasError(frame.SetArgs({a}), "Invalid argument");
   Tensor v;
-  HasError(frame.GetArg(0, &v), "Out of range");
-  HasError(frame.SetRetval(0, v), "Out of range");
+  HasError(frame.GetArg(0, &v), "Invalid argument");
+  HasError(frame.SetRetval(0, v), "Invalid argument");
   std::vector<Tensor> rets;
   TF_EXPECT_OK(frame.GetRetvals(&rets));
   EXPECT_EQ(rets.size(), 0);
@@ -581,16 +581,16 @@ TEST(FunctionCallFrame, Float_Float_Float) {
   TF_EXPECT_OK(frame.SetArgs({a, b}));
 
   Tensor v;
-  HasError(frame.GetArg(-1, &v), "Out of range");
-  HasError(frame.GetArg(2, &v), "Out of range");
+  HasError(frame.GetArg(-1, &v), "Invalid argument");
+  HasError(frame.GetArg(2, &v), "Invalid argument");
   TF_EXPECT_OK(frame.GetArg(0, &v));
   test::ExpectTensorEqual<float>(a, v);
   TF_EXPECT_OK(frame.GetArg(1, &v));
   test::ExpectTensorEqual<float>(b, v);
 
   v = test::AsTensor<float>({-100});
-  HasError(frame.SetRetval(-1, v), "Out of range");
-  HasError(frame.SetRetval(1, v), "Out of range");
+  HasError(frame.SetRetval(-1, v), "Invalid argument");
+  HasError(frame.SetRetval(1, v), "Invalid argument");
   HasError(frame.SetRetval(0, test::AsTensor<int64>({-100})),
            "Invalid argument: Expects ret[0] to be float");
 

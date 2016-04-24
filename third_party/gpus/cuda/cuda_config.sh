@@ -109,11 +109,13 @@ if [ "$CHECK_ONLY" == "1" ]; then
   CheckAndLinkToSrcTree CudaError include/cuda.h
   CheckAndLinkToSrcTree CudaError include/cublas.h
   CheckAndLinkToSrcTree CudnnError include/cudnn.h
+  CheckAndLinkToSrcTree CudaError extras/CUPTI/include/cupti.h
   CheckAndLinkToSrcTree CudaError lib64/libcudart_static.a
   CheckAndLinkToSrcTree CudaError lib64/libcublas.so$TF_CUDA_VERSION
   CheckAndLinkToSrcTree CudnnError lib64/libcudnn.so$TF_CUDNN_VERSION
   CheckAndLinkToSrcTree CudaError lib64/libcudart.so$TF_CUDA_VERSION
   CheckAndLinkToSrcTree CudaError lib64/libcufft.so$TF_CUDA_VERSION
+  CheckAndLinkToSrcTree CudaError extras/CUPTI/lib64/libcupti.so$TF_CUDA_VERSION
   exit 0
 fi
 
@@ -122,6 +124,10 @@ fi
 
 if test ! -e ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so$TF_CUDA_VERSION; then
   CudaError "cannot find ${CUDA_TOOLKIT_PATH}/lib64/libcudart.so$TF_CUDA_VERSION"
+fi
+
+if test ! -e ${CUDA_TOOLKIT_PATH}/extras/CUPTI/lib64/libcupti.so$TF_CUDA_VERSION; then
+  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/extras/CUPTI/lib64/libcupti.so$TF_CUDA_VERSION"
 fi
 
 if test ! -d ${CUDNN_INSTALL_PATH}; then
@@ -181,6 +187,10 @@ echo "Setting up Cuda bin"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/bin $OUTPUTDIR/third_party/gpus/cuda/bin || exit -1
 echo "Setting up Cuda nvvm"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/nvvm $OUTPUTDIR/third_party/gpus/cuda/nvvm || exit -1
+echo "Setting up CUPTI include"
+LinkAllFiles ${CUDA_TOOLKIT_PATH}/extras/CUPTI/include $OUTPUTDIR/third_party/gpus/cuda/extras/CUPTI/include || exit -1
+echo "Setting up CUPTI lib64"
+LinkAllFiles ${CUDA_TOOLKIT_PATH}/extras/CUPTI/lib64 $OUTPUTDIR/third_party/gpus/cuda/extras/CUPTI/lib64 || exit -1
 
 # Set up symbolic link for cudnn
 ln -sf $CUDNN_HEADER_PATH/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1

@@ -24,17 +24,11 @@ json data from a "dataDir" rather than connecting to a live backend.
       properties: {
         _demoRouter: {
           type: Object,
-          computed: "_makeDemoRouter(dataDir, oldVersion)",
+          computed: "_makeDemoRouter(dataDir)",
         },
         dataDir: {
           type: String,
           value: "data",
-        },
-        // To use the old version of the router which can serve the
-        // demo/data folder that is checked into the repository.
-        oldVersion: {
-          type: Boolean,
-          value: false
         },
         // If true, tab switching in TensorBoard will not update
         // location hash. Hash update interferes with selenium tests.
@@ -43,8 +37,8 @@ json data from a "dataDir" rather than connecting to a live backend.
           value: false
         }
       },
-      _makeDemoRouter: function(dataDir, oldVersion) {
-        return TF.Urls.demoRouter(dataDir, oldVersion);
+      _makeDemoRouter: function(dataDir) {
+        return TF.Backend.router(dataDir, true);
       },
     });
   </script>

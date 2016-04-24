@@ -541,6 +541,18 @@ OpDefBuilder& OpDefBuilder::SetAllowsUninitializedInput() {
   return *this;
 }
 
+OpDefBuilder& OpDefBuilder::Deprecated(int version, StringPiece explanation) {
+  if (op_def_.has_deprecation()) {
+    errors_.push_back(
+        strings::StrCat("Deprecated called twice for Op ", op_def_.name()));
+  } else {
+    OpDeprecation* deprecation = op_def_.mutable_deprecation();
+    deprecation->set_version(version);
+    deprecation->set_explanation(explanation.ToString());
+  }
+  return *this;
+}
+
 Status OpDefBuilder::Finalize(OpDef* op_def) const {
   std::vector<string> errors = errors_;
   *op_def = op_def_;

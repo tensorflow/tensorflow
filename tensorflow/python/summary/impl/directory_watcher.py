@@ -18,11 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import logging
-from tensorflow.python.summary.impl import gcs
+from tensorflow.python.summary.impl import io_wrapper
 
 
 class DirectoryWatcher(object):
@@ -134,31 +131,27 @@ class DirectoryWatcher(object):
     return self._path_provider(self._path)
 
 
-def _SequentialProvider(path_source):
-  """A provider that iterates over the output of a function that produces paths.
+def SequentialFileProvider(directory, path_filter=lambda x: True):
+  """Provides the files in a directory that match the given filter.
 
-  _SequentialProvider takes in a path_source, which is a function that returns a
-  list of all currently available paths. _SequentialProvider returns in a path
-  provider (see documentation for the |DirectoryWatcher| class for the
-  semantics) that will return the alphabetically next path after the current one
-  (or the earliest path if the current path is None).
-
-  The provider will never return a path which is alphanumerically less than the
-  current path; as such, if the path source provides a high path (e.g. "c") and
-  later doubles back and provides a low path (e.g. "b"), once the current path
-  was set to "c" the _SequentialProvider will ignore the "b" and never return
-  it.
+  Each time the provider is called, it returns the next path (in alphabetical
+  ordering) in the directory that satisfies the filter.
 
   Args:
-    path_source: A function that returns an iterable of paths.
+    directory: The directory to look for paths under.
+    path_filter: If present, only paths that satisfy this filter are considered.
 
   Returns:
-    A path provider for use with DirectoryWatcher.
-
+    A function that takes in a path (or None) and returns the next path to look
+    at (or None if there are no more paths).
   """
+
   def _Provider(current_path):
+    filtered_paths = (path
+                      for path in io_wrapper.ListDirectoryAbsolute(directory)
+                      if path_filter(path))
     next_paths = list(path
-                      for path in path_source()
+                      for path in filtered_paths
                       if current_path is None or path > current_path)
     if next_paths:
       return min(next_paths)
@@ -166,21 +159,3 @@ def _SequentialProvider(path_source):
       return None
 
   return _Provider
-
-
-def SequentialGFileProvider(directory, path_filter=lambda x: True):
-  """Provides the files in a directory that match the given filter."""
-  def _Source():
-    paths = (os.path.join(directory, path)
-             for path in gfile.ListDirectory(directory))
-    return (path for path in paths if path_filter(path))
-
-  return _SequentialProvider(_Source)
-
-
-def SequentialGCSProvider(directory, path_filter=lambda x: True):
-  """Provides the files in a GCS directory that match the given filter."""
-  def _Source():
-    return (path for path in gcs.ListDirectory(directory) if path_filter(path))
-
-  return _SequentialProvider(_Source)

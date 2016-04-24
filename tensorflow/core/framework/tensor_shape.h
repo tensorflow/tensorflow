@@ -71,6 +71,9 @@ class TensorShape {
   /// Appends all the dimensions from `shape`.
   void AppendShape(const TensorShape& shape);
 
+  // Maximum number of dimensions in a tensor.
+  static constexpr int MaxDimensions() { return 255; }
+
   /// \brief Insert a dimension somewhere in the `TensorShape`.
   /// REQUIRES: `0 <= d <= dims()`
   /// REQUIRES: `size >= 0`
@@ -277,6 +280,7 @@ template <int NDIMS>
 Eigen::DSizes<Eigen::DenseIndex, NDIMS> TensorShape::AsEigenDSizesWithPadding()
     const {
   CheckDimsAtLeast(NDIMS);
+  static_assert(NDIMS <= TensorShape::MaxDimensions(), "Too many dimensions");
   Eigen::DSizes<Eigen::DenseIndex, NDIMS> dsizes;
   for (int d = 0; d < dims(); d++) {
     dsizes[d] = dim_size(d);

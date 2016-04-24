@@ -157,11 +157,11 @@ easily. Our cost function will be the cross-entropy between the target and the
 model's prediction.
 
 ```python
-cross_entropy = -tf.reduce_sum(y_*tf.log(y))
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
 ```
 
-Note that `tf.reduce_sum` sums across all images in the minibatch, as well as
-all classes. We are computing the cross entropy for the entire minibatch.
+Note that `tf.reduce_sum` sums across all classes and `tf.reduce_mean` takes 
+the average over these sums.
 
 ## Train the Model
 
@@ -174,10 +174,10 @@ TensorFlow has a variety of
 [builtin optimization algorithms]
 (../../../api_docs/python/train.md#optimizers).
 For this example, we will use steepest gradient descent, with a step length of
-0.01, to descend the cross entropy.
+0.5, to descend the cross entropy.
 
 ```python
-train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
+train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 ```
 
 What TensorFlow actually did in that single line was to add new operations to
@@ -224,7 +224,7 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 ```
 
 Finally, we can evaluate our accuracy on the test data. This should be about
-91% correct.
+92% correct.
 
 ```python
 print(accuracy.eval(feed_dict={x: mnist.test.images, y_: mnist.test.labels}))
@@ -335,12 +335,13 @@ h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
 #### Dropout
 
-To reduce overfitting, we will apply dropout before the readout layer.
+To reduce overfitting, we will apply [dropout](
+https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf) before the readout layer.
 We create a `placeholder` for the probability that a neuron's output is kept
 during dropout. This allows us to turn dropout on during training, and turn it
 off during testing.
 TensorFlow's `tf.nn.dropout` op automatically handles scaling neuron outputs in
-addition to masking them, so dropout just works without any additional scaling.
+addition to masking them, so dropout just works without any additional scaling.<sup id="a1">[1](#f1)</sup>
 
 ```python
 keep_prob = tf.placeholder(tf.float32)
@@ -370,7 +371,7 @@ additional parameter `keep_prob` in `feed_dict` to control the dropout rate;
 and we will add logging to every 100th iteration in the training process.
 
 ```python
-cross_entropy = -tf.reduce_sum(y_*tf.log(y_conv))
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y_conv), reduction_indices=[1]))
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -391,3 +392,5 @@ The final test set accuracy after running this code should be approximately 99.2
 
 We have learned how to quickly and easily build, train, and evaluate a
 fairly sophisticated deep learning model using TensorFlow.
+
+<b id="f1">1</b>: For this small convolutional network, performance is actually nearly identical with and without dropout. Dropout is often very effective at reducing overfitting, but it is most useful when training very large neural networks. [↩](#a1)

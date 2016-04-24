@@ -21,13 +21,15 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_linalg_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
 
 
 @ops.RegisterShape("Cholesky")
-def _CholeskyShape(op):
+@ops.RegisterShape("MatrixInverse")
+def _UnchangedSquare(op):
   input_shape = op.inputs[0].get_shape().with_rank(2)
   # The matrix must be square.
   input_shape[0].assert_is_compatible_with(input_shape[1])
@@ -35,12 +37,16 @@ def _CholeskyShape(op):
 
 
 @ops.RegisterShape("BatchCholesky")
-def _BatchCholeskyShape(op):
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+@ops.RegisterShape("BatchMatrixInverse")
+def _BatchUnchangedSquare(op):
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
   return [input_shape]
 
+@ops.RegisterShape("CholeskyGrad")
+def _cholesky_grad_shape(op):
+  return [op.inputs[0].get_shape()]
 
 @ops.RegisterShape("MatrixDeterminant")
 def _MatrixDeterminantShape(op):
@@ -55,29 +61,13 @@ def _MatrixDeterminantShape(op):
 
 @ops.RegisterShape("BatchMatrixDeterminant")
 def _BatchMatrixDeterminantShape(op):
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
   if input_shape.ndims is not None:
     return [input_shape[:-2]]
   else:
     return [tensor_shape.unknown_shape()]
-
-
-@ops.RegisterShape("MatrixInverse")
-def _MatrixInverseShape(op):
-  input_shape = op.inputs[0].get_shape().with_rank(2)
-  # The matrix must be square.
-  input_shape[0].assert_is_compatible_with(input_shape[1])
-  return [input_shape]
-
-
-@ops.RegisterShape("BatchMatrixInverse")
-def _BatchMatrixInverseShape(op):
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(3)
-  # The matrices in the batch must be square.
-  input_shape[-1].assert_is_compatible_with(input_shape[-2])
-  return [input_shape]
 
 
 @ops.RegisterShape("SelfAdjointEig")
@@ -92,7 +82,7 @@ def _SelfAdjointEigShape(op):
 
 @ops.RegisterShape("BatchSelfAdjointEig")
 def _BatchSelfAdjointEigShape(op):
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(3)
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
   dlist = input_shape.dims
@@ -102,46 +92,25 @@ def _BatchSelfAdjointEigShape(op):
 
 
 @ops.RegisterShape("MatrixSolve")
-def _MatrixSolveShape(op):
+@ops.RegisterShape("MatrixTriangularSolve")
+def _SquareMatrixSolveShape(op):
   lhs_shape = op.inputs[0].get_shape().with_rank(2)
   rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
   # The matrix must be square.
   lhs_shape[0].assert_is_compatible_with(lhs_shape[1])
   # The matrix and right-hand side must have the same number of rows.
   lhs_shape[0].assert_is_compatible_with(rhs_shape[0])
-  return [[lhs_shape[1], rhs_shape[1]]]
-
-
-@ops.RegisterShape("BatchMatrixSolve")
-def _BatchMatrixSolveShape(op):
-  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(3)
-  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(3)
-  # The matrices must be square.
-  lhs_shape[-1].assert_is_compatible_with(lhs_shape[-2])
-  # The matrices and right-hand sides in the batch must have the same number of
-  # rows.
-  lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])
-  return [lhs_shape[:-1].concatenate(rhs_shape[-1])]
-
-
-@ops.RegisterShape("MatrixTriangularSolve")
-def _MatrixTriangularSolveShape(op):
-  lhs_shape = op.inputs[0].get_shape().with_rank(2)
-  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
-  # The matrix must be square.
-  lhs_shape[0].assert_is_compatible_with(lhs_shape[1])
-  # The matrix and righ-hand side must have the same number of rows.
-  lhs_shape[0].assert_is_compatible_with(rhs_shape[0])
   return [rhs_shape]
 
 
+@ops.RegisterShape("BatchMatrixSolve")
 @ops.RegisterShape("BatchMatrixTriangularSolve")
-def _BatchMatrixTriangularSolveShape(op):
-  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(3)
-  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(3)
+def _BatchSquareMatrixSolveShape(op):
+  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
   # The matrices must be square.
   lhs_shape[-1].assert_is_compatible_with(lhs_shape[-2])
-  # The matrices and righ-hand sides in the batch must have the same number of
+  # The matrices and right-hand sides in the batch must have the same number of
   # rows.
   lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])
   return [rhs_shape]
@@ -158,8 +127,8 @@ def _MatrixSolveLsShape(op):
 
 @ops.RegisterShape("BatchMatrixSolveLs")
 def _BatchMatrixSolveLsShape(op):
-  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(3)
-  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(3)
+  lhs_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
   # The matrices and right-hand sides in the batch must have the same number of
   # rows.
   lhs_shape[-2].assert_is_compatible_with(rhs_shape[-2])

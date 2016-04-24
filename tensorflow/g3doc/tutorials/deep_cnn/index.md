@@ -15,8 +15,9 @@ by Alex Krizhevsky.
 
 ### Goals
 
-The goal of this tutorial is to build a relatively small convolutional neural
-network (CNN) for recognizing images. In the process, this tutorial:
+The goal of this tutorial is to build a relatively small [convolutional neural
+network](https://en.wikipedia.org/wiki/Convolutional_neural_network) (CNN) for
+recognizing images. In the process, this tutorial:
 
 1. Highlights a canonical organization for network architecture,
 training and evaluation.
@@ -32,10 +33,16 @@ The CIFAR-10 tutorial demonstrates several important constructs for
 designing larger and more sophisticated models in TensorFlow:
 
 * Core mathematical components including [convolution](
-../../api_docs/python/nn.md#conv2d), [rectified linear activations](
-../../api_docs/python/nn.md#relu), [max pooling](
-../../api_docs/python/nn.md#max_pool) and [local response normalization](
-../../api_docs/python/nn.md#local_response_normalization).
+../../api_docs/python/nn.md#conv2d) ([wiki](
+https://en.wikipedia.org/wiki/Convolution)), [rectified linear activations](
+../../api_docs/python/nn.md#relu) ([wiki](
+https://en.wikipedia.org/wiki/Rectifier_(neural_networks))), [max pooling](
+../../api_docs/python/nn.md#max_pool) ([wiki](
+https://en.wikipedia.org/wiki/Convolutional_neural_network#Pooling_layer))
+and [local response normalization](
+../../api_docs/python/nn.md#local_response_normalization) 
+(Chapter 3.3 in [AlexNet paper](
+http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
 * [Visualization](../../how_tos/summaries_and_tensorboard/index.md)
 of network activities during training, including input images,
 losses and distributions of activations and gradients.
@@ -50,7 +57,8 @@ that systematically decrements over time.
 for input
 data to isolate the model from disk latency and expensive image pre-processing.
 
-We also provide a multi-GPU version of the model which demonstrates:
+We also provide a [multi-GPU version](#training-a-model-using-multiple-gpu-cards) 
+of the model which demonstrates:
 
 * Configuring a model to train across multiple GPU cards in parallel.
 * Sharing and updating variables among multiple GPUs.
@@ -129,8 +137,8 @@ artificially increase the data set size:
 Please see the [Images](../../api_docs/python/image.md) page for the list of
 available distortions. We also attach an
 [`image_summary`](../../api_docs/python/train.md#image_summary) to the images
-so that we may visualize them in TensorBoard.  This is a good practice to verify
-that inputs are built correctly.
+so that we may visualize them in [TensorBoard](../../how_tos/summaries_and_tensorboard/index.md).
+This is a good practice to verify that inputs are built correctly.
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:70%" src="../../images/cifar_image_summary.png">

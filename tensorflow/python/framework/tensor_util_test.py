@@ -230,6 +230,16 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertEquals(np.int64, a.dtype)
     self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
 
+  def testQuantizedTypes(self):
+    for dtype in [tf.qint32, tf.quint8, tf.qint8]:
+      # Test with array.
+      t = tensor_util.make_tensor_proto([(10,), (20,), (30,)], dtype=dtype)
+      self.assertEquals(dtype, t.dtype)
+      self.assertProtoEquals("dim { size: 3 }", t.tensor_shape)
+      self.assertEquals(10, t.int_val[0])
+      self.assertEquals(20, t.int_val[1])
+      self.assertEquals(30, t.int_val[2])
+
   def testString(self):
     t = tensor_util.make_tensor_proto("foo")
     self.assertProtoEquals("""

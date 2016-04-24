@@ -49,7 +49,12 @@ class InvertPermutationOp : public OpKernel {
         context, TensorShapeUtils::IsVector(input.shape()),
         errors::InvalidArgument("invert_permutation expects a 1D vector."));
     auto Tin = input.vec<int32>();
-    const int N = Tin.size();
+    OP_REQUIRES(context,
+                FastBoundsCheck(Tin.size(), std::numeric_limits<int32>::max()),
+                errors::InvalidArgument("permutation of nonnegative int32s "
+                                        "must have <= int32 max elements"));
+    const int32 N =
+        static_cast<int32>(Tin.size());  // Safe: bounds-checked above.
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));

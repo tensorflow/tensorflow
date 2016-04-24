@@ -8,7 +8,8 @@ your TensorFlow graph, plot quantitative metrics about the execution of your
 graph, and show additional data like images that pass through it. When
 TensorBoard is fully configured, it looks like this:
 
-![MNIST TensorBoard](../../images/mnist_tensorboard.png "MNIST TensorBoard")
+[![MNIST TensorBoard](../../images/mnist_tensorboard.png "MNIST TensorBoard")](http://tensorflow.org/tensorboard)
+[*Click try a TensorBoard with data from this tutorial!*](http://tensorflow.org/tensorboard)
 
 
 ## Serializing the data
@@ -75,55 +76,69 @@ statistics, such as how the weights or accuracy varied during training.
 The code below is an excerpt; full source is [here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/mnist_with_summaries.py).
 
 ```python
-# Create the model
-x = tf.placeholder(tf.float32, [None, 784], name="x-input")
-W = tf.Variable(tf.zeros([784,10]), name="weights")
-b = tf.Variable(tf.zeros([10], name="bias"))
+def variable_summaries(var, name):
+  with tf.name_scope("summaries"):
+    mean = tf.reduce_mean(var)
+    tf.scalar_summary('mean/' + name, mean)
+    with tf.name_scope('stddev'):
+      stddev = tf.sqrt(tf.reduce_sum(tf.square(var - mean)))
+    tf.scalar_summary('sttdev/' + name, stddev)
+    tf.scalar_summary('max/' + name, tf.reduce_max(var))
+    tf.scalar_summary('min/' + name, tf.reduce_min(var))
+    tf.histogram_summary(name, var)
 
-# use a name scope to organize nodes in the graph visualizer
-with tf.name_scope("Wx_b") as scope:
-  y = tf.nn.softmax(tf.matmul(x,W) + b)
+def nn_layer(input_tensor, input_dim, output_dim, layer_name):
+  """Reusable code for making a simple neural net layer.
 
-# Add summary ops to collect data
-tf.histogram_summary("weights", W)
-tf.histogram_summary("biases", b)
-tf.histogram_summary("y", y)
+  It does a matrix multiply, bias add, and then uses relu to nonlinearize.
+  It also sets up name scoping so that the resultant graph is easy to read, and
+  adds a number of summary ops.
+  """
+  # Adding a name scope ensures logical grouping of the layers in the graph.
+  with tf.name_scope(layer_name):
+    # This Variable will hold the state of the weights for the layer
+    with tf.name_scope("weights"):
+      weights = weight_variable([input_dim, output_dim])
+      variable_summaries(weights, layer_name + '/weights')
+    with tf.name_scope("biases"):
+      biases = bias_variable([output_dim])
+      variable_summaries(biases, layer_name + '/biases')
+    with tf.name_scope('Wx_plus_b'):
+      activations = tf.matmul(input_tensor, weights) + biases
+      tf.histogram_summary(layer_name + '/activations', activations)
+    relu = tf.nn.relu(activations, 'relu')
+    tf.histogram_summary(layer_name + '/activations_relu', relu)
+    return tf.nn.dropout(relu, keep_prob)
 
-# Define loss and optimizer
-y_ = tf.placeholder(tf.float32, [None,10], name="y-input")
-# More name scopes will clean up the graph representation
-with tf.name_scope("xent") as scope:
-  cross_entropy = -tf.reduce_sum(y_*tf.log(y))
-  tf.scalar_summary("cross entropy", cross_entropy)
-with tf.name_scope("train") as scope:
-  train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
+layer1 = nn_layer(x, 784, 50, 'layer1')
+layer2 = nn_layer(layer1, 50, 10, 'layer2')
+y = tf.nn.softmax(layer2, 'predictions')
 
-with tf.name_scope("test") as scope:
-  correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1))
-  accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-  tf.scalar_summary("accuracy", accuracy)
 
-# Merge all the summaries and write them out to /tmp/mnist_logs
+with tf.name_scope('cross_entropy'):
+  diff = y_ * tf.log(y)
+  with tf.name_scope('total'):
+    cross_entropy = -tf.reduce_sum(diff)
+  with tf.name_scope('normalized'):
+    normalized_cross_entropy = -tf.reduce_mean(diff)
+  tf.scalar_summary('cross entropy', normalized_cross_entropy)
+
+with tf.name_scope('train'):
+  train_step = tf.train.AdamOptimizer(
+      FLAGS.learning_rate).minimize(cross_entropy)
+
+with tf.name_scope('accuracy'):
+  with tf.name_scope('correct_prediction'):
+    correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
+  with tf.name_scope('accuracy'):
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+  tf.scalar_summary('accuracy', accuracy)
+
+# Merge all the summaries and write them out to /tmp/mnist_logs (by default)
 merged = tf.merge_all_summaries()
-writer = tf.train.SummaryWriter("/tmp/mnist_logs", sess.graph)
+train_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/train', sess.graph)
+test_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/test')
 tf.initialize_all_variables().run()
-
-# Train the model, and feed in test data and record summaries every 10 steps
-
-for i in range(1000):
-  if i % 10 == 0:  # Record summary data, and the accuracy
-    feed = {x: mnist.test.images, y_: mnist.test.labels}
-    result = sess.run([merged, accuracy], feed_dict=feed)
-    summary_str = result[0]
-    acc = result[1]
-    writer.add_summary(summary_str, i)
-    print("Accuracy at step %s: %s" % (i, acc))
-  else:
-    batch_xs, batch_ys = mnist.train.next_batch(100)
-    feed = {x: batch_xs, y_: batch_ys}
-    sess.run(train_step, feed_dict=feed)
-
-print(accuracy.eval({x: mnist.test.images, y_: mnist.test.labels}))
 
 ```
 
@@ -135,7 +150,7 @@ You're now all set to visualize this data using TensorBoard.
 To run TensorBoard, use the command
 
 ```bash
-python tensorflow/tensorboard/tensorboard.py --logdir=path/to/log-directory
+tensorboard --logdir=path/to/log-directory
 ```
 
 where `logdir` points to the directory where the `SummaryWriter` serialized its
@@ -144,18 +159,8 @@ serialized data from separate runs, then TensorBoard will visualize the data
 from all of those runs. Once TensorBoard is running, navigate your web browser
 to `localhost:6006` to view the TensorBoard.
 
-If you have pip installed TensorFlow, `tensorboard` is installed into
-the system path, so you can use the simpler command
-
-```bash
-tensorboard --logdir=/path/to/log-directory
-```
-
 When looking at TensorBoard, you will see the navigation tabs in the top right
 corner. Each tab represents a set of serialized data that can be visualized.
-For any tab you are looking at, if the logs being looked at by TensorBoard do
-not contain any data relevant to that tab, a message will be displayed
-indicating how to serialize data that is applicable to that tab.
 
 For in depth information on how to use the *graph* tab to visualize your graph,
 see [TensorBoard: Graph Visualization](../../how_tos/graph_viz/index.md).

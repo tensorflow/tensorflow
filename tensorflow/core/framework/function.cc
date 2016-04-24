@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -247,7 +248,7 @@ Status InstantiateNode(const FunctionDef::Node& fnode,
           gtl::FindOrNull(name_info, fnode.arg(fnode_arg_index));
       if (item == nullptr) {
         return errors::InvalidArgument("arg[", i, "] is not found: ",
-                                       fnode.ShortDebugString());
+                                       ProtoShortDebugString(fnode));
       }
       if (dtypes != item->dtypes) {
         return errors::InvalidArgument("Invalid arg(", i,
@@ -269,7 +270,7 @@ Status InstantiateNode(const FunctionDef::Node& fnode,
             gtl::FindOrNull(name_info, fnode.arg(fnode_arg_index + j));
         if (item == nullptr) {
           return errors::InvalidArgument("arg[", i + j, "] is not found: ",
-                                         fnode.ShortDebugString());
+                                         ProtoShortDebugString(fnode));
         }
         if (item->dtypes.size() != 1 || (item->dtypes[0] != dtypes[j])) {
           return errors::InvalidArgument(
@@ -678,8 +679,8 @@ Status FunctionCallFrame::GetRetvals(std::vector<Tensor>* rets) const {
 
 Status FunctionCallFrame::GetArg(int index, Tensor* val) const {
   if (index < 0 || static_cast<size_t>(index) >= args_.size()) {
-    return errors::OutOfRange("GetArg ", index, " is not within [0, ",
-                              args_.size(), ")");
+    return errors::InvalidArgument("GetArg ", index, " is not within [0, ",
+                                   args_.size(), ")");
   }
   *val = args_[index];
   return Status::OK();
@@ -687,8 +688,8 @@ Status FunctionCallFrame::GetArg(int index, Tensor* val) const {
 
 Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
   if (index < 0 || static_cast<size_t>(index) >= rets_.size()) {
-    return errors::OutOfRange("SetRetval ", index, " is not within [0, ",
-                              rets_.size(), ")");
+    return errors::InvalidArgument("SetRetval ", index, " is not within [0, ",
+                                   rets_.size(), ")");
   }
   if (val.dtype() != ret_types_[index]) {
     return errors::InvalidArgument(

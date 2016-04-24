@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os.path
+import os
 import subprocess
 
 from tensorflow.python.platform import logging
@@ -84,6 +84,25 @@ def ListRecursively(top):
     else:
       tuples.append((dir_path, [file_path]))
   return tuples
+
+
+def IsDirectory(path):
+  """Returns true if path exists and is a directory."""
+  path = path.rstrip('/')
+  ls = ListDirectory(path)
+  if not ls:
+    # Doesn't exist.
+    return False
+  elif len(ls) == 1:
+    # Either it's a file (which ls-es as itself) or it's a dir with one file.
+    return ls[0] == path
+  else:
+    return True
+
+
+def Exists(path):
+  """Returns true if path exists."""
+  return bool(ListDirectory(path))
 
 
 def IsGCSPath(path):
