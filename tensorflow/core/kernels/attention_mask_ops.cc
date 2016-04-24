@@ -37,33 +37,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-namespace functor {
-
-template <>
-struct ComputeMedian<CPUDevice> {
-  void operator()(
-      const CPUDevice& d, typename TTypes<float>::ConstMatrix input,
-      typename TTypes<int64>::Vec median) {
-    const int64 batch_size = input.dimensions()[0];
-    const int64 dist_size = input.dimensions()[1];
-
-    for (int64 b = 0; b < batch_size; ++b) {
-      float sum = 0.0;
-      int64 median_idx = 0;
-      for (; median_idx < dist_size; ++median_idx) {
-        sum += input(b, median_idx);
-        if (sum >= 0.5f) {
-          break;
-        }
-      }
-
-      median(b) = median_idx;
-    }
-  }
-};
-
-}  // end namespace functor
-
 template <typename Device>
 class AttentionMaskOp : public OpKernel {
  public:
@@ -90,7 +63,7 @@ class AttentionMaskOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output("output", input_tensor->shape(),
                                              &output_tensor));
 
-    functor::AttentionMask<Device>()(
+    functor::AttentionMask<Device>::Compute(
         ctx->eigen_device<Device>(), fill_value_,
         sequence_len_tensor->vec<int64>(), input_tensor->matrix<float>(),
         output_tensor->matrix<float>());
@@ -104,11 +77,21 @@ REGISTER_KERNEL_BUILDER(Name("AttentionMask")
                              .Device(DEVICE_CPU),
                         AttentionMaskOp<CPUDevice>);
 
-// #if GOOGLE_CUDA
-// REGISTER_KERNEL_BUILDER(Name("AttentionMask")
-//                              .Device(DEVICE_GPU),
-//                         AttentionMaskOp<GPUDevice>);
-// #endif  // GOOGLE_CUDA
+#if GOOGLE_CUDA
+namespace functor {
+  template <>
+  void AttentionMask<GPUDevice>::Compute(
+      const GPUDevice& d, float fill_value,
+      typename TTypes<int64>::ConstVec sequence_len,
+      typename TTypes<float>::ConstMatrix input,
+      typename TTypes<float>::Matrix output);
+  extern template struct AttentionMask<GPUDevice>;
+}  // end namespace functor
+
+REGISTER_KERNEL_BUILDER(Name("AttentionMask")
+                             .Device(DEVICE_GPU),
+                        AttentionMaskOp<GPUDevice>);
+#endif  // GOOGLE_CUDA
 
 template <typename Device>
 class AttentionMaskMedianOp : public OpKernel {
@@ -151,12 +134,12 @@ class AttentionMaskMedianOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_INT64, TensorShape({batch_size}),
                                            &median_tensor));
 
-    functor::ComputeMedian<Device>()(
+    functor::ComputeMedian<Device>::Compute(
         ctx->eigen_device<Device>(), prev_alignment_tensor->matrix<float>(),
         median_tensor.vec<int64>());
 
     const Tensor& const_median_tensor = median_tensor;
-    functor::AttentionMaskMedian<Device>()(
+    functor::AttentionMaskMedian<Device>::Compute(
         ctx->eigen_device<Device>(), fill_value_, window_l_, window_r_,
         sequence_len_tensor->vec<int64>(), input_tensor->matrix<float>(),
         const_median_tensor.vec<int64>(), output_tensor->matrix<float>());
@@ -168,22 +151,55 @@ class AttentionMaskMedianOp : public OpKernel {
   int64 window_r_;
 };
 
+namespace functor {
+template<>
+void ComputeMedian<CPUDevice>::Compute(
+    const CPUDevice& d, typename TTypes<float>::ConstMatrix input,
+    typename TTypes<int64>::Vec median) {
+  const int64 batch_size = input.dimensions()[0];
+  const int64 dist_size = input.dimensions()[1];
+
+  for (int64 b = 0; b < batch_size; ++b) {
+    float sum = 0.0;
+    int64 median_idx = 0;
+    for (; median_idx < dist_size; ++median_idx) {
+      sum += input(b, median_idx);
+      if (sum >= 0.5f) {
+        break;
+      }
+    }
+
+    median(b) = median_idx;
+  }
+}
+}  // end namespace functor
+
 REGISTER_KERNEL_BUILDER(Name("AttentionMaskMedian")
                              .Device(DEVICE_CPU),
                         AttentionMaskMedianOp<CPUDevice>);
 
-//#if GOOGLE_CUDA
-//namespace functor {
-//  template <>
-//  void ComputeMedian<GPUDevice>::operator()(
-//      const GPUDevice& d, typename TTypes<float>::ConstMatrix input,
-//      typename TTypes<int64>::Vec median);
-//  extern template struct ComputeMedian<GPUDevice>;
-//}  // end namespace functor
-//
-//REGISTER_KERNEL_BUILDER(Name("AttentionMaskMedian")
-//                             .Device(DEVICE_GPU),
-//                        AttentionMaskMedianOp<GPUDevice>);
-//#endif  // GOOGLE_CUDA
+#if GOOGLE_CUDA
+namespace functor {
+  template <>
+  void ComputeMedian<GPUDevice>::Compute(
+      const GPUDevice& d, typename TTypes<float>::ConstMatrix input,
+      typename TTypes<int64>::Vec median);
+
+  template <>
+  void AttentionMaskMedian<GPUDevice>::Compute(
+      const GPUDevice& d, float fill_value, int64 window_l, int64 window_r,
+      typename TTypes<int64>::ConstVec sequence_len,
+      typename TTypes<float>::ConstMatrix input,
+      typename TTypes<int64>::ConstVec median,
+      typename TTypes<float>::Matrix output);
+
+  extern template struct ComputeMedian<GPUDevice>;
+  extern template struct AttentionMaskMedian<GPUDevice>;
+}  // end namespace functor
+
+REGISTER_KERNEL_BUILDER(Name("AttentionMaskMedian")
+                             .Device(DEVICE_GPU),
+                        AttentionMaskMedianOp<GPUDevice>);
+#endif  // GOOGLE_CUDA
 
 }  // end namespace tensorflow

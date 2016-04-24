@@ -1,5 +1,5 @@
-#ifndef TENSORFLOW_KERNELS_ATTENTION_OP_H_
-#define TENSORFLOW_KERNELS_ATTENTION_OP_H_
+#ifndef TENSORFLOW_KERNELS_ATTENTION_MASK_OPS_H_
+#define TENSORFLOW_KERNELS_ATTENTION_MASK_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -8,6 +8,7 @@
 namespace tensorflow {
 
 namespace generator {
+
 class AttentionMaskGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
@@ -69,7 +70,8 @@ namespace functor {
 
 template <typename Device>
 struct AttentionMask {
-  void operator()(
+  EIGEN_ALWAYS_INLINE static
+  void Compute(
       const Device& d, float fill_value,
       typename TTypes<int64>::ConstVec sequence_len,
       typename TTypes<float>::ConstMatrix input,
@@ -82,7 +84,8 @@ struct AttentionMask {
 
 template <typename Device>
 struct AttentionMaskMedian {
-  void operator()(
+  EIGEN_ALWAYS_INLINE static
+  void Compute(
       const Device& d, float fill_value, int64 window_l, int64 window_r,
       typename TTypes<int64>::ConstVec sequence_len,
       typename TTypes<float>::ConstMatrix input,
@@ -96,7 +99,8 @@ struct AttentionMaskMedian {
 
 template <typename Device>
 struct ComputeMedian {
-  void operator()(
+  EIGEN_ALWAYS_INLINE static
+  void Compute(
       const Device& d, typename TTypes<float>::ConstMatrix input,
       typename TTypes<int64>::Vec median);
 };
@@ -104,4 +108,4 @@ struct ComputeMedian {
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_ATTENTION_OP_H_
+#endif  // TENSORFLOW_KERNELS_ATTENTION_MASK_OPS_H_

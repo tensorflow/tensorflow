@@ -9,8 +9,8 @@ from tensorflow.python.ops import attention_mask_ops
 
 class AttentionMaskTest(tf.test.TestCase):
 
-  def testMask(self):
-    with self.test_session():
+  def _testMask(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
       sequence_len = np.asarray([2, 3], dtype=np.int64)
       energies = np.random.randn(2, 10).astype(np.float32)
 
@@ -21,8 +21,8 @@ class AttentionMaskTest(tf.test.TestCase):
         self.assertAllEqual(masked_energies[b, :sequence_len_b], energies[b, :sequence_len_b])
         self.assertAllEqual(masked_energies[b, sequence_len_b:], np.full([energies.shape[1] - sequence_len_b], -np.finfo(np.float32).max))
 
-  def testMaskMedian(self):
-    with self.test_session():
+  def _testMaskMedian(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
       sequence_len = np.asarray([10, 8], dtype=np.int64)
       energies = np.random.randn(2, 10).astype(np.float32)
 
@@ -43,6 +43,15 @@ class AttentionMaskTest(tf.test.TestCase):
         self.assertAllEqual(masked_energies[b, index_l:index_r], energies[b, index_l:index_r])
         self.assertAllEqual(masked_energies[b, :index_l], np.full([index_l], -np.finfo(np.float32).max))
         self.assertAllEqual(masked_energies[b, index_r:], np.full([energies.shape[1] - index_r], -np.finfo(np.float32).max))
+
+  def testMask(self):
+    self._testMask(False)
+    self._testMask(True)
+
+  def testMaskMedian(self):
+    self._testMaskMedian(False)
+    self._testMaskMedian(True)
+
 
 if __name__ == '__main__':
   tf.test.main()

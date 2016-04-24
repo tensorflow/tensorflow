@@ -30,24 +30,22 @@ void ComputeMedianKernel(
 }
 
 namespace functor {
-
-template struct AttentionMask<GPUDevice>;
-template struct AttentionMaskMedian<GPUDevice>;
-
 template <>
-struct ComputeMedian<GPUDevice> {
-  void operator()(
-      const GPUDevice& d, typename TTypes<float>::ConstMatrix input,
-      typename TTypes<int64>::Vec median) {
-    const int64 batch_size = input.dimensions()[0];
-    const int64 dist_size = input.dimensions()[1];
+void ComputeMedian<GPUDevice>::Compute(
+    const GPUDevice& d, typename TTypes<float>::ConstMatrix input,
+    typename TTypes<int64>::Vec median) {
+  const int64 batch_size = input.dimensions()[0];
+  const int64 dist_size = input.dimensions()[1];
 
-    ComputeMedianKernel<<<batch_size, 1, 0, d.stream()>>>(
-        batch_size, dist_size, input.data(), median.data());
-  }
+  ComputeMedianKernel<<<batch_size, 1, 0, d.stream()>>>(
+      batch_size, dist_size, input.data(), median.data());
 };
-template struct ComputeMedian<GPUDevice>;
-
 }  // end namespace functor
+
+template struct functor::AttentionMask<GPUDevice>;
+template struct functor::AttentionMaskMedian<GPUDevice>;
+template struct functor::ComputeMedian<GPUDevice>;
+
 }  // end namespace tensorflow
+
 #endif  // GOOGLE_CUDA
