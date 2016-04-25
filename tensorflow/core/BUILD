@@ -364,7 +364,7 @@ cc_library(
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
-        ":sampling_ops",
+        ":sampling_ops_op_lib",
         ":script_ops_op_lib",
         ":sendrecv_ops_op_lib",
         ":sparse_ops_op_lib",
