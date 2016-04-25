@@ -1,17 +1,11 @@
 #define EIGEN_USE_THREADS
 
-#include <memory>
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -47,18 +41,18 @@ class BernoulliSampleOp : public OpKernel {
     Distribution dist;
 
     // First determine whether we want to sample or not sample from our distribution.
-    std::vector<float> sample_prab(batch_size);
     // Sample our random numbers.
     const int kGroupSize = Distribution::kResultElementCount;
     auto local_generator = generator_.ReserveSamples32(batch_size);
+    std::vector<float> sample_prob(batch_size + kGroupSize);
     for (int64 i = 0; i < batch_size; i += kGroupSize) {
       auto samples = dist(&local_generator);
-      std::copy(&samples[0], &samples[0] + kGroupSize, &sample_prab[i]);
+      std::copy(&samples[0], &samples[0] + kGroupSize, &sample_prob[i]);
     }
 
     const float p = p_tensor->scalar<float>()();
     for (int64 b = 0; b < batch_size; ++b) {
-      output_tensor->vec<T>()(b) = sample_prab[b] < p
+      output_tensor->vec<T>()(b) = sample_prob[b] >= p
           ? a_tensor->vec<T>()(b)
           : b_tensor->vec<T>()(b);
     }
@@ -98,13 +92,13 @@ class SampleDistributionIndexOp : public OpKernel {
     Distribution dist;
 
     // First determine whether we want to sample or not sample from our distribution.
-    std::vector<float> sample_prab(batch_size);
     // Sample our random numbers.
     const int kGroupSize = Distribution::kResultElementCount;
     auto local_generator = generator_.ReserveSamples32(batch_size);
+    std::vector<float> sample_prob(batch_size + kGroupSize);
     for (int64 i = 0; i < batch_size; i += kGroupSize) {
       auto samples = dist(&local_generator);
-      std::copy(&samples[0], &samples[0] + kGroupSize, &sample_prab[i]);
+      std::copy(&samples[0], &samples[0] + kGroupSize, &sample_prob[i]);
     }
 
     for (int64 b = 0; b < batch_size; ++b) {
@@ -112,7 +106,7 @@ class SampleDistributionIndexOp : public OpKernel {
       int64 idx = 0;
       for (; idx < vocab_size; ++idx) {
         prob_sum += p_tensor->matrix<float>()(b, idx);
-        if (prob_sum >= sample_prab[b]) break;
+        if (prob_sum >= sample_prob[b]) break;
       }
 
       if (idx >= vocab_size) idx = vocab_size - 1;

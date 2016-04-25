@@ -594,9 +594,9 @@ tf_kernel_library(
     name = "sampling_ops",
     prefix = "sampling",
     deps = [
-        "//tensorflow/core:sampling_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:sampling_ops_op_lib",
     ],
 )
 
