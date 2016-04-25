@@ -134,6 +134,20 @@ TEST_F(ConstantFoldingTest, ConsiderFunction) {
   EXPECT_EQ(1, s2->num_inputs());
   EXPECT_EQ(*(s2->in_nodes().begin()), m2);
 }
+
+TEST_F(ConstantFoldingTest, TestNoReplaceAnotherConstant) {
+  SIMPLE_GRAPH;
+  Node* d = Constant<float>({1.0, 0.0, 0.0, 1.0}, {2, 2});
+  g->AddControlEdge(g->source_node(), d);
+  Node* s3 = test::graph::Send(g, d, "d", "sender", 0, "receiver");
+  g->AddControlEdge(s3, g->sink_node());
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
+
+  // Nodes s3 should still have d as input
+  EXPECT_EQ(1, s3->num_inputs());
+  EXPECT_EQ(*(s3->in_nodes().begin()), d);
+}
+
 #undef SIMPLE_GRAPH
 
 TEST_F(ConstantFoldingTest, TwoOutputs) {
