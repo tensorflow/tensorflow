@@ -29,7 +29,7 @@ RUN pip --no-cache-dir install \
     python -m ipykernel.kernelspec
 
 # Install TensorFlow CPU version.
-ENV TENSORFLOW_VERSION 0.8.0rc0
+ENV TENSORFLOW_VERSION 0.8.0
 RUN pip --no-cache-dir install \
     http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-${TENSORFLOW_VERSION}-cp27-none-linux_x86_64.whl
 
