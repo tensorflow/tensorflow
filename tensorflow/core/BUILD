@@ -53,6 +53,7 @@ load(
     "tf_cuda_library",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
+    "tf_genrule_cmd_append_to_srcs",
     "tf_proto_text_protos_relative",
     "cc_header_only_library",
 )

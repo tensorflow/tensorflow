@@ -616,3 +616,8 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs):
         tools = ["//tensorflow/tools/proto_text:gen_proto_text_functions"],
     )
   return struct(hdrs=out_hdrs, srcs=out_srcs)
+
+def tf_genrule_cmd_append_to_srcs(to_append):
+    return ("cat $(SRCS) > $(@) && " +
+            "echo >> $(@) && " +
+            "echo " + to_append + " >> $(@)")
