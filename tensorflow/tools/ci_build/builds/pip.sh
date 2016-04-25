@@ -52,18 +52,10 @@
 
 INSTALL_EXTRA_PIP_PACKAGES=${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}
 
-# Helper functions
-# Get the absolute path from a path
-abs_path() {
-    [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
-}
 
-
-# Exit after a failure
-die() {
-    echo $@
-    exit 1
-}
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/builds_common.sh"
 
 
 # Get the command line arguments
@@ -137,7 +129,7 @@ echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 # Build PIP Wheel file
 PIP_TEST_ROOT="pip_test"
 PIP_WHL_DIR="${PIP_TEST_ROOT}/whl"
-PIP_WHL_DIR=$(abs_path ${PIP_WHL_DIR})  # Get absolute path
+PIP_WHL_DIR=$(realpath ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
 bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} || \
     die "build_pip_package FAILED"
@@ -207,20 +199,19 @@ if [[ ! -z "${NO_TEST_ON_INSTALL}" ]] &&
 fi
 
 # Call test_installation.sh to perform test-on-install
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-"${DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} || \
+"${SCRIPT_DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} ||
     die "PIP tests-on-install FAILED"
 
 # Optional: Run the tutorial tests
 if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then
-  "${DIR}/test_tutorials.sh" --virtualenv || \
+  "${SCRIPT_DIR}/test_tutorials.sh" --virtualenv || \
       die "PIP tutorial tests-on-install FAILED"
 fi
 
 # Optional: Run integration tests
 if [[ "${DO_INTEGRATION_TESTS}" == "1" ]]; then
-  "${DIR}/integration_tests.sh" --virtualenv || \
+  "${SCRIPT_DIR}/integration_tests.sh" --virtualenv || \
       die "Integration tests on install FAILED"
 fi
 

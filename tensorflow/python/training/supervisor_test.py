@@ -267,6 +267,17 @@ class SupervisorTest(tf.test.TestCase):
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       sv.stop()
 
+  def testInitFn(self):
+    logdir = self._TestDir("default_init_op")
+    with tf.Graph().as_default():
+      v = tf.Variable([1.0, 2.0, 3.0])
+      def _init_fn(sess):
+        sess.run(v.initializer)
+      sv = tf.train.Supervisor(logdir=logdir, init_op=None, init_fn=_init_fn)
+      sess = sv.prepare_or_wait_for_session("")
+      self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
+      sv.stop()
+
   def testInitOpWithFeedDict(self):
     logdir = self._TestDir("feed_dict_init_op")
     with tf.Graph().as_default():
@@ -494,6 +505,43 @@ class SupervisorTest(tf.test.TestCase):
       self.assertEqual(0, len(sv.start_queue_runners(sess)))
       sv.stop()
 
+  def testPrepareSessionAfterStopForChief(self):
+    logdir = self._TestDir("prepare_after_stop_chief")
+    with tf.Graph().as_default():
+      sv = tf.train.Supervisor(logdir=logdir, is_chief=True)
+
+      # Create a first session and then stop.
+      sess = sv.prepare_or_wait_for_session("")
+      sv.stop()
+      sess.close()
+      self.assertTrue(sv.should_stop())
+
+      # Now create a second session and test that we don't stay stopped, until
+      # we ask to stop again.
+      sess2 = sv.prepare_or_wait_for_session("")
+      self.assertFalse(sv.should_stop())
+      sv.stop()
+      sess2.close()
+      self.assertTrue(sv.should_stop())
+
+  def testPrepareSessionAfterStopForNonChief(self):
+    logdir = self._TestDir("prepare_after_stop_nonchief")
+    with tf.Graph().as_default():
+      sv = tf.train.Supervisor(logdir=logdir, is_chief=False)
+
+      # Create a first session and then stop.
+      sess = sv.prepare_or_wait_for_session("")
+      sv.stop()
+      sess.close()
+      self.assertTrue(sv.should_stop())
+
+      # Now create a second session and test that we don't stay stopped, until
+      # we ask to stop again.
+      sess2 = sv.prepare_or_wait_for_session("")
+      self.assertFalse(sv.should_stop())
+      sv.stop()
+      sess2.close()
+      self.assertTrue(sv.should_stop())
 
 if __name__ == "__main__":
   tf.test.main()

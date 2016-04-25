@@ -28,7 +28,6 @@ template <typename T>
 class RandomCropOp : public OpKernel {
  public:
   explicit RandomCropOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_DEPRECATED(context, 8, "Random crop is now pure Python");
     OP_REQUIRES_OK(context, generator_.Init(context));
   }
 

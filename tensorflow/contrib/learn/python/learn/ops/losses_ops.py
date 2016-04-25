@@ -29,7 +29,7 @@ def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
         predictions = nn.xw_plus_b(tensor_in, weights, biases)
         if len(labels.get_shape()) == 1:
             labels = array_ops_.reshape(labels, [-1, 1])
-        return predictions, loss_ops.squared(predictions, labels)
+        return predictions, loss_ops.sum_of_squares(predictions, labels)
 
 
 def softmax_classifier(tensor_in, labels, weights, biases, class_weight=None, name=None):
@@ -51,5 +51,5 @@ def softmax_classifier(tensor_in, labels, weights, biases, class_weight=None, na
         logits = nn.xw_plus_b(tensor_in, weights, biases)
         if class_weight is not None:
             logits = math_ops.mul(logits, class_weight)
-        return nn.softmax(logits), loss_ops.softmax(logits, labels)
+        return nn.softmax(logits), loss_ops.softmax_cross_entropy(logits, labels)
 

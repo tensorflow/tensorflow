@@ -23,7 +23,7 @@ namespace tensorflow {
 
 class FileSystemRegistryImpl : public FileSystemRegistry {
  public:
-  void Register(const string& scheme, Factory factory) override;
+  Status Register(const string& scheme, Factory factory) override;
   FileSystem* Lookup(const string& scheme) override;
   Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes) override;
 
@@ -33,13 +33,15 @@ class FileSystemRegistryImpl : public FileSystemRegistry {
       GUARDED_BY(mu_);
 };
 
-void FileSystemRegistryImpl::Register(const string& scheme,
-                                      FileSystemRegistry::Factory factory) {
+Status FileSystemRegistryImpl::Register(const string& scheme,
+                                        FileSystemRegistry::Factory factory) {
   mutex_lock lock(mu_);
-  QCHECK(
-      registry_.emplace(string(scheme), std::unique_ptr<FileSystem>(factory()))
-          .second)
-      << "File factory for " << scheme << " already registered";
+  if (!registry_.emplace(string(scheme), std::unique_ptr<FileSystem>(factory()))
+           .second) {
+    return errors::AlreadyExists("File factory for ", scheme,
+                                 " already registered");
+  }
+  return Status::OK();
 }
 
 FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
@@ -77,9 +79,9 @@ Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
   return file_system_registry_->GetRegisteredFileSystemSchemes(schemes);
 }
 
-void Env::RegisterFileSystem(const string& scheme,
-                             FileSystemRegistry::Factory factory) {
-  file_system_registry_->Register(scheme, factory);
+Status Env::RegisterFileSystem(const string& scheme,
+                               FileSystemRegistry::Factory factory) {
+  return file_system_registry_->Register(scheme, factory);
 }
 
 Status Env::NewRandomAccessFile(const string& fname,

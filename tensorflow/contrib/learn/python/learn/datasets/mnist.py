@@ -25,8 +25,10 @@ import tempfile
 import numpy
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
-from tensorflow.contrib.learn.python.learn.datasets.base import maybe_download
+
+from tensorflow.python.platform.default import _gfile as gfile
+from tensorflow.python.framework import dtypes
+from tensorflow.contrib.learn.python.learn.datasets import base
 
 SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
 
@@ -39,7 +41,7 @@ def _read32(bytestream):
 def extract_images(filename):
   """Extract the images into a 4D uint8 numpy array [index, y, x, depth]."""
   print('Extracting', filename)
-  with tf.gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
+  with gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2051:
       raise ValueError(
@@ -66,7 +68,7 @@ def dense_to_one_hot(labels_dense, num_classes):
 def extract_labels(filename, one_hot=False, num_classes=10):
   """Extract the labels into a 1D uint8 numpy array [index]."""
   print('Extracting', filename)
-  with tf.gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
+  with gfile.Open(filename, 'rb') as f, gzip.GzipFile(fileobj=f) as bytestream:
     magic = _read32(bytestream)
     if magic != 2049:
       raise ValueError(
@@ -83,15 +85,15 @@ def extract_labels(filename, one_hot=False, num_classes=10):
 class DataSet(object):
 
   def __init__(self, images, labels, fake_data=False, one_hot=False,
-               dtype=tf.float32):
+               dtype=dtypes.float32):
     """Construct a DataSet.
 
     one_hot arg is used only if fake_data is true.  `dtype` can be either
     `uint8` to leave the input as `[0, 255]`, or `float32` to rescale into
     `[0, 1]`.
     """
-    dtype = tf.as_dtype(dtype).base_dtype
-    if dtype not in (tf.uint8, tf.float32):
+    dtype = dtypes.as_dtype(dtype).base_dtype
+    if dtype not in (dtypes.uint8, dtypes.float32):
       raise TypeError('Invalid image dtype %r, expected uint8 or float32' %
                       dtype)
     if fake_data:
@@ -108,7 +110,7 @@ class DataSet(object):
       assert images.shape[3] == 1
       images = images.reshape(images.shape[0],
                               images.shape[1] * images.shape[2])
-      if dtype == tf.float32:
+      if dtype == dtypes.float32:
         # Convert from [0, 255] -> [0.0, 1.0].
         images = images.astype(numpy.float32)
         images = numpy.multiply(images, 1.0 / 255.0)
@@ -161,18 +163,14 @@ class DataSet(object):
     return self._images[start:end], self._labels[start:end]
 
 
-def read_data_sets(train_dir, fake_data=False, one_hot=False, dtype=tf.float32):
-  class DataSets(object):
-    pass
-  data_sets = DataSets()
-
+def read_data_sets(train_dir, fake_data=False, one_hot=False, dtype=dtypes.float32):
   if fake_data:
     def fake():
       return DataSet([], [], fake_data=True, one_hot=one_hot, dtype=dtype)
-    data_sets.train = fake()
-    data_sets.validation = fake()
-    data_sets.test = fake()
-    return data_sets
+    train = fake()
+    validation = fake()
+    test = fake()
+    return base.Datasets(train=train, validation=validation, test=test)
 
   TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
   TRAIN_LABELS = 'train-labels-idx1-ubyte.gz'
@@ -180,16 +178,16 @@ def read_data_sets(train_dir, fake_data=False, one_hot=False, dtype=tf.float32):
   TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
   VALIDATION_SIZE = 5000
 
-  local_file = maybe_download(TRAIN_IMAGES, train_dir, SOURCE_URL + TRAIN_IMAGES)
+  local_file = base.maybe_download(TRAIN_IMAGES, train_dir, SOURCE_URL + TRAIN_IMAGES)
   train_images = extract_images(local_file)
 
-  local_file = maybe_download(TRAIN_LABELS, train_dir, SOURCE_URL + TRAIN_LABELS)
+  local_file = base.maybe_download(TRAIN_LABELS, train_dir, SOURCE_URL + TRAIN_LABELS)
   train_labels = extract_labels(local_file, one_hot=one_hot)
 
-  local_file = maybe_download(TEST_IMAGES, train_dir, SOURCE_URL + TEST_IMAGES)
+  local_file = base.maybe_download(TEST_IMAGES, train_dir, SOURCE_URL + TEST_IMAGES)
   test_images = extract_images(local_file)
 
-  local_file = maybe_download(TEST_LABELS, train_dir, SOURCE_URL + TEST_LABELS)
+  local_file = base.maybe_download(TEST_LABELS, train_dir, SOURCE_URL + TEST_LABELS)
   test_labels = extract_labels(local_file, one_hot=one_hot)
 
   validation_images = train_images[:VALIDATION_SIZE]
@@ -197,12 +195,12 @@ def read_data_sets(train_dir, fake_data=False, one_hot=False, dtype=tf.float32):
   train_images = train_images[VALIDATION_SIZE:]
   train_labels = train_labels[VALIDATION_SIZE:]
 
-  data_sets.train = DataSet(train_images, train_labels, dtype=dtype)
-  data_sets.validation = DataSet(validation_images, validation_labels,
-                                 dtype=dtype)
-  data_sets.test = DataSet(test_images, test_labels, dtype=dtype)
+  train = DataSet(train_images, train_labels, dtype=dtype)
+  validation = DataSet(validation_images, validation_labels,
+                       dtype=dtype)
+  test = DataSet(test_images, test_labels, dtype=dtype)
 
-  return data_sets
+  return base.Datasets(train=train, validation=validation, test=test)
 
 
 def load_mnist():

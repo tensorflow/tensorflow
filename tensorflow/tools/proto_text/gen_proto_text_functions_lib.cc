@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <set>
+#include <unordered_set>
 
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -28,6 +29,7 @@ using ::tensorflow::protobuf::EnumDescriptor;
 using ::tensorflow::protobuf::FieldDescriptor;
 using ::tensorflow::protobuf::FieldOptions;
 using ::tensorflow::protobuf::FileDescriptor;
+using ::tensorflow::protobuf::OneofDescriptor;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
@@ -45,15 +47,6 @@ namespace {
 // Note that on the generated code, various pieces are not optimized - for
 // example: map input and output, Cord input and output, comparisons against
 // the field names (it's a loop over all names), and tracking of has_seen.
-//
-// The generated API has, for enums and messages defined in the proto file:
-// 1. For each message:
-//    * ProtoDebugString(m): same as msg.DebugString()
-//    * ProtoShortDebugString(m): same as msg.ShorDebugString()
-//    * ProtoParseFromString(s, m): same as TextFormat.ParseFromString(s, &m);
-// 2. For each enum:
-//    * EnumName_<EnumTypeName>(enum_value): same as <EnumTypeName>(enum_value)
-//      in proto.
 class Generator {
  public:
   Generator(const string& tf_header_prefix)
@@ -140,6 +133,8 @@ class Generator {
   Section header_;
   Section header_impl_;
   Section cc_;
+
+  std::unordered_set<string> map_append_signatures_included_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Generator);
 };
@@ -248,12 +243,9 @@ void Generator::AppendFieldValueAppend(const FieldDescriptor& field,
       CHECK(ctype == FieldOptions::CORD || ctype == FieldOptions::STRING)
           << "Unsupported ctype " << ctype;
 
-      string str_expr = field_expr;
-      if (ctype == FieldOptions::CORD) {
-        str_expr = StrCat("(", field_expr, ").ToString()");
-      }
       Print("o->", omit_default ? "AppendStringIfNotEmpty" : "AppendString",
-            "(\"", field.name(), "\", ", str_expr, ");");
+            "(\"", field.name(), "\", ProtobufStringToString(", field_expr,
+            "));");
       break;
     }
     case FieldDescriptor::CPPTYPE_ENUM:
@@ -309,8 +301,22 @@ void Generator::AppendFieldAppend(const FieldDescriptor& field) {
                            "msg." + name + "(i)");
     Unnest().Print("}");
   } else {
-    AppendFieldValueAppend(field, true /* omit_default */,
-                           "msg." + name + "()");
+    const auto* oneof = field.containing_oneof();
+    if (oneof != nullptr) {
+      string camel_name = field.camelcase_name();
+      camel_name[0] = toupper(camel_name[0]);
+      Print("if (msg.", oneof->name(), "_case() == ",
+            GetQualifiedName(*oneof->containing_type()), "::k", camel_name,
+            ") {");
+      Nest();
+      AppendFieldValueAppend(field, false /* omit_default */,
+                             "msg." + name + "()");
+      Unnest();
+      Print("}");
+    } else {
+      AppendFieldValueAppend(field, true /* omit_default */,
+                             "msg." + name + "()");
+    }
   }
 }
 
@@ -353,7 +359,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   }
 
   // Parse from scanner - the real work here.
-  sig = StrCat(map_append ? "inline " : "", "bool ProtoParseFromScanner(",
+  sig = StrCat("bool ProtoParseFromScanner(",
                "\n    ::tensorflow::strings::Scanner* scanner, bool nested, "
                "bool close_curly,\n    ");
   const FieldDescriptor* key_type = nullptr;
@@ -366,10 +372,22 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   } else {
     StrAppend(&sig, GetQualifiedName(md), "* msg)");
   }
-  SetOutput(&header_impl_).Print(sig, ";");
+
+  if (!map_append_signatures_included_.insert(sig).second) {
+    // signature for function to append to a map of this type has
+    // already been defined in this .cc file. Don't define it again.
+    return;
+  }
+
+  if (!map_append) {
+    SetOutput(&header_impl_).Print(sig, ";");
+  }
 
   SetOutput(&cc_);
   Print().Print("namespace internal {");
+  if (map_append) {
+    Print("namespace {");
+  }
   Print().Print(sig, " {").Nest();
   if (map_append) {
     Print(GetCppClass(*key_type), " map_key;");
@@ -460,24 +478,22 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
       Print("if (open_char != '{' && open_char != '<') return false;");
       Print("scanner->One(Scanner::ALL);");
       Print("ProtoSpaceAndComments(scanner);");
-      Print("if (!", GetPackageReferencePrefix(field->message_type()->file()),
-            "internal::ProtoParseFromScanner(");
+      if (field->is_map()) {
+        Print("if (!ProtoParseFromScanner(");
+      } else {
+        Print("if (!", GetPackageReferencePrefix(field->message_type()->file()),
+              "internal::ProtoParseFromScanner(");
+      }
       Print("    scanner, true, open_char == '{', ", mutable_value_expr,
             ")) return false;");
     } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_STRING) {
-      if (field->options().ctype() == FieldOptions::CORD) {
-        Print("string str_value;");
-        Print(
-            "if (!parsed_colon || "
-            "!::tensorflow::strings::ProtoParseStringLiteralFromScanner(");
-        Print("    scanner, &str_value)) return false;");
-        Print(mutable_value_expr, "->CopyFrom(str_value);");
-      } else {
-        Print(
-            "if (!parsed_colon || "
-            "!::tensorflow::strings::ProtoParseStringLiteralFromScanner(");
-        Print("    scanner, ", mutable_value_expr, ")) return false;");
-      }
+      Print("string str_value;");
+      Print(
+          "if (!parsed_colon || "
+          "!::tensorflow::strings::ProtoParseStringLiteralFromScanner(");
+      Print("    scanner, &str_value)) return false;");
+      Print("SetProtobufStringSwapAllowed(&str_value, ", mutable_value_expr,
+            ");");
     } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_ENUM) {
       Print("StringPiece value;");
       Print(
@@ -547,7 +563,11 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   }
   Unnest().Print("}");
   Unnest().Print("}");
-  Unnest().Print().Print("}  // namespace internal");
+  Unnest().Print();
+  if (map_append) {
+    Print("}  // namespace");
+  }
+  Print("}  // namespace internal");
 }
 
 void Generator::AppendDebugStringFunctions(const Descriptor& md) {
@@ -585,9 +605,18 @@ void Generator::AppendDebugStringFunctions(const Descriptor& md) {
   SetOutput(&cc_);
   Print().Print("namespace internal {").Print();
   Print(sig, " {").Nest();
+  std::vector<const FieldDescriptor*> fields;
   for (int i = 0; i < md.field_count(); ++i) {
+    fields.push_back(md.field(i));
+  }
+  std::sort(fields.begin(), fields.end(),
+            [](const FieldDescriptor* left, const FieldDescriptor* right) {
+              return left->number() < right->number();
+            });
+
+  for (const FieldDescriptor* field : fields) {
     SetOutput(&cc_);
-    AppendFieldAppend(*md.field(i));
+    AppendFieldAppend(*field);
   }
   Unnest().Print("}").Print().Print("}  // namespace internal");
 }
@@ -602,14 +631,17 @@ void Generator::AppendMessageFunctions(const Descriptor& md) {
     return;
   }
 
-  AppendDebugStringFunctions(md);
-  AppendParseMessageFunction(md);
+  // Recurse before adding the main message function, so that internal
+  // map_append functions are available before they are needed.
   for (int i = 0; i < md.enum_type_count(); ++i) {
     AppendEnumFunctions(*md.enum_type(i));
   }
   for (int i = 0; i < md.nested_type_count(); ++i) {
     AppendMessageFunctions(*md.nested_type(i));
   }
+
+  AppendDebugStringFunctions(md);
+  AppendParseMessageFunction(md);
 }
 
 void Generator::AddNamespaceToCurrentSection(const string& package, bool open) {

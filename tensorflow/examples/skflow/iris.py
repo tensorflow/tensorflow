@@ -15,12 +15,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from sklearn import datasets, metrics, cross_validation
+from sklearn import metrics, cross_validation
 
 from tensorflow.contrib import skflow
 
 # Load dataset.
-iris = datasets.load_iris()
+iris = skflow.datasets.load_dataset('iris')
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
     test_size=0.2, random_state=42)
 

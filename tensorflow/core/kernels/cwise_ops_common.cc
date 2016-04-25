@@ -59,7 +59,7 @@ BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
   in0_num_elements = in0.NumElements();
   in1_num_elements = in1.NumElements();
 
-  ndims = bcast.x_reshape().size();
+  ndims = static_cast<int>(bcast.x_reshape().size());
 }
 
 }  // namespace tensorflow

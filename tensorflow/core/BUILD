@@ -45,12 +45,17 @@ package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_copts",
+    "tf_cc_test",
+    "tf_cc_tests",
+    "tf_cuda_library",
+    "tf_gen_op_libs",
+    "tf_generate_proto_text_sources",
+    "tf_proto_text_protos_relative",
+    "cc_header_only_library",
+)
 
 # For platform specific build config
 load(
@@ -132,6 +137,23 @@ tf_proto_library_cc(
     cc_stubby_versions = ["2"],
     visibility = [
         "//tensorflow:internal",
+    ],
+)
+
+proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
+    name = "proto_text_srcs_all",
+    srcs = tf_proto_text_protos_relative(),
+    srcs_relative_dir = "tensorflow/core/",
+)
+
+cc_library(
+    name = "proto_text",
+    srcs = proto_text_hdrs_and_srcs.srcs,
+    hdrs = proto_text_hdrs_and_srcs.hdrs,
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
     ],
 )
 
@@ -261,6 +283,8 @@ tf_cuda_library(
         "util/device_name_utils.h",
         "util/events_writer.h",
         "util/guarded_philox_random.h",
+        "util/memmapped_file_system.h",
+        "util/memmapped_file_system_writer.h",
         "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
@@ -515,6 +539,7 @@ cc_library(
         ":framework",
         ":framework_internal",
         ":lib",
+        ":proto_text",
         ":protos_all_cc",
         ":tensor_testutil",
         ":test",
@@ -542,8 +567,11 @@ tf_cuda_library(
 # Public Android targets
 
 # Android-specific BUILD targets
-load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources")
-load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_headers")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_android_core_proto_headers",
+    "tf_android_core_proto_sources",
+)
 
 # List of protos we want on android
 filegroup(
@@ -557,6 +585,7 @@ filegroup(
 filegroup(
     name = "android_srcs",
     srcs = [
+        ":proto_text_srcs_all",
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "common_runtime/gpu/gpu_tracer.cc",
@@ -618,7 +647,7 @@ ANDROID_TF_LITE_HDRS = [
     "platform/platform.h",
     "platform/types.h",
     "public/session.h",
-]
+] + proto_text_hdrs_and_srcs.hdrs
 
 # Native library support for Android applications.
 # Does not contain operators, use :android_tensorflow_lib if you want full
@@ -635,7 +664,9 @@ cc_library(
     name = "android_tensorflow_lib_lite",
     srcs =
         select({
-            "//tensorflow:android": ["//tensorflow/core:android_srcs"],
+            "//tensorflow:android": [
+                "//tensorflow/core:android_srcs",
+            ],
             "//conditions:default": [],
         }),
     hdrs = ANDROID_TF_LITE_HDRS,
@@ -713,6 +744,7 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
+        ":proto_text",
         ":protos_all_cc",
         ":stream_executor",
     ],
@@ -812,6 +844,7 @@ tf_cuda_library(
     deps = [
         ":lib",
         ":lib_internal",
+        ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
@@ -959,6 +992,7 @@ tf_cuda_library(
         ":functional_ops_op_lib",
         ":lib",
         ":lib_internal",
+        ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/kernels:required",
         "//third_party/eigen3",
@@ -978,6 +1012,7 @@ tf_cuda_library(
         ":gpu_tracer",
         ":lib",
         ":lib_internal",
+        ":proto_text",
         ":protos_all_cc",
     ],
     alwayslink = 1,
@@ -1275,6 +1310,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:bcast_ops",
         "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:concat_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",

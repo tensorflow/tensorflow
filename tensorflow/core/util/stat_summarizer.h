@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_UTIL_STAT_SUMMARIZER_H_
 #define TENSORFLOW_UTIL_STAT_SUMMARIZER_H_
 
-#include <string>
 #include <cmath>
 #include <limits>
 #include <list>
 #include <map>
+#include <sstream>
+#include <string>
 
 #include <stdlib.h>
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -77,11 +80,10 @@ class Stat {
   }
 
   friend std::ostream& operator<<(std::ostream& stream, const Stat<T>& stat) {
-    stream << std::string("curr=") << stat.current_value_
-           << std::string(" min=") << stat.min_value_ << std::string(" max=")
-           << stat.max_value_ << std::string(" avg=")
-           << static_cast<int64>(stat.avg_value_) << std::string(" stddev=")
-           << static_cast<int64>(stat.std_deviation_);
+    stream << "curr=" << stat.current_value_ << " min=" << stat.min_value_
+           << " max=" << stat.max_value_
+           << " avg=" << static_cast<int64>(stat.avg_value_)
+           << " stddev=" << static_cast<int64>(stat.std_deviation_);
     return stream;
   }
 };
@@ -91,6 +93,8 @@ class Stat {
 // See tensorflow/examples/android/jni/tensorflow_jni.cc for an example usage.
 class StatSummarizer {
  public:
+  explicit StatSummarizer(const tensorflow::GraphDef& tensorflow_graph);
+
   // Adds another run's StepStats output to the aggregate counts.
   void ProcessStepStats(const StepStats& step_stats);
 
@@ -109,14 +113,16 @@ class StatSummarizer {
 
  private:
   void PrintHeaders();
-  void PrintColumns(const char* name, const double time_ms,
+  void PrintColumns(const char* name, const char* op, const double time_ms,
                     const double percentage);
 
   Stat<int64> run_total_us_;
 
   int num_runs_ = 0;
   int64 timing_total_us_ = 0;
+  std::vector<string> nodes_;
   std::map<string, int64> timing_totals_;
+  std::map<string, string> node_types_;
 };
 
 }  // namespace tensorflow

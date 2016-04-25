@@ -25,7 +25,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <typename T> class CholeskyGrad : public OpKernel {
+template <typename T>
+class CholeskyGrad : public OpKernel {
  public:
   explicit CholeskyGrad(OpKernelConstruction* context) : OpKernel(context) {}
   using Matrix =
@@ -88,12 +89,12 @@ template <typename T> class CholeskyGrad : public OpKernel {
     for (int64 block_end = kMatrixSize; block_end > 0;
          block_end -= kMaxBlockSize) {
       /* This shows the block structure.
-      
+
       /      \
       |      |
       | R D  |
       \ B C  /
-      
+
       Variables names representing the derivative matrix have a trailing '_bar'.
       */
 
@@ -132,12 +133,12 @@ template <typename T> class CholeskyGrad : public OpKernel {
     const int64 kMatrixSize = l_block.rows();
     for (int64 k = kMatrixSize - 1; k >= 0; k--) {
       /* This shows the block structure.
-     
+
       /      \
       |      |
       | r d  |
       \ B c  /
-     
+
       Variables names representing the derivative matrix have a trailing '_bar'.
       */
 

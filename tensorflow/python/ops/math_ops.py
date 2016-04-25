@@ -201,9 +201,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
@@ -709,6 +710,9 @@ def _ReductionDims(x, reduction_indices):
   if reduction_indices is not None:
     return reduction_indices
   else:
+    # TODO(zongheng): remove this once rank() supports SparseTensor.
+    if isinstance(x, ops.SparseTensor):
+      return range(0, array_ops.size(x.shape))
     return range(0, array_ops.rank(x))
 
 
@@ -1256,37 +1260,6 @@ def tanh(x, name=None):
     return gen_math_ops._tanh(x, name=name)
 
 
-# TODO(b/27419586) Change docstring for required dtype of x once int allowed
-def lbeta(x, name="lbeta"):
-  """Computes `ln(|Beta(x)|)`, reducing along the last dimension.
-
-  Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
-
-  ```Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)```
-
-  , and for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
-  `lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)`.  In other words,
-  the last dimension is treated as the `z` vector.
-
-  Note that if `z = [u, v]`, then
-  `Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt`, which defines the traditional
-  bivariate beta function.
-
-  Args:
-    x: A rank `n + 1` `Tensor` with type `float`, or `double`.
-    name: A name for the operation (optional).
-
-  Returns:
-    The logarithm of `|Beta(x)|` reducing along the last dimension.
-  """
-  with ops.op_scope([x], name):
-    x = ops.convert_to_tensor(x, name="x")
-    ndims = array_ops.size(array_ops.shape(x))
-    return (reduce_sum(
-        gen_math_ops.lgamma(x), reduction_indices=ndims - 1)
-            - gen_math_ops.lgamma(reduce_sum(x, reduction_indices=ndims - 1)))
-
-
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
 ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
 ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
@@ -1558,3 +1531,26 @@ def _UnsortedSegmentSumShape(op):
 def _LinspaceShape(op):
   num = tensor_util.constant_value(op.inputs[2])
   return [tensor_shape.vector(num)]
+
+
+def reduced_shape(input_shape, axes):
+  """Helper function for reduction ops.
+
+  Args:
+    input_shape: 1-D Tensor, the shape of the Tensor being reduced.
+    axes: 1-D Tensor, the reduction axes.
+  Returns:
+    A 1-D Tensor, the output shape as if keep_dims were set to True.
+  """
+                                            # Example:
+  # cast needed for SparseTensor reductions
+  input_shape = to_int32(input_shape)       # [2, 3, 5, 7]
+  axes = to_int32(axes)                     # [1, 2]
+
+  input_rank = array_ops.size(input_shape)  # 4
+  axes_shape = array_ops.shape(axes)        # [2]
+  return gen_data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
+      [range(input_rank),                   # [0, 1, 2, 3]
+       axes],                               # [1, 2]
+      [input_shape,                         # [2, 3, 5, 7]
+       array_ops.fill(axes_shape, 1)])      # [1, 1]

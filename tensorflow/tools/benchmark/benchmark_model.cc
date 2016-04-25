@@ -44,7 +44,7 @@ namespace tensorflow {
 // Global variables that holds the Tensorflow classifier.
 static std::unique_ptr<tensorflow::Session> session;
 
-static StatSummarizer g_stats;
+static std::unique_ptr<tensorflow::StatSummarizer> g_stats;
 
 struct Flags {
   string graph = "/data/local/tmp/tensorflow_inception_graph.pb";
@@ -60,8 +60,6 @@ struct Flags {
 static Flags* flags;  // Filled in by main()
 
 static bool InitializeBenchmark() {
-  g_stats.Reset();
-
   LOG(INFO) << "Loading Tensorflow.";
 
   tensorflow::SessionOptions options;
@@ -78,6 +76,8 @@ static bool InitializeBenchmark() {
     LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
     return false;
   }
+
+  g_stats.reset(new tensorflow::StatSummarizer(tensorflow_graph));
 
   s = session->Create(tensorflow_graph);
   if (!s.ok()) {
@@ -144,7 +144,7 @@ static bool RunBenchmark() {
 
   const StepStats& stats = run_metadata.step_stats();
 
-  g_stats.ProcessStepStats(stats);
+  g_stats->ProcessStepStats(stats);
 
   if (!s.ok()) {
     LOG(ERROR) << "Error during inference: " << s;
@@ -220,6 +220,6 @@ int main(int argc, char** argv) {
     }
   }
 
-  tensorflow::g_stats.PrintStepStats();
+  tensorflow::g_stats->PrintStepStats();
   return 0;
 }

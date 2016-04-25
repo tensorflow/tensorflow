@@ -767,6 +767,7 @@ class CollectionTest(test_util.TensorFlowTestCase):
     self.assertEqual([], g.get_collection("nothing"))
     self.assertEqual([27, blank1, blank2], g.get_collection("blah"))
     self.assertEqual([blank1], g.get_collection("blah", "prefix"))
+    self.assertEqual([blank1], g.get_collection("blah", ".*x"))
 
     # Make sure that get_collection() returns a first-level
     # copy of the collection, while get_collection_ref() returns
@@ -1279,7 +1280,7 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       with ops.device("/gpu:0"):
         a = constant_op.constant([2.0], name="a")
       with ops.colocate_with(a.op):
-        # 'b' is created in the scope of /cpu:0, but but it is
+        # 'b' is created in the scope of /cpu:0, but it is
         # colocated with 'a', which is on '/gpu:0'.  colocate_with
         # overrides devices because it is a stronger constraint.
         b = constant_op.constant(3.0)
@@ -1350,6 +1351,35 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
           b = constant_op.constant([3.0], name="b")
 
     self.assertEqual("/device:CPU:0", b.device)
+
+
+class DeprecatedTest(test_util.TensorFlowTestCase):
+
+  def testSuccess(self):
+    with ops.Graph().as_default() as g:
+      g.graph_def_versions.producer = 7
+      old = test_ops.old()
+      with self.test_session(graph=g):
+        old.run()
+
+  def _error(self):
+    return ((r"Op Old is not available in GraphDef version %d\. "
+             r"It has been removed in version 8\. For reasons\.") %
+            versions.GRAPH_DEF_VERSION)
+
+  def testGraphConstructionFail(self):
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(NotImplementedError, self._error()):
+        test_ops.old()
+
+  def testGraphExecutionFail(self):
+    with ops.Graph().as_default() as g:
+      g.graph_def_versions.producer = 7
+      old = test_ops.old()
+      g.graph_def_versions.producer = versions.GRAPH_DEF_VERSION
+      with self.test_session(graph=g):
+        with self.assertRaisesOpError(self._error()):
+          old.run()
 
 
 if __name__ == "__main__":

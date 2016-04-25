@@ -328,5 +328,5 @@ def _TopKGrad(op, grad, _):
                                  array_ops.reshape(grad, [-1]),
                                  validate_indices=False),
       in_shape), array_ops.zeros(
-          [1],
+          [],
           dtype=dtypes.int32)]

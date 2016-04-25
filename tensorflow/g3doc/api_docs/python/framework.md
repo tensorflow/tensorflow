@@ -398,13 +398,20 @@ a collection several times.
 
 Returns a list of values in the collection with the given `name`.
 
+This is different from `get_collection_ref()` which always returns the
+actual collection list if it exists in that it returns a new list each time
+it is called.
+
 ##### Args:
 
 
 *  <b>`name`</b>: The key for the collection. For example, the `GraphKeys` class
     contains many standard names for collections.
 *  <b>`scope`</b>: (Optional.) If supplied, the resulting list is filtered to include
-    only items whose name begins with this string.
+    only items whose `name` attribute matches using `re.match`. Items
+    without a `name` attribute are never returned if a scope is supplied and
+    the choice or `re.match` means that a `scope` without special tokens
+    filters by prefix.
 
 ##### Returns:
 
@@ -1798,7 +1805,10 @@ for more details.
 *  <b>`key`</b>: The key for the collection. For example, the `GraphKeys` class
     contains many standard names for collections.
 *  <b>`scope`</b>: (Optional.) If supplied, the resulting list is filtered to include
-    only items whose name begins with this string.
+    only items whose `name` attribute matches using `re.match`. Items
+    without a `name` attribute are never returned if a scope is supplied and
+    the choice or `re.match` means that a `scope` without special tokens
+    filters by prefix.
 
 ##### Returns:
 
@@ -2385,7 +2395,7 @@ The value of this dimension, or None if it is unknown.
 Returns a context manager for use when defining a Python op.
 
 This context manager validates that the given `values` are from the
-same graph, ensures that that graph is the default graph, and pushes a
+same graph, ensures that graph is the default graph, and pushes a
 name scope.
 
 For example, to define a new Python op called `my_op`:

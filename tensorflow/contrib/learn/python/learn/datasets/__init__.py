@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.datasets import mnist
+from tensorflow.contrib.learn.python.learn.datasets import text_datasets
 
 # Export load_iris and load_boston.
 load_iris = base.load_iris
@@ -36,8 +37,9 @@ DATASETS = {
     # Returns base.Dataset.
     'iris': base.load_iris,
     'boston': base.load_boston,
-    # Returns mnist.Dataset.
+    # Returns base.Datasets (train/validation/test sets).
     'mnist': mnist.load_mnist,
+    'dbpedia': text_datasets.load_dbpedia,
 }
 
 

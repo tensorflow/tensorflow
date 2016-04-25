@@ -267,6 +267,46 @@ TEST(Tensor_Float, Reshape) {
     EXPECT_EQ(flat_outer_dims(0, 0, 0, 0, 0), 0.01f);
     EXPECT_EQ(flat_outer_dims(1, 2, 3, 4, 0), 0.02f);
   }
+
+  Tensor zero_t(DT_FLOAT, TensorShape({3, 0, 2, 0, 5}));
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+  }
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float, 3>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+    EXPECT_EQ(0, flat_outer_dims.dimension(2));
+  }
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float, 5>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+    EXPECT_EQ(2, flat_outer_dims.dimension(2));
+    EXPECT_EQ(0, flat_outer_dims.dimension(3));
+    EXPECT_EQ(5, flat_outer_dims.dimension(4));
+  }
+  {
+    auto flat_inner_dims = zero_t.flat_inner_dims<float>();
+    EXPECT_EQ(0, flat_inner_dims.dimension(0));
+    EXPECT_EQ(5, flat_inner_dims.dimension(1));
+  }
+  {
+    auto flat_inner_dims = zero_t.flat_inner_dims<float, 3>();
+    EXPECT_EQ(0, flat_inner_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_dims.dimension(1));
+    EXPECT_EQ(5, flat_inner_dims.dimension(2));
+  }
+  {
+    auto flat_inner_dims = zero_t.flat_inner_dims<float, 5>();
+    EXPECT_EQ(3, flat_inner_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_dims.dimension(1));
+    EXPECT_EQ(2, flat_inner_dims.dimension(2));
+    EXPECT_EQ(0, flat_inner_dims.dimension(3));
+    EXPECT_EQ(5, flat_inner_dims.dimension(4));
+  }
 }
 
 TEST(Tensor_Scalar, Basics) {

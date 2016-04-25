@@ -186,9 +186,7 @@ HANDLE_CASE_DIM(GPUDevice, DT_INT64);
 template <typename Device>
 class TileGradientOp : public OpKernel {
  public:
-  explicit TileGradientOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_DEPRECATED(context, 3, "TileGrad has been replaced with reduce_sum");
-  }
+  explicit TileGradientOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);

@@ -64,6 +64,10 @@ create variables contingent on certain conditions.
 @@zeros_initializer
 @@ones_initializer
 
+## Variable Partitioners for Sharding
+
+@@variable_axis_size_partitioner
+
 ## Sparse Variable Updates
 
 The sparse update ops modify a subset of the entries in a dense `Variable`,
