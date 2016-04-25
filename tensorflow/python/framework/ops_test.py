@@ -114,7 +114,7 @@ class NodeDefConstructorTest(test_util.TensorFlowTestCase):
     nodedef = ops._NodeDef("foo", "bar", device="/device:baz:*")
     self.assertProtoEquals("op:'foo' name:'bar' device:'/device:baz:*'",
                            nodedef)
-    nodedef = ops._NodeDef("foo", "bar", device=pydev.Device(job="j"))
+    nodedef = ops._NodeDef("foo", "bar", device=pydev.DeviceSpec(job="j"))
     self.assertProtoEquals("op:'foo' name:'bar' device:'/job:j'", nodedef)
 
 
@@ -223,7 +223,8 @@ class OperationTest(test_util.TensorFlowTestCase):
         "op:'noop' name:'myop' device:'/job:goo/device:GPU:0' ",
         op.node_def)
     op = ops.Operation(ops._NodeDef("noop", "op2"), ops.Graph(), [], [])
-    op._set_device(pydev.Device(job="muu", device_type="CPU", device_index=0))
+    op._set_device(pydev.DeviceSpec(job="muu", device_type="CPU",
+                                    device_index=0))
     self.assertProtoEquals(
         "op:'noop' name:'op2' device:'/job:muu/device:CPU:0'",
         op.node_def)
@@ -526,9 +527,8 @@ class DeviceTest(test_util.TensorFlowTestCase):
 
   def testDeviceFull(self):
     g = ops.Graph()
-    with g.device(pydev.Device(job="worker", replica=2, task=0,
-                               device_type="CPU",
-                               device_index=3)):
+    with g.device(pydev.DeviceSpec(job="worker", replica=2, task=0,
+                                   device_type="CPU", device_index=3)):
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""

@@ -987,7 +987,7 @@ SparseTensorValue = collections.namedtuple("SparseTensorValue",
 
 
 def _device_string(dev_spec):
-  if isinstance(dev_spec, pydev.Device):
+  if isinstance(dev_spec, pydev.DeviceSpec):
     return dev_spec.to_string()
   else:
     return dev_spec

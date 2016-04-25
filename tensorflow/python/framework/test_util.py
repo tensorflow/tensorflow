@@ -548,8 +548,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """Asserts that the two given devices are the same.
 
     Args:
-      device1: A string device name or TensorFlow `Device` object.
-      device2: A string device name or TensorFlow `Device` object.
+      device1: A string device name or TensorFlow `DeviceSpec` object.
+      device2: A string device name or TensorFlow `DeviceSpec` object.
     """
     device1 = pydev.canonical_name(device1)
     device2 = pydev.canonical_name(device2)
