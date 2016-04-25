@@ -54,13 +54,16 @@ class SaverTest(tf.test.TestCase):
   def testBasics(self):
     save_path = os.path.join(self.get_temp_dir(), "basics")
 
+    # Build a graph with 2 parameter nodes, and Save and
+    # Restore nodes for them.
+    v0 = tf.Variable(10.0, name="v0")
+    v1 = tf.Variable(20.0, name="v1")
+    save = tf.train.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
+    init_all_op = tf.initialize_all_variables()
+
     with self.test_session() as sess:
-      # Build a graph with 2 parameter nodes, and Save and
-      # Restore nodes for them.
-      v0 = tf.Variable(10.0, name="v0")
-      v1 = tf.Variable(20.0, name="v1")
-      save = tf.train.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
-      tf.initialize_all_variables().run()
+      # Initialize all variables
+      sess.run(init_all_op)
 
       # Check that the parameter nodes have been initialized.
       self.assertEqual(10.0, v0.eval())
@@ -1026,40 +1029,42 @@ class MetaGraphTest(tf.test.TestCase):
     test_dir = _TestDir("graph_extension")
     filename = os.path.join(test_dir, "metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
-    with self.test_session(graph=tf.Graph()) as sess:
-      # Creates an inference graph.
-      # Hidden 1
-      images = tf.constant(1.2, tf.float32, shape=[100, 28])
-      with tf.name_scope("hidden1"):
-        weights = tf.Variable(
-            tf.truncated_normal([28, 128],
-                                stddev=1.0 / math.sqrt(float(28))),
-            name="weights")
-        biases = tf.Variable(tf.zeros([128]),
-                             name="biases")
-        hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)
-      # Hidden 2
-      with tf.name_scope("hidden2"):
-        weights = tf.Variable(
-            tf.truncated_normal([128, 32],
-                                stddev=1.0 / math.sqrt(float(128))),
-            name="weights")
-        biases = tf.Variable(tf.zeros([32]),
-                             name="biases")
-        hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
-      # Linear
-      with tf.name_scope("softmax_linear"):
-        weights = tf.Variable(
-            tf.truncated_normal([32, 10],
-                                stddev=1.0 / math.sqrt(float(32))),
-            name="weights")
-        biases = tf.Variable(tf.zeros([10]),
-                             name="biases")
-        logits = tf.matmul(hidden2, weights) + biases
-        tf.add_to_collection("logits", logits)
+    # Creates an inference graph.
+    # Hidden 1
+    images = tf.constant(1.2, tf.float32, shape=[100, 28])
+    with tf.name_scope("hidden1"):
+      weights = tf.Variable(
+          tf.truncated_normal([28, 128],
+                              stddev=1.0 / math.sqrt(float(28))),
+          name="weights")
+      biases = tf.Variable(tf.zeros([128]),
+                           name="biases")
+      hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)
+    # Hidden 2
+    with tf.name_scope("hidden2"):
+      weights = tf.Variable(
+          tf.truncated_normal([128, 32],
+                              stddev=1.0 / math.sqrt(float(128))),
+          name="weights")
+      biases = tf.Variable(tf.zeros([32]),
+                           name="biases")
+      hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
+    # Linear
+    with tf.name_scope("softmax_linear"):
+      weights = tf.Variable(
+          tf.truncated_normal([32, 10],
+                              stddev=1.0 / math.sqrt(float(32))),
+          name="weights")
+      biases = tf.Variable(tf.zeros([10]),
+                           name="biases")
+      logits = tf.matmul(hidden2, weights) + biases
+      tf.add_to_collection("logits", logits)
+    init_all_op = tf.initialize_all_variables()
 
+    with self.test_session() as sess:
+      # Initializes all the variables.
+      sess.run(init_all_op)
       # Runs to logit.
-      tf.initialize_all_variables().run()
       sess.run(logits)
       # Creates a saver.
       saver0 = tf.train.Saver()
@@ -1176,14 +1181,15 @@ class MetaGraphTest(tf.test.TestCase):
 class CheckpointReaderTest(tf.test.TestCase):
 
   def testDebugString(self):
+    # Builds a graph.
+    v0 = tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")
+    v1 = tf.Variable([[[1], [2]], [[3], [4]], [[5], [6]]], dtype=tf.float32,
+                     name="v1")
+    init_all_op = tf.initialize_all_variables()
+    save = tf.train.Saver({"v0": v0, "v1": v1})
     save_path = os.path.join(self.get_temp_dir(), "ckpt_for_debug_string")
     with self.test_session() as sess:
-      # Builds a graph.
-      v0 = tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")
-      v1 = tf.Variable([[[1], [2]], [[3], [4]], [[5], [6]]], dtype=tf.float32,
-                       name="v1")
-      save = tf.train.Saver({"v0": v0, "v1": v1})
-      tf.initialize_all_variables().run()
+      sess.run(init_all_op)
       # Saves a checkpoint.
       save.save(sess, save_path)
 

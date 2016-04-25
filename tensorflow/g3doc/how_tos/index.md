@@ -127,3 +127,10 @@ categories of objects, which is a lot faster and easier than completely
 retraining a new model.
 
 [View Tutorial](../how_tos/image_retraining/index.md)
+
+## How to Export and Import a Model
+
+This tutorial describes how to export everything pertaining to a running
+model and import it later for various purposes.
+
+[View Tutorial](../how_tos/meta_graph/index.md)
