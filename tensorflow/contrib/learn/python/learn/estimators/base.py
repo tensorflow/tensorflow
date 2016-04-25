@@ -147,9 +147,6 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
             self._model_predictions, self._model_loss = self.model_fn(
                 self._inp, self._out)
 
-            # Set up a single operator to merge all the summaries
-            self._summaries = logging_ops.merge_all_summaries()
-
             # Create trainer and augment graph with gradients and optimizer.
             # Additionally creates initialization ops.
             learning_rate = self.learning_rate
@@ -164,6 +161,9 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
 
             # Update ops during training, e.g. batch_norm_ops
             self._train = control_flow_ops.group(self._train, *ops.get_collection('update_ops'))
+
+            # Merge all summaries into single tensor.
+            self._summaries = logging_ops.merge_all_summaries()
 
             # Get all initializers for all trainable variables.
             self._initializers = variables.initialize_all_variables()
