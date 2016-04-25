@@ -643,44 +643,79 @@ bool Tensor::CanUseDMA() const {
 #undef CASES
 #undef CASE
 
-string Tensor::SummarizeValue(int64 max_entries) const {
+namespace {
+template <typename T>
+string SummarizeArray(int64 limit, int64 num_elts, const char* data) {
   string ret;
-  // TODO(irving): Don't call NumElements and flat every time around this
-  // loop.
-  for (int64 i = 0; i < std::min(max_entries, NumElements()); ++i) {
+  const T* array = reinterpret_cast<const T*>(data);
+  for (int64 i = 0; i < limit; ++i) {
     if (i > 0) strings::StrAppend(&ret, " ");
-    switch (dtype()) {
-      case DT_STRING:
-        strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
-        break;
-      case DT_BOOL:
-        strings::StrAppend(&ret, flat<bool>()(i) ? "True" : "False");
-        break;
+    strings::StrAppend(&ret, array[i]);
+  }
+  if (num_elts > limit) strings::StrAppend(&ret, "...");
+  return ret;
+}
+}  // namespace
 
-#define CASE(DT_ENUM)                                                   \
-  case DT_ENUM:                                                         \
-    strings::StrAppend(&ret, flat<EnumToDataType<DT_ENUM>::Type>()(i)); \
-    break
-
-        CASE(DT_FLOAT);
-        CASE(DT_DOUBLE);
-        CASE(DT_INT32);
-        CASE(DT_UINT8);
-        CASE(DT_UINT16);
-        CASE(DT_INT16);
-        CASE(DT_INT8);
-        CASE(DT_INT64);
-
-#undef CASE
-      default:
-        // TODO(zhifengc, josh11b): Pretty-print other types (bool,
-        // complex64, quantized, bfloat16).
-        strings::StrAppend(&ret, " ?");
+string Tensor::SummarizeValue(int64 max_entries) const {
+  const int64 num_elts = NumElements();
+  size_t limit = std::min(max_entries, num_elts);
+  if ((limit > 0) && (buf_ == nullptr)) {
+    return strings::StrCat("uninitialized Tensor of ", num_elts,
+                           " elements of type ", dtype());
+  }
+  const char* data = limit > 0 ? tensor_data().data() : nullptr;
+  switch (dtype()) {
+    case DT_FLOAT:
+      return SummarizeArray<float>(limit, num_elts, data);
+      break;
+    case DT_DOUBLE:
+      return SummarizeArray<double>(limit, num_elts, data);
+      break;
+    case DT_INT32:
+      return SummarizeArray<int32>(limit, num_elts, data);
+      break;
+    case DT_UINT8:
+      return SummarizeArray<uint8>(limit, num_elts, data);
+      break;
+    case DT_UINT16:
+      return SummarizeArray<uint16>(limit, num_elts, data);
+      break;
+    case DT_INT16:
+      return SummarizeArray<int16>(limit, num_elts, data);
+      break;
+    case DT_INT8:
+      return SummarizeArray<int8>(limit, num_elts, data);
+      break;
+    case DT_INT64:
+      return SummarizeArray<int64>(limit, num_elts, data);
+      break;
+    case DT_BOOL:
+      // TODO(tucker): Is it better to emit "True False..."?  This
+      // will emit "1 0..." which is more compact.
+      return SummarizeArray<bool>(limit, num_elts, data);
+      break;
+    default: {
+      // All irregular cases
+      string ret;
+      // TODO(irving): Don't call flat every time around this
+      // loop.
+      for (int64 i = 0; i < limit; ++i) {
+        if (i > 0) strings::StrAppend(&ret, " ");
+        switch (dtype()) {
+          case DT_STRING:
+            strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
+            break;
+          default:
+            // TODO(zhifengc, josh11b): Pretty-print other types (bool,
+            // complex64, quantized, bfloat16).
+            strings::StrAppend(&ret, "?");
+        }
+      }
+      if (max_entries < num_elts) strings::StrAppend(&ret, "...");
+      return ret;
     }
   }
-  if (max_entries < NumElements()) strings::StrAppend(&ret, "...");
-
-  return ret;
 }
 
 StringPiece Tensor::tensor_data() const {
