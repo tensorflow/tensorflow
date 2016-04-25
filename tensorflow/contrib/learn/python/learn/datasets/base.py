@@ -27,8 +27,9 @@ from six.moves import urllib
 import numpy as np
 from tensorflow.python.platform import gfile
 
-    
+
 Dataset = collections.namedtuple('Dataset', ['data', 'target'])
+Datasets = collections.namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
 def load_csv(filename, target_dtype):
