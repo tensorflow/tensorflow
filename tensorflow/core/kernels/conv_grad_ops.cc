@@ -881,6 +881,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=",
                                               m, ", n=", n, ", k=", k));
+          return;
         }
         return;
       }
@@ -1001,6 +1002,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
             "cuDNN Backward Data function launch failure : input shape(",
             input_shape.DebugString(), ") filter shape(",
             filter_shape.DebugString(), ")"));
+        return;
       }
 
       if (rows_odd || cols_odd) {
@@ -1187,6 +1189,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=",
                                               m, ", n=", n, ", k=", k));
+          return;
         }
         return;
       }
@@ -1320,6 +1323,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
             "cuDNN Backward Filter function launch failure : input shape(",
             input_shape.DebugString(), ") filter shape(",
             filter_shape.DebugString(), ")"));
+        return;
       }
 
       auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
