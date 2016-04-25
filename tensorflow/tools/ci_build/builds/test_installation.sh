@@ -70,12 +70,18 @@
 #   depends on CheckValid() and ToString(), both defined externally
 # tensorflow/python/framework/file_system_test.py:
 #   depends on having the .so which is not shipped in the pip package.
+# tensorflow/contrib/quantization/*:
+#   These depend on an .so mechanism that's not shipped in the pip package.
 #
 PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/framework/ops_test.py:"\
 "tensorflow/python/util/protobuf/compare_test.py:"\
 "tensorflow/python/framework/device_test.py:"\
-"tensorflow/python/framework/file_system_test.py"
+"tensorflow/python/framework/file_system_test.py"\
+"tensorflow/python/framework/file_system_test.py:"\
+"tensorflow/contrib/quantization/python/dequantize_op_test.py:"\
+"tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
+"tensorflow/contrib/quantization/tools/quantize_graph_test.py"
 
 # Test blacklist: GPU-only
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
