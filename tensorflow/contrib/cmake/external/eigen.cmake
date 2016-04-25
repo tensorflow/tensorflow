@@ -7,7 +7,7 @@
 
 include (ExternalProject)
 
-set(eigen_archive_hash "4cf1026c3bee")
+set(eigen_archive_hash "7bfd5612c330")
 
 set(eigen_INCLUDE_DIRS
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -16,7 +16,7 @@ set(eigen_INCLUDE_DIRS
     ${tensorflow_source_dir}/third_party/eigen3
 )
 set(eigen_URL https://bitbucket.org/eigen/eigen/get/${eigen_archive_hash}.tar.gz)
-set(eigen_HASH SHA256=ec47640aeae6f42a7efc15fd368843fd84e2ba6a4fc1957b3e362672e82e231a)
+set(eigen_HASH SHA256=7dd8fdfd1797f34ccff8f42c5dcb964f1f6de3385494bbf06eeafdd2b7b608f3)
 set(eigen_BUILD ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen)
 set(eigen_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/eigen/install)
 
