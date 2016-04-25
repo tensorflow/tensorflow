@@ -107,7 +107,7 @@ TEARDOWN_WHEN_DONE=1
 if [[ ! -z "${GRPC_SERVER_URLS}" ]]; then
   TEARDOWN_WHEN_DONE=0
   # Verify the validity of the GRPC URL
-  for GRPC_SERVER_URL in ${GRPC_SEVER_URLS}; do
+  for GRPC_SERVER_URL in ${GRPC_SERVER_URLS}; do
     if [[ -z $(echo "${GRPC_SERVER_URL}" | \
       grep -E "^grpc://.+:[0-9]+") ]]; then
       die "Invalid GRPC_SERVER_URL: \"${GRPC_SERVER_URL}\""

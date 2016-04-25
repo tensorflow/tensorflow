@@ -395,10 +395,27 @@ export function joinStatsInfoWithGraph(graph: SlimGraph,
       let totalBytes = 0;
       if (nodeStats.memory) {
         _.each(nodeStats.memory, alloc => {
-          if (alloc.total_bytes) {
-            totalBytes += Number(alloc.total_bytes);
+        if (alloc.total_bytes) {
+            if (alloc.total_bytes > 0) {
+              totalBytes += Number(alloc.total_bytes);
+            } else {
+              /* tslint:disable */
+              console.log(
+                "ignoring negative memory allocation for " + nodeName);
+              /* tslint:enable */
+            }
           }
         });
+      }
+      let totalMicroSeconds = 0;
+      if (nodeStats.all_end_rel_micros) {
+        if (nodeStats.all_end_rel_micros > 0) {
+          totalMicroSeconds = Number(nodeStats.all_end_rel_micros);
+        } else {
+          /* tslint:disable */
+          console.log("ignoring negative runtime for " + nodeName);
+          /* tslint:enable */
+        }
       }
       let outputSize: number[][] = null;
       if (nodeStats.output) {
@@ -409,7 +426,7 @@ export function joinStatsInfoWithGraph(graph: SlimGraph,
       }
       graph.nodes[nodeName].device = devStats.device;
       graph.nodes[nodeName].stats = new NodeStats(totalBytes,
-          Number(nodeStats.all_end_rel_micros), outputSize);
+        totalMicroSeconds, outputSize);
     });
   });
 }
@@ -1000,9 +1017,16 @@ function mapStrictHierarchy(nodeNames: string[],
     _.each(getHierarchicalPath(a).slice(0, -1), ns => {
       namespaceSet[ns] = true;
     });
-    let b = nodeNames[i + 1];
-    if (_.startsWith(b, a + NAMESPACE_DELIM)) {
-      newNameDictionary[a] = getStrictName(a);
+    for (let j = i + 1; j < nodeNames.length; ++j) {
+      let b = nodeNames[j];
+      if (_.startsWith(b, a)) {
+        if (b.length > a.length && b.charAt(a.length) === NAMESPACE_DELIM) {
+          newNameDictionary[a] = getStrictName(a);
+          break;
+        }
+      } else {
+        break;
+      }
     }
   }
   // Go through all the embedding node names and rename them in case they

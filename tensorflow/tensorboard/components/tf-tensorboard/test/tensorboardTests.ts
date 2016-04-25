@@ -37,6 +37,11 @@ describe('tf-tensorboard tests', () => {
       });
     });
 
+    it('renders injected content', function(done){
+      assert.isObject(tensorboard.querySelector('#inject-me'));
+      done();
+    });
+
     describe('non-graph tabs: reloading the selected dashboard', function() {
       TF.TensorBoard.TABS.forEach((name, tabIndex) => {
         if (name === 'graphs') {

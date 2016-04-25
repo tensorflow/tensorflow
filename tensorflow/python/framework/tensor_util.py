@@ -182,7 +182,7 @@ def _FlattenToStrings(nested_strings):
 
 _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
-    dtypes.int8, dtypes.int64
+    dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint32,
 ])
 
 
