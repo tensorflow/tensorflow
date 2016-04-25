@@ -750,7 +750,7 @@ class ObjectWithName(object):
 
 class CollectionTest(test_util.TensorFlowTestCase):
 
-  def testadd_to_collection(self):
+  def test_add_to_collection(self):
     g = ops.Graph()
     g.add_to_collection("key", 12)
     g.add_to_collection("other", "foo")
@@ -799,7 +799,45 @@ class CollectionTest(test_util.TensorFlowTestCase):
     empty_coll_ref3 = g.get_collection_ref("empty")
     self.assertTrue(empty_coll_ref3 is empty_coll_ref)
 
-  def testDefaulGraph(self):
+  def test_add_to_collections_uniquify(self):
+    g = ops.Graph()
+    g.add_to_collections([1, 2, 1], "key")
+    # Make sure "key" is not added twice
+    self.assertEqual(["key"], g.get_collection(1))
+
+  def test_add_to_collections_from_list(self):
+    g = ops.Graph()
+    g.add_to_collections(["abc", "123"], "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_tuple(self):
+    g = ops.Graph()
+    g.add_to_collections(("abc", "123"), "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_generator(self):
+    g = ops.Graph()
+    def generator():
+      yield "abc"
+      yield "123"
+    g.add_to_collections(generator(), "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_set(self):
+    g = ops.Graph()
+    g.add_to_collections(set(["abc", "123"]), "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_string(self):
+    g = ops.Graph()
+    g.add_to_collections("abc", "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+
+  def test_default_graph(self):
     with ops.Graph().as_default():
       ops.add_to_collection("key", 90)
       ops.add_to_collection("key", 100)
