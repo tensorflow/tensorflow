@@ -81,6 +81,10 @@ export let Class = {
 export function fit(svg, zoomG, d3zoom, callback) {
   let svgRect = svg.getBoundingClientRect();
   let sceneSize = zoomG.getBBox();
+  if (sceneSize.width === 0) {
+    // There is no scene anymore.
+    return;
+  }
   let scale = 0.9 * Math.min(
       svgRect.width / sceneSize.width,
       svgRect.height / sceneSize.height,
