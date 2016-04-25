@@ -25,3 +25,4 @@ from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn import ops
 from tensorflow.contrib.learn.python.learn import preprocessing
 from tensorflow.contrib.learn.python.learn import models
+from tensorflow.contrib.learn.python.learn import monitors
