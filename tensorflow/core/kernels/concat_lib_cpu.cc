@@ -123,7 +123,7 @@ void ConcatCPU(DeviceBase* d,
       }
     }
   };
-  Shard(num_threads, worker_threads->workers, output->size(), 100, work);
+  Shard(num_threads, worker_threads->workers, output->size(), sizeof(T), work);
 }
 
 #define REGISTER(T)                                                            \
