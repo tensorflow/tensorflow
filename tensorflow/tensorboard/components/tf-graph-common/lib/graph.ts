@@ -1017,9 +1017,16 @@ function mapStrictHierarchy(nodeNames: string[],
     _.each(getHierarchicalPath(a).slice(0, -1), ns => {
       namespaceSet[ns] = true;
     });
-    let b = nodeNames[i + 1];
-    if (_.startsWith(b, a + NAMESPACE_DELIM)) {
-      newNameDictionary[a] = getStrictName(a);
+    for (let j = i + 1; j < nodeNames.length; ++j) {
+      let b = nodeNames[j];
+      if (_.startsWith(b, a)) {
+        if (b.length > a.length && b.charAt(a.length) === NAMESPACE_DELIM) {
+          newNameDictionary[a] = getStrictName(a);
+          break;
+        }
+      } else {
+        break;
+      }
     }
   }
   // Go through all the embedding node names and rename them in case they
