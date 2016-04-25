@@ -1,47 +1,44 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-suite("parser", () => {
-let assert = chai.assert;
+suite('parser', () => {
+  let assert = chai.assert;
 
-test("simple pbtxt", (done) => {
-  let pbtxt =
-    `node {
-       name: "Q"
-       op: "Input"
+  test('simple pbtxt', (done) => {
+    let pbtxt = `node {
+       name: 'Q'
+       op: 'Input'
      }
      node {
-       name: "W"
-       op: "Input"
+       name: 'W'
+       op: 'Input'
      }
      node {
-       name: "X"
-       op: "MatMul"
-       input: "Q"
-       input: "W"
+       name: 'X'
+       op: 'MatMul'
+       input: 'Q'
+       input: 'W'
      }`;
-  tf.graph.parser.parseGraphPbTxt(new Blob([pbtxt])).then(nodes => {
-    assert.isTrue(nodes != null && nodes.length === 3);
-    done();
+    tf.graph.parser.parseGraphPbTxt(new Blob([pbtxt])).then(nodes => {
+      assert.isTrue(nodes != null && nodes.length === 3);
+      done();
+    });
   });
-});
 
-test("d3 exists", () => {
-  assert.isTrue(d3 != null);
-});
+  test('d3 exists', () => { assert.isTrue(d3 != null); });
 
-// TODO(bp): write tests.
+  // TODO(bp): write tests.
 
 });
