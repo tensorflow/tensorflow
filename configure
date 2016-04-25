@@ -83,11 +83,7 @@ OSNAME=`uname -s`
 while true; do
   # Configure the Cuda SDK version to use.
   if [ -z "$TF_CUDA_VERSION" ]; then
-    if [ "$OSNAME" == "Linux" ]; then
-      default_cuda_version='7.0'
-    elif [ "$OSNAME" == "Darwin" ]; then
-      default_cuda_version='7.5'
-    fi
+    default_cuda_version='7.5'
     read -p "Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default ${default_cuda_version}]: " TF_CUDA_VERSION
 
     if [ -z "$TF_CUDA_VERSION" ]; then

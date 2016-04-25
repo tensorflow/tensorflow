@@ -50,21 +50,21 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
 }
 
 string FormatLibraryFileName(const string& name, const string& version) {
-  string file_name;
+  string filename;
 #if defined(__APPLE__)
   if (version.size() == 0) {
-    file_name = "lib" + name + ".dylib";
+    filename = "lib" + name + ".dylib";
   } else {
-    file_name = "lib" + name + "." + version + ".dylib";
+    filename = "lib" + name + "." + version + ".dylib";
   }
 #else
   if (version.size() == 0) {
-    file_name = "lib" + name + ".so";
+    filename = "lib" + name + ".so";
   } else {
-    file_name = "lib" + name + ".so" + "." + version;
+    filename = "lib" + name + ".so" + "." + version;
   }
 #endif
-  return file_name;
+  return filename;
 }
 
 }  // namespace internal

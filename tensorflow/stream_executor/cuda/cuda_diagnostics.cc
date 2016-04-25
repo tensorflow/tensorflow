@@ -189,6 +189,7 @@ void Diagnostician::LogDiagnosticInformation() {
   LOG(INFO) << "kernel reported version is: "
             << DriverVersionStatusToString(kernel_version);
 
+  // OS X kernel driver does not report version accurately
 #if !defined(__APPLE__)
   if (kernel_version.ok() && dso_version.ok()) {
     WarnOnDsoKernelMismatch(dso_version, kernel_version);
