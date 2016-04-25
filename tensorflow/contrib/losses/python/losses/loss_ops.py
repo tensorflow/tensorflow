@@ -365,10 +365,10 @@ def _cross_entropy(logits, onehot_labels, weight, label_smoothing,
   if weight is None:
     raise ValueError("`weight` cannot be None")
 
-  num_classes = onehot_labels.get_shape()[1]
   onehot_labels = math_ops.cast(onehot_labels, logits.dtype)
 
   if label_smoothing > 0:
+    num_classes = onehot_labels.get_shape()[1].value
     smooth_positives = 1.0 - label_smoothing
     smooth_negatives = label_smoothing / num_classes
     onehot_labels = onehot_labels * smooth_positives + smooth_negatives

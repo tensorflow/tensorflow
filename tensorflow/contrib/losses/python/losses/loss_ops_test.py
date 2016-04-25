@@ -213,6 +213,17 @@ class SoftmaxCrossEntropyLossTest(tf.test.TestCase):
         tf.contrib.losses.softmax_cross_entropy(
             logits, labels, weight=weight).eval()
 
+  def testSoftmaxLabelSmoothing(self):
+    with self.test_session():
+      logits = tf.constant([[100.0, -100.0, -100.0]])
+      labels = tf.constant([[1, 0, 0]])
+      label_smoothing = 0.1
+      loss = tf.contrib.losses.sigmoid_cross_entropy(
+          logits, labels, label_smoothing=label_smoothing)
+      self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
+      expected_value = 400.0 * label_smoothing / 9.0
+      self.assertAlmostEqual(loss.eval(), expected_value, 3)
+
 
 class SigmoidCrossEntropyLossTest(tf.test.TestCase):
 
@@ -268,6 +279,17 @@ class SigmoidCrossEntropyLossTest(tf.test.TestCase):
 
     with self.test_session():
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
+
+  def testSigmoidLabelSmoothingCorrect(self):
+    with self.test_session():
+      logits = tf.constant([[100.0, -100.0, -100.0]])
+      labels = tf.constant([[1, 0, 0]])
+      label_smoothing = 0.1
+      loss = tf.contrib.losses.sigmoid_cross_entropy(
+          logits, labels, label_smoothing=label_smoothing)
+      self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
+      expected_value = 400.0 * label_smoothing / 9.0
+      self.assertAlmostEqual(loss.eval(), expected_value, 3)
 
 
 class LogLossTest(tf.test.TestCase):
