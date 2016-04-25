@@ -1,13 +1,13 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -22,10 +22,7 @@ export type Point = {x: number, y: number};
 /**
  * Color parameters for op nodes.
  */
-export let OpNodeColors = {
-  DEFAULT_FILL: "white",
-  DEFAULT_STROKE: "#b2b2b2"
-};
+export let OpNodeColors = {DEFAULT_FILL: 'white', DEFAULT_STROKE: '#b2b2b2'};
 
 /**
  * Color parameters for node encoding.
@@ -35,15 +32,15 @@ export let MetanodeColors = {
   /**
    * Default fill and stroke to use when no other information is available.
    */
-  DEFAULT_FILL: "#d9d9d9",
-  DEFAULT_STROKE: "#a6a6a6",
+  DEFAULT_FILL: '#d9d9d9',
+  DEFAULT_STROKE: '#a6a6a6',
   SATURATION: 0.6,
   LIGHTNESS: 0.85,
   /**
    * Neutral color to use when the node is expanded (used when coloring by
    * compute time, memory and device).
    */
-  EXPANDED_COLOR: "#f0f0f0",
+  EXPANDED_COLOR: '#f0f0f0',
   /**
    * Standard hue values for node color palette.
    */
@@ -59,19 +56,18 @@ export let MetanodeColors = {
     let light = lightened ? 95 : 80;
     return d3.hsl(hue, .01 * sat, .01 * light).toString();
   },
-  DEVICE_PALETTE: function (index: number): string {
-    return MetanodeColors.STRUCTURE_PALETTE(index);
-  },
-  UNKNOWN: "#eee",
-  GRADIENT_OUTLINE: "#888"
+  DEVICE_PALETTE: function(index: number):
+      string { return MetanodeColors.STRUCTURE_PALETTE(index);},
+  UNKNOWN: '#eee',
+  GRADIENT_OUTLINE: '#888'
 };
 
 /**
  * Color parameters for op nodes.
  */
 export let SeriesNodeColors = {
-  DEFAULT_FILL: "white",
-  DEFAULT_STROKE: "#b2b2b2"
+  DEFAULT_FILL: 'white',
+  DEFAULT_STROKE: '#b2b2b2'
 };
 
 /**
@@ -102,16 +98,14 @@ const PARAMS = {
    * sink-like nodes that will be extracted from the main graph.
    */
   outExtractTypes: [
-    "NoOp" // NoOps are sink-like used for managing control dependencies.
+    'NoOp'  // NoOps are sink-like used for managing control dependencies.
   ],
 
   /**
    * Types patterns for predefined in-extract nodes, which are
    * source-like nodes that will be extracted from the main graph.
    */
-  inExtractTypes: [
-    "Variable"
-  ],
+  inExtractTypes: ['Variable'],
 
   /**
    * When removing edges from a high degree node, remove all of its edges if
@@ -138,7 +132,7 @@ const PARAMS = {
    * 2 colors, for the minimum and maximum value respectively, whenever we
    * have a gradient scale.
    */
-  minMaxColors: ["#fff5f0", "#fb6a4a"],
+  minMaxColors: ['#fff5f0', '#fb6a4a'],
 
   /**
    * Maximum number of annotations to be displayed on a node before an
@@ -409,7 +403,7 @@ export class RenderGraphInfo {
 
     // Utility function for computing the name of a bridge node.
     let getBridgeNodeName = (inbound, ...rest) =>
-      rest.concat([inbound ? "IN" : "OUT"]).join("~~");
+        rest.concat([inbound ? 'IN' : 'OUT']).join('~~');
 
     // Build out the bridgegraph.
     let bridgegraph = this.hierarchy.getBridgegraph(nodeName);
@@ -515,7 +509,7 @@ export class RenderGraphInfo {
       }
 
       // Although dataflow edges are acyclic, control dependency edges may
-      // actually point "backwards" in the graph. If this bridgeMetaedge is
+      // actually point 'backwards' in the graph. If this bridgeMetaedge is
       // a control dependency, we need to determine whether it's backwards
       // pointing so that we render it appropriately.
       //
@@ -729,7 +723,7 @@ export class RenderGraphInfo {
         // in that case, something about the graph upsets dagre.layout()'s
         // longestPath algorithm (was getting errors due to an undefined).
         let structuralNodeName =
-          getBridgeNodeName(inbound, nodeName, "STRUCTURAL_TARGET");
+            getBridgeNodeName(inbound, nodeName, 'STRUCTURAL_TARGET');
         let structuralRenderInfo = coreGraph.node(structuralNodeName);
         if (!structuralRenderInfo) {
           let bridgeNode: BridgeNode = {
@@ -1435,7 +1429,7 @@ export function mapIndexToHue(id: number): number {
  *
  * For root node, consider predefined types for source and sink.
  * We do not extract predefined type from non-root so that Variables and the
- * sgd node (op type = "NoOp") do not get extract from inside own group.
+ * sgd node (op type = 'NoOp') do not get extract from inside own group.
  *
  * The order of extraction is important here as swapping the order can totally
  * screw up the graph layout.

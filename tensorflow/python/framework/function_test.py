@@ -385,6 +385,32 @@ class FunctionTest(tf.test.TestCase):
       with self.test_session():
         self.assertAllEqual(z.eval(), 25.0)
 
+  def testReduction(self):
+    g = tf.Graph()
+
+    # BN0 is computing batch normed matrix along rows.
+    def BN0(x):
+      mean = tf.reduce_mean(x, [0])
+      var = tf.reduce_mean(tf.square(x - mean))  # biased var
+      rstd = tf.rsqrt(var + 1e-8)
+      return (x - mean) * rstd
+    with g.as_default():
+      # Wraps BatchNorm in a tf function.
+      @function.Defun(tf.float32)
+      def BN1(x):
+        return BN0(x)
+
+      x = tf.placeholder(tf.float32)
+      y0 = BN0(x)  # A plain graph
+      y1 = BN1(x)  # A tf function
+      dx0, = tf.gradients([y0], [x])
+      dx1, = tf.gradients([y1], [x])
+    # Both should produce the same result and gradient.
+    with self.test_session(graph=g) as sess:
+      vals = sess.run([y0, y1, dx0, dx1], {x: np.random.uniform(size=(3, 7))})
+      self.assertAllClose(vals[0], vals[1])
+      self.assertAllClose(vals[2], vals[3])
+
 
 class UnrollLSTMTest(tf.test.TestCase):
   BATCH_SIZE = 16

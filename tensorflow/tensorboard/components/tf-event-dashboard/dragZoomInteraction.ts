@@ -1,13 +1,13 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -20,15 +20,19 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
   private xDomainToRestore: any[];
   private yDomainToRestore: any[];
   private isZoomed = false;
-  private easeFn: (t: number) => number = d3.ease("cubic-in-out");
+  private easeFn: (t: number) => number = d3.ease('cubic-in-out');
   private _animationTime = 750;
 
-  /* Constructs a SelectionBoxLayer with an attached DragInteraction and ClickInteraction.
-   * On drag, it triggers an animated zoom into the box that was dragged.
-   * On double click, it zooms back out to the original view, before any zooming.
-   * The zoom animation uses an easing function (default d3.ease("cubic-in-out")) and is customizable.
-   * Usage: Construct the selection box layer and attach x and y scales, and then add the layer
-   * over the plot you are zooming on using a Component Group.
+  /**
+   * Constructs a SelectionBoxLayer with an attached DragInteraction and
+   * ClickInteraction. On drag, it triggers an animated zoom into the box
+   * that was dragged. On double click, it zooms back out to the original
+   * view, before any zooming.
+   * The zoom animation uses an easing function (default
+   * d3.ease('cubic-in-out')) and is customizable.
+   * Usage: Construct the selection box layer and attach x and y scales,
+   * and then add the layer over the plot you are zooming on using a
+   * Component Group.
    * TODO(danmane) - merge this into Plottable
    */
   constructor(xScale: QuantitativeScale<number | { valueOf(): number }>,
@@ -78,19 +82,24 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
       return this._animationTime;
     }
     if (animationTime < 0) {
-      throw new Error("animationTime cannot be negative");
+      throw new Error('animationTime cannot be negative');
     }
     this._animationTime = animationTime;
     return this;
   }
 
-  /* Set the easing function, which determines how the zoom interpolates over time. */
+  /**
+   * Set the easing function, which determines how the zoom interpolates
+   * over time.
+   */
   public ease(fn: (t: number) => number): DragZoomLayer {
-    if (typeof(fn) !== "function") {
-      throw new Error("ease function must be a function");
+    if (typeof(fn) !== 'function') {
+      throw new Error('ease function must be a function');
     }
     if (fn(0) !== 0 || fn(1) !== 1) {
-      Utils.Window.warn("Easing function does not maintain invariant f(0)==0 && f(1)==1. Bad behavior may result.");
+      Utils.Window.warn(
+          'Easing function does not maintain invariant ' +
+          'f(0)==0 && f(1)==1. Bad behavior may result.');
     }
     this.easeFn = fn;
     return this;
@@ -137,16 +146,20 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
     let y0s: number = this.yScale().domain()[0].valueOf();
     let y1s: number = this.yScale().domain()[1].valueOf();
 
-    // Copy a ref to the ease fn, so that changing ease wont affect zooms in progress
+    // Copy a ref to the ease fn, so that changing ease wont affect zooms in
+    // progress.
     let ease = this.easeFn;
-    let interpolator = (a: number, b: number, p: number) => d3.interpolateNumber(a, b)(ease(p));
+    let interpolator = (a: number, b: number, p: number) =>
+        d3.interpolateNumber(a, b)(ease(p));
 
     this.isZooming(true);
     let start = Date.now();
     let draw = () => {
       let now = Date.now();
       let passed = now - start;
-      let p = this._animationTime === 0 ? 1 : Math.min(1, passed / this._animationTime);
+      let p = this._animationTime === 0 ?
+          1 :
+          Math.min(1, passed / this._animationTime);
       let x0 = interpolator(x0s, x0f, p);
       let x1 = interpolator(x1s, x1f, p);
       let y0 = interpolator(y0s, y0f, p);
