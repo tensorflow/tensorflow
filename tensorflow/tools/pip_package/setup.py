@@ -27,7 +27,7 @@ from setuptools import find_packages, setup, Command, Extension
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.8.0rc0'
+_VERSION = '0.8.0'
 
 numpy_version = "1.8.2"
 if platform.system() == "Darwin":
@@ -183,6 +183,7 @@ setup(
                        'tensorboard/dist/index.html',
                        'tensorboard/dist/tf-tensorboard.html',
                        'tensorboard/lib/css/global.css',
+                       'tensorboard/TAG',
                      ] + matches,
     },
     zip_safe=False,
