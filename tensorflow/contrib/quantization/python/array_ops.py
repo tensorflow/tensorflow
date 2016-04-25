@@ -15,5 +15,7 @@
 """Quantized Array Operations."""
 
 # pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.quantization.ops import gen_array_ops
-from tensorflow.contrib.quantization.ops.gen_array_ops import *
+from tensorflow.contrib.quantization.ops import gen_array_ops as quantized_gen_array_ops
+from tensorflow.contrib.quantization.ops.gen_array_ops import dequantize
+from tensorflow.contrib.quantization.ops.gen_array_ops import quantize_v2
+from tensorflow.contrib.quantization.ops.gen_array_ops import quantized_concat

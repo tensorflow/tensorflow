@@ -18,6 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.quantization.python import *
+# pylint: disable=unused-import,wildcard-import,g-bad-import-order
+from tensorflow.contrib.quantization.python import array_ops as quantized_array_ops
+from tensorflow.contrib.quantization.python.math_ops import *
+from tensorflow.contrib.quantization.python.nn_ops import *
 from tensorflow.python.util.all_util import make_all
+
+from tensorflow.contrib.quantization.ops import gen_array_ops as quantized_gen_array_ops
+from tensorflow.contrib.quantization.ops.gen_array_ops import dequantize
+from tensorflow.contrib.quantization.ops.gen_array_ops import quantize_v2
+from tensorflow.contrib.quantization.ops.gen_array_ops import quantized_concat
