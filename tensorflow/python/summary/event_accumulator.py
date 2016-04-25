@@ -582,11 +582,8 @@ def _GeneratorFromPath(path):
   if IsTensorFlowEventsFile(path):
     return io_wrapper.CreateFileLoader(path)
   else:
-    provider = directory_watcher.SequentialFileProvider(
-        path,
-        path_filter=IsTensorFlowEventsFile)
-    return directory_watcher.DirectoryWatcher(provider,
-                                              io_wrapper.CreateFileLoader)
+    return directory_watcher.DirectoryWatcher(path, io_wrapper.CreateFileLoader,
+                                              IsTensorFlowEventsFile)
 
 
 def _ParseFileVersion(file_version):
