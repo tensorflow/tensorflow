@@ -26,7 +26,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator as ea
 
 

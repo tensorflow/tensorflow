@@ -1378,7 +1378,7 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
       old = test_ops.old()
       g.graph_def_versions.producer = versions.GRAPH_DEF_VERSION
       with self.test_session(graph=g):
-        with self.assertRaisesOpError(self._error()):
+        with self.assertRaisesRegexp(RuntimeError, self._error()):
           old.run()
 
 

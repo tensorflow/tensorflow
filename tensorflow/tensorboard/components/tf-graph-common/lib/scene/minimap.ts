@@ -113,7 +113,7 @@ export class Minimap {
     this.downloadCanvas =
         <HTMLCanvasElement>$minimap.select("canvas.download").node();
     d3.select(this.downloadCanvas).style("display", "none");
-
+    this.update();
   }
 
   /**
@@ -139,7 +139,7 @@ export class Minimap {
    */
   update(): void {
     // The origin hasn't rendered yet. Ignore making an update.
-    if (this.zoomG.childElementCount === 0) {
+    if (this.zoomG == null || this.zoomG.childElementCount === 0) {
       return;
     }
     let $download = d3.select("#graphdownload");
@@ -273,6 +273,10 @@ export class Minimap {
    * @param scale The scaling factor, or none to use the last used one.
    */
   zoom(translate?: [number, number], scale?: number): void {
+    if (this.scaleMinimap == null) {
+      // Scene is not ready yet.
+      return;
+    }
     // Update the new translate and scale params, only if specified.
     this.translate = translate || this.translate;
     this.scaleMain = scale || this.scaleMain;
