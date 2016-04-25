@@ -5,7 +5,7 @@ TensorFlow runs and graphs. TensorBoard currently supports four visualizations:
 scalars, images, histograms, and the graph.
 
 You can play with an interactive demo TensorBoard at
-[tensorflow.org/tensorboard/cifar.html](https://www.tensorflow.org/tensorboard/cifar.html).
+[tensorflow.org/tensorboard/](https://www.tensorflow.org/tensorboard/).
 
 This README gives an overview of key concepts in TensorBoard, as well as how to
 interpret the visualizations TensorBoard provides. For an in-depth example of
