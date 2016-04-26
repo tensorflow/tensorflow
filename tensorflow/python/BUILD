@@ -488,6 +488,7 @@ tf_gen_op_wrapper_py(
         "EditDistance",
         "MirrorPad",
         "MirrorPadGrad",
+        "OneHot",
         "Pack",
         "Pad",
         "Placeholder",
