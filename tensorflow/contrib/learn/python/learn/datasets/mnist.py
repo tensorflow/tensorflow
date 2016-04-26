@@ -26,7 +26,7 @@ import numpy
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.platform.default import _gfile as gfile
+from tensorflow.python.platform import gfile
 from tensorflow.python.framework import dtypes
 from tensorflow.contrib.learn.python.learn.datasets import base
 
