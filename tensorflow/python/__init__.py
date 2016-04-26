@@ -132,6 +132,7 @@ __all__ = make_all(__name__,
 __all__.extend([
     'AttrValue',
     'ConfigProto',
+    'DeviceSpec',
     'Event',
     'GPUOptions',
     'GRAPH_DEF_VERSION',
