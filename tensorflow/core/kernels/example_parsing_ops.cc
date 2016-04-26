@@ -137,13 +137,25 @@ class ExampleParserOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->output_list("sparse_shapes", &sparse_shapes));
     OP_REQUIRES_OK(ctx, ctx->output_list("dense_values", &dense_values));
 
-    // Preallocate dense_values, since we know their sizes
+    // Setup Dense features and the output_dense_values Tensor* vector.
+    std::vector<FixedLenFeature> fixed_len_features(num_dense_);
+    std::vector<Tensor*> output_dense_values(num_dense_);
+
     for (int d = 0; d < num_dense_; ++d) {
+      // Preallocate dense_values, since we know their sizes
       TensorShape out_shape;
       out_shape.AddDim(batch_size);
       for (const int dim : dense_shapes_[d].dim_sizes()) out_shape.AddDim(dim);
       Tensor* out = nullptr;
       dense_values.allocate(d, out_shape, &out);
+
+      FixedLenFeature config;
+      config.key = dense_keys_t[d];
+      config.dtype = dense_types_[d];
+      config.shape = dense_shapes_[d];
+      config.default_value = dense_defaults[d];
+      fixed_len_features[d] = config;
+      output_dense_values[d] = dense_values[d];
     }
 
     // sparse_values_tmp will be num_sparse_ size map of batch_size length
@@ -152,28 +164,16 @@ class ExampleParserOp : public OpKernel {
     // and copy data over. Doing it this way saves us the trouble of either
     // performing deserialization twice, or alternatively storing all copies of
     // the full Example protos.
-    std::map<string, std::vector<Tensor> > sparse_values_tmp;
-
-    // Setup Dense features and the output_dense_values Tensor* map.
-    std::map<string, FixedLenFeature> fixed_len_features;
-    std::map<string, Tensor*> output_dense_values;
-
-    for (int d = 0; d < num_dense_; ++d) {
-      const string& key = dense_keys_t[d];
-      FixedLenFeature& config = fixed_len_features[key];
-      config.dtype = dense_types_[d];
-      config.shape = dense_shapes_[d];
-      config.default_value = dense_defaults[d];
-      output_dense_values[key] = dense_values[d];
-    }
+    std::vector<std::vector<Tensor>> sparse_values_tmp(
+        num_sparse_, std::vector<Tensor>(batch_size));
 
     // Setup Sparse features.
-    std::map<string, VarLenFeature> var_len_features;
+    std::vector<VarLenFeature> var_len_features(num_sparse_);
     for (int d = 0; d < num_sparse_; ++d) {
-      const string& key = sparse_keys_t[d];
-      VarLenFeature& config = var_len_features[key];
+      VarLenFeature config;
+      config.key = sparse_keys_t[d];
       config.dtype = sparse_types_[d];
-      sparse_values_tmp[key] = std::vector<Tensor>();
+      var_len_features[d] = config;
     }
 
     Example ex;
@@ -193,10 +193,9 @@ class ExampleParserOp : public OpKernel {
     // Copy from sparse_values_tmp into final resting Tensors
     // -------------------------
     for (int d = 0; d < num_sparse_; ++d) {
-      const string& key = sparse_keys_t[d];
-      const VarLenFeature& feature_config = var_len_features[key];
+      const VarLenFeature& feature_config = var_len_features[d];
       const std::vector<Tensor>& sparse_values_tmp_tensors =
-          sparse_values_tmp[key];
+          sparse_values_tmp[d];
       VarLenFeatureBatchShapes sparse_tensor_batch_shapes;
       GetSparseTensorShapes(feature_config, sparse_values_tmp_tensors,
                             batch_size, &sparse_tensor_batch_shapes);

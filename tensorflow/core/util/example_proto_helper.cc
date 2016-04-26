@@ -214,17 +214,17 @@ void RowDenseCopy(const std::size_t& out_index, const DataType& dtype,
 
 Status SingleExampleProtoToTensors(
     const Example& example, const string& example_name, const int batch_index,
-    const std::map<string, FixedLenFeature>& fixed_len_features,
-    const std::map<string, VarLenFeature>& var_len_features,
-    std::map<string, Tensor*>* output_dense_values_tensor,
-    std::map<string, std::vector<Tensor>>* output_sparse_values_tmp) {
+    const std::vector<FixedLenFeature>& fixed_len_features,
+    const std::vector<VarLenFeature>& var_len_features,
+    std::vector<Tensor*>* output_dense_values_tensor,
+    std::vector<std::vector<Tensor>>* output_sparse_values_tmp) {
   const Features& features = example.features();
   const auto& feature_dict = features.feature();
 
   // Handle dense features.
-  for (const auto& p : fixed_len_features) {
-    const string& key = p.first;
-    const FixedLenFeature& feature_config = p.second;
+  for (int d = 0; d < fixed_len_features.size(); ++d) {
+    const FixedLenFeature& feature_config = fixed_len_features[d];
+    const string& key = feature_config.key;
     const DataType& dtype = feature_config.dtype;
     const TensorShape& shape = feature_config.shape;
     const Tensor& default_value = feature_config.default_value;
@@ -251,18 +251,18 @@ Status SingleExampleProtoToTensors(
       }
       TF_RETURN_IF_ERROR(FeatureDenseCopy(batch_index, example_name, key, dtype,
                                           shape, f,
-                                          (*output_dense_values_tensor)[key]));
+                                          (*output_dense_values_tensor)[d]));
     } else {
       // If the value is missing, RowDenseCopy the default value.
       RowDenseCopy(batch_index, dtype, default_value,
-                   (*output_dense_values_tensor)[key]);
+                   (*output_dense_values_tensor)[d]);
     }
   }
 
   // Handle sparse features.
-  for (const auto& p : var_len_features) {
-    const string& key = p.first;
-    const VarLenFeature& feature_config = p.second;
+  for (int d = 0; d < var_len_features.size(); ++d) {
+    const VarLenFeature& feature_config = var_len_features[d];
+    const string& key = feature_config.key;
     const DataType& dtype = feature_config.dtype;
     const auto& feature_found = feature_dict.find(key);
 
@@ -280,11 +280,11 @@ Status SingleExampleProtoToTensors(
                                        "Expected type: ", DataTypeString(dtype),
                                        "  Feature is: ", ProtoDebugString(f));
       }
-      (*output_sparse_values_tmp)[key].push_back(
-          FeatureSparseCopy(batch_index, key, dtype, f));
+      (*output_sparse_values_tmp)[d][batch_index] =
+          FeatureSparseCopy(batch_index, key, dtype, f);
     } else {
-      (*output_sparse_values_tmp)[key].push_back(
-          Tensor(dtype, TensorShape({0})));
+      (*output_sparse_values_tmp)[d][batch_index] =
+          Tensor(dtype, TensorShape({0}));
     }
   }
   return Status::OK();
@@ -311,12 +311,12 @@ Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
 
 Status BatchExampleProtoToTensors(
     const std::vector<Example>& examples, const std::vector<string>& names,
-    const std::map<string, FixedLenFeature>& fixed_len_features,
-    const std::map<string, VarLenFeature>& var_len_features,
-    Allocator* allocator, std::map<string, Tensor>* output_dense_values_tensor,
-    std::map<string, Tensor>* output_sparse_indices_tensor,
-    std::map<string, Tensor>* output_sparse_values_tensor,
-    std::map<string, Tensor>* output_sparse_shapes_tensor) {
+    const std::vector<FixedLenFeature>& fixed_len_features,
+    const std::vector<VarLenFeature>& var_len_features, Allocator* allocator,
+    std::vector<Tensor>* output_dense_values_tensor,
+    std::vector<Tensor>* output_sparse_indices_tensor,
+    std::vector<Tensor>* output_sparse_values_tensor,
+    std::vector<Tensor>* output_sparse_shapes_tensor) {
   int batch_size = examples.size();
 
   bool has_names = (names.size() > 0);
@@ -330,22 +330,27 @@ Status BatchExampleProtoToTensors(
 
   // We also need a map of Tensor pointers for the SingleExampleProtoToTensors
   // call. (Is there a better solution here?)
-  std::map<string, Tensor*> output_dense_values_tensor_ptrs;
+  std::vector<Tensor*> output_dense_values_tensor_ptrs(
+      fixed_len_features.size());
 
   // Preallocate dense_values, since we know their sizes.
-  for (const auto& p : fixed_len_features) {
-    const string& key = p.first;
+  for (int d = 0; d < fixed_len_features.size(); ++d) {
+    const FixedLenFeature& config = fixed_len_features[d];
     TensorShape out_shape;
     out_shape.AddDim(batch_size);
-    const TensorShape& shape = p.second.shape;
-    const DataType& dtype = p.second.dtype;
+    const TensorShape& shape = config.shape;
+    const DataType& dtype = config.dtype;
     for (const int dim : shape.dim_sizes()) out_shape.AddDim(dim);
-    (*output_dense_values_tensor)[key] = Tensor(allocator, dtype, out_shape);
-    output_dense_values_tensor_ptrs[key] = &(*output_dense_values_tensor)[key];
+    (*output_dense_values_tensor)[d] = Tensor(allocator, dtype, out_shape);
+    output_dense_values_tensor_ptrs[d] = &(*output_dense_values_tensor)[d];
   }
 
   // Temporary vector to hold sparse values.
-  std::map<string, std::vector<Tensor>> sparse_values_tmp;
+  std::vector<std::vector<Tensor>> sparse_values_tmp(batch_size);
+
+  for (int d = 0; d < var_len_features.size(); ++d) {
+    sparse_values_tmp[d] = std::vector<Tensor>(batch_size);
+  }
 
   for (int b = 0; b < examples.size(); ++b) {
     const Example& ex = examples[b];
@@ -355,11 +360,10 @@ Status BatchExampleProtoToTensors(
         &output_dense_values_tensor_ptrs, &sparse_values_tmp);
   }
 
-  for (const auto& p : var_len_features) {
-    const string& key = p.first;
-    const VarLenFeature& feature_config = p.second;
+  for (int d = 0; d < var_len_features.size(); ++d) {
+    const VarLenFeature& feature_config = var_len_features[d];
     const DataType& dtype = feature_config.dtype;
-    const std::vector<Tensor>& sparse_values_tensor = sparse_values_tmp[key];
+    const std::vector<Tensor>& sparse_values_tensor = sparse_values_tmp[d];
 
     VarLenFeatureBatchShapes sparse_tensor_batch_shapes;
     GetSparseTensorShapes(feature_config, sparse_values_tensor, batch_size,
@@ -368,19 +372,18 @@ Status BatchExampleProtoToTensors(
     const TensorShape& values_shape = sparse_tensor_batch_shapes.values_shape;
 
     // Allocate the sparse indices here.
-    (*output_sparse_indices_tensor)[key] =
+    (*output_sparse_indices_tensor)[d] =
         Tensor(allocator, DT_INT64, indices_shape);
-    (*output_sparse_values_tensor)[key] =
-        Tensor(allocator, dtype, values_shape);
-    (*output_sparse_shapes_tensor)[key] =
+    (*output_sparse_values_tensor)[d] = Tensor(allocator, dtype, values_shape);
+    (*output_sparse_shapes_tensor)[d] =
         Tensor(allocator, DT_INT64, TensorShape({2}));
 
-    auto shape_t = (*output_sparse_shapes_tensor)[key].vec<int64>();
+    auto shape_t = (*output_sparse_shapes_tensor)[d].vec<int64>();
     shape_t(0) = batch_size;
     shape_t(1) = sparse_tensor_batch_shapes.max_num_features;
 
-    Tensor* sp_indices_d = &(*output_sparse_indices_tensor)[key];
-    Tensor* sp_values_d = &(*output_sparse_values_tensor)[key];
+    Tensor* sp_indices_d = &(*output_sparse_indices_tensor)[d];
+    Tensor* sp_values_d = &(*output_sparse_values_tensor)[d];
 
     int64 offset = 0;
     for (int b = 0; b < batch_size; ++b) {

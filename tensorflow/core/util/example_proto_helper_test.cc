@@ -35,42 +35,48 @@ class SingleExampleProtoToTensorsTest : public ::testing::Test {
   void SetUp() override {
     // Setup dense feature configuration.
     FixedLenFeature int64_dense_config;
+    int64_dense_config.key = kDenseInt64Key;
     int64_dense_config.dtype = DT_INT64;
     int64_dense_config.shape = TensorShape({1});
     int64_dense_config.default_value = Tensor(DT_INT64, TensorShape({1}));
     int64_dense_config.default_value.scalar<int64>()() = 0;
-    dense_map_[kDenseInt64Key] = int64_dense_config;
+    dense_vec_.push_back(int64_dense_config);
 
     FixedLenFeature float_dense_config;
+    float_dense_config.key = kDenseFloatKey;
     float_dense_config.dtype = DT_FLOAT;
     float_dense_config.shape = TensorShape({1});
     float_dense_config.default_value = Tensor(DT_FLOAT, TensorShape({1}));
     float_dense_config.default_value.scalar<float>()() = 0.0;
-    dense_map_[kDenseFloatKey] = float_dense_config;
+    dense_vec_.push_back(float_dense_config);
 
     FixedLenFeature string_dense_config;
+    string_dense_config.key = kDenseStringKey;
     string_dense_config.dtype = DT_STRING;
     string_dense_config.shape = TensorShape({1});
     string_dense_config.default_value = Tensor(DT_STRING, TensorShape({1}));
     string_dense_config.default_value.scalar<string>()() = "default";
-    dense_map_[kDenseStringKey] = string_dense_config;
+    dense_vec_.push_back(string_dense_config);
 
     // Setup sparse feature configuration.
     VarLenFeature int64_sparse_config;
+    int64_sparse_config.key = kSparseInt64Key;
     int64_sparse_config.dtype = DT_INT64;
-    sparse_map_[kSparseInt64Key] = int64_sparse_config;
+    sparse_vec_.push_back(int64_sparse_config);
 
     VarLenFeature float_sparse_config;
+    float_sparse_config.key = kSparseFloatKey;
     float_sparse_config.dtype = DT_FLOAT;
-    sparse_map_[kSparseFloatKey] = float_sparse_config;
+    sparse_vec_.push_back(float_sparse_config);
 
     VarLenFeature string_sparse_config;
+    string_sparse_config.key = kSparseStringKey;
     string_sparse_config.dtype = DT_STRING;
-    sparse_map_[kSparseStringKey] = string_sparse_config;
+    sparse_vec_.push_back(string_sparse_config);
   }
 
-  std::map<string, FixedLenFeature> dense_map_;
-  std::map<string, VarLenFeature> sparse_map_;
+  std::vector<FixedLenFeature> dense_vec_;
+  std::vector<VarLenFeature> sparse_vec_;
 };
 
 TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyTrivial) {
@@ -86,52 +92,52 @@ TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyTrivial) {
       .mutable_bytes_list()
       ->add_value("forty-two");
 
-  std::map<string, Tensor*> output_dense_values;
-  std::map<string, std::vector<Tensor>> output_sparse_values_tmp;
+  std::vector<Tensor*> output_dense_values(0);
+  std::vector<std::vector<Tensor>> output_sparse_values_tmp(3);
+  for (int i = 0; i < 3; ++i) {
+    output_sparse_values_tmp[i] = std::vector<Tensor>(1);
+  }
 
-  std::map<string, FixedLenFeature> empty_dense_map;
-  SingleExampleProtoToTensors(ex, "", 0, empty_dense_map, sparse_map_,
+  std::vector<FixedLenFeature> empty_dense_vec;
+  SingleExampleProtoToTensors(ex, "", 0, empty_dense_vec, sparse_vec_,
                               &output_dense_values, &output_sparse_values_tmp);
 
-  const std::vector<Tensor>& int64_tensor_vec =
-      output_sparse_values_tmp[kSparseInt64Key];
+  const std::vector<Tensor>& int64_tensor_vec = output_sparse_values_tmp[0];
   EXPECT_EQ(1, int64_tensor_vec.size());
   EXPECT_EQ(42, int64_tensor_vec[0].vec<int64>()(0));
 
-  const std::vector<Tensor>& float_tensor_vec =
-      output_sparse_values_tmp[kSparseFloatKey];
+  const std::vector<Tensor>& float_tensor_vec = output_sparse_values_tmp[1];
   EXPECT_EQ(1, float_tensor_vec.size());
   EXPECT_NEAR(4.2, float_tensor_vec[0].vec<float>()(0), 0.001);
 
-  const std::vector<Tensor>& string_tensor_vec =
-      output_sparse_values_tmp[kSparseStringKey];
+  const std::vector<Tensor>& string_tensor_vec = output_sparse_values_tmp[2];
   EXPECT_EQ(1, string_tensor_vec.size());
   EXPECT_EQ("forty-two", string_tensor_vec[0].vec<string>()(0));
 }
 
 TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyEmpty) {
   Example empty;
-  std::map<string, Tensor*> output_dense_values;
-  std::map<string, std::vector<Tensor>> output_sparse_values_tmp;
+  std::vector<Tensor*> output_dense_values(0);
+  std::vector<std::vector<Tensor>> output_sparse_values_tmp(3);
+  for (int i = 0; i < 3; ++i) {
+    output_sparse_values_tmp[i] = std::vector<Tensor>(1);
+  }
 
-  std::map<string, FixedLenFeature> empty_dense_map;
-  SingleExampleProtoToTensors(empty, "", 0, empty_dense_map, sparse_map_,
+  std::vector<FixedLenFeature> empty_dense_vec;
+  SingleExampleProtoToTensors(empty, "", 0, empty_dense_vec, sparse_vec_,
                               &output_dense_values, &output_sparse_values_tmp);
 
   // Each feature will still have a tensor vector, however the tensor
   // in the vector will be empty.
-  const std::vector<Tensor>& int64_tensor_vec =
-      output_sparse_values_tmp[kSparseInt64Key];
+  const std::vector<Tensor>& int64_tensor_vec = output_sparse_values_tmp[0];
   EXPECT_EQ(1, int64_tensor_vec.size());
   EXPECT_EQ(0, int64_tensor_vec[0].vec<int64>().size());
 
-  const std::vector<Tensor>& float_tensor_vec =
-      output_sparse_values_tmp[kSparseFloatKey];
+  const std::vector<Tensor>& float_tensor_vec = output_sparse_values_tmp[1];
   EXPECT_EQ(1, float_tensor_vec.size());
   EXPECT_EQ(0, float_tensor_vec[0].vec<float>().size());
 
-  const std::vector<Tensor>& string_tensor_vec =
-      output_sparse_values_tmp[kSparseStringKey];
+  const std::vector<Tensor>& string_tensor_vec = output_sparse_values_tmp[2];
   EXPECT_EQ(1, string_tensor_vec.size());
   EXPECT_EQ(0, string_tensor_vec[0].vec<string>().size());
 }
@@ -149,19 +155,19 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyTrivial) {
       .mutable_bytes_list()
       ->add_value("forty-two");
 
-  std::map<string, Tensor*> output_dense_values;
+  std::vector<Tensor*> output_dense_values(3);
   Tensor int64_dense_output(DT_INT64, TensorShape({1, 1}));
-  output_dense_values[kDenseInt64Key] = &int64_dense_output;
+  output_dense_values[0] = &int64_dense_output;
 
   Tensor float_dense_output(DT_FLOAT, TensorShape({1, 1}));
-  output_dense_values[kDenseFloatKey] = &float_dense_output;
+  output_dense_values[1] = &float_dense_output;
 
   Tensor str_dense_output(DT_STRING, TensorShape({1, 1}));
-  output_dense_values[kDenseStringKey] = &str_dense_output;
+  output_dense_values[2] = &str_dense_output;
 
-  std::map<string, VarLenFeature> empty_sparse_map;
-  std::map<string, std::vector<Tensor>> output_sparse_values_tmp;
-  SingleExampleProtoToTensors(ex, "", 0, dense_map_, empty_sparse_map,
+  std::vector<VarLenFeature> empty_sparse_vec;
+  std::vector<std::vector<Tensor>> output_sparse_values_tmp;
+  SingleExampleProtoToTensors(ex, "", 0, dense_vec_, empty_sparse_vec,
                               &output_dense_values, &output_sparse_values_tmp);
   EXPECT_TRUE(output_sparse_values_tmp.empty());
 
@@ -176,20 +182,21 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyTrivial) {
 }
 
 TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyDefaults) {
-  std::map<string, Tensor*> output_dense_values;
+  std::vector<Tensor*> output_dense_values(3);
   Tensor int64_dense_output(DT_INT64, TensorShape({1, 1}));
-  output_dense_values[kDenseInt64Key] = &int64_dense_output;
+  output_dense_values[0] = &int64_dense_output;
 
   Tensor float_dense_output(DT_FLOAT, TensorShape({1, 1}));
-  output_dense_values[kDenseFloatKey] = &float_dense_output;
+  output_dense_values[1] = &float_dense_output;
 
   Tensor str_dense_output(DT_STRING, TensorShape({1, 1}));
-  output_dense_values[kDenseStringKey] = &str_dense_output;
+  output_dense_values[2] = &str_dense_output;
 
   Example empty;
-  std::map<string, VarLenFeature> empty_sparse_map;
-  std::map<string, std::vector<Tensor>> output_sparse_values_tmp;
-  SingleExampleProtoToTensors(empty, "", 0, dense_map_, empty_sparse_map,
+
+  std::vector<VarLenFeature> empty_sparse_vec;
+  std::vector<std::vector<Tensor>> output_sparse_values_tmp;
+  SingleExampleProtoToTensors(empty, "", 0, dense_vec_, empty_sparse_vec,
                               &output_dense_values, &output_sparse_values_tmp);
 
   EXPECT_EQ(1, int64_dense_output.matrix<int64>().size());

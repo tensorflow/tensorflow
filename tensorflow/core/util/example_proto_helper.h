@@ -33,6 +33,7 @@ namespace tensorflow {
 
 // "Dense" feature configuration.
 struct FixedLenFeature {
+  string key;
   DataType dtype;
   TensorShape shape;
   Tensor default_value;
@@ -40,6 +41,7 @@ struct FixedLenFeature {
 
 // "Sparse" feature configuration.
 struct VarLenFeature {
+  string key;
   DataType dtype;
 };
 
@@ -47,10 +49,12 @@ struct VarLenFeature {
 // at a particular index within a batch, and dense and sparse feature
 // configurations from fixed_len_features, var_len_features, this method
 // updates the dense value tensor and the sparse values temporary vector
-// of tensors.
+// of tensors. The indexing of the output vectors correspond 1:1 to the
+// indexing of the feature configuration vectors.
 //
 // The fixed_len_features and var_len_features maps are assume to be
-// keyed by disjoint keys from the Feature map in the tensorflow.Example proto.
+// have disjoint key fields from the Feature map in the tensorflow.Example
+// proto.
 //
 // For each sparse feature, the sparse values temporary vector holds a
 // tensor for each Example. Each tensor is either empty or filled, depending
@@ -63,10 +67,10 @@ struct VarLenFeature {
 // into the final allocated tensors.
 Status SingleExampleProtoToTensors(
     const Example& example, const string& name, const int batch_index,
-    const std::map<string, FixedLenFeature>& fixed_len_features,
-    const std::map<string, VarLenFeature>& var_len_features,
-    std::map<string, Tensor*>* dense_values_map,
-    std::map<string, std::vector<Tensor>>* sparse_values_temporary_vector_map);
+    const std::vector<FixedLenFeature>& fixed_len_features,
+    const std::vector<VarLenFeature>& var_len_features,
+    std::vector<Tensor*>* dense_values,
+    std::vector<std::vector<Tensor>>* sparse_values_temporary_vector);
 
 // The shape of the indices and values tensors associated with a SparseTensor
 // are dependent on the contents of the batch.
@@ -96,12 +100,12 @@ Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
 // allocated using a provided Allocator within this method.
 Status BatchExampleProtoToTensors(
     const std::vector<Example>& examples, const std::vector<string>& names,
-    const std::map<string, FixedLenFeature>& fixed_len_features,
-    const std::map<string, VarLenFeature>& var_len_features,
-    Allocator* allocator, std::map<string, Tensor>* output_dense_values_tensor,
-    std::map<string, Tensor>* output_sparse_indices_tensor,
-    std::map<string, Tensor>* output_sparse_values_tensor,
-    std::map<string, Tensor>* output_sparse_shapes_tensor);
+    const std::vector<FixedLenFeature>& fixed_len_features,
+    const std::vector<VarLenFeature>& var_len_features, Allocator* allocator,
+    std::vector<Tensor>* output_dense_values_tensor,
+    std::vector<Tensor>* output_sparse_indices_tensor,
+    std::vector<Tensor>* output_sparse_values_tensor,
+    std::vector<Tensor>* output_sparse_shapes_tensor);
 
 // Check that the given dtype is one that is compatible with
 // tensorflow::Example protocol buffer feature values.
