@@ -46,7 +46,8 @@ describe('tf-tensorboard tests', () => {
           return;
         }
         it(`${name}: calling reload reloads dashboard`, function(done) {
-          d3.select(tensorboard).on('rendered', function() {
+          tensorboard.$.tabs.set('selected', tabIndex);
+          setTimeout(function() {
             let called = false;
             tensorboard.selectedDashboard().reload = function() {
               called = true;
@@ -58,7 +59,6 @@ describe('tf-tensorboard tests', () => {
             assert.isTrue(called, `reload was called`);
             done();
           });
-          tensorboard.$.tabs.set('selected', tabIndex);
         });
       });
     });
