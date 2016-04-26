@@ -138,8 +138,17 @@ export class Minimap {
    * was updated (e.g. when a node was expanded).
    */
   update(): void {
-    // The origin hasn't rendered yet. Ignore making an update.
-    if (this.zoomG == null || this.zoomG.childElementCount === 0) {
+    let sceneSize = null;
+    try {
+      // Get the size of the entire scene.
+      sceneSize = this.zoomG.getBBox();
+      if (sceneSize.width === 0) {
+        // There is no scene anymore. We have been detached from the dom.
+        return;
+      }
+    } catch (e) {
+      // Firefox produced NS_ERROR_FAILURE if we have been
+      // detached from the dom.
       return;
     }
     let $download = d3.select('#graphdownload');
@@ -182,8 +191,6 @@ export class Minimap {
     let zoomTransform = $zoomG.attr('transform');
     $zoomG.attr('transform', null);
 
-    // Get the size of the entire scene.
-    let sceneSize = this.zoomG.getBBox();
     // Since we add padding, account for that here.
     sceneSize.height += this.labelPadding * 2;
     sceneSize.width += this.labelPadding * 2;

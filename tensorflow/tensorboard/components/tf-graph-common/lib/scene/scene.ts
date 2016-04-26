@@ -78,9 +78,16 @@ export let Class = {
  */
 export function fit(svg, zoomG, d3zoom, callback) {
   let svgRect = svg.getBoundingClientRect();
-  let sceneSize = zoomG.getBBox();
-  if (sceneSize.width === 0) {
-    // There is no scene anymore.
+  let sceneSize = null;
+  try {
+    sceneSize = zoomG.getBBox();
+    if (sceneSize.width === 0) {
+      // There is no scene anymore. We have been detached from the dom.
+      return;
+    }
+  } catch (e) {
+    // Firefox produced NS_ERROR_FAILURE if we have been
+    // detached from the dom.
     return;
   }
   let scale = 0.9 * Math.min(
