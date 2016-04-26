@@ -16,16 +16,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
+from tensorflow.contrib.learn.python.learn.ops import dnn_ops
+from tensorflow.contrib.learn.python.learn.ops import losses_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
-
-from tensorflow.contrib.learn.python.learn.ops import mean_squared_error_regressor, softmax_classifier, dnn
 
 
 def linear_regression_zero_init(X, y):
@@ -34,7 +33,7 @@ def linear_regression_zero_init(X, y):
 
     Args:
         X: tensor or placeholder for input features.
-            y: tensor or placeholder for target.
+        y: tensor or placeholder for target.
             init_mean: the mean value to use for initialization.
             init_stddev: the standard devation to use for initialization.
 
@@ -103,7 +102,7 @@ def linear_regression(X, y, init_mean=None, init_stddev=1.0):
                                        init_mean, init_stddev))
         logging_ops.histogram_summary('linear_regression.weights', weights)
         logging_ops.histogram_summary('linear_regression.bias', bias)
-        return mean_squared_error_regressor(X, y, weights, bias)
+        return losses_ops.mean_squared_error_regressor(X, y, weights, bias)
 
 
 def logistic_regression(X, y, class_weight=None, init_mean=None,
@@ -161,7 +160,7 @@ def logistic_regression(X, y, class_weight=None, init_mean=None,
             except KeyError:
                 pass
 
-        return softmax_classifier(X, y, weights, bias,
+        return losses_ops.softmax_classifier(X, y, weights, bias,
                                   class_weight=class_weight)
 
 
@@ -182,7 +181,7 @@ def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
     """
     def dnn_estimator(X, y):
         """DNN estimator with target predictor function on top."""
-        layers = dnn(X, hidden_units, dropout=dropout)
+        layers = dnn_ops.dnn(X, hidden_units, dropout=dropout)
         return target_predictor_fn(layers, y)
     return dnn_estimator
 

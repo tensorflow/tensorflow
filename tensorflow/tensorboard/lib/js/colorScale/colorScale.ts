@@ -61,12 +61,13 @@ module TF {
      *                 create the proper "numColors" given in the first param.
      *
      */
-    constructor(numColors = 12, palette: string[] = TF.palettes.googleColorBlind) {
+    constructor(
+        numColors = 12, palette: string[] = TF.palettes.googleColorBlind) {
       this.numColors = numColors;
       this.domain([]);
 
       if (palette.length < 2) {
-        throw new Error("Not enough colors in palette. Must be more than one.");
+        throw new Error('Not enough colors in palette. Must be more than one.');
       }
 
       var k = (this.numColors - 1) / (palette.length - 1);
@@ -92,7 +93,9 @@ module TF {
      */
     public domain(strings: string[]) {
       this.buckets = d3.range(this.numColors).map(() => []);
-      var sortedUniqueKeys = d3.set(strings).values().sort(function(a, b) { return a.localeCompare(b); });
+      var sortedUniqueKeys = d3.set(strings).values().sort(function(a, b) {
+        return a.localeCompare(b);
+      });
       sortedUniqueKeys.forEach((s) => this.addToDomain(s));
     }
 
@@ -126,8 +129,8 @@ module TF {
 
     /**
      * Use the color scale to transform an element in the domain into a color.
-     * If there was a hash conflict, the color will be "nudged" darker or lighter so that it is
-     * unique.
+     * If there was a hash conflict, the color will be "nudged" darker or
+     * lighter so that it is unique.
      * @param {string} The input string to map to a color.
      * @return {string} The color corresponding to that input string.
      * @throws Will error if input string is not in the scale's domain.
@@ -137,7 +140,7 @@ module TF {
       var bucket = this.getBucketForString(s);
       var idx = bucket.indexOf(s);
       if (idx === -1) {
-        throw new Error("String was not in the domain.");
+        throw new Error('String was not in the domain.');
       }
       var color = this.internalColorScale(this.hash(s));
       return this.nudge(color, idx).toString();
