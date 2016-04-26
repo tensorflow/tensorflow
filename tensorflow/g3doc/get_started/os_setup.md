@@ -154,7 +154,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
-#For other versions, see "Install from sources" below.
+# For other versions, see "Install from sources" below.
 (tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
