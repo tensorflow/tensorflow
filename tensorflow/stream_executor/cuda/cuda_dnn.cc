@@ -141,37 +141,25 @@ bool IsCudnnR2() {
   return version < 3000;
 }
 
-#define PERFTOOLS_GPUTOOLS_CUDNN_WRAP(__name)                              \
-  struct DynLoadShim__##__name {                                           \
-    static const char* kName;                                              \
-    typedef std::add_pointer<decltype(::__name)>::type FuncPointerT;       \
-    static FuncPointerT DynLoad() {                                        \
-      static void* f = dlsym(GetDsoHandle(), kName);                       \
-      if (f == nullptr) {                                                  \
-        LOG(FATAL) << "could not find " << kName                           \
-                   << " in cudnn DSO; dlerror: " << dlerror();             \
-      }                                                                    \
-      return reinterpret_cast<FuncPointerT>(f);                            \
-    }                                                                      \
-    template <typename... Args>                                            \
-    void CallWrapper(CUDAExecutor* parent, port::Notification* n,          \
-                     cudnnStatus_t* retval, const Args&... args) {         \
-      cuda::ScopedActivateExecutorContext sac{parent};                     \
-      *retval = DynLoad()(args...);                                        \
-      n->Notify();                                                         \
-    }                                                                      \
-    template <typename... Args>                                            \
-    cudnnStatus_t operator()(CUDAExecutor* parent, Args... args) {         \
-      port::Notification n;                                                \
-      cudnnStatus_t retval;                                                \
-      auto call_func_closure =                                             \
-          std::bind(&DynLoadShim__##__name::CallWrapper<Args...>, this,    \
-                    parent, &n, &retval, args...);                         \
-      GetCudaThreadpool()->Schedule(call_func_closure);                    \
-      n.WaitForNotification();                                             \
-      return retval;                                                       \
-    }                                                                      \
-  } __name;                                                                \
+#define PERFTOOLS_GPUTOOLS_CUDNN_WRAP(__name)                        \
+  struct DynLoadShim__##__name {                                     \
+    static const char* kName;                                        \
+    typedef std::add_pointer<decltype(::__name)>::type FuncPointerT; \
+    static FuncPointerT DynLoad() {                                  \
+      static void* f = dlsym(GetDsoHandle(), kName);                 \
+      if (f == nullptr) {                                            \
+        LOG(FATAL) << "could not find " << kName                     \
+                   << " in cudnn DSO; dlerror: " << dlerror();       \
+      }                                                              \
+      return reinterpret_cast<FuncPointerT>(f);                      \
+    }                                                                \
+    template <typename... Args>                                      \
+    cudnnStatus_t operator()(CUDAExecutor* parent, Args... args) {   \
+      cuda::ScopedActivateExecutorContext sac{parent};               \
+      cudnnStatus_t retval = DynLoad()(args...);                     \
+      return retval;                                                 \
+    }                                                                \
+  } __name;                                                          \
   const char* DynLoadShim__##__name::kName = #__name;
 
 // clang-format off

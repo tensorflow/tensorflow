@@ -239,6 +239,10 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
   // TODO(keveman): Consider adding a new constant op that has a kernel
   // implementation for all types, but with HostMemory constraint on it's
   // output.
+  // 5) Do not replace another constant.
+  if (tensor.first->IsConstant()) {
+    return false;
+  }
   DeviceType device_type = partition_device
                                ? DeviceType{partition_device->device_type()}
                                : DEVICE_CPU;

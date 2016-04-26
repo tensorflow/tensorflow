@@ -121,6 +121,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ops_util_hdrs",
+    hdrs = ["ops_util.h"],
+    deps = [
+        ":eigen_helpers",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_cc_test(
     name = "ops_util_test",
     size = "small",
@@ -1183,6 +1192,20 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "pooling_ops_hdrs",
+    hdrs = [
+        "avgpooling_op.h",
+        "maxpooling_op.h",
+        "pooling_ops_common.h",
+    ],
+    deps = [
+        ":eigen_helpers",
+        ":ops_util_hdrs",
         "//third_party/eigen3",
     ],
 )

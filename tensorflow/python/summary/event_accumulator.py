@@ -24,7 +24,7 @@ import threading
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf.config_pb2 import RunMetadata
 from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary.impl import directory_watcher
 from tensorflow.python.summary.impl import io_wrapper
 from tensorflow.python.summary.impl import reservoir
@@ -582,11 +582,8 @@ def _GeneratorFromPath(path):
   if IsTensorFlowEventsFile(path):
     return io_wrapper.CreateFileLoader(path)
   else:
-    provider = directory_watcher.SequentialFileProvider(
-        path,
-        path_filter=IsTensorFlowEventsFile)
-    return directory_watcher.DirectoryWatcher(provider,
-                                              io_wrapper.CreateFileLoader)
+    return directory_watcher.DirectoryWatcher(path, io_wrapper.CreateFileLoader,
+                                              IsTensorFlowEventsFile)
 
 
 def _ParseFileVersion(file_version):

@@ -27,7 +27,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 _VARIABLE_OPS = {
     "Assign",
@@ -58,7 +58,7 @@ def set_cpu0(device_string):
    Returns:
      A device string.
   """
-  parsed_device = pydev.from_string(device_string)
+  parsed_device = pydev.DeviceSpec.from_string(device_string)
   parsed_device.device_type = "CPU"
   parsed_device.device_index = 0
   return parsed_device.to_string()

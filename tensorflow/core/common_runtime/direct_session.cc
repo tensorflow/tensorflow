@@ -725,8 +725,9 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib = NewFunctionLibraryRuntime(device, runner, graph_def_version,
-                                           fdefs, optimizer_opts);
+    item->flib =
+        NewFunctionLibraryRuntime(device_mgr_.get(), device, runner,
+                                  graph_def_version, fdefs, optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;
@@ -756,7 +757,8 @@ Status DirectSession::GetOrCreateExecutors(
     };
 
     optimizer.Optimize(lib, device, &partition_graph);
-    s = ValidateMemoryTypes(DeviceType(device->device_type()), partition_graph);
+    s = EnsureMemoryTypes(DeviceType(device->device_type()), device->name(),
+                          partition_graph);
     if (!s.ok()) {
       break;
     }

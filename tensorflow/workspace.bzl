@@ -13,8 +13,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/0823d98fdde7.tar.gz",
-    sha256 = "bbb8504e2fbb02937bb4efba4631f2344cd898a4fcee2cf4e7f22542de9aeb52",
+    url = "https://bitbucket.org/eigen/eigen/get/7bfd5612c330.tar.gz",
+    sha256 = "7dd8fdfd1797f34ccff8f42c5dcb964f1f6de3385494bbf06eeafdd2b7b608f3",
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -32,6 +32,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "re2",
     remote = "https://github.com/google/re2.git",
     commit = "791beff",
+  )
+
+  native.git_repository(
+    name = "gemmlowp",
+    remote = "https://github.com/google/gemmlowp.git",
+    commit = "96d3acab46fbb03855ca22c2ee2bb9831ac8c83c",
   )
 
   native.new_http_archive(
