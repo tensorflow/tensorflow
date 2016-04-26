@@ -856,6 +856,7 @@ tf_kernel_libraries(
     name = "logging",
     prefixes = [
         "logging_ops",
+        "summary_audio_op",
         "summary_image_op",
         "summary_op",
     ],
@@ -872,6 +873,7 @@ tf_cc_tests(
     size = "small",
     tests = [
         "logging_ops_test",
+        "summary_audio_op_test",
         "summary_image_op_test",
         "summary_op_test",
     ],

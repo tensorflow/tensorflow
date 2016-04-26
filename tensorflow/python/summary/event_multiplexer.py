@@ -74,6 +74,7 @@ class EventMultiplexer(object):
   @@Histograms
   @@CompressedHistograms
   @@Images
+  @@Audio
   """
 
   def __init__(self,
@@ -305,6 +306,24 @@ class EventMultiplexer(object):
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Images(tag)
+
+  def Audio(self, run, tag):
+    """Retrieve the audio events associated with a run and tag.
+
+    Args:
+      run: A string name of the run for which values are retrieved.
+      tag: A string name of the tag for which values are retrieved.
+
+    Raises:
+      KeyError: If the run is not found, or the tag is not available for
+        the given run.
+      RuntimeError: If the run's `EventAccumulator` has not been activated.
+
+    Returns:
+      An array of `event_accumulator.AudioEvents`.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.Audio(tag)
 
   def Runs(self):
     """Return all the run names in the `EventMultiplexer`.

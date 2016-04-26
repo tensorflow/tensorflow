@@ -39,6 +39,7 @@ from tensorflow.tensorboard.backend import handler
 TENSORBOARD_SIZE_GUIDANCE = {
     event_accumulator.COMPRESSED_HISTOGRAMS: 500,
     event_accumulator.IMAGES: 4,
+    event_accumulator.AUDIO: 4,
     event_accumulator.SCALARS: 1000,
     event_accumulator.HISTOGRAMS: 1,
 }

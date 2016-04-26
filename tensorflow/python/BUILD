@@ -617,6 +617,7 @@ tf_gen_op_wrapper_py(
     name = "logging_ops",
     hidden = [
         "Assert",
+        "AudioSummary",
         "HistogramAccumulatorSummary",
         "HistogramSummary",
         "ImageSummary",
