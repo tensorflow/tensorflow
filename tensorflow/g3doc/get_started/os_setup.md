@@ -435,9 +435,9 @@ binary path.
 #### Install other dependencies
 
 ```bash
-For Python 2.7:
+# For Python 2.7:
 $ sudo apt-get install python-numpy swig python-dev python-wheel
-For Python 3.x:
+# For Python 3.x:
 $ sudo apt-get install python3-numpy swig python3-dev python3-wheel
 ```
 
