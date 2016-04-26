@@ -37,11 +37,23 @@ def Assert(condition, data, summarize=None, name=None):
   If `condition` evaluates to false, print the list of tensors in `data`.
   `summarize` determines how many entries of the tensors to print.
 
+  NOTE: To ensure that Assert executes, one usually attaches a dependency:
+
+  ```python
+   # Ensure maximum element of x is smaller or equal to 1
+  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
+  x = tf.with_dependencies([assert_op], x)
+  ```
+
   Args:
     condition: The condition to evaluate.
     data: The tensors to print out when condition is false.
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional).
+
+  Returns:
+    assert_op: An `Operation` that, when executed, raises a
+    `tf.errors.InvalidArgumentError` if `condition` is not true.
   """
   return gen_logging_ops._assert(condition, data, summarize, name)
 
