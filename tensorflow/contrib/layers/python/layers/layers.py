@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -187,6 +187,7 @@ def convolution2d(x,
                   trainable=True,
                   weight_regularizer=None,
                   bias_regularizer=None):
+  # pylint: disable=g-docstring-has-escape
   """Adds the parameters for a conv2d layer and returns the output.
 
   A neural network convolution layer is generally defined as:

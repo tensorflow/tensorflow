@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform.default import _resource_loader as resource_loader
+from tensorflow.python.platform import resource_loader
 
 
 class DefaultResourceLoaderTest(googletest.TestCase):

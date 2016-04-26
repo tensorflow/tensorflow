@@ -91,3 +91,11 @@ def Exists(path):
     return gcs.Exists(path)
   else:
     return gfile.Exists(path)
+
+
+def Size(path):
+  """Returns the number of bytes in the given file. Doesn't work on GCS."""
+  if gcs.IsGCSPath(path):
+    raise NotImplementedError("io_wrapper.Size doesn't support GCS paths")
+  else:
+    return gfile.Open(path).Size()

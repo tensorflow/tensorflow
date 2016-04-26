@@ -20,6 +20,15 @@ limitations under the License.
 namespace tensorflow {
 namespace core {
 
+void EncodeFixed16(char* buf, uint16 value) {
+  if (port::kLittleEndian) {
+    memcpy(buf, &value, sizeof(value));
+  } else {
+    buf[0] = value & 0xff;
+    buf[1] = (value >> 8) & 0xff;
+  }
+}
+
 void EncodeFixed32(char* buf, uint32 value) {
   if (port::kLittleEndian) {
     memcpy(buf, &value, sizeof(value));
@@ -44,6 +53,12 @@ void EncodeFixed64(char* buf, uint64 value) {
     buf[6] = (value >> 48) & 0xff;
     buf[7] = (value >> 56) & 0xff;
   }
+}
+
+void PutFixed16(string* dst, uint16 value) {
+  char buf[sizeof(value)];
+  EncodeFixed16(buf, value);
+  dst->append(buf, sizeof(buf));
 }
 
 void PutFixed32(string* dst, uint32 value) {

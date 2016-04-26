@@ -15,11 +15,10 @@ limitations under the License.
 module TF.TensorBoard {
   export var AUTORELOAD_LOCALSTORAGE_KEY = 'TF.TensorBoard.autoReloadEnabled';
 
-  var getAutoReloadFromLocalStorage: () => boolean =
-      () => {
-        var val = window.localStorage.getItem(AUTORELOAD_LOCALSTORAGE_KEY);
-        return val === 'true' || val == null;  // defaults to true
-      }
+  var getAutoReloadFromLocalStorage: () => boolean = () => {
+    var val = window.localStorage.getItem(AUTORELOAD_LOCALSTORAGE_KEY);
+    return val === 'true' || val == null;  // defaults to true
+  };
 
   export var AutoReloadBehavior = {
     properties: {
@@ -36,7 +35,7 @@ module TF.TensorBoard {
         value: 120,
       },
     },
-    detached: function() { window.clearTimeout(this._autoReloadId); },
+    detached: function() { window.clearTimeout(this._autoReloadId);},
     _autoReloadObserver: function(autoReload) {
       window.localStorage.setItem(AUTORELOAD_LOCALSTORAGE_KEY, autoReload);
       if (autoReload) {
@@ -55,5 +54,5 @@ module TF.TensorBoard {
       this._autoReloadId = window.setTimeout(
           this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
     }
-  }
+  };
 }

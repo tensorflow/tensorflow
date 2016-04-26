@@ -37,11 +37,23 @@ def Assert(condition, data, summarize=None, name=None):
   If `condition` evaluates to false, print the list of tensors in `data`.
   `summarize` determines how many entries of the tensors to print.
 
+  NOTE: To ensure that Assert executes, one usually attaches a dependency:
+
+  ```python
+   # Ensure maximum element of x is smaller or equal to 1
+  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
+  x = tf.with_dependencies([assert_op], x)
+  ```
+
   Args:
     condition: The condition to evaluate.
     data: The tensors to print out when condition is false.
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional).
+
+  Returns:
+    assert_op: An `Operation` that, when executed, raises a
+    `tf.errors.InvalidArgumentError` if `condition` is not true.
   """
   return gen_logging_ops._assert(condition, data, summarize, name)
 
@@ -166,6 +178,52 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
   return val
 
 
+def audio_summary(tag,
+                  tensor,
+                  sample_rate,
+                  max_outputs=3,
+                  collections=None,
+                  name=None):
+  """Outputs a `Summary` protocol buffer with audio.
+
+  The summary has up to `max_outputs` summary values containing audio. The
+  audio is built from `tensor` which must be 3-D with shape `[batch_size,
+  frames, channels]` or 2-D with shape `[batch_size, frames]`. The values are
+  assumed to be in the range of `[-1.0, 1.0]` with a sample rate of
+  `sample_rate`.
+
+  The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
+  build the `tag` of the summary values:
+
+  *  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.
+  *  If `max_outputs` is greater than 1, the summary value tags are
+     generated sequentially as '*tag*/audio/0', '*tag*/audio/1', etc.
+
+  Args:
+    tag: A scalar `Tensor` of type `string`. Used to build the `tag`
+      of the summary values.
+    tensor: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
+      or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
+    sample_rate: The sample rate of the signal in hertz.
+    max_outputs: Max number of batch elements to generate audio for.
+    collections: Optional list of ops.GraphKeys.  The collections to add the
+      summary to.  Defaults to [ops.GraphKeys.SUMMARIES]
+    name: A name for the operation (optional).
+
+  Returns:
+    A scalar `Tensor` of type `string`. The serialized `Summary` protocol
+    buffer.
+  """
+  with ops.op_scope([tag, tensor], name, "AudioSummary") as scope:
+    val = gen_logging_ops._audio_summary(tag=tag,
+                                         tensor=tensor,
+                                         max_outputs=max_outputs,
+                                         sample_rate=sample_rate,
+                                         name=scope)
+    _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
+  return val
+
+
 def merge_summary(inputs, collections=None, name=None):
   """Merges summaries.
 
@@ -239,6 +297,7 @@ def scalar_summary(tags, values, collections=None, name=None):
 ops.NoGradient("HistogramAccumulatorSummary")
 ops.NoGradient("HistogramSummary")
 ops.NoGradient("ImageSummary")
+ops.NoGradient("AudioSummary")
 ops.NoGradient("MergeSummary")
 ops.NoGradient("ScalarSummary")
 
@@ -246,6 +305,7 @@ ops.NoGradient("ScalarSummary")
 @ops.RegisterShape("HistogramAccumulatorSummary")
 @ops.RegisterShape("HistogramSummary")
 @ops.RegisterShape("ImageSummary")
+@ops.RegisterShape("AudioSummary")
 @ops.RegisterShape("MergeSummary")
 @ops.RegisterShape("ScalarSummary")
 def _ScalarShape(unused_op):

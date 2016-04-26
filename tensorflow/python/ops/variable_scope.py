@@ -32,7 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["VariableScope", "get_variable_scope",
            "get_variable", "variable_scope", "variable_op_scope",
@@ -442,12 +442,13 @@ class _VariableStore(object):
 
     # Run the regularizer if requested and save the resulting loss.
     if regularizer:
-      with ops.name_scope(name + "/Regularizer/"):
-        loss = regularizer(v)
-      if loss is not None:
-        logging.info("Applied regularizer to %s and added the result %s to "
-                     "REGULARIZATION_LOSSES.", v.name, loss.name)
-        ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
+      with ops.colocate_with(v.op):
+        with ops.name_scope(name + "/Regularizer/"):
+          loss = regularizer(v)
+        if loss is not None:
+          logging.info("Applied regularizer to %s and added the result %s to "
+                       "REGULARIZATION_LOSSES.", v.name, loss.name)
+          ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
 
     return v
 

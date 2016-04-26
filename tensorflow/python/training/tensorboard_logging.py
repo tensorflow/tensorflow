@@ -33,7 +33,7 @@ from __future__ import print_function
 import time
 
 from tensorflow.core.util import event_pb2
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 DEBUG = 'DEBUG'
 INFO = 'INFO'

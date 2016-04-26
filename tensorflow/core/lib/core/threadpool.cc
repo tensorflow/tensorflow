@@ -17,7 +17,6 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_EIGEN_THREADPOOL
 #define EIGEN_USE_THREADS
-#define EIGEN_USE_CUSTOM_THREAD_POOL
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #else
 #include <deque>
