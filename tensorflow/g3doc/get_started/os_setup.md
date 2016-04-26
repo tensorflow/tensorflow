@@ -506,6 +506,9 @@ Please specify the location of python. [Default is /usr/bin/python]:
 Do you wish to build TensorFlow with GPU support? [y/N] y
 GPU support will be enabled for TensorFlow
 
+Please specify which gcc nvcc should use as the host compiler. [Default is 
+/usr/bin/gcc]: /usr/bin/gcc-4.9
+
 Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave
 empty to use system default]: 7.5
 
@@ -528,6 +531,8 @@ Setting up Cuda include
 Setting up Cuda lib64
 Setting up Cuda bin
 Setting up Cuda nvvm
+Setting up CUPTI include
+Setting up CUPTI lib64
 Configuration finished
 ```
 
