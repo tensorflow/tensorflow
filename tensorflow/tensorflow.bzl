@@ -9,10 +9,10 @@ def _parse_bazel_version(bazel_version):
   # as a tuple of integers.
   parts = version.split('-', 1)
 
-  # Turn "release" into a tuple of integers
+  # Turn "release" into a tuple of strings 
   version_tuple = ()
   for number in parts[0].split('.'):
-    version_tuple += (int(number),)
+    version_tuple += (str(number),)
   return version_tuple
 
 
