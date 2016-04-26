@@ -78,7 +78,7 @@ class GatherOp : public OpKernel {
       auto out_flat = out->shaped<T, 2>({N, out->NumElements() / N});
 
       functor::Gather<Device, T, Index> functor;
-      Index bad_i = functor(c->eigen_device<Device>(), params_flat,
+      int64 bad_i = functor(c->eigen_device<Device>(), params_flat,
                             indices_flat, out_flat);
 
       OP_REQUIRES(
@@ -95,12 +95,13 @@ namespace functor {
 // Helper method to copy using memcpy.
 template <typename T, typename Index, typename SliceIndex,
           SliceIndex static_slice_elems>
-Index HandleCopies(typename TTypes<T>::ConstMatrix params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   SliceIndex slice_elems, typename TTypes<T>::Matrix out) {
+SliceIndex HandleCopies(typename TTypes<T>::ConstMatrix params,
+                        typename TTypes<Index>::ConstFlat indices,
+                        SliceIndex slice_elems,
+                        typename TTypes<T>::Matrix out) {
   const SliceIndex first_dim_size =
       static_cast<SliceIndex>(indices.dimension(0));
-  const Index limit = params.dimension(0);
+  const Index limit = static_cast<Index>(params.dimension(0));
   T* out_base = &out(0, 0);
   const T* params_base = &params(0, 0);
   if (static_slice_elems >= 0) {
@@ -135,12 +136,12 @@ Index HandleCopies(typename TTypes<T>::ConstMatrix params,
 // Specialization gather functor for CPU.
 template <typename T, typename Index>
 struct Gather<CPUDevice, T, Index> {
-  Index operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix params,
+  int64 operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T>::Matrix out) {
     const int64 N = indices.size();
     const int64 slice_size = out.size() / N;
-    Index bad_i;
+    int64 bad_i;
 
     bool use_large = (slice_size > std::numeric_limits<int32>::max() ||
                       params.size() > std::numeric_limits<int32>::max() ||

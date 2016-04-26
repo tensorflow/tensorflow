@@ -3,7 +3,13 @@
 #
 # Note: Any test that uses GPU support and which we would like to
 # benchmark should be linked statically so that it can be executed
-# from a py_binary or cuda_py_test test logger.
+# from a py_binary or cuda_py_test test logger.  For such a test,
+# append "_gpu" to the test name to invoke the GPU benchmarks.  Example:
+#
+#   # for CPU tests
+#   $ bazel test -c opt --copt=-mavx //third_party/tensorflow/core/kernels/my_op_test
+#   # for GPU benchmarks
+#   $ bazel run -c opt --copt=-mavx --config=cuda //third_party/tensorflow/core/kernels/my_op_test_gpu -- --benchmarks=..
 #
 package(default_visibility = ["//visibility:public"])
 
@@ -117,6 +123,15 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "ops_util_hdrs",
+    hdrs = ["ops_util.h"],
+    deps = [
+        ":eigen_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -713,13 +728,27 @@ tf_cc_tests(
 
 tf_cc_tests(
     tests = [
-        "adjust_contrast_op_benchmark_test",
         "adjust_contrast_op_test",
         "colorspace_op_test",
         "resize_bicubic_op_test",
         "resize_bilinear_op_test",
         "resize_nearest_neighbor_op_test",
     ],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "adjust_contrast_op_benchmark_test",
     deps = [
         ":image",
         ":ops_testutil",
@@ -827,6 +856,7 @@ tf_kernel_libraries(
     name = "logging",
     prefixes = [
         "logging_ops",
+        "summary_audio_op",
         "summary_image_op",
         "summary_op",
     ],
@@ -843,6 +873,7 @@ tf_cc_tests(
     size = "small",
     tests = [
         "logging_ops_test",
+        "summary_audio_op_test",
         "summary_image_op_test",
         "summary_op_test",
     ],
@@ -945,7 +976,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "cwise_ops_test",
     size = "small",
     deps = [
@@ -963,7 +994,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "matmul_op_test",
     size = "small",
     deps = [
@@ -980,7 +1011,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "reduction_ops_test",
     size = "small",
     deps = [
@@ -1130,18 +1161,50 @@ tf_kernel_libraries(
     ],
 )
 
-tf_cc_tests(
-    size = "small",
-    tests = [
-        "lrn_op_test",
-        "nn_ops_test",
-        "xent_op_test",
-    ],
+tf_cc_test(
+    name = "lrn_op_test",
     deps = [
         ":nn",
         ":ops_testutil",
         ":ops_util",
         ":xent_op",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "xent_op_test",
+    deps = [
+        ":nn",
+        ":ops_testutil",
+        ":ops_util",
+        ":xent_op",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "nn_ops_test",
+    deps = [
+        ":nn",
+        ":ops_testutil",
+        ":ops_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -1183,6 +1246,20 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "pooling_ops_hdrs",
+    hdrs = [
+        "avgpooling_op.h",
+        "maxpooling_op.h",
+        "pooling_ops_common.h",
+    ],
+    deps = [
+        ":eigen_helpers",
+        ":ops_util_hdrs",
         "//third_party/eigen3",
     ],
 )
@@ -1260,7 +1337,7 @@ tf_kernel_library(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "random_op_test",
     size = "small",
     deps = [

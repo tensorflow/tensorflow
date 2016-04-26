@@ -20,17 +20,12 @@ declare function fixture(id: string): void; window.HTMLImports.whenReady(() => {
     behaviors: [TF.TensorBoard.AutoReloadBehavior],
   });
 
-
   describe('autoReload-behavior', function() {
     var testElement;
     var ls = window.localStorage;
     var key = TF.TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY;
     var clock;
     var callCount: number;
-
-    // Promise that returns immediately. Useful to allow other async activity
-    // (e.g. element lifecycle callbacks in Firefox) to occur before a test.
-    var waitAsync = () => new Promise((resolve, reject) => resolve());
 
     beforeEach(function() {
       ls.setItem(key, 'false');  // start it turned off so we can mutate fns
@@ -77,17 +72,6 @@ declare function fixture(id: string): void; window.HTMLImports.whenReady(() => {
       testElement.autoReloadEnabled = false;
       clock.tick(20 * 1000);
       assert.equal(callCount, 0, 'callCount is 0');
-    });
-
-    it('turns off autoReload when component is detatched', function(done) {
-      testElement.autoReloadIntervalSecs = 1;
-      testElement.autoReloadEnabled = true;
-      testElement.remove();
-      waitAsync().then(function() {
-        clock.tick(20 * 1000);
-        assert.equal(callCount, 0, 'callCount still 0');
-        done();
-      });
     });
 
     it('throws an error in absence of reload method', function() {

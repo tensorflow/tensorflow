@@ -29,7 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gradients
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _product(t):

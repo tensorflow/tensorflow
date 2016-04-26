@@ -53,6 +53,7 @@ load(
     "tf_cuda_library",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
+    "tf_genrule_cmd_append_to_srcs",
     "tf_proto_text_protos_relative",
     "cc_header_only_library",
 )
@@ -282,6 +283,7 @@ tf_cuda_library(
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/events_writer.h",
+        "util/example_proto_helper.h",
         "util/guarded_philox_random.h",
         "util/memmapped_file_system.h",
         "util/memmapped_file_system_writer.h",
@@ -794,6 +796,7 @@ cc_library(
         "lib/strings/proto_text_util.h",
         "lib/strings/regexp.h",
         "lib/strings/scanner.h",
+        "lib/wav/wav_io.h",
         "platform/denormal.h",
         "platform/platform.h",
         "platform/tensor_coding.h",
@@ -1222,6 +1225,7 @@ tf_cc_tests(
             "common_runtime/gpu/*_test.cc",
             # Run by tests below
             "common_runtime/constant_folding_test.cc",
+            "common_runtime/memory_types_test.cc",
             "common_runtime/direct_session*_test.cc",
             "common_runtime/function_test.cc",
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
@@ -1284,6 +1288,31 @@ tf_cc_tests(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime/memory_types_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cast_op",
+        "//third_party/eigen3",
     ],
 )
 

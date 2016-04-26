@@ -262,6 +262,17 @@ class ColocationGraph {
     return Status::OK();
   }
 
+  // Returns the device name associated with 'node'.
+  DeviceNameUtils::ParsedName DeviceForNode(const Node& node) {
+    int node_root = FindRoot(node.id());
+    return members_[node_root].device_name;
+  }
+
+  void SetDeviceForNode(Node* node, const DeviceNameUtils::ParsedName& device) {
+    int node_root = FindRoot(node->id());
+    members_[node_root].device_name = device;
+  }
+
   // For the given node, subject to the constraints previously given
   // to this ColocationGraph, set its assigned_device_name. Returns OK
   // if a satisfying device can be found, otherwise an error.
@@ -613,6 +624,45 @@ Status SimplePlacer::Run() {
     for (const auto& edge : node->in_edges()) {
       if (!edge->IsControlEdge() &&
           IsRefType(node->input_type(edge->dst_input()))) {
+        // If both the source node and this node have paritally
+        // specified a device, then 'node's device should be
+        // cleared: the reference edge forces 'node' to be on the
+        // same device as the source node.
+        auto source_parsed_name = colocation_graph.DeviceForNode(*edge->src());
+        auto dest_parsed_name = colocation_graph.DeviceForNode(*node);
+        if (DeviceNameUtils::HasSomeDetails(source_parsed_name) &&
+            DeviceNameUtils::HasSomeDetails(dest_parsed_name)) {
+          // Add a log saying that we are ignoring a specified device
+          // for 'node' if the two names were incompatible.
+          if (!DeviceNameUtils::AreCompatibleDevNames(source_parsed_name,
+                                                      dest_parsed_name)) {
+            LOG(INFO) << "Ignoring device specification "
+                      << DeviceNameUtils::ParsedNameToString(
+                             colocation_graph.DeviceForNode(*node))
+                      << " for node '" << node->name()
+                      << "' because the input edge from '"
+                      << edge->src()->name()
+                      << "' is a reference connection and already has a device "
+                         "field set to "
+                      << DeviceNameUtils::ParsedNameToString(
+                             colocation_graph.DeviceForNode(*edge->src()));
+
+            // Make 'node' colocated with the source
+            colocation_graph.SetDeviceForNode(node, source_parsed_name);
+          } else {
+            bool source_subset_of_dest = DeviceNameUtils::IsSpecification(
+                source_parsed_name, dest_parsed_name);
+            bool dest_subset_of_source = DeviceNameUtils::IsSpecification(
+                dest_parsed_name, source_parsed_name);
+
+            if (source_subset_of_dest && !dest_subset_of_source) {
+              colocation_graph.SetDeviceForNode(edge->src(), dest_parsed_name);
+            } else {
+              colocation_graph.SetDeviceForNode(node, source_parsed_name);
+            }
+          }
+        }
+
         status = colocation_graph.ColocateNodes(*edge->src(), *node);
         if (!status.ok()) {
           return AttachDef(errors::InvalidArgument(
