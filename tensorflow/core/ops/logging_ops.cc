@@ -17,11 +17,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-
-
 REGISTER_OP("Assert")
     .Input("condition: bool")
     .Input("data: T")
+    .SetIsStateful()
     .Attr("T: list(type)")
     .Attr("summarize: int = 3")
     .Doc(R"doc(
@@ -39,6 +38,7 @@ REGISTER_OP("Print")
     .Input("input: T")
     .Input("data: U")
     .Output("output: T")
+    .SetIsStateful()
     .Attr("T: type")
     .Attr("U: list(type)")
     .Attr("message: string = ''")

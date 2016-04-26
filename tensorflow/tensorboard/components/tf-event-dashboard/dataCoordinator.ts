@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 module TF {
-
   /* The DataCoordinator generates TF.Datasets for each run/tag combination,
-   * and is responsible for communicating with the backend to load data into them.
+   * and is responsible for communicating with the backend to load data into
+   * them.
    * A key fact about this design is that when Datasets modify their data, they
    * automatically notify all dependent Plottable charts.
    */

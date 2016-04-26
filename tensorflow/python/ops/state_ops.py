@@ -87,6 +87,13 @@ automatically by the optimizers in most cases.
 @@scatter_sub
 @@sparse_mask
 @@IndexedSlices
+
+
+## Exporting and Importing Meta Graphs
+
+@@export_meta_graph
+@@import_meta_graph
+
 """
 
 from __future__ import absolute_import

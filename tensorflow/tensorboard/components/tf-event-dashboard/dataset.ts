@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 module TF {
-  /* An extension of Plottable.Dataset that knows how to load data from a backend.
+  /**
+   * An extension of Plottable.Dataset that knows how to load data from
+   * a backend.
    */
   export class Dataset extends Plottable.Dataset {
     public tag: string;
@@ -22,7 +24,9 @@ module TF {
     private lastRequest;
     private urlGenerator: Function;
 
-    constructor(tag: string, run: string, urlGenerator: (run: string, tag: string) => string) {
+    constructor(
+        tag: string, run: string,
+        urlGenerator: (run: string, tag: string) => string) {
       super([], {tag: tag, run: run});
       this.tag = tag;
       this.run = run;
@@ -42,7 +46,7 @@ module TF {
           /* tslint:disable */
           console.log(error);
           /* tslint:enable */
-          throw new Error("Failure loading JSON at url: \"" + url + "\"");
+          throw new Error('Failure loading JSON at url: "' + url + '"');
         } else {
           this.data(json);
         }

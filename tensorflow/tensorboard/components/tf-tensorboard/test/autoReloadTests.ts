@@ -20,7 +20,6 @@ declare function fixture(id: string): void; window.HTMLImports.whenReady(() => {
     behaviors: [TF.TensorBoard.AutoReloadBehavior],
   });
 
-
   describe('autoReload-behavior', function() {
     var testElement;
     var ls = window.localStorage;
