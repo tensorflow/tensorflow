@@ -16,30 +16,28 @@ describe('tf-tensorboard tests', () => {
   window.HTMLImports.whenReady(() => {
     let assert = chai.assert;
     let demoRouter = TF.Backend.router('data', true);
-    function makeTensorBoard() {
-      let tensorboard: any = fixture('tensorboardFixture');
+    let tensorboard: any;
+    beforeEach(function() {
+      tensorboard = fixture('tensorboardFixture');
       tensorboard.router = demoRouter;
       tensorboard.autoReloadEnabled = false;
-      return tensorboard;
-    }
-    var tensorboard;
-    beforeEach(function() { tensorboard = makeTensorBoard(); });
+    });
 
     it('specified tabs are correct', function(done) {
       setTimeout(function() {
-        var tabs = tensorboard.$.tabs.getElementsByTagName('paper-tab');
-        var tabMode = Array.prototype.map.call(tabs, (x) => x.dataMode);
+        let tabs = tensorboard.$.tabs.getElementsByTagName('paper-tab');
+        let tabMode = Array.prototype.map.call(tabs, (x) => x.dataMode);
         assert.deepEqual(tabMode, TF.TensorBoard.TABS, 'mode is correct');
-        var tabText =
+        let tabText =
             Array.prototype.map.call(tabs, (x) => x.innerText.toLowerCase());
         assert.deepEqual(tabText, TF.TensorBoard.TABS, 'text is correct');
         done();
       });
     });
 
-    it('renders injected content', function(done){
-      assert.isObject(tensorboard.querySelector('#inject-me'));
-      done();
+    it('renders injected content', function() {
+      let injected = tensorboard.querySelector('#inject-me');
+      assert.isNotNull(injected);
     });
 
     describe('non-graph tabs: reloading the selected dashboard', function() {
@@ -48,9 +46,8 @@ describe('tf-tensorboard tests', () => {
           return;
         }
         it(`${name}: calling reload reloads dashboard`, function(done) {
-          tensorboard.$.tabs.set('selected', tabIndex);
           d3.select(tensorboard).on('rendered', function() {
-            var called = false;
+            let called = false;
             tensorboard.selectedDashboard().reload = function() {
               called = true;
             };
@@ -61,17 +58,18 @@ describe('tf-tensorboard tests', () => {
             assert.isTrue(called, `reload was called`);
             done();
           });
+          tensorboard.$.tabs.set('selected', tabIndex);
         });
       });
     });
 
     it('reload is disabled for graph dashboard', function(done) {
-      var idx = TF.TensorBoard.TABS.indexOf('graphs');
+      let idx = TF.TensorBoard.TABS.indexOf('graphs');
       assert.notEqual(idx, -1, 'graphs was found');
       tensorboard.$.tabs.set('selected', idx);
       setTimeout(
           function() {  // async so that the queued tab change will happen
-            var called = false;
+            let called = false;
             tensorboard.selectedDashboard().reload = function() {
               called = true;
             };
@@ -86,7 +84,7 @@ describe('tf-tensorboard tests', () => {
 
     describe('top right global icons', function() {
       it('Clicking the reload button will call reload', function() {
-        var called = false;
+        let called = false;
         tensorboard.reload = function() { called = true; };
         tensorboard.$$('#reload-button').click();
         assert.isTrue(called);
@@ -105,17 +103,17 @@ describe('tf-tensorboard tests', () => {
       });
 
       it('Autoreload checkbox toggle works', function() {
-        var checkbox = tensorboard.$$('#auto-reload-checkbox');
+        let checkbox = tensorboard.$$('#auto-reload-checkbox');
         assert.equal(checkbox.checked, tensorboard.autoReloadEnabled);
-        var oldValue = checkbox.checked;
+        let oldValue = checkbox.checked;
         checkbox.click();
         assert.notEqual(oldValue, checkbox.checked);
         assert.equal(checkbox.checked, tensorboard.autoReloadEnabled);
       });
 
       it('Autoreload checkbox contains correct interval info', function() {
-        var checkbox = tensorboard.$$('#auto-reload-checkbox');
-        var timeInSeconds = tensorboard.autoReloadIntervalSecs + 's';
+        let checkbox = tensorboard.$$('#auto-reload-checkbox');
+        let timeInSeconds = tensorboard.autoReloadIntervalSecs + 's';
         assert.include(checkbox.innerText, timeInSeconds);
       });
     });
