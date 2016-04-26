@@ -20,14 +20,12 @@ from __future__ import print_function
 import threading
 import time
 
-from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_mod
-from tensorflow.python.training import server_lib
 
 
 class SessionManager(object):
@@ -201,8 +199,8 @@ class SessionManager(object):
       A pair (sess, initialized) where 'initialized' is `True` if
       the session could be recovered, `False` otherwise.
     """
-    target = self._maybe_launch_in_process_server(master)
-    sess = session.Session(target, graph=self._graph, config=config)
+    self._target = master
+    sess = session.Session(self._target, graph=self._graph, config=config)
     if self._local_init_op:
       sess.run([self._local_init_op])
 
@@ -268,14 +266,14 @@ class SessionManager(object):
       tf.DeadlineExceededError: if the session is not available after
         max_wait_secs.
     """
-    target = self._maybe_launch_in_process_server(master)
+    self._target = master
 
     if max_wait_secs is None:
       max_wait_secs = float("Inf")
     timer = _CountDownTimer(max_wait_secs)
 
     while True:
-      sess = session.Session(target, graph=self._graph, config=config)
+      sess = session.Session(self._target, graph=self._graph, config=config)
       if self._local_init_op:
         sess.run([self._local_init_op])
       not_ready = self._model_not_ready(sess)
@@ -294,38 +292,6 @@ class SessionManager(object):
 
       logging.info("Waiting for model to be ready: %s", not_ready)
       time.sleep(self._recovery_wait_secs)
-
-  def _maybe_launch_in_process_server(self, master):
-    """Launches the in-process TensorFlow server if needed.
-
-    If 'master' is 'local', an in-memory TensorFlow master is launched.
-
-    TODO(sherrym): Add support for taking a ClusterDef as 'master'.
-
-    Args:
-      master: name of the TensorFlow master to use.
-
-    Returns:
-      Target to be used as argument for creating Session.
-    """
-    if master == "local":
-      with SessionManager._launch_lock:
-        if not SessionManager._TENSORFLOW_LAUNCHED:
-          # Creates ServerDef.
-          server_def = tensorflow_server_pb2.ServerDef(protocol="grpc")
-          job_def = server_def.cluster.job.add()
-          job_def.name = "local"
-          job_def.tasks[0] = "localhost:0"
-          server_def.job_name = job_def.name
-          server_def.task_index = 0
-          server = server_lib.Server(server_def)
-          # Launch tensorflow server.
-          SessionManager._TENSORFLOW_LAUNCHED = True
-          server.start()
-          self._target = server.target
-    else:
-      self._target = master
-    return self._target
 
   def _safe_close(self, sess):
     """Closes a session without raising an exception.
