@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// We define the PY_ARRAY_UNIQUE_SYMBOL in this .cc file and provide an
-// ImportNumpy function to populate it.
-#define TF_IMPORT_NUMPY
-
 #include "tensorflow/python/client/tf_session_helper.h"
 
 #include <cstring>
@@ -635,8 +631,6 @@ void TF_PRun_wrapper(TF_Session* session, const char* handle,
   TF_Run_wrapper_helper(session, handle, nullptr, inputs, output_names,
                         NameVector(), out_status, out_values, nullptr);
 }
-
-void ImportNumpy() { import_array1(); }
 
 string EqualGraphDefWrapper(const string& actual, const string& expected) {
   GraphDef actual_def;

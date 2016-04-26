@@ -80,12 +80,27 @@ py_tests(
 )
 
 cc_library(
+    name = "numpy_lib",
+    srcs = ["lib/core/numpy.cc"],
+    hdrs = [
+        "lib/core/numpy.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/py/numpy:headers",
+        "//util/python:python_headers",
+    ],
+)
+
+cc_library(
     name = "py_func_lib",
     srcs = ["lib/core/py_func.cc"],
     hdrs = [
         "lib/core/py_func.h",
     ],
     deps = [
+        ":numpy_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:script_ops_op_lib",
@@ -962,6 +977,7 @@ tf_cuda_library(
     hdrs = ["client/tf_session_helper.h"],
     deps = [
         ":construction_fails_op",
+        ":numpy_lib",
         ":test_ops_kernels",
         "//tensorflow/core",
         "//tensorflow/core:all_kernels",
@@ -1006,6 +1022,7 @@ tf_py_wrap_cc(
         "util/py_checkpoint_reader.i",
     ],
     deps = [
+        ":numpy_lib",
         ":py_checkpoint_reader",
         ":py_func_lib",
         ":py_record_reader_lib",
