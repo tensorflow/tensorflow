@@ -23,7 +23,7 @@ REGISTER_OP("RandomUniform")
     .Output("output: dtype")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .Attr("dtype: {float,double}")
+    .Attr("dtype: {half,float,double}")
     .Attr("T: {int32, int64}")
     .Doc(R"doc(
 Outputs random values from a uniform distribution.
@@ -79,7 +79,7 @@ REGISTER_OP("RandomStandardNormal")
     .Output("output: dtype")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .Attr("dtype: {float,double}")
+    .Attr("dtype: {half,float,double}")
     .Attr("T: {int32, int64}")
     .Doc(R"doc(
 Outputs random values from a normal distribution.
@@ -102,7 +102,7 @@ REGISTER_OP("TruncatedNormal")
     .Output("output: dtype")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .Attr("dtype: {float,double}")
+    .Attr("dtype: {half,float,double}")
     .Attr("T: {int32, int64}")
     .Doc(R"doc(
 Outputs random values from a truncated normal distribution.

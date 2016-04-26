@@ -41,7 +41,7 @@ class RandomNormalTest(tf.test.TestCase):
   # implementations which uses the same random number seed.
   def testDistinct(self):
     for use_gpu in [False, True]:
-      for dt in tf.float32, tf.float64:
+      for dt in tf.float16, tf.float32, tf.float64:
         sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu)
         x = sampler()
         y = sampler()
@@ -56,16 +56,19 @@ class RandomNormalTest(tf.test.TestCase):
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
   def testCPUGPUMatch(self):
-    for dt in tf.float32, tf.float64:
+    for dt in tf.float16, tf.float32, tf.float64:
       results = {}
       for use_gpu in [False, True]:
         sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=12345)
         results[use_gpu] = sampler()
-      self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
+      if dt == tf.float16:
+        self.assertAllClose(results[False], results[True], rtol=1e-3, atol=1e-3)
+      else:
+        self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
 
   def testSeed(self):
     for use_gpu in [False, True]:
-      for dt in tf.float32, tf.float64:
+      for dt in tf.float16, tf.float32, tf.float64:
         sx = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=345)
         sy = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=345)
         self.assertAllEqual(sx(), sy())
@@ -99,7 +102,7 @@ class TruncatedNormalTest(tf.test.TestCase):
   def testDistinct(self):
     # NOTE: TruncatedNormal on GPU is not supported.
     for use_gpu in [False]:
-      for dt in tf.float32, tf.float64:
+      for dt in tf.float16, tf.float32, tf.float64:
         sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu)
         x = sampler()
         y = sampler()
@@ -114,7 +117,7 @@ class TruncatedNormalTest(tf.test.TestCase):
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
   def testCPUGPUMatch(self):
-    for dt in tf.float32, tf.float64:
+    for dt in tf.float16, tf.float32, tf.float64:
       results = {}
       for use_gpu in [False, True]:
         # We need a particular larger number of samples to test multiple rounds
@@ -122,11 +125,14 @@ class TruncatedNormalTest(tf.test.TestCase):
         sampler = self._Sampler(1000000, 0.0, 1.0, dt, use_gpu=use_gpu,
                                 seed=12345)
         results[use_gpu] = sampler()
-      self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
+      if dt == tf.float16:
+        self.assertAllClose(results[False], results[True], rtol=1e-3, atol=1e-3)
+      else:
+        self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
 
   def testSeed(self):
     for use_gpu in [False, True]:
-      for dt in tf.float32, tf.float64:
+      for dt in tf.float16, tf.float32, tf.float64:
         sx = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=345)
         sy = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=345)
         self.assertAllEqual(sx(), sy())
@@ -135,7 +141,7 @@ class TruncatedNormalTest(tf.test.TestCase):
   # requested one.
   def testStdDev(self):
     for use_gpu in [False, True]:
-      for dt in tf.float32, tf.float64:
+      for dt in tf.float16, tf.float32, tf.float64:
         stddev = 3.0
         sampler = self._Sampler(100000, 0.0, stddev, dt, use_gpu=use_gpu)
         x = sampler()
@@ -167,7 +173,7 @@ class RandomUniformTest(tf.test.TestCase):
 
   def testRange(self):
     for use_gpu in False, True:
-      for dt in tf.float32, tf.float64, tf.int32, tf.int64:
+      for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
         sampler = self._Sampler(1000, minv=-2, maxv=8, dtype=dt,
                                 use_gpu=use_gpu)
         x = sampler()
@@ -179,18 +185,19 @@ class RandomUniformTest(tf.test.TestCase):
   # implementations which uses the same random number seed.
   def testDistinct(self):
     for use_gpu in False, True:
-      for dt in tf.float32, tf.float64, tf.int32, tf.int64:
+      for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
         maxv = 1.0 if dt.is_floating else 1 << 30
         sampler = self._Sampler(1000, minv=0, maxv=maxv, dtype=dt,
                                 use_gpu=use_gpu)
         x = sampler()
         y = sampler()
         count = (x == y).sum()
-        if count >= 10:
+        count_limit = 50 if dt == tf.float16 else 10
+        if count >= count_limit:
           print("x = ", x)
           print("y = ", y)
           print("count = ", count)
-        self.assertTrue(count < 10)
+        self.assertTrue(count < count_limit)
 
   # Check that uniform ints actually follow a uniform distribution.
   def testUniformInts(self):
@@ -218,7 +225,7 @@ class RandomUniformTest(tf.test.TestCase):
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
   def testCPUGPUMatch(self):
-    for dt in tf.float32, tf.float64, tf.int32, tf.int64:
+    for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
       maxv = 1.0 if dt.is_floating else 17
       results = {}
       for use_gpu in False, True:
@@ -229,7 +236,7 @@ class RandomUniformTest(tf.test.TestCase):
 
   def testSeed(self):
     for use_gpu in False, True:
-      for dt in tf.float32, tf.float64, tf.int32, tf.int64:
+      for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
         sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=345)
         sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=345)
         self.assertAllEqual(sx(), sy())
@@ -237,7 +244,7 @@ class RandomUniformTest(tf.test.TestCase):
   def testNoCSE(self):
     shape = [2, 3, 4]
     for use_gpu in False, True:
-      for dtype in tf.float32, tf.int32:
+      for dtype in tf.float16, tf.float32, tf.int32:
         with self.test_session(use_gpu=use_gpu):
           rnd1 = tf.random_uniform(shape, 0, 17, dtype=dtype)
           rnd2 = tf.random_uniform(shape, 0, 17, dtype=dtype)
