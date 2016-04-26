@@ -52,14 +52,14 @@ class ResizeBilinearOp : public OpKernel {
     for (int b = 0; b < st.batch_size; ++b) {
       for (int y = 0; y < st.out_height; ++y) {
         const float in_y = y * st.height_scale;
-        const int top_y_index = static_cast<int>(floorf(in_y));
-        const int bottom_y_index =
+        const int64 top_y_index = static_cast<int64>(floorf(in_y));
+        const int64 bottom_y_index =
             std::min(static_cast<int64>(ceilf(in_y)), (st.in_height - 1));
         const float y_lerp = in_y - top_y_index;
         for (int x = 0; x < st.out_width; ++x) {
           const float in_x = x * st.width_scale;
-          const int left_x_index = static_cast<int>(floorf(in_x));
-          const int right_x_index =
+          const int64 left_x_index = static_cast<int64>(floorf(in_x));
+          const int64 right_x_index =
               std::min(static_cast<int64>(ceilf(in_x)), (st.in_width - 1));
           const float x_lerp = in_x - left_x_index;
           for (int c = 0; c < st.channels; ++c) {
@@ -95,56 +95,17 @@ class ResizeBilinearOpGrad : public OpKernel {
     // Validate input.
     // First argument is gradient with respect to resized image.
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input_grad must be 4-dimensional",
-                                        input.shape().DebugString()));
-    // ResizeBilinear always produces float images, so the input gradient is
-    // always a float.
-    OP_REQUIRES(context, input.dtype() == DT_FLOAT,
-                errors::InvalidArgument("input_grad must be of type float",
-                                        input.dtype()));
-
-    // The second argument is the original input to resize_bilinear.
     const Tensor& original_image = context->input(1);
-    OP_REQUIRES(context, original_image.dims() == 4,
-                errors::InvalidArgument("original_image must be 4-dimensional",
-                                        original_image.shape().DebugString()));
 
-    // Allocate output and initialize to zeros.
-    const int64 batch_size = input.dim_size(0);
-    const int64 channels = input.dim_size(3);
-    const int64 resized_height = input.dim_size(1);
-    const int64 resized_width = input.dim_size(2);
-    const int64 original_height = original_image.dim_size(1);
-    const int64 original_width = original_image.dim_size(2);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({batch_size, original_height,
-                                                original_width, channels}),
-                                &output));
+    ImageResizerGradientState st(align_corners_);
+    st.ValidateAndCreateOutput(context, input, original_image);
+    if (!context->status().ok()) return;
 
     typename TTypes<float, 4>::ConstTensor input_grad =
         input.tensor<float, 4>();
-    typename TTypes<T, 4>::Tensor output_grad = output->tensor<T, 4>();
+    typename TTypes<T, 4>::Tensor output_grad = st.output->tensor<T, 4>();
 
-    for (int c = 0; c < channels; ++c) {
-      for (int y = 0; y < original_height; ++y) {
-        for (int x = 0; x < original_width; ++x) {
-          for (int b = 0; b < batch_size; ++b) {
-            output_grad(b, y, x, c) = 0;
-          }
-        }
-      }
-    }
-
-    const float height_scale =
-        (align_corners_ && resized_height > 1)
-            ? (original_height - 1) / static_cast<float>(resized_height - 1)
-            : original_height / static_cast<float>(resized_height);
-    const float width_scale =
-        (align_corners_ && resized_width > 1)
-            ? (original_width - 1) / static_cast<float>(resized_width - 1)
-            : original_width / static_cast<float>(resized_width);
+    output_grad.setZero();
 
     // Each resized pixel was computed as a weighted average of four input
     // pixels. Here we find the pixels that contributed to each output pixel
@@ -153,22 +114,22 @@ class ResizeBilinearOpGrad : public OpKernel {
     //                       +  top_right * (1 - y) * x
     //                       +  bottom_left * y * (1 - x)
     //                       +  bottom_right * y * x
-    for (int b = 0; b < batch_size; ++b) {
-      for (int y = 0; y < resized_height; ++y) {
-        const float in_y = y * height_scale;
-        const int top_y_index = static_cast<int>(floorf(in_y));
-        const int bottom_y_index =
-            std::min(static_cast<int64>(ceilf(in_y)), (original_height - 1));
+    for (int64 b = 0; b < st.batch_size; ++b) {
+      for (int64 y = 0; y < st.resized_height; ++y) {
+        const float in_y = y * st.height_scale;
+        const int64 top_y_index = static_cast<int>(floorf(in_y));
+        const int64 bottom_y_index =
+            std::min(static_cast<int64>(ceilf(in_y)), (st.original_height - 1));
         const float y_lerp = in_y - top_y_index;
         const float inverse_y_lerp = (1.0f - y_lerp);
-        for (int x = 0; x < resized_width; ++x) {
-          const float in_x = x * width_scale;
-          const int left_x_index = static_cast<int>(floorf(in_x));
-          const int right_x_index =
-              std::min(static_cast<int64>(ceilf(in_x)), (original_width - 1));
+        for (int64 x = 0; x < st.resized_width; ++x) {
+          const float in_x = x * st.width_scale;
+          const int64 left_x_index = static_cast<int64>(floorf(in_x));
+          const int64 right_x_index = std::min(static_cast<int64>(ceilf(in_x)),
+                                               (st.original_width - 1));
           const float x_lerp = in_x - left_x_index;
           const float inverse_x_lerp = (1.0f - x_lerp);
-          for (int c = 0; c < channels; ++c) {
+          for (int64 c = 0; c < st.channels; ++c) {
             output_grad(b, top_y_index, left_x_index, c) +=
                 input_grad(b, y, x, c) * inverse_y_lerp * inverse_x_lerp;
             output_grad(b, top_y_index, right_x_index, c) +=

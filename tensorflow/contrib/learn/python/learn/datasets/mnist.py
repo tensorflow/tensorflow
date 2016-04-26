@@ -19,16 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import gzip
-import os
-import tempfile
 
 import numpy
-from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.platform import gfile
-from tensorflow.python.framework import dtypes
 from tensorflow.contrib.learn.python.learn.datasets import base
+from tensorflow.python.framework import dtypes
+from tensorflow.python.platform import gfile
 
 SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
 
@@ -87,7 +84,6 @@ class DataSet(object):
   def __init__(self, images, labels, fake_data=False, one_hot=False,
                dtype=dtypes.float32):
     """Construct a DataSet.
-
     one_hot arg is used only if fake_data is true.  `dtype` can be either
     `uint8` to leave the input as `[0, 255]`, or `float32` to rescale into
     `[0, 1]`.
@@ -205,4 +201,3 @@ def read_data_sets(train_dir, fake_data=False, one_hot=False, dtype=dtypes.float
 
 def load_mnist():
     return read_data_sets("MNIST_data")
-

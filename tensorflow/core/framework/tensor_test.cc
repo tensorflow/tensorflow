@@ -23,6 +23,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+class TensorTestHelper {
+ public:
+  // This is an operation that can be done by VariableOp.
+  static void set_shape(Tensor* t, const TensorShape& s) { t->set_shape(s); }
+};
 
 TEST(TensorTest, Default) {
   Tensor t;
@@ -572,12 +577,12 @@ TEST(Tensor_Complex, SimpleWithHelper64) {
 TEST(Tensor_Complex, SimpleWithHelper128) {
   {
     Tensor t1 = test::AsTensor<complex128>({0,
-                                           {1, 1},
-                                           complex128(2),
-                                           complex128(3, 3),
-                                           complex128(0, 4),
-                                           complex128(2, 5)},
-                                          {2, 3});
+                                            {1, 1},
+                                            complex128(2),
+                                            complex128(3, 3),
+                                            complex128(0, 4),
+                                            complex128(2, 5)},
+                                           {2, 3});
     Tensor t2(t1.dtype(), t1.shape());
     t2.flat<complex128>() = t1.flat<complex128>() * complex128(0, 2);
     Tensor t3 = test::AsTensor<complex128>(
@@ -698,6 +703,63 @@ TEST(Tensor, Slice_Basic) {
       EXPECT_EQ(1.0, y.unaligned_flat<float>()(i));
     }
   }
+}
+
+namespace {
+template <typename T>
+Tensor MkTensor(DataType dt, TensorShape shape, std::vector<T> init_values) {
+  Tensor x(dt, shape);
+  const int limit = x.NumElements();
+  int vi = 0;
+  for (int i = 0; i < limit; ++i) {
+    x.flat<T>()(i) = init_values[vi++];
+    if (vi >= init_values.size()) vi = 0;
+  }
+  return x;
+}
+}  // namespace
+
+TEST(SummarizeValue, Uninitialized) {
+  Tensor x(DT_INT32);
+  TensorTestHelper::set_shape(&x, TensorShape({4, 4}));
+  EXPECT_EQ(
+      strings::StrCat("uninitialized Tensor of 16 elements of type ", DT_INT32),
+      x.SummarizeValue(16));
+}
+
+TEST(SummarizeValue, INT32) {
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  EXPECT_EQ("1 2 3...", x.SummarizeValue(3));
+}
+
+TEST(SummarizeValue, FLOAT) {
+  Tensor x = MkTensor<float>(DT_FLOAT, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  EXPECT_EQ("1 2 3...", x.SummarizeValue(3));
+}
+
+TEST(SummarizeValue, BOOL) {
+  Tensor x = MkTensor<bool>(DT_BOOL, TensorShape({5}), {false, true, true});
+  EXPECT_EQ("0 1 1 0 1", x.SummarizeValue(16));
+  EXPECT_EQ("0 1 1...", x.SummarizeValue(3));
+}
+
+TEST(SummarizeValue, STRING) {
+  Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
+                              {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("one two three four five", x.SummarizeValue(16));
+  x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
+                       {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("one two three four five one...", x.SummarizeValue(6));
 }
 
 static void BM_CreateAndDestroy(int iters) {

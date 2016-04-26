@@ -37,6 +37,14 @@ limitations under the License.
 
 namespace tensorflow {
 
+// CalculateResizeScale determines the float scaling factor.
+inline float CalculateResizeScale(int64 in_size, int64 out_size,
+                                  bool align_corners) {
+  return (align_corners && out_size > 1)
+             ? (in_size - 1) / static_cast<float>(out_size - 1)
+             : in_size / static_cast<float>(out_size);
+}
+
 struct ImageResizerState {
   explicit ImageResizerState(bool align_corners)
       : align_corners_(align_corners) {}
@@ -83,13 +91,8 @@ struct ImageResizerState {
                                 0, TensorShape({input.dim_size(0), out_height,
                                                 out_width, input.dim_size(3)}),
                                 &output));
-
-    height_scale = (align_corners_ && out_height > 1)
-                       ? (in_height - 1) / static_cast<float>(out_height - 1)
-                       : in_height / static_cast<float>(out_height);
-    width_scale = (align_corners_ && out_width > 1)
-                      ? (in_width - 1) / static_cast<float>(out_width - 1)
-                      : in_width / static_cast<float>(out_width);
+    height_scale = CalculateResizeScale(in_height, out_height, align_corners_);
+    width_scale = CalculateResizeScale(in_width, out_width, align_corners_);
   }
 
   int64 batch_size;
@@ -98,6 +101,65 @@ struct ImageResizerState {
   int64 in_height;
   int64 in_width;
   int64 channels;
+  float height_scale;
+  float width_scale;
+  Tensor* output;
+
+ private:
+  bool align_corners_;
+};
+
+struct ImageResizerGradientState {
+  explicit ImageResizerGradientState(bool align_corners)
+      : align_corners_(align_corners) {}
+
+  void ValidateAndCreateOutput(OpKernelContext* context, const Tensor& input,
+                               const Tensor& original_image) {
+    OP_REQUIRES(context, input.dims() == 4,
+                errors::InvalidArgument("input_grad must be 4-dimensional",
+                                        input.shape().DebugString()));
+    // Resizers always produce float images, so input gradient must
+    // always be a float.
+    OP_REQUIRES(context, input.dtype() == DT_FLOAT,
+                errors::InvalidArgument("input_grad must be of type float",
+                                        input.dtype()));
+
+    OP_REQUIRES(context, original_image.dims() == 4,
+                errors::InvalidArgument("original_image must be 4-dimensional",
+                                        original_image.shape().DebugString()));
+
+    // Allocate output and initialize to zeros.
+    batch_size = input.dim_size(0);
+    channels = input.dim_size(3);
+    resized_height = input.dim_size(1);
+    resized_width = input.dim_size(2);
+    original_height = original_image.dim_size(1);
+    original_width = original_image.dim_size(2);
+
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(original_height, std::numeric_limits<int32>::max()) &&
+            FastBoundsCheck(original_width, std::numeric_limits<int32>::max()),
+        errors::InvalidArgument(
+            "original sizes must be between 0 and max int32"));
+
+    height_scale =
+        CalculateResizeScale(original_height, resized_height, align_corners_);
+    width_scale =
+        CalculateResizeScale(original_width, resized_width, align_corners_);
+    output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, TensorShape({batch_size, original_height,
+                                                original_width, channels}),
+                                &output));
+  }
+
+  int64 batch_size;
+  int64 channels;
+  int64 resized_height;
+  int64 resized_width;
+  int64 original_height;
+  int64 original_width;
   float height_scale;
   float width_scale;
   Tensor* output;

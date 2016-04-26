@@ -23,6 +23,7 @@ REGISTER_OP("PyFunc")
     .Attr("token: string")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type)")
+    .SetIsStateful()
     .Doc(R"doc(
 Invokes a python function to compute func(input)->output.
 
