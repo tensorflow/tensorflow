@@ -72,8 +72,9 @@ class Supervisor(object):
   check for `sv.should_stop()`.
 
   Exceptions that indicate that the training inputs have been exhausted,
-  `tf.errors.OutOfRange`, also cause `sv.should_stop()` to return `True` but
-  are not re-raised from the `with` block: they indicate a normal termination.
+  `tf.errors.OutOfRangeError`, also cause `sv.should_stop()` to return `True`
+  but are not re-raised from the `with` block: they indicate a normal
+  termination.
 
   #### Use for multiple replicas
 
