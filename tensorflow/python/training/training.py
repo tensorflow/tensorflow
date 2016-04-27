@@ -113,6 +113,7 @@ details.
 
 @@scalar_summary
 @@image_summary
+@@audio_summary
 @@histogram_summary
 @@zero_fraction
 

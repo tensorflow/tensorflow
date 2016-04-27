@@ -91,7 +91,7 @@ from tensorflow.python.ops import tensor_array_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 
 # We override the 'tuple' for a control flow op, so we keep python's

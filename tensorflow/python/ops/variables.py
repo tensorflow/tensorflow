@@ -302,10 +302,9 @@ class Variable(object):
               initial_value_shape.as_proto())
 
         # Assigns initial value.
-        with ops.colocate_with(self._variable.op):
-          self._initializer_op = state_ops.assign(
-              self._variable, self._initial_value,
-              validate_shape=validate_shape).op
+        self._initializer_op = state_ops.assign(
+            self._variable, self._initial_value,
+            validate_shape=validate_shape).op
 
         # TODO(vrv): Change this class to not take caching_device, but
         # to take the op to colocate the snapshot with, so we can use

@@ -86,30 +86,32 @@ module TF.Backend {
      */
     backendReload: function() {
       if (this.dataType == null) {
-        throw new Error("TF.Backend.Behavior: Need a dataType to reload.");
+        throw new Error('TF.Backend.Behavior: Need a dataType to reload.');
       }
       if (this.backend == null) {
-        throw new Error("TF.Backend.Behavior: Need a backend to reload.");
+        throw new Error('TF.Backend.Behavior: Need a backend to reload.');
       }
-      var runsRoute = this.backend[this.dataType + "Runs"].bind(this.backend);
-      this._setLoadState("pending");
-      return runsRoute().then((x) => {
-        this._setLoadState("loaded");
-        if (_.isEqual(x, this.run2tag)) {
-          // If x and run2tag are equal, let's avoid updating everything
-          // since that can needlessly trigger run changes, reloads, etc
-          return x;
-        }
-        this._setRun2tag(x);
-        var tags = TF.Backend.getTags(x);
-        this._setDataNotFound(tags.length === 0);
-        this._setTags(tags);
-        this._setRuns(TF.Backend.getRuns(x));
-        return x;
-      }, (fail) => {
-        this._setLoadState("failure");
-        return fail;
-      });
+      var runsRoute = this.backend[this.dataType + 'Runs'].bind(this.backend);
+      this._setLoadState('pending');
+      return runsRoute().then(
+          (x) => {
+            this._setLoadState('loaded');
+            if (_.isEqual(x, this.run2tag)) {
+              // If x and run2tag are equal, let's avoid updating everything
+              // since that can needlessly trigger run changes, reloads, etc
+              return x;
+            }
+            this._setRun2tag(x);
+            var tags = TF.Backend.getTags(x);
+            this._setDataNotFound(tags.length === 0);
+            this._setTags(tags);
+            this._setRuns(TF.Backend.getRuns(x));
+            return x;
+          },
+          (fail) => {
+            this._setLoadState('failure');
+            return fail;
+          });
     },
     _do_autoLoad: function(type, backend, autoLoad) {
       if (autoLoad) {
@@ -121,7 +123,7 @@ module TF.Backend {
     },
     _throwErrorOnUnrecognizedType: function(dataType) {
       if (TF.Backend.TYPES.indexOf(dataType) === -1) {
-        throw new Error("TF.Backend.Behavior: Unknown dataType " + dataType);
+        throw new Error('TF.Backend.Behavior: Unknown dataType ' + dataType);
       }
     },
   };

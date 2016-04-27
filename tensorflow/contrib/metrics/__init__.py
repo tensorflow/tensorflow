@@ -25,3 +25,15 @@ from __future__ import print_function
 from tensorflow.contrib.metrics.python.metrics import *
 from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
 from tensorflow.contrib.metrics.python.ops.confusion_matrix_ops import confusion_matrix
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_absolute_error
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_cosine_distance
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_relative_error
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_squared_error
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_percentage_less
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_precision
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall_at_k
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_root_mean_squared_error
