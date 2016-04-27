@@ -176,6 +176,8 @@ if test -e ${CUDNN_INSTALL_BASEDIR}/cudnn.h; then
   CUDNN_HEADER_DIR=${CUDNN_INSTALL_BASEDIR}
 elif test -e ${CUDNN_INSTALL_BASEDIR}/include/cudnn.h; then
   CUDNN_HEADER_DIR=${CUDNN_INSTALL_BASEDIR}/include
+elif test -e /usr/include/cudnn.h; then
+  CUDNN_HEADER_DIR=/usr/include
 else
   CudnnError "cannot find cudnn.h under: ${CUDNN_INSTALL_BASEDIR}"
 fi
