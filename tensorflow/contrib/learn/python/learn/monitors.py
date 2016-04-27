@@ -17,9 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import sys
 import numpy as np
 
+from tensorflow.core.framework import summary_pb2
+from tensorflow.python.training import training as train
 from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_data_feeder
 
 
@@ -65,6 +68,10 @@ class BaseMonitor(object):
         self.all_train_loss_buffer = []
         self.verbose = verbose
         self.epoch = None
+        self._estimator = None
+
+    def set_estimator(self, estimator):
+        self._estimator = estimator
 
     def update(self, global_step, step_number, training_loss,
                sess, feed_params_fn, loss_expression_tensor):
@@ -153,12 +160,19 @@ class ValidationMonitor(BaseMonitor):
 
     """
     def __init__(self, val_X, val_y, n_classes=0, print_steps=100,
-                 early_stopping_rounds=None):
+                 early_stopping_rounds=None, logdir=None):
         super(ValidationMonitor, self).__init__(print_steps=print_steps,
                                                 early_stopping_rounds=early_stopping_rounds)
         self.val_feeder = setup_train_data_feeder(val_X, val_y, n_classes, -1)
         self.print_val_loss_buffer = []
         self.all_val_loss_buffer = []
+        self._summary_writer = None
+
+    def set_estimator(self, estimator):
+        super(ValidationMonitor, self).set_estimator(estimator)
+        if estimator._output_dir is None:
+            return
+        self._summary_writer = train.SummaryWriter(os.path.join(estimator._output_dir, 'eval'))
 
     def create_val_feed_dict(self, inp, out):
         """Set tensorflow placeholders and create validation data feed"""
@@ -175,9 +189,17 @@ class ValidationMonitor(BaseMonitor):
         self.all_val_loss_buffer.append(val_loss)
         self.print_val_loss_buffer.append(val_loss)
 
+        if self._summary_writer is not None:
+            summary = summary_pb2.Summary()
+            value = summary.value.add()
+            value.tag = "loss"
+            value.simple_value = float(val_loss)
+            self._summary_writer.add_summary(summary, self.global_step)
+
     def _modify_summary_string(self):
         """Adds validation data to string to print and resets validation printing buffer"""
         avg_val_loss = np.mean(self.print_val_loss_buffer)
         self.print_val_loss_buffer = []
         val_loss_string = "avg. val loss: {val_loss:.5f}".format(val_loss=avg_val_loss)
         self._summary_str = (", ".join([self._summary_str, val_loss_string]))
+

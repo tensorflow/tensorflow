@@ -114,6 +114,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
         self._initialized = False
         self.class_weight = class_weight
         self._config = config
+        self._output_dir = None
 
     def _setup_training(self):
         """Sets up graph, model and trainer."""
@@ -184,9 +185,8 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
 
     def _setup_summary_writer(self, logdir):
         """Sets up the summary writer to prepare for later optional visualization."""
-        self._summary_writer = train.SummaryWriter(
-            os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
-            graph=self._session.graph)
+        self._output_dir = os.path.join(logdir, datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        self._summary_writer = train.SummaryWriter(self._output_dir, graph=self._session.graph)
 
     def fit(self, X, y, monitor=None, logdir=None):
         """Builds a neural network model given provided `model_fn` and training
@@ -241,6 +241,9 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
                 self._setup_summary_writer(logdir)
         else:
             self._summary_writer = None
+
+        # Attach monitor to this estimator.
+        self._monitor.set_estimator(self)
 
         # Train model for given number of steps.
         trainer.train(
