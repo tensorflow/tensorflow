@@ -56,6 +56,18 @@ OUTPUTDIR=${OUTPUTDIR:-../../..}
 CUDA_TOOLKIT_PATH=${CUDA_TOOLKIT_PATH:-/usr/local/cuda}
 CUDNN_INSTALL_BASEDIR=${CUDNN_INSTALL_PATH:-/usr/local/cuda}
 
+if [[ -z "$TF_CUDA_VERSION" ]]; then
+  TF_CUDA_EXT=""
+else
+  TF_CUDA_EXT=".$TF_CUDA_VERSION"
+fi
+
+if [[ -z "$TF_CUDNN_VERSION" ]]; then
+  TF_CUDNN_EXT=""
+else
+  TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+fi
+
 # An error message when the Cuda toolkit is not found
 function CudaError {
   echo ERROR: $1
@@ -109,24 +121,24 @@ OSNAME=`uname -s`
 if [ "$OSNAME" == "Linux" ]; then
   CUDA_LIB_PATH="lib64"
   CUDA_CUPTI_LIB_DIR="extras/CUPTI/lib64"
-  CUDA_RT_LIB_PATH="lib64/libcudart.so.${TF_CUDA_VERSION}"
+  CUDA_RT_LIB_PATH="lib64/libcudart.so${TF_CUDA_EXT}"
   CUDA_RT_LIB_STATIC_PATH="lib64/libcudart_static.a"
-  CUDA_BLAS_LIB_PATH="lib64/libcublas.so.${TF_CUDA_VERSION}"
-  CUDA_DNN_LIB_PATH="lib64/libcudnn.so.${TF_CUDNN_VERSION}"
-  CUDA_DNN_LIB_ALT_PATH="libcudnn.so.${TF_CUDNN_VERSION}"
-  CUDA_FFT_LIB_PATH="lib64/libcufft.so.${TF_CUDA_VERSION}"
-  CUDA_CUPTI_LIB_PATH="extras/CUPTI/lib64/libcupti.so$TF_CUDA_VERSION"
+  CUDA_BLAS_LIB_PATH="lib64/libcublas.so${TF_CUDA_EXT}"
+  CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
+  CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
+  CUDA_FFT_LIB_PATH="lib64/libcufft.so${TF_CUDA_EXT}"
+  CUDA_CUPTI_LIB_PATH="extras/CUPTI/lib64/libcupti.so${TF_CUDA_EXT}"
   READLINK_CMD="readlink"
 elif [ "$OSNAME" == "Darwin" ]; then
   CUDA_LIB_PATH="lib"
   CUDA_CUPTI_LIB_DIR="extras/CUPTI/lib"
-  CUDA_RT_LIB_PATH="lib/libcudart.${TF_CUDA_VERSION}.dylib"
+  CUDA_RT_LIB_PATH="lib/libcudart${TF_CUDA_EXT}.dylib"
   CUDA_RT_LIB_STATIC_PATH="lib/libcudart_static.a"
-  CUDA_BLAS_LIB_PATH="lib/libcublas.${TF_CUDA_VERSION}.dylib"
-  CUDA_DNN_LIB_PATH="lib/libcudnn.${TF_CUDNN_VERSION}.dylib"
-  CUDA_DNN_LIB_ALT_PATH="libcudnn.${TF_CUDNN_VERSION}.dylib"
-  CUDA_FFT_LIB_PATH="lib/libcufft.${TF_CUDA_VERSION}.dylib"
-  CUDA_CUPTI_LIB_PATH="extras/CUPTI/lib/libcupti.${TF_CUDA_VERSION}.dylib"
+  CUDA_BLAS_LIB_PATH="lib/libcublas${TF_CUDA_EXT}.dylib"
+  CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
+  CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
+  CUDA_FFT_LIB_PATH="lib/libcufft${TF_CUDA_EXT}.dylib"
+  CUDA_CUPTI_LIB_PATH="extras/CUPTI/lib/libcupti${TF_CUDA_EXT}.dylib"
   READLINK_CMD="greadlink"
 fi
 

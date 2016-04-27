@@ -83,12 +83,7 @@ OSNAME=`uname -s`
 while true; do
   # Configure the Cuda SDK version to use.
   if [ -z "$TF_CUDA_VERSION" ]; then
-    default_cuda_version='7.5'
-    read -p "Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default ${default_cuda_version}]: " TF_CUDA_VERSION
-
-    if [ -z "$TF_CUDA_VERSION" ]; then
-      TF_CUDA_VERSION=$default_cuda_version
-    fi
+    read -p "Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: " TF_CUDA_VERSION
   fi
 
   fromuser=""
@@ -101,10 +96,16 @@ while true; do
     fi
   fi
 
+  if [[ -z "$TF_CUDA_VERSION" ]]; then
+    TF_CUDA_EXT=""
+  else
+    TF_CUDA_EXT=".$TF_CUDA_VERSION"
+  fi
+
   if [ "$OSNAME" == "Linux" ]; then
-    CUDA_RT_LIB_PATH="lib64/libcudart.so.${TF_CUDA_VERSION}"
+    CUDA_RT_LIB_PATH="lib64/libcudart.so${TF_CUDA_EXT}"
   elif [ "$OSNAME" == "Darwin" ]; then
-    CUDA_RT_LIB_PATH="lib/libcudart.${TF_CUDA_VERSION}.dylib"
+    CUDA_RT_LIB_PATH="lib/libcudart${TF_CUDA_EXT}.dylib"
   fi
 
   if [ -e "${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}" ]; then
@@ -124,16 +125,7 @@ done
 while true; do
   # Configure the Cudnn version to use.
   if [ -z "$TF_CUDNN_VERSION" ]; then
-    if [ "$OSNAME" == "Linux" ]; then
-      default_cudnn_version='4.0.7'
-    elif [ "$OSNAME" == "Darwin" ]; then
-      default_cudnn_version='4'
-    fi
-    read -p "Please specify the Cudnn version you want to use. [Leave empty to use system default ${default_cudnn_version}]: " TF_CUDNN_VERSION
-
-    if [ -z "$TF_CUDNN_VERSION" ]; then
-      TF_CUDNN_VERSION=$default_cudnn_version
-    fi
+    read -p "Please specify the Cudnn version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
   fi
 
   fromuser=""
@@ -149,12 +141,18 @@ while true; do
     CUDNN_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
   fi
 
+  if [[ -z "$TF_CUDNN_VERSION" ]]; then
+    TF_CUDNN_EXT=""
+  else
+    TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+  fi
+
   if [ "$OSNAME" == "Linux" ]; then
-    CUDA_DNN_LIB_PATH="lib64/libcudnn.so.${TF_CUDNN_VERSION}"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn.so.${TF_CUDNN_VERSION}"
+    CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
   elif [ "$OSNAME" == "Darwin" ]; then
-    CUDA_DNN_LIB_PATH="lib/libcudnn.${TF_CUDNN_VERSION}.dylib"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn.${TF_CUDNN_VERSION}.dylib"
+    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
   fi
 
   if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
@@ -163,7 +161,7 @@ while true; do
 
   if [ "$OSNAME" == "Linux" ]; then
     CUDNN_PATH_FROM_LDCONFIG="$(ldconfig -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
-    if [ -e "${CUDNN_PATH_FROM_LDCONFIG}.${TF_CUDNN_VERSION}" ]; then
+    if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
       CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
       break
     fi
