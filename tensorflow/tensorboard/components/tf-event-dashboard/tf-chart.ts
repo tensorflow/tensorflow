@@ -1,31 +1,41 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the 'License');
+Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an 'AS IS' BASIS,
+distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 module TF {
-  type tooltipMap = {[run: string]: string};
   export type DataFn = (run: string, tag: string) =>
       Promise<Array<Backend.Datum>>;
-  export type TooltipUpdater = (tooltipMap, xValue, closestRun) => void;
 
   let Y_TOOLTIP_FORMATTER_PRECISION = 4;
   let STEP_AXIS_FORMATTER_PRECISION = 4;
   let Y_AXIS_FORMATTER_PRECISION = 3;
+  let TOOLTIP_Y_PIXEL_OFFSET = 15;
+  let TOOLTIP_X_PIXEL_OFFSET = 0;
+  let TOOLTIP_CIRCLE_SIZE = 3;
+  let TOOLTIP_CLOSEST_CIRCLE_SIZE = 6;
+
+  interface Point {
+    run: string;
+    x: number;  // pixel space
+    y: number;  // pixel space
+    datum: TF.Backend.ScalarDatum;
+  }
+
+  type CrosshairResult = {[runName: string]: Point};
 
   export class BaseChart {
     protected dataFn: DataFn;
     protected tag: string;
-    protected tooltipUpdater: TooltipUpdater;
     private datasets: {[run: string]: Plottable.Dataset};
     protected runs: string[];
 
@@ -41,18 +51,16 @@ module TF {
     protected outer: Plottable.Components.Table;
     protected colorScale: Plottable.Scales.Color;
     protected xTooltipFormatter: (d: number) => string;
+    protected tooltip: d3.Selection<any>;
+    protected dzl: Plottable.DragZoomLayer;
     constructor(
-        tag: string,
-        dataFn: DataFn,
-        tooltipUpdater: TooltipUpdater,
-        xType: string,
-        colorScale: Plottable.Scales.Color
-      ) {
+        tag: string, dataFn: DataFn, xType: string,
+        colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
       this.dataFn = dataFn;
       this.datasets = {};
       this.tag = tag;
       this.colorScale = colorScale;
-      this.tooltipUpdater = tooltipUpdater;
+      this.tooltip = tooltip;
       this.buildChart(xType);
     }
 
@@ -74,7 +82,7 @@ module TF {
      */
     public reload() {
       this.runs.forEach((run) => {
-        var dataset = this.getDataset(run);
+        let dataset = this.getDataset(run);
         this.dataFn(this.tag, run).then((x) => dataset.data(x));
       });
     }
@@ -87,88 +95,11 @@ module TF {
       return this.datasets[run];
     }
 
-    protected addCrosshairs(
-        plot: Plottable.XYPlot<number|Date, number>,
-        yAccessor): Plottable.Components.Group {
-      var pi = new Plottable.Interactions.Pointer();
-      pi.attachTo(plot);
-      let xGuideLine =
-          new Plottable.Components.GuideLineLayer<void>('vertical');
-      let yGuideLine =
-          new Plottable.Components.GuideLineLayer<void>('horizontal');
-      xGuideLine.addClass('crosshairs');
-      yGuideLine.addClass('crosshairs');
-      var group =
-          new Plottable.Components.Group([plot, xGuideLine, yGuideLine]);
-      let yfmt = multiscaleFormatter(Y_TOOLTIP_FORMATTER_PRECISION);
-
-      pi.onPointerMove((p: Plottable.Point) => {
-        let run2val: {[run: string]: string} = {};
-        let x: number = this.xScale.invert(p.x).valueOf();
-        let yMin: number = this.yScale.domain()[0];
-        let yMax: number = this.yScale.domain()[1];
-        let closestRun: string = null;
-        let minYDistToRun: number = Infinity;
-        let yValueForCrosshairs: number = p.y;
-        plot.datasets().forEach((dataset) => {
-          let run: string = dataset.metadata().run;
-          let data: Backend.Datum[] = dataset.data();
-          let xs: number[] = data.map(
-              (d, i) => { return this.xAccessor(d, i, dataset).valueOf(); });
-          let idx: number = _.sortedIndex(xs, x);
-          if (idx === 0 || idx === data.length) {
-            // Only find a point when the cursor is inside the range of the data
-            // if the cursor is to the left or right of all the data, don't
-            // attach.
-            return;
-          }
-          let previous = data[idx - 1];
-          let next = data[idx];
-          let x0: number = this.xAccessor(previous, idx - 1, dataset).valueOf();
-          let x1: number = this.xAccessor(next, idx, dataset).valueOf();
-          let y0: number = yAccessor(previous, idx - 1, dataset).valueOf();
-          let y1: number = yAccessor(next, idx, dataset).valueOf();
-          let slope: number = (y1 - y0) / (x1 - x0);
-          let y: number = y0 + slope * (x - x0);
-
-          if (y < yMin || y > yMax || y !== y) {
-            // don't find data that is off the top or bottom of the plot.
-            // also don't find data if it is NaN
-            return;
-          }
-          let dist = Math.abs(this.yScale.scale(y) - p.y);
-          if (dist < minYDistToRun) {
-            minYDistToRun = dist;
-            closestRun = run;
-            yValueForCrosshairs = this.yScale.scale(y);
-          }
-          // Note this tooltip will display linearly interpolated values
-          // e.g. will display a y=0 value halfway between [y=-1, y=1], even
-          // though there is not actually any 0 datapoint. This could be
-          // misleading.
-          run2val[run] = yfmt(y);
-        });
-        xGuideLine.pixelPosition(p.x);
-        yGuideLine.pixelPosition(yValueForCrosshairs);
-        this.tooltipUpdater(run2val, this.xTooltipFormatter(x), closestRun);
-
-      });
-
-      pi.onPointerExit(() => {
-        this.tooltipUpdater(null, null, null);
-        xGuideLine.pixelPosition(-1);
-        yGuideLine.pixelPosition(-1);
-      });
-
-      return group;
-
-    }
-
     protected buildChart(xType: string) {
       if (this.outer) {
         this.outer.destroy();
       }
-      var xComponents = getXComponents(xType);
+      let xComponents = getXComponents(xType);
       this.xAccessor = xComponents.accessor;
       this.xScale = xComponents.scale;
       this.xAxis = xComponents.axis;
@@ -180,15 +111,15 @@ module TF {
       this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
       this.yAxis.usesTextWidthApproximation(true);
 
-      var center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
+      this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
+
+      let center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
 
       this.gridlines =
           new Plottable.Components.Gridlines(this.xScale, this.yScale);
 
-      var dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
-
       this.center =
-          new Plottable.Components.Group([center, this.gridlines, dzl]);
+          new Plottable.Components.Group([this.gridlines, center, this.dzl]);
       this.outer =  new Plottable.Components.Table([
                                                    [this.yAxis, this.center],
                                                    [null, this.xAxis]
@@ -214,23 +145,148 @@ module TF {
 
   export class LineChart extends BaseChart {
     private plot: Plottable.Plots.Line<number | Date>;
+    private yAccessor: Plottable.Accessor<number>;
+
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
-      var yAccessor = (d: Backend.ScalarDatum) => d.scalar;
-      var plot = new Plottable.Plots.Line<number | Date>();
+      this.yAccessor = (d: Backend.ScalarDatum) => d.scalar;
+      let plot = new Plottable.Plots.Line<number|Date>();
       plot.x(xAccessor, xScale);
-      plot.y(yAccessor, yScale);
+      plot.y(this.yAccessor, yScale);
       plot.attr(
           'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
                         dataset.metadata().run,
           this.colorScale);
       this.plot = plot;
-      var group = this.addCrosshairs(plot, yAccessor);
+      let group = this.setupTooltips(plot);
       return group;
+    }
+
+    private setupTooltips(plot: Plottable.XYPlot<number|Date, number>):
+        Plottable.Components.Group {
+      let pi = new Plottable.Interactions.Pointer();
+      pi.attachTo(plot);
+      // PointsComponent is a Plottable Component that will hold the little
+      // circles we draw over the closest data points
+      let pointsComponent = new Plottable.Component();
+      let group = new Plottable.Components.Group([plot, pointsComponent]);
+
+      let hideTooltips = () => {
+        this.tooltip.style('opacity', 0);
+        pointsComponent.content().selectAll('.point').remove();
+      };
+
+      let enabled = true;
+      let disableTooltips = () => {
+        enabled = false;
+        hideTooltips();
+      };
+      let enableTooltips = () => { enabled = true; };
+
+      this.dzl.interactionStart(disableTooltips);
+      this.dzl.interactionEnd(enableTooltips);
+
+      pi.onPointerMove((p: Plottable.Point) => {
+        if (!enabled) {
+          return;
+        }
+        let target: Point = {
+          run: null,
+          x: p.x,
+          y: p.y,
+          datum: null,
+        };
+
+        let centerBBox: SVGRect =
+            (<any>this.gridlines.content().node()).getBBox();
+        let points =
+            plot.datasets()
+                .map((dataset) => this.findClosestPoint(target, dataset))
+                .filter((p) => {
+                  // Only choose Points that are within window (if we zoomed)
+                  return Plottable.Utils.DOM.intersectsBBox(
+                      p.x, p.y, centerBBox);
+                });
+        points.reverse();  // if multiple points are equidistant, choose 1st run
+        let closestPoint: Point = _.min(points, (p: Point) => dist(p, target));
+
+        points.reverse();  // draw 1st run last, to get the right occlusions
+        let pts: any = pointsComponent.content().selectAll('.point').data(
+            points, (p: Point) => p.run);
+        if (points.length !== 0) {
+          pts.enter().append('circle').classed('point', true);
+          pts.attr(
+                 'r', (p) => p === closestPoint ? TOOLTIP_CLOSEST_CIRCLE_SIZE :
+                                                  TOOLTIP_CIRCLE_SIZE)
+              .attr('cx', (p) => p.x)
+              .attr('cy', (p) => p.y)
+              .style('stroke', 'none')
+              .attr('fill', (p) => this.colorScale.scale(p.run));
+          pts.exit().remove();
+          this.drawTooltips(closestPoint);
+        } else {
+          hideTooltips();
+        }
+      });
+
+      pi.onPointerExit(hideTooltips);
+
+      return group;
+    }
+
+    private drawTooltips(closestPoint: Point) {
+      // Formatters for value, step, and wall_time
+      let valueFormatter = multiscaleFormatter(Y_TOOLTIP_FORMATTER_PRECISION);
+      let stepFormatter = stepX().tooltipFormatter;
+      let wall_timeFormatter = wallX().tooltipFormatter;
+
+      let datum = closestPoint.datum;
+      this.tooltip.select('#headline')
+          .text(closestPoint.run)
+          .style('color', this.colorScale.scale(closestPoint.run));
+      let step = stepFormatter(datum.step);
+      let date = wall_timeFormatter(+datum.wall_time);
+      let value = valueFormatter(datum.scalar);
+      this.tooltip.select('#step').text(step);
+      this.tooltip.select('#time').text(date);
+      this.tooltip.select('#value').text(value);
+
+      this.tooltip.style('top', closestPoint.y + TOOLTIP_Y_PIXEL_OFFSET + 'px')
+          .style(
+              'left', () => this.yAxis.width() + TOOLTIP_X_PIXEL_OFFSET +
+                  closestPoint.x + 'px')
+          .style('opacity', 1);
+    }
+
+    private findClosestPoint(target: Point, dataset: Plottable.Dataset): Point {
+      let run: string = dataset.metadata().run;
+      let points: Point[] = dataset.data().map((d, i) => {
+        let x = this.xAccessor(d, i, dataset);
+        let y = this.yAccessor(d, i, dataset);
+        return {
+          x: this.xScale.scale(x),
+          y: this.yScale.scale(y),
+          datum: d,
+          run: run,
+        };
+      });
+      let idx: number = _.sortedIndex(points, target, (p: Point) => p.x);
+      if (idx === points.length) {
+        return points[points.length - 1];
+      } else if (idx === 0) {
+        return points[0];
+      } else {
+        let prev = points[idx - 1];
+        let next = points[idx];
+        let prevDist = Math.abs(prev.x - target.x);
+        let nextDist = Math.abs(next.x - target.x);
+        return prevDist < nextDist ? prev : next;
+      }
     }
 
     public changeRuns(runs: string[]) {
       super.changeRuns(runs);
-      var datasets = runs.map((r) => this.getDataset(r));
+      let datasets = runs.map((r) => this.getDataset(r));
+      datasets.reverse();  // draw first run on top
       this.plot.datasets(datasets);
     }
   }
@@ -240,24 +296,24 @@ module TF {
 
     public changeRuns(runs: string[]) {
       super.changeRuns(runs);
-      var datasets = runs.map((r) => this.getDataset(r));
+      let datasets = runs.map((r) => this.getDataset(r));
       this.plots.forEach((p) => p.datasets(datasets));
     }
 
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
-      var percents =  [0, 228, 1587, 3085, 5000, 6915, 8413, 9772, 10000];
-      var opacities = _.range(percents.length - 1)
+      let percents = [0, 228, 1587, 3085, 5000, 6915, 8413, 9772, 10000];
+      let opacities = _.range(percents.length - 1)
                           .map((i) => (percents[i + 1] - percents[i]) / 2500);
-      var accessors = percents.map((p, i) => (datum) => datum[i][1]);
-      var median = 4;
-      var medianAccessor = accessors[median];
+      let accessors = percents.map((p, i) => (datum) => datum[i][1]);
+      let median = 4;
+      let medianAccessor = accessors[median];
 
-      var plots = _.range(accessors.length - 1).map((i) => {
-        var p = new Plottable.Plots.Area<number | Date>();
+      let plots = _.range(accessors.length - 1).map((i) => {
+        let p = new Plottable.Plots.Area<number|Date>();
         p.x(xAccessor, xScale);
 
-        var y0 = i > median ? accessors[i] : accessors[i + 1];
-        var y  = i > median ? accessors[i + 1] : accessors[i];
+        let y0 = i > median ? accessors[i] : accessors[i + 1];
+        let y = i > median ? accessors[i + 1] : accessors[i];
         p.y(y, yScale);
         p.y0(y0);
         p.attr(
@@ -274,16 +330,14 @@ module TF {
         return p;
       });
 
-      var medianPlot = new Plottable.Plots.Line<number | Date>();
+      let medianPlot = new Plottable.Plots.Line<number|Date>();
       medianPlot.x(xAccessor, xScale);
       medianPlot.y(medianAccessor, yScale);
       medianPlot.attr(
           'stroke', (d: any, i: number, m: any) => m.run, this.colorScale);
 
       this.plots = plots;
-      var group = this.addCrosshairs(medianPlot, medianAccessor);
-      return new Plottable.Components.Group(
-          [new Plottable.Components.Group(plots), group]);
+      return new Plottable.Components.Group(plots);
     }
   }
 
@@ -293,12 +347,12 @@ module TF {
    */
   function multiscaleFormatter(digits: number): ((v: number) => string) {
     return (v: number) => {
-      var absv = Math.abs(v);
+      let absv = Math.abs(v);
       if (absv < 1E-15) {
         // Sometimes zero-like values get an annoying representation
         absv = 0;
       }
-      var f: (x: number) => string;
+      let f: (x: number) => string;
       if (absv >= 1E4) {
         f = d3.format('.' + digits + 'e');
       } else if (absv > 0 && absv < 0.01) {
@@ -324,9 +378,9 @@ module TF {
   }
 
   function stepX(): XComponents {
-    var scale = new Plottable.Scales.Linear();
-    var axis = new Plottable.Axes.Numeric(scale, 'bottom');
-    var formatter =
+    let scale = new Plottable.Scales.Linear();
+    let axis = new Plottable.Axes.Numeric(scale, 'bottom');
+    let formatter =
         Plottable.Formatters.siSuffix(STEP_AXIS_FORMATTER_PRECISION);
     axis.formatter(formatter);
     return {
@@ -338,8 +392,8 @@ module TF {
   }
 
   function wallX(): XComponents {
-    var scale = new Plottable.Scales.Time();
-    var formatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
+    let scale = new Plottable.Scales.Time();
+    let formatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
     return {
       scale: scale,
       axis: new Plottable.Axes.Time(scale, 'bottom'),
@@ -349,17 +403,17 @@ module TF {
   }
 
   function relativeX(): XComponents {
-    var scale = new Plottable.Scales.Linear();
-    var formatter = (n: number) => {
-      var days = Math.floor(n / 24);
+    let scale = new Plottable.Scales.Linear();
+    let formatter = (n: number) => {
+      let days = Math.floor(n / 24);
       n -= (days * 24);
-      var hours = Math.floor(n);
+      let hours = Math.floor(n);
       n -= hours;
       n *= 60;
-      var minutes = Math.floor(n);
+      let minutes = Math.floor(n);
       n -= minutes;
       n *= 60;
-      var seconds = Math.floor(n);
+      let seconds = Math.floor(n);
       return days + 'd ' + hours + 'h ' + minutes + 'm ' + seconds + 's';
     };
     return {
@@ -367,16 +421,20 @@ module TF {
       axis: new Plottable.Axes.Numeric(scale, 'bottom'),
       accessor:
           (d: Backend.Datum, index: number, dataset: Plottable.Dataset) => {
-            var data = dataset.data();
+            let data = dataset.data();
             // I can't imagine how this function would be called when the data
             // is empty
             // (after all, it iterates over the data), but lets guard just to be
             // safe.
-            var first = data.length > 0 ? +data[0].wall_time : 0;
+            let first = data.length > 0 ? +data[0].wall_time : 0;
             return (+d.wall_time - first) / (60 * 60 * 1000);  // ms to hours
           },
       tooltipFormatter: formatter,
     };
+  }
+
+  function dist(p1: Point, p2: Point): number {
+    return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
   }
 
   function getXComponents(xType: string): XComponents {

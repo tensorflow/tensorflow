@@ -22,6 +22,8 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
   private isZoomed = false;
   private easeFn: (t: number) => number = d3.ease('cubic-in-out');
   private _animationTime = 750;
+  private onStart: Function;
+  private onEnd: Function;
 
   /**
    * Constructs a SelectionBoxLayer with an attached DragInteraction and
@@ -47,6 +49,16 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
     this.setupCallbacks();
   }
 
+  /**
+   * Register a method that calls when the DragZoom interaction starts.
+   */
+  public interactionStart(cb: Function) { this.onStart = cb; }
+
+  /**
+   * Register a method that calls when the DragZoom interaction ends.
+   */
+  public interactionEnd(cb: Function) { this.onEnd = cb; }
+
   private setupCallbacks() {
     let dragging = false;
     this._dragInteraction.onDragStart((startPoint: Point) => {
@@ -54,6 +66,7 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
         topLeft: startPoint,
         bottomRight: startPoint,
       });
+      this.onStart();
     });
     this._dragInteraction.onDrag((startPoint, endPoint) => {
       this.bounds({topLeft: startPoint, bottomRight: endPoint});
@@ -65,6 +78,8 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
       this.bounds({topLeft: startPoint, bottomRight: endPoint});
       if (dragging) {
         this.zoom();
+      } else {
+        this.onEnd();
       }
       dragging = false;
     });
@@ -169,6 +184,7 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
       if (p < 1) {
         Utils.DOM.requestAnimationFramePolyfill(draw);
       } else {
+        this.onEnd();
         this.isZooming(false);
       }
     };
