@@ -534,7 +534,7 @@ class ScopedPoolingDescriptor {
         parent_, handle_,
         (pooling_descriptor.mode() == dnn::PoolingMode::kMaximum
              ? CUDNN_POOLING_MAX
-             : CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING),
+             : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING),
 #if CUDNN_VERSION >= 5000
         // Always propagate nans.
         CUDNN_PROPAGATE_NAN,
