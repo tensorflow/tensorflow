@@ -749,8 +749,11 @@ class TensorArrayUnpackOp : public OpKernel {
           tensor_value_i->shaped<T, 3>({1, 1, element_shape.num_elements()});
       indices[1] = i;
 
-      functor::Split<Device, T>()(ctx->eigen_device<Device>(), tensor_value_i_t,
-                                  tensor_value_t, indices, sizes);
+      if (element_shape.num_elements() > 0) {
+        functor::Split<Device, T>()(ctx->eigen_device<Device>(),
+                                    tensor_value_i_t, tensor_value_t, indices,
+                                    sizes);
+      }
 
       write_values.push_back(persistent_tensor);
     }
