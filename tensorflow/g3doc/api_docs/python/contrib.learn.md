@@ -13,29 +13,30 @@
 This class specifies the specific configurations for the run.
 
 Parameters:
-    tf_master: TensorFlow master. Empty string is default for local.
-    num_cores: Number of cores to be used. (default: 4)
-    verbose: Controls the verbosity, possible values:
-             0: the algorithm and debug information is muted.
-             1: trainer prints the progress.
-             2: log device placement is printed.
-    gpu_memory_fraction: Fraction of GPU memory used by the process on
-        each GPU uniformly on the same machine.
-    tf_random_seed: Random seed for TensorFlow initializers.
-        Setting this value, allows consistency between reruns.
-    keep_checkpoint_max: The maximum number of recent checkpoint files to keep.
-        As new files are created, older files are deleted.
-        If None or 0, all checkpoint files are kept.
-        Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-    keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-        to be saved. The default value of 10,000 hours effectively disables the feature.
+  tf_master: TensorFlow master. Empty string is default for local.
+  num_cores: Number of cores to be used. (default: 4)
+  verbose: Controls the verbosity, possible values:
+    0: the algorithm and debug information is muted.
+    1: trainer prints the progress.
+    2: log device placement is printed.
+  gpu_memory_fraction: Fraction of GPU memory used by the process on
+    each GPU uniformly on the same machine.
+  tf_random_seed: Random seed for TensorFlow initializers.
+    Setting this value, allows consistency between reruns.
+  keep_checkpoint_max: The maximum number of recent checkpoint files to keep.
+    As new files are created, older files are deleted.
+    If None or 0, all checkpoint files are kept.
+    Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
+  keep_checkpoint_every_n_hours: Number of hours between each checkpoint
+    to be saved. The default value of 10,000 hours effectively disables
+    the feature.
 
 Attributes:
-    tf_master: Tensorflow master.
-    tf_config: Tensorflow Session Config proto.
-    tf_random_seed: Tensorflow random seed.
-    keep_checkpoint_max: Maximum number of checkpoints to keep.
-    keep_checkpoint_every_n_hours: Number of hours between each checkpoint.
+  tf_master: Tensorflow master.
+  tf_config: Tensorflow Session Config proto.
+  tf_random_seed: Tensorflow random seed.
+  keep_checkpoint_max: Maximum number of checkpoints to keep.
+  keep_checkpoint_every_n_hours: Number of hours between each checkpoint.
 - - -
 
 #### `tf.contrib.learn.RunConfig.__init__(tf_master='', num_cores=4, verbose=1, gpu_memory_fraction=1, tf_random_seed=42, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
@@ -80,18 +81,21 @@ To restart learning, create new estimator.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class labels in classification, real numbers in regression).
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early stopping
+  iterator that returns array of targets. The training target values
+  (class labels in classification, real numbers in regression).
+
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
+    stopping
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
-    optional visualization.
+  optional visualization.
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -125,7 +129,7 @@ Returns tensor by name.
 
 ##### Returns:
 
-    Tensor.
+  Tensor.
 
 
 - - -
@@ -141,7 +145,7 @@ Returns value of the tensor give by name.
 
 ##### Returns:
 
-    Numpy array - value of the tensor.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -162,15 +166,16 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
+  iterator that returns array of targets. The training target values
+  (class label in classification, real numbers in regression).
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -188,17 +193,17 @@ returned.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
-          By default axis 1 (next after batch) is used.
-          Use 2 for sequence predictions.
+    By default axis 1 (next after batch) is used.
+    Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size member
-                variable is used.
+    it into mini batches. By default the batch_size member
+    variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-    value.
+  value.
 
 
 - - -
@@ -212,14 +217,13 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size
-                member variable is used.
+    it into mini batches. By default the batch_size member variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-    probabilities for each class.
+  probabilities for each class.
 
 
 - - -
@@ -233,11 +237,12 @@ Restores model from give path.
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
+    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
+      reconfigured.
 
 ##### Returns:
 
-    Estiamator, object of the subclass of TensorFlowEstimator.
+  Estiamator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
@@ -310,29 +315,27 @@ Returns weights of the linear classifier.
 TensorFlow DNN Classifier model.
 
 Parameters:
-    hidden_units: List of hidden units per layer.
-    n_classes: Number of classes in the target.
-    batch_size: Mini batch size.
-    steps: Number of steps to run over data.
-    optimizer: Optimizer name (or class), for example "SGD", "Adam",
-               "Adagrad".
-    learning_rate: If this is constant float value, no decay function is used.
-        Instead, a customized decay function can be passed that accepts
-        global_step as parameter and returns a Tensor.
-        e.g. exponential decay function:
-        def exp_decay(global_step):
-            return tf.train.exponential_decay(
-                learning_rate=0.1, global_step,
-                decay_steps=2, decay_rate=0.001)
-    class_weight: None or list of n_classes floats. Weight associated with
-                 classes for loss computation. If not given, all classes are suppose to have
-                 weight one.
-    continue_training: when continue_training is True, once initialized
-        model will be continuely trained on every call of fit.
-    config: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc.
-    dropout: When not None, the probability we will drop out a given
-             coordinate.
+  hidden_units: List of hidden units per layer.
+  n_classes: Number of classes in the target.
+  batch_size: Mini batch size.
+  steps: Number of steps to run over data.
+  optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
+  learning_rate: If this is constant float value, no decay function is used.
+    Instead, a customized decay function can be passed that accepts
+    global_step as parameter and returns a Tensor.
+    e.g. exponential decay function:
+    def exp_decay(global_step):
+        return tf.train.exponential_decay(
+            learning_rate=0.1, global_step,
+            decay_steps=2, decay_rate=0.001)
+  class_weight: None or list of n_classes floats. Weight associated with
+    classes for loss computation. If not given, all classes are
+    supposed to have weight one.
+  continue_training: when continue_training is True, once initialized
+    model will be continuely trained on every call of fit.
+  config: RunConfig object that controls the configurations of the
+    session, e.g. num_cores, gpu_memory_fraction, etc.
+  dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
 #### `tf.contrib.learn.TensorFlowDNNClassifier.__init__(hidden_units, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1, dropout=None)` {#TensorFlowDNNClassifier.__init__}
@@ -364,18 +367,21 @@ To restart learning, create new estimator.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class labels in classification, real numbers in regression).
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early stopping
+  iterator that returns array of targets. The training target values
+  (class labels in classification, real numbers in regression).
+
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
+    stopping
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
-    optional visualization.
+  optional visualization.
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -409,7 +415,7 @@ Returns tensor by name.
 
 ##### Returns:
 
-    Tensor.
+  Tensor.
 
 
 - - -
@@ -425,7 +431,7 @@ Returns value of the tensor give by name.
 
 ##### Returns:
 
-    Numpy array - value of the tensor.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -446,15 +452,16 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
+  iterator that returns array of targets. The training target values
+  (class label in classification, real numbers in regression).
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -472,17 +479,17 @@ returned.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
-          By default axis 1 (next after batch) is used.
-          Use 2 for sequence predictions.
+    By default axis 1 (next after batch) is used.
+    Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size member
-                variable is used.
+    it into mini batches. By default the batch_size member
+    variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-    value.
+  value.
 
 
 - - -
@@ -496,14 +503,13 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size
-                member variable is used.
+    it into mini batches. By default the batch_size member variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-    probabilities for each class.
+  probabilities for each class.
 
 
 - - -
@@ -517,11 +523,12 @@ Restores model from give path.
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
+    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
+      reconfigured.
 
 ##### Returns:
 
-    Estiamator, object of the subclass of TensorFlowEstimator.
+  Estiamator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
@@ -594,29 +601,27 @@ Returns weights of the DNN weight layers.
 TensorFlow DNN Regressor model.
 
 Parameters:
-    hidden_units: List of hidden units per layer.
-    batch_size: Mini batch size.
-    steps: Number of steps to run over data.
-    optimizer: Optimizer name (or class), for example "SGD", "Adam",
-               "Adagrad".
-    learning_rate: If this is constant float value, no decay function is used.
-        Instead, a customized decay function can be passed that accepts
-        global_step as parameter and returns a Tensor.
-        e.g. exponential decay function:
-        def exp_decay(global_step):
-            return tf.train.exponential_decay(
-                learning_rate=0.1, global_step,
-                decay_steps=2, decay_rate=0.001)
-    continue_training: when continue_training is True, once initialized
-        model will be continuely trained on every call of fit.
-    config: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc.
-    verbose: Controls the verbosity, possible values:
-             0: the algorithm and debug information is muted.
-             1: trainer prints the progress.
-             2: log device placement is printed.
-    dropout: When not None, the probability we will drop out a given
-             coordinate.
+  hidden_units: List of hidden units per layer.
+  batch_size: Mini batch size.
+  steps: Number of steps to run over data.
+  optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
+  learning_rate: If this is constant float value, no decay function is
+    used. Instead, a customized decay function can be passed that accepts
+    global_step as parameter and returns a Tensor.
+    e.g. exponential decay function:
+    def exp_decay(global_step):
+        return tf.train.exponential_decay(
+            learning_rate=0.1, global_step,
+            decay_steps=2, decay_rate=0.001)
+  continue_training: when continue_training is True, once initialized
+    model will be continuely trained on every call of fit.
+  config: RunConfig object that controls the configurations of the session,
+    e.g. num_cores, gpu_memory_fraction, etc.
+  verbose: Controls the verbosity, possible values:
+    0: the algorithm and debug information is muted.
+    1: trainer prints the progress.
+    2: log device placement is printed.
+  dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
 #### `tf.contrib.learn.TensorFlowDNNRegressor.__init__(hidden_units, n_classes=0, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1, dropout=None)` {#TensorFlowDNNRegressor.__init__}
@@ -648,18 +653,21 @@ To restart learning, create new estimator.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class labels in classification, real numbers in regression).
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early stopping
+  iterator that returns array of targets. The training target values
+  (class labels in classification, real numbers in regression).
+
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
+    stopping
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
-    optional visualization.
+  optional visualization.
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -693,7 +701,7 @@ Returns tensor by name.
 
 ##### Returns:
 
-    Tensor.
+  Tensor.
 
 
 - - -
@@ -709,7 +717,7 @@ Returns value of the tensor give by name.
 
 ##### Returns:
 
-    Numpy array - value of the tensor.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -730,15 +738,16 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
+  iterator that returns array of targets. The training target values
+  (class label in classification, real numbers in regression).
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -756,17 +765,17 @@ returned.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
-          By default axis 1 (next after batch) is used.
-          Use 2 for sequence predictions.
+    By default axis 1 (next after batch) is used.
+    Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size member
-                variable is used.
+    it into mini batches. By default the batch_size member
+    variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-    value.
+  value.
 
 
 - - -
@@ -780,14 +789,13 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size
-                member variable is used.
+    it into mini batches. By default the batch_size member variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-    probabilities for each class.
+  probabilities for each class.
 
 
 - - -
@@ -801,11 +809,12 @@ Restores model from give path.
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
+    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
+      reconfigured.
 
 ##### Returns:
 
-    Estiamator, object of the subclass of TensorFlowEstimator.
+  Estiamator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
@@ -882,34 +891,34 @@ Returns weights of the DNN weight layers.
 Base class for all TensorFlow estimators.
 
 Parameters:
-    model_fn: Model function, that takes input X, y tensors and outputs
-              prediction and loss tensors.
-    n_classes: Number of classes in the target.
-    batch_size: Mini batch size.
-    steps: Number of steps to run over data.
-    optimizer: Optimizer name (or class), for example "SGD", "Adam",
-               "Adagrad".
-    learning_rate: If this is constant float value, no decay function is used.
-        Instead, a customized decay function can be passed that accepts
-        global_step as parameter and returns a Tensor.
-        e.g. exponential decay function:
-        def exp_decay(global_step):
-            return tf.train.exponential_decay(
-                learning_rate=0.1, global_step,
-                decay_steps=2, decay_rate=0.001)
-    clip_gradients: Clip norm of the gradients to this value to stop
-                    gradient explosion.
-    class_weight: None or list of n_classes floats. Weight associated with
-                 classes for loss computation. If not given, all classes are suppose to have
-                 weight one.
-    continue_training: when continue_training is True, once initialized
-        model will be continuely trained on every call of fit.
-    config: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc.
-    verbose: Controls the verbosity, possible values:
-             0: the algorithm and debug information is muted.
-             1: trainer prints the progress.
-             2: log device placement is printed.
+  model_fn: Model function, that takes input X, y tensors and outputs
+    prediction and loss tensors.
+  n_classes: Number of classes in the target.
+  batch_size: Mini batch size.
+  steps: Number of steps to run over data.
+  optimizer: Optimizer name (or class), for example "SGD", "Adam",
+    "Adagrad".
+  learning_rate: If this is constant float value, no decay function is used.
+    Instead, a customized decay function can be passed that accepts
+    global_step as parameter and returns a Tensor.
+    e.g. exponential decay function:
+    def exp_decay(global_step):
+        return tf.train.exponential_decay(
+            learning_rate=0.1, global_step,
+            decay_steps=2, decay_rate=0.001)
+  clip_gradients: Clip norm of the gradients to this value to stop
+    gradient explosion.
+  class_weight: None or list of n_classes floats. Weight associated with
+    classes for loss computation. If not given, all classes are supposed to
+    have weight one.
+  continue_training: when continue_training is True, once initialized
+    model will be continuely trained on every call of fit.
+  config: RunConfig object that controls the configurations of the
+    session, e.g. num_cores, gpu_memory_fraction, etc.
+  verbose: Controls the verbosity, possible values:
+    0: the algorithm and debug information is muted.
+    1: trainer prints the progress.
+    2: log device placement is printed.
 - - -
 
 #### `tf.contrib.learn.TensorFlowEstimator.__init__(model_fn, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, class_weight=None, continue_training=False, config=None, verbose=1)` {#TensorFlowEstimator.__init__}
@@ -934,18 +943,21 @@ To restart learning, create new estimator.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class labels in classification, real numbers in regression).
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early stopping
+  iterator that returns array of targets. The training target values
+  (class labels in classification, real numbers in regression).
+
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
+    stopping
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
-    optional visualization.
+  optional visualization.
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -979,7 +991,7 @@ Returns tensor by name.
 
 ##### Returns:
 
-    Tensor.
+  Tensor.
 
 
 - - -
@@ -995,7 +1007,7 @@ Returns value of the tensor give by name.
 
 ##### Returns:
 
-    Numpy array - value of the tensor.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -1016,15 +1028,16 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
+  iterator that returns array of targets. The training target values
+  (class label in classification, real numbers in regression).
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -1042,17 +1055,17 @@ returned.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
-          By default axis 1 (next after batch) is used.
-          Use 2 for sequence predictions.
+    By default axis 1 (next after batch) is used.
+    Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size member
-                variable is used.
+    it into mini batches. By default the batch_size member
+    variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-    value.
+  value.
 
 
 - - -
@@ -1066,14 +1079,13 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size
-                member variable is used.
+    it into mini batches. By default the batch_size member variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-    probabilities for each class.
+  probabilities for each class.
 
 
 - - -
@@ -1087,11 +1099,12 @@ Restores model from give path.
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
+    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
+      reconfigured.
 
 ##### Returns:
 
-    Estiamator, object of the subclass of TensorFlowEstimator.
+  Estiamator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
@@ -1159,18 +1172,21 @@ To restart learning, create new estimator.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class labels in classification, real numbers in regression).
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early stopping
+  iterator that returns array of targets. The training target values
+  (class labels in classification, real numbers in regression).
+
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
+    stopping
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
-    optional visualization.
+  optional visualization.
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -1204,7 +1220,7 @@ Returns tensor by name.
 
 ##### Returns:
 
-    Tensor.
+  Tensor.
 
 
 - - -
@@ -1220,7 +1236,7 @@ Returns value of the tensor give by name.
 
 ##### Returns:
 
-    Numpy array - value of the tensor.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -1241,15 +1257,16 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
+  iterator that returns array of targets. The training target values
+  (class label in classification, real numbers in regression).
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -1267,17 +1284,17 @@ returned.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
-          By default axis 1 (next after batch) is used.
-          Use 2 for sequence predictions.
+    By default axis 1 (next after batch) is used.
+    Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size member
-                variable is used.
+    it into mini batches. By default the batch_size member
+    variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-    value.
+  value.
 
 
 - - -
@@ -1291,14 +1308,13 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size
-                member variable is used.
+    it into mini batches. By default the batch_size member variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-    probabilities for each class.
+  probabilities for each class.
 
 
 - - -
@@ -1312,11 +1328,12 @@ Restores model from give path.
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
+    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
+      reconfigured.
 
 ##### Returns:
 
-    Estiamator, object of the subclass of TensorFlowEstimator.
+  Estiamator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
@@ -1418,18 +1435,21 @@ To restart learning, create new estimator.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class labels in classification, real numbers in regression).
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early stopping
+  iterator that returns array of targets. The training target values
+  (class labels in classification, real numbers in regression).
+
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
+    stopping
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
-    optional visualization.
+  optional visualization.
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -1463,7 +1483,7 @@ Returns tensor by name.
 
 ##### Returns:
 
-    Tensor.
+  Tensor.
 
 
 - - -
@@ -1479,7 +1499,7 @@ Returns value of the tensor give by name.
 
 ##### Returns:
 
-    Numpy array - value of the tensor.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -1500,15 +1520,16 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
+  iterator that returns array of targets. The training target values
+  (class label in classification, real numbers in regression).
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -1526,17 +1547,17 @@ returned.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
-          By default axis 1 (next after batch) is used.
-          Use 2 for sequence predictions.
+    By default axis 1 (next after batch) is used.
+    Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size member
-                variable is used.
+    it into mini batches. By default the batch_size member
+    variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-    value.
+  value.
 
 
 - - -
@@ -1550,14 +1571,13 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size
-                member variable is used.
+    it into mini batches. By default the batch_size member variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-    probabilities for each class.
+  probabilities for each class.
 
 
 - - -
@@ -1571,11 +1591,12 @@ Restores model from give path.
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
+    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
+      reconfigured.
 
 ##### Returns:
 
-    Estiamator, object of the subclass of TensorFlowEstimator.
+  Estiamator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
@@ -1652,37 +1673,37 @@ Returns weights of the linear regression.
 TensorFlow RNN Classifier model.
 
 Parameters:
-    rnn_size: The size for rnn cell, e.g. size of your word embeddings.
-    cell_type: The type of rnn cell, including rnn, gru, and lstm.
-    num_layers: The number of layers of the rnn model.
-    input_op_fn: Function that will transform the input tensor, such as
-                 creating word embeddings, byte list, etc. This takes
-                 an argument X for input and returns transformed X.
-    bidirectional: boolean, Whether this is a bidirectional rnn.
-    sequence_length: If sequence_length is provided, dynamic calculation is performed.
-             This saves computational time when unrolling past max sequence length.
-    initial_state: An initial state for the RNN. This must be a tensor of appropriate type
-                   and shape [batch_size x cell.state_size].
-    n_classes: Number of classes in the target.
-    batch_size: Mini batch size.
-    steps: Number of steps to run over data.
-    optimizer: Optimizer name (or class), for example "SGD", "Adam",
-               "Adagrad".
-    learning_rate: If this is constant float value, no decay function is used.
-        Instead, a customized decay function can be passed that accepts
-        global_step as parameter and returns a Tensor.
-        e.g. exponential decay function:
-        def exp_decay(global_step):
-            return tf.train.exponential_decay(
-                learning_rate=0.1, global_step,
-                decay_steps=2, decay_rate=0.001)
-    class_weight: None or list of n_classes floats. Weight associated with
-                 classes for loss computation. If not given, all classes are suppose to have
-                 weight one.
-    continue_training: when continue_training is True, once initialized
-        model will be continuely trained on every call of fit.
-    config: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc.
+  rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+  cell_type: The type of rnn cell, including rnn, gru, and lstm.
+  num_layers: The number of layers of the rnn model.
+  input_op_fn: Function that will transform the input tensor, such as
+    creating word embeddings, byte list, etc. This takes
+    an argument X for input and returns transformed X.
+  bidirectional: boolean, Whether this is a bidirectional rnn.
+  sequence_length: If sequence_length is provided, dynamic calculation is
+    performed. This saves computational time when unrolling past max sequence
+    length.
+  initial_state: An initial state for the RNN. This must be a tensor of
+    appropriate type and shape [batch_size x cell.state_size].
+  n_classes: Number of classes in the target.
+  batch_size: Mini batch size.
+  steps: Number of steps to run over data.
+  optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
+  learning_rate: If this is constant float value, no decay function is
+    used. Instead, a customized decay function can be passed that accepts
+    global_step as parameter and returns a Tensor.
+    e.g. exponential decay function:
+    def exp_decay(global_step):
+        return tf.train.exponential_decay(
+            learning_rate=0.1, global_step,
+            decay_steps=2, decay_rate=0.001)
+  class_weight: None or list of n_classes floats. Weight associated with
+    classes for loss computation. If not given, all classes are
+    supposed to have weight one.
+  continue_training: when continue_training is True, once initialized
+    model will be continuely trained on every call of fit.
+  config: RunConfig object that controls the configurations of the session,
+    e.g. num_cores, gpu_memory_fraction, etc.
 - - -
 
 #### `tf.contrib.learn.TensorFlowRNNClassifier.__init__(rnn_size, n_classes, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNClassifier.__init__}
@@ -1714,18 +1735,21 @@ To restart learning, create new estimator.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class labels in classification, real numbers in regression).
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early stopping
+  iterator that returns array of targets. The training target values
+  (class labels in classification, real numbers in regression).
+
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
+    stopping
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
-    optional visualization.
+  optional visualization.
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -1759,7 +1783,7 @@ Returns tensor by name.
 
 ##### Returns:
 
-    Tensor.
+  Tensor.
 
 
 - - -
@@ -1775,7 +1799,7 @@ Returns value of the tensor give by name.
 
 ##### Returns:
 
-    Numpy array - value of the tensor.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -1796,15 +1820,16 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
+  iterator that returns array of targets. The training target values
+  (class label in classification, real numbers in regression).
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -1822,17 +1847,17 @@ returned.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
-          By default axis 1 (next after batch) is used.
-          Use 2 for sequence predictions.
+    By default axis 1 (next after batch) is used.
+    Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size member
-                variable is used.
+    it into mini batches. By default the batch_size member
+    variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-    value.
+  value.
 
 
 - - -
@@ -1846,14 +1871,13 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size
-                member variable is used.
+    it into mini batches. By default the batch_size member variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-    probabilities for each class.
+  probabilities for each class.
 
 
 - - -
@@ -1867,11 +1891,12 @@ Restores model from give path.
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
+    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
+      reconfigured.
 
 ##### Returns:
 
-    Estiamator, object of the subclass of TensorFlowEstimator.
+  Estiamator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
@@ -1944,37 +1969,37 @@ Returns weights of the rnn layer.
 TensorFlow RNN Regressor model.
 
 Parameters:
-    rnn_size: The size for rnn cell, e.g. size of your word embeddings.
-    cell_type: The type of rnn cell, including rnn, gru, and lstm.
-    num_layers: The number of layers of the rnn model.
-    input_op_fn: Function that will transform the input tensor, such as
-                 creating word embeddings, byte list, etc. This takes
-                 an argument X for input and returns transformed X.
-    bidirectional: boolean, Whether this is a bidirectional rnn.
-    sequence_length: If sequence_length is provided, dynamic calculation is performed.
-             This saves computational time when unrolling past max sequence length.
-    initial_state: An initial state for the RNN. This must be a tensor of appropriate type
-                   and shape [batch_size x cell.state_size].
-    batch_size: Mini batch size.
-    steps: Number of steps to run over data.
-    optimizer: Optimizer name (or class), for example "SGD", "Adam",
-               "Adagrad".
-    learning_rate: If this is constant float value, no decay function is used.
-        Instead, a customized decay function can be passed that accepts
-        global_step as parameter and returns a Tensor.
-        e.g. exponential decay function:
-        def exp_decay(global_step):
-            return tf.train.exponential_decay(
-                learning_rate=0.1, global_step,
-                decay_steps=2, decay_rate=0.001)
-    continue_training: when continue_training is True, once initialized
-        model will be continuely trained on every call of fit.
-    config: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc.
-    verbose: Controls the verbosity, possible values:
-             0: the algorithm and debug information is muted.
-             1: trainer prints the progress.
-             2: log device placement is printed.
+  rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+  cell_type: The type of rnn cell, including rnn, gru, and lstm.
+  num_layers: The number of layers of the rnn model.
+  input_op_fn: Function that will transform the input tensor, such as
+    creating word embeddings, byte list, etc. This takes
+    an argument X for input and returns transformed X.
+  bidirectional: boolean, Whether this is a bidirectional rnn.
+  sequence_length: If sequence_length is provided, dynamic calculation is
+    performed. This saves computational time when unrolling past max sequence
+    length.
+  initial_state: An initial state for the RNN. This must be a tensor of
+    appropriate type and shape [batch_size x cell.state_size].
+  batch_size: Mini batch size.
+  steps: Number of steps to run over data.
+  optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
+  learning_rate: If this is constant float value, no decay function is
+    used. Instead, a customized decay function can be passed that accepts
+    global_step as parameter and returns a Tensor.
+    e.g. exponential decay function:
+    def exp_decay(global_step):
+        return tf.train.exponential_decay(
+            learning_rate=0.1, global_step,
+            decay_steps=2, decay_rate=0.001)
+  continue_training: when continue_training is True, once initialized
+    model will be continuely trained on every call of fit.
+  config: RunConfig object that controls the configurations of the
+    session, e.g. num_cores, gpu_memory_fraction, etc.
+  verbose: Controls the verbosity, possible values:
+    0: the algorithm and debug information is muted.
+    1: trainer prints the progress.
+    2: log device placement is printed.
 - - -
 
 #### `tf.contrib.learn.TensorFlowRNNRegressor.__init__(rnn_size, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, n_classes=0, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNRegressor.__init__}
@@ -2006,18 +2031,21 @@ To restart learning, create new estimator.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class labels in classification, real numbers in regression).
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early stopping
+  iterator that returns array of targets. The training target values
+  (class labels in classification, real numbers in regression).
+
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
+    stopping
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
-    optional visualization.
+  optional visualization.
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -2051,7 +2079,7 @@ Returns tensor by name.
 
 ##### Returns:
 
-    Tensor.
+  Tensor.
 
 
 - - -
@@ -2067,7 +2095,7 @@ Returns value of the tensor give by name.
 
 ##### Returns:
 
-    Numpy array - value of the tensor.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -2088,15 +2116,16 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
+  iterator that returns array of targets. The training target values
+  (class label in classification, real numbers in regression).
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -2114,17 +2143,17 @@ returned.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
-          By default axis 1 (next after batch) is used.
-          Use 2 for sequence predictions.
+    By default axis 1 (next after batch) is used.
+    Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size member
-                variable is used.
+    it into mini batches. By default the batch_size member
+    variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-    value.
+  value.
 
 
 - - -
@@ -2138,14 +2167,13 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size
-                member variable is used.
+    it into mini batches. By default the batch_size member variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-    probabilities for each class.
+  probabilities for each class.
 
 
 - - -
@@ -2159,11 +2187,12 @@ Restores model from give path.
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
+    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
+      reconfigured.
 
 ##### Returns:
 
-    Estiamator, object of the subclass of TensorFlowEstimator.
+  Estiamator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
@@ -2269,18 +2298,21 @@ To restart learning, create new estimator.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class labels in classification, real numbers in regression).
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early stopping
+  iterator that returns array of targets. The training target values
+  (class labels in classification, real numbers in regression).
+
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
+    stopping
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
-    optional visualization.
+  optional visualization.
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -2314,7 +2346,7 @@ Returns tensor by name.
 
 ##### Returns:
 
-    Tensor.
+  Tensor.
 
 
 - - -
@@ -2330,7 +2362,7 @@ Returns value of the tensor give by name.
 
 ##### Returns:
 
-    Numpy array - value of the tensor.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -2351,15 +2383,16 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-    iterator that returns arrays of features. The training input
-    samples for fitting the model.
+  iterator that returns arrays of features. The training input
+  samples for fitting the model.
+
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-    iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
+  iterator that returns array of targets. The training target values
+  (class label in classification, real numbers in regression).
 
 ##### Returns:
 
-    Returns self.
+  Returns self.
 
 
 - - -
@@ -2377,17 +2410,17 @@ returned.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
-          By default axis 1 (next after batch) is used.
-          Use 2 for sequence predictions.
+    By default axis 1 (next after batch) is used.
+    Use 2 for sequence predictions.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size member
-                variable is used.
+    it into mini batches. By default the batch_size member
+    variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-    value.
+  value.
 
 
 - - -
@@ -2401,14 +2434,13 @@ Predict class probability of the input samples X.
 
 *  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
-                it into mini batches. By default the batch_size
-                member variable is used.
+    it into mini batches. By default the batch_size member variable is used.
 
 ##### Returns:
 
 
 *  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-    probabilities for each class.
+  probabilities for each class.
 
 
 - - -
@@ -2422,11 +2454,12 @@ Restores model from give path.
 
 *  <b>`path`</b>: Path to the checkpoints and other model information.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-        e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be reconfigured.
+    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
+      reconfigured.
 
 ##### Returns:
 
-    Estiamator, object of the subclass of TensorFlowEstimator.
+  Estiamator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
