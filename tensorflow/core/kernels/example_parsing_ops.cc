@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/example_proto_helper.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
@@ -176,18 +177,46 @@ class ExampleParserOp : public OpKernel {
       var_len_features[d] = config;
     }
 
-    Example ex;
-    // Processing each Example in the batch starts here.
-    for (std::size_t b = 0; b < static_cast<size_t>(batch_size); ++b) {
-      OP_REQUIRES(
-          ctx, ParseProtoUnlimited(&ex, serialized_t(b)),
-          errors::InvalidArgument("Could not parse example input, value: '",
-                                  serialized_t(b), "'"));
-      const string& example_name = (has_names) ? names_t(b) : "<unknown>";
-      OP_REQUIRES_OK(
-          ctx, SingleExampleProtoToTensors(
-                   ex, example_name, b, fixed_len_features, var_len_features,
-                   &output_dense_values, &sparse_values_tmp));
+    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+
+    // Estimate the cost of parsing each batch element.
+    int64 work_unit_size = 100 + 100 * num_sparse_;
+    for (int d = 0; d < num_dense_; ++d) {
+      work_unit_size += dense_shapes_[d].num_elements();
+    }
+
+    mutex mu;
+
+    auto DoWork = [&ctx, &mu, &serialized_t, has_names, &names_t,
+                   &fixed_len_features, &var_len_features, &output_dense_values,
+                   &sparse_values_tmp](int64 start, int64 limit) {
+      Example ex;
+      // Processing each Example in the batch starts here.
+      for (std::size_t b = static_cast<size_t>(start);
+           b < static_cast<size_t>(limit); ++b) {
+        bool parse_success = ParseProtoUnlimited(&ex, serialized_t(b));
+        if (!TF_PREDICT_TRUE(parse_success)) {
+          mutex_lock l(mu);
+          ctx->CtxFailure(errors::InvalidArgument(
+              "Could not parse example input, value: '", serialized_t(b), "'"));
+          return;
+        }
+        const string& example_name = (has_names) ? names_t(b) : "<unknown>";
+        Status s = SingleExampleProtoToTensors(
+            ex, example_name, b, fixed_len_features, var_len_features,
+            &output_dense_values, &sparse_values_tmp);
+        if (!TF_PREDICT_TRUE(s.ok())) {
+          mutex_lock l(mu);
+          ctx->CtxFailureWithWarning(s);
+        }
+      }
+    };
+
+    Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
+          work_unit_size, DoWork);
+
+    if (!TF_PREDICT_TRUE(ctx->status().ok())) {
+      return;
     }
 
     // Copy from sparse_values_tmp into final resting Tensors
