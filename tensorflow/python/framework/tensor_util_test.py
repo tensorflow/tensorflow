@@ -29,15 +29,16 @@ from tensorflow.python.ops import state_ops
 class TensorUtilTest(tf.test.TestCase):
 
   def testFloat(self):
-    t = tensor_util.make_tensor_proto(10.0)
+    value = 10.0
+    t = tensor_util.make_tensor_proto(value)
     self.assertProtoEquals("""
       dtype: DT_FLOAT
       tensor_shape {}
-      float_val: 10.0
-      """, t)
+      float_val: %.1f
+      """ % value, t)
     a = tensor_util.MakeNdarray(t)
     self.assertEquals(np.float32, a.dtype)
-    self.assertAllClose(np.array(10.0, dtype=np.float32), a)
+    self.assertAllClose(np.array(value, dtype=np.float32), a)
 
   def testFloatN(self):
     t = tensor_util.make_tensor_proto([10.0, 20.0, 30.0])
@@ -148,6 +149,36 @@ class TensorUtilTest(tf.test.TestCase):
     a = tensor_util.MakeNdarray(t)
     self.assertEquals(np.int32, a.dtype)
     self.assertAllClose(np.array(10, dtype=np.int32), a)
+
+  def testLargeInt(self):
+    value = np.iinfo(np.int64).max
+    t = tensor_util.make_tensor_proto(value)
+    self.assertProtoEquals("""
+      dtype: DT_INT64
+      tensor_shape {}
+      int64_val: %d
+      """ % value, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.int64, a.dtype)
+    self.assertAllClose(np.array(value, dtype=np.int64), a)
+
+  def testLargeNegativeInt(self):
+    # We don't use the min np.int64 value here
+    # because it breaks np.abs().
+    #
+    # np.iinfo(np.int64).min = -9223372036854775808
+    # np.iinfo(np.int64).max = 9223372036854775807
+    # np.abs(-9223372036854775808) = -9223372036854775808
+    value = np.iinfo(np.int64).min + 1
+    t = tensor_util.make_tensor_proto(value)
+    self.assertProtoEquals("""
+      dtype: DT_INT64
+      tensor_shape {}
+      int64_val: %d
+      """ % value, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.int64, a.dtype)
+    self.assertAllClose(np.array(value, dtype=np.int64), a)
 
   def testIntNDefaultType(self):
     t = tensor_util.make_tensor_proto([10, 20, 30, 40], shape=[2, 2])

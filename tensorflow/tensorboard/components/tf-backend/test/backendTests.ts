@@ -103,6 +103,18 @@ module TF.Backend {
       });
     });
 
+    it('audio is loaded properly', function(done) {
+      backend.audio('audio1', 'run1').then((audio_clips) => {
+        var audio = audio_clips[0];
+        assertIsDatum(audio);
+        assert.equal(audio.content_type, 'audio/wav');
+        var nonDemoQuery = 'index=0&tag=audio1&run=run1';
+        var expectedUrl = demoRouter.individualAudio(nonDemoQuery);
+        assert.equal(audio.url, expectedUrl);
+        done();
+      });
+    });
+
     it('trailing slash removed from base route', function() {
       var r = TF.Backend.router('foo/');
       assert.equal(r.runs(), 'foo/runs');
@@ -111,6 +123,7 @@ module TF.Backend {
     it('run helper methods work', function(done) {
       var scalar = {run1: ['cross_entropy (1)'], fake_run_no_data: ['scalar2']};
       var image = {run1: ['im1'], fake_run_no_data: ['im1', 'im2']};
+      var audio = {run1: ['audio1'], fake_run_no_data: ['audio1', 'audio2']};
       var graph = ['fake_run_no_data'];
       var count = 0;
       function next() {
@@ -125,6 +138,10 @@ module TF.Backend {
       });
       backend.imageRuns().then((x) => {
         assert.deepEqual(x, image);
+        next();
+      });
+      backend.audioRuns().then((x) => {
+        assert.deepEqual(x, audio);
         next();
       });
       backend.graphRuns().then((x) => {

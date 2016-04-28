@@ -2,6 +2,17 @@
 
 DO_NOT_SUBMIT_WARNING="Unofficial setting. DO NOT SUBMIT!!!"
 
+## Verify that the submodule google/protobuf is available
+# TODO(cais): Remove this check once protobuf is no longer depended upon
+if [[ ! -f "google/protobuf/protobuf.bzl" ]]; then
+  echo "ERROR: It appears that the required submodule google/protobuf is not "\
+"available in this TensorFlow git clone."
+  echo "Please be sure to use the --recurse-submodules flag when performing "\
+"git clone of TensorFlow."
+
+  exit 1
+fi
+
 ## Set up python-related environment settings
 while true; do
   fromuser=""

@@ -27,28 +27,35 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test
 
 class CustomOptimizer(tf.test.TestCase):
 
-    def testIrisMomentum(self):
-        random.seed(42)
+  def testIrisMomentum(self):
+    random.seed(42)
 
-        iris = datasets.load_iris()
-        X_train, X_test, y_train, y_test = train_test_split(iris.data,
-                                                            iris.target,
-                                                            test_size=0.2,
-                                                            random_state=42)
-        # setup exponential decay function
-        def exp_decay(global_step):
-            return tf.train.exponential_decay(
-                learning_rate=0.1, global_step=global_step,
-                decay_steps=100, decay_rate=0.001)
-        custom_optimizer = lambda learning_rate: tf.train.MomentumOptimizer(learning_rate, 0.9)
-        classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                                    n_classes=3, steps=800,
-                                                    learning_rate=exp_decay,
-                                                    optimizer=custom_optimizer)
-        classifier.fit(X_train, y_train)
-        score = accuracy_score(y_test, classifier.predict(X_test))
+    iris = datasets.load_iris()
+    X_train, X_test, y_train, y_test = train_test_split(iris.data,
+                                                        iris.target,
+                                                        test_size=0.2,
+                                                        random_state=42)
 
-        self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
+    # setup exponential decay function
+    def exp_decay(global_step):
+      return tf.train.exponential_decay(learning_rate=0.1,
+                                        global_step=global_step,
+                                        decay_steps=100,
+                                        decay_rate=0.001)
+
+    def custom_optimizer(learning_rate):
+      return tf.train.MomentumOptimizer(learning_rate, 0.9)
+
+    classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+                                               n_classes=3,
+                                               steps=800,
+                                               learning_rate=exp_decay,
+                                               optimizer=custom_optimizer)
+    classifier.fit(X_train, y_train)
+    score = accuracy_score(y_test, classifier.predict(X_test))
+
+    self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
+
 
 if __name__ == "__main__":
-    tf.test.main()
+  tf.test.main()

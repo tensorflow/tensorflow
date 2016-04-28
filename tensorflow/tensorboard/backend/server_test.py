@@ -155,6 +155,20 @@ class TensorboardServerTest(tf.test.TestCase):
     response = self._get('/data/individualImage?%s' % image_query)
     self.assertEqual(response.status, 200)
 
+  def testAudio(self):
+    """Test listing audio and retrieving an individual audio clip."""
+    audio_json = self._getJson('/data/audio?tag=audio&run=run1')
+    audio_query = audio_json[0]['query']
+    # We don't care about the format of the audio query.
+    del audio_json[0]['query']
+    self.assertEqual(audio_json, [{
+        'wall_time': 0,
+        'step': 0,
+        'content_type': 'audio/wav'
+    }])
+    response = self._get('/data/individualAudio?%s' % audio_query)
+    self.assertEqual(response.status, 200)
+
   def testGraph(self):
     """Test retrieving the graph definition."""
     response = self._get('/data/graph?run=run1&limit_attr_size=1024'

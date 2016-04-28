@@ -722,6 +722,22 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
         out_t.op.run(feed_dict={feed_t: feed_val})
 
+  def testFeedPrecisionLossError(self):
+    with session.Session() as sess:
+      largest_int64 = np.iinfo(np.int64).max
+
+      feed_int_implicit_int32 = constant_op.constant(1)
+      feed_int_explicit_int32 = constant_op.constant(1, dtype=dtypes.int32)
+
+      out_t = constant_op.constant(1.0)
+
+      with self.assertRaisesRegexp(TypeError,
+                                   'is not compatible with Tensor type'):
+        sess.run(out_t, feed_dict={feed_int_implicit_int32: largest_int64})
+      with self.assertRaisesRegexp(TypeError,
+                                   'is not compatible with Tensor type'):
+        sess.run(out_t, feed_dict={feed_int_explicit_int32: largest_int64})
+
   def testStringFetch(self):
     with session.Session():
       for shape in [(32, 4, 128), (37,), (2, 0, 6), (0, 0, 0)]:

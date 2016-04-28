@@ -27,7 +27,6 @@ from six.moves import urllib
 import numpy as np
 from tensorflow.python.platform import gfile
 
-
 Dataset = collections.namedtuple('Dataset', ['data', 'target'])
 Datasets = collections.namedtuple('Datasets', ['train', 'validation', 'test'])
 
@@ -52,52 +51,53 @@ def load_csv(filename, target_dtype, target_column=-1, has_header=True):
                 target.append(ir.pop(target_column))
                 data.append(ir)
 
-    return Dataset(data=data, target=target)
+  return Dataset(data=data, target=target)
 
 
 def load_iris():
-    """Load Iris dataset.
+  """Load Iris dataset.
 
-    Returns:
-        Dataset object containing data in-memory.
-    """
-    module_path = path.dirname(__file__)
-    return load_csv(path.join(module_path, 'data', 'iris.csv'),
-                    target_dtype=np.int)
+  Returns:
+    Dataset object containing data in-memory.
+  """
+  module_path = path.dirname(__file__)
+  return load_csv(
+      path.join(module_path, 'data', 'iris.csv'),
+      target_dtype=np.int)
 
 
 def load_boston():
-    """Load Boston housing dataset.
-    
-    Returns:
-        Dataset object containing data in-memory.
-    """
-    module_path = path.dirname(__file__)
-    return load_csv(path.join(module_path, 'data', 'boston_house_prices.csv'),
-                    target_dtype=np.float)
+  """Load Boston housing dataset.
+
+  Returns:
+    Dataset object containing data in-memory.
+  """
+  module_path = path.dirname(__file__)
+  return load_csv(
+      path.join(module_path, 'data', 'boston_house_prices.csv'),
+      target_dtype=np.float)
 
 
 def maybe_download(filename, work_directory, source_url):
-    """Download the data from source url, unless it's already here.
+  """Download the data from source url, unless it's already here.
 
-    Args:
-        filename: string, name of the file in the directory.
-        work_directory: string, path to working directory.
-        source_url: url to download from if file doesn't exist.
+  Args:
+      filename: string, name of the file in the directory.
+      work_directory: string, path to working directory.
+      source_url: url to download from if file doesn't exist.
 
-    Returns:
-        Path to resulting file.
-    """
-    if not gfile.Exists(work_directory):
-        gfile.MakeDirs(work_directory)
-    filepath = os.path.join(work_directory, filename)
-    if not gfile.Exists(filepath):
-        with tempfile.NamedTemporaryFile() as tmpfile:
-            temp_file_name = tmpfile.name
-            urllib.request.urlretrieve(source_url, temp_file_name)
-            gfile.Copy(temp_file_name, filepath)
-        with gfile.GFile(filepath) as f:
-            size = f.Size()
-        print('Successfully downloaded', filename, size, 'bytes.')
-    return filepath
-
+  Returns:
+      Path to resulting file.
+  """
+  if not gfile.Exists(work_directory):
+    gfile.MakeDirs(work_directory)
+  filepath = os.path.join(work_directory, filename)
+  if not gfile.Exists(filepath):
+    with tempfile.NamedTemporaryFile() as tmpfile:
+      temp_file_name = tmpfile.name
+      urllib.request.urlretrieve(source_url, temp_file_name)
+      gfile.Copy(temp_file_name, filepath)
+      with gfile.GFile(filepath) as f:
+        size = f.Size()
+      print('Successfully downloaded', filename, size, 'bytes.')
+  return filepath
