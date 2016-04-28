@@ -222,6 +222,12 @@ cp -r tensorflow/core/lib/jpeg ${PY_TEST_DIR}/tensorflow/core/lib
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/png
 cp -r tensorflow/core/lib/png ${PY_TEST_DIR}/tensorflow/core/lib
 
+# Copy test data from tensorflow/contrib/ffmpeg
+
+mkdir -p ${PY_TEST_DIR}/tensorflow/contrib/ffmpeg
+rm -rf ${PY_TEST_DIR}/tensorflow/contrib/ffmpeg/testdata
+cp -r tensorflow/contrib/ffmpeg/testdata ${PY_TEST_DIR}
+
 # Run tests
 DIR0=$(pwd)
 ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
@@ -396,6 +402,7 @@ rm -rf ${TF_INSTALL_PATH}/python/tools
 rm -rf ${TF_INSTALL_PATH}/examples/image_retraining
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/jpeg
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/png
+rm -rf ${PY_TEST_DIR}/testdata
 
 echo ""
 echo "${PY_TEST_COUNT} Python test(s):" \
