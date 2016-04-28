@@ -78,6 +78,8 @@ done
 
 
 # Find out where the CUDA toolkit is installed
+OSNAME=`uname -s`
+
 while true; do
   # Configure the Cuda SDK version to use.
   if [ -z "$TF_CUDA_VERSION" ]; then
@@ -93,15 +95,24 @@ while true; do
       CUDA_TOOLKIT_PATH=$default_cuda_path
     fi
   fi
+
   if [[ -z "$TF_CUDA_VERSION" ]]; then
     TF_CUDA_EXT=""
   else
     TF_CUDA_EXT=".$TF_CUDA_VERSION"
   fi
-  if [ -e $CUDA_TOOLKIT_PATH/lib64/libcudart.so$TF_CUDA_EXT ]; then
+
+  if [ "$OSNAME" == "Linux" ]; then
+    CUDA_RT_LIB_PATH="lib64/libcudart.so${TF_CUDA_EXT}"
+  elif [ "$OSNAME" == "Darwin" ]; then
+    CUDA_RT_LIB_PATH="lib/libcudart${TF_CUDA_EXT}.dylib"
+  fi
+
+  if [ -e "${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}" ]; then
     break
   fi
-  echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. $CUDA_TOOLKIT_PATH/lib64/libcudart.so$TF_CUDA_EXT cannot be found"
+  echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH} cannot be found"
+
   if [ -z "$fromuser" ]; then
     exit 1
   fi
@@ -127,25 +138,41 @@ while true; do
     fi
     # Result returned from "read" will be used unexpanded. That make "~" unuseable.
     # Going through one more level of expansion to handle that.
-    CUDNN_INSTALL_PATH=$(bash -c "readlink -f $CUDNN_INSTALL_PATH")
+    CUDNN_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
   fi
+
   if [[ -z "$TF_CUDNN_VERSION" ]]; then
     TF_CUDNN_EXT=""
   else
     TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
   fi
-  if [ -e "$CUDNN_INSTALL_PATH/libcudnn.so${TF_CUDNN_EXT}" -o -e "$CUDNN_INSTALL_PATH/lib64/libcudnn.so${TF_CUDNN_EXT}" ]; then
+
+  if [ "$OSNAME" == "Linux" ]; then
+    CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
+  elif [ "$OSNAME" == "Darwin" ]; then
+    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
+  fi
+
+  if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
     break
   fi
-  CUDNN_PATH_FROM_LDCONFIG="$(ldconfig -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
-  if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
-    CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
-    break
+
+  if [ "$OSNAME" == "Linux" ]; then
+    CUDNN_PATH_FROM_LDCONFIG="$(ldconfig -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
+    if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
+      CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
+      break
+    fi
   fi
-  echo "Invalid path to cuDNN ${TF_CUDNN_VERSION} toolkit. Neither of the following two files can be found:"
-  echo "$CUDNN_INSTALL_PATH/lib64/libcudnn.so${TF_CUDNN_EXT}"
-  echo "$CUDNN_INSTALL_PATH/libcudnn.so${TF_CUDNN_EXT}"
-  echo "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}"
+  echo "Invalid path to cuDNN ${CUDNN_VERSION} toolkit. Neither of the following two files can be found:"
+  echo "${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}"
+  echo "${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_ALT_PATH}"
+  if [ "$OSNAME" == "Linux" ]; then
+    echo "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}"
+  fi
+
   if [ -z "$fromuser" ]; then
     exit 1
   fi
@@ -157,18 +184,16 @@ done
 cat > third_party/gpus/cuda/cuda.config <<EOF
 # CUDA_TOOLKIT_PATH refers to the CUDA toolkit.
 CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
-
 # CUDNN_INSTALL_PATH refers to the cuDNN toolkit. The cuDNN header and library
 # files can be either in this directory, or under include/ and lib64/
 # directories separately.
 CUDNN_INSTALL_PATH="$CUDNN_INSTALL_PATH"
 
 # The Cuda SDK version that should be used in this build (empty to use libcudart.so symlink)
-TF_CUDA_VERSION=$TF_CUDA_EXT
+TF_CUDA_VERSION=$TF_CUDA_VERSION
 
-# The Cudnn version that should be used in this build (empty to use libcudnn.so symlink)
-TF_CUDNN_VERSION=$TF_CUDNN_EXT
-
+# The Cudnn version that should be used in this build
+TF_CUDNN_VERSION=$TF_CUDNN_VERSION
 EOF
 
 # Configure the gcc host compiler to use
@@ -176,13 +201,17 @@ export WARNING=$DO_NOT_SUBMIT_WARNING
 perl -pi -e "s,CPU_COMPILER = \('.*'\),# \$ENV{WARNING}\nCPU_COMPILER = ('$GCC_HOST_COMPILER_PATH'),s" third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
 perl -pi -e "s,GCC_HOST_COMPILER_PATH = \('.*'\),# \$ENV{WARNING}\nGCC_HOST_COMPILER_PATH = ('$GCC_HOST_COMPILER_PATH'),s" third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc
 
+# Configure the platform name.
+perl -pi -e "s,PLATFORM = \".*\",PLATFORM = \"$OSNAME\",s" third_party/gpus/cuda/platform.bzl
+
 # Configure the Cuda toolkit version to work with.
-perl -pi -e "s,CUDA_VERSION = \"[0-9\.]*\",CUDA_VERSION = \"$TF_CUDA_EXT\",s" tensorflow/core/platform/default/build_config.bzl
-perl -pi -e "s,(GetCudaVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDA_EXT\",s" tensorflow/stream_executor/dso_loader.cc
+perl -pi -e "s,(GetCudaVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDA_VERSION\",s" tensorflow/stream_executor/dso_loader.cc
+perl -pi -e "s,CUDA_VERSION = \"[0-9\.]*\",CUDA_VERSION = \"$TF_CUDA_VERSION\",s" third_party/gpus/cuda/platform.bzl
 
 # Configure the Cudnn version to work with.
-perl -pi -e "s,CUDNN_VERSION = \"[0-9\.]*\",CUDNN_VERSION = \"$TF_CUDNN_EXT\",s" tensorflow/core/platform/default/build_config.bzl
-perl -pi -e "s,(GetCudnnVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDNN_EXT\",s" tensorflow/stream_executor/dso_loader.cc
+perl -pi -e "s,(GetCudnnVersion.*return )\"[0-9\.]*\",\1\"$TF_CUDNN_VERSION\",s" tensorflow/stream_executor/dso_loader.cc
+perl -pi -e "s,CUDNN_VERSION = \"[0-9\.]*\",CUDNN_VERSION = \"$TF_CUDNN_VERSION\",s" third_party/gpus/cuda/platform.bzl
+
 
 # Configure the compute capabilities that TensorFlow builds for.
 # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
