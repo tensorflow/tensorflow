@@ -18,12 +18,12 @@ from __future__ import print_function
 import random
 
 try:
-    from sklearn import datasets
-    from sklearn.grid_search import GridSearchCV
-    from sklearn.metrics import accuracy_score, mean_squared_error
-    HAS_SKLEARN = True
+  from sklearn import datasets
+  from sklearn.grid_search import GridSearchCV
+  from sklearn.metrics import accuracy_score, mean_squared_error
+  HAS_SKLEARN = True
 except ImportError:
-    HAS_SKLEARN = False
+  HAS_SKLEARN = False
 
 import tensorflow as tf
 
@@ -32,19 +32,20 @@ from tensorflow.contrib.learn.python import learn
 
 class GridSearchTest(tf.test.TestCase):
 
-    def testIrisDNN(self):
-        if HAS_SKLEARN:
-            random.seed(42)
-            iris = datasets.load_iris()
-            classifier = learn.TensorFlowDNNClassifier(
-                hidden_units=[10, 20, 10], n_classes=3, steps=50)
-            grid_search = GridSearchCV(classifier,
-                {'hidden_units': [[5, 5], [10, 10]],
-                 'learning_rate': [0.1, 0.01]})
-            grid_search.fit(iris.data, iris.target)
-            score = accuracy_score(iris.target, grid_search.predict(iris.data))
-            self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+  def testIrisDNN(self):
+    if HAS_SKLEARN:
+      random.seed(42)
+      iris = datasets.load_iris()
+      classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+                                                 n_classes=3,
+                                                 steps=50)
+      grid_search = GridSearchCV(classifier,
+                                 {'hidden_units': [[5, 5], [10, 10]],
+                                  'learning_rate': [0.1, 0.01]})
+      grid_search.fit(iris.data, iris.target)
+      score = accuracy_score(iris.target, grid_search.predict(iris.data))
+      self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
 
-if __name__ == "__main__":
-    tf.test.main()
+if __name__ == '__main__':
+  tf.test.main()

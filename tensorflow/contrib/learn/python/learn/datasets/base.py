@@ -27,48 +27,49 @@ from six.moves import urllib
 import numpy as np
 from tensorflow.python.platform import gfile
 
-
 Dataset = collections.namedtuple('Dataset', ['data', 'target'])
 Datasets = collections.namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
 def load_csv(filename, target_dtype):
-    with gfile.Open(filename) as csv_file:
-        data_file = csv.reader(csv_file)
-        header = next(data_file)
-        n_samples = int(header[0])
-        n_features = int(header[1])
-        target_names = np.array(header[2:])
-        data = np.empty((n_samples, n_features))
-        target = np.empty((n_samples,), dtype=np.int)
+  with gfile.Open(filename) as csv_file:
+    data_file = csv.reader(csv_file)
+    header = next(data_file)
+    n_samples = int(header[0])
+    n_features = int(header[1])
+    target_names = np.array(header[2:])
+    data = np.empty((n_samples, n_features))
+    target = np.empty((n_samples,), dtype=np.int)
 
-        for i, ir in enumerate(data_file):
-            data[i] = np.asarray(ir[:-1], dtype=np.float64)
-            target[i] = np.asarray(ir[-1], dtype=target_dtype)
+    for i, ir in enumerate(data_file):
+      data[i] = np.asarray(ir[:-1], dtype=np.float64)
+      target[i] = np.asarray(ir[-1], dtype=target_dtype)
 
-    return Dataset(data=data, target=target)
+  return Dataset(data=data, target=target)
 
 
 def load_iris():
-    """Load Iris dataset.
+  """Load Iris dataset.
 
-    Returns:
-        Dataset object containing data in-memory.
-    """
-    module_path = path.dirname(__file__)
-    return load_csv(path.join(module_path, 'data', 'iris.csv'),
-                    target_dtype=np.int)
+  Returns:
+    Dataset object containing data in-memory.
+  """
+  module_path = path.dirname(__file__)
+  return load_csv(
+      path.join(module_path, 'data', 'iris.csv'),
+      target_dtype=np.int)
 
 
 def load_boston():
-    """Load Boston housing dataset.
-    
-    Returns:
-        Dataset object containing data in-memory.
-    """
-    module_path = path.dirname(__file__)
-    return load_csv(path.join(module_path, 'data', 'boston_house_prices.csv'),
-                    target_dtype=np.float)
+  """Load Boston housing dataset.
+
+  Returns:
+    Dataset object containing data in-memory.
+  """
+  module_path = path.dirname(__file__)
+  return load_csv(
+      path.join(module_path, 'data', 'boston_house_prices.csv'),
+      target_dtype=np.float)
 
 
 def maybe_download(filename, work_directory, source_url):
@@ -85,4 +86,3 @@ def maybe_download(filename, work_directory, source_url):
         size = f.Size()
       print('Successfully downloaded', filename, size, 'bytes.')
   return filepath
-
