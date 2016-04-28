@@ -64,11 +64,10 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     // Check to see if any element of the tensor is NaN or Inf.
     int fp_props =
         std::accumulate(data, data + size, 0, [](const int& x, const T& y) {
-          int prop = std::fpclassify(y);
           int result = x;
-          if (prop == FP_INFINITE) {
+          if (Eigen::numext::isinf(y)) {
             result |= kInfBit;
-          } else if (prop == FP_NAN) {
+          } else if (Eigen::numext::isnan(y)) {
             result |= kNaNBit;
           }
           return result;
