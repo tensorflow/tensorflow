@@ -45,6 +45,7 @@ def tf_android_core_proto_sources_relative():
         "example/feature.proto",
         "framework/allocation_description.proto",
         "framework/attr_value.proto",
+        "framework/cost_graph.proto",
         "framework/device_attributes.proto",
         "framework/function.proto",
         "framework/graph.proto",
