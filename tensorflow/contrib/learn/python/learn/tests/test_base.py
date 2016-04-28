@@ -14,6 +14,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import unicode_literals
 
 import random
 
@@ -53,6 +54,19 @@ class BaseTest(tf.test.TestCase):
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertLess(score, 0.7, "Failed with score = {0}".format(score))
+
+  def testIrisAllVariables(self):
+    iris = datasets.load_iris()
+    classifier = learn.TensorFlowLinearClassifier(n_classes=3)
+    classifier.fit(iris.data, [float(x) for x in iris.target])
+    self.assertEqual(
+        classifier.get_variable_names(),
+        ["global_step:0", "logistic_regression/weights:0",
+         "logistic_regression/bias:0",
+         "logistic_regression/softmax_classifier/softmax_cross_entropy_loss/"
+         "value/avg:0",
+         "learning_rate:0", "logistic_regression/weights/Adagrad:0",
+         "logistic_regression/bias/Adagrad:0"])
 
   def testIrisSummaries(self):
     iris = datasets.load_iris()

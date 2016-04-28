@@ -375,6 +375,15 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     """
     return self._session.run(self.get_tensor(name))
 
+  def get_variable_names(self):
+    """Returns list of all variable names in this model.
+
+    Returns:
+      List of names.
+    """
+    with self._graph.as_default():
+      return [v.name for v in variables.all_variables()]
+
   def save(self, path):
     """Saves checkpoints and graph to given path.
 
