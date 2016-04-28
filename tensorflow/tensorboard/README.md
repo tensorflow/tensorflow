@@ -1,8 +1,8 @@
 # TensorBoard
 
 TensorBoard is a suite of web applications for inspecting and understanding your
-TensorFlow runs and graphs. TensorBoard currently supports four visualizations:
-scalars, images, histograms, and the graph.
+TensorFlow runs and graphs. TensorBoard currently supports five visualizations:
+scalars, images, audio, histograms, and the graph.
 
 You can play with an interactive demo TensorBoard at
 [tensorflow.org/tensorboard/](https://www.tensorflow.org/tensorboard/).
@@ -161,6 +161,13 @@ column corresponds to a run. Since the image dashboard supports arbitrary pngs,
 you can use this to embed custom visualizations (e.g. matplotlib scatterplots)
 into TensorBoard. This dashboard always shows you the latest image for each tag.
 
+### Audio Dashboard
+
+The Audio Dashboard can embed playable audio widgets for audio saved via a
+tf.audio_summary. The dashboard is set up so that each row corresponds to a
+different tag, and each column corresponds to a run. This dashboard always
+embeds the latest audio for each tag.
+
 ### Graph Explorer
 
 The Graph Explorer can visualize a TensorBoard graph, enabling inspection of the
@@ -204,7 +211,7 @@ If you have at least one result, then TensorBoard should be able to load data.
 Finally, let's make sure that the event files actually have data. Inspecting
 them is a bit tricky, but we can get a hint from the size: try
 
-`find DIRECTORY_PATH | grep tfevents | xargs ls -lh`  
+`find DIRECTORY_PATH | grep tfevents | xargs ls -lh`
 
 and look at the sizes of the files. If they are all tiny (around 69 bytes) then
 they probably just contain a file version descriptor, but no actual events.

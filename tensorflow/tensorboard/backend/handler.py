@@ -48,12 +48,14 @@ DATA_PREFIX = '/data'
 RUNS_ROUTE = '/runs'
 SCALARS_ROUTE = '/' + event_accumulator.SCALARS
 IMAGES_ROUTE = '/' + event_accumulator.IMAGES
+AUDIO_ROUTE = '/' + event_accumulator.AUDIO
 HISTOGRAMS_ROUTE = '/' + event_accumulator.HISTOGRAMS
 COMPRESSED_HISTOGRAMS_ROUTE = '/' + event_accumulator.COMPRESSED_HISTOGRAMS
 INDIVIDUAL_IMAGE_ROUTE = '/individualImage'
+INDIVIDUAL_AUDIO_ROUTE = '/individualAudio'
 GRAPH_ROUTE = '/' + event_accumulator.GRAPH
 RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
-TAB_ROUTES = ['', '/events', '/images', '/graphs', '/histograms']
+TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
 
 _IMGHDR_TO_MIMETYPE = {
     'bmp': 'image/bmp',
@@ -117,6 +119,28 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
           'width': run_image.width,
           'height': run_image.height,
           'query': self._query_for_individual_image(run, tag, index)
+      })
+    return response
+
+  def _audio_response_for_run(self, run_audio, run, tag):
+    """Builds a JSON-serializable object with information about run_audio.
+
+    Args:
+      run_audio: A list of event_accumulator.AudioValueEvent objects.
+      run: The name of the run.
+      tag: The name of the tag the images all belong to.
+
+    Returns:
+      A list of dictionaries containing the wall time, step, URL, and
+      content_type for each audio clip.
+    """
+    response = []
+    for index, run_audio_clip in enumerate(run_audio):
+      response.append({
+          'wall_time': run_audio_clip.wall_time,
+          'step': run_audio_clip.step,
+          'content_type': run_audio_clip.content_type,
+          'query': self._query_for_individual_audio(run, tag, index)
       })
     return response
 
@@ -378,6 +402,63 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     })
     return query_string
 
+  def _serve_audio(self, query_params):
+    """Given a tag and list of runs, serve a list of audio.
+
+    Note that the audio clips themselves are not sent; instead, we respond with
+    URLs to the audio. The frontend should treat these URLs as opaque and should
+    not try to parse information about them or generate them itself, as the
+    format may change.
+
+    Args:
+      query_params: The query parameters as a dict.
+
+    """
+    tag = query_params.get('tag')
+    run = query_params.get('run')
+
+    audio_list = self._multiplexer.Audio(run, tag)
+    response = self._audio_response_for_run(audio_list, run, tag)
+    self._send_json_response(response)
+
+  def _serve_individual_audio(self, query_params):
+    """Serves an individual audio clip."""
+    tag = query_params.get('tag')
+    run = query_params.get('run')
+    index = int(query_params.get('index'))
+    audio = self._multiplexer.Audio(run, tag)[index]
+    encoded_audio_string = audio.encoded_audio_string
+    content_type = audio.content_type
+
+    self.send_response(200)
+    self.send_header('Content-Type', content_type)
+    self.send_header('Content-Length', len(encoded_audio_string))
+    self.end_headers()
+    self.wfile.write(encoded_audio_string)
+
+  def _query_for_individual_audio(self, run, tag, index):
+    """Builds a URL for accessing the specified audio.
+
+    This should be kept in sync with _serve_individual_audio. Note that the URL
+    is *not* guaranteed to always return the same audio, since audio may be
+    unloaded from the reservoir as new audio comes in.
+
+    Args:
+      run: The name of the run.
+      tag: The tag.
+      index: The index of the audio. Negative values are OK.
+
+    Returns:
+      A string representation of a URL that will load the index-th
+      sampled audio in the given run with the given tag.
+    """
+    query_string = urllib.parse.urlencode({
+        'run': run,
+        'tag': tag,
+        'index': index
+    })
+    return query_string
+
   def _serve_runs(self, unused_query_params):
     """Return a JSON object about runs and tags.
 
@@ -385,6 +466,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     Returns:
       {runName: {images: [tag1, tag2, tag3],
+                 audio: [tag4, tag5, tag6],
                  scalars: [tagA, tagB, tagC],
                  histograms: [tagX, tagY, tagZ]}}
     """
@@ -457,6 +539,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self._serve_compressed_histograms,
         DATA_PREFIX + IMAGES_ROUTE: self._serve_images,
         DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
+        DATA_PREFIX + AUDIO_ROUTE: self._serve_audio,
+        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE: self._serve_individual_audio,
         DATA_PREFIX + RUNS_ROUTE: self._serve_runs,
         '/app.js': self._serve_js
     }

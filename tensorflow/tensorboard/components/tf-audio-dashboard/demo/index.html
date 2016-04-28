@@ -3,8 +3,8 @@
   <head>
     <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
     <link rel="stylesheet" type="text/css" href="../../../lib/css/global.css">
-    <link rel="import" href="../tf-image-dashboard.html">
-    <title>Image Dashboard Demo</title>
+    <link rel="import" href="../tf-audio-dashboard.html">
+    <title>Audio Dashboard Demo</title>
     <style>
       #container{
         width: 1000px;
@@ -17,14 +17,14 @@
     </style>
   </head>
   <body>
-    <dom-module id="image-dash-demo">
+    <dom-module id="audio-dash-demo">
       <template>
-        <tf-image-dashboard id="demo" backend="[[backend]]">
-        </tf-image-dashboard>
+        <tf-audio-dashboard id="demo" backend="[[backend]]">
+        </tf-audio-dashboard>
       </template>
       <script>
         Polymer({
-          is: "image-dash-demo",
+          is: "audio-dash-demo",
           properties: {
             backend: {
               type: Object,
@@ -39,7 +39,7 @@
       </script>
     </dom-module>
     <div id="container">
-      <image-dash-demo></image-dash-demo>
+      <audio-dash-demo></audio-dash-demo>
     </div>
   </body>
 </html>

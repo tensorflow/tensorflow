@@ -3,6 +3,9 @@
     "images": [
       "im1"
     ],
+    "audio": [
+      "audio1"
+    ],
     "scalars": [
       "cross_entropy (1)"
     ],
@@ -16,6 +19,7 @@
   },
   "fake_run_no_data": {
     "images": ["im1", "im2"],
+    "audio": ["audio1", "audio2"],
     "scalars": ["scalar2"],
     "histograms": ["histo1"],
     "compressedHistograms": ["histo1"],
