@@ -94,7 +94,7 @@ This must be called by the constructors of subclasses.
 
 - - -
 
-#### `tf.train.Optimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None)` {#Optimizer.minimize}
+#### `tf.train.Optimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#Optimizer.minimize}
 
 Add operations to minimize `loss` by updating `var_list`.
 
@@ -119,6 +119,7 @@ of using this function.
 *  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
     the corresponding op.
 *  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
 
 ##### Returns:
 
@@ -133,7 +134,7 @@ of using this function.
 
 - - -
 
-#### `tf.train.Optimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False)` {#Optimizer.compute_gradients}
+#### `tf.train.Optimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#Optimizer.compute_gradients}
 
 Compute gradients of `loss` for the variables in `var_list`.
 
@@ -156,6 +157,7 @@ given variable.
     Valid values are defined in the class `AggregationMethod`.
 *  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
     the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
 
 ##### Returns:
 
@@ -1685,8 +1687,9 @@ the training loop should also stop.  This is why the training loop has to
 check for `sv.should_stop()`.
 
 Exceptions that indicate that the training inputs have been exhausted,
-`tf.errors.OutOfRange`, also cause `sv.should_stop()` to return `True` but
-are not re-raised from the `with` block: they indicate a normal termination.
+`tf.errors.OutOfRangeError`, also cause `sv.should_stop()` to return `True`
+but are not re-raised from the `with` block: they indicate a normal
+termination.
 
 #### Use for multiple replicas
 
@@ -2910,6 +2913,44 @@ build the `tag` of the summary values:
 
 - - -
 
+### `tf.audio_summary(tag, tensor, sample_rate, max_outputs=3, collections=None, name=None)` {#audio_summary}
+
+Outputs a `Summary` protocol buffer with audio.
+
+The summary has up to `max_outputs` summary values containing audio. The
+audio is built from `tensor` which must be 3-D with shape `[batch_size,
+frames, channels]` or 2-D with shape `[batch_size, frames]`. The values are
+assumed to be in the range of `[-1.0, 1.0]` with a sample rate of
+`sample_rate`.
+
+The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
+build the `tag` of the summary values:
+
+*  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.
+*  If `max_outputs` is greater than 1, the summary value tags are
+   generated sequentially as '*tag*/audio/0', '*tag*/audio/1', etc.
+
+##### Args:
+
+
+*  <b>`tag`</b>: A scalar `Tensor` of type `string`. Used to build the `tag`
+    of the summary values.
+*  <b>`tensor`</b>: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
+    or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
+*  <b>`sample_rate`</b>: The sample rate of the signal in hertz.
+*  <b>`max_outputs`</b>: Max number of batch elements to generate audio for.
+*  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
+    summary to.  Defaults to [ops.GraphKeys.SUMMARIES]
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A scalar `Tensor` of type `string`. The serialized `Summary` protocol
+  buffer.
+
+
+- - -
+
 ### `tf.histogram_summary(tag, values, collections=None, name=None)` {#histogram_summary}
 
 Outputs a `Summary` protocol buffer with a histogram.
@@ -3514,33 +3555,6 @@ Called when the thread stops.
 
 - - -
 
-### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False)` {#export_meta_graph}
-
-Returns `MetaGraphDef` proto. Optionally writes it to filename.
-
-This function exports the graph, saver, and collection objects into
-`MetaGraphDef` protocol buffer with the intension of it being imported
-at a later time or location to restart training, run inference, or be
-a subgraph.
-
-##### Args:
-
-
-*  <b>`filename`</b>: Optional filename including the path for writing the
-    generated `MetaGraphDef` protocol buffer.
-*  <b>`meta_info_def`</b>: `MetaInfoDef` protocol buffer.
-*  <b>`graph_def`</b>: `GraphDef` protocol buffer.
-*  <b>`saver_def`</b>: `SaverDef` protocol buffer.
-*  <b>`collection_list`</b>: List of string keys to collect.
-*  <b>`as_text`</b>: If `True`, writes the `MetaGraphDef` as an ASCII proto.
-
-##### Returns:
-
-  A `MetaGraphDef` proto.
-
-
-- - -
-
 ### `tf.train.generate_checkpoint_state_proto(save_dir, model_checkpoint_path, all_model_checkpoint_paths=None)` {#generate_checkpoint_state_proto}
 
 Generates a checkpoint state proto.
@@ -3560,73 +3574,5 @@ Generates a checkpoint state proto.
   CheckpointState proto with model_checkpoint_path and
   all_model_checkpoint_paths updated to either absolute paths or
   relative paths to the current save_dir.
-
-
-- - -
-
-### `tf.train.import_meta_graph(meta_graph_or_file)` {#import_meta_graph}
-
-Recreates a Graph saved in a `MetaGraphDef` proto.
-
-This function takes a `MetaGraphDef` protocol buffer as input. If
-the argument is a file containing a `MetaGraphDef` protocol buffer ,
-it constructs a protocol buffer from the file content. The function
-then adds all the nodes from the `graph_def` field to the
-current graph, recreates all the collections, and returns a saver
-constructed from the `saver_def` field.
-
-In combination with `export_meta_graph()`, this function can be used to
-
-* Serialize a graph along with other Python objects such as `QueueRunner`,
-  `Variable` into a `MetaGraphDef`.
-
-* Restart training from a saved graph and checkpoints.
-
-* Run inference from a saved graph and checkpoints.
-
-```Python
-...
-# Create a saver.
-saver = tf.train.Saver(...variables...)
-# Remember the training_op we want to run by adding it to a collection.
-tf.add_to_collection('train_op', train_op)
-sess = tf.Session()
-for step in xrange(1000000):
-    sess.run(train_op)
-    if step % 1000 == 0:
-        # Saves checkpoint, which by default also exports a meta_graph
-        # named 'my-model-global_step.meta'.
-        saver.save(sess, 'my-model', global_step=step)
-```
-
-Later we can continue training from this saved `meta_graph` without building
-the model from scratch.
-
-```Python
-with tf.Session() as sess:
-  new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
-  new_saver.restore(sess, 'my-save-dir/my-model-10000')
-  # tf.get_collection() returns a list. In this example we only want the
-  # first one.
-  train_op = tf.get_collection('train_op')[0]
-  for step in xrange(1000000):
-    sess.run(train_op)
-```
-
-NOTE: Restarting training from saved `meta_graph` only works if the
-device assignments have not changed.
-
-##### Args:
-
-
-*  <b>`meta_graph_or_file`</b>: `MetaGraphDef` protocol buffer or filename (including
-    the path) containing a `MetaGraphDef`.
-
-##### Returns:
-
-  A saver constructed from `saver_def` in `MetaGraphDef` or None.
-
-  A None value is returned if no variables exist in the `MetaGraphDef`
-  (i.e., there are no variables to restore).
 
 

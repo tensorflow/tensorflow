@@ -31,7 +31,12 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 
 
-__all__ = ['fully_connected', 'convolution2d', 'relu', 'relu6', 'linear']
+# TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
+__all__ = [
+    'fully_connected', 'convolution2d', 'relu', 'relu6', 'linear',
+    'legacy_fully_connected', 'legacy_convolution2d', 'legacy_relu',
+    'legacy_relu6', 'legacy_linear'
+]
 
 
 def _apply_activation(y, activation_fn, output_collections):
@@ -42,18 +47,18 @@ def _apply_activation(y, activation_fn, output_collections):
   return y
 
 
-def fully_connected(x,
-                    num_output_units,
-                    activation_fn=None,
-                    weight_init=initializers.xavier_initializer(),
-                    bias_init=standard_ops.constant_initializer(0.),
-                    name=None,
-                    weight_collections=(ops.GraphKeys.WEIGHTS,),
-                    bias_collections=(ops.GraphKeys.BIASES,),
-                    output_collections=(ops.GraphKeys.ACTIVATIONS,),
-                    trainable=True,
-                    weight_regularizer=None,
-                    bias_regularizer=None):
+def legacy_fully_connected(x,
+                           num_output_units,
+                           activation_fn=None,
+                           weight_init=initializers.xavier_initializer(),
+                           bias_init=standard_ops.constant_initializer(0.),
+                           name=None,
+                           weight_collections=(ops.GraphKeys.WEIGHTS,),
+                           bias_collections=(ops.GraphKeys.BIASES,),
+                           output_collections=(ops.GraphKeys.ACTIVATIONS,),
+                           trainable=True,
+                           weight_regularizer=None,
+                           bias_regularizer=None):
   # pylint: disable=anomalous-backslash-in-string
   r"""Adds the parameters for a fully connected layer and returns the output.
 
@@ -80,7 +85,7 @@ def fully_connected(x,
   reused with `tf.variable_scope` or `tf.make_template`.
 
   Most of the details of variable creation can be controlled by specifying the
-  initializers (`weight_init` and `bias_init`) and which in collections to place
+  initializers (`weight_init` and `bias_init`) and in which collections to place
   the created variables (`weight_collections` and `bias_collections`; note that
   the variables are always added to the `VARIABLES` collection). The output of
   the layer can be placed in custom collections using `output_collections`.
@@ -172,21 +177,21 @@ def fully_connected(x,
     return _apply_activation(y, activation_fn, output_collections)
 
 
-def convolution2d(x,
-                  num_output_channels,
-                  kernel_size,
-                  activation_fn=None,
-                  stride=(1, 1),
-                  padding='SAME',
-                  weight_init=initializers.xavier_initializer_conv2d(),
-                  bias_init=standard_ops.constant_initializer(0.),
-                  name=None,
-                  weight_collections=None,
-                  bias_collections=None,
-                  output_collections=None,
-                  trainable=True,
-                  weight_regularizer=None,
-                  bias_regularizer=None):
+def legacy_convolution2d(x,
+                         num_output_channels,
+                         kernel_size,
+                         activation_fn=None,
+                         stride=(1, 1),
+                         padding='SAME',
+                         weight_init=initializers.xavier_initializer_conv2d(),
+                         bias_init=standard_ops.constant_initializer(0.),
+                         name=None,
+                         weight_collections=None,
+                         bias_collections=None,
+                         output_collections=None,
+                         trainable=True,
+                         weight_regularizer=None,
+                         bias_regularizer=None):
   # pylint: disable=g-docstring-has-escape
   """Adds the parameters for a conv2d layer and returns the output.
 
@@ -289,11 +294,19 @@ def convolution2d(x,
 
 
 # TODO(eiderm): Verify and fix autocomplete in colab (also relu6).
-relu = functools.partial(fully_connected, activation_fn=nn.relu)
+legacy_relu = functools.partial(legacy_fully_connected, activation_fn=nn.relu)
 
 
-relu6 = functools.partial(fully_connected, activation_fn=nn.relu6)
+legacy_relu6 = functools.partial(legacy_fully_connected, activation_fn=nn.relu6)
 
 
 # Simple alias for fully_connected which removes the activation_fn parameter.
-linear = functools.partial(fully_connected, activation_fn=None)
+legacy_linear = functools.partial(legacy_fully_connected, activation_fn=None)
+
+
+# TODO(b/28426988): Replace with fns migrated from slim.
+convolution2d = legacy_convolution2d
+fully_connected = legacy_fully_connected
+linear = legacy_linear
+relu = legacy_relu
+relu6 = legacy_relu6

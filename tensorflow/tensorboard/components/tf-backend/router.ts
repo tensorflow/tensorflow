@@ -22,6 +22,8 @@ module TF.Backend {
     compressedHistograms: RunTagUrlFn;
     images: RunTagUrlFn;
     individualImage: (query: string) => string;
+    audio: RunTagUrlFn;
+    individualAudio: (query: string) => string;
     graph: (run: string, limit_attr_size?: number, large_attrs_key?: string)
         => string;
     runMetadata: RunTagUrlFn;
@@ -55,6 +57,13 @@ module TF.Backend {
       }
       return url;
     }
+    function individualAudioUrl(query: string) {
+      var url = dataDir + '/' + clean('individualAudio?' + query);
+      if (demoMode) {
+        url += '.wav';
+      }
+      return url;
+    }
     function graphUrl(run: string, limit_attr_size?: number,
         large_attrs_key?: string) {
       let query_params = [['run', clean(run)]];
@@ -78,11 +87,13 @@ module TF.Backend {
     return {
       runs: () => dataDir + '/runs' + (demoMode ? '.json' : ''),
       individualImage: individualImageUrl,
+      individualAudio: individualAudioUrl,
       graph: graphUrl,
       scalars: standardRoute('scalars'),
       histograms: standardRoute('histograms'),
       compressedHistograms: standardRoute('compressedHistograms'),
       images: standardRoute('images'),
+      audio: standardRoute('audio'),
       runMetadata: standardRoute('run_metadata'),
     };
   };

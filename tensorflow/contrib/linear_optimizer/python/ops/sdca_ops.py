@@ -309,8 +309,7 @@ class SdcaModel(object):
       if not global_step:
         return shrink_l1
       with ops.control_dependencies([shrink_l1]):
-        with ops.colocate_with(global_step):
-          return state_ops.assign_add(global_step, 1, name=name).op
+        return state_ops.assign_add(global_step, 1, name=name).op
 
   def approximate_duality_gap(self):
     """Add operations to compute the approximate duality gap.

@@ -258,6 +258,12 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // returns its definition proto.
   const FunctionDef* Find(const string& func) const;
 
+  // Adds function definition 'fdef' to this function library.
+  // Returns status 'ok' on success, or error otherwise.
+  // If 'fdef' is successfully added to the library, it will be accessible
+  // from 'LookUp' and included in the proto returned by 'ToProto'.
+  Status AddFunctionDef(const FunctionDef& fdef);
+
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
   // returns an empty string.
@@ -269,6 +275,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Otherwise, assume "op" is a primitive op and returns its op
   // signature.
   const OpDef* LookUp(const string& op, Status* status) const override;
+
+  // Returns a proto representation of the state of this function library.
+  FunctionDefLibrary ToProto() const;
 
  private:
   std::unordered_map<string, FunctionDef> function_defs_;

@@ -24,101 +24,101 @@ from ..io.data_feeder import setup_processor_data_feeder
 
 
 class CategoricalProcessor(object):
-    """Maps documents to sequences of word ids.
+  """Maps documents to sequences of word ids.
 
-    As a common convention, Nan values are handled as unknown tokens.
-    Both float('nan') and np.nan are accepted.
+  As a common convention, Nan values are handled as unknown tokens.
+  Both float('nan') and np.nan are accepted.
 
-    Parameters:
-        min_frequency: Minimum frequency of categories in the vocabulary.
-        share: Share vocabulary between variables.
-        vocabularies: list of CategoricalVocabulary objects for each variable in
-                    the input dataset.
+  Parameters:
+    min_frequency: Minimum frequency of categories in the vocabulary.
+    share: Share vocabulary between variables.
+    vocabularies: list of CategoricalVocabulary objects for each variable in
+      the input dataset.
 
-    Attributes:
-        vocabularies_: list of CategoricalVocabulary objects.
+  Attributes:
+    vocabularies_: list of CategoricalVocabulary objects.
+  """
+
+  def __init__(self, min_frequency=0, share=False, vocabularies=None):
+    self.min_frequency = min_frequency
+    self.share = share
+    self.vocabularies_ = vocabularies
+
+  def freeze(self, freeze=True):
+    """Freeze or unfreeze all vocabularies.
+
+    Args:
+      freeze: Boolean, indicate if vocabularies should be frozen.
     """
+    for vocab in self.vocabularies_:
+      vocab.freeze(freeze)
 
-    def __init__(self, min_frequency=0, share=False, vocabularies=None):
-        self.min_frequency = min_frequency
-        self.share = share
-        self.vocabularies_ = vocabularies
+  def fit(self, X, unused_y=None):
+    """Learn a vocabulary dictionary of all categories in X.
 
-    def freeze(self, freeze=True):
-        """Freeze or unfreeze all vocabularies.
+    Args:
+      X: numpy matrix or iterable of lists/numpy arrays.
+      unused_y: to match fit format signature of estimators.
 
-        Args:
-            freeze: Boolean, indicate if vocabularies should be frozen.
-        """
-        for vocab in self.vocabularies_:
-            vocab.freeze(freeze)
+    Returns:
+      self
+    """
+    X = setup_processor_data_feeder(X)
+    for row in X:
+      # Create vocabularies if not given.
+      if self.vocabularies_ is None:
+        # If not share, one per column, else one shared across.
+        if not self.share:
+          self.vocabularies_ = [
+              categorical_vocabulary.CategoricalVocabulary() for _ in row
+          ]
+        else:
+          vocab = categorical_vocabulary.CategoricalVocabulary()
+          self.vocabularies_ = [vocab for _ in row]
+      for idx, value in enumerate(row):
+        # Nans are handled as unknowns.
+        if (isinstance(value, float) and math.isnan(value)) or value == np.nan:
+          continue
+        self.vocabularies_[idx].add(value)
+    if self.min_frequency > 0:
+      for vocab in self.vocabularies_:
+        vocab.trim(self.min_frequency)
+    self.freeze()
+    return self
 
-    def fit(self, X, unused_y=None):
-        """Learn a vocabulary dictionary of all categories in X.
+  def fit_transform(self, X, unused_y=None):
+    """Learn the vocabulary dictionary and return indexies of categories.
 
-        Args:
-            X: numpy matrix or iterable of lists/numpy arrays.
-            unused_y: to match fit format signature of estimators.
+    Args:
+      X: numpy matrix or iterable of lists/numpy arrays.
+      unused_y: to match fit_transform signature of estimators.
 
-        Returns:
-            self
-        """
-        X = setup_processor_data_feeder(X)
-        for row in X:
-            # Create vocabularies if not given.
-            if self.vocabularies_ is None:
-                # If not share, one per column, else one shared across.
-                if not self.share:
-                    self.vocabularies_ = [
-                        categorical_vocabulary.CategoricalVocabulary() for _ in row]
-                else:
-                    vocab = categorical_vocabulary.CategoricalVocabulary()
-                    self.vocabularies_ = [vocab for _ in row]
-            for idx, value in enumerate(row):
-                # Nans are handled as unknowns.
-                if (isinstance(value, float) and math.isnan(value)) or value == np.nan:
-                    continue
-                self.vocabularies_[idx].add(value)
-        if self.min_frequency > 0:
-            for vocab in self.vocabularies_:
-                vocab.trim(self.min_frequency)
-        self.freeze()
-        return self
+    Returns:
+      X: iterable, [n_samples]. Category-id matrix.
+    """
+    self.fit(X)
+    return self.transform(X)
 
-    def fit_transform(self, X, unused_y=None):
-        """Learn the vocabulary dictionary and return indexies of categories.
+  def transform(self, X):
+    """Transform documents to category-id matrix.
 
-        Args:
-            X: numpy matrix or iterable of lists/numpy arrays.
-            unused_y: to match fit_transform signature of estimators.
+    Converts categories to ids give fitted vocabulary from `fit` or
+    one provided in the constructor.
 
-        Returns:
-            X: iterable, [n_samples]. Category-id matrix.
-        """
-        self.fit(X)
-        return self.transform(X)
+    Args:
+      X: numpy matrix or iterable of lists/numpy arrays.
 
-    def transform(self, X):
-        """Transform documents to category-id matrix.
-
-        Converts categories to ids give fitted vocabulary from `fit` or
-        one provided in the constructor.
-
-        Args:
-            X: numpy matrix or iterable of lists/numpy arrays.
-
-        Returns:
-            X: iterable, [n_samples]. Category-id matrix.
-        """
-        self.freeze()
-        X = setup_processor_data_feeder(X)
-        for row in X:
-            output_row = []
-            for idx, value in enumerate(row):
-                # Return <UNK> when it's Nan.
-                if (isinstance(value, float) and math.isnan(value)) or value == np.nan:
-                    output_row.append(0)
-                    continue
-                output_row.append(self.vocabularies_[idx].get(value))
-            yield np.array(output_row, dtype=np.int64)
-
+    Returns:
+      X: iterable, [n_samples]. Category-id matrix.
+    """
+    self.freeze()
+    X = setup_processor_data_feeder(X)
+    for row in X:
+      output_row = []
+      for idx, value in enumerate(row):
+        # Return <UNK> when it's Nan.
+        if (isinstance(value, float) and math.isnan(value)) or value == np.nan:
+          output_row.append(0)
+          continue
+        output_row.append(self.vocabularies_[idx].get(value))
+      yield np.array(output_row, dtype=np.int64)

@@ -110,7 +110,7 @@ new_git_repository(
   name = "iron_dropdown",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-dropdown.git",
-  tag = "v1.3.0",
+  tag = "v1.3.1",
 )
 
 new_git_repository(
@@ -173,7 +173,7 @@ new_git_repository(
   name = "iron_menu_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-menu-behavior.git",
-  tag = "v1.1.5",
+  tag = "v1.1.6",
 )
 
 new_git_repository(
@@ -187,7 +187,7 @@ new_git_repository(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-overlay-behavior.git",
-  tag = "v1.6.3",
+  tag = "v1.6.4",
 )
 
 new_git_repository(
@@ -215,7 +215,7 @@ new_git_repository(
   name = "iron_validatable_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-validatable-behavior.git",
-  tag = "v1.0.5",
+  tag = "v1.1.0",
 )
 
 new_git_repository(
@@ -229,7 +229,7 @@ new_git_repository(
   name = "neon_animation",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/neon-animation.git",
-  tag = "v1.2.0",
+  tag = "v1.2.2",
 )
 
 new_git_repository(
@@ -285,7 +285,7 @@ new_git_repository(
   name = "paper_icon_button",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-icon-button.git",
-  tag = "v1.0.6",
+  tag = "v1.0.7",
 )
 
 new_git_repository(
@@ -355,7 +355,7 @@ new_git_repository(
   name = "paper_slider",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-slider.git",
-  tag = "v1.0.8",
+  tag = "v1.0.10",
 )
 
 new_git_repository(
@@ -369,14 +369,14 @@ new_git_repository(
   name = "paper_tabs",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-tabs.git",
-  tag = "v1.2.4",
+  tag = "v1.5.0",
 )
 
 new_git_repository(
   name = "paper_toggle_button",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-toggle-button.git",
-  tag = "v1.0.12",
+  tag = "v1.1.2",
 )
 
 new_git_repository(
@@ -411,7 +411,7 @@ new_git_repository(
   name = "web_animations_js",
   build_file = "bower.BUILD",
   remote = "https://github.com/web-animations/web-animations-js.git",
-  tag = "2.1.4",
+  tag = "2.2.0",
 )
 
 new_git_repository(

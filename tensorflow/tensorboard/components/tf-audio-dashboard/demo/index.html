@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="../../../lib/css/global.css">
+    <link rel="import" href="../tf-audio-dashboard.html">
+    <title>Audio Dashboard Demo</title>
+    <style>
+      #container{
+        width: 1000px;
+        height: 800px;
+        border: 2px solid grey;
+      }
+      html,body {
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <dom-module id="audio-dash-demo">
+      <template>
+        <tf-audio-dashboard id="demo" backend="[[backend]]">
+        </tf-audio-dashboard>
+      </template>
+      <script>
+        Polymer({
+          is: "audio-dash-demo",
+          properties: {
+            backend: {
+              type: Object,
+              value: function() {
+                var path = "/demo/data";
+                var router = new TF.Backend.router(path, true);
+                return new TF.Backend.Backend(router);
+              },
+            },
+          },
+        });
+      </script>
+    </dom-module>
+    <div id="container">
+      <audio-dash-demo></audio-dash-demo>
+    </div>
+  </body>
+</html>
