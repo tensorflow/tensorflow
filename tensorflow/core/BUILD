@@ -92,6 +92,7 @@ tf_proto_library(
     go_api_version = 2,
     java_api_version = 2,
     py_api_version = 2,
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
 )
 
@@ -635,6 +636,8 @@ filegroup(
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/*.cc",
             "common_runtime/gpu_device_factory.cc",
+	    "graph/dot.cc",
+	    "graph/dot.h",
         ],
     ),
     visibility = ["//visibility:public"],
@@ -664,22 +667,21 @@ ANDROID_TF_LITE_HDRS = [
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
-    srcs =
-        select({
-            "//tensorflow:android": [
-                "//tensorflow/core:android_srcs",
-            ],
-            "//conditions:default": [],
-        }),
+    srcs = select({
+        "//tensorflow:android": ["//tensorflow/core:android_srcs"],
+	"//tensorflow:ios_armv7": ["//tensorflow/core:android_srcs"],
+	"//tensorflow:ios_armv7s": ["//tensorflow/core:android_srcs"],
+	"//tensorflow:ios_arm64": ["//tensorflow/core:android_srcs"],
+        "//conditions:default": [],
+    }),
     hdrs = ANDROID_TF_LITE_HDRS,
-    copts = tf_copts() + ["-Os"],
+    copts = tf_copts(),
     tags = [
         "manual",
         "notap",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@re2//:re2",
         ":protos_cc",
         "//third_party/eigen3",
     ],
@@ -693,6 +695,21 @@ cc_library(
     srcs = select({
         "//tensorflow:android": [
             ":android_op_registrations_and_gradients",
+        ],
+        "//tensorflow:ios_armv7": [
+            ":android_op_registrations_and_gradients",
+	     "//tensorflow/core/kernels:android_core_ops",
+             "//tensorflow/core/kernels:android_extended_ops",
+        ],
+        "//tensorflow:ios_armv7s": [
+            ":android_op_registrations_and_gradients",
+	     "//tensorflow/core/kernels:android_core_ops",
+             "//tensorflow/core/kernels:android_extended_ops",
+        ],
+        "//tensorflow:ios_arm64": [
+            ":android_op_registrations_and_gradients",
+	     "//tensorflow/core/kernels:android_core_ops",
+             "//tensorflow/core/kernels:android_extended_ops",
         ],
         "//conditions:default": [],
     }),

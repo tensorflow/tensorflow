@@ -22,6 +22,10 @@ limitations under the License.
 #include <sstream>
 #endif
 
+#if defined(PLATFORM_POSIX_IOS)
+#include <sys/syslog.h>
+#endif
+
 #include <stdlib.h>
 
 namespace tensorflow {
@@ -65,6 +69,43 @@ void LogMessage::GenerateLogMessage() {
   std::cerr << "native : " << ss.str() << std::endl;
 
   // Android logging at level FATAL does not terminate execution, so abort()
+  // is still required to stop the program.
+  if (severity_ == FATAL) {
+    abort();
+  }
+}
+
+#elif defined(PLATFORM_POSIX_IOS)
+
+void LogMessage::GenerateLogMessage() {
+  int ios_log_level;
+  switch (severity_) {
+    case INFO:
+      ios_log_level = LOG_INFO;
+      break;
+    case WARNING:
+      ios_log_level = LOG_WARNING;
+      break;
+    case ERROR:
+      ios_log_level = LOG_ERR;
+      break;
+    case FATAL:
+      ios_log_level = LOG_ALERT;
+      break;
+    default:
+      if (severity_ < INFO) {
+        ios_log_level = LOG_DEBUG;
+      } else {
+        ios_log_level = LOG_ERR;
+      }
+      break;
+  }
+
+  std::stringstream ss;
+  ss << fname_ << ":" << line_ << " " << str();
+  syslog(ios_log_level, ss.str().c_str());
+
+  // iOS logging at level FATAL does not terminate execution, so abort()
   // is still required to stop the program.
   if (severity_ == FATAL) {
     abort();

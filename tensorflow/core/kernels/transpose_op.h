@@ -41,6 +41,7 @@ class TransposeCpuOp : public TransposeOp {
                      gtl::ArraySlice<int32> perm, Tensor* out) override;
 };
 
+#if GOOGLE_CUDA
 class TransposeGpuOp : public TransposeOp {
  public:
   explicit TransposeGpuOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
@@ -49,6 +50,7 @@ class TransposeGpuOp : public TransposeOp {
   Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
                      gtl::ArraySlice<int32> perm, Tensor* out) override;
 };
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow
 
