@@ -624,7 +624,7 @@ to pretend that the value was a constant. Some examples include:
 REGISTER_OP("CheckNumerics")
     .Input("tensor: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Attr("message: string")
     .Doc(R"doc(
 Checks a tensor for NaN and Inf values.
