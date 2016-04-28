@@ -510,6 +510,8 @@
   * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
   * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
   * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
+  * [`legacy_convolution2d`](../../api_docs/python/contrib.layers.md#legacy_convolution2d)
+  * [`legacy_fully_connected`](../../api_docs/python/contrib.layers.md#legacy_fully_connected)
   * [`make_all`](../../api_docs/python/contrib.layers.md#make_all)
   * [`optimize_loss`](../../api_docs/python/contrib.layers.md#optimize_loss)
   * [`sum_regularizer`](../../api_docs/python/contrib.layers.md#sum_regularizer)
