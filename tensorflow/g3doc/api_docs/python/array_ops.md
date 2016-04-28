@@ -1415,7 +1415,7 @@ where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 *  <b>`ValueError`</b>: If shapes do not conform.
 
 
-*  <b>`Examples`</b>:
+*  <b>`Examples`</b>: 
 
 ```python
 # 2-D example
@@ -1470,13 +1470,12 @@ Suppose that
 
 Then output is `[4 x 3]`:
 
-```
-    output =
+    ```output =
       [5.0 0.0 0.0]  // one_hot(0)
       [0.0 0.0 5.0]  // one_hot(2)
       [0.0 0.0 0.0]  // one_hot(-1)
       [0.0 5.0 0.0]  // one_hot(1)
-```
+    ```
 
 Suppose that
 
@@ -1490,17 +1489,16 @@ Suppose that
 
 Then output is `[3 x 4]`:
 
-```
-    output =
+    ```output =
       [0.0 3.0 3.0 3.0]
       [3.0 3.0 3.0 0.0]
+      [3.0 3.0 3.0 3.0]
       [3.0 0.0 3.0 3.0]
     //  ^                one_hot(0)
     //      ^            one_hot(2)
     //          ^        one_hot(-1)
     //              ^    one_hot(1)
-```
-
+    ```
 Suppose that
 
 ```
@@ -1513,16 +1511,14 @@ Suppose that
 
 Then output is `[2 x 2 x 3]`:
 
-```
-    output =
+    ```output =
       [
         [1.0, 0.0, 0.0]  // one_hot(0)
         [0.0, 0.0, 1.0]  // one_hot(2)
       ][
         [0.0, 1.0, 0.0]  // one_hot(1)
         [0.0, 0.0, 0.0]  // one_hot(-1)
-      ]
-```
+      ]```
 
 ##### Args:
 
@@ -1629,3 +1625,5 @@ count ==> [2, 1, 3, 1, 2]
 *  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
 *  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D.
 *  <b>`count`</b>: A `Tensor` of type `int32`. 1-D.
+
+
