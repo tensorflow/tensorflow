@@ -59,11 +59,11 @@ $ sudo easy_install pip
 Install TensorFlow:
 
 ```bash
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 2.7:
 $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -74,11 +74,11 @@ $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tenso
 For python3:
 
 ```bash
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 3.4:
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -134,11 +134,11 @@ $ source ~/tensorflow/bin/activate  # If using bash
 $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 2.7:
 (tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 (tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -152,11 +152,11 @@ $ source ~/tensorflow/bin/activate  # If using bash
 $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 3.4:
 (tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 (tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -225,11 +225,11 @@ Use the `--ignore-installed` flag to prevent errors about `easy_install`.
 $ source activate tensorflow
 (tensorflow)$  # Your prompt should change
 
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 2.7:
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -242,11 +242,11 @@ and again for Python 3:
 $ source activate tensorflow
 (tensorflow)$  # Your prompt should change
 
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 3.4:
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -437,7 +437,10 @@ binary path.
 #### Install other dependencies
 
 ```bash
-$ sudo apt-get install python-numpy swig python-dev
+# For Python 2.7:
+$ sudo apt-get install python-numpy swig python-dev python-wheel
+# For Python 3.x:
+$ sudo apt-get install python3-numpy swig python3-dev python3-wheel
 ```
 
 #### Configure the installation
