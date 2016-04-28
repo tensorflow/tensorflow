@@ -30,7 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import saver as saver_mod
 from tensorflow.python.training import session_manager as session_manager_mod
@@ -72,8 +72,9 @@ class Supervisor(object):
   check for `sv.should_stop()`.
 
   Exceptions that indicate that the training inputs have been exhausted,
-  `tf.errors.OutOfRange`, also cause `sv.should_stop()` to return `True` but
-  are not re-raised from the `with` block: they indicate a normal termination.
+  `tf.errors.OutOfRangeError`, also cause `sv.should_stop()` to return `True`
+  but are not re-raised from the `with` block: they indicate a normal
+  termination.
 
   #### Use for multiple replicas
 

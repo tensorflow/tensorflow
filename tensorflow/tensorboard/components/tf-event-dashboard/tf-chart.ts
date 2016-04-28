@@ -1,20 +1,21 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 module TF {
   type tooltipMap = {[run: string]: string};
-  export type DataFn = (run: string, tag: string) => Promise<Array<Backend.Datum>>;
+  export type DataFn = (run: string, tag: string) =>
+      Promise<Array<Backend.Datum>>;
   export type TooltipUpdater = (tooltipMap, xValue, closestRun) => void;
 
   let Y_TOOLTIP_FORMATTER_PRECISION = 4;
@@ -80,19 +81,25 @@ module TF {
 
     protected getDataset(run: string) {
       if (this.datasets[run] === undefined) {
-        this.datasets[run] = new Plottable.Dataset([], {run: run, tag: this.tag});
+        this.datasets[run] =
+            new Plottable.Dataset([], {run: run, tag: this.tag});
       }
       return this.datasets[run];
     }
 
-    protected addCrosshairs(plot: Plottable.XYPlot<number | Date, number>, yAccessor): Plottable.Components.Group {
+    protected addCrosshairs(
+        plot: Plottable.XYPlot<number|Date, number>,
+        yAccessor): Plottable.Components.Group {
       var pi = new Plottable.Interactions.Pointer();
       pi.attachTo(plot);
-      let xGuideLine = new Plottable.Components.GuideLineLayer<void>("vertical");
-      let yGuideLine = new Plottable.Components.GuideLineLayer<void>("horizontal");
-      xGuideLine.addClass("crosshairs");
-      yGuideLine.addClass("crosshairs");
-      var group = new Plottable.Components.Group([plot, xGuideLine, yGuideLine]);
+      let xGuideLine =
+          new Plottable.Components.GuideLineLayer<void>('vertical');
+      let yGuideLine =
+          new Plottable.Components.GuideLineLayer<void>('horizontal');
+      xGuideLine.addClass('crosshairs');
+      yGuideLine.addClass('crosshairs');
+      var group =
+          new Plottable.Components.Group([plot, xGuideLine, yGuideLine]);
       let yfmt = multiscaleFormatter(Y_TOOLTIP_FORMATTER_PRECISION);
 
       pi.onPointerMove((p: Plottable.Point) => {
@@ -106,7 +113,8 @@ module TF {
         plot.datasets().forEach((dataset) => {
           let run: string = dataset.metadata().run;
           let data: Backend.Datum[] = dataset.data();
-          let xs: number[] = data.map((d, i) => this.xAccessor(d, i, dataset).valueOf());
+          let xs: number[] = data.map(
+              (d, i) => { return this.xAccessor(d, i, dataset).valueOf(); });
           let idx: number = _.sortedIndex(xs, x);
           if (idx === 0 || idx === data.length) {
             // Only find a point when the cursor is inside the range of the data
@@ -136,7 +144,8 @@ module TF {
           }
           // Note this tooltip will display linearly interpolated values
           // e.g. will display a y=0 value halfway between [y=-1, y=1], even
-          // though there is not actually any 0 datapoint. This could be misleading
+          // though there is not actually any 0 datapoint. This could be
+          // misleading.
           run2val[run] = yfmt(y);
         });
         xGuideLine.pixelPosition(p.x);
@@ -166,18 +175,20 @@ module TF {
       this.xAxis.margin(0).tickLabelPadding(3);
       this.xTooltipFormatter = xComponents.tooltipFormatter;
       this.yScale = new Plottable.Scales.Linear();
-      this.yAxis = new Plottable.Axes.Numeric(this.yScale, "left");
+      this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
       let yFormatter = multiscaleFormatter(Y_AXIS_FORMATTER_PRECISION);
       this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
       this.yAxis.usesTextWidthApproximation(true);
 
       var center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
 
-      this.gridlines = new Plottable.Components.Gridlines(this.xScale, this.yScale);
+      this.gridlines =
+          new Plottable.Components.Gridlines(this.xScale, this.yScale);
 
       var dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
 
-      this.center = new Plottable.Components.Group([center, this.gridlines, dzl]);
+      this.center =
+          new Plottable.Components.Group([center, this.gridlines, dzl]);
       this.outer =  new Plottable.Components.Table([
                                                    [this.yAxis, this.center],
                                                    [null, this.xAxis]
@@ -185,7 +196,7 @@ module TF {
     }
 
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
-      throw new Error("Abstract method not implemented.");
+      throw new Error('Abstract method not implemented.');
     }
 
     public renderTo(target: d3.Selection<any>) {
@@ -208,9 +219,10 @@ module TF {
       var plot = new Plottable.Plots.Line<number | Date>();
       plot.x(xAccessor, xScale);
       plot.y(yAccessor, yScale);
-      plot.attr("stroke",
-        (d: Backend.Datum, i: number, dataset: Plottable.Dataset) => dataset.metadata().run,
-        this.colorScale);
+      plot.attr(
+          'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
+                        dataset.metadata().run,
+          this.colorScale);
       this.plot = plot;
       var group = this.addCrosshairs(plot, yAccessor);
       return group;
@@ -234,7 +246,8 @@ module TF {
 
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
       var percents =  [0, 228, 1587, 3085, 5000, 6915, 8413, 9772, 10000];
-      var opacities = _.range(percents.length - 1).map((i) => (percents[i + 1] - percents[i]) / 2500);
+      var opacities = _.range(percents.length - 1)
+                          .map((i) => (percents[i + 1] - percents[i]) / 2500);
       var accessors = percents.map((p, i) => (datum) => datum[i][1]);
       var median = 4;
       var medianAccessor = accessors[median];
@@ -247,28 +260,30 @@ module TF {
         var y  = i > median ? accessors[i + 1] : accessors[i];
         p.y(y, yScale);
         p.y0(y0);
-        p.attr("fill",
-          (d: any, i: number, dataset: Plottable.Dataset) =>
-            dataset.metadata().run,
-          this.colorScale);
-        p.attr("stroke",
-          (d: any, i: number, dataset: Plottable.Dataset) =>
-            dataset.metadata().run,
-          this.colorScale);
-        p.attr("stroke-weight", (d: any, i: number, m: any) => "0.5px");
-        p.attr("stroke-opacity", () => opacities[i]);
-        p.attr("fill-opacity", () => opacities[i]);
+        p.attr(
+            'fill', (d: any, i: number, dataset: Plottable.Dataset) =>
+                        dataset.metadata().run,
+            this.colorScale);
+        p.attr(
+            'stroke', (d: any, i: number, dataset: Plottable.Dataset) =>
+                          dataset.metadata().run,
+            this.colorScale);
+        p.attr('stroke-weight', (d: any, i: number, m: any) => '0.5px');
+        p.attr('stroke-opacity', () => opacities[i]);
+        p.attr('fill-opacity', () => opacities[i]);
         return p;
       });
 
       var medianPlot = new Plottable.Plots.Line<number | Date>();
       medianPlot.x(xAccessor, xScale);
       medianPlot.y(medianAccessor, yScale);
-      medianPlot.attr("stroke", (d: any, i: number, m: any) => m.run, this.colorScale);
+      medianPlot.attr(
+          'stroke', (d: any, i: number, m: any) => m.run, this.colorScale);
 
       this.plots = plots;
       var group = this.addCrosshairs(medianPlot, medianAccessor);
-      return new Plottable.Components.Group([new Plottable.Components.Group(plots), group]);
+      return new Plottable.Components.Group(
+          [new Plottable.Components.Group(plots), group]);
     }
   }
 
@@ -285,11 +300,11 @@ module TF {
       }
       var f: (x: number) => string;
       if (absv >= 1E4) {
-        f = d3.format("." + digits + "e");
+        f = d3.format('.' + digits + 'e');
       } else if (absv > 0 && absv < 0.01) {
-        f = d3.format("." + digits + "e");
+        f = d3.format('.' + digits + 'e');
       } else {
-        f = d3.format("." + digits + "g");
+        f = d3.format('.' + digits + 'g');
       }
       return f(v);
     };
@@ -310,8 +325,9 @@ module TF {
 
   function stepX(): XComponents {
     var scale = new Plottable.Scales.Linear();
-    var axis = new Plottable.Axes.Numeric(scale, "bottom");
-    var formatter = Plottable.Formatters.siSuffix(STEP_AXIS_FORMATTER_PRECISION);
+    var axis = new Plottable.Axes.Numeric(scale, 'bottom');
+    var formatter =
+        Plottable.Formatters.siSuffix(STEP_AXIS_FORMATTER_PRECISION);
     axis.formatter(formatter);
     return {
       scale: scale,
@@ -323,10 +339,10 @@ module TF {
 
   function wallX(): XComponents {
     var scale = new Plottable.Scales.Time();
-    var formatter = Plottable.Formatters.time("%a %b %e, %H:%M:%S");
+    var formatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
     return {
       scale: scale,
-      axis: new Plottable.Axes.Time(scale, "bottom"),
+      axis: new Plottable.Axes.Time(scale, 'bottom'),
       accessor: (d: Backend.Datum) => d.wall_time,
       tooltipFormatter: (d: number) => formatter(new Date(d)),
     };
@@ -344,32 +360,35 @@ module TF {
       n -= minutes;
       n *= 60;
       var seconds = Math.floor(n);
-      return days + "d " + hours + "h " + minutes + "m " + seconds + "s";
+      return days + 'd ' + hours + 'h ' + minutes + 'm ' + seconds + 's';
     };
     return {
       scale: scale,
-      axis: new Plottable.Axes.Numeric(scale, "bottom"),
-      accessor: (d: Backend.Datum, index: number, dataset: Plottable.Dataset) => {
-        var data = dataset.data();
-        // I can't imagine how this function would be called when the data is empty
-        // (after all, it iterates over the data), but lets guard just to be safe.
-        var first = data.length > 0 ? +data[0].wall_time : 0;
-        return (+d.wall_time - first) / (60 * 60 * 1000); // ms to hours
-      },
+      axis: new Plottable.Axes.Numeric(scale, 'bottom'),
+      accessor:
+          (d: Backend.Datum, index: number, dataset: Plottable.Dataset) => {
+            var data = dataset.data();
+            // I can't imagine how this function would be called when the data
+            // is empty
+            // (after all, it iterates over the data), but lets guard just to be
+            // safe.
+            var first = data.length > 0 ? +data[0].wall_time : 0;
+            return (+d.wall_time - first) / (60 * 60 * 1000);  // ms to hours
+          },
       tooltipFormatter: formatter,
     };
   }
 
   function getXComponents(xType: string): XComponents {
     switch (xType) {
-      case "step":
+      case 'step':
         return stepX();
-      case "wall_time":
+      case 'wall_time':
         return wallX();
-      case "relative":
+      case 'relative':
         return relativeX();
       default:
-        throw new Error("invalid xType: " + xType);
+        throw new Error('invalid xType: ' + xType);
     }
   }
 }

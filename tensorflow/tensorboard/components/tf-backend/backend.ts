@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 module TF.Backend {
   // TODO(cassandrax): Remove this interface.
   export interface RunEnumeration {
@@ -22,7 +23,6 @@ module TF.Backend {
     graph: boolean;
     run_metadata: string[];
   }
-
 
   // TODO(cassandrax): Remove this interface.
   export interface RunsResponse { [runName: string]: RunEnumeration; }
@@ -48,9 +48,13 @@ module TF.Backend {
     bucketCounts: number[];
   }
 
-  export interface HistogramBin { x: number, dx: number, y: number }
+  export interface HistogramBin {
+    x: number;
+    dx: number;
+    y: number;
+  }
   export type HistogramSeriesDatum = HistogramSeries & Datum;
-  export interface HistogramSeries { bins: HistogramBin[] }
+  export interface HistogramSeries { bins: HistogramBin[]; }
 
   export type ImageDatum = Datum & Image;
   export interface Image {
@@ -58,7 +62,6 @@ module TF.Backend {
     height: number;
     url: string;
   }
-
 
   export var TYPES = [
     'scalar', 'histogram', 'compressedHistogram', 'graph', 'image',
@@ -296,14 +299,15 @@ module TF.Backend {
    * to visualize. When visualizing histograms, having the left edge and width
    * makes things quite a bit easier.
    *
-   * @param {histogram} Histogram - A histogram from tensorboard backend.
-   * @return {HistogramBin[]} - Each bin has an x (left edge), a dx (width), and a y (count).
+   * @param histogram A histogram from tensorboard backend.
+   * @return A histogram bin. Each bin has an x (left edge), a dx (width),
+   *     and a y (count).
    *
    * If given rightedges are inclusive, then these left edges (x) are exclusive.
    */
   export function convertBins(histogram: Histogram) {
     if (histogram.bucketRightEdges.length !== histogram.bucketCounts.length) {
-      throw(new Error('Edges and counts are of different lengths.'))
+      throw(new Error('Edges and counts are of different lengths.'));
     }
 
     var previousRightEdge = histogram.min;
@@ -325,10 +329,10 @@ module TF.Backend {
   }
 
   /**
-    * The following interfaces (TupleData, HistogramTuple,
-    * CompressedHistogramTuple, and ImageMetadata) describe how the data is sent
-    * over from the backend; the numbers are wall_time then step
-    */
+   * The following interfaces (TupleData, HistogramTuple,
+   * CompressedHistogramTuple, and ImageMetadata) describe how the data is sent
+   * over from the backend; the numbers are wall_time then step
+   */
   type TupleData<T> = [number, number, T];
 
   // Min, Max, nItems, Sum, Sum_Squares, right edges of buckets, nItems in

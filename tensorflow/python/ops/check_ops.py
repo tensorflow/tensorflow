@@ -54,6 +54,7 @@ __all__ = [
     'assert_less_equal',
     'assert_rank',
     'assert_rank_at_least',
+    'assert_type',
     'is_non_decreasing',
     'is_numeric_tensor',
     'is_strictly_increasing',
@@ -298,6 +299,20 @@ def assert_rank_at_least(x, rank, data=None, summarize=None, name=None):
       ]
     condition = math_ops.greater_equal(array_ops.rank(x), rank)
     return logging_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_type(tensor, tf_type):
+  """Asserts that the given `Tensor` is of the specified type.
+
+  Args:
+    tensor: A tensorflow `Tensor`.
+    tf_type: A tensorflow type (dtypes.float32, tf.int64, dtypes.bool, etc).
+
+  Raises:
+    ValueError: If the tensors data type doesn't match tf_type.
+  """
+  if tensor.dtype != tf_type:
+    raise ValueError('%s must be of type %s' % (tensor.op.name, tf_type))
 
 
 def _get_diff_for_monotonic_comparison(x):

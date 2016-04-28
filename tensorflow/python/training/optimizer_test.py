@@ -66,6 +66,31 @@ class OptimizerTest(tf.test.TestCase):
         self.assertAllClose([-14., -13.], var0.eval())
         self.assertAllClose([-6., -5.], var1.eval())
 
+  def testPrecomputedGradient(self):
+    for dtype in [tf.half, tf.float32]:
+      with self.test_session():
+        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
+        var1 = tf.Variable([3.0, 4.0], dtype=dtype)
+        cost = 5 * var0 + 3 * var1
+        grad_loss = tf.constant([42, -42], dtype=dtype)
+        global_step = tf.Variable(tf.zeros([], tf.int64), name='global_step')
+        sgd_op = tf.train.GradientDescentOptimizer(3.0)
+        opt_op = sgd_op.minimize(cost,
+                                 global_step, [var0, var1],
+                                 grad_loss=grad_loss)
+
+        tf.initialize_all_variables().run()
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
+        # Run 1 step of sgd through optimizer
+        opt_op.run()
+        # Validate updated params
+        self.assertAllClose(
+            [1.0 - 3 * 5 * 42.0, 2.0 - 3 * 5 * (-42.0)], var0.eval())
+        self.assertAllClose(
+            [3.0 - 3 * 3 * 42.0, 4.0 - 3 * 3 * (-42.0)], var1.eval())
+
   def testNoVariables(self):
     for dtype in [tf.half, tf.float32]:
       with self.test_session():

@@ -25,7 +25,7 @@ import time
 import six
 
 from tensorflow.python.framework import errors
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 

@@ -1,13 +1,13 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -296,7 +296,7 @@ function layoutChildren(renderNodeInfo: render.RenderGroupNodeInfo): void {
         }
         break;
       default:
-        throw Error("Unrecognized node type: " + childNodeInfo.node.type);
+        throw Error('Unrecognized node type: ' + childNodeInfo.node.type);
     }
     // Compute total width of un-expanded nodes. Width of expanded nodes
     // has already been computed.
@@ -688,7 +688,7 @@ function sizeAnnotation(a: render.Annotation): void {
       } else if (a.node.type === NodeType.SERIES) {
         _.extend(a, PARAMS.shortcutSize.series);
       } else {
-        throw Error("Invalid node type: " + a.node.type);
+        throw Error('Invalid node type: ' + a.node.type);
       }
       break;
     case render.AnnotationType.SUMMARY:
@@ -738,8 +738,8 @@ function isStraightLine(points: render.Point[]) {
  * Returns the intersection of a line between the provided point
  * and the provided rectangle.
  */
-function intersectPointAndNode(point: render.Point, node: render.RenderNodeInfo):
-    render.Point {
+function intersectPointAndNode(
+    point: render.Point, node: render.RenderNodeInfo): render.Point {
   // cx and cy are the center of the rectangle.
   let cx = node.expanded ?
      node.x : computeCXPositionOfNodeShape(node);

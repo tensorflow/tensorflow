@@ -39,6 +39,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "metric_ops_test",
+    srcs = ["python/ops/metric_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":metrics_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

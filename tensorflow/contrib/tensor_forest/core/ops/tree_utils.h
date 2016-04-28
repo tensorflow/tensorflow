@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef LEARNING_LIB_TENSOR_FOREST_V2_TREE_UTILS_H_
-#define LEARNING_LIB_TENSOR_FOREST_V2_TREE_UTILS_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
+#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,7 +31,7 @@ const int32 FREE_NODE = -2;
 
 // Calculates the sum of a tensor.
 template<typename T>
-T Sum(tensorflow::Tensor counts) {
+T Sum(Tensor counts) {
   Eigen::Tensor<T, 0, Eigen::RowMajor> count_sum =
       counts.unaligned_flat<T>().sum();
   return count_sum(0);
@@ -54,20 +54,31 @@ int32 WeightedGiniImpurity(const T& counts) {
   return ret(0);
 }
 
+template<typename T1, typename T2>
+float WeightedVariance(const T1& sums, const T2& squares, float count) {
+  const auto e_x = sums / count;
+  const auto e_x2 = squares / count;
+  Eigen::Tensor<float, 0, Eigen::RowMajor> ret = (e_x2 - e_x.square()).sum();
+  return count * ret(0);
+}
+
 // Returns the best split to use based on the (lowest) Gini impurity.
 // Takes in the whole total and per-split count tensors because using
 // Tensor::Slice returns a tensor of the same dimensionality, which makes
 // things a little awkward.
-// TODO(gilberth): Currently test_util.BestFeatureToSplit doesn't work with
-// this code because the shapes of the incoming tensors are different than
-// in v1.  Try to make it work for both versions?
-int32 BestFeature(const tensorflow::Tensor& total_counts,
-                  const tensorflow::Tensor& split_counts,
-                  int32 accumulator);
+int32 BestFeatureClassification(
+    const Tensor& total_counts,
+    const Tensor& split_counts, int32 accumulator);
+
+// Returns the best split to use based on the (lowest) variance.
+int32 BestFeatureRegression(
+    const Tensor& total_sums, const Tensor& total_squares,
+    const Tensor& split_sums, const Tensor& split_squares,
+    int32 accumulator);
 
 // Initializes everything in the given tensor to the given value.
 template <typename T>
-void Initialize(tensorflow::Tensor counts, T val = 0) {
+void Initialize(Tensor counts, T val = 0) {
   auto flat = counts.unaligned_flat<T>();
   std::fill(flat.data(), flat.data() + flat.size(), val);
 }
@@ -75,15 +86,15 @@ void Initialize(tensorflow::Tensor counts, T val = 0) {
 // Returns true if the point falls to the right (i.e., the selected feature
 // of the input point is greater than the bias threshold), and false if it
 // falls to the left.
-bool DecideNode(const tensorflow::Tensor& point, int32 feature, float bias);
+bool DecideNode(const Tensor& point, int32 feature, float bias);
 
 // Returns true if all the splits are initialized. Since they get initialized
 // in order, we can simply infer this from the last split.
 // This should only be called for a single allocator's candidate features
 // (i.e. candidate_split_features.Slice(accumulator, accumulator + 1) ).
-bool IsAllInitialized(const tensorflow::Tensor& features);
+bool IsAllInitialized(const Tensor& features);
 
 }  // namespace tensorforest
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif  // LEARNING_LIB_TENSOR_FOREST_V2_TREE_UTILS_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
