@@ -1802,7 +1802,8 @@ def one_hot(indices, depth, on_value=1, off_value=0,
 
   Then output is `[4 x 3]`:
 
-  ```output =
+  ```
+    output =
     [5.0 0.0 0.0]  // one_hot(0)
     [0.0 0.0 5.0]  // one_hot(2)
     [0.0 0.0 0.0]  // one_hot(-1)
