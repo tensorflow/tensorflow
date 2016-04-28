@@ -76,8 +76,8 @@ TEST(FfmpegLibTest, TestInstalled) {
 }
 
 }  // namespace
-}  // namespace ffmpeg
-}  // namespace tensorflow
+}  // ffmpeg
+}  // tensorflow
 
 int main(int argc, char** argv) {
   tensorflow::ffmpeg::ParseTestFlags(&argc, argv);

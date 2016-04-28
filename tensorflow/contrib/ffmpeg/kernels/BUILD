@@ -13,8 +13,8 @@ cc_library(
     srcs = ["ffmpeg_lib.cc"],
     hdrs = ["ffmpeg_lib.h"],
     deps = [
-        "//google/protobuf",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -58,16 +58,4 @@ cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -21,15 +21,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
 #include <string>
 #include <tuple>
 #include <vector>
 
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/host_info.h"
 
 using tensorflow::strings::StrCat;
 
@@ -39,72 +36,6 @@ namespace {
 
 const char kFfmpegExecutable[] = "ffmpeg";
 const int32 kDefaultProbeSize = 5000000;  // 5MB
-
-std::vector<string> FfmpegCommandLine(const string& input_filename,
-                                      const string& output_filename,
-                                      const string& input_format_id,
-                                      int32 samples_per_second,
-                                      int32 channel_count) {
-  return {
-    "-nostats",  // No additional progress display.
-    "-nostdin",  // No interactive commands accepted.
-    "-f", input_format_id,  // eg: "mp3"
-    "-probesize", StrCat(kDefaultProbeSize),
-    "-i", input_filename,
-    "-loglevel", "info",  // Enable verbose logging to support debugging.
-    "-map_metadata", "-1",  // Copy global metadata from input to output.
-    "-vn",  // No video recording.
-    "-ac:a:0", StrCat(channel_count),
-    "-ar:a:0", StrCat(samples_per_second),
-    // Output set (in several ways) to signed 16-bit little-endian ints.
-    "-codec:a:0", "pcm_s16le", "-sample_fmt", "s16", "-f", "s16le",
-    "-sn",  // No subtitle recording.
-    "-y",  // Overwrite output file.
-    StrCat(output_filename)
-  };
-}
-
-[[noreturn]] int ExecuteFfmpeg(const std::vector<string>& args) {
-  std::vector<char*> args_chars;
-  std::transform(args.begin(), args.end(), std::back_inserter(args_chars),
-                 [](const string& s) { return const_cast<char*>(s.c_str()); });
-  args_chars.push_back(nullptr);
-
-  ::execvp(kFfmpegExecutable, args_chars.data());
-  // exec only returns on error.
-  const int error = errno;
-  LOG(ERROR) << "FFmpeg could not be executed: " << error;
-  ::_exit(error);
-}
-
-// Reads a PCM file using signed little endian 16-bit encoding (s16le).
-std::vector<float> ReadPcmFile(const string& filename) {
-  string raw_data;
-  TF_QCHECK_OK(ReadFileToString(Env::Default(), filename, &raw_data))
-      << "Could not read FFmpeg output file: " << filename;
-
-  std::vector<float> samples;
-  const int32 sample_count = raw_data.size() / sizeof(int16);
-  samples.reserve(sample_count);
-
-  for (int32 i = 0; i < sample_count; ++i) {
-    // Most of this is jumping through hoops in the standard to convert some
-    // bits into the right format. I hope that an optimizing compiler will
-    // remove almost all of this code.
-    char raw[2] = {raw_data[i * 2], raw_data[i * 2 + 1]};
-    if (!port::kLittleEndian) {
-      std::swap(raw[0], raw[1]);
-    }
-    int16 host_order;
-    ::memcpy(&host_order, raw, sizeof(host_order));
-    const double normalized =
-        static_cast<double>(host_order) / std::numeric_limits<int16>::max();
-    samples.push_back(normalized);
-  }
-  return samples;
-}
-
-}  // namespace
 
 string GetTempFilename(const string& extension) {
   for (const char* dir : std::vector<const char*>(
@@ -120,10 +51,44 @@ string GetTempFilename(const string& extension) {
   LOG(FATAL) << "No temp directory found.";
 }
 
-Status ReadAudioFile(const string& filename,
-                     const string& audio_format_id,
-                     int32 samples_per_second,
-                     int32 channel_count,
+std::vector<string> FfmpegCommandLine(const string& input_filename,
+                                      const string& output_filename,
+                                      const string& input_format_id,
+                                      int32 samples_per_second,
+                                      int32 channel_count) {
+  return {"-nostats",             // No additional progress display.
+          "-nostdin",             // No interactive commands accepted.
+          "-f", input_format_id,  // eg: "mp3"
+          "-probesize", StrCat(kDefaultProbeSize), "-i", input_filename,
+          "-loglevel", "info",  // Enable verbose logging to support debugging.
+          "-map_metadata", "-1",  // Copy global metadata from input to output.
+          "-vn",                  // No video recording.
+          "-ac:a:0", StrCat(channel_count), "-ar:a:0",
+          StrCat(samples_per_second),
+          // Output set (in several ways) to signed 16-bit little-endian ints.
+          "-codec:a:0", "pcm_s16le", "-sample_fmt", "s16", "-f", "s16le",
+          "-sn",  // No subtitle recording.
+          "-y",   // Overwrite output file.
+          StrCat(output_filename)};
+}
+
+[[noreturn]] int ExecuteFfmpeg(const std::vector<string>& args) {
+  std::vector<char*> args_chars;
+  std::transform(args.begin(), args.end(), std::back_inserter(args_chars),
+                 [](const string& s) { return const_cast<char*>(s.c_str()); });
+  args_chars.push_back(nullptr);
+
+  ::execvp(kFfmpegExecutable, args_chars.data());
+  // exec only returns on error.
+  const int error = errno;
+  LOG(ERROR) << "FFmpeg could not be executed: " << error;
+  ::_exit(error);
+}
+
+}  // namespace
+
+Status ReadAudioFile(const string& filename, const string& audio_format_id,
+                     int32 samples_per_second, int32 channel_count,
                      std::vector<float>* output_samples) {
   // Create an argument list.
   string output_filename = GetTempFilename(audio_format_id);
@@ -141,12 +106,12 @@ Status ReadAudioFile(const string& filename,
   } else {
     int status_code;
     ::waitpid(child_pid, &status_code, 0);
-    if (status_code) {
+    if (!status_code) {
+      return Status::OK();
+    } else {
       return Status(error::Code::NOT_FOUND,
                     StrCat("FFmpeg execution failed: ", status_code));
     }
-    *output_samples = ReadPcmFile(output_filename);
-    return Status::OK();
   }
 }
 
