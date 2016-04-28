@@ -150,6 +150,17 @@ Returns value of the tensor give by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowClassifier.get_variable_names()` {#TensorFlowClassifier.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowClassifier.partial_fit(X, y)` {#TensorFlowClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
@@ -436,6 +447,17 @@ Returns value of the tensor give by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNClassifier.get_variable_names()` {#TensorFlowDNNClassifier.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNClassifier.partial_fit(X, y)` {#TensorFlowDNNClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
@@ -718,6 +740,17 @@ Returns value of the tensor give by name.
 ##### Returns:
 
   Numpy array - value of the tensor.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.get_variable_names()` {#TensorFlowDNNRegressor.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
 
 
 - - -
@@ -1012,6 +1045,17 @@ Returns value of the tensor give by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowEstimator.get_variable_names()` {#TensorFlowEstimator.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowEstimator.partial_fit(X, y)` {#TensorFlowEstimator.partial_fit}
 
 Incremental fit on a batch of samples.
@@ -1237,6 +1281,17 @@ Returns value of the tensor give by name.
 ##### Returns:
 
   Numpy array - value of the tensor.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearClassifier.get_variable_names()` {#TensorFlowLinearClassifier.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
 
 
 - - -
@@ -1500,6 +1555,17 @@ Returns value of the tensor give by name.
 ##### Returns:
 
   Numpy array - value of the tensor.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.get_variable_names()` {#TensorFlowLinearRegressor.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
 
 
 - - -
@@ -1804,6 +1870,17 @@ Returns value of the tensor give by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNClassifier.get_variable_names()` {#TensorFlowRNNClassifier.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNClassifier.partial_fit(X, y)` {#TensorFlowRNNClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
@@ -2100,6 +2177,17 @@ Returns value of the tensor give by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.get_variable_names()` {#TensorFlowRNNRegressor.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.partial_fit(X, y)` {#TensorFlowRNNRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
@@ -2363,6 +2451,17 @@ Returns value of the tensor give by name.
 ##### Returns:
 
   Numpy array - value of the tensor.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRegressor.get_variable_names()` {#TensorFlowRegressor.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
 
 
 - - -
