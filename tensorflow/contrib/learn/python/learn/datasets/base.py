@@ -32,25 +32,23 @@ Datasets = collections.namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
 def load_csv(filename, target_dtype, target_column=-1, has_header=True):
-    with gfile.Open(filename) as csv_file:
-        data_file = csv.reader(csv_file)
-        if has_header:
-            header = next(data_file)
-            n_samples = int(header[0])
-            n_features = int(header[1])
-            target_names = np.array(header[2:])
-            data = np.empty((n_samples, n_features))
-            target = np.empty((n_samples,), dtype=np.int)
-
-            for i, ir in enumerate(data_file):
-                target[i] = np.asarray(ir.pop(target_column), dtype=target_dtype)
-                data[i] = np.asarray(ir, dtype=np.float64)
-        else:
-            data, target = [], []
-            for ir in data_file:
-                target.append(ir.pop(target_column))
-                data.append(ir)
-
+  with gfile.Open(filename) as csv_file:
+    data_file = csv.reader(csv_file)
+    if has_header:
+      header = next(data_file)
+      n_samples = int(header[0])
+      n_features = int(header[1])
+      target_names = np.array(header[2:])
+      data = np.empty((n_samples, n_features))
+      target = np.empty((n_samples,), dtype=np.int)
+      for i, ir in enumerate(data_file):
+        target[i] = np.asarray(ir.pop(target_column), dtype=target_dtype)
+        data[i] = np.asarray(ir, dtype=np.float64)
+    else:
+      data, target = [], []
+      for ir in data_file:
+        target.append(ir.pop(target_column))
+        data.append(ir)
   return Dataset(data=data, target=target)
 
 
