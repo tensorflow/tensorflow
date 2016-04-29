@@ -576,7 +576,7 @@ modules must each a docstring, and `__all__` will contain all symbols with
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, variables=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, variables=None)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
@@ -593,12 +593,14 @@ Given loss and parameters for optimizer, returns a training op.
                `compute_gradients` and `apply_gradients` functions.
              optimizer instance should be instantion of tf.Optimizer sub-class
                and have `compute_gradients` and `apply_gradients` functions.
+*  <b>`gradient_noise_scale`</b>: float or None, adds 0-mean normal noise scaled by this
+                        value.
 *  <b>`clip_gradients`</b>: float or None, clips gradients by this value.
 *  <b>`moving_average_decay`</b>: float or None, takes into account previous loss
                         to make learning smoother due to outliers.
 *  <b>`learning_rate_decay_fn`</b>: function, takes learning_rate and global_step
                           Tensors, returns Tensor. Can be used to implement
-                          any learning rate decay funcitons.
+                          any learning rate decay functions.
                           For example: tf.train.exponential_decay.
 *  <b>`variables`</b>: list of variables to optimizer or none.
 
