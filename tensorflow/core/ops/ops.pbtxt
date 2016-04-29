@@ -3765,6 +3765,7 @@ op {
         type: DT_QINT8
         type: DT_QINT32
         type: DT_STRING
+        type: DT_BOOL
       }
     }
   }
@@ -6530,6 +6531,7 @@ op {
         type: DT_QINT8
         type: DT_QINT32
         type: DT_STRING
+        type: DT_BOOL
       }
     }
   }
