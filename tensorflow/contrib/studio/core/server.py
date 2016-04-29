@@ -33,6 +33,8 @@ from six.moves import socketserver
 
 from tensorflow.python.platform import logging
 
+from tensorflow.contrib.studio.core import http
+
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn,
                          BaseHTTPServer.HTTPServer):
@@ -63,7 +65,17 @@ class StudioHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return
       query_params[key] = query_params[key][0]
 
-    self.send_error(404, 'No handlers')
+    url_handlers = {
+        '/app.js': self._serve_js,
+    }
+
+    if clean_path in url_handlers:
+        url_handlers[clean_path](query_params)
+    else:
+        http.serve_static_file(self, 'dist/index.html')
+
+  def _serve_js(self, unused_query_params):
+    return http.serve_static_file(self, 'dist/app.js')
 
 
 def BuildServer(working_dir, host, port):

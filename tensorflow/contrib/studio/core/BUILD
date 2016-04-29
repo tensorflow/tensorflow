@@ -9,7 +9,7 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 py_library(
     name = "server",
-    srcs = ["server.py"],
+    srcs = ["server.py", "http.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/learn",
