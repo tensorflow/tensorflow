@@ -23,15 +23,15 @@ import tensorflow as tf
 
 class ConfusionMatrixTest(tf.test.TestCase):
 
-  def _testConfMatrix(self, predictions, targets, truth):
+  def _testConfMatrix(self, predictions, labels, truth):
     with self.test_session():
-      ans = tf.contrib.metrics.confusion_matrix(predictions, targets)
+      ans = tf.contrib.metrics.confusion_matrix(predictions, labels)
       tf_ans = ans.eval()
       self.assertAllClose(tf_ans, truth, atol=1e-10)
 
   def _testBasic(self, dtype):
     predictions = np.arange(5, dtype=dtype)
-    targets = np.arange(5, dtype=dtype)
+    labels = np.arange(5, dtype=dtype)
 
     truth = np.asarray(
       [[1, 0, 0, 0, 0],
@@ -43,7 +43,7 @@ class ConfusionMatrixTest(tf.test.TestCase):
 
     self._testConfMatrix(
       predictions=predictions,
-      targets=targets,
+      labels=labels,
       truth=truth)
 
   def testInt32Basic(self, dtype=np.int32):
@@ -54,7 +54,7 @@ class ConfusionMatrixTest(tf.test.TestCase):
 
   def _testDiffentLabelsInPredictionAndTarget(self, dtype):
     predictions = np.asarray([1, 2, 3], dtype=dtype)
-    targets = np.asarray([4, 5, 6], dtype=dtype)
+    labels = np.asarray([4, 5, 6], dtype=dtype)
 
     truth = np.asarray(
       [[0, 0, 0, 0, 0, 0, 0],
@@ -68,7 +68,7 @@ class ConfusionMatrixTest(tf.test.TestCase):
 
     self._testConfMatrix(
       predictions=predictions,
-      targets=targets,
+      labels=labels,
       truth=truth)
 
   def testInt32DifferentLabels(self, dtype=np.int32):
@@ -79,7 +79,7 @@ class ConfusionMatrixTest(tf.test.TestCase):
 
   def _testMultipleLabels(self, dtype):
     predictions = np.asarray([1, 1, 2, 3, 5, 6, 1, 2, 3, 4], dtype=dtype)
-    targets = np.asarray([1, 1, 2, 3, 5, 1, 3, 6, 3, 1], dtype=dtype)
+    labels = np.asarray([1, 1, 2, 3, 5, 1, 3, 6, 3, 1], dtype=dtype)
 
     truth = np.asarray(
       [[0, 0, 0, 0, 0, 0, 0],
@@ -93,7 +93,7 @@ class ConfusionMatrixTest(tf.test.TestCase):
 
     self._testConfMatrix(
       predictions=predictions,
-      targets=targets,
+      labels=labels,
       truth=truth)
 
   def testInt32MultipleLabels(self, dtype=np.int32):
@@ -104,24 +104,24 @@ class ConfusionMatrixTest(tf.test.TestCase):
 
   def testInvalidRank(self):
     predictions = np.asarray([[1, 2, 3]])
-    targets = np.asarray([1, 2, 3])
+    labels = np.asarray([1, 2, 3])
     self.assertRaisesRegexp(
         ValueError, "are not compatible",
-        tf.contrib.metrics.confusion_matrix, predictions, targets)
+        tf.contrib.metrics.confusion_matrix, predictions, labels)
 
     predictions = np.asarray([1, 2, 3])
-    targets = np.asarray([[1, 2, 3]])
+    labels = np.asarray([[1, 2, 3]])
     self.assertRaisesRegexp(
         ValueError, "are not compatible",
-        tf.contrib.metrics.confusion_matrix, predictions, targets)
+        tf.contrib.metrics.confusion_matrix, predictions, labels)
 
   def testInputDifferentSize(self):
     predictions = np.asarray([1, 2, 3])
-    targets = np.asarray([1, 2])
+    labels = np.asarray([1, 2])
     self.assertRaisesRegexp(
           ValueError,
           "are not compatible",
-          tf.contrib.metrics.confusion_matrix, predictions, targets)
+          tf.contrib.metrics.confusion_matrix, predictions, labels)
 
 if __name__ == '__main__':
   tf.test.main()
