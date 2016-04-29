@@ -275,6 +275,14 @@ class DataFeeder(object):
       inp = np.array(self.X[batch_indices]).reshape((batch_indices.shape[0], 1)) \
           if len(self.X.shape) == 1 else self.X[batch_indices]
 
+      # move offset and reset it if necessary
+      self.offset += self.batch_size
+      if self.offset >= self.X.shape[0]:
+        self.indices = self.random_state.permutation(self.X.shape[0])
+        self.offset = 0
+        self.epoch += 1
+
+      # return early if there are no labels
       if self._output_placeholder is None:
         return {self._input_placeholder.name: inp}
 
@@ -291,13 +299,6 @@ class DataFeeder(object):
               out.itemset(tuple([i, idx, value]), 1.0)
         else:
           out[i] = self.y[sample]
-
-      # move offset and reset it if necessary
-      self.offset += self.batch_size
-      if self.offset >= self.X.shape[0]:
-        self.indices = self.random_state.permutation(self.X.shape[0])
-        self.offset = 0
-        self.epoch += 1
 
       return {self._input_placeholder.name: inp,
               self._output_placeholder.name: out}
