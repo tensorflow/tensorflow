@@ -14,4 +14,8 @@
 # ==============================================================================
 """Python definitions for ops related to FFmpeg."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.contrib.ffmpeg.ffmpeg_ops import decode_audio

@@ -14,6 +14,10 @@
 # ==============================================================================
 """Quantized Array Operations."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.quantization.ops import gen_array_ops as quantized_gen_array_ops
 from tensorflow.contrib.quantization.ops.gen_array_ops import dequantize

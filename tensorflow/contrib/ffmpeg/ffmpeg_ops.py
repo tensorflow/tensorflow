@@ -15,6 +15,10 @@
 
 """Public ops that allow FFmpeg encoding and decoding operations."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
