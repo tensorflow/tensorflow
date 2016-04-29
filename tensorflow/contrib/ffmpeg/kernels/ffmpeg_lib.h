@@ -23,6 +23,12 @@
 namespace tensorflow {
 namespace ffmpeg {
 
+// Gets a temp filename in an appropriate location.
+string GetTempFilename(const string& extension);
+
+// Reads an audio file using ffmpeg and converts it into an array of samples in
+// [-1.0, 1.0]. If there are multiple channels in the audio then each frame will
+// contain a separate sample for each channel. Frames are ordered by time.
 Status ReadAudioFile(const string& filename, const string& audio_format_id,
                      int32 samples_per_second, int32 channel_count,
                      std::vector<float>* output_samples);
