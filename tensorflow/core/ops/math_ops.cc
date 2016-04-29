@@ -471,7 +471,7 @@ Returns the truth value of (x >= y) element-wise.
 #define EQUALITY_COMPARISON()                                                  \
   Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr(       \
       "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, " \
-      "quint8, qint8, qint32, string}")
+      "quint8, qint8, qint32, string, bool}")
 
 REGISTER_OP("Equal")
     .EQUALITY_COMPARISON()

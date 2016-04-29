@@ -103,7 +103,7 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
 };
 
 // Macros to explicitly instantiate kernels on GPU for multiple types
-// (T0, T1, etc.) for UnaryFunctor (e.g., functor:sqrt).
+// (T0, T1, etc.) for UnaryFunctor (e.g., functor::sqrt).
 #define DEFINE_UNARY1(F, T) template struct UnaryFunctor<GPUDevice, F<T> >
 #define DEFINE_UNARY2(F, T0, T1) \
   DEFINE_UNARY1(F, T0);          \
@@ -145,6 +145,9 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
 #define DEFINE_BINARY8(F, T0, T1, T2, T3, T4, T5, T6, T7) \
   DEFINE_BINARY4(F, T0, T1, T2, T3);                      \
   DEFINE_BINARY4(F, T4, T5, T6, T7)
+#define DEFINE_BINARY9(F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
+  DEFINE_BINARY4(F, T0, T1, T2, T3);                          \
+  DEFINE_BINARY5(F, T4, T5, T6, T7, T8)
 
 }  // end namespace functor
 }  // end namespace tensorflow
