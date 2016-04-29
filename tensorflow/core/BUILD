@@ -797,6 +797,7 @@ cc_library(
         "lib/strings/regexp.h",
         "lib/strings/scanner.h",
         "lib/wav/wav_io.h",
+        "platform/demangle.h",
         "platform/denormal.h",
         "platform/platform.h",
         "platform/tensor_coding.h",
