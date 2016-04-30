@@ -40,7 +40,7 @@ class CustomOptimizer(tf.test.TestCase):
     def exp_decay(global_step):
       return tf.train.exponential_decay(learning_rate=0.1,
                                         global_step=global_step,
-                                        decay_steps=100,
+                                        decay_steps=200,
                                         decay_rate=0.001)
 
     def custom_optimizer(learning_rate):
@@ -48,7 +48,7 @@ class CustomOptimizer(tf.test.TestCase):
 
     classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                n_classes=3,
-                                               steps=800,
+                                               steps=1000,
                                                learning_rate=exp_decay,
                                                optimizer=custom_optimizer)
     classifier.fit(X_train, y_train)
