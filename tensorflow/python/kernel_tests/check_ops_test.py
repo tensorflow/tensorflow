@@ -20,6 +20,59 @@ from __future__ import print_function
 import tensorflow as tf
 
 
+class AssertEqualTest(tf.test.TestCase):
+
+  def test_doesnt_raise_when_equal(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      with tf.control_dependencies([tf.assert_equal(small, small)]):
+        out = tf.identity(small)
+      out.eval()
+
+  def test_raises_when_greater(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      big = tf.constant([3, 4], name="big")
+      with tf.control_dependencies([tf.assert_equal(big, small)]):
+        out = tf.identity(small)
+      with self.assertRaisesOpError("big.*small"):
+        out.eval()
+
+  def test_raises_when_less(self):
+    with self.test_session():
+      small = tf.constant([3, 1], name="small")
+      big = tf.constant([4, 2], name="big")
+      with tf.control_dependencies([tf.assert_equal(small, big)]):
+        out = tf.identity(small)
+      with self.assertRaisesOpError("small.*big"):
+        out.eval()
+
+  def test_doesnt_raise_when_equal_and_broadcastable_shapes(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      small_2 = tf.constant([1, 2], name="small_2")
+      with tf.control_dependencies([tf.assert_equal(small, small_2)]):
+        out = tf.identity(small)
+      out.eval()
+
+  def test_raises_when_equal_but_non_broadcastable_shapes(self):
+    with self.test_session():
+      small = tf.constant([1, 1, 1], name="small")
+      small_2 = tf.constant([1, 1], name="small_2")
+      with self.assertRaisesRegexp(ValueError, "broadcast"):
+        with tf.control_dependencies([tf.assert_equal(small, small_2)]):
+          out = tf.identity(small)
+        out.eval()
+
+  def test_doesnt_raise_when_both_empty(self):
+    with self.test_session():
+      larry = tf.constant([])
+      curly = tf.constant([])
+      with tf.control_dependencies([tf.assert_equal(larry, curly)]):
+        out = tf.identity(larry)
+      out.eval()
+
+
 class AssertLessTest(tf.test.TestCase):
 
   def test_raises_when_equal(self):

@@ -19,6 +19,7 @@
 @@assert_positive
 @@assert_non_negative
 @@assert_non_positive
+@@assert_equal
 @@assert_less
 @@assert_less_equal
 @@assert_rank
@@ -50,6 +51,7 @@ __all__ = [
     'assert_positive',
     'assert_non_negative',
     'assert_non_positive',
+    'assert_equal',
     'assert_less',
     'assert_less_equal',
     'assert_rank',
@@ -63,6 +65,19 @@ __all__ = [
 
 def assert_negative(x, data=None, summarize=None, name=None):
   """Assert the condition `x < 0` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_negative(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_negative(x)], x)
+  ```
 
   Negative means, for every element `x[i]` of `x`, we have `x[i] < 0`.
   If `x` is empty this is trivially satisfied.
@@ -88,6 +103,19 @@ def assert_negative(x, data=None, summarize=None, name=None):
 def assert_positive(x, data=None, summarize=None, name=None):
   """Assert the condition `x > 0` holds element-wise.
 
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_positive(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_positive(x)], x)
+  ```
+
   Positive means, for every element `x[i]` of `x`, we have `x[i] > 0`.
   If `x` is empty this is trivially satisfied.
 
@@ -96,7 +124,7 @@ def assert_positive(x, data=None, summarize=None, name=None):
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional).  Defaults to "assert_negative".
+    name: A name for this operation (optional).  Defaults to "assert_positive".
 
   Returns:
     Op raising `InvalidArgumentError` unless `x` is all positive.
@@ -111,6 +139,19 @@ def assert_positive(x, data=None, summarize=None, name=None):
 
 def assert_non_negative(x, data=None, summarize=None, name=None):
   """Assert the condition `x >= 0` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_non_negative(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_non_negative(x)], x)
+  ```
 
   Non-negative means, for every element `x[i]` of `x`, we have `x[i] >= 0`.
   If `x` is empty this is trivially satisfied.
@@ -137,6 +178,19 @@ def assert_non_negative(x, data=None, summarize=None, name=None):
 def assert_non_positive(x, data=None, summarize=None, name=None):
   """Assert the condition `x <= 0` holds element-wise.
 
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_non_positive(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_non_positive(x)], x)
+  ```
+
   Non-positive means, for every element `x[i]` of `x`, we have `x[i] <= 0`.
   If `x` is empty this is trivially satisfied.
 
@@ -159,8 +213,64 @@ def assert_non_positive(x, data=None, summarize=None, name=None):
     return assert_less_equal(x, zero, data=data, summarize=summarize)
 
 
+def assert_equal(x, y, data=None, summarize=None, name=None):
+  """Assert the condition `x == y` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_equal(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_equal(x, y)], x)
+  ```
+
+  This condition holds if for every pair of (possibly broadcast) elements
+  `x[i]`, `y[i]`, we have `x[i] == y[i]`.
+  If both `x` and `y` are empty, this is trivially satisfied.
+
+  Args:
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`, `y`.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).  Defaults to "assert_equal".
+
+  Returns:
+    Op that raises `InvalidArgumentError` if `x == y` is False.
+  """
+  with ops.op_scope([x, y, data], name, 'assert_equal'):
+    x = ops.convert_to_tensor(x, name='x')
+    y = ops.convert_to_tensor(y, name='y')
+    if data is None:
+      data = [
+          'Condition x == y did not hold element-wise: x = ', x.name, x, 'y = ',
+          y.name, y
+      ]
+    condition = math_ops.reduce_all(math_ops.equal(x, y))
+    return logging_ops.Assert(condition, data, summarize=summarize)
+
+
 def assert_less(x, y, data=None, summarize=None, name=None):
   """Assert the condition `x < y` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_less(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_less(x, y)], x)
+  ```
 
   This condition holds if for every pair of (possibly broadcast) elements
   `x[i]`, `y[i]`, we have `x[i] < y[i]`.
@@ -192,6 +302,19 @@ def assert_less(x, y, data=None, summarize=None, name=None):
 def assert_less_equal(x, y, data=None, summarize=None, name=None):
   """Assert the condition `x <= y` holds element-wise.
 
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_less_equal(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_less_equal(x, y)], x)
+  ```
+
   This condition holds if for every pair of (possibly broadcast) elements
   `x[i]`, `y[i]`, we have `x[i] <= y[i]`.
   If both `x` and `y` are empty, this is trivially satisfied.
@@ -221,6 +344,19 @@ def assert_less_equal(x, y, data=None, summarize=None, name=None):
 
 def assert_rank(x, rank, data=None, summarize=None, name=None):
   """Assert `x` has rank equal to `rank`.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_rank(x, 2)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_rank(x, 2)], x)
+  ```
 
   Args:
     x:  Numeric `Tensor`.
@@ -262,6 +398,19 @@ def assert_rank(x, rank, data=None, summarize=None, name=None):
 
 def assert_rank_at_least(x, rank, data=None, summarize=None, name=None):
   """Assert `x` has rank equal to `rank` or higher.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_rank_at_least(x, 2)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_rank_at_least(x, 2)], x)
+  ```
 
   Args:
     x:  Numeric `Tensor`.
