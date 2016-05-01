@@ -681,13 +681,14 @@ reshape(t, [2, 4]) ==> [[1, 1, 2, 2]
 reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
 
 # -1 can also be used to infer the shape
-# -1 is inferred to be 9
+
+# -1 is inferred to be 9:
 reshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
                          [4, 4, 4, 5, 5, 5, 6, 6, 6]]
-# -1 is inferred to be 2
+# -1 is inferred to be 2:
 reshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
                          [4, 4, 4, 5, 5, 5, 6, 6, 6]]
-# -1 is inferred to be 3
+# -1 is inferred to be 3:
 reshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],
                               [2, 2, 2],
                               [3, 3, 3]],
