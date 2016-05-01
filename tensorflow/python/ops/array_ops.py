@@ -423,7 +423,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
 
   ```python
   # 2-D example
-  a = [[1, 2], [3, 4], [5, 6]]
+  tensor = [[1, 2], [3, 4], [5, 6]]
   mask = [True, False, True]
   boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
   ```
