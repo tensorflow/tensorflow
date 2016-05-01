@@ -52,8 +52,8 @@ class RNNCell(object):
   LSTM (Long Short Term Memory) or GRU (Gated Recurrent Unit), and a number
   of operators that allow add dropouts, projections, or embeddings for inputs.
   Constructing multi-layer cells is supported by a super-class, MultiRNNCell,
-  defined later. Every RNNCell must have the properties below and and
-  implement __call__ with the following signature.
+  defined later. Every RNNCell must have the properties below and implement
+  __call__ with the following signature.
   """
 
   def __call__(self, inputs, state, scope=None):
