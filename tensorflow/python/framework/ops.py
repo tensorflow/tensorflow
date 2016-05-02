@@ -3594,6 +3594,8 @@ class GraphKeys(object):
   BIASES = "biases"
   # Key to collect activations
   ACTIVATIONS = "activations"
+  # Key to collect update_ops
+  UPDATE_OPS = "update_ops"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
