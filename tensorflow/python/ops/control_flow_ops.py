@@ -1340,7 +1340,6 @@ class WhileContext(ControlFlowContext):
       else:
         # Control edges must be in the same context.
         for x in op.control_inputs:
-
           assert x._get_control_flow_context() == self, (
               "Control inputs must come from Operations in the same while "
               "loop context (not an outer context)." + str(x))
