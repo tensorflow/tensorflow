@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -179,6 +178,15 @@ struct FillPhiloxRandom<CPUDevice, Distribution> {
 };
 }  // namespace functor
 
+namespace random {
+// Note that the 256 multiplier is repeated above; do not change it just here.
+PhiloxRandom ReserveRandomOutputs(GuardedPhiloxRandom* generator,
+                                  int64 output_count) {
+  int64 conservative_sample_count = output_count << 8;
+  return generator->ReserveSamples128(conservative_sample_count);
+}
+}  // namespace random
+
 namespace {
 
 static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
@@ -212,14 +220,6 @@ static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
   return Status::OK();
 }
 
-// Reserve enough random samples in the generator for the given output count.
-// Note that the 256 multiplier is repeated above; do not change it just here.
-static random::PhiloxRandom ReserveRandomOutputs(GuardedPhiloxRandom& generator,
-                                                 int64 output_count) {
-  int64 conservative_sample_count = output_count << 8;
-  return generator.ReserveSamples128(conservative_sample_count);
-}
-
 // For now, use the same interface as RandomOp, so we can choose either one
 // at the run-time.
 template <typename Device, class Distribution>
@@ -237,7 +237,7 @@ class PhiloxRandomOp : public OpKernel {
     auto output_flat = output->flat<T>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),
-        ReserveRandomOutputs(generator_, output_flat.size()),
+        random::ReserveRandomOutputs(&generator_, output_flat.size()),
         output_flat.data(), output_flat.size(), Distribution());
   }
 
@@ -280,7 +280,7 @@ class RandomUniformIntOp : public OpKernel {
     auto output_flat = output->flat<IntType>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),
-        ReserveRandomOutputs(generator_, output_flat.size()),
+        random::ReserveRandomOutputs(&generator_, output_flat.size()),
         output_flat.data(), output_flat.size(), dist);
   }
 
