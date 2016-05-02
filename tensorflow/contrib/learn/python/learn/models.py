@@ -18,6 +18,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.ops import dnn_ops
 from tensorflow.contrib.learn.python.learn.ops import losses_ops
+from tensorflow.contrib.learn.python.learn.ops import autoencoder_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
@@ -186,6 +187,36 @@ def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
     return target_predictor_fn(layers, y)
 
   return dnn_estimator
+
+def get_autoencoder_model(hidden_units, target_predictor_fn,
+                          activation, add_noise=None, dropout=None):
+    """Returns a function that creates a Autoencoder TensorFlow subgraph with given
+    params.
+
+    Args:
+        hidden_units: List of values of hidden units for layers.
+        target_predictor_fn: Function that will predict target from input
+                             features. This can be logistic regression,
+                             linear regression or any other model,
+                             that takes X, y and returns predictions and loss tensors.
+        activation: activation function used to map inner latent layer onto
+                    reconstruction layer.
+        add_noise: a function that adds noise to tensor_in, 
+               e.g. def add_noise(x):
+                        return(x + np.random.normal(0, 0.1, (len(x), len(x[0]))))
+        dropout: When not none, causes dropout regularization to be used,
+                 with the specified probability of removing a given coordinate.
+
+    Returns:
+        A function that creates the subgraph.
+    """
+    def dnn_autoencoder_estimator(X):
+        """Autoencoder estimator with target predictor function on top."""
+        encoder, decoder = autoencoder_ops.dnn_autoencoder(
+          X, hidden_units, activation,
+          add_noise=add_noise, dropout=dropout)
+        return encoder, decoder, target_predictor_fn(X, decoder)
+    return dnn_autoencoder_estimator
 
 ## This will be in Tensorflow 0.7.
 ## TODO(ilblackdragon): Clean this up when it's released
