@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_RANDOM_OP_H_
 #define TENSORFLOW_KERNELS_RANDOM_OP_H_
 
-#include "tensorflow/core/lib/random/philox_random.h"
-#include "tensorflow/core/util/guarded_philox_random.h"
-
 namespace tensorflow {
 
 class OpKernelContext;
@@ -29,14 +26,6 @@ template <typename Device, class Distribution>
 struct FillPhiloxRandom;
 
 }  // namespace functor
-
-namespace random {
-
-// Reserve enough random samples in the generator for the given output count.
-PhiloxRandom ReserveRandomOutputs(GuardedPhiloxRandom* generator,
-                                  int64 output_count);
-}  // namespace random
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_RANDOM_OP_H_
