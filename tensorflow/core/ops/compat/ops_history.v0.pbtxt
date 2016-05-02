@@ -3050,6 +3050,17 @@ op {
   }
 }
 op {
+  name: "BatchFFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "BatchFFT2D"
   input_arg {
     name: "in"
@@ -3068,6 +3079,17 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -3094,6 +3116,17 @@ op {
   }
 }
 op {
+  name: "BatchFFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "BatchIFFT"
   input_arg {
     name: "in"
@@ -3112,6 +3145,17 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchIFFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -3138,6 +3182,17 @@ op {
   }
 }
 op {
+  name: "BatchIFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "BatchIFFT3D"
   input_arg {
     name: "in"
@@ -3156,6 +3211,17 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchIFFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -3171,6 +3237,47 @@ op {
   }
   output_arg {
     name: "out"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_COMPLEX64
+      }
+    }
+  }
+  attr {
+    name: "adj_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adj_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "BatchMatMul"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
     type_attr: "T"
   }
   attr {
@@ -5218,6 +5325,21 @@ op {
   }
 }
 op {
+  name: "Complex"
+  input_arg {
+    name: "real"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "imag"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "ComplexAbs"
   input_arg {
     name: "x"
@@ -5337,6 +5459,17 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "Conj"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -7129,6 +7262,17 @@ op {
   }
 }
 op {
+  name: "FFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "FFT2D"
   input_arg {
     name: "in"
@@ -7151,6 +7295,17 @@ op {
   }
 }
 op {
+  name: "FFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "FFT3D"
   input_arg {
     name: "in"
@@ -7169,6 +7324,17 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "FFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -8032,6 +8198,17 @@ op {
   }
 }
 op {
+  name: "IFFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "IFFT2D"
   input_arg {
     name: "in"
@@ -8054,6 +8231,17 @@ op {
   }
 }
 op {
+  name: "IFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "IFFT3D"
   input_arg {
     name: "in"
@@ -8072,6 +8260,17 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "IFFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -8182,6 +8381,17 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_FLOAT
+  }
+}
+op {
+  name: "Imag"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_FLOAT
   }
 }
@@ -12967,6 +13177,17 @@ op {
   }
 }
 op {
+  name: "Real"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+}
+op {
   name: "ReduceJoin"
   input_arg {
     name: "inputs"
@@ -15752,6 +15973,29 @@ op {
   }
   output_arg {
     name: "out"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "Select"
+  input_arg {
+    name: "condition"
+    type: DT_BOOL
+  }
+  input_arg {
+    name: "t"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "e"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
     type_attr: "T"
   }
   attr {

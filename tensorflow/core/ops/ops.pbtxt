@@ -1277,8 +1277,8 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most dimension\nof `input` is replaced with its 1D Fourier Transform."
+    name: "output"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its 1D Fourier Transform."
     type: DT_COMPLEX64
   }
   summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
@@ -1292,7 +1292,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their 2D Fourier Transform."
     type: DT_COMPLEX64
   }
@@ -1307,7 +1307,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their 3D Fourier Transform."
     type: DT_COMPLEX64
   }
@@ -1322,8 +1322,8 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most dimension\nof `input` is replaced with its inverse 1D Fourier Transform."
+    name: "output"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its inverse 1D Fourier Transform."
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
@@ -1337,7 +1337,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their inverse 2D Fourier Transform."
     type: DT_COMPLEX64
   }
@@ -1352,7 +1352,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their inverse 3D Fourier Transform."
     type: DT_COMPLEX64
   }
@@ -1372,7 +1372,7 @@ op {
     type_attr: "T"
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "3-D or higher with shape `[..., r_o, c_o]`"
     type_attr: "T"
   }
@@ -1405,7 +1405,7 @@ op {
     description: "If `True`, adjoint the slices of `y`. Defaults to `False`."
   }
   summary: "Multiplies slices of two tensors in batches."
-  description: "Multiplies all slices of `Tensor` `x` and `y` (each slice can be\nviewed as an element of a batch), and arranges the individual results\nin a single output tensor of the same batch size. Each of the\nindividual slices can optionally be adjointed (to adjoint a matrix\nmeans to transpose and conjugate it) before multiplication by setting\nthe `adj_x` or `adj_y` flag to `True`, which are by default `False`.\n\nThe input tensors `x` and `y` are 3-D or higher with shape `[..., r_x, c_x]`\nand `[..., r_y, c_y]`.\n\nThe output tensor is 3-D or higher with shape `[..., r_o, c_o]`, where:\n\n    r_o = c_x if adj_x else r_x\n    c_o = r_y if adj_y else c_y\n\nIt is computed as:\n\n    out[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])"
+  description: "Multiplies all slices of `Tensor` `x` and `y` (each slice can be\nviewed as an element of a batch), and arranges the individual results\nin a single output tensor of the same batch size. Each of the\nindividual slices can optionally be adjointed (to adjoint a matrix\nmeans to transpose and conjugate it) before multiplication by setting\nthe `adj_x` or `adj_y` flag to `True`, which are by default `False`.\n\nThe input tensors `x` and `y` are 3-D or higher with shape `[..., r_x, c_x]`\nand `[..., r_y, c_y]`.\n\nThe output tensor is 3-D or higher with shape `[..., r_o, c_o]`, where:\n\n    r_o = c_x if adj_x else r_x\n    c_o = r_y if adj_y else c_y\n\nIt is computed as:\n\n    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])"
 }
 op {
   name: "BatchMatrixBandPart"
@@ -2389,7 +2389,7 @@ op {
     type: DT_FLOAT
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_COMPLEX64
   }
   summary: "Converts two real numbers to a complex number."
@@ -2523,7 +2523,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_COMPLEX64
   }
   summary: "Returns the complex conjugate of a complex number."
@@ -3942,7 +3942,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "The 1D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
@@ -3956,7 +3956,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "The 2D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
@@ -3970,7 +3970,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "The 3D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
@@ -4522,7 +4522,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "The inverse 1D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
@@ -4536,7 +4536,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "The inverse 2D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
@@ -4550,7 +4550,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "The inverse 3D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
@@ -4661,7 +4661,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_FLOAT
   }
   summary: "Returns the imaginary part of a complex number."
@@ -7897,7 +7897,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_FLOAT
   }
   summary: "Returns the real part of a complex number."
@@ -9336,7 +9336,7 @@ op {
     type_attr: "T"
   }
   output_arg {
-    name: "out"
+    name: "output"
     description: "= A `Tensor` with the same type and shape as `t` and `e`."
     type_attr: "T"
   }
