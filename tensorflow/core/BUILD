@@ -57,6 +57,8 @@ load(
     "tf_proto_text_protos_relative",
     "cc_header_only_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # For platform specific build config
 load(
@@ -1258,7 +1260,7 @@ tf_cc_tests(
 )
 
 # GPU-related tests
-tf_cc_tests(
+tf_cc_tests_gpu(
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
@@ -1292,7 +1294,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/memory_types_test",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1437,7 +1439,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_allocator_retry_test.cc",
     size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1459,7 +1461,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_stream_util_test.cc",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1567,7 +1569,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_tracer_test",
     size = "small",
     args = ["--heap_check=local"],

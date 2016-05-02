@@ -27,7 +27,7 @@ filegroup(
     ]),
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # For platform specific build config
 load(
@@ -278,7 +278,7 @@ cc_library(
 
 # TODO(mrry): Move executor_test.cc to ../common_runtime when once it no longer depends
 # on grpc_testlib.
-tf_cc_tests(
+tf_cuda_cc_tests(
     size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
@@ -316,7 +316,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cuda_cc_tests(
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),

@@ -28,8 +28,8 @@ filegroup(
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cuda_library",
-    "tf_cc_tests",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # For platform specific build config
 load(
@@ -325,10 +325,10 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cc_tests(
+tf_cuda_cc_tests(
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["exclusive"],
+    tags = tf_cuda_tests_tags() + [],
     tests = [
         "grpc_channel_test.cc",
         "rpc_rendezvous_mgr_test.cc",
@@ -352,10 +352,10 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cuda_cc_tests(
     size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["exclusive"],
+    tags = tf_cuda_tests_tags() + [],
     tests = [
         "grpc_session_test.cc",
     ],

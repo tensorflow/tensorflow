@@ -10,9 +10,9 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 
@@ -1264,6 +1264,7 @@ cuda_py_test(
     additional_deps = [
         ":training",
     ],
+    main = "training/session_manager_test.py",
 )
 
 py_test(
@@ -1355,4 +1356,5 @@ cuda_py_test(
     srcs = [
         "ops/batch_norm_benchmark.py",
     ],
+    main = "ops/batch_norm_benchmark.py",
 )

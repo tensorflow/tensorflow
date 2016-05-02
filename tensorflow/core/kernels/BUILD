@@ -21,13 +21,13 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
-    "tf_cuda_cc_test",
-    "tf_cuda_cc_tests",
     "tf_copts",
     "tf_kernel_libraries",
     "tf_kernel_library",
     "cc_header_only_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
