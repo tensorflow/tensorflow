@@ -134,3 +134,11 @@ This tutorial describes how to export everything pertaining to a running
 model and import it later for various purposes.
 
 [View Tutorial](../how_tos/meta_graph/index.md)
+
+## How to Quantize Neural Networks with TensorFlow
+
+This guide shows how you can convert a float model into one using eight-bit
+quantized parameters and calculations. It also describes how the quantization
+process works under the hood.
+
+[View Tutorial](../how_tos/quantization/index.md)
