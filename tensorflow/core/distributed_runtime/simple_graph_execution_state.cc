@@ -129,33 +129,13 @@ Status SimpleGraphExecutionState::InitBaseGraph() {
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(opts, original_graph_def_, new_base.get()));
-  for (const Node* n : new_base->nodes()) {
-    VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
-    node_name_to_cost_id_map_[n->name()] = n->cost_id();
-  }
 
   Status status = PreliminaryPlace(*new_base);
   if (!status.ok()) {
-    node_name_to_cost_id_map_.clear();
     return status;
   }
   base_ = new_base.release();
   return Status::OK();
-}
-
-Status SimpleGraphExecutionState::GlobalNodeDefByName(const string& name,
-                                                      NodeDef* out) {
-  NodeNameToCostIdMap::const_iterator iter =
-      node_name_to_cost_id_map_.find(name);
-  if (iter != node_name_to_cost_id_map_.end()) {
-    mutex_lock l(mu_);  // could use reader lock
-    const Node* node = placed_->FindNodeId(iter->second);
-    if (node) {
-      *out = node->def();
-      return Status::OK();
-    }
-  }
-  return errors::NotFound("Node name: ", name);
 }
 
 Status SimpleGraphExecutionState::PreliminaryPlace(const Graph& base) {
@@ -284,8 +264,7 @@ Status SimpleGraphExecutionState::DeviceIsCompatible(
 }
 
 Status SimpleGraphExecutionState::SimplePlacement(Graph* graph) {
-  SimplePlacer placer(graph, device_set_, &node_name_to_cost_id_map_,
-                      session_options_);
+  SimplePlacer placer(graph, device_set_, session_options_);
   // TODO(mrry): Consider making the SimplePlacer cancelable.
   return placer.Run();
 }

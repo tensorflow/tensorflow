@@ -37,8 +37,8 @@ namespace tensorflow {
 //    are granted.
 // 3. Nodes connected by edges of a reference type are colocated on
 //    the same device.
-// 4. Given nodes "A" and "B", if node "B" has the device specification
-//    "@A", nodes "A" and "B" will be colocated on the same device.
+// 4. Given nodes "A" and "B", if node "B" has a colocation group
+//    "@loc:A", nodes "A" and "B" will be colocated on the same device.
 //
 // The implementation builds a constraint graph with the same set of
 // nodes, and edges that represent colocation constraints between
@@ -57,20 +57,14 @@ class SimplePlacer {
 
   // Creates an instance of the SimplePlacer algorithm for the given
   // Graph "graph" (nodes in which may or may not be assigned) on the
-  // given DeviceSet "devices". The "name_to_id_map" maps the names of
-  // nodes in "g" to their numerical ID.
+  // given DeviceSet "devices".
   //
-  // REQUIRES: for all mappings (k, v) in "name_to_id_map",
-  // graph.FindNodeId(v)->name() == k.
-  //
-  // The "graph", "devices", and "name_to_id_map" pointer arguments
+  // The "graph", and "devices" pointer arguments
   // are borrowed by this SimplePlacer, and must outlive it.
   SimplePlacer(Graph* graph, const DeviceSet* devices,
-               const NodeNameToIdMap* name_to_id_map,
                const SessionOptions* options);
 
-  SimplePlacer(Graph* graph, const DeviceSet* devices,
-               const NodeNameToIdMap* name_to_id_map);
+  SimplePlacer(Graph* graph, const DeviceSet* devices);
 
   ~SimplePlacer();
 
@@ -82,11 +76,8 @@ class SimplePlacer {
   Status Run();
 
  private:
-  Status GetNodeByName(const string& name, Node** out_node) const;
-
   Graph* const graph_;                           // Not owned.
   const DeviceSet* const devices_;               // Not owned.
-  const NodeNameToIdMap* const name_to_id_map_;  // Not owned.
   const SessionOptions* options_;                // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(SimplePlacer);

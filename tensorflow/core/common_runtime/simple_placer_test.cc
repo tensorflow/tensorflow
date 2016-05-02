@@ -185,7 +185,7 @@ class SimplePlacerTest : public ::testing::Test {
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
   Status Place(Graph* graph, DeviceSet* devices, SessionOptions* options) {
-    SimplePlacer placer(graph, devices, &nodes_by_name_, options);
+    SimplePlacer placer(graph, devices, options);
     return placer.Run();
   }
 
@@ -512,70 +512,6 @@ TEST_F(SimplePlacerTest, TestReferenceConnectionNoSourceDevice) {
   EXPECT_DEVICE_TYPE(g, "assign", DEVICE_CPU);
 }
 
-// Test the handling of '@node_name' colocation constraints, when
-// these are arranged in multiple chains.
-TEST_F(SimplePlacerTest, TestColocatedChain) {
-  Graph g(OpRegistry::Global());
-  {  // Scope for temporary variables used to construct g.
-    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
-    Node* last_node = input;
-    for (int i = 0; i < 100; ++i) {
-      if (i % 10 == 0) {
-        // Every ten nodes, start a new chain.
-        last_node = ops::UnaryOp("TestRelu", last_node,
-                                 b.opts().WithName(strings::StrCat("n_", i)));
-      } else {
-        // Chain each successive node to the previous one.
-        last_node =
-            ops::UnaryOp("TestRelu", last_node,
-                         b.opts()
-                             .WithName(strings::StrCat("n_", i))
-                             .WithDevice(strings::StrCat("@n_", i - 1)));
-      }
-    }
-    TF_EXPECT_OK(BuildGraph(b, &g));
-  }
-
-  TF_EXPECT_OK(Place(&g));
-  for (int i = 0; i < 100; ++i) {
-    if (i % 10 != 0) {
-      EXPECT_COLOCATED(g, strings::StrCat("n_", i - (i % 1)),
-                       strings::StrCat("n_", i));
-    }
-  }
-}
-
-// Test the handling of '@node_name' colocation constraints, when the
-// chains are shuffled.
-TEST_F(SimplePlacerTest, TestColocatedChainWithLongRangeColocations) {
-  Graph g(OpRegistry::Global());
-  {  // Scope for temporary variables used to construct g.
-    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
-    Node* last_node = input;
-    for (int i = 0; i < 10; ++i) {
-      // Start ten chains.
-      last_node = ops::UnaryOp("TestRelu", last_node,
-                               b.opts().WithName(strings::StrCat("n_", i)));
-    }
-    for (int i = 10; i < 100; ++i) {
-      // Add each node to the (i % 10)^th chain.
-      last_node = ops::UnaryOp("TestRelu", last_node,
-                               b.opts()
-                                   .WithName(strings::StrCat("n_", i))
-                                   .WithDevice(strings::StrCat("@n_", i % 10)));
-    }
-    TF_EXPECT_OK(BuildGraph(b, &g));
-  }
-
-  TF_EXPECT_OK(Place(&g));
-  for (int i = 10; i < 100; ++i) {
-    EXPECT_COLOCATED(g, strings::StrCat("n_", i % 10),
-                     strings::StrCat("n_", i));
-  }
-}
-
 TEST_F(SimplePlacerTest, TestColocationGroup) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
@@ -724,13 +660,15 @@ TEST_F(SimplePlacerTest, TestColocationAndReferenceConnections) {
       // Create a variable colocated with some existing variable, and
       // an assignment colocated with a possibly-different variable.
       Node* var = ops::SourceOp(
-          "TestVariable", b.opts()
-                              .WithName(strings::StrCat("var_", i))
-                              .WithDevice(strings::StrCat("@var_", i % 6)));
-      ops::BinaryOp("TestAssign", var, input,
-                    b.opts()
-                        .WithName(strings::StrCat("assign_", i))
-                        .WithDevice(strings::StrCat("@assign_", i % 3)));
+          "TestVariable",
+          b.opts()
+              .WithName(strings::StrCat("var_", i))
+              .WithAttr("_class", {strings::StrCat("loc:@var_", i % 6)}));
+      ops::BinaryOp(
+          "TestAssign", var, input,
+          b.opts()
+              .WithName(strings::StrCat("assign_", i))
+              .WithAttr("_class", {strings::StrCat("loc:@assign_", i % 3)}));
     }
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
@@ -938,37 +876,6 @@ TEST_F(SimplePlacerTest, TestNonUniqueAssignedDevice) {
           .contains("Assigned device '/job:a' does not match any device"));
 }
 
-// Test that placement fails when a node requests colocation with another
-// node that does not exist.
-TEST_F(SimplePlacerTest, TestUnknownColocatedNode) {
-  Graph g(OpRegistry::Global());
-  {  // Scope for temporary variables used to construct g.
-    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-    ops::SourceOp("TestInput", b.opts().WithName("in").WithDevice("@foo"));
-    TF_EXPECT_OK(BuildGraph(b, &g));
-  }
-
-  Status s = Place(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message()).contains("'foo' does not exist"));
-}
-
-// Test that placement fails when a node requests colocation with a
-// malformed node name.
-TEST_F(SimplePlacerTest, TestMalformedColocatedNode) {
-  Graph g(OpRegistry::Global());
-  {  // Scope for temporary variables used to construct g.
-    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-    ops::SourceOp("TestInput", b.opts().WithName("in").WithDevice("@"));
-    TF_EXPECT_OK(BuildGraph(b, &g));
-  }
-
-  Status s = Place(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("node named in device '' does not exist"));
-}
-
 // Test that ops request to be placed on non-existent devices will be relocated
 // to existing device of the same type if allow_soft_placement is set.
 TEST_F(SimplePlacerTest, TestNonexistentGpuAllowSoftPlacement) {
@@ -1111,28 +1018,6 @@ TEST_F(SimplePlacerTest, TestUnsatisfiableConstraintWithReferenceConnections) {
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   EXPECT_TRUE(StringPiece(s.error_message())
                   .contains("Cannot colocate nodes 'var' and 'assign'"));
-}
-
-// Test that placement fails when two nodes have an explicit
-// colocation constraint, and each node requires a mutually
-// incompatible device.
-TEST_F(SimplePlacerTest, TestUnsatisfiableConstraintWithColocatedNodes) {
-  Graph g(OpRegistry::Global());
-  {  // Scope for temporary variables used to construct g.
-    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-    Node* input = ops::SourceOp("TestInput",
-                                b.opts().WithName("in").WithDevice("/gpu:0"));
-    Node* relu_1 = ops::UnaryOp("TestRelu", input,
-                                b.opts().WithName("relu_1").WithDevice("@in"));
-    ops::UnaryOp("ReluGPU", relu_1,
-                 b.opts().WithName("relu_2").WithDevice("@relu_1"));
-    TF_EXPECT_OK(BuildGraph(b, &g));
-  }
-
-  Status s = Place(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("Cannot colocate nodes 'relu_1' and 'relu_2'"));
 }
 
 }  // namespace

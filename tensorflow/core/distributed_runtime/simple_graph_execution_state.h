@@ -145,9 +145,6 @@ class SimpleGraphExecutionState {
   PlaceMap stateful_placements_ GUARDED_BY(mu_);
   std::vector<Node*> missing_stateful_placements_ GUARDED_BY(mu_);
 
-  // Map from name to Node for the full graph in placed_.
-  NodeNameToCostIdMap node_name_to_cost_id_map_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(SimpleGraphExecutionState);
 };
 

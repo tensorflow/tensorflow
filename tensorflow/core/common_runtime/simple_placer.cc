@@ -67,23 +67,6 @@ std::vector<Device*> FilterSupportedDevices(
   return filtered_devices;
 }
 
-// TODO(vrv): Remove "@" syntax capability.
-bool HasColocatedNodeName(const Node& node) {
-  return StringPiece(node.def().device()).starts_with("@");
-}
-
-Status ParseColocatedNodeName(const Node& node,
-                              string* out_colocated_node_name) {
-  StringPiece device(node.def().device());
-  if (!device.Consume("@")) {
-    return errors::InvalidArgument("Malformed colocated node name: '", device,
-                                   "'");
-  }
-  // TODO(mrry): Validate that the node name is a valid node name.
-  *out_colocated_node_name = device.ToString();
-  return Status::OK();
-}
-
 // Returns the name of the colocation group of the node by inspecting
 // the "_class" attribute of the NodeDef.  Returns "" if it doesn't
 // exist.
@@ -484,11 +467,10 @@ class ColocationGraph {
             node.def().op(), "' with these attrs");
       }
 
-      // If the NodeDef contains a device that is *not* a colocated node name
-      // (i.e. it does not begin with '@') then we interpret it as a (partial)
-      // device specification.
+      // If the NodeDef contains a device, then we interpret it as a
+      // (partial) device specification.
       string colocated_node_name;
-      if (!node.def().device().empty() && !HasColocatedNodeName(node)) {
+      if (!node.def().device().empty()) {
         // The user has specified a device in the NodeDef, try to find a
         // valid device matching their specification in the set of
         // devices.
@@ -551,16 +533,13 @@ class ColocationGraph {
 }  // namespace
 
 SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
-                           const NodeNameToIdMap* name_to_id_map,
                            const SessionOptions* options)
     : graph_(graph),
       devices_(devices),
-      name_to_id_map_(name_to_id_map),
       options_(options) {}
 
-SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
-                           const NodeNameToIdMap* name_to_id_map)
-    : graph_(graph), devices_(devices), name_to_id_map_(name_to_id_map) {
+SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices)
+    : graph_(graph), devices_(devices) {
   options_ = nullptr;
 }
 
@@ -593,33 +572,7 @@ Status SimplePlacer::Run() {
       continue;
     }
 
-    // 2(a). If node n specifies a colocation constraint as its device name,
-    // add an edge from the colocated node to n.
-    if (HasColocatedNodeName(*node)) {
-      string colocated_node_name;
-      status = ParseColocatedNodeName(*node, &colocated_node_name);
-      if (!status.ok()) {
-        return AttachDef(status, node->def());
-      }
-      Node* colocated_node;
-      status = GetNodeByName(colocated_node_name, &colocated_node);
-      if (!status.ok()) {
-        return AttachDef(
-            errors::InvalidArgument("Colocated node named in device '",
-                                    colocated_node_name, "' does not exist"),
-            node->def());
-      }
-      status = colocation_graph.ColocateNodes(*colocated_node, *node);
-      if (!status.ok()) {
-        return AttachDef(
-            errors::InvalidArgument(
-                "Cannot satisfy colocation constraint named in device '",
-                colocated_node_name, "': ", status.error_message()),
-            node->def());
-      }
-    }
-
-    // 2(b). If `node` has an input edge with reference type, add an
+    // If `node` has an input edge with reference type, add an
     // edge from the source of that edge to `node`.
     for (const auto& edge : node->in_edges()) {
       if (!edge->IsControlEdge() &&
@@ -698,17 +651,6 @@ Status SimplePlacer::Run() {
     }
   }
   return Status::OK();
-}
-
-Status SimplePlacer::GetNodeByName(const string& name, Node** out_node) const {
-  NodeNameToIdMap::const_iterator iter = name_to_id_map_->find(name);
-  if (iter != name_to_id_map_->end()) {
-    *out_node = graph_->FindNodeId(iter->second);
-    if (*out_node) {
-      return Status::OK();
-    }
-  }
-  return errors::NotFound(name);
 }
 
 }  // namespace tensorflow

@@ -849,12 +849,7 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
       device_set_.client_device()->attributes()));
 
   // Run the simple placer after rewriting the graph.
-  std::unordered_map<string, int32> node_name_to_cost_map;
-  for (Node* n : graph->nodes()) {
-    node_name_to_cost_map[n->name()] = n->cost_id();
-  }
-  SimplePlacer placer(graph.get(), &device_set_, &node_name_to_cost_map,
-                      &options_);
+  SimplePlacer placer(graph.get(), &device_set_, &options_);
 
   {
     mutex_lock l(mu_);
