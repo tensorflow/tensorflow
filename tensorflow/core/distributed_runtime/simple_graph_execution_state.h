@@ -118,32 +118,14 @@ class SimpleGraphExecutionState {
   mutable mutex mu_;
 
   Status InitBaseGraph() EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  Status PreliminaryPlace(const Graph& graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  void FreezeStatefulNodes(bool is_prelim) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  void PlaceStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  Status DoPlace(Graph* graph);
-  Status SimplePlacement(Graph* graph);
-  // Return an OK status if "n" can be assigned to "device".
-  Status DeviceIsCompatible(Node* n, const Device* device) const;
 
   const OpRegistryInterface* const ops_;   // Not owned
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
 
-  // Original graph before we make any placement decisions.
-  Graph* base_ GUARDED_BY(mu_);
-
-  // Full graph, placed on the complete set of devices, as a whole.
-  Graph* placed_ GUARDED_BY(mu_);
-
-  // Map of placed stateful nodes, i.e. nodes for which is_stateful()
-  // is true, such as "params" and "queue" nodes.  Once placed these
-  // nodes can not be moved to a different device.  Maps node names to
-  // device names.
-  typedef std::unordered_map<string, string> PlaceMap;
-  PlaceMap stateful_placements_ GUARDED_BY(mu_);
-  std::vector<Node*> missing_stateful_placements_ GUARDED_BY(mu_);
+  // The dataflow graph owned by this object.
+  Graph* graph_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SimpleGraphExecutionState);
 };

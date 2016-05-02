@@ -46,16 +46,14 @@ SimpleGraphExecutionState::SimpleGraphExecutionState(
     : ops_(ops),
       device_set_(options.device_set),
       session_options_(options.session_options),
-      base_(nullptr),
-      placed_(nullptr) {
+      graph_(nullptr) {
   // TODO(mrry): Publish placement visualizations or handle the log
   // placement option.
 }
 
 SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   mutex_lock l(mu_);
-  delete base_;
-  delete placed_;
+  delete graph_;
 }
 
 Status SimpleGraphExecutionState::Create(GraphDef* graph_def) {
@@ -109,15 +107,6 @@ Status SimpleGraphExecutionState::Extend(
   }
   *out = new_execution_state;
 
-  // Ensure that any state created in the precursor is accessible in the
-  // new graph.
-  {
-    mutex_lock l(mu_);
-    for (const auto& placement : stateful_placements_) {
-      (*out)->stateful_placements_.insert(placement);
-    }
-  }
-
   // TODO(mrry): This is likely to be used for non-throughput-sensitive
   // interactive workloads, but in future we may want to transfer other
   // parts of the placement and/or cost model.
@@ -125,76 +114,15 @@ Status SimpleGraphExecutionState::Extend(
 }
 
 Status SimpleGraphExecutionState::InitBaseGraph() {
-  std::unique_ptr<Graph> new_base(new Graph(ops_));
+  std::unique_ptr<Graph> new_graph(new Graph(ops_));
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(opts, original_graph_def_, new_base.get()));
-
-  Status status = PreliminaryPlace(*new_base);
-  if (!status.ok()) {
-    return status;
-  }
-  base_ = new_base.release();
+      ConvertGraphDefToGraph(opts, original_graph_def_, new_graph.get()));
+  SimplePlacer placer(new_graph.get(), device_set_, session_options_);
+  // TODO(mrry): Consider making the SimplePlacer cancelable.
+  TF_RETURN_IF_ERROR(placer.Run());
+  graph_ = new_graph.release();
   return Status::OK();
-}
-
-Status SimpleGraphExecutionState::PreliminaryPlace(const Graph& base) {
-  VLOG(1) << "PreliminaryPlace";
-  Graph* ng = new Graph(ops_);
-
-  CopyGraph(base, ng);
-  Status status = DoPlace(ng);
-  if (!status.ok()) {
-    delete ng;
-  } else {
-    delete placed_;
-    placed_ = ng;
-    FreezeStatefulNodes(true /*is_prelim*/);
-  }
-  return status;
-}
-
-void SimpleGraphExecutionState::FreezeStatefulNodes(bool is_prelim) {
-  if (is_prelim) {
-    // During the preliminary placement every stateful Node got placed
-    // somewhere, and we need to remember where, so it doesn't move.
-    for (Node* n : placed_->nodes()) {
-      if (n->op_def().is_stateful()) {
-        stateful_placements_[n->name()] = n->assigned_device_name();
-      }
-    }
-  } else {
-    // During later placements it's possible for new stateful nodes to
-    // appear. They are noticed while we're pinning the pre-existing
-    // stateful nodes to their prior positions, and after they've been
-    // placed this function is entered to record their placements.
-    for (Node* n : missing_stateful_placements_) {
-      CHECK(n->op_def().is_stateful());
-      stateful_placements_[n->name()] = n->assigned_device_name();
-    }
-    missing_stateful_placements_.clear();
-  }
-}
-
-void SimpleGraphExecutionState::PlaceStatefulNodes(Graph* graph) {
-  for (Node* n : graph->nodes()) {
-    if (n->op_def().is_stateful()) {
-      PlaceMap::const_iterator iter = stateful_placements_.find(n->name());
-      if (iter == stateful_placements_.end()) {
-        // NOTE(tucker): I don't understand why this can occur.  So far,
-        // I've only seen it in eval instances, started from a checkpoint.
-        missing_stateful_placements_.push_back(n);
-      } else {
-        n->set_assigned_device_name(iter->second);
-      }
-    }
-  }
-}
-
-Status SimpleGraphExecutionState::DoPlace(Graph* graph) {
-  Status status;
-  // TODO(mrry): Port other placement algorithms from whitepaper.
-  return SimplePlacement(graph);
 }
 
 Status SimpleGraphExecutionState::BuildGraph(const BuildGraphOptions& options,
@@ -202,17 +130,12 @@ Status SimpleGraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   VLOG(1) << "BuildGraph";
   mutex_lock l(mu_);
   // Lazily initialize the base graph.
-  if (base_ == nullptr) {
+  if (!graph_) {
     TF_RETURN_IF_ERROR(InitBaseGraph());
   }
 
-  if (!base_ || !placed_) {
-    return ::tensorflow::errors::Internal(
-        "There was a problem building the graph.");
-  }
-
   std::unique_ptr<ClientGraph> cgraph(new ClientGraph(ops_));
-  CopyGraph(*placed_, &cgraph->graph);
+  CopyGraph(*graph_, &cgraph->graph);
 
   // Extract the subset of the graph that needs to be run, adding feed/fetch
   // ops as needed.
@@ -234,39 +157,6 @@ Status SimpleGraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   *out = cgraph.release();
 
   return Status::OK();
-}
-
-Status SimpleGraphExecutionState::DeviceIsCompatible(
-    Node* n, const Device* device) const {
-  if (!n->def().device().empty()) {
-    DeviceNameUtils::ParsedName pname;
-    if (!DeviceNameUtils::ParseFullName(n->def().device(), &pname)) {
-      return AttachDef(
-          errors::InvalidArgument("Malformed device specification '",
-                                  n->def().device(), "'"),
-          n->def());
-    }
-    std::vector<Device*> devices;
-    device_set_->FindMatchingDevices(pname, &devices);
-    for (auto d : devices) {
-      if (d == device) {
-        return Status::OK();
-      }
-    }
-
-    return AttachDef(
-        errors::InvalidArgument(
-            "Specified device '", n->def().device(),
-            "' not compatible with device of ref connection: ", device->name()),
-        n->def());
-  }
-  return Status::OK();
-}
-
-Status SimpleGraphExecutionState::SimplePlacement(Graph* graph) {
-  SimplePlacer placer(graph, device_set_, session_options_);
-  // TODO(mrry): Consider making the SimplePlacer cancelable.
-  return placer.Run();
 }
 
 }  // namespace tensorflow
