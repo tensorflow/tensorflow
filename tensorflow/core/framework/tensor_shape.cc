@@ -350,6 +350,9 @@ static inline Status MakeShapeHelper(const T* dims, int n, TensorShape* out) {
   if (n > TensorShape::MaxDimensions()) {
     return errors::InvalidArgument("Too many dimensions");
   }
+  if (n < 0) {
+    return errors::InvalidArgument("Negative number of dimensions ", n);
+  }
   for (int i = 0; i < n; ++i) {
     const T dim = internal::SubtleMustCopy(dims[i]);
     if (dim >= 0) {

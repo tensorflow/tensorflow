@@ -89,7 +89,7 @@ struct FillPhiloxRandomTask<Distribution, false> {
 
     // If there are any remaining elements that need to be filled, process them
     if (limit_group_full < limit_group) {
-      int remaining_size = size - limit_group_full * kGroupSize;
+      int64 remaining_size = size - limit_group_full * kGroupSize;
       auto samples = dist(&gen);
       std::copy(&samples[0], &samples[0] + remaining_size, data + offset);
     }
@@ -139,7 +139,7 @@ struct FillPhiloxRandomTask<Distribution, true> {
       gen.Skip(group_index * kGeneratorSkipPerOutputGroup);
       SingleSampleAdapter<PhiloxRandom> single_samples(&gen);
 
-      int remaining_size = size - limit_group_full * kGroupSize;
+      int64 remaining_size = size - limit_group_full * kGroupSize;
       auto samples = dist(&single_samples);
       std::copy(&samples[0], &samples[0] + remaining_size, data + offset);
     }
@@ -188,17 +188,23 @@ static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
         "shape must be a vector of {int32,int64}, got shape ",
         shape.shape().DebugString());
   }
+  if (shape.NumElements() >= TensorShape::MaxDimensions()) {
+    return errors::InvalidArgument("shape has", shape.NumElements(),
+                                   "entries, but "
+                                   "tensors can have at most ",
+                                   TensorShape::MaxDimensions(), " dimensions");
+  }
   if (shape.dtype() == DataType::DT_INT32) {
     auto vec = shape.flat<int32>();
     TensorShape tensor_shape;
-    TF_RETURN_IF_ERROR(
-        TensorShapeUtils::MakeShape(vec.data(), vec.size(), &tensor_shape));
+    TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
+        vec.data(), static_cast<int>(vec.size()), &tensor_shape));
     TF_RETURN_IF_ERROR(ctx->allocate_output(index, tensor_shape, output));
   } else if (shape.dtype() == DataType::DT_INT64) {
     auto vec = shape.flat<int64>();
     TensorShape tensor_shape;
-    TF_RETURN_IF_ERROR(
-        TensorShapeUtils::MakeShape(vec.data(), vec.size(), &tensor_shape));
+    TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
+        vec.data(), static_cast<int>(vec.size()), &tensor_shape));
     TF_RETURN_IF_ERROR(ctx->allocate_output(index, tensor_shape, output));
   } else {
     return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
