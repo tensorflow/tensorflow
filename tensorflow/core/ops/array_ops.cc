@@ -1407,10 +1407,10 @@ The output tensor has shape `[4, 1, 1, 3]` and value:
 (3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:
 
 ```prettyprint
-x = [[[1],   [2],  [3],  [4]],
-     [[5],   [6],  [7],  [8]],
-     [[9],  [10], [11],  [12]],
-     [[13], [14], [15],  [16]]]
+x = [[[[1],   [2],  [3],  [4]],
+      [[5],   [6],  [7],  [8]],
+      [[9],  [10], [11],  [12]],
+      [[13], [14], [15],  [16]]]]
 ```
 
 The output tensor has shape `[4, 2, 2, 1]` and value:
@@ -1604,10 +1604,10 @@ This operation, for block_size of 2, will return the following tensor of shape
 Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
 
 ```prettyprint
-x = [[ [1],   [2],  [5],  [6]],
-     [ [3],   [4],  [7],  [8]],
-     [ [9],  [10], [13],  [14]],
-     [ [11], [12], [15],  [16]]]
+x = [[[[1],   [2],  [5],  [6]],
+      [[3],   [4],  [7],  [8]],
+      [[9],  [10], [13],  [14]],
+      [[11], [12], [15],  [16]]]]
 ```
 
 the operator will return the following tensor of shape `[1 2 2 4]`:
