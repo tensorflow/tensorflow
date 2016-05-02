@@ -163,7 +163,10 @@ struct FillPhiloxRandom<CPUDevice, Distribution> {
     // Limit to maximum six threads for now. The performance scaling is very
     // sub-linear. Too many threads causes a much worse overall performance.
     int num_workers = 6;
-    Shard(num_workers, worker_threads.workers, total_group_count, kGroupSize,
+    const int kGroupCost =
+        random::PhiloxRandom::kResultElementCount *
+        (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
+    Shard(num_workers, worker_threads.workers, total_group_count, kGroupCost,
           [&gen, data, size, dist](int64 start_group, int64 limit_group) {
             FillPhiloxRandomTask<
                 Distribution,
