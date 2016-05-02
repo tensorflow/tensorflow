@@ -46,6 +46,27 @@ class DataFeederTest(tf.test.TestCase):
     self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
     self.assertAllClose(feed_dict[out.name], [2, 1])
 
+  def test_epoch(self):
+    data = np.matrix([[1, 2], [2, 3], [3, 4]])
+    labels = np.array([0, 0, 1])
+    feeder = data_feeder.DataFeeder(data, labels, n_classes=0, batch_size=1)
+    with self.test_session():
+      feeder.input_builder()
+      epoch = feeder.make_epoch_variable()
+      feed_dict_fn = feeder.get_feed_dict_fn()
+      # First input
+      feed_dict = feed_dict_fn()
+      self.assertAllClose(feed_dict[epoch.name], 0)
+      # Second input
+      feed_dict = feed_dict_fn()
+      self.assertAllClose(feed_dict[epoch.name], 0)
+      # Third input
+      feed_dict = feed_dict_fn()
+      self.assertAllClose(feed_dict[epoch.name], 0)
+      # Back to the first input again, so new epoch.
+      feed_dict = feed_dict_fn()
+      self.assertAllClose(feed_dict[epoch.name], 1)
+
   def test_data_feeder_multioutput_regression(self):
     X = np.matrix([[1, 2], [3, 4]])
     y = np.array([[1, 2], [3, 4]])

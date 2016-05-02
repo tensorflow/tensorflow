@@ -208,6 +208,17 @@ class DataFeeder(object):
     self.indices = self.random_state.permutation(self.X.shape[0])
     self.offset = 0
     self.epoch = 0
+    self._epoch_placeholder = None
+
+  def make_epoch_variable(self):
+    """Adds a placeholder variable for the epoch to the graph.
+
+    Returns:
+      The epoch placeholder.
+    """
+    self._epoch_placeholder = array_ops.placeholder(dtypes.int32, [1],
+                                                    name='epoch')
+    return self._epoch_placeholder
 
   def input_builder(self):
     """Builds inputs in the graph.
@@ -268,12 +279,17 @@ class DataFeeder(object):
     assert self._input_placeholder != None
 
     def _feed_dict_fn():
+      feed_dict = {}
+      if self._epoch_placeholder is not None:
+        feed_dict[self._epoch_placeholder.name] = self.epoch
+
       # take random indices
       batch_indices = self.indices[self.offset:self.offset + self.batch_size]
 
       # assign input features from random indices
       inp = np.array(self.X[batch_indices]).reshape((batch_indices.shape[0], 1)) \
           if len(self.X.shape) == 1 else self.X[batch_indices]
+      feed_dict[self._input_placeholder.name] = inp
 
       # move offset and reset it if necessary
       self.offset += self.batch_size
@@ -284,7 +300,7 @@ class DataFeeder(object):
 
       # return early if there are no labels
       if self._output_placeholder is None:
-        return {self._input_placeholder.name: inp}
+        return feed_dict
 
       # assign labels from random indices
       self.output_shape[0] = batch_indices.shape[0]
@@ -299,9 +315,9 @@ class DataFeeder(object):
               out.itemset(tuple([i, idx, value]), 1.0)
         else:
           out[i] = self.y[sample]
+      feed_dict[self._output_placeholder.name] = out
 
-      return {self._input_placeholder.name: inp,
-              self._output_placeholder.name: out}
+      return feed_dict
 
     return _feed_dict_fn
 
