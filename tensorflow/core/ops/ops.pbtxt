@@ -1272,92 +1272,92 @@ op {
 op {
   name: "BatchFFT"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "A complex64 tensor of the same shape as `in`. The inner-most dimension of\n`in` is replaced with its 1D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most dimension\nof `input` is replaced with its 1D Fourier Transform."
     type: DT_COMPLEX64
   }
   summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
-  description: "dimension of `in`."
+  description: "dimension of `input`."
 }
 op {
   name: "BatchFFT2D"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions\nof `in` are replaced with their 2D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their 2D Fourier Transform."
     type: DT_COMPLEX64
   }
   summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
-  description: "2 dimensions of `in`."
+  description: "2 dimensions of `input`."
 }
 op {
   name: "BatchFFT3D"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions\nof `in` are replaced with their 3D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their 3D Fourier Transform."
     type: DT_COMPLEX64
   }
   summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
-  description: "dimensions of `in`."
+  description: "dimensions of `input`."
 }
 op {
   name: "BatchIFFT"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "A complex64 tensor of the same shape as `in`. The inner-most dimension of\n`in` is replaced with its inverse 1D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most dimension\nof `input` is replaced with its inverse 1D Fourier Transform."
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
-  description: "dimension of `in`."
+  description: "dimension of `input`."
 }
 op {
   name: "BatchIFFT2D"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions\nof `in` are replaced with their inverse 2D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their inverse 2D Fourier Transform."
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
-  description: "2 dimensions of `in`."
+  description: "2 dimensions of `input`."
 }
 op {
   name: "BatchIFFT3D"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions\nof `in` are replaced with their inverse 3D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their inverse 3D Fourier Transform."
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
-  description: "3 dimensions of `in`."
+  description: "3 dimensions of `input`."
 }
 op {
   name: "BatchMatMul"
@@ -2519,7 +2519,7 @@ op {
 op {
   name: "Conj"
   input_arg {
-    name: "in"
+    name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
@@ -2527,7 +2527,7 @@ op {
     type: DT_COMPLEX64
   }
   summary: "Returns the complex conjugate of a complex number."
-  description: "Given a tensor `in` of complex numbers, this operation returns a tensor of\ncomplex numbers that are the complex conjugate of each element in `in`. The\ncomplex numbers in `in` must be of the form \\\\(a + bj\\\\), where *a* is the real\npart and *b* is the imaginary part.\n\nThe complex conjugate returned by this operation is of the form \\\\(a - bj\\\\).\n\nFor example:\n\n```\n# tensor \'in\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.conj(in) ==> [-2.25 - 4.75j, 3.25 - 5.75j]\n```"
+  description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ncomplex numbers that are the complex conjugate of each element in `input`. The\ncomplex numbers in `input` must be of the form \\\\(a + bj\\\\), where *a* is the\nreal part and *b* is the imaginary part.\n\nThe complex conjugate returned by this operation is of the form \\\\(a - bj\\\\).\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]\n```"
 }
 op {
   name: "Const"
@@ -3937,13 +3937,13 @@ op {
 op {
   name: "FFT"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 vector."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "The 1D Fourier Transform of `in`."
+    description: "The 1D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
   summary: "Compute the 1-dimensional discrete Fourier Transform."
@@ -3951,13 +3951,13 @@ op {
 op {
   name: "FFT2D"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 matrix."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "The 2D Fourier Transform of `in`."
+    description: "The 2D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
   summary: "Compute the 2-dimensional discrete Fourier Transform."
@@ -3965,13 +3965,13 @@ op {
 op {
   name: "FFT3D"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 3-D tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "The 3D Fourier Transform of `in`."
+    description: "The 3D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
   summary: "Compute the 3-dimensional discrete Fourier Transform."
@@ -4517,13 +4517,13 @@ op {
 op {
   name: "IFFT"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 vector."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "The inverse 1D Fourier Transform of `in`."
+    description: "The inverse 1D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 1-dimensional discrete Fourier Transform."
@@ -4531,13 +4531,13 @@ op {
 op {
   name: "IFFT2D"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 matrix."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "The inverse 2D Fourier Transform of `in`."
+    description: "The inverse 2D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 2-dimensional discrete Fourier Transform."
@@ -4545,13 +4545,13 @@ op {
 op {
   name: "IFFT3D"
   input_arg {
-    name: "in"
+    name: "input"
     description: "A complex64 3-D tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
-    description: "The inverse 3D Fourier Transform of `in`."
+    description: "The inverse 3D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 3-dimensional discrete Fourier Transform."
@@ -4657,7 +4657,7 @@ op {
 op {
   name: "Imag"
   input_arg {
-    name: "in"
+    name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
@@ -4665,7 +4665,7 @@ op {
     type: DT_FLOAT
   }
   summary: "Returns the imaginary part of a complex number."
-  description: "Given a tensor `in` of complex numbers, this operation returns a tensor of type\n`float` that is the imaginary part of each element in `in`. All elements in `in`\nmust be complex numbers of the form \\\\(a + bj\\\\), where *a* is the real part\nand *b* is the imaginary part returned by this operation.\n\nFor example:\n\n```\n# tensor \'in\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.imag(in) ==> [4.75, 5.75]\n```"
+  description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the imaginary part of each element in `input`. All\nelements in `input` must be complex numbers of the form \\\\(a + bj\\\\), where *a*\nis the real part and *b* is the imaginary part returned by this operation.\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.imag(input) ==> [4.75, 5.75]\n```"
 }
 op {
   name: "ImageSummary"
@@ -7893,7 +7893,7 @@ op {
 op {
   name: "Real"
   input_arg {
-    name: "in"
+    name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
@@ -7901,7 +7901,7 @@ op {
     type: DT_FLOAT
   }
   summary: "Returns the real part of a complex number."
-  description: "Given a tensor `in` of complex numbers, this operation returns a tensor of type\n`float` that is the real part of each element in `in`. All elements in `in`\nmust be complex numbers of the form \\\\(a + bj\\\\), where *a* is the real part\nreturned by this operation and *b* is the imaginary part.\n\nFor example:\n\n```\n# tensor \'in\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.real(in) ==> [-2.25, 3.25]\n```"
+  description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the real part of each element in `input`. All elements in\n`input` must be complex numbers of the form \\\\(a + bj\\\\), where *a* is the real\n part returned by this operation and *b* is the imaginary part.\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.real(input) ==> [-2.25, 3.25]\n```"
 }
 op {
   name: "ReduceJoin"
