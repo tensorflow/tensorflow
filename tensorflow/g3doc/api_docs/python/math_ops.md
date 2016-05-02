@@ -1134,7 +1134,7 @@ The output tensor is 3-D or higher with shape `[..., r_o, c_o]`, where:
 
 It is computed as:
 
-    out[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
 
 ##### Args:
 
@@ -1883,8 +1883,8 @@ dimension of `input`.
 ##### Returns:
 
   A `Tensor` of type `complex64`.
-  A complex64 tensor of the same shape as `input`. The inner-most dimension
-  of `input` is replaced with its 1D Fourier Transform.
+  A complex64 tensor of the same shape as `input`. The inner-most
+  dimension of `input` is replaced with its 1D Fourier Transform.
 
 
 - - -
@@ -1904,8 +1904,8 @@ dimension of `input`.
 ##### Returns:
 
   A `Tensor` of type `complex64`.
-  A complex64 tensor of the same shape as `input`. The inner-most dimension
-  of `input` is replaced with its inverse 1D Fourier Transform.
+  A complex64 tensor of the same shape as `input`. The inner-most
+  dimension of `input` is replaced with its inverse 1D Fourier Transform.
 
 
 - - -
