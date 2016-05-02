@@ -76,7 +76,7 @@ class PadOp : public OpKernel {
       OP_REQUIRES(context, before_d >= 0 && after_d >= 0,
                   errors::InvalidArgument("Paddings must be non-negative: ",
                                           before_d, " ", after_d));
-      const int size_d =
+      const int64 size_d =
           (allow_legacy_scalars() && d == in0.dims()) ? 1 : in0.dim_size(d);
       output_shape.AddDim(before_d + size_d + after_d);
     }
