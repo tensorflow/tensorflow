@@ -1306,7 +1306,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
-    alwayslink = 0,
 )
 
 tf_kernel_libraries(
