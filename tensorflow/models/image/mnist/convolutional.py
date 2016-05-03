@@ -33,6 +33,9 @@ from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+
 SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
 WORK_DIRECTORY = 'data'
 IMAGE_SIZE = 28
@@ -97,10 +100,27 @@ def fake_data(num_images):
   labels = numpy.zeros(shape=(num_images,), dtype=numpy.int64)
   for image in xrange(num_images):
     label = image % 2
+    "0.5 / -0.5"
     data[image, :, :, 0] = label - 0.5
+    "0/1"
     labels[image] = label
   return data, labels
 
+
+def showImage(image, channels):
+    """Show the image that store in an array"""
+    if channels == 1:
+        "2D Single Channel Image"
+        #_image = numpy.append(image, image, image)
+
+        #print(_image.shape)
+        #plt.imshow(_image)
+        plt.plot(image)
+        plt.ylabel('some numbers')
+        plt.show()
+    else:
+        "2D Three Channels Image"
+        plt.imshow(image)
 
 def error_rate(predictions, labels):
   """Return the error rate based on dense predictions and sparse labels."""
@@ -109,14 +129,22 @@ def error_rate(predictions, labels):
       numpy.sum(numpy.argmax(predictions, 1) == labels) /
       predictions.shape[0])
 
-
 def main(argv=None):  # pylint: disable=unused-argument
   if FLAGS.self_test:
     print('Running self-test.')
+    "train_data dimensions is 256 * 28 * 28 * 1"
+    "train_labels dimensions is 256 * 1"
     train_data, train_labels = fake_data(256)
     validation_data, validation_labels = fake_data(EVAL_BATCH_SIZE)
     test_data, test_labels = fake_data(EVAL_BATCH_SIZE)
     num_epochs = 1
+    "print(train_data.shape)"
+    "print(train_labels.shape)"
+    #print(train_data[1].shape)
+    #_image = numpy.dstack((train_data[1], numpy.zeros((28, 28, 1)), train_data[1]))
+    #print(_image.shape)
+    #plt.imshow(_image)
+    #plt.show()
   else:
     # Get the data.
     train_data_filename = maybe_download('train-images-idx3-ubyte.gz')
@@ -136,7 +164,11 @@ def main(argv=None):  # pylint: disable=unused-argument
     train_data = train_data[VALIDATION_SIZE:, ...]
     train_labels = train_labels[VALIDATION_SIZE:]
     num_epochs = NUM_EPOCHS
-  train_size = train_labels.shape[0]
+  train_size = train_labels.shape[0] # train size is 55000
+  """see the training data"""
+  _image = numpy.dstack((train_data[1], train_data[1], train_data[1]))
+  plt.imshow(_image)
+  plt.show()
 
   # This is where training samples and labels are fed to the graph.
   # These placeholder nodes will be fed a batch of training data at each
@@ -278,6 +310,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     tf.initialize_all_variables().run()
     print('Initialized!')
     # Loop through training steps.
+    """
     for step in xrange(int(num_epochs * train_size) // BATCH_SIZE):
       # Compute the offset of the current minibatch in the data.
       # Note that we could use better randomization across epochs.
@@ -303,6 +336,7 @@ def main(argv=None):  # pylint: disable=unused-argument
         print('Validation error: %.1f%%' % error_rate(
             eval_in_batches(validation_data, sess), validation_labels))
         sys.stdout.flush()
+    """
     # Finally print the result!
     test_error = error_rate(eval_in_batches(test_data, sess), test_labels)
     print('Test error: %.1f%%' % test_error)
