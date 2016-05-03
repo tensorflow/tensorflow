@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import threading
 import time
+import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
@@ -84,9 +85,12 @@ class SessionManager(object):
     The `local_init_op` is an `Operation` that is run always after a new session
     was created. If `None`, this step is skipped.
 
-    The `ready_op` is an `Operation`. The model is considered ready
-    if that operation succeeds.  If `None`, the model is not checked
-    for readiness.
+    The `ready_op` is an `Operation` used to check if the model is ready.  The
+    model is considered ready if that operation returns an empty string tensor.
+    If the operation returns non empty string tensor, the elements are
+    concatenated and used to indicate to the user why the model is not ready.
+
+    If `ready_op` is `None`, the model is not checked for readiness.
 
     `recovery_wait_secs` is the number of seconds between checks that
     the model is ready.  It is used by processes to wait for a model to
@@ -325,8 +329,20 @@ class SessionManager(object):
       return None
     else:
       try:
-        sess.run(self._ready_op)
-        return None
+        ready_value = sess.run(self._ready_op)
+        # The model is considered ready if ready_op returns an empty 1-D tensor.
+        # Also compare to `None` and dtype being int32 for backward
+        # compatibility.
+        if (ready_value is None or ready_value.dtype == np.int32 or
+            ready_value.size == 0):
+          return None
+        else:
+          # TODO(sherrym): If a custom ready_op returns other types of tensor,
+          # or strings other than variable names, this message could be
+          # confusing.
+          non_initialized_varnames = ", ".join(
+              [i.decode("utf-8") for i in ready_value])
+          return "Variables not initialized: " + non_initialized_varnames
       except errors.FailedPreconditionError as e:
         if "uninitialized" not in str(e):
           logging.warning("Model not ready raised: %s", str(e))

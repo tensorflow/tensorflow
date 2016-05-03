@@ -232,12 +232,11 @@ class Supervisor(object):
         default `Graph`.  The supervisor may add operations to the graph before
         creating a session, but the graph should not be modified by the caller
         after passing it to the supervisor.
-      ready_op: `Operation` to check if the model is initialized.  This
-        operation is run by supervisors in `prepare_or_wait_for_session()` to
-        check if the model is ready to use. The model is considered ready if
-        that operation succeeds.  Defaults to the operation returned from
-        `tf.assert_variables_initialized()`  If `None`, the model is not checked
-        for readiness.
+      ready_op: 1-D string `Tensor`.  This tensor is evaluated by supervisors in
+        `prepare_or_wait_for_session()` to check if the model is ready to use.
+        The model is considered ready if it returns an empty array.  Defaults to
+        the tensor returned from `tf.report_uninitialized_variables()`  If
+        `None`, the model is not checked for readiness.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
         on a chief supervisor for inits and restore.
@@ -369,16 +368,15 @@ class Supervisor(object):
     """Initializes ready_op.
 
     Args:
-      ready_op: `Operation` to check if the model is initialized.
+      ready_op: `Tensor` to check if the model is initialized.
         If it's set to USE_DEFAULT, creates an op that checks all
         the variables are initialized.
     """
     if ready_op is Supervisor.USE_DEFAULT:
       ready_op = self._get_first_op_from_collection(ops.GraphKeys.READY_OP)
       if ready_op is None:
-        ready_op = variables.assert_variables_initialized()
-        if ready_op is not None:
-          ops.add_to_collection(ops.GraphKeys.READY_OP, ready_op)
+        ready_op = variables.report_uninitialized_variables()
+        ops.add_to_collection(ops.GraphKeys.READY_OP, ready_op)
     self._ready_op = ready_op
 
   def _init_init_op(self, init_op=USE_DEFAULT, init_feed_dict=None):
