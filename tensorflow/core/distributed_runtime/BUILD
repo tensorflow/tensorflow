@@ -90,7 +90,6 @@ cc_library(
     srcs = ["remote_device.cc"],
     hdrs = ["remote_device.h"],
     deps = [
-        ":process_util",
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
@@ -116,11 +115,11 @@ cc_library(
         ":call_options",
         ":master_env",
         ":master_session_interface",
-        ":process_util",
         ":remote_device",
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
@@ -135,8 +134,6 @@ cc_library(
     deps = [
         ":master_env",
         ":master_session_interface",
-        ":process_util",
-        ":simple_graph_execution_state",
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu",
@@ -146,30 +143,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "build_graph_options",
-    srcs = ["build_graph_options.cc"],
-    hdrs = ["build_graph_options.h"],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "simple_graph_execution_state",
-    srcs = ["simple_graph_execution_state.cc"],
-    hdrs = ["simple_graph_execution_state.h"],
-    deps = [
-        ":build_graph_options",
-        ":process_util",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:worker_proto_cc",
     ],
 )
 
@@ -194,7 +167,6 @@ cc_library(
     srcs = ["base_rendezvous_mgr.cc"],
     hdrs = ["base_rendezvous_mgr.h"],
     deps = [
-        ":process_util",
         ":rendezvous_mgr_interface",
         ":worker_cache",
         ":worker_env",
@@ -216,7 +188,6 @@ cc_library(
     srcs = ["graph_mgr.cc"],
     hdrs = ["graph_mgr.h"],
     deps = [
-        ":process_util",
         ":rendezvous_mgr_interface",
         ":worker_env",
         "//tensorflow/core:core_cpu_internal",
@@ -229,24 +200,13 @@ cc_library(
 )
 
 cc_library(
-    name = "process_util",
-    srcs = ["process_util.cc"],
-    hdrs = ["process_util.h"],
-    deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
     name = "worker_cache_partial",
     srcs = ["worker_cache_partial.cc"],
     hdrs = ["worker_cache_partial.h"],
     deps = [
-        ":process_util",
         ":worker_cache",
         ":worker_interface",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
@@ -289,7 +249,6 @@ tf_cuda_cc_tests(
     deps = [
         "@grpc//:grpc++_unsecure",
         ":master",
-        ":process_util",
         ":remote_device",
         ":worker_interface",
         "//tensorflow/core:core_cpu",
@@ -326,7 +285,6 @@ tf_cuda_cc_tests(
     deps = [
         "@grpc//:grpc++_unsecure",
         ":master",
-        ":process_util",
         ":remote_device",
         ":worker_interface",
         "//tensorflow/core:core_cpu",

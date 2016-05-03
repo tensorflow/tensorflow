@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 
 #include <string.h>
 

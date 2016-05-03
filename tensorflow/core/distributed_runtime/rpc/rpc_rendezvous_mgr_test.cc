@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 
-#include "tensorflow/core/distributed_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"

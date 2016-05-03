@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/simple_graph_execution_state.h"
+#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 
 #include <memory>
 #include <string>
@@ -22,10 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
-#include "tensorflow/core/distributed_runtime/process_util.h"
 #include "tensorflow/core/framework/graph_def_util.h"
-#include "tensorflow/core/graph/costmodel.h"
-#include "tensorflow/core/graph/dot.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -35,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {

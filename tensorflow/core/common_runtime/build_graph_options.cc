@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/build_graph_options.h"
+#include "tensorflow/core/common_runtime/build_graph_options.h"
 
 #include "tensorflow/core/lib/strings/strcat.h"
 

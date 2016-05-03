@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PROCESS_UTIL_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PROCESS_UTIL_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_UTIL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_UTIL_H_
 
 #include <functional>
 
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
+
+// TODO(vrv, mrry): Remove this library: its interface circumvents the
+// callers' Env and calls Env::Default() directly.
 
 namespace tensorflow {
 
@@ -36,4 +39,4 @@ void SchedNonBlockingClosureAfter(int micros, std::function<void()> closure);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PROCESS_UTIL_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_UTIL_H_
