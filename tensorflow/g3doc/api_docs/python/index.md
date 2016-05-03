@@ -91,6 +91,7 @@
   * [`ones_initializer`](../../api_docs/python/state_ops.md#ones_initializer)
   * [`random_normal_initializer`](../../api_docs/python/state_ops.md#random_normal_initializer)
   * [`random_uniform_initializer`](../../api_docs/python/state_ops.md#random_uniform_initializer)
+  * [`report_uninitialized_variables`](../../api_docs/python/state_ops.md#report_uninitialized_variables)
   * [`Saver`](../../api_docs/python/state_ops.md#Saver)
   * [`scatter_add`](../../api_docs/python/state_ops.md#scatter_add)
   * [`scatter_sub`](../../api_docs/python/state_ops.md#scatter_sub)
