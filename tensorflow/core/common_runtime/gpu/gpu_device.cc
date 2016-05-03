@@ -604,7 +604,7 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
       allocated_memory -= min_system_memory;
     }
   } else {
-    allocated_memory *= config_memory_fraction;
+    allocated_memory = total_memory * config_memory_fraction;
   }
 
   Bytes allocated_bytes = static_cast<Bytes>(allocated_memory);
