@@ -835,7 +835,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testInvalidTargetFails(self):
     with self.assertRaisesRegexp(
-        RuntimeError,
+        errors.NotFoundError,
         'No session factory registered for the given session options.'):
       session.Session('INVALID_TARGET')
 

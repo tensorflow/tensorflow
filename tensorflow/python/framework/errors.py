@@ -18,10 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import traceback
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util import compat
 
 
 class OpError(Exception):
@@ -433,6 +436,20 @@ def _make_specific_exception(node_def, op, message, error_code):
   except KeyError:
     warnings.warn("Unknown error code: %d" % error_code)
     return UnknownError(node_def, op, message, error_code)
+
+
+@contextlib.contextmanager
+def raise_exception_on_not_ok_status():
+  try:
+    status = pywrap_tensorflow.TF_NewStatus()
+    yield status
+    if pywrap_tensorflow.TF_GetCode(status) != 0:
+      raise _make_specific_exception(
+          None, None,
+          compat.as_text(pywrap_tensorflow.TF_Message(status)),
+          pywrap_tensorflow.TF_GetCode(status))
+  finally:
+    pywrap_tensorflow.TF_DeleteStatus(status)
 
 
 # These are documented in client/client_lib.py.

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
@@ -1416,7 +1417,7 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
       old = test_ops.old()
       g.graph_def_versions.producer = versions.GRAPH_DEF_VERSION
       with self.test_session(graph=g):
-        with self.assertRaisesRegexp(RuntimeError, self._error()):
+        with self.assertRaisesRegexp(errors.UnimplementedError, self._error()):
           old.run()
 
 

@@ -105,15 +105,10 @@ class BaseSession(SessionInterface):
 
     self._session = None
 
-    opts = tf_session.TF_NewSessionOptions(target=target, config=config)
     try:
-      status = tf_session.TF_NewStatus()
-      try:
+      opts = tf_session.TF_NewSessionOptions(target=target, config=config)
+      with errors.raise_exception_on_not_ok_status() as status:
         self._session = tf_session.TF_NewSession(opts, status)
-        if tf_session.TF_GetCode(status) != 0:
-          raise RuntimeError(compat.as_text(tf_session.TF_Message(status)))
-      finally:
-        tf_session.TF_DeleteStatus(status)
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
 
@@ -128,25 +123,15 @@ class BaseSession(SessionInterface):
     with self._extend_lock:
       if self._opened and not self._closed:
         self._closed = True
-        try:
-          status = tf_session.TF_NewStatus()
+        with errors.raise_exception_on_not_ok_status() as status:
           tf_session.TF_CloseSession(self._session, status)
-          if tf_session.TF_GetCode(status) != 0:
-            raise RuntimeError(compat.as_text(tf_session.TF_Message(status)))
-        finally:
-          tf_session.TF_DeleteStatus(status)
 
   def __del__(self):
     self.close()
-    try:
-      status = tf_session.TF_NewStatus()
-      if self._session is not None:
+    if self._session is not None:
+      with errors.raise_exception_on_not_ok_status() as status:
         tf_session.TF_DeleteSession(self._session, status)
-        if tf_session.TF_GetCode(status) != 0:
-          raise RuntimeError(compat.as_text(tf_session.TF_Message(status)))
-        self._session = None
-    finally:
-      tf_session.TF_DeleteStatus(status)
+      self._session = None
 
   @property
   def graph(self):
@@ -680,15 +665,10 @@ class BaseSession(SessionInterface):
         graph_def = self._graph.as_graph_def(
             from_version=self._current_version)
 
-        try:
-          status = tf_session.TF_NewStatus()
+        with errors.raise_exception_on_not_ok_status() as status:
           tf_session.TF_ExtendGraph(
               self._session, graph_def.SerializeToString(), status)
-          if tf_session.TF_GetCode(status) != 0:
-            raise RuntimeError(compat.as_text(tf_session.TF_Message(status)))
-          self._opened = True
-        finally:
-          tf_session.TF_DeleteStatus(status)
+        self._opened = True
 
         self._current_version = self._graph.version
 
