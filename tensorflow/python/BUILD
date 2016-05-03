@@ -14,7 +14,6 @@ load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 
 py_library(
     name = "python",
@@ -216,7 +215,7 @@ py_library(
     deps = [":framework_for_generated_wrappers"],
 )
 
-# subinclude("//third_party/py/cython:build_defs")
+load("//third_party/py/cython:build_defs.bzl", "pyx_library")
 
 py_library(
     name = "extra_py_tests_deps",
