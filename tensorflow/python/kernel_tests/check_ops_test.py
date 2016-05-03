@@ -476,6 +476,24 @@ class AssertNonPositiveTest(tf.test.TestCase):
       out.eval()
 
 
+class AssertIntegerTest(tf.test.TestCase):
+
+  def test_doesnt_raise_when_integer(self):
+    with self.test_session():
+      integers = tf.constant([1, 2], name="integers")
+      with tf.control_dependencies([tf.assert_integer(integers)]):
+        out = tf.identity(integers)
+      out.eval()
+
+  def test_raises_when_float(self):
+    with self.test_session():
+      floats = tf.constant([1.0, 2.0], name="floats")
+      with tf.control_dependencies([tf.assert_integer(floats)]):
+        out = tf.identity(floats)
+      with self.assertRaisesOpError("x is not of integer dtype.*"):
+        out.eval()
+
+
 class IsStrictlyIncreasingTest(tf.test.TestCase):
 
   def test_constant_tensor_is_not_strictly_increasing(self):

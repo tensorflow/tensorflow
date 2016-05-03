@@ -24,8 +24,9 @@
 @@assert_less_equal
 @@assert_rank
 @@assert_rank_at_least
-@@is_numeric_tensor
+@@assert_integer
 @@is_non_decreasing
+@@is_numeric_tensor
 @@is_strictly_increasing
 """
 
@@ -56,6 +57,7 @@ __all__ = [
     'assert_less_equal',
     'assert_rank',
     'assert_rank_at_least',
+    'assert_integer',
     'assert_type',
     'is_non_decreasing',
     'is_numeric_tensor',
@@ -447,6 +449,39 @@ def assert_rank_at_least(x, rank, data=None, summarize=None, name=None):
           'Received shape: ', array_ops.shape(x)
       ]
     condition = math_ops.greater_equal(array_ops.rank(x), rank)
+    return logging_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_integer(x, data=None, summarize=None, name=None):
+  """Assert that `x` is of integer dtype.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_integer(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_integer(x)], x)
+  ```
+
+  Args:
+    x: `Tensor` whose basetype is integer and is not quantized.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).  Defaults to "assert_integer".
+
+  Returns:
+    Op that raises `InvalidArgumentError` if `x == y` is False.
+  """
+  with ops.op_scope([x], name, 'assert_integer'):
+    x = ops.convert_to_tensor(x, name='x')
+    data = ['x is not of integer dtype: x = ', x.name, x]
+    condition = x.dtype.is_integer
     return logging_ops.Assert(condition, data, summarize=summarize)
 
 
