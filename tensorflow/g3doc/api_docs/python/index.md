@@ -376,6 +376,7 @@
   * [`shuffle_batch_join`](../../api_docs/python/io_ops.md#shuffle_batch_join)
   * [`size`](../../api_docs/python/io_ops.md#size)
   * [`slice_input_producer`](../../api_docs/python/io_ops.md#slice_input_producer)
+  * [`sparse_placeholder`](../../api_docs/python/io_ops.md#sparse_placeholder)
   * [`string_input_producer`](../../api_docs/python/io_ops.md#string_input_producer)
   * [`TextLineReader`](../../api_docs/python/io_ops.md#TextLineReader)
   * [`TFRecordReader`](../../api_docs/python/io_ops.md#TFRecordReader)
