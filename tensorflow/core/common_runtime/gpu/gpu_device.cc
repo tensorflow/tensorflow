@@ -595,10 +595,11 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
   int64 total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
 
-  int64 allocated_memory = available_memory;
+  int64 allocated_memory;
   double config_memory_fraction =
       options.config.gpu_options().per_process_gpu_memory_fraction();
   if (config_memory_fraction == 0) {
+      allocated_memory = available_memory;
     const int64 min_system_memory = MinSystemMemory(available_memory);
     if (min_system_memory < allocated_memory) {
       allocated_memory -= min_system_memory;
