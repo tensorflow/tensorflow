@@ -35,6 +35,7 @@
 
 * **[Asserts and boolean checks.](../../api_docs/python/check_ops.md)**:
   * [`assert_equal`](../../api_docs/python/check_ops.md#assert_equal)
+  * [`assert_integer`](../../api_docs/python/check_ops.md#assert_integer)
   * [`assert_less`](../../api_docs/python/check_ops.md#assert_less)
   * [`assert_less_equal`](../../api_docs/python/check_ops.md#assert_less_equal)
   * [`assert_negative`](../../api_docs/python/check_ops.md#assert_negative)
