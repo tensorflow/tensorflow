@@ -29,6 +29,22 @@ void BinaryOpShared::SetUnimplementedError(OpKernelContext* ctx) {
       ctx->input(1).shape().DebugString(), " is not supported yet."));
 }
 
+void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
+  // For speed, errors during compute are caught only via boolean flag, with no
+  // associated information.  This is sufficient for now, since the only binary
+  // ops that have compute errors are integer division and mod, and the only
+  // error they produce is zero division.
+  const string& op = ctx->op_kernel().type_string();
+  if ((op == "Div" || op == "Mod") &&
+      DataTypeIsInteger(ctx->op_kernel().input_type(0))) {
+    ctx->CtxFailure(errors::InvalidArgument("Integer division by zero"));
+  } else {
+    ctx->CtxFailure(
+        errors::Internal("Unexpected error in binary operator "
+                         "(only integer div and mod should have errors)"));
+  }
+}
+
 static BCast::Vec FromShape(const TensorShape& shape) {
   const int N = shape.dims();
   BCast::Vec ret(N);

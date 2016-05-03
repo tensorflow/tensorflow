@@ -67,6 +67,7 @@ class BinaryOpShared : public OpKernel {
     return ret;
   }
   void SetUnimplementedError(OpKernelContext* ctx);
+  void SetComputeError(OpKernelContext* ctx);
 };
 
 // Coefficient-wise binary operations:
@@ -95,50 +96,46 @@ class BinaryOp : public BinaryOpShared {
     }
     const int ndims = state.ndims;
     const Device& eigen_device = ctx->eigen_device<Device>();
+    bool error = false;
+    bool* const error_ptr = Functor::has_errors ? &error : nullptr;
     if (ndims <= 1) {
       auto out_flat = out->flat<Tout>();
       if (state.in1_num_elements == 1) {
         // tensor op scalar
         functor::BinaryFunctor<Device, Functor, 1>().Right(
-            eigen_device, out_flat, in0.flat<Tin>(), in1.scalar<Tin>());
-        return;
-      }
-      auto in1_flat = in1.flat<Tin>();
-      if (state.in0_num_elements == 1) {
+            eigen_device, out_flat, in0.flat<Tin>(), in1.scalar<Tin>(),
+            error_ptr);
+      } else if (state.in0_num_elements == 1) {
         // scalar op tensor
         functor::BinaryFunctor<Device, Functor, 1>().Left(
-            eigen_device, out_flat, in0.scalar<Tin>(), in1_flat);
-        return;
+            eigen_device, out_flat, in0.scalar<Tin>(), in1.flat<Tin>(),
+            error_ptr);
+      } else {
+        functor::BinaryFunctor<Device, Functor, 1>()(
+            eigen_device, out_flat, in0.flat<Tin>(), in1.flat<Tin>(),
+            error_ptr);
       }
-      functor::BinaryFunctor<Device, Functor, 1>()(eigen_device, out_flat,
-                                                   in0.flat<Tin>(), in1_flat);
-      return;
-    }
-
-    if (ndims == 2) {
+    } else if (ndims == 2) {
       functor::BinaryFunctor<Device, Functor, 2>().BCast(
           eigen_device, out->shaped<Tout, 2>(bcast->result_shape()),
           in0.shaped<Tin, 2>(bcast->x_reshape()),
           ToIndexArray<2>(bcast->x_bcast()),
           in1.shaped<Tin, 2>(bcast->y_reshape()),
-          ToIndexArray<2>(bcast->y_bcast()));
-      return;
-    }
-
-    if (ndims == 3) {
+          ToIndexArray<2>(bcast->y_bcast()), error_ptr);
+    } else if (ndims == 3) {
       functor::BinaryFunctor<Device, Functor, 3>().BCast(
           eigen_device, out->shaped<Tout, 3>(bcast->result_shape()),
           in0.shaped<Tin, 3>(bcast->x_reshape()),
           ToIndexArray<3>(bcast->x_bcast()),
           in1.shaped<Tin, 3>(bcast->y_reshape()),
-          ToIndexArray<3>(bcast->y_bcast()));
-      return;
+          ToIndexArray<3>(bcast->y_bcast()), error_ptr);
+    } else {
+      SetUnimplementedError(ctx);
     }
-
-    SetUnimplementedError(ctx);
+    if (Functor::has_errors && error) {
+      SetComputeError(ctx);
+    }
   }
-
- private:
 };
 
 // Coefficient-wise unary operations:
@@ -173,18 +170,19 @@ void Assign(const D& d, OUT out, RHS rhs) {
   out.device(d) = rhs;
 }
 
-// Partial specialization of BinaryFunctor<Device=CPUDevice, Functor>.
+// Partial specialization of BinaryFunctor<Device=CPUDevice, Functor, NDIMS>
+// for functors with with no error checking.
 template <typename Functor, int NDIMS>
-struct BinaryFunctor<CPUDevice, Functor, NDIMS> {
+struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
   void operator()(const CPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
-                  typename Functor::tin_type in1) {
+                  typename Functor::tin_type in1, bool* error) {
     Assign(d, out, in0.binaryExpr(in1, typename Functor::func()));
   }
 
   void Left(const CPUDevice& d, typename Functor::tout_type out,
             typename Functor::tscalar_type scalar,
-            typename Functor::tin_type in) {
+            typename Functor::tin_type in, bool* error) {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
@@ -194,7 +192,7 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS> {
 
   void Right(const CPUDevice& d, typename Functor::tout_type out,
              typename Functor::tin_type in,
-             typename Functor::tscalar_type scalar) {
+             typename Functor::tscalar_type scalar, bool* error) {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
@@ -227,7 +225,8 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS> {
              typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in0,
              typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast0,
              typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in1,
-             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1) {
+             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1,
+             bool* error) {
     typedef typename Functor::in_type T;
     typename Functor::func func;
     if ((NDIMS == 2) && Functor::use_bcast_optimization &&
@@ -307,6 +306,49 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS> {
     }
 
     // Fallback path. Always work and probably slower.
+    auto lhs = in0.broadcast(bcast0);
+    auto rhs = in1.broadcast(bcast1);
+    Assign(dev, out, lhs.binaryExpr(rhs, func));
+  }
+};
+
+// Version of BinaryFunctor with error handling.
+template <typename Functor, int NDIMS>
+struct BinaryFunctor<CPUDevice, Functor, NDIMS, true> {
+  void operator()(const CPUDevice& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in0,
+                  typename Functor::tin_type in1, bool* error) {
+    Assign(d, out, in0.binaryExpr(in1, typename Functor::func(error)));
+  }
+
+  void Left(const CPUDevice& d, typename Functor::tout_type out,
+            typename Functor::tscalar_type scalar,
+            typename Functor::tin_type in, bool* error) {
+    typedef typename Functor::out_type Tout;
+    typedef typename Functor::in_type Tin;
+    typedef typename Functor::func Binary;
+    typedef typename Eigen::internal::scalar_left<Tout, Tin, Binary> Unary;
+    Assign(d, out, in.unaryExpr(Unary(scalar.data(), error)));
+  }
+
+  void Right(const CPUDevice& d, typename Functor::tout_type out,
+             typename Functor::tin_type in,
+             typename Functor::tscalar_type scalar, bool* error) {
+    typedef typename Functor::out_type Tout;
+    typedef typename Functor::in_type Tin;
+    typedef typename Functor::func Binary;
+    typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
+    Assign(d, out, in.unaryExpr(Unary(scalar.data(), error)));
+  }
+
+  void BCast(const CPUDevice& dev,
+             typename TTypes<typename Functor::out_type, NDIMS>::Tensor out,
+             typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in0,
+             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast0,
+             typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in1,
+             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1,
+             bool* error) {
+    typename Functor::func func(error);
     auto lhs = in0.broadcast(bcast0);
     auto rhs = in1.broadcast(bcast1);
     Assign(dev, out, lhs.binaryExpr(rhs, func));

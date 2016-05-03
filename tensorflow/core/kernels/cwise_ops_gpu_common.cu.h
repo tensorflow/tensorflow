@@ -45,18 +45,18 @@ struct UnaryFunctor<GPUDevice, Functor> {
 };
 
 // Partial specialization of BinaryFunctor<Device=GPUDevice, Functor>.
-template <typename Functor, int NDIMS>
-struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
+template <typename Functor, int NDIMS, bool has_errors>
+struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
   void operator()(const GPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
-                  typename Functor::tin_type in1) {
+                  typename Functor::tin_type in1, bool* error) {
     To32Bit(out).device(d) =
         To32Bit(in0).binaryExpr(in1, typename Functor::func());
   }
 
   void Left(const GPUDevice& d, typename Functor::tout_type out,
             typename Functor::tscalar_type scalar,
-            typename Functor::tin_type in) {
+            typename Functor::tin_type in, bool* error) {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
@@ -66,7 +66,7 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
 
   void Right(const GPUDevice& d, typename Functor::tout_type out,
              typename Functor::tin_type in,
-             typename Functor::tscalar_type scalar) {
+             typename Functor::tscalar_type scalar, bool* error) {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
@@ -79,7 +79,8 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
              typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in0,
              typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast0,
              typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in1,
-             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1) {
+             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1,
+             bool* error) {
     typedef typename Functor::in_type T;
     typename Functor::func func;
     if ((NDIMS == 2) && Functor::use_bcast_optimization &&
