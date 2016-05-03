@@ -43,7 +43,10 @@ namespace tensorflow {
 // The implementation builds a constraint graph with the same set of
 // nodes, and edges that represent colocation constraints between
 // nodes.  Each connected component in the resulting constraint graph
-// is then assigned to a single device.
+// is then assigned to a set of valid devices.
+//
+// Run() will finally assign the device to each node given the list of
+// possible devices.
 //
 // TODO(mrry): "Soft" constraints, such as "place node 'x' as close as
 // possible to node 'y' while respecting the other constraints"?
