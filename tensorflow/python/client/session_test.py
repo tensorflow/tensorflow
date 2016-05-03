@@ -261,6 +261,55 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(sp2_out.values, values)
       self.assertAllEqual(sp2_out.shape, shape)
 
+  def testFeedSparsePlaceholder(self):
+    with session.Session() as s:
+      indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
+      values = np.array([1.0, 2.0]).astype(np.float32)
+      shape = np.array([7, 9, 2]).astype(np.int64)
+      sp = array_ops.sparse_placeholder(dtype=np.float32, name='placeholder1')
+      sp_indices = array_ops.identity(sp.indices)
+      sp_values = array_ops.identity(sp.values)
+      sp_shape = array_ops.identity(sp.shape)
+      sp2 = ops.SparseTensor(sp_indices, sp_values, sp_shape)
+      # Feed with tuple
+      indices_out, values_out, shape_out = s.run(
+          [sp_indices, sp_values, sp_shape], {sp: (indices, values, shape)})
+      self.assertAllEqual(indices_out, indices)
+      self.assertAllEqual(values_out, values)
+      self.assertAllEqual(shape_out, shape)
+      # Feed with SparseTensorValue
+      indices_out, values_out, shape_out = s.run(
+          [sp_indices, sp_values, sp_shape],
+          {sp: ops.SparseTensorValue(indices, values, shape)})
+      self.assertAllEqual(indices_out, indices)
+      self.assertAllEqual(values_out, values)
+      self.assertAllEqual(shape_out, shape)
+      # Feed with SparseTensorValue, fetch SparseTensorValue
+      sp2_out = s.run(sp2, {sp: ops.SparseTensorValue(indices, values, shape)})
+      self.assertAllEqual(sp2_out.indices, indices)
+      self.assertAllEqual(sp2_out.values, values)
+      self.assertAllEqual(sp2_out.shape, shape)
+
+  def testFeedSparePlaceholderConstantShape(self):
+    with session.Session() as s:
+      indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
+      values = np.array([1.0, 2.0]).astype(np.float32)
+      shape = np.array([7, 9, 2]).astype(np.int64)
+      sp = array_ops.sparse_placeholder(dtype=np.float32,
+                                        shape=shape,
+                                        name='placeholder1')
+      self.assertAllEqual(sp.shape.eval(session=s), shape)
+      self.assertAllEqual(tensor_util.constant_value(sp.shape), shape)
+      sp_indices = array_ops.identity(sp.indices)
+      sp_values = array_ops.identity(sp.values)
+      sp_shape = array_ops.identity(sp.shape)
+      # Feed with tuple
+      indices_out, values_out, shape_out = s.run(
+          [sp_indices, sp_values, sp_shape], {sp: (indices, values)})
+      self.assertAllEqual(indices_out, indices)
+      self.assertAllEqual(values_out, values)
+      self.assertAllEqual(shape_out, shape)
+
   def testFetchIndexedSlices(self):
     with session.Session() as s:
       indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
