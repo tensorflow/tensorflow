@@ -946,7 +946,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                                                      filter_rows, filter_cols}),
                                         &transformed_filter));
 
-    functor::TransformFilter<Device, T, int>()(
+    functor::TransformFilter<Device, T, int, 4>()(
         context->eigen_device<Device>(), To32Bit(filter.tensor<T, 4>()),
         To32Bit(transformed_filter.tensor<T, 4>()));
 
@@ -959,9 +959,9 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                                          output_cols, out_depth),
                          &transformed_out_backprop));
 
-      functor::NHWCToNCHW<Device, T>()(context->eigen_device<Device>(),
-                                       out_backprop.tensor<T, 4>(),
-                                       transformed_out_backprop.tensor<T, 4>());
+      functor::NHWCToNCHW<Device, T, 4>()(
+          context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
+          transformed_out_backprop.tensor<T, 4>());
     } else {
       transformed_out_backprop = out_backprop;
     }
@@ -1022,11 +1022,11 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
               &in_backprop_remove_padding));
 
       // Remove the padding for odd rows or cols.
-      functor::PadInput<GPUDevice, T, int>()(
+      functor::PadInput<GPUDevice, T, int, 4>()(
           context->template eigen_device<GPUDevice>(),
           To32Bit(const_cast<const Tensor&>(pre_transformed_in_backprop)
                       .tensor<T, 4>()),
-          0, -rows_odd, 0, -cols_odd,
+          {{0, 0}}, {{-rows_odd, -cols_odd}},
           To32Bit(in_backprop_remove_padding.tensor<T, 4>()), FORMAT_NCHW);
 
       pre_transformed_in_backprop = in_backprop_remove_padding;
@@ -1034,7 +1034,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
 
     if (data_format_ == FORMAT_NHWC) {
       auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-      functor::NCHWToNHWC<Device, T>()(
+      functor::NCHWToNHWC<Device, T, 4>()(
           context->eigen_device<Device>(),
           toConstTensor(pre_transformed_in_backprop).template tensor<T, 4>(),
           in_backprop->tensor<T, 4>());
@@ -1167,9 +1167,9 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                               input_cols + cols_odd, in_depth),
               &compatible_input));
 
-      functor::PadInput<GPUDevice, T, int>()(
+      functor::PadInput<GPUDevice, T, int, 4>()(
           context->template eigen_device<GPUDevice>(),
-          To32Bit(input.tensor<T, 4>()), 0, rows_odd, 0, cols_odd,
+          To32Bit(input.tensor<T, 4>()), {{0, 0}}, {{rows_odd, cols_odd}},
           To32Bit(compatible_input.tensor<T, 4>()), data_format_);
     } else {
       compatible_input = input;
@@ -1227,9 +1227,9 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                          ShapeFromFormat(FORMAT_NCHW, batch, output_rows,
                                          output_cols, out_depth),
                          &transformed_out_backprop));
-      functor::NHWCToNCHW<Device, T>()(context->eigen_device<Device>(),
-                                       out_backprop.tensor<T, 4>(),
-                                       transformed_out_backprop.tensor<T, 4>());
+      functor::NHWCToNCHW<Device, T, 4>()(
+          context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
+          transformed_out_backprop.tensor<T, 4>());
     } else {
       transformed_out_backprop = out_backprop;
     }
@@ -1246,7 +1246,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                              GetTensorDim(compatible_input, data_format_, 'W'),
                              GetTensorDim(compatible_input, data_format_, 'C')),
                          &transformed_input));
-      functor::NHWCToNCHW<Device, T>()(
+      functor::NHWCToNCHW<Device, T, 4>()(
           context->eigen_device<Device>(),
           const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
           transformed_input.tensor<T, 4>());
@@ -1284,7 +1284,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     }
 
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-    functor::ReverseTransformFilter<Device, T>()(
+    functor::ReverseTransformFilter<Device, T, 4>()(
         context->eigen_device<Device>(),
         toConstTensor(pre_transformed_filter_backprop).template tensor<T, 4>(),
         filter_backprop->tensor<T, 4>());
@@ -1301,40 +1301,40 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                 \
-  template <>                                                               \
-  void ShuffleAndReverse<GPUDevice, T, 4, int>::operator()(                 \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input,    \
-      const Eigen::DSizes<int, 4>& order,                                   \
-      const Eigen::array<bool, 4>& reverse_dims,                            \
-      typename TTypes<T, 4, int>::Tensor output);                           \
-  extern template struct ShuffleAndReverse<GPUDevice, T, 4, int>;           \
-  template <>                                                               \
-  void InflatePadAndShuffle<GPUDevice, T, 4, int>::operator()(              \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input,    \
-      const Eigen::DSizes<int, 4>& strides,                                 \
-      const Eigen::array<Eigen::IndexPair<int>, 4>& pad_dims,               \
-      const Eigen::DSizes<int, 4>& order,                                   \
-      typename TTypes<T, 4, int>::Tensor output);                           \
-  extern template struct InflatePadAndShuffle<GPUDevice, T, 4, int>;        \
-  template <>                                                               \
-  void TransformFilter<GPUDevice, T, int>::operator()(                      \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
-      typename TTypes<T, 4, int>::Tensor out);                              \
-  extern template struct TransformFilter<GPUDevice, T, int>;                \
-  template <>                                                               \
-  void TransformDepth<GPUDevice, T, int>::operator()(                       \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
-      const Eigen::DSizes<int, 4>& shuffle,                                 \
-      typename TTypes<T, 4, int>::Tensor out);                              \
-  extern template struct TransformDepth<GPUDevice, T, int>;                 \
-  template <>                                                               \
-  void PadInput<GPUDevice, T, int>::operator()(                             \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
-      int padding_rows_left, int padding_rows_right, int padding_cols_left, \
-      int padding_cols_right, typename TTypes<T, 4, int>::Tensor out,       \
-      TensorFormat data_format);                                            \
-  extern template struct PadInput<GPUDevice, T, int>;
+#define DECLARE_GPU_SPEC(T)                                              \
+  template <>                                                            \
+  void ShuffleAndReverse<GPUDevice, T, 4, int>::operator()(              \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input, \
+      const Eigen::DSizes<int, 4>& order,                                \
+      const Eigen::array<bool, 4>& reverse_dims,                         \
+      typename TTypes<T, 4, int>::Tensor output);                        \
+  extern template struct ShuffleAndReverse<GPUDevice, T, 4, int>;        \
+  template <>                                                            \
+  void InflatePadAndShuffle<GPUDevice, T, 4, int>::operator()(           \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input, \
+      const Eigen::DSizes<int, 4>& strides,                              \
+      const Eigen::array<Eigen::IndexPair<int>, 4>& pad_dims,            \
+      const Eigen::DSizes<int, 4>& order,                                \
+      typename TTypes<T, 4, int>::Tensor output);                        \
+  extern template struct InflatePadAndShuffle<GPUDevice, T, 4, int>;     \
+  template <>                                                            \
+  void TransformFilter<GPUDevice, T, int, 4>::operator()(                \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
+      typename TTypes<T, 4, int>::Tensor out);                           \
+  extern template struct TransformFilter<GPUDevice, T, int, 4>;          \
+  template <>                                                            \
+  void TransformDepth<GPUDevice, T, int>::operator()(                    \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
+      const Eigen::DSizes<int, 4>& shuffle,                              \
+      typename TTypes<T, 4, int>::Tensor out);                           \
+  extern template struct TransformDepth<GPUDevice, T, int>;              \
+  template <>                                                            \
+  void PadInput<GPUDevice, T, int, 4>::operator()(                       \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
+      const std::array<int, 2>& padding_left,                            \
+      const std::array<int, 2>& padding_right,                           \
+      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format); \
+  extern template struct PadInput<GPUDevice, T, int, 4>;
 
 DECLARE_GPU_SPEC(float);
 #undef DECLARE_GPU_SPEC

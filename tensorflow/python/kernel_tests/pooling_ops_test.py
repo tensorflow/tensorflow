@@ -902,12 +902,12 @@ class PoolingTest(tf.test.TestCase):
     for pool_func in [tf.nn.max_pool, tf.nn.avg_pool,
                       tf.nn.max_pool_with_argmax]:
       with self.assertRaisesRegexp(ValueError,
-                                   "filter must not be larger than the input"):
+                                   "Filter must not be larger than the input"):
         pool_func(tf.placeholder(tf.float32,
                                         shape=[32, 20, 20, 3]),
                   ksize=[1, 20, 21, 1], strides=[1, 1, 1, 1], padding="SAME")
       with self.assertRaisesRegexp(ValueError,
-                                   "filter must not be larger than the input"):
+                                   "Filter must not be larger than the input"):
         pool_func(tf.placeholder(tf.float32,
                                         shape=[32, 20, 20, 3]),
                   ksize=[1, 21, 20, 1], strides=[1, 1, 1, 1], padding="SAME")

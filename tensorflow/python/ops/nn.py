@@ -108,6 +108,7 @@ concatenated.
 @@separable_conv2d
 @@atrous_conv2d
 @@conv2d_transpose
+@@conv3d
 
 ## Pooling
 
@@ -127,6 +128,8 @@ to the `Convolution` section for details about the padding calculation.
 @@avg_pool
 @@max_pool
 @@max_pool_with_argmax
+@@avg_pool3d
+@@max_pool3d
 
 ## Normalization
 

@@ -1119,6 +1119,7 @@ sharded_kernel_test_list = glob([
     "kernel_tests/cwise_ops_test.py",
     "kernel_tests/embedding_ops_test.py",
     "kernel_tests/linalg_grad_test.py",
+    "kernel_tests/conv_ops_3d_test.py",
 ])
 
 cpu_only_kernel_test_list = glob([
