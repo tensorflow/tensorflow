@@ -727,6 +727,23 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
+    size = "small",
+    tests = [
+        "basic_ops_benchmark_test",
+    ],
+    deps = [
+        ":math",
+        ":ops_util",
+        ":state",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_tests(
     tests = [
         "adjust_contrast_op_test",
         "colorspace_op_test",
