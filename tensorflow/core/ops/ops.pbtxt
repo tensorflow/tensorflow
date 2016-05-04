@@ -1177,6 +1177,133 @@ op {
   description: "Each entry in `output` is the mean of the corresponding size `ksize`\nwindow in `value`."
 }
 op {
+  name: "AvgPool3D"
+  input_arg {
+    name: "input"
+    description: "Shape `[batch, depth, rows, cols, channels]` tensor to pool over."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "The average pooled output tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[1] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Performs 3D average pooling on the input."
+}
+op {
+  name: "AvgPool3DGrad"
+  input_arg {
+    name: "orig_input_shape"
+    description: "The original input dimensions."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "grad"
+    description: "Output backprop of shape `[batch, depth, rows, cols, channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "The backprop for input."
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[1] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes gradients of average pooling function."
+}
+op {
   name: "AvgPoolGrad"
   input_arg {
     name: "orig_input_shape"
@@ -2756,6 +2883,191 @@ op {
     }
   }
   summary: "Computes the gradients of convolution with respect to the input."
+}
+op {
+  name: "Conv3D"
+  input_arg {
+    name: "input"
+    description: "Shape `[batch, in_depth, in_height, in_width, in_channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    description: "Shape `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.\n`in_channels` must match between `input` and `filter`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes a 3-D convolution given 5-D `input` and `filter` tensors."
+  description: "In signal processing, cross-correlation is a measure of similarity of\ntwo waveforms as a function of a time-lag applied to one of them. This\nis also known as a sliding dot product or sliding inner-product.\n\nOur Conv3D implements a form of cross-correlation."
+}
+op {
+  name: "Conv3DBackpropFilter"
+  input_arg {
+    name: "input"
+    description: "Shape `[batch, depth, rows, cols, in_channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    description: "Shape `[depth, rows, cols, in_channels, out_channels]`.\n`in_channels` must match between `input` and `filter`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    description: "Backprop signal of shape `[batch, out_depth, out_rows, out_cols, out_channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes the gradients of 3D convolution with respect to the filter."
+}
+op {
+  name: "Conv3DBackpropInput"
+  input_arg {
+    name: "input"
+    description: "Shape `[batch, depth, rows, cols, in_channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    description: "Shape `[depth, rows, cols, in_channels, out_channels]`.\n`in_channels` must match between `input` and `filter`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    description: "Backprop signal of shape `[batch, out_depth, out_rows, out_cols, out_channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes the gradients of 3D convolution with respect to the input."
 }
 op {
   name: "Cos"
@@ -5883,6 +6195,137 @@ op {
     }
   }
   summary: "Performs max pooling on the input."
+}
+op {
+  name: "MaxPool3D"
+  input_arg {
+    name: "input"
+    description: "Shape `[batch, depth, rows, cols, channels]` tensor to pool over."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "The max pooled output tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[1] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Performs 3D max pooling on the input."
+}
+op {
+  name: "MaxPool3DGrad"
+  input_arg {
+    name: "orig_input"
+    description: "The original input tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "orig_output"
+    description: "The original output tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "grad"
+    description: "Output backprop of shape `[batch, depth, rows, cols, channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[1] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes gradients of max pooling function."
 }
 op {
   name: "MaxPoolGrad"
