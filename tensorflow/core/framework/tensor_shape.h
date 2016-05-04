@@ -265,8 +265,8 @@ class TensorShapeUtils {
 
   /// \brief Returns a `TensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
-  static Status MakeShape(const int32* dims, int n, TensorShape* out);
-  static Status MakeShape(const int64* dims, int n, TensorShape* out);
+  static Status MakeShape(const int32* dims, int64 n, TensorShape* out);
+  static Status MakeShape(const int64* dims, int64 n, TensorShape* out);
 
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
 

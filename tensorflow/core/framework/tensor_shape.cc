@@ -345,7 +345,7 @@ bool TensorShapeUtils::StartsWith(const TensorShape& shape,
 }
 
 template <typename T>
-static inline Status MakeShapeHelper(const T* dims, int n, TensorShape* out) {
+static inline Status MakeShapeHelper(const T* dims, int64 n, TensorShape* out) {
   *out = TensorShape();
   if (n > TensorShape::MaxDimensions()) {
     return errors::InvalidArgument("Too many dimensions");
@@ -353,7 +353,7 @@ static inline Status MakeShapeHelper(const T* dims, int n, TensorShape* out) {
   if (n < 0) {
     return errors::InvalidArgument("Negative number of dimensions ", n);
   }
-  for (int i = 0; i < n; ++i) {
+  for (int64 i = 0; i < n; ++i) {
     const T dim = internal::SubtleMustCopy(dims[i]);
     if (dim >= 0) {
       out->AddDim(dim);
@@ -364,9 +364,10 @@ static inline Status MakeShapeHelper(const T* dims, int n, TensorShape* out) {
   return Status::OK();
 }
 
-#define MAKE_SHAPE(T)                                                          \
-  Status TensorShapeUtils::MakeShape(const T* dims, int n, TensorShape* out) { \
-    return MakeShapeHelper(dims, n, out);                                      \
+#define MAKE_SHAPE(T)                                        \
+  Status TensorShapeUtils::MakeShape(const T* dims, int64 n, \
+                                     TensorShape* out) {     \
+    return MakeShapeHelper(dims, n, out);                    \
   }
 MAKE_SHAPE(int32)
 MAKE_SHAPE(int64)
