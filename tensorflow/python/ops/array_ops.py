@@ -240,7 +240,12 @@ def pack(values, name="pack"):
   Returns:
     output: A packed `Tensor` with the same type as `values`.
   """
-  return gen_array_ops._pack(values, name=name)
+  try:
+    # If the input is a constant list, it can just be converted to a constant op
+    return ops.convert_to_tensor(values, name=name)
+  except (TypeError, ValueError):
+    # Input list contains non-constant tensors
+    return gen_array_ops._pack(values, name=name)
 
 
 def unpack(value, num=None, name="unpack"):
