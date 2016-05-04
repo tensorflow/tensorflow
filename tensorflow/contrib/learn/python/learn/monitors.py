@@ -157,15 +157,20 @@ class ValidationMonitor(BaseMonitor):
         early_stopping_rounds:  Activates early stopping if this is not None.
                                 Loss needs to decrease at least every <early_stopping_rounds>
                                 round(s) to continue training. (default: None)
+        validation_steps: Number of training steps to run validation between.
+                          If None, print_steps is used.
 
     """
-    def __init__(self, val_X, val_y, n_classes=0, print_steps=100,
-                 early_stopping_rounds=None, logdir=None):
+    def __init__(self, val_X, val_y, n_classes=0, batch_size=-1, print_steps=100,
+                 early_stopping_rounds=None, logdir=None, validation_steps=None):
         super(ValidationMonitor, self).__init__(print_steps=print_steps,
                                                 early_stopping_rounds=early_stopping_rounds)
-        self.val_feeder = setup_train_data_feeder(val_X, val_y, n_classes, -1)
+        self.val_feeder = setup_train_data_feeder(
+            val_X, val_y, n_classes, batch_size)
         self.print_val_loss_buffer = []
         self.all_val_loss_buffer = []
+        self._batch_size = batch_size
+        self._validation_steps = validation_steps or print_steps
         self._summary_writer = None
 
     def set_estimator(self, estimator):
@@ -177,14 +182,26 @@ class ValidationMonitor(BaseMonitor):
     def create_val_feed_dict(self, inp, out):
         """Set tensorflow placeholders and create validation data feed"""
         self.val_feeder.set_placeholders(inp, out)
-        self.val_dict = self.val_feeder.get_feed_dict_fn()()
+        # If mini batches, get a function else full dataset.
+        if self._batch_size > 0:
+            self.val_dict_fn = self.val_feeder.get_feed_dict_fn()
+        else:
+            self.val_dict = self.val_feeder.get_feed_dict_fn()()
 
     def _set_last_loss_seen(self):
         """Sets self.last_loss_seen to most recent validation loss
 
         Also stores this value to appropriate buffers
         """
-        [val_loss] = self.sess.run([self.loss_expression_tensor], feed_dict=self.val_dict)
+        # Only compute loss every validation steps.
+        if self.steps % self._validation_steps != 0:
+            return
+        if self._batch_size > 0:
+            data = self.val_dict_fn()
+        else:
+            data = self.val_dict
+        [val_loss] = self.sess.run(
+            [self.loss_expression_tensor], feed_dict=data)
         self.last_loss_seen = val_loss
         self.all_val_loss_buffer.append(val_loss)
         self.print_val_loss_buffer.append(val_loss)
