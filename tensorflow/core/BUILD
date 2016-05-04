@@ -786,6 +786,7 @@ cc_library(
         "lib/gtl/edit_distance.h",
         "lib/gtl/int_type.h",
         "lib/gtl/iterator_range.h",
+        "lib/gtl/manual_constructor.h",
         "lib/gtl/top_n.h",
         "lib/io/iterator.h",
         "lib/io/match.h",

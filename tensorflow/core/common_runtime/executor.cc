@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -644,6 +645,9 @@ class ExecutorState {
 
   const bool vlog_;  // true if VLOG_IS_ON(1). Used to check vlog cheaply.
 
+  // true if LogMemory::IsEnabled(). Used to check memory enabled cheaply.
+  const bool log_memory_;
+
   int64 step_id_;
   // Not owned.
   Rendezvous* rendezvous_;
@@ -796,6 +800,7 @@ class ExecutorState {
 
 ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
     : vlog_(VLOG_IS_ON(1)),
+      log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
       rendezvous_(args.rendezvous),
       session_state_(args.session_state),
@@ -1260,9 +1265,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       Entry* out = &((*outputs)[i]);
       out->has_value = true;
 
-      // This value is filled in below if LogMemory::IsEnabled.
-      Tensor value_to_log;
-
       // Set the device context of the output entry.
       out->device_context = device_context;
 
@@ -1273,22 +1275,30 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       DataType dtype = val->dtype();
       if (val.is_ref()) dtype = MakeRefType(dtype);
       if (dtype == item.output_type(i)) {
+        if (stats_collector_ && val.tensor->IsInitialized()) {
+          nodestats::SetOutput(stats, i, val.tensor);
+        }
         if (val.is_ref()) {
           out->ref = val.tensor;
           out->ref_mu = val.mutex_if_ref;
-          if (LogMemory::IsEnabled()) {
-            // Dereference the tensor under the lock.
-            mutex_lock l(*out->ref_mu);
-            value_to_log = *out->ref;
+          if (log_memory_) {
+            Tensor to_log;
+            {
+              // Dereference the tensor under the lock.
+              mutex_lock l(*out->ref_mu);
+              to_log = *out->ref;
+            }
+            LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
+                                          ctx->step_id(), i, to_log);
           }
         } else {
-          out->val = *val.tensor;
-          if (LogMemory::IsEnabled()) {
-            value_to_log = out->val;
+          // NOTE that std::move is used here, so val.tensor goes to
+          // uninitialized state (val.tensor->IsInitialized return false).
+          out->val = std::move(*val.tensor);
+          if (log_memory_) {
+            LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
+                                          ctx->step_id(), i, out->val);
           }
-        }
-        if (stats_collector_ && val.tensor->IsInitialized()) {
-          nodestats::SetOutput(stats, i, val.tensor);
         }
       } else {
         s.Update(errors::Internal("Output ", i, " of type ",
@@ -1296,10 +1306,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                   " does not match declared output type ",
                                   DataTypeString(item.output_type(i)),
                                   " for node ", SummarizeNodeDef(node->def())));
-      }
-      if (LogMemory::IsEnabled()) {
-        LogMemory::RecordTensorOutput(ctx->op_kernel().name(), ctx->step_id(),
-                                      i, value_to_log);
       }
     }
     if (!val.is_ref()) {
