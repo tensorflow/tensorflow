@@ -331,6 +331,91 @@ data_format: Specify the data format of the input and output data. With the
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, in_channels, in_height, in_width].
 )doc");
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Conv3D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConv3DDataFormatAttrString())
+    .Doc(R"doc(
+Computes a 3-D convolution given 5-D `input` and `filter` tensors.
+
+Input: 5-D with shape`[num_batches, depth, height, width, channels]`.
+Filter: 5-D with shape `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.
+
+strides: 1-D of length 5.  The stride of the sliding window for each dimension
+  of `input`. Must be in the same order as the dimension specified with format.
+padding: The type of padding algorithm to use, "SAME" or "VALID"
+data_format: Specify the data format of the input and output data. This only supports
+    "NDHWC" for 5-D convolutions currently.
+
+)doc");
+
+REGISTER_OP("Conv3DBackpropInput")
+    .Input("input_sizes: int32")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConv3DDataFormatAttrString())
+    .Doc(R"doc(
+Computes the gradients of a 3D convolution with respect to the input.
+
+input_sizes: An integer vector representing the shape of `input`,
+  where `input` is a 5-D `[batch, depth, height, width, channels]` tensor.
+filter: 5-D with shape
+  `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.
+out_backprop: 5-D with shape `[batch, out_depth, out_height, out_width, out_channels]`.
+  Gradients w.r.t. the output of the convolution.
+strides: The stride of the sliding window for each dimension of the input
+  of the convolution. Must be in the same order as the dimension specified with
+  format.
+padding: The type of padding algorithm to use.
+output: 4-D with shape `[batch, in_depth, in_height, in_width, in_channels]`.  Gradient
+  w.r.t. the input of the convolution.
+data_format: Specify the data format of the input and output data. This only supports
+    "NDHWC" for 5-D convolutions currently.
+
+)doc");
+
+REGISTER_OP("Conv3DBackpropFilter")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConv3DDataFormatAttrString())
+    .Doc(R"doc(
+Computes the gradients of a 3D convolution with respect to the filter.
+
+input: 5-D with shape `[batch, in_depth, in_height, in_width, in_channels]`.
+filter_sizes: An integer vector representing the tensor shape of `filter`,
+  where `filter` is a 5-D
+  `[filter_depth, filter_height, filter_width, in_channels, out_channels]` tensor.
+out_backprop: 5-D with shape `[batch, out_depth, out_height, out_width, out_channels]`.
+  Gradients w.r.t. the output of the convolution.
+strides: The stride of the sliding window for each dimension of the input
+  of the convolution. Must be in the same order as the dimension specified with
+  format.
+padding: The type of padding algorithm to use.
+output: 5-D with shape
+  `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+  the `filter` input of the convolution.
+data_format: Specify the data format of the input and output data. This only supports
+    "NDHWC" for 5-D convolutions currently.
+
+)doc");
 
 // --------------------------------------------------------------------------
 

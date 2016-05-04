@@ -71,6 +71,72 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
   return Status::OK();
 }
 
+Status Get3dOutputSize(const int in_height, const int in_width,
+                       const int in_depth, int filter_height,
+                       int filter_width, int filter_depth,
+                       int row_stride, int col_stride, int depth_stride,
+                       Padding padding, int* new_height, int* new_width,
+                       int* new_depth, int* pad_rows, int* pad_cols,
+                       int* pad_depth) {
+  int pad_bottom_unused, pad_right_unused, pad_back_unused;
+  return Get3dOutputSizeVerbose(
+      in_height, in_width, in_depth, filter_height, filter_width, filter_depth,
+      row_stride, col_stride, depth_stride, padding, new_height, new_width,
+      new_depth, pad_rows, &pad_bottom_unused, pad_cols, &pad_right_unused,
+      pad_depth, &pad_back_unused);
+}
+
+Status Get3dOutputSizeVerbose(const int in_height, const int in_width,
+                              const int in_depth, int filter_height,
+                              int filter_width, int filter_depth,
+                              int row_stride, int col_stride, int depth_stride,
+                              Padding padding, int* new_height, int* new_width,
+                              int* new_depth, int* pad_top, int* pad_bottom,
+                              int* pad_left, int* pad_right, int* pad_front,
+                              int* pad_back) {
+  switch (padding) {
+    case Padding::VALID:
+      *new_height = ceil((in_height - filter_height + 1.f) /
+                         static_cast<float>(row_stride));
+      *new_width = ceil((in_width - filter_width + 1.f) /
+                        static_cast<float>(col_stride));
+      *new_depth = ceil((in_depth - filter_depth + 1.f) /
+                        static_cast<float>(depth_stride));
+      *pad_top = 0;
+      *pad_bottom = 0;
+      *pad_left = 0;
+      *pad_right = 0;
+      *pad_front = 0;
+      *pad_back = 0;
+      break;
+    case Padding::SAME:
+      *new_height = ceil(in_height / static_cast<float>(row_stride));
+      *new_width = ceil(in_width / static_cast<float>(col_stride));
+      *new_depth = ceil(in_depth / static_cast<float>(depth_stride));
+      // Calculate padding for top/bottom/left/right/front/back, spilling
+      // any excess padding to bottom, right, back
+      const int pad_needed_height = std::max(0,
+          (*new_height - 1) * row_stride + filter_height - in_height);
+      *pad_top = pad_needed_height / 2;
+      *pad_bottom = pad_needed_height - *pad_top;
+
+      const int pad_needed_width = std::max(0,
+          (*new_width - 1) * col_stride + filter_width - in_width);
+      *pad_left = pad_needed_width / 2;
+      *pad_right = pad_needed_width - *pad_left;
+
+      const int pad_needed_depth = std::max(0,
+          (*new_depth - 1) * depth_stride + filter_depth - in_depth);
+      *pad_front = pad_needed_depth / 2;
+      *pad_back = pad_needed_depth - *pad_front;
+      break;
+  }
+  if (*new_height < 0 || *new_width < 0 || *new_depth < 0) {
+    return errors::InvalidArgument("computed output size would be negative");
+  }
+  return Status::OK();
+}
+
 Eigen::PaddingType BrainPadding2EigenPadding(Padding padding) {
   switch (padding) {
     case Padding::VALID:

@@ -72,6 +72,16 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_3d",
+    hdrs = ["conv_3d.h"],
+    deps = [
+        ":eigen_helpers",
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "fill_functor",
     hdrs = ["fill_functor.h"],
     deps = [
@@ -1103,6 +1113,21 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "conv3d_ops",
+    srcs = ["conv3d_grad_ops.cc"],
+    prefix = "conv3d_ops",
+    deps = [
+        ":bounds_check",
+        ":conv_3d",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:nn_ops_op_lib",
+    ],
+)
+
+tf_kernel_library(
     name = "depthwise_conv_op",
     prefix = "depthwise_conv_op",
     deps = [
@@ -1148,6 +1173,8 @@ tf_kernel_libraries(
         ":bounds_check",
         ":conv_2d",
         ":conv_ops",
+        ":conv_3d",
+        ":conv3d_ops",
         ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
         ":ops_util",
