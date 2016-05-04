@@ -1006,7 +1006,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     Entry* input_tensors = GetInputTensors(input_frame, input_iter);
     Entry* first_input = input_tensors + item.input_start;
     outputs.clear();
-    outputs.resize(item.num_outputs);
 
     TensorReferenceVector accessed_tensors;
     DeviceContext* device_context = nullptr;
@@ -1014,7 +1013,9 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     // transfer node. For transfer nodes, we need to propagate the "dead"
     // bit even when the node is dead.
     bool launched_asynchronously = false;
-    if (!tagged_node.is_dead || IsTransferNode(node)) {
+    if (tagged_node.is_dead && !IsTransferNode(node)) {
+      outputs.resize(item.num_outputs);
+    } else {
       // Prepares inputs.
       bool is_input_dead = false;
       s = PrepareInputs(item, first_input, &inputs, &input_device_contexts,
@@ -1230,7 +1231,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                      EntryVector* outputs,
                                      NodeExecStats* stats) {
   const Node* node = item.node;
-  outputs->clear();
+  DCHECK_EQ(0, outputs->size());
   outputs->resize(item.num_outputs);
 
   Status s = ctx->status();
