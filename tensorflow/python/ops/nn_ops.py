@@ -679,6 +679,28 @@ def _Conv2DBackpropInputShape(op):
     # gradients either.
     return [tensor_shape.unknown_shape(ndims=4)]
 
+ops.RegisterShape("Conv3D")(common_shapes.conv3d_shape)
+
+
+@ops.RegisterShape("Conv3DBackpropFilter")
+def _Conv3DBackpropFilterShape(op):
+  """Shape function for the Conv3DBackpropFilter op."""
+  filter_shape = tensor_util.constant_value(op.inputs[1])
+  if filter_shape is not None:
+    return [tensor_shape.TensorShape(filter_shape.tolist())]
+  else:
+    return [tensor_shape.unknown_shape(ndims=5)]
+
+
+@ops.RegisterShape("Conv3DBackpropInput")
+def _Conv3DBackpropInputShape(op):
+  """Shape function for the Conv3DBackpropInput op."""
+  input_shape = tensor_util.constant_value(op.inputs[0])
+  if input_shape is not None:
+    return [tensor_shape.TensorShape(input_shape.tolist())]
+  else:
+    return [tensor_shape.unknown_shape(ndims=5)]
+
 
 @ops.RegisterShape("DepthwiseConv2dNativeBackpropFilter")
 def _DepthwiseConv2dNativeBackpropFilterShape(op):

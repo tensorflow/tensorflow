@@ -89,6 +89,25 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
                               int* new_height, int* new_width, int* pad_top,
                               int* pad_bottom, int* pad_left, int* pad_right);
 
+
+Status Get3dOutputSize(const int in_height, const int in_width,
+                       const int in_depth, int filter_height,
+                       int filter_width, int filter_depth,
+                       int row_stride, int col_stride, int depth_stride,
+                       Padding padding, int* new_height, int* new_width,
+                       int* new_depth, int* pad_rows, int* pad_cols,
+                       int* pad_depth);
+
+Status Get3dOutputSizeVerbose(const int in_height, const int in_width,
+                              const int in_depth, int filter_height,
+                              int filter_width, int filter_depth,
+                              int row_stride, int col_stride, int depth_stride,
+                              Padding padding, int* new_height, int* new_width,
+                              int* new_depth, int* pad_top, int* pad_bottom,
+                              int* pad_left, int* pad_right, int* pad_front,
+                              int* pad_back);
+
+
 // Calculates broadcast starting index and size.  For SAME padding, addition
 // padding could be applied to right, left, top and bottom.  Depending on the
 // current index, input size, kernel size, stride, padding size, the starting

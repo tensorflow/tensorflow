@@ -26,7 +26,10 @@ namespace tensorflow {
 enum TensorFormat {
   FORMAT_NHWC = 0,
   FORMAT_NCHW = 1,
+  FORMAT_NDHWC = 2,
 };
+
+
 
 // Parse tensor format from the given string.
 // Return true if the parsing succeeds, and false if it fails.
@@ -64,10 +67,26 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
     }
+  } else if (format == FORMAT_NDHWC) {
+    switch (dimension) {
+      case 'N':
+        return 0;
+      case 'D':
+        return 1;
+      case 'H':
+        return 2;
+      case 'W':
+        return 3;
+      case 'C':
+        return 4;
+      default:
+        LOG(FATAL) << "Invalid dimension: " << dimension;
+    }
   } else {
     LOG(FATAL) << "Invalid format: " << static_cast<int>(format);
   }
 }
+
 
 // Return the given tensor dimension from a tensor. The tensor is interpretted
 // using the specified format, and a dimension specification using a char.
@@ -108,6 +127,9 @@ T GetTensorDim(const std::vector<T>& attributes, TensorFormat format,
 
 // Return the string that specifies the data format for convnet operations.
 string GetConvnetDataFormatAttrString();
+// Return the string that specifies the data format for 3d convnet operations.
+string GetConv3DDataFormatAttrString();
+
 
 // Return a tensor shape from the given format, and tensor dimensions.
 inline TensorShape ShapeFromFormat(TensorFormat format, int64 N, int64 H,
@@ -130,6 +152,39 @@ inline TensorShape ShapeFromFormat(TensorFormat dst_format,
   std::vector<int64> dim_sizes(4);
   dim_sizes[GetTensorDimIndex(dst_format, 'N')] =
       GetTensorDim(src_shape, src_format, 'N');
+  dim_sizes[GetTensorDimIndex(dst_format, 'H')] =
+      GetTensorDim(src_shape, src_format, 'H');
+  dim_sizes[GetTensorDimIndex(dst_format, 'W')] =
+      GetTensorDim(src_shape, src_format, 'W');
+  dim_sizes[GetTensorDimIndex(dst_format, 'C')] =
+      GetTensorDim(src_shape, src_format, 'C');
+  return TensorShape(dim_sizes);
+}
+
+// Return a 3d tensor shape from the given format, and tensor dimensions.
+inline TensorShape ShapeFromFormat3D(TensorFormat format, int64 N, int64 H,
+                                   int64 W, int64 D, int64 C) {
+  std::vector<int64> dim_sizes(5);
+  dim_sizes[GetTensorDimIndex(format, 'N')] = N;
+  dim_sizes[GetTensorDimIndex(format, 'D')] = D;
+  dim_sizes[GetTensorDimIndex(format, 'H')] = H;
+  dim_sizes[GetTensorDimIndex(format, 'W')] = W;
+  dim_sizes[GetTensorDimIndex(format, 'C')] = C;
+  return TensorShape(dim_sizes);
+}
+
+// Return a tensor shape from the given format, and tensor dimensions.
+inline TensorShape ShapeFromFormat3D(TensorFormat dst_format,
+                                   const TensorShape& src_shape,
+                                   TensorFormat src_format) {
+  if (src_format == dst_format) {
+    return src_shape;
+  }
+  std::vector<int64> dim_sizes(5);
+  dim_sizes[GetTensorDimIndex(dst_format, 'N')] =
+      GetTensorDim(src_shape, src_format, 'N');
+  dim_sizes[GetTensorDimIndex(dst_format, 'D')] =
+      GetTensorDim(src_shape, src_format, 'D');
   dim_sizes[GetTensorDimIndex(dst_format, 'H')] =
       GetTensorDim(src_shape, src_format, 'H');
   dim_sizes[GetTensorDimIndex(dst_format, 'W')] =

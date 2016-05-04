@@ -173,6 +173,69 @@ def get2d_conv_output_size(input_height, input_width, filter_height,
     return out_rows, out_cols
 
 
+def get_3d_conv_output_size(input_depth, input_height, input_width, 
+                           filter_depth, filter_height, filter_width,
+                           depth_stride, row_stride, col_stride, padding_type):
+  """Returns the DWH in a convolution/pooling output."""
+  input_depth = tensor_shape.as_dimension(input_depth)
+  input_height = tensor_shape.as_dimension(input_height)
+  input_width = tensor_shape.as_dimension(input_width)
+  filter_depth = tensor_shape.as_dimension(filter_depth)
+  filter_height = tensor_shape.as_dimension(filter_height)
+  filter_width = tensor_shape.as_dimension(filter_width)
+  depth_stride = int(depth_stride)
+  row_stride = int(row_stride)
+  col_stride = int(col_stride)
+
+  if ((filter_height.value == 1 and filter_width.value == 1 and 
+     filter_depth.value == 1) and (
+      row_stride == 1 and col_stride == 1 and depth_stride == 1)):
+    return input_depth, input_height, input_width
+
+  if (filter_height > input_height or filter_width > input_width or
+     filter_depth > input_depth):
+    raise ValueError(
+        "filter must not be larger than the input: "
+        "Filter: [%sx%sx%s] Input: [%sx%sx%s]"
+        % (filter_depth, filter_height, filter_width,
+           input_depth, input_height, input_width))
+
+  # Compute number of columns in the output, based on the padding.
+  if input_depth.value is None or filter_depth.value is None:
+    out_depth = None
+  elif padding_type == b"VALID":
+    out_depth = ((input_depth.value - filter_depth.value + depth_stride) //
+                depth_stride)
+  elif padding_type == b"SAME":
+    out_depth = (input_depth.value + depth_stride - 1) // depth_stride
+  else:
+    raise ValueError("Invalid value for padding: %r" % padding_type)
+
+  # Compute number of rows in the output, based on the padding.
+  if input_height.value is None or filter_height.value is None:
+    out_rows = None
+  elif padding_type == b"VALID":
+    out_rows = ((input_height.value - filter_height.value + row_stride) //
+                row_stride)
+  elif padding_type == b"SAME":
+    out_rows = (input_height.value + row_stride - 1) // row_stride
+  else:
+    raise ValueError("Invalid value for padding: %r" % padding_type)
+
+  # Compute number of columns in the output, based on the padding.
+  if input_width.value is None or filter_width.value is None:
+    out_cols = None
+  elif padding_type == b"VALID":
+    out_cols = ((input_width.value - filter_width.value + col_stride) //
+                col_stride)
+  elif padding_type == b"SAME":
+    out_cols = (input_width.value + col_stride - 1) // col_stride
+  else:
+    raise ValueError("Invalid value for padding: %r" % padding_type)
+
+  return out_depth, out_rows, out_cols
+
+
 def conv2d_shape(op):
   """Shape function for a Conv2D op.
 
@@ -238,6 +301,64 @@ def conv2d_shape(op):
     # Convert output shape back to NCHW.
     output_shape = [output_shape[0], output_shape[3], output_shape[1],
                     output_shape[2]]
+  return [tensor_shape.TensorShape(output_shape)]
+
+
+def conv3d_shape(op):
+  """Shape function for a Conv3D op.
+
+  This op has two inputs:
+
+  * input, a 5D tensor with shape = [batch_size, depth, rows, cols, channel_in]
+  * filter, a 5D tensor with shape =  [filter_depth, filter_rows, filter_cols,
+    channel_in, channel_out]
+
+  The output is a 5D tensor with shape = [batch_size, out_depth, out_rows,
+  out_cols, channel_out], where out_rows, out_cols, out_depth depend on the
+  value of the op's "padding" and "strides" attrs.
+
+  Args:
+    op: A Conv3D Operation.
+
+  Returns:
+    A list containing the Shape of the Conv3D output.
+
+  Raises:
+    ValueError: If the shapes of the input or filter are incompatible.
+  """
+  input_shape = op.inputs[0].get_shape().with_rank(5)
+  filter_shape = op.inputs[1].get_shape().with_rank(5)
+
+  try:
+    data_format = op.get_attr("data_format")
+  except ValueError:
+    data_format = None
+
+  batch_size = input_shape[0]
+  in_depth = input_shape[1]
+  in_rows = input_shape[2]
+  in_cols = input_shape[3]
+  in_chan = input_shape[4]
+
+  filter_depth = filter_shape[0]
+  filter_rows = filter_shape[1]
+  filter_cols = filter_shape[2]
+  channel_in = filter_shape[3]
+  channel_out = filter_shape[4]
+  # Check that the input depths are compatible.
+  in_chan.assert_is_compatible_with(channel_in)
+
+  stride_b, stride_d, stride_r, stride_c, stride_chan = op.get_attr("strides")
+
+  if stride_b != 1 or stride_chan != 1:
+    raise ValueError("Current implementation does not yet support "
+                     "strides in the batch and depth dimensions.")
+  padding = op.get_attr("padding")
+  out_depth, out_rows, out_cols = get_3d_conv_output_size(
+      in_depth, in_rows, in_cols, filter_depth, filter_rows,
+      filter_cols, stride_d, stride_r, stride_c, padding)
+
+  output_shape = [batch_size, out_depth, out_rows, out_cols, channel_out]
   return [tensor_shape.TensorShape(output_shape)]
 
 

@@ -21,6 +21,10 @@ string GetConvnetDataFormatAttrString() {
   return "data_format: { 'NHWC', 'NCHW' } = 'NHWC' ";
 }
 
+string GetConv3DDataFormatAttrString() {
+  return "data_format: { 'NDHWC' } = 'NDHWC' ";
+}
+
 string ToString(TensorFormat format) {
   switch (format) {
     case FORMAT_NHWC:
@@ -39,6 +43,9 @@ bool FormatFromString(const string& format_str, TensorFormat* format) {
     return true;
   } else if (format_str == "NCHW") {
     *format = FORMAT_NCHW;
+    return true;
+  } else if (format_str == "NDHWC") {
+    *format = FORMAT_NDHWC;
     return true;
   }
   return false;
