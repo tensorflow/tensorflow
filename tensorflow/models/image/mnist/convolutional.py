@@ -49,10 +49,8 @@ NUM_EPOCHS = 10
 EVAL_BATCH_SIZE = 64
 EVAL_FREQUENCY = 100  # Number of steps between evaluations.
 
-
 tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
 FLAGS = tf.app.flags.FLAGS
-
 
 def maybe_download(filename):
   """Download the data from Yann's website, unless it's already here."""
@@ -65,7 +63,6 @@ def maybe_download(filename):
       size = f.Size()
     print('Successfully downloaded', filename, size, 'bytes.')
   return filepath
-
 
 def extract_data(filename, num_images):
   """Extract the images into a 4D tensor [image index, y, x, channels].
@@ -81,7 +78,6 @@ def extract_data(filename, num_images):
     data = data.reshape(num_images, IMAGE_SIZE, IMAGE_SIZE, 1)
     return data
 
-
 def extract_labels(filename, num_images):
   """Extract the labels into a vector of int64 label IDs."""
   print('Extracting', filename)
@@ -90,7 +86,6 @@ def extract_labels(filename, num_images):
     buf = bytestream.read(1 * num_images)
     labels = numpy.frombuffer(buf, dtype=numpy.uint8).astype(numpy.int64)
   return labels
-
 
 def fake_data(num_images):
   """Generate a fake dataset that matches the dimensions of MNIST."""
@@ -105,7 +100,6 @@ def fake_data(num_images):
     "0/1"
     labels[image] = label
   return data, labels
-
 
 def showImage(image, channels):
     """Show the image that store in an array"""
@@ -165,10 +159,12 @@ def main(argv=None):  # pylint: disable=unused-argument
     train_labels = train_labels[VALIDATION_SIZE:]
     num_epochs = NUM_EPOCHS
   train_size = train_labels.shape[0] # train size is 55000
-  """see the training data"""
+
+  """see the training data
   _image = numpy.dstack((train_data[1], train_data[1], train_data[1]))
   plt.imshow(_image)
   plt.show()
+  """
 
   # This is where training samples and labels are fed to the graph.
   # These placeholder nodes will be fed a batch of training data at each
@@ -263,6 +259,7 @@ def main(argv=None):  # pylint: disable=unused-argument
   # Optimizer: set up a variable that's incremented once per batch and
   # controls the learning rate decay.
   batch = tf.Variable(0)
+
   # Decay once per epoch, using an exponential schedule starting at 0.01.
   learning_rate = tf.train.exponential_decay(
       0.01,                # Base learning rate.
