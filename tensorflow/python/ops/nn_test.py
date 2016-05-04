@@ -479,23 +479,25 @@ class Conv2DTransposeTest(tf.test.TestCase):
 class L2LossTest(tf.test.TestCase):
 
   def testL2Loss(self):
-    with self.test_session():
-      x = tf.constant([1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x")
-      l2loss = tf.nn.l2_loss(x)
-      value = l2loss.eval()
-    self.assertAllClose(7.0, value)
+    for dtype in [dtypes.float16, dtypes.float32]:
+      with self.test_session():
+        x = tf.constant([1.0, 0.0, 3.0, 2.0], dtype=dtype, shape=[2, 2], name="x")
+        l2loss = tf.nn.l2_loss(x)
+        value = l2loss.eval()
+      self.assertAllClose(7.0, value)
 
   def testGradient(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)  # Make it reproducible.
-    x_val = np.random.random_sample(x_shape).astype(np.float64)
-    with self.test_session():
-      x = tf.constant(x_val, name="x")
-      output = tf.nn.l2_loss(x)
-      err = tf.test.compute_gradient_error(x, x_shape, output, [1])
-    print("L2Loss gradient err = %g " % err)
-    err_tolerance = 1e-11
-    self.assertLess(err, err_tolerance)
+    for dtype in [dtypes.float16, dtypes.float32]:
+      x_val = np.random.random_sample(x_shape).astype(np.float64)
+      with self.test_session():
+        x = tf.constant(tf.cast(x_val, dtype), name="x")
+        output = tf.nn.l2_loss(x)
+        err = tf.test.compute_gradient_error(x, x_shape, output, [1])
+      print("L2Loss gradient err = %g " % err)
+      err_tolerance = 1e-11
+      self.assertLess(err, err_tolerance)
 
 
 class L2NormalizeTest(tf.test.TestCase):
