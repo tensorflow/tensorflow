@@ -159,6 +159,7 @@ def _train_test_split(*args, **options):
     train_size = 1 - test_size
   train_size = train_size * args[0].shape[0]
 
+  np.random.seed(random_state)
   indices = np.random.permutation(args[0].shape[0])
   train_idx, test_idx = indices[:train_size], indices[:train_size]
   result = []
@@ -166,26 +167,27 @@ def _train_test_split(*args, **options):
     result += [x.take(train_idx, axis=0), x.take(test_idx, axis=0)]
   return tuple(result)
 
-
-# Naive implementations of sklearn classes and functions.
-BaseEstimator = _BaseEstimator
-ClassifierMixin = _ClassifierMixin
-RegressorMixin = _RegressorMixin
-NotFittedError = _NotFittedError
-accuracy_score = _accuracy_score
-log_loss = None
-mean_squared_error = _mean_squared_error
-train_test_split = _train_test_split
-
-
 # If "TENSORFLOW_SKLEARN" flag is defined then try to import from sklearn.
 TRY_IMPORT_SKLEARN = os.environ.get('TENSORFLOW_SKLEARN', False)
 if TRY_IMPORT_SKLEARN:
+  from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
+  from sklearn.metrics import accuracy_score, log_loss, mean_squared_error
+  from sklearn.cross_validation import train_test_split
   try:
-    from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
     from sklearn.exceptions import NotFittedError
-    from sklearn.metrics import accuracy_score, log_loss, mean_squared_error
-    from sklearn.cross_validation import train_test_split
   except ImportError:
-    pass
+    try:
+      from sklearn.utils.validation import NotFittedError
+    except ImportError:
+      NotFittedError = _NotFittedError
+else:
+  # Naive implementations of sklearn classes and functions.
+  BaseEstimator = _BaseEstimator
+  ClassifierMixin = _ClassifierMixin
+  RegressorMixin = _RegressorMixin
+  NotFittedError = _NotFittedError
+  accuracy_score = _accuracy_score
+  log_loss = None
+  mean_squared_error = _mean_squared_error
+  train_test_split = _train_test_split
 
