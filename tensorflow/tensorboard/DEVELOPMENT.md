@@ -16,13 +16,11 @@ Then, cd into the TensorBoard directory:
 
 `cd tensorflow/tensorboard`
 
-and install dependenceis:
+and install dependencies:
 
-`npm install`
+`npm run prepare`
 
-`bower install`
-
-Finally, run gulp: `gulp`
+Then, run gulp: `gulp`
 
 (Don't worry if there are some linter errors.)
 
