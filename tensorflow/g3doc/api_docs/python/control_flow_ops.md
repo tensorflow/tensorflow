@@ -279,10 +279,11 @@ Example 2:
 
 Repeat `body` while the condition `cond` is true.
 
-`cond` is a callable taking a list of tensors and returning a boolean scalar
-tensor. `body` is a callable taking a list of tensors and returning a list of
-tensors of the same length and with the same types as the input. `loop_vars`
-is a list of tensors that is passed to both `cond` and `body`.
+`cond` is a callable returning a boolean scalar tensor. `body` is a callable
+returning a list of tensors of the same length and with the same types as
+`loop_vars`. `loop_vars` is a list of tensors that is passed to both `cond`
+and `body`. `cond` and `body` both take as many arguments as there are
+`loop_vars`.
 
 In addition to regular Tensors or IndexedSlices, the body may accept and
 return TensorArray objects.  The flows of the TensorArray objects will
@@ -306,7 +307,7 @@ sequences and large batches.
 ##### Args:
 
 
-*  <b>`cond`</b>: The termination condition of the loop.
+*  <b>`cond`</b>: A callable that represents the termination condition of the loop.
 *  <b>`body`</b>: A callable that represents the loop body.
 *  <b>`loop_vars`</b>: The list of variable input tensors.
 *  <b>`parallel_iterations`</b>: The number of iterations allowed to run in parallel.
