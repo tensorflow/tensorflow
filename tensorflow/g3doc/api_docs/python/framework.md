@@ -1598,7 +1598,8 @@ and scalars in addition to `Tensor` objects.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
 *  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if we want the result as a ref tensor.
+*  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
+    `Tensor` is created.
 
 ##### Returns:
 

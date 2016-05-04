@@ -154,6 +154,13 @@ available, or `session` must be specified explicitly.
   A `SparseTensorValue` object.
 
 
+- - -
+
+#### `tf.SparseTensor.from_value(cls, sparse_tensor_value)` {#SparseTensor.from_value}
+
+
+
+
 
 - - -
 
