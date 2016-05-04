@@ -47,6 +47,49 @@ Attributes:
 
 - - -
 
+### `class tf.contrib.learn.SupervisorParams` {#SupervisorParams}
+
+Parameters required to configure supervisor for training.
+
+Fields:
+  is_chief: Whether the current process is the chief supervisor in charge of
+    restoring the model and running standard services.
+  master: The master string to use when preparing the session.
+  save_model_secs: Save a checkpoint every `save_model_secs` seconds when
+    training.
+  save_summaries_secs: Save summaries every `save_summaries_secs` seconds when
+    training.
+- - -
+
+#### `tf.contrib.learn.SupervisorParams.is_chief` {#SupervisorParams.is_chief}
+
+Alias for field number 0
+
+
+- - -
+
+#### `tf.contrib.learn.SupervisorParams.master` {#SupervisorParams.master}
+
+Alias for field number 1
+
+
+- - -
+
+#### `tf.contrib.learn.SupervisorParams.save_model_secs` {#SupervisorParams.save_model_secs}
+
+Alias for field number 2
+
+
+- - -
+
+#### `tf.contrib.learn.SupervisorParams.save_summaries_secs` {#SupervisorParams.save_summaries_secs}
+
+Alias for field number 3
+
+
+
+- - -
+
 ### `class tf.contrib.learn.TensorFlowClassifier` {#TensorFlowClassifier}
 
 TensorFlow Linear Classifier model.
@@ -2630,6 +2673,64 @@ Returns weights of the linear regression.
 
 - - -
 
+### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, max_steps=None, max_global_step=None, tuner=None, tuner_metric=None)` {#evaluate}
+
+Evaluate a model loaded from a checkpoint.
+
+Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
+to restore variables from, and a `dict` of `Tensor`s to evaluate, run an eval
+loop for `max_steps` steps.
+
+In each step of evaluation, all tensors in the `eval_dict` are evaluated, and
+every `log_every_steps` steps, they are logged. At the very end of evaluation,
+a summary is evaluated (finding the summary ops using `Supervisor`'s logic)
+and written to `output_dir`.
+
+##### Args:
+
+
+*  <b>`graph`</b>: A `Graph` to train. It is expected that this graph is not in use
+    elsewhere.
+*  <b>`output_dir`</b>: A string containing the directory to write a summary to.
+*  <b>`checkpoint_path`</b>: A string containing the path to a checkpoint to restore.
+    Can be `None` if the graph doesn't require loading any variables.
+*  <b>`eval_dict`</b>: A `dict` mapping string names to tensors to evaluate for in every
+    eval step.
+*  <b>`global_step_tensor`</b>: A `Variable` containing the global step. If `None`,
+    one is extracted from the graph using the same logic as in `Supervisor`.
+    Used to place eval summaries on training curves.
+*  <b>`init_op`</b>: An op that initializes the graph. If `None`, use `Supervisor`'s
+    default.
+*  <b>`supervisor_master`</b>: The master string to use when preparing the session.
+*  <b>`log_every_steps`</b>: Integer. Output logs every `log_every_steps` evaluation
+    steps. The logs contain the `eval_dict` and timing information.
+*  <b>`max_steps`</b>: Integer. Evaluate `eval_dict` this many times.
+*  <b>`max_global_step`</b>: Integer.  If the global_step is larger than this, skip
+    the eval and return None.
+*  <b>`tuner`</b>: A `Tuner` that will be notified of eval completion and updated
+    with objective metrics.
+*  <b>`tuner_metric`</b>: A `string` that specifies the eval metric to report to
+    `tuner`.
+
+##### Returns:
+
+  A tuple `(eval_results, should_stop)`:
+
+*  <b>`eval_results`</b>: A `dict` mapping `string` to numeric values (`int`, `float`)
+    that are the eval results from the last step of the eval.  None if no
+    eval steps were run.
+  should stop: A `bool`, indicating whether it was detected that eval should
+    stop.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the caller specifies max_global_step without providing
+    a global_step.
+
+
+- - -
+
 ### `tf.contrib.learn.extract_dask_data(data)` {#extract_dask_data}
 
 Extract data from dask.Series or dask.DataFrame for predictors
@@ -2661,5 +2762,65 @@ Extract data from pandas.DataFrame for labels
 ### `tf.contrib.learn.extract_pandas_matrix(data)` {#extract_pandas_matrix}
 
 Extracts numpy matrix from pandas DataFrame.
+
+
+- - -
+
+### `tf.contrib.learn.infer(restore_checkpoint_path, output_dict, feed_dict=None)` {#infer}
+
+
+
+
+- - -
+
+### `tf.contrib.learn.run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None)` {#run_feeds}
+
+Run `output_dict` tensors with each input in `feed_dicts`.
+
+If `checkpoint_path` is supplied, restore from checkpoint. Otherwise, init all
+variables.
+
+##### Args:
+
+
+*  <b>`output_dict`</b>: A `dict` mapping string names to `Tensor` objects to run.
+    Tensors must all be from the same graph.
+*  <b>`feed_dicts`</b>: Iterable of `dict` objects of input values to feed.
+*  <b>`restore_checkpoint_path`</b>: A string containing the path to a checkpoint to
+    restore.
+
+##### Returns:
+
+  A list of dicts of values read from `output_dict` tensors, one item in the
+  list for each item in `feed_dicts`. Keys are the same as `output_dict`,
+  values are the results read from the corresponding `Tensor` in
+  `output_dict`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `output_dict` or `feed_dicts` is None or empty.
+
+
+- - -
+
+### `tf.contrib.learn.run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1)` {#run_n}
+
+Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
+
+##### Args:
+
+
+*  <b>`output_dict`</b>: A `dict` mapping string names to tensors to run. Must all be
+    from the same graph.
+*  <b>`feed_dict`</b>: `dict` of input values to feed each run.
+*  <b>`restore_checkpoint_path`</b>: A string containing the path to a checkpoint to
+    restore.
+*  <b>`n`</b>: Number of times to repeat.
+
+##### Returns:
+
+  A list of `n` `dict` objects, each containing values read from `output_dict`
+  tensors.
 
 
