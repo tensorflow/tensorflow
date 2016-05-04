@@ -911,7 +911,7 @@ REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
     .Input("labels: Tlabels")
     .Output("loss: T")
     .Output("backprop: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Attr("Tlabels: {int32, int64} = DT_INT64")
     .Doc(R"doc(
 Computes softmax cross entropy cost and gradients to backpropagate.

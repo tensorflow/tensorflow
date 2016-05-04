@@ -11297,6 +11297,7 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_HALF
       }
     }
   }
