@@ -28,6 +28,64 @@ from tensorflow.python.platform import googletest
 exp = np.exp
 log = np.log
 
+class ExpTest(test_util.TensorFlowTestCase):
+
+  def testLog(self):
+    x_i32 = np.array([0], dtype=np.int32)
+    x_i64 = np.array([0], dtype=np.int64)
+    x_f32 = np.array([0], dtype=np.float32)
+
+    with self.test_session():
+      y_i32 = math_ops.exp(x_i32).eval()
+      y_i64 = math_ops.exp(x_i64).eval()
+      y_f32 = math_ops.exp(x_f32).eval()
+
+      self.assertEqual(y_i32, 1)
+      self.assertEqual(y_i32, y_f32)
+      self.assertEqual(y_i64, y_f32)
+
+class LogTest(test_util.TensorFlowTestCase):
+
+  def testLog(self):
+    x_i32 = np.array([1], dtype=np.int32)
+    x_i64 = np.array([1], dtype=np.int64)
+    x_f32 = np.array([1], dtype=np.float32)
+
+    with self.test_session():
+      y_i32 = math_ops.log(x_i32).eval()
+      y_i64 = math_ops.log(x_i64).eval()
+      y_f32 = math_ops.log(x_f32).eval()
+
+      self.assertEqual(y_i32, 0)
+      self.assertEqual(y_i32, y_f32)
+      self.assertEqual(y_i64, y_f32)
+
+class SinCosTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self.x_i32 = np.array([0], dtype=np.int32)
+    self.x_i64 = np.array([0], dtype=np.int64)
+    self.x_f32 = np.array([0], dtype=np.float32)
+
+  def testSin(self):
+    with self.test_session():
+      y_i32 = math_ops.sin(self.x_i32).eval()
+      y_i64 = math_ops.sin(self.x_i64).eval()
+      y_f32 = math_ops.sin(self.x_f32).eval()
+
+      self.assertEqual(y_i32, 0)
+      self.assertEqual(y_i32, y_f32)
+      self.assertEqual(y_i64, y_f32)
+
+  def testCos(self):
+    with self.test_session():
+      y_i32 = math_ops.cos(self.x_i32).eval()
+      y_i64 = math_ops.cos(self.x_i64).eval()
+      y_f32 = math_ops.cos(self.x_f32).eval()
+
+      self.assertEqual(y_i32, 1)
+      self.assertEqual(y_i32, y_f32)
+      self.assertEqual(y_i64, y_f32)
 
 class ReduceTest(test_util.TensorFlowTestCase):
 
