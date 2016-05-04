@@ -30,7 +30,7 @@ log = np.log
 
 class ExpTest(test_util.TensorFlowTestCase):
 
-  def testLog(self):
+  def testExp(self):
     x_i32 = np.array([0], dtype=np.int32)
     x_i64 = np.array([0], dtype=np.int64)
     x_f32 = np.array([0], dtype=np.float32)
@@ -82,6 +82,33 @@ class SinCosTest(test_util.TensorFlowTestCase):
       y_i32 = math_ops.cos(self.x_i32).eval()
       y_i64 = math_ops.cos(self.x_i64).eval()
       y_f32 = math_ops.cos(self.x_f32).eval()
+
+      self.assertEqual(y_i32, 1)
+      self.assertEqual(y_i32, y_f32)
+      self.assertEqual(y_i64, y_f32)
+
+class SqrtRsqrtTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self.x_i32 = np.array([1], dtype=np.int32)
+    self.x_i64 = np.array([1], dtype=np.int64)
+    self.x_f32 = np.array([1], dtype=np.float32)
+
+  def testRsqrt(self):
+    with self.test_session():
+      y_i32 = math_ops.rsqrt(self.x_i32).eval()
+      y_i64 = math_ops.rsqrt(self.x_i64).eval()
+      y_f32 = math_ops.rsqrt(self.x_f32).eval()
+
+      self.assertEqual(y_i32, 1)
+      self.assertEqual(y_i32, y_f32)
+      self.assertEqual(y_i64, y_f32)
+
+  def testSqrt(self):
+    with self.test_session():
+      y_i32 = math_ops.sqrt(self.x_i32).eval()
+      y_i64 = math_ops.sqrt(self.x_i64).eval()
+      y_f32 = math_ops.sqrt(self.x_f32).eval()
 
       self.assertEqual(y_i32, 1)
       self.assertEqual(y_i32, y_f32)
