@@ -309,7 +309,7 @@ After Docker is installed, launch a Docker container with the TensorFlow binary
 image as follows.
 
 ```bash
-$ docker run -it gcr.io/tensorflow/tensorflow
+$ docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow
 ```
 
 If you're using a container with GPU support, some additional flags must be
