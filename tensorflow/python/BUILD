@@ -213,7 +213,10 @@ py_library(
         "ops/common_shapes.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":framework_for_generated_wrappers"],
+    deps = [
+        ":framework_for_generated_wrappers",
+        ":pywrap_tensorflow",
+    ],
 )
 
 # load("//third_party/py/cython:build_defs.bzl", "pyx_library")
