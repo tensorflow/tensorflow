@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/simple_placer.h"
+#include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -59,7 +60,7 @@ Status SimpleGraphExecutionState::Create(GraphDef* graph_def) {
   }
 
   original_graph_def_.Swap(graph_def);
-  VLOG(2) << "Incoming def: " << original_graph_def_.DebugString();
+  VLOG(2) << "Incoming def: " << ProtoDebugString(original_graph_def_);
   return AddDefaultAttrsToGraphDef(&original_graph_def_, *ops_, 0);
 }
 
