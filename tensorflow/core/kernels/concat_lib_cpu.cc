@@ -134,6 +134,8 @@ void ConcatCPU(DeviceBase* d,
 TF_CALL_ALL_TYPES(REGISTER)
 REGISTER(quint8)
 REGISTER(qint8)
+REGISTER(quint16)
+REGISTER(qint16)
 REGISTER(qint32)
 REGISTER(bfloat16)
 
