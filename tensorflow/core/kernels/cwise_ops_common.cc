@@ -62,15 +62,15 @@ static TensorShape ToShape(const BCast::Vec& vec) {
 BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
     : in0(ctx->input(0)),
       in1(ctx->input(1)),
-      bcast(FromShape(in0.shape()), FromShape(in1.shape())) {
+      bcast(BCast::FromShape(in0.shape()), BCast::FromShape(in1.shape())) {
   if (!bcast.IsValid()) {
     ctx->SetStatus(errors::InvalidArgument("Incompatible shapes: ",
                                            in0.shape().DebugString(), " vs. ",
                                            in1.shape().DebugString()));
     return;
   }
-  OP_REQUIRES_OK(ctx,
-                 ctx->allocate_output(0, ToShape(bcast.output_shape()), &out));
+  OP_REQUIRES_OK(
+      ctx, ctx->allocate_output(0, BCast::ToShape(bcast.output_shape()), &out));
   out_num_elements = out->NumElements();
   in0_num_elements = in0.NumElements();
   in1_num_elements = in1.NumElements();
