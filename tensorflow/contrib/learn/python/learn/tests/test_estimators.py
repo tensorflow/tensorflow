@@ -35,7 +35,6 @@ class CustomOptimizer(tf.test.TestCase):
                                                         iris.target,
                                                         test_size=0.2,
                                                         random_state=42)
-
     # setup exponential decay function
     def exp_decay(global_step):
       return tf.train.exponential_decay(learning_rate=0.1,
@@ -48,13 +47,13 @@ class CustomOptimizer(tf.test.TestCase):
 
     classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                n_classes=3,
-                                               steps=800,
+                                               steps=400,
                                                learning_rate=exp_decay,
                                                optimizer=custom_optimizer)
     classifier.fit(X_train, y_train)
     score = accuracy_score(y_test, classifier.predict(X_test))
 
-    self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
+    self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
 
 
 if __name__ == "__main__":

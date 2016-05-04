@@ -16,7 +16,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import os
+
 import numpy as np
+
+def _pprint(d):
+  return ', '.join(['%s=%s' % (key, str(value)) for key, value in d.items()])
 
 
 class _BaseEstimator(object):
@@ -42,6 +48,9 @@ class _BaseEstimator(object):
     param_names = [name for name in self.__dict__ if not name.startswith('_')]
     for key in param_names:
       value = getattr(self, key, None)
+
+      if isinstance(value, collections.Callable):
+        continue
 
       # XXX: should we rather test if instance of estimator?
       if deep and hasattr(value, 'get_params'):
@@ -90,9 +99,7 @@ class _BaseEstimator(object):
   def __repr__(self):
     class_name = self.__class__.__name__
     return '%s(%s)' % (class_name,
-                       _pprint(
-                           self.get_params(deep=False),
-                           offset=len(class_name),),)
+                       _pprint(self.get_params(deep=False)),)
 
 
 class _ClassifierMixin():
@@ -152,6 +159,7 @@ def _train_test_split(*args, **options):
     train_size = 1 - test_size
   train_size = train_size * args[0].shape[0]
 
+  np.random.seed(random_state)
   indices = np.random.permutation(args[0].shape[0])
   train_idx, test_idx = indices[:train_size], indices[:train_size]
   result = []
@@ -159,30 +167,27 @@ def _train_test_split(*args, **options):
     result += [x.take(train_idx, axis=0), x.take(test_idx, axis=0)]
   return tuple(result)
 
-# Try to import sklearn, if fail - use _BaseEstimator.
-try:
+# If "TENSORFLOW_SKLEARN" flag is defined then try to import from sklearn.
+TRY_IMPORT_SKLEARN = os.environ.get('TENSORFLOW_SKLEARN', False)
+if TRY_IMPORT_SKLEARN:
   from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
-except ImportError:
+  from sklearn.metrics import accuracy_score, log_loss, mean_squared_error
+  from sklearn.cross_validation import train_test_split
+  try:
+    from sklearn.exceptions import NotFittedError
+  except ImportError:
+    try:
+      from sklearn.utils.validation import NotFittedError
+    except ImportError:
+      NotFittedError = _NotFittedError
+else:
+  # Naive implementations of sklearn classes and functions.
   BaseEstimator = _BaseEstimator
   ClassifierMixin = _ClassifierMixin
   RegressorMixin = _RegressorMixin
-
-# Try to import exception for not fitted error.
-try:
-  from sklearn.exceptions import NotFittedError
-except ImportError:
   NotFittedError = _NotFittedError
-
-# Try to import metrics
-try:
-  from sklearn.metrics import accuracy_score, log_loss, mean_squared_error
-except ImportError:
   accuracy_score = _accuracy_score
   log_loss = None
   mean_squared_error = _mean_squared_error
-
-# Try to import train_test_split
-try:
-  from sklearn.cross_validation import train_test_split
-except ImportError:
   train_test_split = _train_test_split
+

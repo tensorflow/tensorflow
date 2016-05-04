@@ -45,12 +45,12 @@ class CustomDecayTest(tf.test.TestCase):
 
     classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                n_classes=3,
-                                               steps=800,
+                                               steps=500,
                                                learning_rate=exp_decay)
     classifier.fit(X_train, y_train)
     score = accuracy_score(y_test, classifier.predict(X_test))
 
-    self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
+    self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
 
 
 if __name__ == "__main__":
