@@ -52,7 +52,7 @@ class FileDeleter {
   explicit FileDeleter(const string& filename) : filename_(filename) {}
   ~FileDeleter() {
     Env& env = *Env::Default();
-    TF_QCHECK_OK(env.DeleteFile(filename_)) << filename_;
+    env.DeleteFile(filename_);
   }
 
  private:
@@ -88,9 +88,9 @@ class DecodeAudioOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // Get and verify the input data.
-    OP_REQUIRES(context, context->num_inputs() == 1,
-                errors::InvalidArgument(
-                    "DecodeAudioFileFfmpeg requires exactly one input."));
+    OP_REQUIRES(
+        context, context->num_inputs() == 1,
+        errors::InvalidArgument("DecodeAudio requires exactly one input."));
     const Tensor& contents = context->input(0);
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(contents.shape()),
@@ -99,14 +99,14 @@ class DecodeAudioOp : public OpKernel {
 
     // Write the input data to a temp file.
     const tensorflow::StringPiece file_contents = contents.scalar<string>()();
-    const string filename = GetTempFilename(file_format_);
-    OP_REQUIRES_OK(context, WriteFile(filename, file_contents));
-    FileDeleter deleter(filename);
+    const string input_filename = GetTempFilename(file_format_);
+    OP_REQUIRES_OK(context, WriteFile(input_filename, file_contents));
+    FileDeleter deleter(input_filename);
 
     // Run FFmpeg on the data and verify results.
     std::vector<float> output_samples;
     Status result =
-        ffmpeg::ReadAudioFile(filename, file_format_, samples_per_second_,
+        ffmpeg::ReadAudioFile(input_filename, file_format_, samples_per_second_,
                               channel_count_, &output_samples);
     if (result.code() == error::Code::NOT_FOUND) {
       OP_REQUIRES(

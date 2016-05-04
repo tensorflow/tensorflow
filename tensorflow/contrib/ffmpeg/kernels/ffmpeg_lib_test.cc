@@ -20,6 +20,7 @@
 
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -31,7 +32,9 @@ namespace tensorflow {
 namespace ffmpeg {
 namespace {
 
-const char kTestSoundFilename[] =
+const char kTestWavFilename[] =
+    "contrib/ffmpeg/testdata/mono_10khz.wav";
+const char kTestMp3Filename[] =
     "contrib/ffmpeg/kernels/testdata/test_sound1.mp3";
 
 // Set to true via a command line flag iff the test is expected to have FFmpeg
@@ -54,7 +57,7 @@ TEST(FfmpegLibTest, TestUninstalled) {
     LOG(INFO) << "Assuming FFmpeg is uninstalled.";
   }
 
-  string filename = io::JoinPath(TensorFlowSrcRoot(), kTestSoundFilename);
+  string filename = io::JoinPath(TensorFlowSrcRoot(), kTestMp3Filename);
   std::vector<float> output_samples;
   Status status = ReadAudioFile(filename, "mp3", 5000, 1, &output_samples);
   ASSERT_EQ(status.code(), error::Code::NOT_FOUND);
@@ -69,10 +72,59 @@ TEST(FfmpegLibTest, TestInstalled) {
     LOG(INFO) << "Assuming FFmpeg is installed.";
   }
 
-  string filename = io::JoinPath(TensorFlowSrcRoot(), kTestSoundFilename);
+  string filename = io::JoinPath(TensorFlowSrcRoot(), kTestMp3Filename);
   std::vector<float> output_samples;
   Status status = ReadAudioFile(filename, "mp3", 5000, 1, &output_samples);
   ASSERT_TRUE(status.ok());
+}
+
+TEST(FfmpegLibTest, TestRoundTripGeneratedWav) {
+  {
+    mutex_lock l(mu);
+    if (!should_ffmpeg_be_installed) {
+      return;
+    }
+  }
+
+  std::vector<float> sine_wave;
+  for (int i = 0; i < 20000; ++i) {
+    sine_wave.push_back(std::sin(6.28 * 440.0 * i / 20000.0));
+  }
+  string content;
+  ASSERT_TRUE(CreateAudioFile("wav", 20000, 1, sine_wave, &content).ok());
+  string temp_filename = GetTempFilename("wav");
+  ASSERT_TRUE(WriteStringToFile(Env::Default(), temp_filename, content).ok());
+  std::vector<float> roundtrip_data;
+  ASSERT_TRUE(
+      ReadAudioFile(temp_filename, "wav", 20000, 1, &roundtrip_data).ok());
+  EXPECT_EQ(sine_wave.size(), roundtrip_data.size());
+  size_t min_size = std::min(sine_wave.size(), roundtrip_data.size());
+  for (size_t i = 0; i < min_size; ++i) {
+    EXPECT_NEAR(sine_wave[i], roundtrip_data[i], 0.01);
+    EXPECT_LE(roundtrip_data[i], 1.0);
+    EXPECT_LE(-1.0, roundtrip_data[i]);
+  }
+}
+
+TEST(FfmpegLibTest, TestRoundTripWav) {
+  {
+    mutex_lock l(mu);
+    if (!should_ffmpeg_be_installed) {
+      return;
+    }
+  }
+
+  string filename = io::JoinPath(TensorFlowSrcRoot(), kTestWavFilename);
+  std::vector<float> output_samples;
+  ASSERT_TRUE(ReadAudioFile(filename, "wav", 10000, 1, &output_samples).ok());
+  string original_audio;
+  ASSERT_TRUE(ReadFileToString(Env::Default(), filename, &original_audio).ok());
+
+  string written_audio;
+  ASSERT_TRUE(
+      CreateAudioFile("wav", 10000, 1, output_samples, &written_audio).ok());
+
+  EXPECT_EQ(original_audio, written_audio);
 }
 
 }  // namespace

@@ -26,6 +26,7 @@ cc_test(
     ],
     data = [
         ":testdata/test_sound1.mp3",
+        "//tensorflow/contrib/ffmpeg:test_data",
     ],
     tags = [
         "local",
