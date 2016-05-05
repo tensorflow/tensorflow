@@ -14,13 +14,17 @@ also to build, load and run Graphs.
 
 ## Installation
 
-This package requieres to generate and compile some code, in order to do this
-is necessary to execute `go generate` after clone the repository.
+This package depends on the TensorFlow shared libraries, in order to compile
+this libraries follow the [Installing fromsources](https://www.tensorflow.org/versions/r0.8/get_started/os_setup.html#installing-from-sources)
+guide to clone and configure the repository.
 
-To generate, compile and install the package, execute:
+After you have cloned the repository, run the next commands at the root of the
+tree:
 
 ```sh
-$ TF_REPO=github.com/tensorflow/tensorflow/tensorflow/contrib/go/;go get $TF_REPO || (go generate $TF_REPO && go get $TF_REPO)
+$ bazel build //tensorflow:libtensorflow.so
+$ sudo cp bazel-bin/tensorflow/libtensorflow.so /usr/lib/
+$ go get github.com/tensorflow/tensorflow/tensorflow/contrib/go
 ```
 
 ## Practical Examples
