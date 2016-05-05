@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import collections as py_collections
 import itertools
-import sys
 import time
 
 import numpy as np
@@ -45,6 +44,12 @@ from tensorflow.python.training import supervisor as tf_supervisor
 Supervisor = tf_supervisor.Supervisor
 Coordinator = coordinator.Coordinator
 SummaryWriter = summary_io.SummaryWriter
+
+
+class NanLossDuringTrainingError(RuntimeError):
+
+  def __str__(self):
+    return 'NaN loss during training.'
 
 
 def _make_saver(graph):
@@ -142,8 +147,7 @@ def train(graph,
           supervisor_save_model_secs=600,
           supervisor_save_summaries_secs=10,
           max_steps=None,
-          fail_on_nan_loss=True,
-          tuner=None):
+          fail_on_nan_loss=True):
   """Train a model.
 
   Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
@@ -179,9 +183,8 @@ def train(graph,
     supervisor_save_summaries_secs: Save summaries every
       `supervisor_save_summaries_secs` seconds when training.
     max_steps: Train until `global_step_tensor` evaluates to this value.
-    fail_on_nan_loss: If true, exit the program if `loss_op` evaluates to `NaN`.
-      Otherwise, continue training as if nothing happened.
-    tuner: A tf.Tuner that will be notified of training failures when specified.
+    fail_on_nan_loss: If true, raise `NanLossDuringTrainingError` if `loss_op`
+      evaluates to `NaN`. If false, continue training as if nothing happened.
 
   Returns:
     The final loss value.
@@ -190,6 +193,8 @@ def train(graph,
     ValueError: If `global_step_tensor` is not provided. See
         `tf.contrib.framework.get_global_step` for how we look it up if not
         provided explicitly.
+    NanLossDuringTrainingError: If `fail_on_nan_loss` is `True`, and loss ever
+        evaluates to `NaN`.
   """
   global_step_tensor = contrib_variables.assert_or_get_global_step(
       graph, global_step_tensor)
@@ -225,13 +230,7 @@ def train(graph,
             failure_message = 'Model diverged with loss = NaN.'
             if fail_on_nan_loss:
               logging.error(failure_message)
-              # If a tuner is provided, send a done/infeasible notification.
-              if tuner:
-                tuner.report_done(
-                    infeasible=True, infeasible_reason=failure_message)
-              # TODO(wicke): is this the right thing to do? Should we throw an
-              # exception and let the runner decide what to do?
-              sys.exit(1)
+              raise NanLossDuringTrainingError()
             else:
               logging.warning(failure_message)
 
@@ -288,10 +287,7 @@ def evaluate(graph,
              init_op=None,
              supervisor_master='',
              log_every_steps=10,
-             max_steps=None,
-             max_global_step=None,
-             tuner=None,
-             tuner_metric=None):
+             max_steps=None):
   """Evaluate a model loaded from a checkpoint.
 
   Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
@@ -320,29 +316,14 @@ def evaluate(graph,
     log_every_steps: Integer. Output logs every `log_every_steps` evaluation
       steps. The logs contain the `eval_dict` and timing information.
     max_steps: Integer. Evaluate `eval_dict` this many times.
-    max_global_step: Integer.  If the global_step is larger than this, skip
-      the eval and return None.
-    tuner: A `Tuner` that will be notified of eval completion and updated
-      with objective metrics.
-    tuner_metric: A `string` that specifies the eval metric to report to
-      `tuner`.
 
   Returns:
-    A tuple `(eval_results, should_stop)`:
+    A tuple `(eval_results, global_step)`:
     eval_results: A `dict` mapping `string` to numeric values (`int`, `float`)
       that are the eval results from the last step of the eval.  None if no
       eval steps were run.
-    should stop: A `bool`, indicating whether it was detected that eval should
-      stop.
-
-  Raises:
-    ValueError: if the caller specifies max_global_step without providing
-      a global_step.
+    global_step: The global step this evaluation corresponds to.
   """
-  # TODO(mdan): Move the tuner code outside eval.
-  # The func returns sufficient information for the tuner to use.
-  if tuner and not tuner_metric:
-    raise ValueError('A tuner metric must be specified when using a tuner.')
   global_step_tensor = contrib_variables.assert_or_get_global_step(
       graph, global_step_tensor)
 
@@ -364,17 +345,7 @@ def evaluate(graph,
       _restore_from_checkpoint(
           session, graph, checkpoint_path, supervisor.saver)
 
-    # When detecting that eval should stop, we still run one final measurement.
-    should_stop = False
-    # Check the global step.
     current_global_step = session.run(global_step_tensor)
-    if max_global_step > 0 and current_global_step >= max_global_step:
-      should_stop = True
-      # TODO(mdan): Add support for more complex stop conditions.
-    # Check for stop requests, if a tuner is present.
-    if tuner and tuner.should_experiment_stop():
-      should_stop = True
-
     eval_results = None
     # TODO(amodei): Fix this to run through the eval set exactly once.
     step = 0
@@ -386,6 +357,7 @@ def evaluate(graph,
             (max_steps is None) or (step < max_steps)):
           start_time = time.time()
           eval_results = _run_dict(session, eval_dict)
+          # TODO(wicke): We should assert that the global step hasn't changed.
           step += 1
           if step % log_every_steps == 0:
             duration = time.time() - start_time
@@ -402,19 +374,9 @@ def evaluate(graph,
 
             summary_str = session.run(supervisor.summary_op)
             if summary_str:
-              # TODO(wicke): We should assert that the global step hasn't
-              #              changed.
-              global_step = session.run(global_step_tensor)
-              summary_writer.add_summary(summary_str, global_step)
+              summary_writer.add_summary(summary_str, current_global_step)
           finally:
             summary_writer.close()
-
-        if tuner:
-          if eval_results and eval_results[tuner_metric]:
-            tuner.report_measure(
-                float(eval_results[tuner_metric]),
-                model_save_path=checkpoint_path,
-                global_step=int(current_global_step))
 
         # Call supervisor.Stop() from within a try block because it re-raises
         # exceptions thrown by the supervised threads.
@@ -422,18 +384,9 @@ def evaluate(graph,
     # catch OutOfRangeError which is thrown when queue is out of data (and for
     # other reasons as well).
     except errors.OutOfRangeError as e:
-      logging.warn('Got exception during tf.learn training loop possibly '
-                   'due to exhausted input queue %s.', e)
+      logging.warn('Input queue exhausted: %s.', e)
 
-  if should_stop and tuner is not None:
-    try:
-      tuner.report_done()
-    except Exception as e:
-      # TODO(mdan): Vizier should allow softer application error reporting.
-      tuner.report_done(infeasible=True, infeasible_reason=e)
-      raise
-
-  return eval_results, should_stop
+  return eval_results, current_global_step
 
 
 def run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1):
