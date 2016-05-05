@@ -892,7 +892,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
 
       # Restore trainer
       self._global_step = self._graph.get_tensor_by_name('global_step:0')
-      self._train = self._graph.get_operation_by_name('train')
+      self._train = self._graph.get_operation_by_name('OptimizeLoss/train')
 
       # Restore summaries.
       self._summaries = self._graph.get_operation_by_name(
