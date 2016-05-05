@@ -6853,6 +6853,58 @@ op {
   is_commutative: true
 }
 op {
+  name: "Multinomial"
+  input_arg {
+    name: "logits"
+    description: "2-D Tensor with shape `[batch_size, num_classes]`.  Each slice `[i, :]`\nrepresents the unnormalized log probabilities for all classes."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "num_samples"
+    description: "0-D.  Number of independent samples to draw for each row slice."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "2-D Tensor with shape `[batch_size, num_samples]`.  Each slice `[i, :]`\ncontains the drawn class labels with range `[0, num_classes)`."
+    type: DT_INT64
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either seed or seed2 is set to be non-zero, the internal random number\ngenerator is seeded by the given seed.  Otherwise, a random seed is used."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Draws samples from a multinomial distribution."
+}
+op {
   name: "Neg"
   input_arg {
     name: "x"
