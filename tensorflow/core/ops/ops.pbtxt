@@ -10995,6 +10995,110 @@ op {
   description: "Concatenation is with respect to the dense versions of these sparse tensors.\nIt is assumed that each input is a `SparseTensor` whose elements are ordered\nalong increasing dimension number.\n\nAll inputs\' shapes must match, except for the concat dimension.  The\n`indices`, `values`, and `shapes` lists must have the same length.\n\nThe output shape is identical to the inputs\', except along the concat\ndimension, where it is the sum of the inputs\' sizes along that dimension.\n\nThe output elements will be resorted to preserve the sort order along\nincreasing dimension number.\n\nThis op runs in `O(M log M)` time, where `M` is the total number of non-empty\nvalues across all inputs. This is due to the need for an internal sort in\norder to concatenate efficiently across an arbitrary dimension.\n\nFor example, if `concat_dim = 1` and the inputs are\n\n    sp_inputs[0]: shape = [2, 3]\n    [0, 2]: \"a\"\n    [1, 0]: \"b\"\n    [1, 1]: \"c\"\n\n    sp_inputs[1]: shape = [2, 4]\n    [0, 1]: \"d\"\n    [0, 2]: \"e\"\n\nthen the output will be\n\n    shape = [2, 7]\n    [0, 2]: \"a\"\n    [0, 4]: \"d\"\n    [0, 5]: \"e\"\n    [1, 0]: \"b\"\n    [1, 1]: \"c\"\n\nGraphically this is equivalent to doing\n\n    [    a] concat [  d e  ] = [    a   d e  ]\n    [b c  ]        [       ]   [b c          ]"
 }
 op {
+  name: "SparseDenseCwiseDiv"
+  input_arg {
+    name: "sp_indices"
+    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, possibly not in canonical ordering."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sp_values"
+    description: "1-D.  `N` non-empty values corresponding to `sp_indices`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sp_shape"
+    description: "1-D.  Shape of the input SparseTensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "dense"
+    description: "`R`-D.  The dense Tensor operand."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "1-D.  The `N` values that are operated on."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Component-wise divides a SparseTensor by a dense Tensor."
+  description: "*Limitation*: this Op only broadcasts the dense side to the sparse side, but not\nthe other direction."
+}
+op {
+  name: "SparseDenseCwiseMul"
+  input_arg {
+    name: "sp_indices"
+    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, possibly not in canonical ordering."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sp_values"
+    description: "1-D.  `N` non-empty values corresponding to `sp_indices`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sp_shape"
+    description: "1-D.  Shape of the input SparseTensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "dense"
+    description: "`R`-D.  The dense Tensor operand."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "1-D.  The `N` values that are operated on."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Component-wise multiplies a SparseTensor by a dense Tensor."
+  description: "*Limitation*: this Op only broadcasts the dense side to the sparse side, but not\nthe other direction."
+}
+op {
   name: "SparseMatMul"
   input_arg {
     name: "a"
