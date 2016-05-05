@@ -1009,6 +1009,7 @@ tf_cuda_cc_test(
     deps = [
         ":bounds_check",
         ":cwise_op",
+        ":nn",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
