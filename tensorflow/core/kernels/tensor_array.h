@@ -77,7 +77,7 @@ Status TensorSetZero(OpKernelContext* ctx, Tensor* value) {
   Status TensorSetZero<Device, T>(OpKernelContext * ctx, Tensor * value);
 
 #define TENSOR_ARRAY_SET_ZERO_CPU(T) TENSOR_ARRAY_SET_ZERO(CPUDevice, T)
-TF_CALL_ALL_TYPES(TENSOR_ARRAY_SET_ZERO_CPU)
+TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU)
 #undef TENSOR_ARRAY_SET_ZERO_CPU
 
 #if GOOGLE_CUDA
@@ -469,8 +469,10 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
     Tensor* tensor_t;
     TF_RETURN_IF_ERROR(
         ctx->allocate_persistent(dtype_, t.shape, &t.tensor, &tensor_t));
-    Status s = tensor_array::TensorSetZero<Device, T>(ctx, tensor_t);
-    if (!s.ok()) return s;
+    if (t.shape.num_elements() > 0) {
+      Status s = tensor_array::TensorSetZero<Device, T>(ctx, tensor_t);
+      if (!s.ok()) return s;
+    }
   }
 
   // Data is available inside the tensor, copy the reference over.

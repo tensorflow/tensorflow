@@ -122,7 +122,16 @@ struct SetZeroFunctor<CPUDevice, T> {
 };
 
 #define DEFINE_SETZERO_CPU(T) template struct SetZeroFunctor<CPUDevice, T>;
-TF_CALL_ALL_TYPES(DEFINE_SETZERO_CPU)
+DEFINE_SETZERO_CPU(Eigen::half);
+DEFINE_SETZERO_CPU(float);
+DEFINE_SETZERO_CPU(double);
+DEFINE_SETZERO_CPU(uint8);
+DEFINE_SETZERO_CPU(int8);
+DEFINE_SETZERO_CPU(int16);
+DEFINE_SETZERO_CPU(int32);
+DEFINE_SETZERO_CPU(int64);
+DEFINE_SETZERO_CPU(complex64);
+DEFINE_SETZERO_CPU(complex128);
 #undef DEFINE_SETZERO_CPU
 
 }  // end namespace functor
