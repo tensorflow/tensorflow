@@ -1521,6 +1521,20 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "multinomial_op_test",
+    size = "small",
+    deps = [
+        ":ops_util",
+        ":random_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # Android libraries -----------------------------------------------------------
 
 filegroup(
