@@ -1746,6 +1746,7 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = tf_copts(),
+    features = ["-layering_check"],
     tags = [
         "manual",
         "notap",
