@@ -31,6 +31,8 @@ import fnmatch
 import os
 import re
 
+import six
+
 BASE_DIR = os.path.normpath(os.path.join(__file__, '../../..'))
 FUTURES_PATTERN = re.compile(r'^from __future__ import (\w+)\s*$')
 FUTURES_PATTERN_2 = re.compile(
@@ -39,14 +41,11 @@ REQUIRED_FUTURES = frozenset(['absolute_import', 'division', 'print_function'])
 
 WHITELIST = [
     'python/platform/control_imports.py',
-    'python/platform/default/_init.py',  # TODO(irving): Will vanish soon
     'tools/docker/jupyter_notebook_config.py',
 ]
 
 # Tests that must *not* import division
 OLD_DIVISION = [
-    # TODO(irving): Remove word2vec after 0.6.0 is released.
-    'examples/tutorials/word2vec/word2vec_basic.py',
     'python/framework/tensor_shape_div_test.py',
     'python/kernel_tests/division_past_test.py',
 ]
@@ -55,7 +54,7 @@ OLD_DIVISION = [
 def check_file(path, old_division):
   futures = set()
   count = 0
-  for line in open(path):
+  for line in open(path, encoding='utf-8') if six.PY3 else open(path):
     count += 1
     m = FUTURES_PATTERN.match(line)
     if m:

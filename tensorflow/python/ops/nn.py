@@ -108,6 +108,7 @@ concatenated.
 @@separable_conv2d
 @@atrous_conv2d
 @@conv2d_transpose
+@@conv3d
 
 ## Pooling
 
@@ -127,6 +128,8 @@ to the `Convolution` section for details about the padding calculation.
 @@avg_pool
 @@max_pool
 @@max_pool_with_argmax
+@@avg_pool3d
+@@max_pool3d
 
 ## Normalization
 
@@ -264,7 +267,14 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
       = (1 - z) * x + log(1 + exp(-x))
       = x - x * z + log(1 + exp(-x))
 
-  To ensure stability and avoid overflow, the implementation uses
+  For x < 0, to avoid overflow in exp(-x), we reformulate the above
+
+        x - x * z + log(1 + exp(-x))
+      = log(exp(x)) - x * z + log(1 + exp(-x))
+      = - x * z + log(1 + exp(x))
+
+  Hence, to ensure stability and avoid overflow, the implementation uses this
+  equivalent formulation
 
       max(x, 0) - x * z + log(1 + exp(-abs(x)))
 

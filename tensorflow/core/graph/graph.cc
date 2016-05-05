@@ -140,6 +140,11 @@ void Node::MaybeCopyOnWrite() {
   }
 }
 
+void Node::ClearAttr(const string& name) {
+  MaybeCopyOnWrite();
+  (*props_->node_def_.mutable_attr()).erase(name);
+}
+
 // Node::Properties
 
 Node::Properties::Properties(const OpDef* op_def, const NodeDef& node_def,

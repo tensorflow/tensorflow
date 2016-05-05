@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Gradients for operators defined in nn_ops.py."""
 
 from __future__ import absolute_import
@@ -40,14 +39,48 @@ def _Conv2DBackpropGrad(op, grad):
     the gradients w.r.t. the input and the filter
   """
   return [None,
-          nn_ops.conv2d_backprop_filter(
-              grad, array_ops.shape(op.inputs[1]), op.inputs[2],
-              op.get_attr("strides"), op.get_attr("padding"),
-              op.get_attr("use_cudnn_on_gpu"), op.get_attr("data_format")),
-          nn_ops.conv2d(
-              grad, op.inputs[1], op.get_attr("strides"),
-              op.get_attr("padding"), op.get_attr("use_cudnn_on_gpu"),
-              op.get_attr("data_format"))]
+          nn_ops.conv2d_backprop_filter(grad, array_ops.shape(op.inputs[1]),
+                                        op.inputs[2], op.get_attr("strides"),
+                                        op.get_attr("padding"),
+                                        op.get_attr("use_cudnn_on_gpu"),
+                                        op.get_attr("data_format")),
+          nn_ops.conv2d(grad, op.inputs[1], op.get_attr("strides"),
+                        op.get_attr("padding"), op.get_attr("use_cudnn_on_gpu"),
+                        op.get_attr("data_format"))]
+
+
+@ops.RegisterGradient("Conv3D")
+def _Conv3DGrad(op, grad):
+  return [nn_ops.conv3d_backprop_input(op.inputs[0],
+                                       op.inputs[1],
+                                       grad,
+                                       strides=op.get_attr("strides"),
+                                       padding=op.get_attr("padding")),
+          nn_ops.conv3d_backprop_filter(op.inputs[0],
+                                        op.inputs[1],
+                                        grad,
+                                        strides=op.get_attr("strides"),
+                                        padding=op.get_attr("padding"))]
+
+
+@ops.RegisterGradient("AvgPool3D")
+def _AvgPool3DGrad(op, grad):
+  return nn_ops.avg_pool3d_grad(
+      array_ops.shape(op.inputs[0]),
+      grad,
+      ksize=op.get_attr("ksize"),
+      strides=op.get_attr("strides"),
+      padding=op.get_attr("padding"))
+
+
+@ops.RegisterGradient("MaxPool3D")
+def _MaxPool3DGrad(op, grad):
+  return nn_ops.max_pool3d_grad(op.inputs[0],
+                                op.outputs[0],
+                                grad,
+                                ksize=op.get_attr("ksize"),
+                                strides=op.get_attr("strides"),
+                                padding=op.get_attr("padding"))
 
 
 @ops.RegisterGradient("Softmax")
@@ -74,10 +107,8 @@ def _SoftmaxGrad(op, grad_softmax):
   # graph-construction time?  Alternatively: do different things
   # depending on the dimensionality of the input tensors.
   softmax = op.outputs[0]
-  grad_x = ((grad_softmax -
-             array_ops.reshape(math_ops.reduce_sum(grad_softmax * softmax, [1]),
-                               [-1, 1]))
-            * softmax)
+  grad_x = ((grad_softmax - array_ops.reshape(
+      math_ops.reduce_sum(grad_softmax * softmax, [1]), [-1, 1])) * softmax)
   return grad_x
 
 
@@ -128,7 +159,8 @@ def _BiasAddGradV1(unused_bias_op, received_grad):
     the second one for the "bias" input of the BiasOp.
   """
   reduction_dim_tensor = math_ops.range(array_ops.rank(received_grad) - 1)
-  return (received_grad, math_ops.reduce_sum(received_grad, reduction_dim_tensor))
+  return (received_grad, math_ops.reduce_sum(received_grad,
+                                             reduction_dim_tensor))
 
 
 @ops.RegisterGradient("Relu")
@@ -159,8 +191,8 @@ def _SoftsignGrad(op, grad):
 @ops.RegisterGradient("ReluGrad")
 def _ReluGradGrad(op, grad):
   x = op.inputs[1]
-  return (gen_nn_ops._relu_grad(grad, x),
-          array_ops.zeros(shape=array_ops.shape(x), dtype=x.dtype))
+  return (gen_nn_ops._relu_grad(grad, x), array_ops.zeros(
+      shape=array_ops.shape(x), dtype=x.dtype))
 
 
 def _BroadcastMul(vec, mat):
@@ -196,12 +228,10 @@ def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
 
 @ops.RegisterGradient("Conv2D")
 def _Conv2DGrad(op, grad):
-  return [nn_ops.conv2d_backprop_input(array_ops.shape(op.inputs[0]),
-                                       op.inputs[1], grad,
-                                       op.get_attr("strides"),
-                                       op.get_attr("padding"),
-                                       op.get_attr("use_cudnn_on_gpu"),
-                                       op.get_attr("data_format")),
+  return [nn_ops.conv2d_backprop_input(
+      array_ops.shape(op.inputs[0]), op.inputs[1], grad, op.get_attr("strides"),
+      op.get_attr("padding"), op.get_attr("use_cudnn_on_gpu"),
+      op.get_attr("data_format")),
           nn_ops.conv2d_backprop_filter(op.inputs[0],
                                         array_ops.shape(op.inputs[1]), grad,
                                         op.get_attr("strides"),
@@ -228,28 +258,30 @@ def _LRNGrad(op, grad):
   bias = op.get_attr("bias")
   alpha = op.get_attr("alpha")
   beta = op.get_attr("beta")
-  return [gen_nn_ops._lrn_grad(grad, op.inputs[0], op.outputs[0],
-                               depth_radius, bias, alpha, beta)]
+  return [gen_nn_ops._lrn_grad(grad, op.inputs[0], op.outputs[0], depth_radius,
+                               bias, alpha, beta)]
 
 
 @ops.RegisterGradient("AvgPool")
 def _AvgPoolGrad(op, grad):
-  return gen_nn_ops._avg_pool_grad(array_ops.shape(op.inputs[0]), grad,
-                                   op.get_attr("ksize"),
-                                   op.get_attr("strides"),
-                                   op.get_attr("padding"),
-                                   data_format=op.get_attr("data_format")
-                                  )
+  return gen_nn_ops._avg_pool_grad(
+      array_ops.shape(op.inputs[0]),
+      grad,
+      op.get_attr("ksize"),
+      op.get_attr("strides"),
+      op.get_attr("padding"),
+      data_format=op.get_attr("data_format"))
 
 
 @ops.RegisterGradient("MaxPool")
 def _MaxPoolGrad(op, grad):
-  return gen_nn_ops._max_pool_grad(op.inputs[0], op.outputs[0], grad,
+  return gen_nn_ops._max_pool_grad(op.inputs[0],
+                                   op.outputs[0],
+                                   grad,
                                    op.get_attr("ksize"),
                                    op.get_attr("strides"),
                                    padding=op.get_attr("padding"),
-                                   data_format=op.get_attr("data_format")
-                                  )
+                                   data_format=op.get_attr("data_format"))
 
 
 @ops.RegisterGradient("BatchNormWithGlobalNormalization")
@@ -328,5 +360,4 @@ def _TopKGrad(op, grad, _):
                                  array_ops.reshape(grad, [-1]),
                                  validate_indices=False),
       in_shape), array_ops.zeros(
-          [],
-          dtype=dtypes.int32)]
+          [], dtype=dtypes.int32)]

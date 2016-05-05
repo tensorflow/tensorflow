@@ -60,7 +60,7 @@ class CUDAStream : public internal::StreamInterface {
   // Retrieves an event which indicates that all work enqueued into the stream
   // has completed. Ownership of the event is not transferred to the caller, the
   // event is owned by this stream.
-  bool GetOrCreateCompletedEvent(CUevent *completed_event);
+  CUevent* completed_event() { return &completed_event_; }
 
   // Returns the CUstream value for passing to the CUDA API.
   //
@@ -74,12 +74,11 @@ class CUDAStream : public internal::StreamInterface {
   CUDAExecutor *parent() const { return parent_; }
 
  private:
-  mutex mu_;              // mutex that guards the completion event.
   CUDAExecutor *parent_;  // Executor that spawned this stream.
   CUstream cuda_stream_;  // Wrapped CUDA stream handle.
 
   // Event that indicates this stream has completed.
-  CUevent completed_event_ GUARDED_BY(mu_);
+  CUevent completed_event_ = nullptr;
 };
 
 // Helper functions to simplify extremely common flows.

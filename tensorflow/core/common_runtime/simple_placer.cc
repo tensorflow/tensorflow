@@ -67,23 +67,6 @@ std::vector<Device*> FilterSupportedDevices(
   return filtered_devices;
 }
 
-// TODO(vrv): Remove "@" syntax capability.
-bool HasColocatedNodeName(const Node& node) {
-  return StringPiece(node.def().device()).starts_with("@");
-}
-
-Status ParseColocatedNodeName(const Node& node,
-                              string* out_colocated_node_name) {
-  StringPiece device(node.def().device());
-  if (!device.Consume("@")) {
-    return errors::InvalidArgument("Malformed colocated node name: '", device,
-                                   "'");
-  }
-  // TODO(mrry): Validate that the node name is a valid node name.
-  *out_colocated_node_name = device.ToString();
-  return Status::OK();
-}
-
 // Returns the name of the colocation group of the node by inspecting
 // the "_class" attribute of the NodeDef.  Returns "" if it doesn't
 // exist.
@@ -276,129 +259,125 @@ class ColocationGraph {
   // For the given node, subject to the constraints previously given
   // to this ColocationGraph, set its assigned_device_name. Returns OK
   // if a satisfying device can be found, otherwise an error.
-  Status AssignDevice(Node* node) {
-    int node_root = FindRoot(node->id());
-    if (members_[node_root].assigned_device == nullptr) {
-      // We have not yet assigned a device for the colocated node set containing
-      // n, so we do so now using the constraints on the root node.
+  Status GetDevicesForNode(Node* node, std::vector<Device*>* possible_devices) {
+    possible_devices->clear();
+    const int node_root = FindRoot(node->id());
+    if (!members_[node_root].possible_devices.empty()) {
+      *possible_devices = members_[node_root].possible_devices;
+      return Status::OK();
+    }
 
-      // "devices" will contain the set of feasible placements for the
-      // colocated node set containing n.
-      std::vector<Device*> devices;
-      if (DeviceNameUtils::HasSomeDetails(members_[node_root].device_name)) {
-        // The root node has a (possibly partial) device
-        // specification, so enumerate the physical devices that
-        // conform to it.
-        device_set_->FindMatchingDevices(members_[node_root].device_name,
-                                         &devices);
+    // We have not yet computed the possible devices for the
+    // colocated node set containing 'node', so we do so now using the
+    // constraints on the root node.
 
+    // "devices" will contain the set of feasible placements for the
+    // colocated node set containing 'node'.
+    std::vector<Device*> devices;
+    if (DeviceNameUtils::HasSomeDetails(members_[node_root].device_name)) {
+      // The root node has a (possibly partial) device
+      // specification, so enumerate the physical devices that
+      // conform to it.
+      device_set_->FindMatchingDevices(members_[node_root].device_name,
+                                       &devices);
+
+      if (!devices.empty()) {
+        // Filter devices into those that are compatible with the root
+        // node (and its children).
+        devices = FilterSupportedDevices(
+            devices, members_[node_root].supported_device_types);
+      }
+
+      // Perform soft placement if allow_soft_placement is set.  options_
+      // being NULL is treated as allowing soft placement.
+      if (devices.empty() &&
+          (options_ == nullptr || options_->config.allow_soft_placement())) {
+        // The soft_device_name is the same as the node's device name
+        // without specifying the device type or ID.
+        DeviceNameUtils::ParsedName soft_device_name =
+            members_[node_root].device_name;
+        soft_device_name.type.clear();
+        soft_device_name.has_type = false;
+        soft_device_name.has_id = false;
+        device_set_->FindMatchingDevices(soft_device_name, &devices);
         if (!devices.empty()) {
-          // Filter devices into those that are compatible with the root
-          // node (and its children).
           devices = FilterSupportedDevices(
               devices, members_[node_root].supported_device_types);
         }
+      }
 
-        // Perform soft placement if allow_soft_placement is set.  options_
-        // being NULL is treated as allowing soft placement.
-        if (devices.empty() &&
-            (options_ == nullptr || options_->config.allow_soft_placement())) {
-          // The soft_device_name is the same as the node's device name
-          // without specifying the device type or ID.
-          DeviceNameUtils::ParsedName soft_device_name =
-              members_[node_root].device_name;
-          soft_device_name.type.clear();
-          soft_device_name.has_type = false;
-          soft_device_name.has_id = false;
-          device_set_->FindMatchingDevices(soft_device_name, &devices);
-          if (!devices.empty()) {
-            devices = FilterSupportedDevices(
-                devices, members_[node_root].supported_device_types);
-          }
-        }
-
-        if (devices.empty()) {
-          // Return an error when a physical device that matches an explicit
-          // device specification is not found. This ensures that we don't
-          // assign a node to GPU when the user wanted to force it on CPU.
-          DeviceNameUtils::ParsedName specified_device_name;
-          if (DeviceNameUtils::ParseFullName(node->def().device(),
-                                             &specified_device_name) &&
-              specified_device_name == members_[node_root].device_name) {
-            // The specified device and merged set device match, and
-            // will appear in the GraphDef (for debugging), so just
-            // print the specified device.
-            std::vector<Device*> devices_matching_nodedef;
-            device_set_->FindMatchingDevices(specified_device_name,
-                                             &devices_matching_nodedef);
-            if (devices_matching_nodedef.empty()) {
-              // Sometimes it is almost impossible to understand the problem
-              // without a list of available devices.
-              std::vector<string> device_names;
-              for (const Device* device : device_set_->devices()) {
-                device_names.push_back(device->name());
-              }
-              std::sort(device_names.begin(), device_names.end());
-
-              return errors::InvalidArgument(
-                  "Could not satisfy explicit device specification '",
-                  node->def().device(),
-                  "' because no devices matching that specification "
-                  "are registered in this process; available devices: ",
-                  str_util::Join(device_names, ", "));
-            } else if (specified_device_name.has_type) {
-              return errors::InvalidArgument(
-                  "Could not satisfy explicit device specification '",
-                  node->def().device(), "' because no supported kernel for ",
-                  specified_device_name.type, " devices is available");
-            } else {
-              return errors::InvalidArgument(
-                  "Could not satisfy explicit device specification '",
-                  node->def().device());
+      if (devices.empty()) {
+        // Return an error when a physical device that matches an explicit
+        // device specification is not found. This ensures that we don't
+        // assign a node to GPU when the user wanted to force it on CPU.
+        DeviceNameUtils::ParsedName specified_device_name;
+        if (DeviceNameUtils::ParseFullName(node->def().device(),
+                                           &specified_device_name) &&
+            specified_device_name == members_[node_root].device_name) {
+          // The specified device and merged set device match, and
+          // will appear in the GraphDef (for debugging), so just
+          // print the specified device.
+          std::vector<Device*> devices_matching_nodedef;
+          device_set_->FindMatchingDevices(specified_device_name,
+                                           &devices_matching_nodedef);
+          if (devices_matching_nodedef.empty()) {
+            // Sometimes it is almost impossible to understand the problem
+            // without a list of available devices.
+            std::vector<string> device_names;
+            for (const Device* device : device_set_->devices()) {
+              device_names.push_back(device->name());
             }
-          } else {
-            // The specified device may be a valid device but the
-            // merged set device is different, so print both.
+            std::sort(device_names.begin(), device_names.end());
+
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",
                 node->def().device(),
-                "' because the node was colocated with a group of nodes that "
-                "required incompatible device '",
-                DeviceNameUtils::ParsedNameToString(
-                    members_[node_root].device_name),
-                "'");
+                "' because no devices matching that specification "
+                "are registered in this process; available devices: ",
+                str_util::Join(device_names, ", "));
+          } else if (specified_device_name.has_type) {
+            return errors::InvalidArgument(
+                "Could not satisfy explicit device specification '",
+                node->def().device(), "' because no supported kernel for ",
+                specified_device_name.type, " devices is available");
+          } else {
+            return errors::InvalidArgument(
+                "Could not satisfy explicit device specification '",
+                node->def().device());
           }
-        }
-      } else {
-        // The device is completely unspecified, so enumerate the devices that
-        // support all of the nodes in the set.
-        if (device_set_->devices().empty()) {
-          return errors::Internal("No devices are registered");
-        }
-        devices = FilterSupportedDevices(
-            device_set_->devices(), members_[node_root].supported_device_types);
-
-        if (devices.empty()) {
+        } else {
+          // The specified device may be a valid device but the
+          // merged set device is different, so print both.
           return errors::InvalidArgument(
-              "Node had no OpKernel registered to support this operation: ",
-              "Operation was ", node->type_string(), " and inputs were ",
-              DataTypeVectorString(node->input_types()));
+              "Could not satisfy explicit device specification '",
+              node->def().device(),
+              "' because the node was colocated with a group of nodes that "
+              "required incompatible device '",
+              DeviceNameUtils::ParsedNameToString(
+                  members_[node_root].device_name),
+              "'");
         }
       }
+    } else {
+      // The device is completely unspecified, so enumerate the devices that
+      // support all of the nodes in the set.
+      if (device_set_->devices().empty()) {
+        return errors::Internal("No devices are registered");
+      }
+      devices = FilterSupportedDevices(
+          device_set_->devices(), members_[node_root].supported_device_types);
 
-      // Returns the first device in sorted devices list so we will always
-      // choose the same device.
-      members_[node_root].assigned_device = devices[0];
+      if (devices.empty()) {
+        return errors::InvalidArgument(
+            "Node had no OpKernel registered to support this operation: ",
+            "Operation was ", node->type_string(), " and inputs were ",
+            DataTypeVectorString(node->input_types()));
+      }
     }
-    node->set_assigned_device_name(members_[node_root].assigned_device->name());
 
-    // Log placement if log_device_placement is set.
-    if (options_ && options_->config.log_device_placement()) {
-      printf("%s: %s\n", node->name().c_str(),
-             node->assigned_device_name().c_str());
-      LOG(INFO) << node->name() << ": " << node->assigned_device_name();
-    }
-
+    // Cache the result of the possible devices for this node group.
+    members_[node_root].possible_devices = devices;
+    *possible_devices = members_[node_root].possible_devices;
     return Status::OK();
   }
 
@@ -410,21 +389,25 @@ class ColocationGraph {
     // The id of the node that is the parent of this one, or its own
     // id if it is a root. parent <= 0 indicates that this member is invalid.
     int parent = -1;
+
     // A proxy for the depth of the tree that is used to prefer
     // connecting smaller trees to larger trees when merging disjoint
     // sets.
     int rank = 0;
+
     // The intersection of all device types supported by this node,
     // and those of all of its children, in priority order
     // of the preferred device.
     DeviceTypeVector supported_device_types;
+
     // The merged form of the device requested for this node, with
     // those of all of its children.
     DeviceNameUtils::ParsedName device_name;
-    // If this node is a root, stores the Device to which this node
+
+    // If this node is a root, stores a list of Devices to which this node
     // and all of its children have been assigned, or nullptr if this
-    // has not yet been computed by GetAssignedDevice().
-    Device* assigned_device = nullptr;
+    // has not yet been computed.
+    std::vector<Device*> possible_devices;
   };
 
   Status InitializeMember(const Node& node, Member* member) {
@@ -484,11 +467,10 @@ class ColocationGraph {
             node.def().op(), "' with these attrs");
       }
 
-      // If the NodeDef contains a device that is *not* a colocated node name
-      // (i.e. it does not begin with '@') then we interpret it as a (partial)
-      // device specification.
+      // If the NodeDef contains a device, then we interpret it as a
+      // (partial) device specification.
       string colocated_node_name;
-      if (!node.def().device().empty() && !HasColocatedNodeName(node)) {
+      if (!node.def().device().empty()) {
         // The user has specified a device in the NodeDef, try to find a
         // valid device matching their specification in the set of
         // devices.
@@ -551,16 +533,13 @@ class ColocationGraph {
 }  // namespace
 
 SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
-                           const NodeNameToIdMap* name_to_id_map,
                            const SessionOptions* options)
     : graph_(graph),
       devices_(devices),
-      name_to_id_map_(name_to_id_map),
       options_(options) {}
 
-SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
-                           const NodeNameToIdMap* name_to_id_map)
-    : graph_(graph), devices_(devices), name_to_id_map_(name_to_id_map) {
+SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices)
+    : graph_(graph), devices_(devices) {
   options_ = nullptr;
 }
 
@@ -593,33 +572,7 @@ Status SimplePlacer::Run() {
       continue;
     }
 
-    // 2(a). If node n specifies a colocation constraint as its device name,
-    // add an edge from the colocated node to n.
-    if (HasColocatedNodeName(*node)) {
-      string colocated_node_name;
-      status = ParseColocatedNodeName(*node, &colocated_node_name);
-      if (!status.ok()) {
-        return AttachDef(status, node->def());
-      }
-      Node* colocated_node;
-      status = GetNodeByName(colocated_node_name, &colocated_node);
-      if (!status.ok()) {
-        return AttachDef(
-            errors::InvalidArgument("Colocated node named in device '",
-                                    colocated_node_name, "' does not exist"),
-            node->def());
-      }
-      status = colocation_graph.ColocateNodes(*colocated_node, *node);
-      if (!status.ok()) {
-        return AttachDef(
-            errors::InvalidArgument(
-                "Cannot satisfy colocation constraint named in device '",
-                colocated_node_name, "': ", status.error_message()),
-            node->def());
-      }
-    }
-
-    // 2(b). If `node` has an input edge with reference type, add an
+    // If `node` has an input edge with reference type, add an
     // edge from the source of that edge to `node`.
     for (const auto& edge : node->in_edges()) {
       if (!edge->IsControlEdge() &&
@@ -679,6 +632,7 @@ Status SimplePlacer::Run() {
 
   // 3. For each node, assign a device based on the constraints in the
   // disjoint node set.
+  std::vector<Device*> devices;
   for (Node* node : graph_->nodes()) {
     // Skip the source and sink nodes.
     if (!node->IsOp()) {
@@ -689,26 +643,32 @@ Status SimplePlacer::Run() {
       continue;
     }
 
-    status = colocation_graph.AssignDevice(node);
+    status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
       return AttachDef(
           errors::InvalidArgument("Cannot assign a device to node '",
                                   node->name(), "': ", status.error_message()),
           node->def());
     }
-  }
-  return Status::OK();
-}
 
-Status SimplePlacer::GetNodeByName(const string& name, Node** out_node) const {
-  NodeNameToIdMap::const_iterator iter = name_to_id_map_->find(name);
-  if (iter != name_to_id_map_->end()) {
-    *out_node = graph_->FindNodeId(iter->second);
-    if (*out_node) {
-      return Status::OK();
+    // Returns the first device in sorted devices list so we will always
+    // choose the same device.
+    //
+    // TODO(vrv): Factor this assignment out into a pluggable algorithm,
+    // so that SimplePlacer is responsible for enforcing preconditions
+    // and we can experiment with other algorithms when given a choice of
+    // devices.
+    node->set_assigned_device_name(devices[0]->name());
+
+    // Log placement if log_device_placement is set.
+    if (options_ && options_->config.log_device_placement()) {
+      printf("%s: %s\n", node->name().c_str(),
+             node->assigned_device_name().c_str());
+      LOG(INFO) << node->name() << ": " << node->assigned_device_name();
     }
   }
-  return errors::NotFound(name);
+
+  return Status::OK();
 }
 
 }  // namespace tensorflow

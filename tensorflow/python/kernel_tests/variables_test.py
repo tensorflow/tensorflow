@@ -361,6 +361,35 @@ class VariablesTestCase(tf.test.TestCase):
 class IsInitializedTest(tf.test.TestCase):
 
   def testNoVars(self):
+    with tf.Graph().as_default(), self.test_session() as sess:
+      uninited = tf.report_uninitialized_variables()
+      self.assertEqual(0, sess.run(uninited).size)
+
+  def testAssertVariablesInitialized(self):
+    with tf.Graph().as_default(), self.test_session() as sess:
+      v = tf.Variable([1, 2], name="v")
+      w = tf.Variable([3, 4], name="w")
+      _ = v, w
+      uninited = tf.report_uninitialized_variables()
+      self.assertAllEqual(np.array([b"v", b"w"]), sess.run(uninited))
+      tf.initialize_all_variables().run()
+      self.assertEqual(0, sess.run(uninited).size)
+
+  def testVariableList(self):
+    with tf.Graph().as_default(), self.test_session() as sess:
+      v = tf.Variable([1, 2], name="v")
+      w = tf.Variable([3, 4], name="w")
+      uninited = tf.report_uninitialized_variables()
+      self.assertAllEqual(np.array([b"v", b"w"]), sess.run(uninited))
+      sess.run(w.initializer)
+      self.assertAllEqual(np.array([b"v"]), sess.run(uninited))
+      v.initializer.run()
+      self.assertEqual(0, sess.run(uninited).size)
+
+
+class ObsoleteIsInitializedTest(tf.test.TestCase):
+
+  def testNoVars(self):
     with tf.Graph().as_default():
       self.assertEqual(None, tf.assert_variables_initialized())
 

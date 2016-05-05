@@ -1820,12 +1820,11 @@ Create a `Supervisor`.
     default `Graph`.  The supervisor may add operations to the graph before
     creating a session, but the graph should not be modified by the caller
     after passing it to the supervisor.
-*  <b>`ready_op`</b>: `Operation` to check if the model is initialized.  This
-    operation is run by supervisors in `prepare_or_wait_for_session()` to
-    check if the model is ready to use. The model is considered ready if
-    that operation succeeds.  Defaults to the operation returned from
-    `tf.assert_variables_initialized()`  If `None`, the model is not checked
-    for readiness.
+*  <b>`ready_op`</b>: 1-D string `Tensor`.  This tensor is evaluated by supervisors in
+    `prepare_or_wait_for_session()` to check if the model is ready to use.
+    The model is considered ready if it returns an empty array.  Defaults to
+    the tensor returned from `tf.report_uninitialized_variables()`  If
+    `None`, the model is not checked for readiness.
 *  <b>`is_chief`</b>: If True, create a chief supervisor in charge of initializing
     and restoring the model.  If False, create a supervisor that relies
     on a chief supervisor for inits and restore.
@@ -2539,9 +2538,12 @@ Creates a SessionManager.
 The `local_init_op` is an `Operation` that is run always after a new session
 was created. If `None`, this step is skipped.
 
-The `ready_op` is an `Operation`. The model is considered ready
-if that operation succeeds.  If `None`, the model is not checked
-for readiness.
+The `ready_op` is an `Operation` used to check if the model is ready.  The
+model is considered ready if that operation returns an empty string tensor.
+If the operation returns non empty string tensor, the elements are
+concatenated and used to indicate to the user why the model is not ready.
+
+If `ready_op` is `None`, the model is not checked for readiness.
 
 `recovery_wait_secs` is the number of seconds between checks that
 the model is ready.  It is used by processes to wait for a model to

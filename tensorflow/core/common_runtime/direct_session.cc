@@ -178,9 +178,6 @@ DirectSession::~DirectSession() {
   if (options_.config.use_per_session_threads()) {
     delete thread_pool_;
   }
-  for (auto it : cost_models_) {
-    delete it.second;
-  }
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
@@ -325,7 +322,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   if (run_options.trace_level() == RunOptions::FULL_TRACE ||
       options_.config.graph_options().build_cost_model()) {
     args.stats_collector = new StepStatsCollector(
-        run_metadata->mutable_step_stats(), &cost_models_);
+        run_metadata->mutable_step_stats(), &cost_model_manager_);
     run_state.collector = args.stats_collector;
     if (tracer && run_options.trace_level() == RunOptions::FULL_TRACE) {
       tracer.reset(CreateGPUTracer());
@@ -418,7 +415,8 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   if (options_.config.graph_options().build_cost_model()) {
-    run_state->collector = new StepStatsCollector(nullptr, &cost_models_);
+    run_state->collector =
+        new StepStatsCollector(nullptr, &cost_model_manager_);
     args.stats_collector = run_state->collector;
   }
 
@@ -851,12 +849,7 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
       device_set_.client_device()->attributes()));
 
   // Run the simple placer after rewriting the graph.
-  std::unordered_map<string, int32> node_name_to_cost_map;
-  for (Node* n : graph->nodes()) {
-    node_name_to_cost_map[n->name()] = n->cost_id();
-  }
-  SimplePlacer placer(graph.get(), &device_set_, &node_name_to_cost_map,
-                      &options_);
+  SimplePlacer placer(graph.get(), &device_set_, &options_);
 
   {
     mutex_lock l(mu_);

@@ -546,7 +546,8 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
     dtype: Optional element type for the returned tensor. If missing, the
       type is inferred from the type of `value`.
     name: Optional name to use if a new `Tensor` is created.
-    as_ref: True if we want the result as a ref tensor.
+    as_ref: True if we want the result as a ref tensor. Only used if a new
+      `Tensor` is created.
 
   Returns:
     A `Tensor` based on `value`.
@@ -882,6 +883,13 @@ class SparseTensor(object):
   @@shape
   @@graph
   """
+
+  @classmethod
+  def from_value(cls, sparse_tensor_value):
+    return SparseTensor(
+        indices=sparse_tensor_value.indices,
+        values=sparse_tensor_value.values,
+        shape=sparse_tensor_value.shape)
 
   def __init__(self, indices, values, shape):
     """Creates a `SparseTensor`.
@@ -1811,6 +1819,7 @@ class Graph(object):
   may define additional collections by specifying a new name.
 
   @@add_to_collection
+  @@add_to_collections
   @@get_collection
   @@get_collection_ref
 
@@ -3593,6 +3602,8 @@ class GraphKeys(object):
   BIASES = "biases"
   # Key to collect activations
   ACTIVATIONS = "activations"
+  # Key to collect update_ops
+  UPDATE_OPS = "update_ops"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"

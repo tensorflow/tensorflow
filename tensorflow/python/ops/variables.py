@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 
 
@@ -841,19 +843,23 @@ def initialize_local_variables():
 
 
 def is_variable_initialized(variable):
-  """Returns an Op to check if a variable has been initialized.
+  """Tests if a variable has been initialized.
 
   Args:
     variable: A `Variable`.
 
   Returns:
-    An operation to check whether a variable has been initialized.
+    Returns a scalar boolean Tensor, `True` if the variable has been
+    initialized, `False` otherwise.
   """
   return state_ops.is_variable_initialized(variable)
 
 
 def assert_variables_initialized(var_list=None):
   """Returns an Op to check if variables are initialized.
+
+  NOTE: This function is obsolete and will be removed in 6 months.  Please
+  change your implementation to use `report_uninitialized_variables()`.
 
   When run, the returned Op will raise the exception `FailedPreconditionError`
   if any of the variables has not yet been initialized.
@@ -888,6 +894,45 @@ def assert_variables_initialized(var_list=None):
       return ranks[0]
     else:
       return array_ops.pack(ranks)
+
+
+def report_uninitialized_variables(var_list=None,
+                                   name="report_uninitialized_variables"):
+  """Adds ops to list the names of uninitialized variables.
+
+  When run, it returns a 1-D tensor containing the names of uninitialized
+  variables if there are any, or an empty array if there are none.
+
+  Args:
+    var_list: List of `Variable` objects to check. Defaults to the
+      value of `all_variables() + local_variables()`
+    name: Optional name of the `Operation`.
+
+  Returns:
+    A 1-D tensor containing names of the unintialized variables, or an empty 1-D
+    tensor if there are no variables or no uninitialized variables.
+  """
+  if var_list is None:
+    var_list = all_variables() + local_variables()
+  # Backwards compatibility for old-style variables. TODO(touts): remove.
+  if not var_list:
+    var_list = []
+    for op in ops.get_default_graph().get_operations():
+      if op.type in ["Variable", "AutoReloadVariable"]:
+        var_list.append(op.outputs[0])
+  if not var_list:
+    # Return an empty tensor so we only need to check for returned tensor
+    # size being 0 as an indication of model ready.
+    return array_ops.constant([], dtype=dtypes.string, name=name)
+  else:
+    # Get a 1-D boolean tensor listing whether each variable is initialized.
+    variables_mask = math_ops.logical_not(array_ops.pack(
+        [state_ops.is_variable_initialized(v) for v in var_list]))
+    # Get a 1-D string tensor containing all the variable names.
+    variable_names_tensor = array_ops.constant([s.op.name for s in var_list])
+    # Return a 1-D tensor containing all the names of uninitialized variables.
+    return array_ops.boolean_mask(variable_names_tensor, variables_mask,
+                                  name=name)
 
 
 # pylint: disable=protected-access

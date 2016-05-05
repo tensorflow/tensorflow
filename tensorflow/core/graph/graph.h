@@ -135,6 +135,8 @@ class Node {
     SetAttrValue(val, &((*props_->node_def_.mutable_attr())[name]));
   }
 
+  void ClearAttr(const string& name);
+
  private:
   friend class Graph;
   Node();

@@ -28,12 +28,17 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 
 
+def _safe_shape_div(x, y):
+  """Divides `x / y` assuming `x, y >= 0`, treating `0 / 0 = 0`."""
+  return x // math_ops.maximum(y, 1)
+
+
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""
   input_shape = array_ops.shape(op.inputs[0])
   output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
-  tile_scaling = input_shape // output_shape_kept_dims
+  tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
   grad = array_ops.reshape(grad, output_shape_kept_dims)
   return [array_ops.tile(grad, tile_scaling), None]
 
@@ -74,8 +79,8 @@ def _MeanGrad(op, grad):
   sum_grad = _SumGrad(op, grad)[0]
   input_shape = array_ops.shape(op.inputs[0])
   output_shape = array_ops.shape(op.outputs[0])
-  factor = (math_ops.reduce_prod(input_shape) //
-            math_ops.reduce_prod(output_shape))
+  factor = _safe_shape_div(math_ops.reduce_prod(input_shape),
+                           math_ops.reduce_prod(output_shape))
   return sum_grad / math_ops.cast(factor, sum_grad.dtype), None
 
 
@@ -85,7 +90,7 @@ def _ProdGrad(op, grad):
   # TODO(kearnes): this gives NaNs for 0s in the input tensor
   input_shape = array_ops.shape(op.inputs[0])
   output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
-  tile_scaling = input_shape // output_shape_kept_dims
+  tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
   grad = array_ops.reshape(grad * op.outputs[0], output_shape_kept_dims)
   grad = math_ops.div(array_ops.tile(grad, tile_scaling), op.inputs[0])
   return grad, None

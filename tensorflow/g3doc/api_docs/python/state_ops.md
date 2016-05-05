@@ -596,7 +596,7 @@ This is just a shortcut for `initialize_variables(local_variables())`
 
 ### `tf.is_variable_initialized(variable)` {#is_variable_initialized}
 
-Returns an Op to check if a variable has been initialized.
+Tests if a variable has been initialized.
 
 ##### Args:
 
@@ -605,7 +605,30 @@ Returns an Op to check if a variable has been initialized.
 
 ##### Returns:
 
-  An operation to check whether a variable has been initialized.
+  Returns a scalar boolean Tensor, `True` if the variable has been
+  initialized, `False` otherwise.
+
+
+- - -
+
+### `tf.report_uninitialized_variables(var_list=None, name='report_uninitialized_variables')` {#report_uninitialized_variables}
+
+Adds ops to list the names of uninitialized variables.
+
+When run, it returns a 1-D tensor containing the names of uninitialized
+variables if there are any, or an empty array if there are none.
+
+##### Args:
+
+
+*  <b>`var_list`</b>: List of `Variable` objects to check. Defaults to the
+    value of `all_variables() + local_variables()`
+*  <b>`name`</b>: Optional name of the `Operation`.
+
+##### Returns:
+
+  A 1-D tensor containing names of the unintialized variables, or an empty 1-D
+  tensor if there are no variables or no uninitialized variables.
 
 
 - - -
@@ -613,6 +636,9 @@ Returns an Op to check if a variable has been initialized.
 ### `tf.assert_variables_initialized(var_list=None)` {#assert_variables_initialized}
 
 Returns an Op to check if variables are initialized.
+
+NOTE: This function is obsolete and will be removed in 6 months.  Please
+change your implementation to use `report_uninitialized_variables()`.
 
 When run, the returned Op will raise the exception `FailedPreconditionError`
 if any of the variables has not yet been initialized.

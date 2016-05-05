@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -54,19 +55,26 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
 
   if (stable_ops_ != nullptr) {
     printf("Verifying no stable ops have been removed...\n");
+    std::vector<string> removed;
     // We rely on stable_ops_ and op_list_ being in sorted order.
     auto iter = stable_ops_->begin();
     for (int cur = 0; iter != stable_ops_->end() && cur < op_list_.op_size();
          ++cur) {
       const string& op_name = op_list_.op(cur).name();
-      if (op_name > *iter) {
-        return errors::InvalidArgument("Error, stable op removed: ", *iter);
-      } else if (op_name == *iter) {
+      while (op_name > *iter) {
+        removed.push_back(*iter);
+        ++iter;
+      }
+      if (op_name == *iter) {
         ++iter;
       }
     }
-    if (iter != stable_ops_->end()) {
-      return errors::InvalidArgument("Error, stable op removed: ", *iter);
+    for (; iter != stable_ops_->end(); ++iter) {
+      removed.push_back(*iter);
+    }
+    if (!removed.empty()) {
+      return errors::InvalidArgument("Error, stable op(s) removed: ",
+                                     str_util::Join(removed, ", "));
     }
   }
 

@@ -223,7 +223,6 @@ __all__.extend([
     "FeatureLists",
     "Features",
     "FloatList",
-    "InferenceExample",
     "Int64List",
     "LooperThread",
     "SaverDef",

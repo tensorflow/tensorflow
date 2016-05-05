@@ -16,8 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER8(BinaryOp, CPU, "Div", functor::div, float, Eigen::half, double, uint8,
-          int16, int32, int64, complex64);
+REGISTER4(BinaryOp, CPU, "Div", functor::div, float, Eigen::half, double,
+          complex64);
+REGISTER4(BinaryOp, CPU, "Div", functor::safe_div, uint8, int16, int32, int64);
 #if GOOGLE_CUDA
 REGISTER6(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
           int16, int64);
@@ -31,7 +32,7 @@ REGISTER_KERNEL_BUILDER(Name("Div")
                             .HostMemory("y")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::div<int32>>);
+                        BinaryOp<CPUDevice, functor::safe_div<int32>>);
 #endif
 
 }  // namespace tensorflow
