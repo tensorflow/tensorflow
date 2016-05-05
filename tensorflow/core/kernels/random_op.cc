@@ -206,14 +206,6 @@ static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
   return Status::OK();
 }
 
-// Reserve enough random samples in the generator for the given output count.
-// Note that the 256 multiplier is repeated above; do not change it just here.
-static random::PhiloxRandom ReserveRandomOutputs(GuardedPhiloxRandom& generator,
-                                                 int64 output_count) {
-  int64 conservative_sample_count = output_count << 8;
-  return generator.ReserveSamples128(conservative_sample_count);
-}
-
 // For now, use the same interface as RandomOp, so we can choose either one
 // at the run-time.
 template <typename Device, class Distribution>
@@ -231,7 +223,9 @@ class PhiloxRandomOp : public OpKernel {
     auto output_flat = output->flat<T>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),
-        ReserveRandomOutputs(generator_, output_flat.size()),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(output_flat.size(), 256),
         output_flat.data(), output_flat.size(), Distribution());
   }
 
@@ -274,7 +268,9 @@ class RandomUniformIntOp : public OpKernel {
     auto output_flat = output->flat<IntType>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),
-        ReserveRandomOutputs(generator_, output_flat.size()),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(output_flat.size(), 256),
         output_flat.data(), output_flat.size(), dist);
   }
 
