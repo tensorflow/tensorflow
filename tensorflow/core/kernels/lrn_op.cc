@@ -21,6 +21,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -39,12 +40,12 @@ const int kMognetLRNDepthCutoff = 384;
 
 // Create a depth-by-depth band matrix with 1s along a swath of size (2 *
 // depth_radius + 1) around the diagonal.
-void GetBandMatrix(int depth, int64 depth_radius,
+void GetBandMatrix(int depth, int depth_radius,
                    Eigen::Tensor<float, 2, Eigen::RowMajor>* result) {
   result->setZero();
   for (int row = 0; row < depth; ++row) {
     const int begin = std::max<int>(0, row - depth_radius);
-    const int end = std::min<int64>(depth, row + depth_radius + 1);
+    const int end = std::min<int>(depth, row + depth_radius + 1);
     Eigen::DSizes<Eigen::DenseIndex, 2> start(row, begin);
     Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, end - begin);
     result->slice(start, sizes).setConstant(1.0f);
@@ -56,7 +57,13 @@ void GetBandMatrix(int depth, int64 depth_radius,
 class LRNOp : public OpKernel {
  public:
   explicit LRNOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius_));
+    int64 depth_radius64;
+    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
+    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                        " larger than int max"));
+    depth_radius_ = static_cast<int>(depth_radius64);
     OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
@@ -66,10 +73,15 @@ class LRNOp : public OpKernel {
     const Tensor& in = context->input(0);
     OP_REQUIRES(context, in.dims() == 4,
                 errors::InvalidArgument("in must be 4-dimensional"));
-    const int64 batch = in.dim_size(0);
-    const int64 rows = in.dim_size(1);
-    const int64 cols = in.dim_size(2);
-    const int64 depth = in.dim_size(3);
+    OP_REQUIRES(context, FastBoundsCheck(in.NumElements(),
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("argument to LRN too large"));
+    const int batch = static_cast<int>(in.dim_size(0));
+    const int rows = static_cast<int>(in.dim_size(1));
+    const int cols = static_cast<int>(in.dim_size(2));
+    const int depth = static_cast<int>(in.dim_size(3));
+    const int nodes = cols * rows;
+
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(
@@ -83,9 +95,12 @@ class LRNOp : public OpKernel {
       return;
     }
 
-    const int nodes = cols * rows;
     auto in_shaped = in.shaped<float, 2>({nodes * batch, depth});
 
+    OP_REQUIRES(context,
+                (depth + depth_radius_) <= std::numeric_limits<int>::max(),
+                errors::InvalidArgument("depth ", depth, " + depth_radius ",
+                                        depth_radius_, " exceeds int max."));
     // Multiplying the input with the band matrix has the effect of reducing the
     // correct patch along the depth.
     Eigen::Tensor<float, 2, Eigen::RowMajor> multiplier(depth, depth);
@@ -147,7 +162,7 @@ class LRNOp : public OpKernel {
     }
   }
 
-  int64 depth_radius_;
+  int depth_radius_;
   float bias_;
   float alpha_;
   float beta_;
@@ -160,7 +175,13 @@ REGISTER_KERNEL_BUILDER(Name("LRN").Device(DEVICE_CPU), LRNOp);
 class LRNGradOp : public OpKernel {
  public:
   explicit LRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius_));
+    int64 depth_radius64;
+    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
+    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                        " larger than int max"));
+    depth_radius_ = static_cast<int>(depth_radius64);
     OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
@@ -247,7 +268,7 @@ class LRNGradOp : public OpKernel {
  private:
   typedef Eigen::Tensor<float, 1, Eigen::RowMajor>::DimensionPair DimPair;
 
-  int64 depth_radius_;
+  int depth_radius_;
   float bias_;
   float alpha_;
   float beta_;

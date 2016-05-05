@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/unique_tensor_references.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -968,7 +969,10 @@ class OpKernelContext {
   mutable mutex mu_;  // mutable so const accessors can acquire the lock
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
-  UniqueTensorReferences referenced_tensors_ GUARDED_BY(mu_);
+
+  // Constructed only if <record_tensor_accesses_>.
+  ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
+
   bool is_output_dead_ = false;
   bool record_tensor_accesses_ = false;
 
@@ -1127,7 +1131,7 @@ inline void OpKernelContext::retrieve_accessed_tensors(
     TensorReferenceVector* out_vector) {
   if (record_tensor_accesses_) {
     mutex_lock l(mu_);
-    referenced_tensors_.FreezeAndReturnReferences(out_vector);
+    referenced_tensors_->FreezeAndReturnReferences(out_vector);
   }
 }
 

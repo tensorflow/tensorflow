@@ -64,7 +64,7 @@ class SparseXentLossGenerator {
     int batch = coords[0];
     int depth = coords[1];
     return (labels_(batch) == depth)
-               ? (std::log(sum_exp_logits_(batch)) - logits_(coords))
+               ? (Eigen::numext::log(sum_exp_logits_(batch)) - logits_(coords))
                : T(0.0);
   };
 

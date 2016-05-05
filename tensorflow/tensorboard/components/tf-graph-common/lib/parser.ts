@@ -27,7 +27,7 @@ function parseValue(value: string): string|number|boolean {
     return false;
   }
   let firstChar = value[0];
-  if (firstChar === '\'') {
+  if (firstChar === '"') {
     return value.substring(1, value.length - 1);
   }
   let num = parseFloat(value);

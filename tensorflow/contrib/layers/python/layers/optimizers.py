@@ -26,6 +26,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as vars_
 from tensorflow.python.training import optimizer as optimizer_
@@ -45,6 +46,7 @@ def optimize_loss(loss,
                   global_step,
                   learning_rate,
                   optimizer,
+                  gradient_noise_scale=None,
                   clip_gradients=None,
                   moving_average_decay=0.9,
                   learning_rate_decay_fn=None,
@@ -62,12 +64,14 @@ def optimize_loss(loss,
                  `compute_gradients` and `apply_gradients` functions.
                optimizer instance should be instantion of tf.Optimizer sub-class
                  and have `compute_gradients` and `apply_gradients` functions.
+    gradient_noise_scale: float or None, adds 0-mean normal noise scaled by this
+                          value.
     clip_gradients: float or None, clips gradients by this value.
     moving_average_decay: float or None, takes into account previous loss
                           to make learning smoother due to outliers.
     learning_rate_decay_fn: function, takes learning_rate and global_step
                             Tensors, returns Tensor. Can be used to implement
-                            any learning rate decay funcitons.
+                            any learning rate decay functions.
                             For example: tf.train.exponential_decay.
     variables: list of variables to optimizer or none.
 
@@ -120,8 +124,14 @@ def optimize_loss(loss,
   if variables is None:
     variables = vars_.trainable_variables()
 
-  # Compute gradients and clip them if provided.
+  # Compute gradients.
   gradients = opt.compute_gradients(loss, variables)
+
+  # Optionally add gradient noise.
+  if gradient_noise_scale is not None:
+    gradients = _add_scaled_noise_to_gradients(gradients, gradient_noise_scale)
+
+  # Optionally clip gradients.
   if clip_gradients is not None:
     gradients, variables = zip(*gradients)
     clipped_gradients, _ = clip_ops.clip_by_global_norm(gradients,
@@ -156,3 +166,16 @@ def optimize_loss(loss,
 
   return train_tensor
 
+
+def _add_scaled_noise_to_gradients(grads_and_vars, gradient_noise_scale):
+  """Adds scaled noise from a 0-mean normal distribution to gradients."""
+  gradients, variables = zip(*grads_and_vars)
+  noisy_gradients = []
+  for gradient in gradients:
+    if isinstance(gradient, ops.IndexedSlices):
+      gradient_shape = gradient.dense_shape
+    else:
+      gradient_shape = gradient.get_shape()
+    noise = random_ops.truncated_normal(gradient_shape) * gradient_noise_scale
+    noisy_gradients.append(gradient + noise)
+  return list(zip(noisy_gradients, variables))

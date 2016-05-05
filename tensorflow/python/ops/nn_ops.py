@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Wrappers for primitive Neural Net (NN) Operations."""
 
 # pylint: disable=invalid-name
@@ -36,7 +35,6 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
-
 
 # Aliases for some automatically-generated names.
 local_response_normalization = gen_nn_ops.lrn
@@ -153,12 +151,13 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
           "value's input channels does not match filters' input channels, "
           "{} != {}".format(value_shape[3], filter_shape[2]))
     if rate < 1:
-      raise ValueError(
-          "rate {} cannot be less than one".format(rate))
+      raise ValueError("rate {} cannot be less than one".format(rate))
 
     if rate == 1:
-      value = gen_nn_ops.conv2d(input=value, filter=filters,
-                                strides=[1, 1, 1, 1], padding=padding)
+      value = gen_nn_ops.conv2d(input=value,
+                                filter=filters,
+                                strides=[1, 1, 1, 1],
+                                padding=padding)
       return value
 
     # We have two padding contributions. The first is used for converting "SAME"
@@ -201,20 +200,30 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     # The paddings argument to space_to_batch includes both padding components
     space_to_batch_pad = [[pad_top, pad_bottom + pad_bottom_extra],
                           [pad_left, pad_right + pad_right_extra]]
-    value = array_ops.space_to_batch(
-        input=value, paddings=space_to_batch_pad, block_size=rate)
+    value = array_ops.space_to_batch(input=value,
+                                     paddings=space_to_batch_pad,
+                                     block_size=rate)
 
-    value = gen_nn_ops.conv2d(input=value, filter=filters, strides=[1, 1, 1, 1],
-                              padding="VALID", name=name)
+    value = gen_nn_ops.conv2d(input=value,
+                              filter=filters,
+                              strides=[1, 1, 1, 1],
+                              padding="VALID",
+                              name=name)
 
     # The crops argument to batch_to_space is just the extra padding component
     batch_to_space_crop = [[0, pad_bottom_extra], [0, pad_right_extra]]
-    value = array_ops.batch_to_space(
-        input=value, crops=batch_to_space_crop, block_size=rate)
+    value = array_ops.batch_to_space(input=value,
+                                     crops=batch_to_space_crop,
+                                     block_size=rate)
 
     return value
 
-def conv2d_transpose(value, filter, output_shape, strides, padding="SAME",
+
+def conv2d_transpose(value,
+                     filter,
+                     output_shape,
+                     strides,
+                     padding="SAME",
                      name=None):
   """The transpose of `conv2d`.
 
@@ -248,9 +257,9 @@ def conv2d_transpose(value, filter, output_shape, strides, padding="SAME",
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
     if not value.get_shape()[3].is_compatible_with(filter.get_shape()[3]):
-      raise ValueError(
-          "input channels does not match filter's input channels, "
-          "{} != {}".format(value.get_shape()[3], filter.get_shape()[3]))
+      raise ValueError("input channels does not match filter's input channels, "
+                       "{} != {}".format(value.get_shape()[3], filter.get_shape(
+                       )[3]))
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
@@ -302,8 +311,8 @@ def bias_add(value, bias, data_format=None, name=None):
     bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
     return gen_nn_ops._bias_add(value, bias, data_format=data_format, name=name)
 
-ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
 
+ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
 
 ops.RegisterShape("BiasAddGrad")(common_shapes.bias_add_grad_shape)
 
@@ -337,7 +346,6 @@ def bias_add_v1(value, bias, name=None):
 
 
 ops.RegisterShape("BiasAddV1")(common_shapes.bias_add_shape)
-
 
 ops.RegisterShape("BiasAddGradV1")(common_shapes.bias_add_grad_shape)
 
@@ -490,7 +498,9 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """
   with ops.op_scope([value], name, "AvgPool") as name:
     value = ops.convert_to_tensor(value, name="input")
-    return gen_nn_ops._avg_pool(value, ksize=ksize, strides=strides,
+    return gen_nn_ops._avg_pool(value,
+                                ksize=ksize,
+                                strides=strides,
                                 padding=padding,
                                 data_format=data_format,
                                 name=name)
@@ -515,7 +525,9 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """
   with ops.op_scope([value], name, "MaxPool") as name:
     value = ops.convert_to_tensor(value, name="input")
-    return gen_nn_ops._max_pool(value, ksize=ksize, strides=strides,
+    return gen_nn_ops._max_pool(value,
+                                ksize=ksize,
+                                strides=strides,
                                 padding=padding,
                                 data_format=data_format,
                                 name=name)
@@ -547,7 +559,6 @@ def _BinaryElementwiseShape(op):
 
 ops.RegisterShape("L2Loss")(common_shapes.scalar_shape)
 
-
 ops.RegisterShape("LRN")(common_shapes.unchanged_shape_with_rank(4))
 
 
@@ -560,12 +571,9 @@ def _LRNGradShape(op):
   return [in_grads_shape.merge_with(in_image_shape).merge_with(out_image_shape)]
 
 
-ops.RegisterShape("Softmax")(
-    common_shapes.unchanged_shape_with_rank(2))
+ops.RegisterShape("Softmax")(common_shapes.unchanged_shape_with_rank(2))
 
-
-ops.RegisterShape("LogSoftmax")(
-    common_shapes.unchanged_shape_with_rank(2))
+ops.RegisterShape("LogSoftmax")(common_shapes.unchanged_shape_with_rank(2))
 
 
 @ops.RegisterShape("InTopK")
@@ -744,6 +752,93 @@ def _calc_conv_weight_params(graph, node):
                                            filter_in_depth * filter_out_depth))
 
 
+@ops.RegisterShape("Conv3D")
+def _Conv3DShape(op):
+  """Shape function for Conv3D."""
+  input_shape = op.inputs[0].get_shape().with_rank(5)
+  filter_shape = op.inputs[1].get_shape().with_rank(5)
+
+  batch_size = input_shape[0]
+  out_channels = filter_shape[4]
+  # Check that the input number of channels is compatible between
+  # input data and filter size.
+  input_shape[4].assert_is_compatible_with(filter_shape[3])
+
+  stride_b, stride_p, stride_r, stride_c, stride_d = op.get_attr("strides")
+  assert stride_b == 1
+  assert stride_d == 1
+
+  padding_type = op.get_attr("padding")
+  out_planes, out_rows, out_cols = common_shapes.get_conv_output_size(
+      input_shape[1:4], filter_shape[0:3], (stride_p, stride_r, stride_c),
+      padding_type)
+
+  return [tensor_shape.TensorShape([batch_size, out_planes, out_rows, out_cols,
+                                    out_channels])]
+
+
+@ops.RegisterShape("MaxPool3D")
+@ops.RegisterShape("AvgPool3D")
+def _Pool3DShape(op):
+  """Shape function for Max/AvgPool3D."""
+  input_shape = op.inputs[0].get_shape().with_rank(5)
+  ksize_b, ksize_p, ksize_r, ksize_c, ksize_d = op.get_attr("ksize")
+  assert ksize_b == 1
+  assert ksize_d == 1
+
+  stride_b, stride_p, stride_r, stride_c, stride_d = op.get_attr("strides")
+  assert stride_b == 1
+  assert stride_d == 1
+
+  batch_size = input_shape[0]
+  channels = input_shape[4]
+
+  padding = op.get_attr("padding")
+  out_planes, out_rows, out_cols = common_shapes.get_conv_output_size(
+      input_shape[1:4], (ksize_p, ksize_r, ksize_c),
+      (stride_p, stride_r, stride_c), padding)
+  return [tensor_shape.TensorShape([batch_size, out_planes, out_rows, out_cols,
+                                    channels])]
+
+
+def _ShapeOrUnknown(input_shape, ndims=5):
+  if input_shape == None:  # pylint:disable=g-equals-none
+    return [tensor_shape.unknown_shape(ndims=ndims)]
+  else:
+    return [input_shape]
+
+
+@ops.RegisterShape("Conv3DBackpropFilter")
+def _Conv3DBackpropFilterShape(op):
+  """Shape function for the Conv3DBackpropFilter op."""
+  filter_shape = op.inputs[1].get_shape()
+  return _ShapeOrUnknown(filter_shape)
+
+
+@ops.RegisterShape("Conv3DBackpropInput")
+def _Conv3DBackpropInputShape(op):
+  """Shape function for the Conv3DBackpropInput op."""
+  input_shape = op.inputs[0].get_shape()
+  return _ShapeOrUnknown(input_shape)
+
+
+@ops.RegisterShape("AvgPool3DGrad")
+def _AvgPool3DGradShape(op):
+  """Shape function for the AvgPool3DGrad op."""
+  orig_input_shape = tensor_util.constant_value(op.inputs[0])
+  if orig_input_shape != None:  # pylint:disable=g-equals-none
+    return [tensor_shape.TensorShape(orig_input_shape.tolist())]
+  else:
+    return [tensor_shape.unknown_shape(ndims=5)]
+
+
+@ops.RegisterShape("MaxPool3DGrad")
+def _MaxPool3DGradShape(op):
+  """Shape function for the MaxPoolGrad op."""
+  orig_input_shape = op.inputs[0].get_shape().with_rank(5)
+  return [orig_input_shape]
+
+
 @ops.RegisterStatistics("BiasAdd", "flops")
 def _calc_bias_add_flops(graph, node):
   """Calculates the computing needed for BiasAdd."""
@@ -846,15 +941,17 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
     if isinstance(keep_prob, float) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)
-    keep_prob = ops.convert_to_tensor(
-        keep_prob, dtype=x.dtype, name="keep_prob")
+    keep_prob = ops.convert_to_tensor(keep_prob,
+                                      dtype=x.dtype,
+                                      name="keep_prob")
     keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
 
     noise_shape = noise_shape if noise_shape is not None else array_ops.shape(x)
     # uniform [keep_prob, 1.0 + keep_prob)
     random_tensor = keep_prob
-    random_tensor += random_ops.random_uniform(
-        noise_shape, seed=seed, dtype=x.dtype)
+    random_tensor += random_ops.random_uniform(noise_shape,
+                                               seed=seed,
+                                               dtype=x.dtype)
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
     ret = x * math_ops.inv(keep_prob) * binary_tensor
@@ -889,6 +986,5 @@ def top_k(input, k=1, sorted=True, name=None):
     indices: The indices of `values` within the last dimension of `input`.
   """
   return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
-
 
 # pylint: enable=invalid-name

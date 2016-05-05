@@ -302,6 +302,56 @@ deviation of `sqrt(3. / (in + out))` is used.
   An initializer for a weight matrix.
 
 
+- - -
+
+### `tf.contrib.layers.variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False, seed=None, dtype=tf.float32)` {#variance_scaling_initializer}
+
+Returns an initializer that generates tensors without scaling variance.
+
+When initializing a deep network, it is in principle advantageous to keep
+the scale of the input variance constant, so it does not explode or diminish
+by reaching the final layer. This initializer use the following formula:
+  if mode='FAN_IN': # Count only number of input connections.
+    n = fan_in
+  elif mode='FAN_OUT': # Count only number of output connections.
+    n = fan_out
+  elif mode='FAN_AVG': # Average number of inputs and output connections.
+    n = (fan_in + fan_out)/2.0
+
+    truncated_normal(shape, 0.0, stddev=sqrt(factor / n))
+
+To get http://arxiv.org/pdf/1502.01852v1.pdf use (Default):
+  - factor=2.0 mode='FAN_IN' uniform=False
+To get http://arxiv.org/abs/1408.5093 use:
+  - factor=1.0 mode='FAN_IN' uniform=True
+To get http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf use:
+  - factor=1.0 mode='FAN_AVG' uniform=True.
+To get xavier_initializer use either:
+  - factor=1.0 mode='FAN_AVG' uniform=True.
+  - factor=1.0 mode='FAN_AVG' uniform=False.
+
+##### Args:
+
+
+*  <b>`factor`</b>: Float.  A multiplicative factor.
+*  <b>`mode`</b>: String.  'FAN_IN', 'FAN_OUT', 'FAN_AVG'.
+*  <b>`uniform`</b>: Whether to use uniform or normal distributed random initialization.
+*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+    for behavior.
+*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+
+##### Returns:
+
+  An initializer that generates tensors with unit variance.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
+*  <b>`TypeError`</b>: if `mode` is not in ['FAN_IN', 'FAN_OUT', 'FAN_AVG'].
+
+
 
 ## Summaries
 
@@ -576,7 +626,7 @@ modules must each a docstring, and `__all__` will contain all symbols with
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, variables=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, variables=None)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
@@ -593,12 +643,14 @@ Given loss and parameters for optimizer, returns a training op.
                `compute_gradients` and `apply_gradients` functions.
              optimizer instance should be instantion of tf.Optimizer sub-class
                and have `compute_gradients` and `apply_gradients` functions.
+*  <b>`gradient_noise_scale`</b>: float or None, adds 0-mean normal noise scaled by this
+                        value.
 *  <b>`clip_gradients`</b>: float or None, clips gradients by this value.
 *  <b>`moving_average_decay`</b>: float or None, takes into account previous loss
                         to make learning smoother due to outliers.
 *  <b>`learning_rate_decay_fn`</b>: function, takes learning_rate and global_step
                           Tensors, returns Tensor. Can be used to implement
-                          any learning rate decay funcitons.
+                          any learning rate decay functions.
                           For example: tf.train.exponential_decay.
 *  <b>`variables`</b>: list of variables to optimizer or none.
 
@@ -614,51 +666,58 @@ Given loss and parameters for optimizer, returns a training op.
 
 - - -
 
-### `tf.contrib.layers.variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False, seed=None, dtype=tf.float32)` {#variance_scaling_initializer}
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, max_steps=None, fail_on_nan_loss=True, tuner=None)` {#train}
 
-Returns an initializer that generates tensors without scaling variance.
+Train a model.
 
-When initializing a deep network, it is in principle advantageous to keep
-the scale of the input variance constant, so it does not explode or diminish
-by reaching the final layer. This initializer use the following formula:
-  if mode='FAN_IN': # Count only number of input connections.
-    n = fan_in
-  elif mode='FAN_OUT': # Count only number of output connections.
-    n = fan_out
-  elif mode='FAN_AVG': # Average number of inputs and output connections.
-    n = (fan_in + fan_out)/2.0
+Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
+run a training loop. The given `train_op` performs one step of training on the
+model. The `loss_op` represents the objective function of the training. It is
+expected to increment the `global_step_tensor`, a scalar integer tensor
+counting training steps. This function uses `Supervisor` to initialize the
+graph (from a checkpoint if one is available in `output_dir`), write summaries
+defined in the graph, and write regular checkpoints as defined by
+`supervisor_save_model_secs`.
 
-    truncated_normal(shape, 0.0, stddev=sqrt(factor / n))
-
-To get http://arxiv.org/pdf/1502.01852v1.pdf use (Default):
-  - factor=2.0 mode='FAN_IN' uniform=False
-To get http://arxiv.org/abs/1408.5093 use:
-  - factor=1.0 mode='FAN_IN' uniform=True
-To get http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf use:
-  - factor=1.0 mode='FAN_AVG' uniform=True.
-To get xavier_initializer use either:
-  - factor=1.0 mode='FAN_AVG' uniform=True.
-  - factor=1.0 mode='FAN_AVG' uniform=False.
+Training continues until `global_step_tensor` evaluates to `max_steps`, or, if
+`fail_on_nan_loss`, until `loss_op` evaluates to `NaN`. In that case the
+program is terminated with exit code 1.
 
 ##### Args:
 
 
-*  <b>`factor`</b>: Float.  A multiplicative factor.
-*  <b>`mode`</b>: String.  'FAN_IN', 'FAN_OUT', 'FAN_AVG'.
-*  <b>`uniform`</b>: Whether to use uniform or normal distributed random initialization.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
-    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
-    for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+*  <b>`graph`</b>: A graph to train. It is expected that this graph is not in use
+    elsewhere.
+*  <b>`output_dir`</b>: A directory to write outputs to.
+*  <b>`train_op`</b>: An op that performs one training step when run.
+*  <b>`loss_op`</b>: A scalar loss tensor.
+*  <b>`global_step_tensor`</b>: A tensor representing the global step. If none is given,
+    one is extracted from the graph using the same logic as in `Supervisor`.
+*  <b>`init_op`</b>: An op that initializes the graph. If `None`, use `Supervisor`'s
+    default.
+*  <b>`log_every_steps`</b>: Output logs regularly. The logs contain timing data and the
+    current loss.
+*  <b>`supervisor_is_chief`</b>: Whether the current process is the chief supervisor in
+    charge of restoring the model and running standard services.
+*  <b>`supervisor_master`</b>: The master string to use when preparing the session.
+*  <b>`supervisor_save_model_secs`</b>: Save a checkpoint every
+    `supervisor_save_model_secs` seconds when training.
+*  <b>`supervisor_save_summaries_secs`</b>: Save summaries every
+    `supervisor_save_summaries_secs` seconds when training.
+*  <b>`max_steps`</b>: Train until `global_step_tensor` evaluates to this value.
+*  <b>`fail_on_nan_loss`</b>: If true, exit the program if `loss_op` evaluates to `NaN`.
+    Otherwise, continue training as if nothing happened.
+*  <b>`tuner`</b>: A tf.Tuner that will be notified of training failures when specified.
 
 ##### Returns:
 
-  An initializer that generates tensors with unit variance.
+  The final loss value.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
-*  <b>`TypeError`</b>: if `mode` is not in ['FAN_IN', 'FAN_OUT', 'FAN_AVG'].
+*  <b>`ValueError`</b>: If `global_step_tensor` is not provided. See
+      `tf.contrib.framework.get_global_step` for how we look it up if not
+      provided explicitly.
 
 

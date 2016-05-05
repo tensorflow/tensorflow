@@ -129,5 +129,15 @@ TEST(TypesTest, QuantizedTypes) {
   EXPECT_FALSE(DataTypeIsQuantized(DT_BFLOAT16));
 }
 
+TEST(TypesTest, IntegerTypes) {
+  for (auto dt : AllTypes()) {
+    const string name = DataTypeString(dt);
+    const StringPiece n = name;
+    EXPECT_EQ(DataTypeIsInteger(dt),
+              n.starts_with("int") || n.starts_with("uint"))
+        << "DataTypeInteger failed for " << name;
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow

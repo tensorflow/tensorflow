@@ -45,6 +45,7 @@ def tf_android_core_proto_sources_relative():
         "example/feature.proto",
         "framework/allocation_description.proto",
         "framework/attr_value.proto",
+        "framework/cost_graph.proto",
         "framework/device_attributes.proto",
         "framework/function.proto",
         "framework/graph.proto",
@@ -236,28 +237,43 @@ def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
                  linkstatic=linkstatic,
                  tags=tags,)
 
-def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium"):
+# Part of the testing workflow requires a distinguishable name for the build
+# rules that involve a GPU, even if otherwise identical to the base rule.
+def tf_cc_test_gpu(name, deps, linkstatic=0, tags=[], data=[], size="medium",
+                   suffix="", args=None):
+  tf_cc_test(name, deps, linkstatic=linkstatic, tags=tags, data=data,
+             size=size, suffix=suffix, args=args)
+
+def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium",linkstatic=0,args=[]):
   tf_cc_test(name=name,
              deps=deps,
              tags=tags + ["manual"],
              data=data,
-             size=size)
+             size=size,
+             linkstatic=linkstatic,
+             args=args)
   tf_cc_test(name=name,
              suffix="_gpu",
              deps=deps + if_cuda(["//tensorflow/core:gpu_runtime"]),
              linkstatic=if_cuda(1, 0),
              tags=tags + tf_cuda_tests_tags(),
              data=data,
-             size=size)
+             size=size,
+             args=args)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium", args=None):
   for t in tests:
     tf_cc_test(t, deps, linkstatic, tags=tags, size=size, args=args)
 
-def tf_cuda_cc_tests(tests, deps, tags=[], size="medium"):
+def tf_cc_tests_gpu(tests, deps, linkstatic=0, tags=[], size="medium", args=None):
+  tf_cc_tests(tests, deps, linkstatic, tags=tags, size=size, args=args)
+
+
+
+def tf_cuda_cc_tests(tests, deps, tags=[], size="medium", linkstatic=0, args=None):
   for t in tests:
-    tf_cuda_cc_test(t, deps, tags=tags, size=size)
+    tf_cuda_cc_test(t, deps, tags=tags, size=size, linkstatic=linkstatic, args=args)
 
 # Build defs for TensorFlow kernels
 
@@ -560,8 +576,8 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
       srcs_version="PY2AND3")
 
 def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-                 shard_count=1, additional_deps=[]):
-  test_tags = tf_cuda_tests_tags()
+                 shard_count=1, additional_deps=[], tags=[]):
+  test_tags = tags + tf_cuda_tests_tags()
   tf_py_test(name=name,
              size=size,
              srcs=srcs,
@@ -593,10 +609,10 @@ def py_tests(name,
                data=data,
                additional_deps=additional_deps)
 
-def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[], shard_count=1):
-  test_tags = tf_cuda_tests_tags()
+def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[], shard_count=1, tags=[], prefix=""):
+  test_tags = tags + tf_cuda_tests_tags()
   py_tests(name=name, size=size, srcs=srcs, additional_deps=additional_deps,
-           data=data, tags=test_tags, shard_count=shard_count)
+           data=data, tags=test_tags, shard_count=shard_count,prefix=prefix)
 
 # Creates a genrule named <name> for running tools/proto_text's generator to make
 # the proto_text functions, for the protos passed in <srcs>.

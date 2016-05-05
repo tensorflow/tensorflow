@@ -290,7 +290,6 @@ class OpDefLibrary(object):
     # pylint: disable=g-doc-args
     """Add a node invoking a registered Op to a graph.
 
-    Config proto extensions must be provided via the 'ext' keyword argument.
     Example usage:
        # input1 and input2 can be Tensors or anything ops.convert_to_tensor()
        # will convert to a Tensor.

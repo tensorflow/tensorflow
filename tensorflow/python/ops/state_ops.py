@@ -31,6 +31,7 @@ collected in the graph.
 @@initialize_variables
 @@initialize_local_variables
 @@is_variable_initialized
+@@report_uninitialized_variables
 @@assert_variables_initialized
 
 ## Saving and Restoring Variables

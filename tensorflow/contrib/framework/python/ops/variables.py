@@ -18,6 +18,7 @@
 @@assert_global_step
 @@create_global_step
 @@get_global_step
+@@assert_or_get_global_step
 @@local_variable
 """
 from __future__ import absolute_import
@@ -30,7 +31,7 @@ from tensorflow.python.platform import tf_logging as logging
 
 __all__ = [
     'assert_global_step', 'create_global_step', 'get_global_step',
-    'local_variable']
+    'assert_or_get_global_step', 'local_variable']
 
 
 def assert_global_step(global_step_tensor):
@@ -52,6 +53,30 @@ def assert_global_step(global_step_tensor):
     raise TypeError(
         'Existing "global_step" is not scalar: %s' %
         global_step_tensor.get_shape())
+
+
+def assert_or_get_global_step(graph=None, global_step_tensor=None):
+  """Verifies that a global step tensor is valid or gets one if None is given.
+
+  If `global_step_tensor` is not None, check that it is a valid global step
+  tensor (using `assert_global_step`). Otherwise find a global step tensor using
+  `get_global_step` and return it.
+
+  Args:
+    graph: The graph to find the global step tensor for.
+    global_step_tensor: The tensor to check for suitability as a global step.
+      If None is given (the default), find a global step tensor.
+
+  Returns:
+    A tensor suitable as a global step, or `None` if none was provided and none
+    was found.
+  """
+  if global_step_tensor is None:
+    # Get the global step tensor the same way the supervisor would.
+    global_step_tensor = get_global_step(graph)
+  else:
+    assert_global_step(global_step_tensor)
+  return global_step_tensor
 
 
 # TODO(ptucker): Change supervisor to use this when it's migrated to core.

@@ -21,8 +21,8 @@ limitations under the License.
 #include "grpc++/grpc++.h"
 #include "grpc++/security/credentials.h"
 
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
-#include "tensorflow/core/distributed_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"

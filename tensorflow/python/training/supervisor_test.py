@@ -411,7 +411,8 @@ class SupervisorTest(tf.test.TestCase):
       tf.Variable([4.0, 5.0, 6.0], name="w")
       # w will not be initialized.
       sv = tf.train.Supervisor(logdir=logdir, init_op=v.initializer)
-      with self.assertRaisesRegexp(RuntimeError, "uninitialized value w"):
+      with self.assertRaisesRegexp(RuntimeError,
+                                   "Variables not initialized: w"):
         sv.prepare_or_wait_for_session(server.target)
 
   def testInitOpFailsForTransientVariable(self):
@@ -424,7 +425,8 @@ class SupervisorTest(tf.test.TestCase):
                   collections=[tf.GraphKeys.LOCAL_VARIABLES])
       # w will not be initialized.
       sv = tf.train.Supervisor(logdir=logdir, local_init_op=v.initializer)
-      with self.assertRaisesRegexp(RuntimeError, "uninitialized value w"):
+      with self.assertRaisesRegexp(
+          RuntimeError, "Variables not initialized: w"):
         sv.prepare_or_wait_for_session(server.target)
 
   def testSetupFail(self):

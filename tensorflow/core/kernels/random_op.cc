@@ -89,7 +89,7 @@ struct FillPhiloxRandomTask<Distribution, false> {
 
     // If there are any remaining elements that need to be filled, process them
     if (limit_group_full < limit_group) {
-      int remaining_size = size - limit_group_full * kGroupSize;
+      int64 remaining_size = size - limit_group_full * kGroupSize;
       auto samples = dist(&gen);
       std::copy(&samples[0], &samples[0] + remaining_size, data + offset);
     }
@@ -139,7 +139,7 @@ struct FillPhiloxRandomTask<Distribution, true> {
       gen.Skip(group_index * kGeneratorSkipPerOutputGroup);
       SingleSampleAdapter<PhiloxRandom> single_samples(&gen);
 
-      int remaining_size = size - limit_group_full * kGroupSize;
+      int64 remaining_size = size - limit_group_full * kGroupSize;
       auto samples = dist(&single_samples);
       std::copy(&samples[0], &samples[0] + remaining_size, data + offset);
     }
@@ -163,7 +163,10 @@ struct FillPhiloxRandom<CPUDevice, Distribution> {
     // Limit to maximum six threads for now. The performance scaling is very
     // sub-linear. Too many threads causes a much worse overall performance.
     int num_workers = 6;
-    Shard(num_workers, worker_threads.workers, total_group_count, kGroupSize,
+    const int kGroupCost =
+        random::PhiloxRandom::kResultElementCount *
+        (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
+    Shard(num_workers, worker_threads.workers, total_group_count, kGroupCost,
           [&gen, data, size, dist](int64 start_group, int64 limit_group) {
             FillPhiloxRandomTask<
                 Distribution,
@@ -203,14 +206,6 @@ static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
   return Status::OK();
 }
 
-// Reserve enough random samples in the generator for the given output count.
-// Note that the 256 multiplier is repeated above; do not change it just here.
-static random::PhiloxRandom ReserveRandomOutputs(GuardedPhiloxRandom& generator,
-                                                 int64 output_count) {
-  int64 conservative_sample_count = output_count << 8;
-  return generator.ReserveSamples128(conservative_sample_count);
-}
-
 // For now, use the same interface as RandomOp, so we can choose either one
 // at the run-time.
 template <typename Device, class Distribution>
@@ -228,7 +223,9 @@ class PhiloxRandomOp : public OpKernel {
     auto output_flat = output->flat<T>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),
-        ReserveRandomOutputs(generator_, output_flat.size()),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(output_flat.size(), 256),
         output_flat.data(), output_flat.size(), Distribution());
   }
 
@@ -271,7 +268,9 @@ class RandomUniformIntOp : public OpKernel {
     auto output_flat = output->flat<IntType>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),
-        ReserveRandomOutputs(generator_, output_flat.size()),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(output_flat.size(), 256),
         output_flat.data(), output_flat.size(), dist);
   }
 

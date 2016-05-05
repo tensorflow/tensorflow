@@ -111,11 +111,12 @@ Create a numpy ndarray with the same shape and data as the tensor.
 *  <b>`TypeError`</b>: if tensor has unsupported type.
 
 
+@ops_used_by_graph_def
 - - -
 
 ### `tf.contrib.util.stripped_op_list_for_graph(graph_def)` {#stripped_op_list_for_graph}
 
-Collect the ops used by a graph.
+Collect the stripped OpDefs for ops used by a graph.
 
 This function computes the `stripped_op_list` field of `MetaGraphDef` and
 similar protos.  The result can be communicated from the producer to the

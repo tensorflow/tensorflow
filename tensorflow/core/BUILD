@@ -57,6 +57,8 @@ load(
     "tf_proto_text_protos_relative",
     "cc_header_only_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # For platform specific build config
 load(
@@ -622,6 +624,8 @@ filegroup(
             "util/events_writer.cc",
             "util/events_writer.h",
             # Exclude all protobuf/google headers except protobuf_android.h
+            "platform/cuda.h",
+            "platform/default/stream_executor.h",
             "platform/google/cord_coding.h",
             "platform/google/dynamic_annotations.h",
             "platform/google/integral_types.h",
@@ -632,8 +636,16 @@ filegroup(
             "platform/google/*.cc",
             "platform/google/test_benchmark.cc",
             "platform/google/test_benchmark.h",
+            "platform/jpeg.h",
+            "platform/stream_executor.h",
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/*.cc",
+            "common_runtime/gpu/pool_allocator.h",
+            "common_runtime/gpu/gpu_bfc_allocator.h",
+            "common_runtime/gpu/gpu_debug_allocator.h",
+            "common_runtime/gpu/gpu_device.h",
+            "common_runtime/gpu/gpu_util.h",
+            "common_runtime/gpu/gpu_event_mgr.h",
             "common_runtime/gpu_device_factory.cc",
         ],
     ),
@@ -784,6 +796,7 @@ cc_library(
         "lib/gtl/edit_distance.h",
         "lib/gtl/int_type.h",
         "lib/gtl/iterator_range.h",
+        "lib/gtl/manual_constructor.h",
         "lib/gtl/top_n.h",
         "lib/io/iterator.h",
         "lib/io/match.h",
@@ -797,6 +810,7 @@ cc_library(
         "lib/strings/regexp.h",
         "lib/strings/scanner.h",
         "lib/wav/wav_io.h",
+        "platform/demangle.h",
         "platform/denormal.h",
         "platform/platform.h",
         "platform/tensor_coding.h",
@@ -1257,7 +1271,7 @@ tf_cc_tests(
 )
 
 # GPU-related tests
-tf_cc_tests(
+tf_cc_tests_gpu(
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
@@ -1291,7 +1305,7 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/memory_types_test",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1436,7 +1450,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_allocator_retry_test.cc",
     size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1458,7 +1472,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_stream_util_test.cc",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1551,22 +1565,14 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:bcast_ops",
-        "//tensorflow/core/kernels:cast_op",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:dynamic_stitch_op",
-        "//tensorflow/core/kernels:identity_op",
-        "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels:reduction_ops",
-        "//tensorflow/core/kernels:reshape_op",
-        "//tensorflow/core/kernels:sequence_ops",
-        "//tensorflow/core/kernels:shape_ops",
-        "//tensorflow/core/kernels:tile_ops",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:data_flow",
+        "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_tracer_test",
     size = "small",
     args = ["--heap_check=local"],

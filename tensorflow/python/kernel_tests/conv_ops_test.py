@@ -904,14 +904,14 @@ class Conv2DTest(tf.test.TestCase):
 
     # Filter larger than input.
     with self.assertRaisesRegexp(ValueError,
-                                 "filter must not be larger than the input"):
+                                 "Filter must not be larger than the input"):
       tf.nn.conv2d(tf.placeholder(tf.float32,
                                           shape=[32, 20, 20, 3]),
                     tf.placeholder(tf.float32,
                                           shape=[20, 21, 3, 2]),
                     strides=[1, 1, 1, 1], padding="SAME")
     with self.assertRaisesRegexp(ValueError,
-                                 "filter must not be larger than the input"):
+                                 "Filter must not be larger than the input"):
       tf.nn.conv2d(tf.placeholder(tf.float32,
                                           shape=[32, 20, 20, 3]),
                     tf.placeholder(tf.float32,

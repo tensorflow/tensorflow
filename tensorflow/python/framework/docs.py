@@ -33,6 +33,7 @@ _section_re = re.compile("([A-Z][a-zA-Z ]*):$")
 _always_drop_symbol_re = re.compile("_[_a-zA-Z0-9]")
 _anchor_re = re.compile(r"^[\w.]+$")
 _member_mark = "@@"
+_indiv_dir = "functions_and_classes"
 
 
 class Document(object):
@@ -247,6 +248,15 @@ class Library(Document):
           or self._should_include_member(name, member)):
         yield name, ("%s.%s" % (cls_name, name), member)
 
+  def set_functions_and_classes_dir(self, dirname):
+    """Sets the name of the directory for function and class markdown files.
+
+    Args:
+      dirname: string. The name of the directory in which to store function
+        and class markdown files.
+    """
+    self.functions_and_classes_dir = dirname
+
   def _generate_signature_for_function(self, func):
     """Given a function, returns a string representing its args."""
     args_list = []
@@ -384,6 +394,12 @@ class Library(Document):
       print("", file=f)
       self._print_function(f, prefix, name, member)
       print("", file=f)
+
+      # Write an individual file for each function.
+      if inspect.isfunction(member):
+        indivf = open(
+            os.path.join(self.functions_and_classes_dir, name + ".md"), "w+")
+        self._print_function(indivf, prefix, name, member)
     elif inspect.isclass(member):
       print("- - -", file=f)
       print("", file=f)
@@ -393,6 +409,11 @@ class Library(Document):
       print("", file=f)
       self._write_class_markdown_to_file(f, name, member)
       print("", file=f)
+
+      # Write an individual file for each class.
+      indivf = open(
+          os.path.join(self.functions_and_classes_dir, name + ".md"), "w+")
+      self._write_class_markdown_to_file(indivf, name, member)
     else:
       raise RuntimeError("Member %s has unknown type %s" % (name, type(member)))
 
@@ -522,8 +543,16 @@ def write_libraries(dir, libraries):
     libraries: List of (filename, library) pairs.
   """
   files = [open(os.path.join(dir, k), "w") for k, _ in libraries]
+
+  # Set the directory in which to save individual class and function md files,
+  # creating it if it doesn't exist.
+  indiv_dir = os.path.join(dir, _indiv_dir)
+  if not os.path.exists(indiv_dir):
+    os.makedirs(indiv_dir)
+
   # Document mentioned symbols for all libraries
   for f, (_, v) in zip(files, libraries):
+    v.set_functions_and_classes_dir(indiv_dir)
     v.write_markdown_to_file(f)
   # Document symbols that no library mentioned.  We do this after writing
   # out all libraries so that earlier libraries know what later libraries

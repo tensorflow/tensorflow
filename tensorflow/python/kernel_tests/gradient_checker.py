@@ -60,6 +60,9 @@ def _compute_theoretical_jacobian(x, x_shape, x_data, dy, dy_shape, dx):
     A 2-d numpy array representing the Jacobian for dy/dx. It has "x_size" rows
     and "dy_size" columns where "x_size" is the number of elements in x and
     "dy_size" is the number of elements in dy.
+
+  Raises:
+    ValueError: If `dy` is empty but the gradient is nonzero.
   """
   # Complex vectors are treated as vectors of twice as many reals.
   if x.dtype.is_complex:
@@ -71,8 +74,11 @@ def _compute_theoretical_jacobian(x, x_shape, x_data, dy, dy_shape, dx):
   x_val_size = _product(x_shape[1:])  # This is used for sparse gradients
   dy_size = _product(dy_shape) * dy_factor
 
+  # Allocate 2-D Jacobian, with x dimensions smashed into the first
+  # dimension and y dimensions smashed into the second.
   jacobian = np.zeros((x_size, dy_size),
                       dtype=x.dtype.real_dtype.as_numpy_dtype)
+
   # For each of the entry of dy, we set this to be 1 and
   # everything else to be 0 and compute the backprop -- this will give us one
   # one column of the Jacobian matrix.
@@ -93,6 +99,16 @@ def _compute_theoretical_jacobian(x, x_shape, x_data, dy, dy_shape, dx):
       backprop = sess.run(dx, feed_dict={x: x_data, dy: dy_data})
       jacobian[:, col] = backprop.ravel().view(jacobian.dtype)
     dy_data_flat[col] = 0
+
+  # If the output is empty, run the gradients at least once and make sure
+  # they produce zeros.
+  if not dy_size:
+    backprop = sess.run(dx, feed_dict={x: x_data, dy: dy_data})
+    if backprop.shape != x_data.shape:
+      raise ValueError("Empty gradient has wrong shape: expected %s, got %s" %
+                       (x_data.shape, backprop.shape))
+    if np.any(backprop):
+      raise ValueError("Empty tensor with nonzero gradients")
 
   logging.vlog(1, "Theoretical Jacobian =\n%s", jacobian)
   return jacobian
@@ -315,4 +331,8 @@ def compute_gradient_error(x,
                           init_targets)
   if isinstance(grad, tuple):
     grad = [grad]
-  return max(np.fabs(j_t - j_n).max() for j_t, j_n in grad)
+  error = 0
+  for j_t, j_n in grad:
+    if j_t.size or j_n.size:  # Handle zero size tensors correctly
+      error = max(error, np.fabs(j_t - j_n).max())
+  return error

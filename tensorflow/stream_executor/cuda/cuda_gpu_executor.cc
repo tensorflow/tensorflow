@@ -637,18 +637,10 @@ void CUDAExecutor::DeallocateTimer(Timer *timer) {
 }
 
 bool CUDAExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
-  CUevent other_completed_event;
-  bool ok =
-      AsCUDAStream(other)->GetOrCreateCompletedEvent(&other_completed_event);
-  if (!ok) {
-    LOG(ERROR) << "failed to get completion event from other; "
-                  "therefore, failed to create inter-stream dependency";
-    return false;
-  }
-
-  ok = CUDADriver::RecordEvent(context_, other_completed_event,
-                               AsCUDAStreamValue(other))
-           .ok();
+  CUevent other_completed_event = *AsCUDAStream(other)->completed_event();
+  bool ok = CUDADriver::RecordEvent(context_, other_completed_event,
+                                    AsCUDAStreamValue(other))
+      .ok();
   if (!ok) {
     LOG(ERROR) << "failed to record completion event; "
                   "therefore, failed to create inter-stream dependency";

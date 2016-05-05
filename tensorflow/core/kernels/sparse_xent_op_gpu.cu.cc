@@ -42,9 +42,11 @@ struct SparseXentFunctor<GPUDevice, T, Index> {
 }  // end namespace functor
 
 // Instantiate the GPU implementation for float.
-#define REGISTER(Index)                                                \
-  template struct functor::SparseXentFunctor<GPUDevice, float, Index>; \
-  template class generator::SparseXentGradGenerator<float, Index>;
+#define REGISTER(Index)                                                      \
+  template struct functor::SparseXentFunctor<GPUDevice, float, Index>;       \
+  template class generator::SparseXentGradGenerator<float, Index>;           \
+  template struct functor::SparseXentFunctor<GPUDevice, Eigen::half, Index>; \
+  template class generator::SparseXentGradGenerator<Eigen::half, Index>;
 REGISTER(int32)
 REGISTER(int64)
 #undef REGISTER

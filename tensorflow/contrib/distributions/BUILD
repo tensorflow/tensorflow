@@ -18,6 +18,7 @@ py_library(
 
 cuda_py_tests(
     name = "dirichlet_multinomial_test",
+    size = "small",
     srcs = ["python/kernel_tests/dirichlet_multinomial_test.py"],
     additional_deps = [
         ":distributions_py",
