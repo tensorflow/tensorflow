@@ -33,7 +33,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -46,7 +45,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -59,7 +57,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -72,7 +69,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -85,7 +81,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -98,7 +93,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -111,7 +105,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -124,7 +117,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -137,7 +129,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -150,7 +141,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -163,7 +153,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -176,7 +165,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -189,7 +177,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -202,7 +189,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -215,7 +201,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -228,7 +213,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -241,7 +225,6 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )

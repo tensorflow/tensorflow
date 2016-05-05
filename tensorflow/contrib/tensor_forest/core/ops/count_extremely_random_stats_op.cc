@@ -148,7 +148,7 @@ REGISTER_OP("CountExtremelyRandomStats")
    incremented for every node i that it passes through, and the leaf it ends up
    in is recorded in `leaves[i]`.  Then, if the leaf is fertile and
    initialized, the statistics for its corresponding accumulator slot
-   are updated in in `pcw_candidate_sums_delta` and `pcw_totals_sums_delta`.
+   are updated in `pcw_candidate_splits_delta` and `pcw_total_splits_delta`.
 
    For `regression` = true, outputs contain the sum of the input_labels
    for the appropriate nodes.  In adddition, the *_squares outputs are filled

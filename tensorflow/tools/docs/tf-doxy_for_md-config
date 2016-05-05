@@ -282,7 +282,7 @@ MARKDOWN_SUPPORT       = YES
 
 # When enabled doxygen tries to link words that correspond to documented
 # classes, or namespaces to their corresponding documentation. Such a link can
-# be prevented in individual cases by by putting a % sign in front of the word
+# be prevented in individual cases by putting a % sign in front of the word
 # or globally by setting AUTOLINK_SUPPORT to NO.
 # The default value is: YES.
 
@@ -633,7 +633,7 @@ SHOW_NAMESPACES        = YES
 # The FILE_VERSION_FILTER tag can be used to specify a program or script that
 # doxygen should invoke to get the current version for each file (typically from
 # the version control system). Doxygen will invoke the program by executing (via
-# popen()) the command command input-file, where command is the value of the
+# popen()) the command input-file, where command is the value of the
 # FILE_VERSION_FILTER tag, and input-file is the name of an input file provided
 # by doxygen. Whatever the program writes to standard output is used as the file
 # version. For an example see the documentation.

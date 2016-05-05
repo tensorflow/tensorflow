@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/kernels/tensor_array.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/strcat.h"

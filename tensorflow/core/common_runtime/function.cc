@@ -1039,7 +1039,7 @@ bool ShouldInline(const NodeDef& ndef) {
     // whether to inline or not.
     return true;
   }
-  // If the node is a SymbolicGradient, we use the the forward
+  // If the node is a SymbolicGradient, we use the forward
   // function's attribute 'noinline' instead.
   const NameAttrList* forward_func_attrs;
   Status s =

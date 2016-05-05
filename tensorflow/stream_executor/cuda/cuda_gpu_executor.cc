@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 #include <unistd.h>
 
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -194,7 +197,15 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
 //                 would return /usr/bin.
 static string GetBinaryDir(bool strip_exe) {
   char exe_path[PATH_MAX] = {0};
-  CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#if defined(__APPLE__)
+    uint32_t buffer_size = 0U;
+    _NSGetExecutablePath(nullptr, &buffer_size);
+    char unresolved_path[buffer_size];
+    _NSGetExecutablePath(unresolved_path, &buffer_size);
+    CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
+#else
+    CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#endif
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
 
@@ -860,6 +871,10 @@ CUcontext CUDAExecutor::cuda_context() { return context_; }
 // For anything more complicated/prod-focused than this, you'll likely want to
 // turn to gsys' topology modeling.
 static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
+#if defined(__APPLE__)
+  LOG(INFO) << "OS X does not support NUMA - returning NUMA node zero";
+  return 0;
+#else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
 
@@ -902,6 +917,7 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
       << content;
 
   return kUnknownNumaNode;
+#endif
 }
 
 // Set of compute capability specific device parameters that cannot be

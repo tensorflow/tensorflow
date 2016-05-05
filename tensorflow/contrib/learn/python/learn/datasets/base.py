@@ -31,20 +31,24 @@ Dataset = collections.namedtuple('Dataset', ['data', 'target'])
 Datasets = collections.namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
-def load_csv(filename, target_dtype):
+def load_csv(filename, target_dtype, target_column=-1, has_header=True):
   with gfile.Open(filename) as csv_file:
     data_file = csv.reader(csv_file)
-    header = next(data_file)
-    n_samples = int(header[0])
-    n_features = int(header[1])
-    target_names = np.array(header[2:])
-    data = np.empty((n_samples, n_features))
-    target = np.empty((n_samples,), dtype=np.int)
-
-    for i, ir in enumerate(data_file):
-      data[i] = np.asarray(ir[:-1], dtype=np.float64)
-      target[i] = np.asarray(ir[-1], dtype=target_dtype)
-
+    if has_header:
+      header = next(data_file)
+      n_samples = int(header[0])
+      n_features = int(header[1])
+      target_names = np.array(header[2:])
+      data = np.empty((n_samples, n_features))
+      target = np.empty((n_samples,), dtype=np.int)
+      for i, ir in enumerate(data_file):
+        target[i] = np.asarray(ir.pop(target_column), dtype=target_dtype)
+        data[i] = np.asarray(ir, dtype=np.float64)
+    else:
+      data, target = [], []
+      for ir in data_file:
+        target.append(ir.pop(target_column))
+        data.append(ir)
   return Dataset(data=data, target=target)
 
 
@@ -73,7 +77,16 @@ def load_boston():
 
 
 def maybe_download(filename, work_directory, source_url):
-  """Download the data from source url, unless it's already here."""
+  """Download the data from source url, unless it's already here.
+
+  Args:
+      filename: string, name of the file in the directory.
+      work_directory: string, path to working directory.
+      source_url: url to download from if file doesn't exist.
+
+  Returns:
+      Path to resulting file.
+  """
   if not gfile.Exists(work_directory):
     gfile.MakeDirs(work_directory)
   filepath = os.path.join(work_directory, filename)

@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op.h"
+#include "third_party/eigen3/Eigen/Core"
 
 #include "tensorflow/core/framework/op_kernel.h"
 
+#include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/linalg_ops_common.h"
 
 namespace tensorflow {
 
@@ -119,10 +119,8 @@ class CholeskyGrad : public OpKernel {
       auto R = input_matrix_l.block(block_begin, 0, block_size, block_begin);
       auto R_bar = output_matrix.block(block_begin, 0, block_size, block_begin);
 
-      C_bar = D.adjoint()
-                  .template triangularView<Eigen::Upper>()
-                  .solve(C_bar.adjoint())
-                  .adjoint();
+      C_bar = D.adjoint().template triangularView<Eigen::Upper>()
+          .solve(C_bar.adjoint()).adjoint();
       D_bar -= (C_bar.adjoint() * C).template triangularView<Eigen::Lower>();
       B_bar -= C_bar * R;
       R_bar -= C_bar.adjoint() * B;

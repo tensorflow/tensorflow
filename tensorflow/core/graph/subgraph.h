@@ -31,7 +31,7 @@ namespace subgraph {
 // graph.  "fed_outputs" and "fetch_outputs" are both lists of
 // output tensor identifiers in the form of
 // "<name>[:<optional_output_index>]", and "target_nodes_str" is a
-// lists of of target node names in "*g" "g".
+// lists of target node names in "*g" "g".
 //
 // In the resulting graph "*g", output edges in "fed_outputs" have
 // been redirected to special "_recv" nodes introduced into the graph.

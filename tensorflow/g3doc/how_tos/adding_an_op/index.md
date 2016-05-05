@@ -1089,7 +1089,7 @@ to a shape function. For example, the
 the following:
 
 ```python
-@tf.RegisterShape("ZeroOut"):
+@tf.RegisterShape("ZeroOut")
 def _zero_out_shape(op):
   """Shape function for the ZeroOut op.
 
@@ -1104,7 +1104,7 @@ A shape function can also constrain the shape of an input. For the version of
 would be as follows:
 
 ```python
-@tf.RegisterShape("ZeroOut"):
+@tf.RegisterShape("ZeroOut")
 def _zero_out_shape(op):
   """Shape function for the ZeroOut op.
 

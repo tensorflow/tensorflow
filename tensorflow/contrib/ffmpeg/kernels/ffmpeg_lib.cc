@@ -17,9 +17,11 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <tuple>
 #include <unistd.h>
 
 #include <string>

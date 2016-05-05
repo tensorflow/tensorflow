@@ -35,3 +35,4 @@ from tensorflow.contrib import skflow
 from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import testing
 from tensorflow.contrib import util
+from tensorflow.contrib import copy_graph

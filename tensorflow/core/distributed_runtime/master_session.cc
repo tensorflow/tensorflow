@@ -276,7 +276,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   // Send/Recv nodes that are the result of client-added
   // feeds and fetches must be tracked so that the tensors
-  // can be be added to the local rendezvous.
+  // can be added to the local rendezvous.
   static void TrackFeedsAndFetches(Part* part, const PartitionOptions& popts);
 
   // The actual graph partitioning and registration implementation.

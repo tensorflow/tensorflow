@@ -39,7 +39,7 @@ are in their constructors.  The most important method is `read`.
 It takes a queue argument, which is where it gets filenames to
 read from whenever it needs one (e.g. when the `read` op first runs, or
 the previous `read` reads the last record from a file).  It produces
-two scalar tensors: a string key and and a string value.
+two scalar tensors: a string key and a string value.
 
 To create a new reader called `SomeReader`, you will need to:
 

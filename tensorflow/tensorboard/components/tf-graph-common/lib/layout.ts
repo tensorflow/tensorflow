@@ -588,7 +588,7 @@ function layoutAnnotation(renderNodeInfo: render.RenderNodeInfo): void {
     a.labelOffset = params.labelOffset;
   });
 
-  // Calculate annotation node position position (a.dx, a.dy)
+  // Calculate annotation node position (a.dx, a.dy)
   // and total height for out-annotations
   // After this chunk of code:
   // outboxHeight = sum of annotation heights +

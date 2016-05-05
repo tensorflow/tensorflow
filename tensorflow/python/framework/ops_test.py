@@ -1323,7 +1323,7 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       with ops.device("/gpu:0"):
         a = constant_op.constant([2.0], name="a")
       with ops.colocate_with(a.op):
-        # 'b' is created in the scope of /cpu:0, but but it is
+        # 'b' is created in the scope of /cpu:0, but it is
         # colocated with 'a', which is on '/gpu:0'.  colocate_with
         # overrides devices because it is a stronger constraint.
         b = constant_op.constant(3.0)

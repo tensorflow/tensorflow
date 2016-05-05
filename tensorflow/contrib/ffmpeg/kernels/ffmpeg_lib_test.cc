@@ -131,7 +131,7 @@ TEST(FfmpegLibTest, TestRoundTripWav) {
 }  // namespace ffmpeg
 }  // namespace tensorflow
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
   tensorflow::ffmpeg::ParseTestFlags(&argc, argv);
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

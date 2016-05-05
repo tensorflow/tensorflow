@@ -3833,7 +3833,7 @@ var tf;
                     _.each(opNodes, function (opNode) {
                         var normalizedName = normalizedNameDict[opNode.name] || opNode.name;
                         graph.nodes[normalizedName] = opNode;
-                        // Check if the node has out-embeddings. If yes, add them to to the
+                        // Check if the node has out-embeddings. If yes, add them to the
                         // node.
                         if (opNode.name in outEmbeddings) {
                             opNode.outEmbeddings = outEmbeddings[opNode.name];
@@ -4484,7 +4484,7 @@ var tf;
                  *
                  * Continuing this example, say there was another BaseEdge A/K->Z/Y/W. When
                  * we look at Z/Y's predecessors, the best we can say is ["A"] without getting
-                 * into the details of which of of Z/Y's descendant nodes have predecessors to
+                 * into the details of which of Z/Y's descendant nodes have predecessors to
                  * which of A's descendants.
                  *
                  * On the other hand, for an OpNode it's clear what the final predecessors
@@ -8645,7 +8645,7 @@ var tf;
                     a.dy -= inboxHeight / 2;
                     a.labelOffset = params.labelOffset;
                 });
-                // Calculate annotation node position position (a.dx, a.dy)
+                // Calculate annotation node position (a.dx, a.dy)
                 // and total height for out-annotations
                 // After this chunk of code:
                 // outboxHeight = sum of annotation heights +

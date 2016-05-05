@@ -90,7 +90,7 @@ struct functor_traits<scalar_tanh_fast_derivative_op<T> > {
 
 /**
   * \ingroup CXX11_NeuralNetworks_Module
-  * \brief Template functor to clip the the magnitude of the first scalar.
+  * \brief Template functor to clip the magnitude of the first scalar.
   *
   * \sa class CwiseBinaryOp, MatrixBase::Clip
   */

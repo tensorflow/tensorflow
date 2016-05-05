@@ -331,7 +331,7 @@ if the process had to restart from a previous checkpoint).
 The returned values may be downsampled using reservoir sampling, which is
 configurable by the TensorBoard server. When downsampling occurs, the server
 guarantees that different tags will all sample at the same sequence of indices,
-so that if if there are two tags `A` and `B` which are related so that `A[i] ~
+so that if there are two tags `A` and `B` which are related so that `A[i] ~
 B[i]` for all `i`, then `D(A)[i] ~ D(B)[i]` for all `i`, where `D` represents
 the downsampling operation.
 

@@ -24,6 +24,7 @@ from __future__ import print_function
 # pylint: disable=unused-import,line-too-long,g-importing-member,wildcard-import
 from tensorflow.contrib.metrics.python.metrics import *
 from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
+from tensorflow.contrib.metrics.python.ops.confusion_matrix_ops import confusion_matrix
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean

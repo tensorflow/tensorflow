@@ -17,9 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import sys
 import numpy as np
 
+from tensorflow.core.framework import summary_pb2
+from tensorflow.python.training import training as train
 from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_data_feeder
 
 # pylint: disable=too-many-instance-attributes
@@ -102,12 +105,16 @@ class BaseMonitor(object):
   def _set_last_loss_seen(self):
     """Sets last_loss_seen attribute to most recent training error."""
     self.last_loss_seen = self.all_train_loss_buffer[-1]
+    self._estimator = None
 
   def report(self):
     """Checks whether to report, and prints loss information if appropriate."""
     if self.verbose and (self.steps % self.print_steps == 0):
       self._set_training_summary()
       print(self._summary_str)
+
+  def set_estimator(self, estimator):
+    self._estimator = estimator
 
   def monitor_inducing_stop(self):
     """Returns True if the monitor requests the model stop.
@@ -190,11 +197,18 @@ class ValidationMonitor(BaseMonitor):
     self.val_feeder = setup_train_data_feeder(val_X, val_y, n_classes, -1)
     self.print_val_loss_buffer = []
     self.all_val_loss_buffer = []
+    self._summary_writer = None
 
   def create_val_feed_dict(self, inp, out):
     """Set tensorflow placeholders and create validation data feed."""
     self.val_feeder.set_placeholders(inp, out)
     self.val_dict = self.val_feeder.get_feed_dict_fn()()
+
+  def set_estimator(self, estimator):
+    super(ValidationMonitor, self).set_estimator(estimator)
+    if estimator._output_dir is None:
+      return
+    self._summary_writer = train.SummaryWriter(os.path.join(estimator._output_dir, 'eval'))
 
   def _set_last_loss_seen(self):
     """Sets self.last_loss_seen to most recent validation loss.
@@ -207,6 +221,12 @@ class ValidationMonitor(BaseMonitor):
     self.last_loss_seen = val_loss
     self.all_val_loss_buffer.append(val_loss)
     self.print_val_loss_buffer.append(val_loss)
+    if self._summary_writer is not None:
+      summary = summary_pb2.Summary()
+      value = summary.value.add()
+      value.tag = "loss"
+      value.simple_value = float(val_loss)
+      self._summary_writer.add_summary(summary, self.global_step)
 
   def _modify_summary_string(self):
     """Flushes validation print buffer into summary string."""
