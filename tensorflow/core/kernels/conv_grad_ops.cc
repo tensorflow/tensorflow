@@ -1007,6 +1007,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
           "cuDNN Backward Data function launch failure : input shape(",
           input_shape.DebugString(), ") filter shape(",
           filter_shape.DebugString(), ")"));
+      return;
     }
 
     if (rows_odd || cols_odd) {
@@ -1153,6 +1154,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                                             ", n=", n, ", k=", k));
         return;
       }
+    }
 
     Tensor compatible_input;
     if (rows_odd || cols_odd) {
@@ -1281,6 +1283,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
           "cuDNN Backward Filter function launch failure : input shape(",
           input_shape.DebugString(), ") filter shape(",
           filter_shape.DebugString(), ")"));
+      return;
     }
 
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
