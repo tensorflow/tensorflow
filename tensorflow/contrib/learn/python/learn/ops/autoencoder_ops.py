@@ -18,13 +18,12 @@ from __future__ import print_function
 
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.framework import ops
 from tensorflow.contrib.learn.python.learn.ops import dnn_ops
 
 
 def dnn_autoencoder(tensor_in, hidden_units,
                 activation=nn.relu, add_noise=None,
-                dropout=None, name=None):
+                dropout=None, scope=None):
     """Creates fully connected autoencoder subgraph.
 
     Args:
@@ -37,12 +36,12 @@ def dnn_autoencoder(tensor_in, hidden_units,
                         return(x + np.random.normal(0, 0.1, (len(x), len(x[0]))))
         dropout: if not None, will add a dropout layer with given
                  probability.
-        name: the variable scope for this op.
+        scope: the variable scope for this op.
 
     Returns:
         Tensors for encoder and decoder.
     """
-    with ops.op_scope([tensor_in], name, "autoencoder") as name:
+    with vs.variable_op_scope([tensor_in], scope, "autoencoder"):
         if add_noise is not None:
                     tensor_in = add_noise(tensor_in)
         with vs.variable_scope('encoder'):
