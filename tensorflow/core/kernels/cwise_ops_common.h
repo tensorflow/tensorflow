@@ -58,14 +58,6 @@ class BinaryOpShared : public OpKernel {
     int ndims;
   };
 
-  template <int NDIMS>
-  static Eigen::array<Eigen::DenseIndex, NDIMS> ToIndexArray(
-      const BCast::Vec& vec) {
-    CHECK_EQ(vec.size(), NDIMS);
-    Eigen::array<Eigen::DenseIndex, NDIMS> ret;
-    for (int i = 0; i < NDIMS; ++i) ret[i] = vec[i];
-    return ret;
-  }
   void SetUnimplementedError(OpKernelContext* ctx);
   void SetComputeError(OpKernelContext* ctx);
 };
@@ -119,16 +111,16 @@ class BinaryOp : public BinaryOpShared {
       functor::BinaryFunctor<Device, Functor, 2>().BCast(
           eigen_device, out->shaped<Tout, 2>(bcast->result_shape()),
           in0.shaped<Tin, 2>(bcast->x_reshape()),
-          ToIndexArray<2>(bcast->x_bcast()),
+          BCast::ToIndexArray<2>(bcast->x_bcast()),
           in1.shaped<Tin, 2>(bcast->y_reshape()),
-          ToIndexArray<2>(bcast->y_bcast()), error_ptr);
+          BCast::ToIndexArray<2>(bcast->y_bcast()), error_ptr);
     } else if (ndims == 3) {
       functor::BinaryFunctor<Device, Functor, 3>().BCast(
           eigen_device, out->shaped<Tout, 3>(bcast->result_shape()),
           in0.shaped<Tin, 3>(bcast->x_reshape()),
-          ToIndexArray<3>(bcast->x_bcast()),
+          BCast::ToIndexArray<3>(bcast->x_bcast()),
           in1.shaped<Tin, 3>(bcast->y_reshape()),
-          ToIndexArray<3>(bcast->y_bcast()), error_ptr);
+          BCast::ToIndexArray<3>(bcast->y_bcast()), error_ptr);
     } else {
       SetUnimplementedError(ctx);
     }
