@@ -27,9 +27,8 @@ and dtype `float32` or `float64`.
 
 
 *  <b>`logits`</b>: Unscaled log probabilities.
-*  <b>`labels`</b>: Each entry `labels[i]` must be an index in `[0, num_classes)` or
-      `-1`. If `-1`, the corresponding loss will be `0`, regardless
-      of the contents of `logits[i]`.
+*  <b>`labels`</b>: Each entry `labels[i]` must be an index in `[0, num_classes)`. Other
+    values will result in a loss of 0, but incorrect gradient computations.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

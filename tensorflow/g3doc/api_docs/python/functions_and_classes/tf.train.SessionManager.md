@@ -47,9 +47,12 @@ Creates a SessionManager.
 The `local_init_op` is an `Operation` that is run always after a new session
 was created. If `None`, this step is skipped.
 
-The `ready_op` is an `Operation`. The model is considered ready
-if that operation succeeds.  If `None`, the model is not checked
-for readiness.
+The `ready_op` is an `Operation` used to check if the model is ready.  The
+model is considered ready if that operation returns an empty string tensor.
+If the operation returns non empty string tensor, the elements are
+concatenated and used to indicate to the user why the model is not ready.
+
+If `ready_op` is `None`, the model is not checked for readiness.
 
 `recovery_wait_secs` is the number of seconds between checks that
 the model is ready.  It is used by processes to wait for a model to

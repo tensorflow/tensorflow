@@ -31,8 +31,9 @@ the training loop should also stop.  This is why the training loop has to
 check for `sv.should_stop()`.
 
 Exceptions that indicate that the training inputs have been exhausted,
-`tf.errors.OutOfRange`, also cause `sv.should_stop()` to return `True` but
-are not re-raised from the `with` block: they indicate a normal termination.
+`tf.errors.OutOfRangeError`, also cause `sv.should_stop()` to return `True`
+but are not re-raised from the `with` block: they indicate a normal
+termination.
 
 #### Use for multiple replicas
 
@@ -163,12 +164,11 @@ Create a `Supervisor`.
     default `Graph`.  The supervisor may add operations to the graph before
     creating a session, but the graph should not be modified by the caller
     after passing it to the supervisor.
-*  <b>`ready_op`</b>: `Operation` to check if the model is initialized.  This
-    operation is run by supervisors in `prepare_or_wait_for_session()` to
-    check if the model is ready to use. The model is considered ready if
-    that operation succeeds.  Defaults to the operation returned from
-    `tf.assert_variables_initialized()`  If `None`, the model is not checked
-    for readiness.
+*  <b>`ready_op`</b>: 1-D string `Tensor`.  This tensor is evaluated by supervisors in
+    `prepare_or_wait_for_session()` to check if the model is ready to use.
+    The model is considered ready if it returns an empty array.  Defaults to
+    the tensor returned from `tf.report_uninitialized_variables()`  If
+    `None`, the model is not checked for readiness.
 *  <b>`is_chief`</b>: If True, create a chief supervisor in charge of initializing
     and restoring the model.  If False, create a supervisor that relies
     on a chief supervisor for inits and restore.

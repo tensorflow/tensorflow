@@ -16,7 +16,14 @@ For brevity, let `x = logits`, `z = targets`.  The logistic loss is
     = (1 - z) * x + log(1 + exp(-x))
     = x - x * z + log(1 + exp(-x))
 
-To ensure stability and avoid overflow, the implementation uses
+For x < 0, to avoid overflow in exp(-x), we reformulate the above
+
+      x - x * z + log(1 + exp(-x))
+    = log(exp(x)) - x * z + log(1 + exp(-x))
+    = - x * z + log(1 + exp(x))
+
+Hence, to ensure stability and avoid overflow, the implementation uses this
+equivalent formulation
 
     max(x, 0) - x * z + log(1 + exp(-abs(x)))
 

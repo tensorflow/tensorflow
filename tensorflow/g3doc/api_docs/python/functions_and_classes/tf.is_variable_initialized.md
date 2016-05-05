@@ -1,6 +1,6 @@
 ### `tf.is_variable_initialized(variable)` {#is_variable_initialized}
 
-Returns an Op to check if a variable has been initialized.
+Tests if a variable has been initialized.
 
 ##### Args:
 
@@ -9,5 +9,6 @@ Returns an Op to check if a variable has been initialized.
 
 ##### Returns:
 
-  An operation to check whether a variable has been initialized.
+  Returns a scalar boolean Tensor, `True` if the variable has been
+  initialized, `False` otherwise.
 

@@ -2,6 +2,9 @@
 
 Returns an Op to check if variables are initialized.
 
+NOTE: This function is obsolete and will be removed in 6 months.  Please
+change your implementation to use `report_uninitialized_variables()`.
+
 When run, the returned Op will raise the exception `FailedPreconditionError`
 if any of the variables has not yet been initialized.
 

@@ -120,6 +120,9 @@ one of the following types:
   the value should be a
   [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
 
+Each value in `feed_dict` must be convertible to a numpy array of the dtype
+of the corresponding key.
+
 The optional `options` argument expects a [`RunOptions`] proto. The options
 allow controlling the behavior of this particular step (e.g. turning tracing
 on).

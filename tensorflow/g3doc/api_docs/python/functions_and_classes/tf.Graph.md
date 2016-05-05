@@ -381,6 +381,28 @@ a collection several times.
 
 - - -
 
+#### `tf.Graph.add_to_collections(names, value)` {#Graph.add_to_collections}
+
+Stores `value` in the collections given by `names`.
+
+Note that collections are not sets, so it is possible to add a value to
+a collection several times. This function makes sure that duplicates in
+`names` are ignored, but it will not check for pre-existing membership of
+`value` in any of the collections in `names`.
+
+`names` can be any iterable, but if `names` is a string, it is treated as a
+single collection name.
+
+##### Args:
+
+
+*  <b>`names`</b>: The keys for the collections to add to. The `GraphKeys` class
+    contains many standard names for collections.
+*  <b>`value`</b>: The value to add to the collections.
+
+
+- - -
+
 #### `tf.Graph.get_collection(name, scope=None)` {#Graph.get_collection}
 
 Returns a list of values in the collection with the given `name`.
@@ -695,25 +717,6 @@ with tf.Graph().as_default() as g:
 
 
 #### Other Methods
-- - -
-
-#### `tf.Graph.add_to_collections(names, value)` {#Graph.add_to_collections}
-
-Stores `value` in the collections given by `names`.
-
-Note that collections are not sets, so it is possible to add a value to
-a collection several times. This function makes sure that duplicates in
-`names` are ignored, but it will not check for pre-existing membership of
-`value` in any of the collections in `names`.
-
-##### Args:
-
-
-*  <b>`names`</b>: The keys for the collections to add to. The `GraphKeys` class
-    contains many standard names for collections.
-*  <b>`value`</b>: The value to add to the collections.
-
-
 - - -
 
 #### `tf.Graph.colocate_with(op, ignore_existing=False)` {#Graph.colocate_with}

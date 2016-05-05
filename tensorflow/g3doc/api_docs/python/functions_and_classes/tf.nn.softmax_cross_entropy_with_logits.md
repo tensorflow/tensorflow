@@ -8,8 +8,12 @@ example, each CIFAR-10 image is labeled with one and only one label: an image
 can be a dog or a truck, but not both.
 
 **NOTE:**  While the classes are mutually exclusive, their probabilities
-need not be. If using exclusive `labels` (wherein one and only one class is
-true at a time), see `sparse_softmax_cross_entropy_with_logits`.
+need not be.  All that is required is that each row of `labels` is
+a valid probability distribution.  If they are not, the computation of the
+gradient will be incorrect.
+
+If using exclusive `labels` (wherein one and only
+one class is true at a time), see `sparse_softmax_cross_entropy_with_logits`.
 
 **WARNING:** This op expects unscaled logits, since it performs a `softmax`
 on `logits` internally for efficiency.  Do not call this op with the
@@ -22,9 +26,7 @@ and the same dtype (either `float32` or `float64`).
 
 
 *  <b>`logits`</b>: Unscaled log probabilities.
-*  <b>`labels`</b>: Each row `labels[i]` must be a valid probability distribution or
-      all zeros. If all zeros, the corresponding loss will be `0`, regardless
-      of the contents of `logits[i]`.
+*  <b>`labels`</b>: Each row `labels[i]` must be a valid probability distribution.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

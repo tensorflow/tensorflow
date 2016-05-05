@@ -25,7 +25,7 @@ The variable creation is compatible with `tf.variable_scope` and so can be
 reused with `tf.variable_scope` or `tf.make_template`.
 
 Most of the details of variable creation can be controlled by specifying the
-initializers (`weight_init` and `bias_init`) and which in collections to place
+initializers (`weight_init` and `bias_init`) and in which collections to place
 the created variables (`weight_collections` and `bias_collections`; note that
 the variables are always added to the `VARIABLES` collection). The output of
 the layer can be placed in custom collections using `output_collections`.
