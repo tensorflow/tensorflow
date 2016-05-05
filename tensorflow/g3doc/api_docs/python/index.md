@@ -52,6 +52,7 @@
   * [`constant`](../../api_docs/python/constant_op.md#constant)
   * [`fill`](../../api_docs/python/constant_op.md#fill)
   * [`linspace`](../../api_docs/python/constant_op.md#linspace)
+  * [`multinomial`](../../api_docs/python/constant_op.md#multinomial)
   * [`ones`](../../api_docs/python/constant_op.md#ones)
   * [`ones_like`](../../api_docs/python/constant_op.md#ones_like)
   * [`random_crop`](../../api_docs/python/constant_op.md#random_crop)
