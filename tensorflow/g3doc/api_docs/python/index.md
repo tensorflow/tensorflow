@@ -560,3 +560,8 @@
   * [`make_tensor_proto`](../../api_docs/python/contrib.util.md#make_tensor_proto)
   * [`stripped_op_list_for_graph`](../../api_docs/python/contrib.util.md#stripped_op_list_for_graph)
 
+* **[Copying Graph Elements (contrib)](../../api_docs/python/contrib.copy_graph.md)**:
+  * [`copy_op_to_graph`](../../api_docs/python/contrib.copy_graph.md#copy_op_to_graph)
+  * [`copy_variable_to_graph`](../../api_docs/python/contrib.copy_graph.md#copy_variable_to_graph)
+  * [`get_copied_op`](../../api_docs/python/contrib.copy_graph.md#get_copied_op)
+
