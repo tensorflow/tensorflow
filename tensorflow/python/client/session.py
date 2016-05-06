@@ -104,6 +104,9 @@ class BaseSession(SessionInterface):
     self._dead_handles = []
 
     self._session = None
+    self._config = config
+    self._add_shapes = config.graph_options.infer_shapes if (
+        config and config.graph_options) else False
 
     try:
       opts = tf_session.TF_NewSessionOptions(target=target, config=config)
@@ -147,7 +150,7 @@ class BaseSession(SessionInterface):
       A graph_pb2.GraphDef proto containing nodes for all of the Operations in
       the underlying TensorFlow graph.
     """
-    return self._graph.as_graph_def()
+    return self._graph.as_graph_def(add_shapes=self._add_shapes)
 
   @property
   def sess_str(self):
@@ -673,7 +676,8 @@ class BaseSession(SessionInterface):
     with self._extend_lock:
       if self._graph.version > self._current_version:
         graph_def = self._graph.as_graph_def(
-            from_version=self._current_version)
+            from_version=self._current_version,
+            add_shapes=self._add_shapes)
 
         with errors.raise_exception_on_not_ok_status() as status:
           tf_session.TF_ExtendGraph(

@@ -836,7 +836,7 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testInvalidTargetFails(self):
     with self.assertRaisesRegexp(
         errors.NotFoundError,
-        'No session factory registered for the given session options.'):
+        'No session factory registered for the given session options'):
       session.Session('INVALID_TARGET')
 
   def testFetchByNameDifferentStringTypes(self):
@@ -1040,6 +1040,23 @@ class SessionTest(test_util.TensorFlowTestCase):
           'Must specify at least one target to fetch or execute.'):
         sess.run([])
 
+  def testInferShapesFalse(self):
+    with ops.Graph().as_default(), ops.device('/cpu:0'):
+      a = constant_op.constant([[1, 2]])
+      sess = session.Session()
+      self.assertFalse('_output_shapes' in sess.graph_def.node[0].attr)
+      # Avoid lint error regarding 'unused' var a.
+      self.assertTrue(a == a)
+
+  def testInferShapesTrue(self):
+    config = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(infer_shapes=True))
+    with ops.Graph().as_default(), ops.device('/cpu:0'):
+      a = constant_op.constant([[1, 2]])
+      sess = session.Session(config=config)
+      self.assertTrue('_output_shapes' in sess.graph_def.node[0].attr)
+      # Avoid lint error regarding 'unused' var a.
+      self.assertTrue(a == a)
 
 if __name__ == '__main__':
   googletest.main()
