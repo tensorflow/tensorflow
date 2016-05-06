@@ -96,3 +96,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "grpc_lib",
     actual = "@grpc//:grpc++_unsecure",
   )
+
+  native.bind(
+    name = "python_headers",
+    actual = tf_repo_name + "//util/python:python_headers",
+  )
