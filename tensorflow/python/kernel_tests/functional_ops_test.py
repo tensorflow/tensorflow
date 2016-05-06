@@ -81,6 +81,16 @@ class FunctionalOpsTest(tf.test.TestCase):
           lambda a, x: tf.mul(a, x), elems, initializer=v)
       self.assertAllEqual([2., 4., 12., 48., 240., 1440.], r.eval())
 
+  def testScan_Control(self):
+    with self.test_session() as sess:
+      s = tf.placeholder(tf.float32, shape=[None])
+      b = tf.placeholder(tf.bool)
+
+      with tf.control_dependencies([b]):
+        c = tf.scan(lambda a, x: x * a, s)
+      self.assertAllClose(np.array([1.0, 3.0, 9.0]),
+                          sess.run(c, {s: [1, 3, 3], b: True}))
+
   def testScan_Grad(self):
     with self.test_session():
       elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
