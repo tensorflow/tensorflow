@@ -437,7 +437,7 @@ class _VariableStore(object):
                            dtype=variable_dtype,
                            validate_shape=validate_shape)
     self._vars[name] = v
-    logging.info("Created variable %s with shape %s and init %s", v.name,
+    logging.vlog(1, "Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)
 
     # Run the regularizer if requested and save the resulting loss.
@@ -446,8 +446,8 @@ class _VariableStore(object):
         with ops.name_scope(name + "/Regularizer/"):
           loss = regularizer(v)
         if loss is not None:
-          logging.info("Applied regularizer to %s and added the result %s to "
-                       "REGULARIZATION_LOSSES.", v.name, loss.name)
+          logging.vlog(1, "Applied regularizer to %s and added the result %s "
+                       "to REGULARIZATION_LOSSES.", v.name, loss.name)
           ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
 
     return v

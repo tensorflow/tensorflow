@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
+from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -75,6 +76,39 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
 ops.NoGradient('DecodeAudio')
 
 
+@ops.RegisterShape('EncodeAudio')
+def _encode_audio_shape(unused_op):
+  """Computes the shape of an EncodeAudio operation.
+
+  Returns:
+    A list of output shapes. There's exactly one output, the formatted audio
+    file. This is a rank 0 tensor.
+  """
+  return [tensor_shape.TensorShape([])]
+
+
+def encode_audio(audio, file_format=None, samples_per_second=None):
+  """Creates an op that encodes an audio file using sampled audio from a tensor.
+
+  Args:
+    audio: A rank 2 tensor that has time along dimension 0 and channels along
+        dimension 1. Dimension 0 is `samples_per_second * length` long in
+        seconds.
+    file_format: The type of file to encode. "wav" is the only supported format.
+    samples_per_second: The number of samples in the audio tensor per second of
+        audio.
+
+  Returns:
+    A scalar tensor that contains the encoded audio in the specified file
+    format.
+  """
+  return gen_encode_audio_op_py.encode_audio(
+      audio, file_format=file_format, samples_per_second=samples_per_second)
+
+
+ops.NoGradient('EncodeAudio')
+
+
 def _load_library(name, op_list=None):
   """Loads a .so file containing the specified operators.
 
@@ -97,4 +131,4 @@ def _load_library(name, op_list=None):
                       (expected_op, name))
 
 
-_load_library('decode_audio_op.so', ['DecodeAudio'])
+_load_library('ffmpeg.so', ['DecodeAudio', 'EncodeAudio'])

@@ -9,7 +9,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("/third_party/gpus/cuda/platform", "cuda_library_path")
+load("//third_party/gpus/cuda:platform.bzl", "cuda_library_path")
 
 cc_library(
     name = "gtest",

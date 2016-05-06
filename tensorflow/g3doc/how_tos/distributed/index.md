@@ -7,8 +7,7 @@ writing TensorFlow programs.
 
 ## Hello distributed TensorFlow!
 
-This tutorial assumes that you are using a TensorFlow nightly build. You
-can test your installation by starting and using a local server as follows:
+ To see a simple TensorFlow cluster in action, execute the following:
 
 ```shell
 # Start a TensorFlow server as a single-process "cluster".

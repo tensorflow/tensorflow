@@ -152,4 +152,24 @@ output: A tensor of same shape and type as `value`, shuffled along its first
   dimension.
 )doc");
 
+REGISTER_OP("Multinomial")
+    .Input("logits: T")
+    .Input("num_samples: int32")
+    .Output("output: int64")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Draws samples from a multinomial distribution.
+
+logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice `[i, :]`
+  represents the unnormalized log probabilities for all classes.
+num_samples: 0-D.  Number of independent samples to draw for each row slice.
+seed: If either seed or seed2 is set to be non-zero, the internal random number
+  generator is seeded by the given seed.  Otherwise, a random seed is used.
+seed2: A second seed to avoid seed collision.
+output: 2-D Tensor with shape `[batch_size, num_samples]`.  Each slice `[i, :]`
+  contains the drawn class labels with range `[0, num_classes)`.
+)doc");
+
 }  // namespace tensorflow

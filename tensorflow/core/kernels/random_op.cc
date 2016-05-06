@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2016 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -278,32 +279,166 @@ class RandomUniformIntOp : public OpKernel {
   GuardedPhiloxRandom generator_;
 };
 
+// Samples from a multinomial distribution.
+template <typename T>
+class MultinomialOp : public OpKernel {
+ public:
+  explicit MultinomialOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, generator_.Init(context));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& logits_t = ctx->input(0);
+    const Tensor& num_samples_t = ctx->input(1);
+
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(logits_t.shape()),
+        errors::InvalidArgument("Input logits should be a matrix, got shape: ",
+                                logits_t.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(num_samples_t.shape()),
+                errors::InvalidArgument(
+                    "Input num_samples should be a scalar, got shape: ",
+                    num_samples_t.shape().DebugString()));
+
+    const int num_samples = num_samples_t.scalar<int>()();
+    OP_REQUIRES(ctx, num_samples > 0,
+                errors::InvalidArgument(
+                    "Input num_samples should be a positive integer, got: ",
+                    num_samples));
+
+    const int batch_size = logits_t.dim_size(0);
+    const int64 num_classes = logits_t.dim_size(1);
+
+    Tensor* samples_t;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output(0, TensorShape({batch_size, num_samples}),
+                                  &samples_t));
+
+    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+    auto samples_mat = samples_t->matrix<int64>();
+    const auto logits_mat = logits_t.matrix<T>();
+    auto rng = generator_.ReserveRandomOutputs(
+        batch_size * num_classes * num_samples, 256);
+
+    // Gumbel-max trick: https://en.wikipedia.org/wiki/Gumbel_distribution
+    //
+    // Given logits matrix X, we first sample matrix U iid from [0, 1).  Then,
+    // argmax(X-ln(-ln(U))) is equivalent to taking one sample from the
+    // distribution defined by X.  We take a total of BatchSize*NumSamples
+    // samples.
+    //
+    // The implementation is tailored for NumClasses >> NumSamples.  We
+    // horizontally partition the work: each worker looks at
+    // logits[start_row..limit_row, :], and fills in
+    // samples_[start_row..limit_row, :].
+    //
+    // This takes O(BatchSize * NumSamples * NumClasses) CPU time.
+    auto DoWork = [num_samples, num_classes, &rng, &samples_mat, &logits_mat](
+        int64 start_row, int64 limit_row) {
+      // Capturing "rng" by-value would only make a copy for the _shared_
+      // lambda.  Since we want to let each worker have its own copy, we pass
+      // "rng" by reference and explicitly do a copy assignment here.
+      random::PhiloxRandom rng_copy = rng;
+      rng_copy.Skip(start_row * num_classes * num_samples / 4);
+      random::SimplePhilox simple_philox(&rng_copy);
+
+      // (max score, max idx)
+      // Microbenchmarks showed that InlinedVector<*,4> is up to 1.8% faster
+      // than using std::vector here, since we expect num_samples to be small (1
+      // to O(100)).
+      gtl::InlinedVector<float, 4> curr_max(num_samples);
+      gtl::InlinedVector<int64, 4> curr_max_idx(num_samples);
+
+      const float kLowest = std::numeric_limits<float>::lowest();
+      static constexpr int kStride = 4;  // for loop unrolling
+
+      for (int64 b = start_row; b < limit_row; ++b) {
+        std::fill_n(curr_max.data(), num_samples, kLowest);
+        const auto* logits_row = &logits_mat(b, 0);
+
+        for (int64 j = 0; j < num_classes; ++j) {
+          // Each class contributes to all `num_samples` running max values.  We
+          // manually unroll the loop with stride 4.
+          // TODO(zongheng): on avx2/avx512 it might be worthwhile to unroll
+          // more.  Should investigate if this CPU kernel is
+          // performance-critical first, though.
+          int i = 0, repeat = num_samples / kStride;
+          while (repeat--) {
+            // Number of entries to unroll must == kStride.
+            const float s0 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+            const float s1 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+            const float s2 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+            const float s3 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+
+#define UPDATE(s, unroll_idx)         \
+  if (s > curr_max[i + unroll_idx]) { \
+    curr_max[i + unroll_idx] = s;     \
+    curr_max_idx[i + unroll_idx] = j; \
+  }
+            UPDATE(s0, 0);
+            UPDATE(s1, 1);
+            UPDATE(s2, 2);
+            UPDATE(s3, 3);
+
+            i += kStride;
+          }
+
+          while (i < num_samples) {
+            const float s0 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+            UPDATE(s0, 0);
+            ++i;
+          }
+#undef UPDATE
+        }
+        std::memcpy(&samples_mat(b, 0), curr_max_idx.data(),
+                    sizeof(int64) * num_samples);
+      }
+    };
+    Shard(std::min(batch_size, worker_threads.num_threads),
+          worker_threads.workers, batch_size, num_samples * num_classes * 2,
+          DoWork);
+  }
+
+ private:
+  GuardedPhiloxRandom generator_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(MultinomialOp);
+};
+
 }  // namespace
 
-#define REGISTER(TYPE)                                              \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("RandomUniform")                                         \
-          .Device(DEVICE_CPU)                                       \
-          .HostMemory("shape")                                      \
-          .TypeConstraint<TYPE>("dtype"),                           \
-      PhiloxRandomOp<CPUDevice, random::UniformDistribution<        \
-                                    random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("RandomStandardNormal")                                  \
-          .Device(DEVICE_CPU)                                       \
-          .HostMemory("shape")                                      \
-          .TypeConstraint<TYPE>("dtype"),                           \
-      PhiloxRandomOp<CPUDevice, random::NormalDistribution<         \
-                                    random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("TruncatedNormal")                                       \
-          .Device(DEVICE_CPU)                                       \
-          .HostMemory("shape")                                      \
-          .TypeConstraint<TYPE>("dtype"),                           \
-      PhiloxRandomOp<                                               \
-          CPUDevice,                                                \
-          random::TruncatedNormalDistribution<                      \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >)
+#define REGISTER(TYPE)                                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("RandomUniform")                                                \
+          .Device(DEVICE_CPU)                                              \
+          .HostMemory("shape")                                             \
+          .TypeConstraint<TYPE>("dtype"),                                  \
+      PhiloxRandomOp<CPUDevice, random::UniformDistribution<               \
+                                    random::PhiloxRandom, TYPE> >);        \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("RandomStandardNormal")                                         \
+          .Device(DEVICE_CPU)                                              \
+          .HostMemory("shape")                                             \
+          .TypeConstraint<TYPE>("dtype"),                                  \
+      PhiloxRandomOp<CPUDevice, random::NormalDistribution<                \
+                                    random::PhiloxRandom, TYPE> >);        \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("TruncatedNormal")                                              \
+          .Device(DEVICE_CPU)                                              \
+          .HostMemory("shape")                                             \
+          .TypeConstraint<TYPE>("dtype"),                                  \
+      PhiloxRandomOp<                                                      \
+          CPUDevice,                                                       \
+          random::TruncatedNormalDistribution<                             \
+              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >); \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("Multinomial").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),    \
+      MultinomialOp<TYPE>)
 
 #define REGISTER_INT(IntType)                                   \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")              \

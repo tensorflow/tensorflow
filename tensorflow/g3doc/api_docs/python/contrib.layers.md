@@ -626,7 +626,7 @@ modules must each a docstring, and `__all__` will contain all symbols with
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, variables=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, variables=None, name=None)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
@@ -645,14 +645,20 @@ Given loss and parameters for optimizer, returns a training op.
                and have `compute_gradients` and `apply_gradients` functions.
 *  <b>`gradient_noise_scale`</b>: float or None, adds 0-mean normal noise scaled by this
                         value.
-*  <b>`clip_gradients`</b>: float or None, clips gradients by this value.
+*  <b>`gradient_multipliers`</b>: dict of variables or variable names to floats.
+                        If present, gradients for specified
+                        variables will be multiplied by given constant.
+*  <b>`clip_gradients`</b>: float or `None`, clips gradients by this value.
 *  <b>`moving_average_decay`</b>: float or None, takes into account previous loss
                         to make learning smoother due to outliers.
-*  <b>`learning_rate_decay_fn`</b>: function, takes learning_rate and global_step
-                          Tensors, returns Tensor. Can be used to implement
-                          any learning rate decay functions.
+*  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
+                          `Tensor`s, returns `Tensor`.
+                          Can be used to implement any learning rate decay
+                          functions.
                           For example: tf.train.exponential_decay.
-*  <b>`variables`</b>: list of variables to optimizer or none.
+*  <b>`variables`</b>: list of variables to optimize or
+             `None` to use all trainable variables.
+*  <b>`name`</b>: The name for this operation is used to scope operations and summaries.
 
 ##### Returns:
 
@@ -666,7 +672,7 @@ Given loss and parameters for optimizer, returns a training op.
 
 - - -
 
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, max_steps=None, fail_on_nan_loss=True, tuner=None)` {#train}
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, max_steps=None, fail_on_nan_loss=True)` {#train}
 
 Train a model.
 
@@ -705,9 +711,8 @@ program is terminated with exit code 1.
 *  <b>`supervisor_save_summaries_secs`</b>: Save summaries every
     `supervisor_save_summaries_secs` seconds when training.
 *  <b>`max_steps`</b>: Train until `global_step_tensor` evaluates to this value.
-*  <b>`fail_on_nan_loss`</b>: If true, exit the program if `loss_op` evaluates to `NaN`.
-    Otherwise, continue training as if nothing happened.
-*  <b>`tuner`</b>: A tf.Tuner that will be notified of training failures when specified.
+*  <b>`fail_on_nan_loss`</b>: If true, raise `NanLossDuringTrainingError` if `loss_op`
+    evaluates to `NaN`. If false, continue training as if nothing happened.
 
 ##### Returns:
 
@@ -719,5 +724,7 @@ program is terminated with exit code 1.
 *  <b>`ValueError`</b>: If `global_step_tensor` is not provided. See
       `tf.contrib.framework.get_global_step` for how we look it up if not
       provided explicitly.
+*  <b>`NanLossDuringTrainingError`</b>: If `fail_on_nan_loss` is `True`, and loss ever
+      evaluates to `NaN`.
 
 

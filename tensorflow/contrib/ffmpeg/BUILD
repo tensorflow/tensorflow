@@ -31,10 +31,25 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "encode_audio_op_cc",
+    srcs = ["encode_audio_op.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//third_party/eigen3",
+        "//tensorflow/contrib/ffmpeg/kernels:ffmpeg_lib",
+        "//tensorflow/core:framework_headers_lib",
+    ],
+    alwayslink = 1,
+)
+
 tf_custom_op_library(
-    name = "decode_audio_op.so",
+    name = "ffmpeg.so",
     deps = [
         ":decode_audio_op_cc",
+        ":encode_audio_op_cc",
     ],
 )
 
@@ -47,6 +62,15 @@ tf_gen_op_wrapper_py(
     ],
 )
 
+tf_gen_op_wrapper_py(
+    name = "encode_audio_op_py",
+    require_shape_functions = True,
+    visibility = ["//visibility:private"],
+    deps = [
+        ":encode_audio_op_cc",
+    ],
+)
+
 tf_py_test(
     name = "decode_audio_op_test",
     srcs = ["decode_audio_op_test.py"],
@@ -56,7 +80,25 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [
-        ":decode_audio_op.so",
+        ":ffmpeg.so",
+        ":test_data",
+    ],
+    tags = [
+        "local",
+        "manual",
+    ],
+)
+
+tf_py_test(
+    name = "encode_audio_op_test",
+    srcs = ["encode_audio_op_test.py"],
+    additional_deps = [
+        ":ffmpeg_ops_py",
+        "//third_party/py/tensorflow",
+        "//tensorflow/python:platform",
+    ],
+    data = [
+        ":ffmpeg.so",
         ":test_data",
     ],
     tags = [
@@ -72,11 +114,12 @@ py_library(
         "ffmpeg_ops.py",
     ],
     data = [
-        ":decode_audio_op.so",
+        ":ffmpeg.so",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":decode_audio_op_py",
+        ":encode_audio_op_py",
     ],
 )
 

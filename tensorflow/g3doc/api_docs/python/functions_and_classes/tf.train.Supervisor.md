@@ -327,7 +327,7 @@ This starts services in the background.  The services started depend
 on the parameters to the constructor and may include:
 
   - A Summary thread computing summaries every save_summaries_secs.
-  - A Checkpoint thread saving the model every every save_model_secs.
+  - A Checkpoint thread saving the model every save_model_secs.
   - A StepCounter thread measure step time.
 
 ##### Args:
@@ -584,7 +584,7 @@ This starts services in the background.  The services started depend
 on the parameters to the constructor and may include:
 
   - A Summary thread computing summaries every save_summaries_secs.
-  - A Checkpoint thread saving the model every every save_model_secs.
+  - A Checkpoint thread saving the model every save_model_secs.
   - A StepCounter thread measure step time.
 
 ##### Args:
