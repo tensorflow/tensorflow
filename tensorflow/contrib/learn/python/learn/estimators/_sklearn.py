@@ -111,6 +111,8 @@ class _RegressorMixin():
   """Mixin class for all regression estimators."""
   pass
 
+class _TransformerMixin():
+    """Mixin class for all transformer estimators."""
 
 class _NotFittedError(ValueError, AttributeError):
   """Exception class to raise if estimator is used before fitting.
@@ -167,10 +169,11 @@ def _train_test_split(*args, **options):
     result += [x.take(train_idx, axis=0), x.take(test_idx, axis=0)]
   return tuple(result)
 
+
 # If "TENSORFLOW_SKLEARN" flag is defined then try to import from sklearn.
 TRY_IMPORT_SKLEARN = os.environ.get('TENSORFLOW_SKLEARN', False)
 if TRY_IMPORT_SKLEARN:
-  from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
+  from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
   from sklearn.metrics import accuracy_score, log_loss, mean_squared_error
   from sklearn.cross_validation import train_test_split
   try:
@@ -185,6 +188,7 @@ else:
   BaseEstimator = _BaseEstimator
   ClassifierMixin = _ClassifierMixin
   RegressorMixin = _RegressorMixin
+  TransformerMixin = _TransformerMixin
   NotFittedError = _NotFittedError
   accuracy_score = _accuracy_score
   log_loss = None

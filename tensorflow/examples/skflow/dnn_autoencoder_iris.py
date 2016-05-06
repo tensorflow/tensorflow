@@ -1,4 +1,3 @@
-"""Various TensorFlow Ops."""
 #  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,12 +15,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.ops.array_ops import *
-from tensorflow.contrib.learn.python.learn.ops.conv_ops import *
-from tensorflow.contrib.learn.python.learn.ops.dnn_ops import *
-from tensorflow.contrib.learn.python.learn.ops.autoencoder_ops import *
-from tensorflow.contrib.learn.python.learn.ops.dropout_ops import *
-from tensorflow.contrib.learn.python.learn.ops.embeddings_ops import *
-from tensorflow.contrib.learn.python.learn.ops.losses_ops import *
-from tensorflow.contrib.learn.python.learn.ops.seq2seq_ops import *
-from tensorflow.contrib.learn.python.learn.ops.batch_norm_ops import *
+import random
+
+import tensorflow as tf
+from tensorflow.contrib.learn.python import learn
+from tensorflow.contrib.learn.python.learn import datasets
+
+# Load Iris Data
+iris = datasets.load_iris()
+
+# Initialize a deep neural network autoencoder
+# You can also add noise and add dropout if needed
+# Details see TensorFlowDNNAutoencoder documentation.
+autoencoder = learn.TensorFlowDNNAutoencoder(hidden_units=[10, 20])
+
+# Fit with Iris data
+transformed = autoencoder.fit_transform(iris.data)
+
+print(transformed)

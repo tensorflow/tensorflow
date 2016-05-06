@@ -16,7 +16,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowEstimator
+from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowEstimator, TensorFlowBaseTransformer
 from tensorflow.contrib.learn.python.learn.estimators.linear import TensorFlowLinearClassifier
 from tensorflow.contrib.learn.python.learn.estimators.linear import TensorFlowClassifier
 from tensorflow.contrib.learn.python.learn.estimators.linear import TensorFlowLinearRegressor
@@ -25,4 +25,5 @@ from tensorflow.contrib.learn.python.learn.estimators.dnn import TensorFlowDNNCl
 from tensorflow.contrib.learn.python.learn.estimators.dnn import TensorFlowDNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.rnn import TensorFlowRNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.rnn import TensorFlowRNNRegressor
+from tensorflow.contrib.learn.python.learn.estimators.autoencoder import TensorFlowDNNAutoencoder
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig

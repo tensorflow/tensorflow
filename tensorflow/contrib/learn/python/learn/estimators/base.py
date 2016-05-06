@@ -148,7 +148,8 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
       # Add histograms for X and y if they are floats.
       if self._data_feeder.input_dtype in (np.float32, np.float64):
         logging_ops.histogram_summary('X', self._inp)
-      if self._data_feeder.output_dtype in (np.float32, np.float64):
+      if self._data_feeder.output_dtype in (np.float32, np.float64)\
+        and self._out is not None:
         logging_ops.histogram_summary('y', self._out)
 
       # Create model's graph.
@@ -408,7 +409,8 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
             # Add histograms for X and y if they are floats.
             if self._data_feeder.input_dtype in (np.float32, np.float64):
                 logging_ops.histogram_summary("X", self._inp)
-            if self._data_feeder.output_dtype in (np.float32, np.float64):
+            if self._data_feeder.output_dtype in (np.float32, np.float64)\
+               and self._out is not None:
                 logging_ops.histogram_summary("y", self._out)
 
             # Create model's graph.
@@ -959,3 +961,18 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     estimator = getattr(estimators, class_name)(**model_def)
     estimator._restore(path)
     return estimator
+
+
+class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
+    """TensorFlow Base Transformer class."""
+    def transform(self, X):
+        """Transform X using trained transformer."""
+        return(super(TensorFlowBaseTransformer, self).predict(X, axis=1, batch_size=None))
+
+    def fit(self, X, y=None, monitor=None, logdir=None):
+        """Fit a transformer."""
+        return(super(TensorFlowBaseTransformer, self).fit(X, y, monitor=None, logdir=None))
+
+    def fit_transform(self, X, y=None, monitor=None, logdir=None):
+        """Fit transformer and transform X using trained transformer."""
+        return(self.fit(X, y, monitor=None, logdir=None).transform(X))
