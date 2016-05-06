@@ -281,7 +281,6 @@ tf_cuda_library(
         "framework/types.h",
         "public/version.h",
         "util/bcast.h",
-        "util/checkpoint_reader.h",
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/events_writer.h",
@@ -449,6 +448,8 @@ tf_cuda_library(
         "public/session.h",
         "public/session_options.h",
         "public/tensor_c_api.h",
+        "util/checkpoint_reader.h",
+        "util/tf_status_helper.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -619,6 +620,8 @@ filegroup(
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "util/events_writer.*",
+            "util/tf_status_helper.*",
+            "util/checkpoint_reader.*",
             "platform/default/stream_executor.*",
             "platform/cuda.h",
             "platform/google/**/*",
@@ -811,6 +814,8 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
+            "util/tf_status_helper.*",
+            "util/checkpoint_reader.*",
             "util/reporter.h",
             "util/reporter.cc",
             "framework/fake_input.*",
@@ -953,6 +958,8 @@ tf_cuda_library(
             "public/session_options.h",
             "public/tensor_c_api.h",
             "public/version.h",
+            "util/tf_status_helper.*",
+            "util/checkpoint_reader.*",
         ],
         exclude = [
             "**/*test*",
