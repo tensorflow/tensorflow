@@ -2012,6 +2012,7 @@ class Graph(object):
       if from_version is None or op_id > from_version:
         graph.node.extend([op.node_def])
         if op.outputs and add_shapes:
+          assert "_output_shapes" not in graph.node[-1].attr
           graph.node[-1].attr["_output_shapes"].list.shape.extend([
               output.get_shape().as_proto() for output in op.outputs])
         bytesize += op.node_def.ByteSize()

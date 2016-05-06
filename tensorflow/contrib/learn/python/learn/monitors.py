@@ -48,15 +48,15 @@ class BaseMonitor(object):
 
   Stores and reports training loss throughout learning
 
-    Parameters:
-        print_steps: Number of steps in between printing cost.
-        early_stopping_rounds:  Activates early stopping if this is not None.
-                                Loss needs to decrease at least every
-                                <early_stopping_rounds>
-                                round(s) to continue training. (default: None)
-        verbose: Level of verbosity of output.
+  Parameters:
+    print_steps: Number of steps in between printing cost.
+    early_stopping_rounds:  Activates early stopping if this is not None.
+                            Loss needs to decrease at least every
+                            <early_stopping_rounds>
+                            round(s) to continue training. (default: None)
+    verbose: Level of verbosity of output.
 
-    """
+  """
 
   def __init__(self, print_steps=100, early_stopping_rounds=None, verbose=1):
     self.print_steps = print_steps
@@ -71,10 +71,6 @@ class BaseMonitor(object):
     self.all_train_loss_buffer = []
     self.verbose = verbose
     self.epoch = None
-    self._estimator = None
-
-  def set_estimator(self, estimator):
-    self._estimator = estimator
 
   def update(self, global_step, step_number, training_loss, sess,
              feed_params_fn, loss_expression_tensor):
@@ -82,16 +78,17 @@ class BaseMonitor(object):
 
     Triggers printed output if appropriate
 
-            global_step:
-            step_number: current step in training
-            training_loss: float value of training loss
-            sess: session for computation (used to calculate validation loss)
-            feed_params_fn: function generating dict with information like
-            epoch. Sometimes None.
-            loss_expression_tensor: Tensor applied to validation data to
-            calculate val loss
+    Args:
+      global_step: global step number
+      step_number: current step in training
+      training_loss: float value of training loss
+      sess: session for computation (used to calculate validation loss)
+      feed_params_fn: function generating dict with information like
+        epoch. Sometimes None.
+      loss_expression_tensor: Tensor applied to validation data to
+        calculate val loss
 
-        """
+    """
     self.steps = step_number
     self.global_step = global_step
     self.print_train_loss_buffer.append(training_loss)
@@ -106,19 +103,24 @@ class BaseMonitor(object):
     self.report()
 
   def _set_last_loss_seen(self):
-    """Sets last_loss_seen attribute to most recent training error"""
+    """Sets last_loss_seen attribute to most recent training error."""
     self.last_loss_seen = self.all_train_loss_buffer[-1]
+    self._estimator = None
 
   def report(self):
-    """Checks whether to report, and prints loss information if appropriate"""
+    """Checks whether to report, and prints loss information if appropriate."""
     if self.verbose and (self.steps % self.print_steps == 0):
       self._set_training_summary()
       print(self._summary_str)
 
-  def monitor_inducing_stop(self):
-    """Returns True if the monitor requests the model stop (e.g.
+  def set_estimator(self, estimator):
+    self._estimator = estimator
 
-    for early stopping)
+  def monitor_inducing_stop(self):
+    """Returns True if the monitor requests the model stop.
+
+    Returns:
+      True if the monitor requests the model stop (e.g. for early stopping).
     """
     if self.early_stopping_rounds is None:
       return False
@@ -132,11 +134,15 @@ class BaseMonitor(object):
     """Validation requires access to TensorFlow placeholders.
 
     Not used in this Monitor
+
+    Args:
+      inp: not used
+      out: not used
     """
     pass
 
   def _set_epoch(self, feed_params_fn):
-    """Sets self.epoch from a function that generates a dictionary including this info"""
+    """Sets self.epoch from a function providing this info in a dict."""
     if feed_params_fn:
       feed_params = feed_params_fn()
       self.epoch = feed_params["epoch"] if "epoch" in feed_params else None
@@ -166,26 +172,25 @@ class BaseMonitor(object):
 
 
 class ValidationMonitor(BaseMonitor):
-  """Monitor that reports score for validation data and uses validation data for early stopping
+  """Monitor that reports validation score and uses it for early stopping.
 
-        val_X: Validation features
-        val_y: Validation labels
-        n_classes: Number of labels in output. 0 for regression
-        print_steps: Number of steps in between printing cost.
-        early_stopping_rounds:  Activates early stopping if this is not None.
-                                Loss needs to decrease at least every
-                                <early_stopping_rounds>
-                                round(s) to continue training. (default: None)
-
-    """
+  Parameters:
+    val_X: Validation features
+    val_y: Validation labels
+    n_classes: Number of labels in output. 0 for regression
+    print_steps: Number of steps in between printing cost.
+    early_stopping_rounds:  Activates early stopping if this is not None.
+                            Loss needs to decrease at least every
+                            <early_stopping_rounds>
+                            round(s) to continue training. (default: None)
+  """
 
   def __init__(self,
                val_X,
                val_y,
                n_classes=0,
                print_steps=100,
-               early_stopping_rounds=None,
-               logdir=None):
+               early_stopping_rounds=None):
     super(ValidationMonitor, self).__init__(
         print_steps=print_steps,
         early_stopping_rounds=early_stopping_rounds)
@@ -194,30 +199,28 @@ class ValidationMonitor(BaseMonitor):
     self.all_val_loss_buffer = []
     self._summary_writer = None
 
+  def create_val_feed_dict(self, inp, out):
+    """Set tensorflow placeholders and create validation data feed."""
+    self.val_feeder.set_placeholders(inp, out)
+    self.val_dict = self.val_feeder.get_feed_dict_fn()()
+
   def set_estimator(self, estimator):
     super(ValidationMonitor, self).set_estimator(estimator)
     if estimator._output_dir is None:
       return
-    self._summary_writer = train.SummaryWriter(os.path.join(
-        estimator._output_dir, "eval"))
-
-  def create_val_feed_dict(self, inp, out):
-    """Set tensorflow placeholders and create validation data feed"""
-    self.val_feeder.set_placeholders(inp, out)
-    self.val_dict = self.val_feeder.get_feed_dict_fn()()
+    self._summary_writer = train.SummaryWriter(os.path.join(estimator._output_dir, 'eval'))
 
   def _set_last_loss_seen(self):
-    """Sets self.last_loss_seen to most recent validation loss
+    """Sets self.last_loss_seen to most recent validation loss.
 
-        Also stores this value to appropriate buffers
-        """
+    Also stores this value to appropriate buffers
+    """
     [val_loss] = self.sess.run(
         [self.loss_expression_tensor],
         feed_dict=self.val_dict)
     self.last_loss_seen = val_loss
     self.all_val_loss_buffer.append(val_loss)
     self.print_val_loss_buffer.append(val_loss)
-
     if self._summary_writer is not None:
       summary = summary_pb2.Summary()
       value = summary.value.add()
@@ -226,7 +229,7 @@ class ValidationMonitor(BaseMonitor):
       self._summary_writer.add_summary(summary, self.global_step)
 
   def _modify_summary_string(self):
-    """Adds validation data to string to print and resets validation printing buffer"""
+    """Flushes validation print buffer into summary string."""
     avg_val_loss = np.mean(self.print_val_loss_buffer)
     self.print_val_loss_buffer = []
     val_loss_string = "avg. val loss: {val_loss:.5f}".format(

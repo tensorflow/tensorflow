@@ -986,12 +986,14 @@ tf_cc_tests(
     size = "small",
     tests = [
         "sparse_add_op_test",
+        "sparse_dense_binary_op_shared_test",
         "sparse_reduce_sum_op_test",
     ],
     deps = [
         ":ops_testutil",
         ":ops_util",
         ":sparse_add_op",
+        ":sparse_dense_binary_op_shared",
         ":sparse_reduce_sum_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -1407,6 +1409,7 @@ tf_kernel_libraries(
         "sparse_add_op",
         "sparse_concat_op",
         "sparse_reduce_sum_op",
+        "sparse_dense_binary_op_shared",
         "sparse_reorder_op",
         "sparse_split_op",
         "sparse_tensor_dense_add_op",
@@ -1417,6 +1420,7 @@ tf_kernel_libraries(
     ],
     deps = [
         ":bounds_check",
+        ":cwise_op",
         ":fill_functor",
         ":scatter_op",
         "//tensorflow/core:framework",
@@ -1513,6 +1517,20 @@ tf_cc_test(
     deps = [
         ":ops_util",
         ":training_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "multinomial_op_test",
+    size = "small",
+    deps = [
+        ":ops_util",
+        ":random_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
@@ -1728,6 +1746,7 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = tf_copts(),
+    features = ["-layering_check"],
     tags = [
         "manual",
         "notap",

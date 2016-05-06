@@ -26,6 +26,7 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 
@@ -333,6 +334,15 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       # NOTE(mrry): If the graph contains a cycle, the full shape information
       # may not be available for this op's inputs.
       ops.set_shapes_for_outputs(op)
+      # For nodes with _output_shapes set, set the output shapes.
+      if '_output_shapes' in op.node_def.attr:
+        for i, output in enumerate(op.outputs):
+          dims = op.node_def.attr['_output_shapes'].list.shape[i]
+          output_shape = tensor_shape.TensorShape(
+              None if dims.unknown_rank else
+              [dim.size if dim.size >= 0 else None for dim in dims.dim])
+          output.set_shape(output_shape)
+        del op.node_def.attr['_output_shapes']
 
       # Apply device functions for this op.
       # NOTE(mrry): We do this after configuring the inputs, because

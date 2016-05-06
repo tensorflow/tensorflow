@@ -1074,7 +1074,8 @@ class Saver(object):
       A `MetaGraphDef` proto.
     """
     return export_meta_graph(filename=filename,
-                             graph_def=ops.get_default_graph().as_graph_def(),
+                             graph_def=ops.get_default_graph().as_graph_def(
+                                 add_shapes=True),
                              saver_def=self.saver_def,
                              collection_list=collection_list,
                              as_text=as_text)
@@ -1238,7 +1239,8 @@ def _as_meta_graph_def(meta_info_def=None, graph_def=None, saver_def=None,
 
   # Adds graph_def or the default.
   if not graph_def:
-    meta_graph_def.graph_def.MergeFrom(ops.get_default_graph().as_graph_def())
+    meta_graph_def.graph_def.MergeFrom(
+        ops.get_default_graph().as_graph_def(add_shapes=True))
   else:
     meta_graph_def.graph_def.MergeFrom(graph_def)
 

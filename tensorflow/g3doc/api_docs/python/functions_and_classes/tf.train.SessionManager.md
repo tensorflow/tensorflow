@@ -103,7 +103,7 @@ return sess
 
 
 *  <b>`master`</b>: `String` representation of the TensorFlow master to use.
-*  <b>`init_op`</b>: Optional `Operation` used to to initialize the model.
+*  <b>`init_op`</b>: Optional `Operation` used to initialize the model.
 *  <b>`saver`</b>: A `Saver` object used to restore a model.
 *  <b>`checkpoint_dir`</b>: Path to the checkpoint files.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.

@@ -2673,7 +2673,7 @@ Returns weights of the linear regression.
 
 - - -
 
-### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, max_steps=None, max_global_step=None, tuner=None, tuner_metric=None)` {#evaluate}
+### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, max_steps=None)` {#evaluate}
 
 Evaluate a model loaded from a checkpoint.
 
@@ -2705,28 +2705,15 @@ and written to `output_dir`.
 *  <b>`log_every_steps`</b>: Integer. Output logs every `log_every_steps` evaluation
     steps. The logs contain the `eval_dict` and timing information.
 *  <b>`max_steps`</b>: Integer. Evaluate `eval_dict` this many times.
-*  <b>`max_global_step`</b>: Integer.  If the global_step is larger than this, skip
-    the eval and return None.
-*  <b>`tuner`</b>: A `Tuner` that will be notified of eval completion and updated
-    with objective metrics.
-*  <b>`tuner_metric`</b>: A `string` that specifies the eval metric to report to
-    `tuner`.
 
 ##### Returns:
 
-  A tuple `(eval_results, should_stop)`:
+  A tuple `(eval_results, global_step)`:
 
 *  <b>`eval_results`</b>: A `dict` mapping `string` to numeric values (`int`, `float`)
     that are the eval results from the last step of the eval.  None if no
     eval steps were run.
-  should stop: A `bool`, indicating whether it was detected that eval should
-    stop.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if the caller specifies max_global_step without providing
-    a global_step.
+*  <b>`global_step`</b>: The global step this evaluation corresponds to.
 
 
 - - -

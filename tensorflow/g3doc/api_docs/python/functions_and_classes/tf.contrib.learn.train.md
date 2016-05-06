@@ -1,4 +1,4 @@
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, max_steps=None, fail_on_nan_loss=True, tuner=None)` {#train}
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, max_steps=None, fail_on_nan_loss=True)` {#train}
 
 Train a model.
 
@@ -37,9 +37,8 @@ program is terminated with exit code 1.
 *  <b>`supervisor_save_summaries_secs`</b>: Save summaries every
     `supervisor_save_summaries_secs` seconds when training.
 *  <b>`max_steps`</b>: Train until `global_step_tensor` evaluates to this value.
-*  <b>`fail_on_nan_loss`</b>: If true, exit the program if `loss_op` evaluates to `NaN`.
-    Otherwise, continue training as if nothing happened.
-*  <b>`tuner`</b>: A tf.Tuner that will be notified of training failures when specified.
+*  <b>`fail_on_nan_loss`</b>: If true, raise `NanLossDuringTrainingError` if `loss_op`
+    evaluates to `NaN`. If false, continue training as if nothing happened.
 
 ##### Returns:
 
@@ -51,4 +50,6 @@ program is terminated with exit code 1.
 *  <b>`ValueError`</b>: If `global_step_tensor` is not provided. See
       `tf.contrib.framework.get_global_step` for how we look it up if not
       provided explicitly.
+*  <b>`NanLossDuringTrainingError`</b>: If `fail_on_nan_loss` is `True`, and loss ever
+      evaluates to `NaN`.
 

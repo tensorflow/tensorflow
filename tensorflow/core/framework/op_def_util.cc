@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/types.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -317,9 +319,19 @@ Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
           graph_def_version, ". It has been removed in version ", dep.version(),
           ". ", dep.explanation(), ".");
     } else {
-      LOG(WARNING) << "Op is deprecated."
-                   << " It will cease to work in GraphDef version "
-                   << dep.version() << ". " << dep.explanation() << ".";
+      // Warn only once for each op name, and do it in a threadsafe manner.
+      static mutex mu;
+      static std::unordered_set<string> warned;
+      bool warn;
+      {
+        mutex_lock lock(mu);
+        warn = warned.insert(op_def.name()).second;
+      }
+      if (warn) {
+        LOG(WARNING) << "Op is deprecated."
+                     << " It will cease to work in GraphDef version "
+                     << dep.version() << ". " << dep.explanation() << ".";
+      }
     }
   }
   return Status::OK();

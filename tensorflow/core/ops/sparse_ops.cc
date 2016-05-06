@@ -441,4 +441,46 @@ keep_dims: If true, retain reduced dimensions with length 1.
 output: `R-K`-D.  The reduced Tensor.
 )doc");
 
+REGISTER_OP("SparseDenseCwiseMul")
+    .Input("sp_indices: int64")
+    .Input("sp_values: T")
+    .Input("sp_shape: int64")
+    .Input("dense: T")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Component-wise multiplies a SparseTensor by a dense Tensor.
+
+*Limitation*: this Op only broadcasts the dense side to the sparse side, but not
+the other direction.
+
+sp_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+  SparseTensor, possibly not in canonical ordering.
+sp_values: 1-D.  `N` non-empty values corresponding to `sp_indices`.
+sp_shape: 1-D.  Shape of the input SparseTensor.
+dense: `R`-D.  The dense Tensor operand.
+output: 1-D.  The `N` values that are operated on.
+)doc");
+
+REGISTER_OP("SparseDenseCwiseDiv")
+    .Input("sp_indices: int64")
+    .Input("sp_values: T")
+    .Input("sp_shape: int64")
+    .Input("dense: T")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Component-wise divides a SparseTensor by a dense Tensor.
+
+*Limitation*: this Op only broadcasts the dense side to the sparse side, but not
+the other direction.
+
+sp_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+  SparseTensor, possibly not in canonical ordering.
+sp_values: 1-D.  `N` non-empty values corresponding to `sp_indices`.
+sp_shape: 1-D.  Shape of the input SparseTensor.
+dense: `R`-D.  The dense Tensor operand.
+output: 1-D.  The `N` values that are operated on.
+)doc");
+
 }  // namespace tensorflow
