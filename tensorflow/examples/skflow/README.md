@@ -15,7 +15,7 @@ Some examples use the `pandas` library for data processing (`sudo pip install pa
 * [Building A Custom Model](iris_custom_model.py)
 * [Accessing Weights and Biases in A Custom Model](mnist_weights.py)
 * [Building A Custom Model Using Multiple GPUs](multiple_gpu.py)
-* [Building A Model Using Different GPU Configurations](iris_config_addon.py)
+* [Building A Model Using Different GPU Configurations](iris_run_config.py)
 * [Using skflow with Pipeline](iris_with_pipeline.py)
 * [Example of Saving and Restoring Models](iris_save_restore.py)
 * [Multi-output Deep Neural Network regression](multioutput_regression.py)
