@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER6(UnaryOp, CPU, "Sign", functor::sign, float, double, int32, int64,
-          complex64, Eigen::half);
+          complex64, complex128, Eigen::half);
 #if GOOGLE_CUDA
 REGISTER4(UnaryOp, GPU, "Sign", functor::sign, float, Eigen::half, double,
           int64);

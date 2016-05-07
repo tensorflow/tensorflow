@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER9(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double, uint8,
-          int8, int16, int32, int64, complex64);
+          int8, int16, int32, int64, complex64, complex128);
 #if GOOGLE_CUDA
 REGISTER7(BinaryOp, GPU, "Mul", functor::mul, float, Eigen::half, double, uint8,
           int8, int16, int64);

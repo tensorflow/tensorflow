@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "Tanh", functor::tanh, float, Eigen::half, double,
-          complex64);
+          complex64, complex128);
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Tanh", functor::tanh, float, Eigen::half, double);
 #endif
