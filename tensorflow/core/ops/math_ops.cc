@@ -132,7 +132,7 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
 // Declares cwise unary operations signature: 't -> 't
 #define UNARY()                      \
   Input("x: T").Output("y: T").Attr( \
-      "T: {half, float, double, int32, complex64, complex128, int64}")
+      "T: {half, float, double, int32, int64, complex64, complex128}")
 
 REGISTER_OP("Neg")
     .UNARY()
