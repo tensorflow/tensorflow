@@ -85,8 +85,8 @@ class BaseSession(SessionInterface):
       config: (Optional) ConfigProto proto used to configure the session.
 
     Raises:
-      RuntimeError: If an error occurs while creating the TensorFlow
-        session.
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        creating the TensorFlow session.
     """
     if graph is None:
       self._graph = ops.get_default_graph()
@@ -104,6 +104,9 @@ class BaseSession(SessionInterface):
     self._dead_handles = []
 
     self._session = None
+    self._config = config
+    self._add_shapes = config.graph_options.infer_shapes if (
+        config and config.graph_options) else False
 
     try:
       opts = tf_session.TF_NewSessionOptions(target=target, config=config)
@@ -118,7 +121,8 @@ class BaseSession(SessionInterface):
     Calling this method frees all resources associated with the session.
 
     Raises:
-      RuntimeError: If an error occurs while closing the session.
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        closing the TensorFlow session.
     """
     with self._extend_lock:
       if self._opened and not self._closed:
@@ -146,7 +150,7 @@ class BaseSession(SessionInterface):
       A graph_pb2.GraphDef proto containing nodes for all of the Operations in
       the underlying TensorFlow graph.
     """
-    return self._graph.as_graph_def()
+    return self._graph.as_graph_def(add_shapes=self._add_shapes)
 
   @property
   def sess_str(self):
@@ -372,6 +376,9 @@ class BaseSession(SessionInterface):
     Returns:
       Either a single value if `fetches` is a single graph element, or
       a list of values if `fetches` is a list (described above).
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses on error.
     """
     return self._run(handle, fetches, feed_dict, None, None)
 
@@ -394,6 +401,7 @@ class BaseSession(SessionInterface):
       RuntimeError: If this `Session` is in an invalid state (e.g. has been
         closed).
       TypeError: If `fetches` or `feed_dict` keys are of an inappropriate type.
+      tf.errors.OpError: Or one of its subclasses if a TensorFlow error happens.
     """
     def _feed_fn(feed):
       for tensor_type, _, _, feed_fn in BaseSession._REGISTERED_EXPANSIONS:
@@ -434,8 +442,9 @@ class BaseSession(SessionInterface):
     # Set up a graph with feeds and fetches for partial run.
     def _setup_fn(session, feed_list, fetch_list, target_list):
       self._extend_graph()
-      return tf_session.TF_PRunSetup(session, feed_list, fetch_list,
-                                     target_list)
+      with errors.raise_exception_on_not_ok_status() as status:
+        return tf_session.TF_PRunSetup(session, feed_list, fetch_list,
+                                       target_list, status)
 
     return self._do_call(_setup_fn, self._session, feed_list, unique_fetches,
                          target_list)
@@ -613,23 +622,30 @@ class BaseSession(SessionInterface):
       `fetch_list`.  If the ith element of `fetch_list` contains the
       name of an operation, the first Tensor output of that operation
       will be returned for that element.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses on error.
     """
     def _run_fn(session, feed_dict, fetch_list, target_list, options,
                 run_metadata):
       # Ensure any changes to the graph are reflected in the runtime.
       self._extend_graph()
-      if options:
-        return tf_session.TF_Run(session, options,
-                                 feed_dict, fetch_list, target_list,
-                                 run_metadata)
-      else:
-        return tf_session.TF_Run(
-            session, None, feed_dict, fetch_list, target_list, None)
+      with errors.raise_exception_on_not_ok_status() as status:
+        if options:
+          return tf_session.TF_Run(session, options,
+                                   feed_dict, fetch_list, target_list,
+                                   status, run_metadata)
+        else:
+          return tf_session.TF_Run(
+              session, None, feed_dict, fetch_list, target_list, status,
+              None)
 
     def _prun_fn(session, handle, feed_dict, fetch_list):
       if target_list:
         raise RuntimeError('partial_run() requires empty target_list.')
-      return tf_session.TF_PRun(session, handle, feed_dict, fetch_list)
+      with errors.raise_exception_on_not_ok_status() as status:
+        return tf_session.TF_PRun(session, handle, feed_dict, fetch_list,
+                                  status)
 
     if handle is None:
       return self._do_call(_run_fn, self._session, feed_dict, fetch_list,
@@ -641,9 +657,9 @@ class BaseSession(SessionInterface):
   def _do_call(self, fn, *args):
     try:
       return fn(*args)
-    except tf_session.StatusNotOK as e:
-      error_message = compat.as_text(e.error_message)
-      m = BaseSession._NODEDEF_NAME_RE.search(error_message)
+    except errors.OpError as e:
+      message = compat.as_text(e.message)
+      m = BaseSession._NODEDEF_NAME_RE.search(message)
       node_def = None
       op = None
       if m is not None:
@@ -653,17 +669,15 @@ class BaseSession(SessionInterface):
           node_def = op.node_def
         except KeyError:
           pass
-      # pylint: disable=protected-access
-      raise errors._make_specific_exception(node_def, op, error_message,
-                                            e.code)
-      # pylint: enable=protected-access
+      raise type(e)(node_def, op, message)
 
   def _extend_graph(self):
     # Ensure any changes to the graph are reflected in the runtime.
     with self._extend_lock:
       if self._graph.version > self._current_version:
         graph_def = self._graph.as_graph_def(
-            from_version=self._current_version)
+            from_version=self._current_version,
+            add_shapes=self._add_shapes)
 
         with errors.raise_exception_on_not_ok_status() as status:
           tf_session.TF_ExtendGraph(

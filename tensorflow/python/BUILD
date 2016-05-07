@@ -151,18 +151,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "pywrap_status_test",
-    size = "small",
-    srcs = ["lib/core/pywrap_status_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework_test_lib",
-        ":platform_test",
-        "//tensorflow/core:protos_all_py",
-    ],
-)
-
 cc_library(
     name = "python_op_gen",
     srcs = [
@@ -981,18 +969,6 @@ tf_cuda_library(
     ],
 )
 
-cc_library(
-    name = "py_checkpoint_reader",
-    srcs = ["util/py_checkpoint_reader.cc"],
-    hdrs = [
-        "util/py_checkpoint_reader.h",
-    ],
-    deps = [
-        ":py_func_lib",
-        "//tensorflow/core:framework",
-    ],
-)
-
 tf_py_wrap_cc(
     name = "pywrap_tensorflow",
     srcs = ["tensorflow.i"],
@@ -1002,8 +978,6 @@ tf_py_wrap_cc(
         "client/tf_session.i",
         "framework/python_op_gen.i",
         "lib/core/py_func.i",
-        "lib/core/status.i",
-        "lib/core/status_helper.i",
         "lib/core/strings.i",
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
@@ -1015,12 +989,12 @@ tf_py_wrap_cc(
     ],
     deps = [
         ":numpy_lib",
-        ":py_checkpoint_reader",
         ":py_func_lib",
         ":py_record_reader_lib",
         ":py_record_writer_lib",
         ":python_op_gen",
         ":tf_session_helper",
+        "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",

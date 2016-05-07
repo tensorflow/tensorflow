@@ -44,22 +44,18 @@ class BitcastOp : public OpKernel {
     TensorShape adjusted_shape = input_tensor.shape();
     adjusted_shape.set_data_type(output_data_type_);
     OP_REQUIRES(context, in_size_ >= out_size_ ||
-                             ((input_tensor.dims() > 0) ||
+                             (input_tensor.dims() > 0 &&
                               input_tensor.dim_size(input_tensor.dims() - 1) ==
-                                  in_size_ / out_size_),
+                                  out_size_ / in_size_),
                 errors::InvalidArgument(
                     "Cannot bitcast from ", DataTypeString(input_data_type_),
                     " to ", DataTypeString(output_data_type_), ": shape ",
                     input_tensor.shape().DebugString()));
 
-    if (in_size_ == out_size_) {
-      adjusted_shape = input_tensor.shape();
-    } else {
-      if (out_size_ < in_size_) {
-        adjusted_shape.AddDim(in_size_ / out_size_);
-      } else {
-        adjusted_shape.RemoveDim(input_tensor.dims() - 1);
-      }
+    if (out_size_ < in_size_) {
+      adjusted_shape.AddDim(in_size_ / out_size_);
+    } else if (out_size_ > in_size_) {
+      adjusted_shape.RemoveDim(input_tensor.dims() - 1);
     }
     Tensor output_tensor;
 

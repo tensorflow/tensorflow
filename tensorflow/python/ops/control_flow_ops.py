@@ -1295,9 +1295,8 @@ class WhileContext(ControlFlowContext):
       with ops.control_dependencies(None):
         enter = _Enter(result, self._name, is_constant=True,
                        parallel_iterations=self._parallel_iterations)
-      # pylint: disable=protected-access
-      enter.op._set_control_flow_context(self)
-      # pylint: enable=protected-access
+      # Fix the control inputs and control flow context of these enter ops.
+      self._FixControlInputsAndContext([enter])
 
       # Add `enter` in this context.
       self._values.add(enter.name)
@@ -1332,17 +1331,16 @@ class WhileContext(ControlFlowContext):
   def _AddOpInternal(self, op):
     """Add `op` to the current context."""
     if not op.inputs:
-      if not op.control_inputs:
+      control_inputs = [x for x in op.control_inputs
+                        if x._get_control_flow_context() == self]
+      if len(control_inputs) != len(op.control_inputs):
+        del op.control_inputs[:]
+        op._add_control_inputs(control_inputs)
+      if not control_inputs:
         # Add a control edge from the control pivot to this op.
         # pylint: disable=protected-access
         op._add_control_input(self.GetControlPivot().op)
         # pylint: enable=protected-access
-      else:
-        # Control edges must be in the same context.
-        for x in op.control_inputs:
-          assert x._get_control_flow_context() == self, (
-              "Control inputs must come from Operations in the same while "
-              "loop context (not an outer context)." + str(x))
       for x in op.outputs:
         self._values.add(x.name)
     else:
@@ -1533,7 +1531,7 @@ class WhileContext(ControlFlowContext):
 
     # Keep original_loop_vars to identify which are TensorArrays
     original_loop_vars = loop_vars
-    # Connvert TensorArrays to their flow variables
+    # Convert TensorArrays to their flow variables
     loop_vars = _convert_tensorarrays_to_flows(loop_vars)
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     # Let the context know the loop variabes so the loop variables
@@ -1546,8 +1544,8 @@ class WhileContext(ControlFlowContext):
       enter_vars = [_Enter(x, self._name, is_constant=False,
                            parallel_iterations=self._parallel_iterations)
                     for x in real_vars]
-    for x in enter_vars:
-      x.op._set_control_flow_context(self)  # pylint: disable=protected-access
+    # Fix the control inputs and control flow context of these enter ops.
+    self._FixControlInputsAndContext(enter_vars)
     self._values = set([x.name for x in enter_vars])
 
     merge_vars = [merge([x, x])[0] for x in enter_vars]
@@ -1601,6 +1599,18 @@ class WhileContext(ControlFlowContext):
     return (exit_vars_with_tensor_arrays[0]
             if len(exit_vars) == 1
             else exit_vars_with_tensor_arrays)
+
+  def _FixControlInputsAndContext(self, input_tensors):
+    # pylint: disable=protected-access
+    graph = ops.get_default_graph()
+    control_inputs = graph._control_dependencies_for_inputs(input_tensors)
+    control_inputs = [op for op in control_inputs
+                      if op._get_control_flow_context() != self]
+    for x in input_tensors:
+      x.op._set_control_flow_context(self)
+      x.op._add_control_inputs(control_inputs)
+      graph._record_op_seen_by_control_dependencies(x.op)
+    # pylint: enable=protected-access
 
 
 def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,

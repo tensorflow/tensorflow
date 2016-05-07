@@ -15,6 +15,7 @@
 # ":framework" - exports the public non-test headers for:
 #     util/: General low-level TensorFlow-specific libraries
 #     framework/: Support for adding new ops & kernels
+#     example/: Wrappers to simplify access to Example proto
 # ":ops" - defines TensorFlow ops, but no implementations / kernels
 #     ops/: Standard ops
 #     user_ops/: User-supplied ops
@@ -241,6 +242,7 @@ cc_library(
 tf_cuda_library(
     name = "framework",
     hdrs = [
+        "example/feature_util.h",
         "framework/allocator.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
@@ -281,7 +283,6 @@ tf_cuda_library(
         "framework/types.h",
         "public/version.h",
         "util/bcast.h",
-        "util/checkpoint_reader.h",
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/events_writer.h",
@@ -449,6 +450,8 @@ tf_cuda_library(
         "public/session.h",
         "public/session_options.h",
         "public/tensor_c_api.h",
+        "util/checkpoint_reader.h",
+        "util/tf_status_helper.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -619,6 +622,8 @@ filegroup(
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "util/events_writer.*",
+            "util/tf_status_helper.*",
+            "util/checkpoint_reader.*",
             "platform/default/stream_executor.*",
             "platform/cuda.h",
             "platform/google/**/*",
@@ -802,6 +807,8 @@ tf_cuda_library(
     name = "framework_internal",
     srcs = glob(
         [
+            "example/**/*.h",
+            "example/**/*.cc",
             "framework/**/*.h",
             "framework/**/*.cc",
             "public/version.h",
@@ -811,6 +818,8 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
+            "util/tf_status_helper.*",
+            "util/checkpoint_reader.*",
             "util/reporter.h",
             "util/reporter.cc",
             "framework/fake_input.*",
@@ -953,6 +962,8 @@ tf_cuda_library(
             "public/session_options.h",
             "public/tensor_c_api.h",
             "public/version.h",
+            "util/tf_status_helper.*",
+            "util/checkpoint_reader.*",
         ],
         exclude = [
             "**/*test*",
@@ -1202,6 +1213,7 @@ tf_cc_tests(
         [
             "client/**/*_test.cc",
             "common_runtime/**/*_test.cc",
+            "example/**/*_test.cc",
             "framework/**/*_test.cc",
             "graph/**/*_test.cc",
             "util/**/*_test.cc",

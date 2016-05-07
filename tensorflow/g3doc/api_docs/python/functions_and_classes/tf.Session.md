@@ -167,8 +167,8 @@ Calling this method frees all resources associated with the session.
 
 ##### Raises:
 
-
-*  <b>`RuntimeError`</b>: If an error occurs while closing the session.
+  tf.errors.OpError: Or one of its subclasses if an error occurs while
+    closing the TensorFlow session.
 
 
 

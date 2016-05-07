@@ -541,6 +541,7 @@
   * [`extract_pandas_labels`](../../api_docs/python/contrib.learn.md#extract_pandas_labels)
   * [`extract_pandas_matrix`](../../api_docs/python/contrib.learn.md#extract_pandas_matrix)
   * [`infer`](../../api_docs/python/contrib.learn.md#infer)
+  * [`NanLossDuringTrainingError`](../../api_docs/python/contrib.learn.md#NanLossDuringTrainingError)
   * [`run_feeds`](../../api_docs/python/contrib.learn.md#run_feeds)
   * [`run_n`](../../api_docs/python/contrib.learn.md#run_n)
   * [`RunConfig`](../../api_docs/python/contrib.learn.md#RunConfig)

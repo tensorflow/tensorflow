@@ -640,6 +640,14 @@ class ControlFlowTest(tf.test.TestCase):
       res = tf.while_loop(condition, body, [r], parallel_iterations=1)
       self.assertAllEqual(12, res.eval())
 
+  def testWhileWithControl_3(self):
+    with self.test_session() as sess:
+      b = tf.placeholder(tf.bool)
+      c = tf.constant(0)
+      with tf.control_dependencies([b]):
+        c = tf.while_loop(lambda x: x < 10, lambda x: x + 1, [c])
+      self.assertEqual(10, sess.run(c, {b: True}))
+
   def testCondWhile_1(self):
     with self.test_session():
       n = tf.convert_to_tensor(0, name="n")

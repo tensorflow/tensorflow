@@ -34,10 +34,10 @@ from google.protobuf.any_pb2 import Any
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import saver as saver_module
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.util import compat
 
 
@@ -1218,12 +1218,12 @@ class CheckpointReaderTest(tf.test.TestCase):
       self.assertAllEqual(v0.eval(), v0_tensor)
       self.assertAllEqual(v1.eval(), v1_tensor)
       # Verifies get_tensor() fails for non-existent tensors.
-      with self.assertRaisesRegexp(pywrap_tensorflow.StatusNotOK,
-                                   "Not found"):
+      with self.assertRaisesRegexp(errors.NotFoundError,
+                                   "v3 not found in checkpoint file"):
         reader.get_tensor("v3")
 
   def testNonexistentPath(self):
-    with self.assertRaisesRegexp(pywrap_tensorflow.StatusNotOK,
+    with self.assertRaisesRegexp(errors.NotFoundError,
                                  "Unsuccessful TensorSliceReader"):
       tf.train.NewCheckpointReader("non-existent")
 

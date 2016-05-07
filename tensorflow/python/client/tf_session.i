@@ -19,13 +19,9 @@ limitations under the License.
 
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/version.h"
 
 %}
-
-// Implements the StatusNotOK exception.
-%import(module="tensorflow.python.pywrap_tensorflow") "tensorflow/python/lib/core/status.i"
 
 // Required to use PyArray_* functions.
 %include "tensorflow/python/platform/numpy.i"
@@ -165,17 +161,7 @@ tensorflow::ImportNumpy();
   $1 = &temp;
 }
 
-// The wrapper has two outputs: a tensorflow::Status, and a vector of
-// PyObjects containing the fetch results (iff the status is OK). Since
-// the interpretation of the vector depends on the status, we define
-// them as two consecutive out arguments, so that they can be accessed
-// together in a typemap.
-
 // Define temporaries for the argout outputs.
-%typemap(in, numinputs=0) tensorflow::Status* out_status (
-    tensorflow::Status temp) {
-  $1 = &temp;
-}
 %typemap(in, numinputs=0) tensorflow::PyObjectVector* out_values (
     tensorflow::PyObjectVector temp) {
   $1 = &temp;
@@ -185,47 +171,33 @@ tensorflow::ImportNumpy();
   $1 = &temp;
 }
 
-// Raise a StatusNotOK exception if the out_status is not OK;
-// otherwise build a Python list of outputs and return it.
-%typemap(argout, fragment="StatusNotOK") (
-    tensorflow::Status* out_status, tensorflow::PyObjectVector* out_values) {
-  if (!$1->ok()) {
-    RaiseStatusNotOK(*$1, $descriptor(tensorflow::Status*));
+// Build a Python list of outputs and return it.
+%typemap(argout) tensorflow::PyObjectVector* out_values {
+  tensorflow::Safe_PyObjectVector out_values_safe;
+  for (size_t i = 0; i < $1->size(); ++i) {
+    out_values_safe.emplace_back(tensorflow::make_safe($1->at(i)));
+  }
+
+  $result = PyList_New($1->size());
+  if (!$result) {
     SWIG_fail;
-  } else {
-    tensorflow::Safe_PyObjectVector out_values_safe;
-    for (size_t i = 0; i < $2->size(); ++i) {
-      out_values_safe.emplace_back(tensorflow::make_safe($2->at(i)));
-    }
+  }
 
-    $result = PyList_New($2->size());
-    if (!$result) {
-      SWIG_fail;
-    }
-
-    for (size_t i = 0; i < $2->size(); ++i) {
-      PyList_SET_ITEM($result, i, $2->at(i));
-      out_values_safe[i].release();
-    }
+  for (size_t i = 0; i < $1->size(); ++i) {
+    PyList_SET_ITEM($result, i, $1->at(i));
+    out_values_safe[i].release();
   }
 }
 
-// Raise a StatusNotOK exception if the out_status is not OK;
-// otherwise return the handle as a python string object.
-%typemap(argout, fragment="StatusNotOK") (
-    tensorflow::Status* out_status, char** out_handle) {
-  if (!$1->ok()) {
-    RaiseStatusNotOK(*$1, $descriptor(tensorflow::Status*));
-    SWIG_fail;
-  } else {
+// Return the handle as a python string object.
+%typemap(argout) char** out_handle {
 %#if PY_MAJOR_VERSION < 3
-    $result = PyString_FromStringAndSize(
+  $result = PyString_FromStringAndSize(
 %#else
-    $result = PyUnicode_FromStringAndSize(
+  $result = PyUnicode_FromStringAndSize(
 %#endif
-      *$2, strlen(*$2));
-    delete[] *$2;
-  }
+    *$1, strlen(*$1));
+  delete[] *$1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
