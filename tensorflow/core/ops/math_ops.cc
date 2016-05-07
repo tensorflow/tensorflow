@@ -1161,7 +1161,7 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ```
 )doc");
 
-REGISTER_OP("Real").Input("input: complex64").Output("output: float").Doc(R"doc(
+REGISTER_OP("Real").Input("input: complex64, complex128").Output("output: float").Doc(R"doc(
 Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
@@ -1177,7 +1177,7 @@ tf.real(input) ==> [-2.25, 3.25]
 ```
 )doc");
 
-REGISTER_OP("Imag").Input("input: complex64").Output("output: float").Doc(R"doc(
+REGISTER_OP("Imag").Input("input: complex64, complex128").Output("output: float").Doc(R"doc(
 Returns the imaginary part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
