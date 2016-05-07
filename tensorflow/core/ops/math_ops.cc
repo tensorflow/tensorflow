@@ -1202,8 +1202,9 @@ tf.imag(input) ==> [4.75, 5.75]
 )doc");
 
 REGISTER_OP("Conj")
-    .Input("input: complex64")
-    .Output("output: complex64")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {complex64, complex128}")
     .Doc(R"doc(
 Returns the complex conjugate of a complex number.
 
