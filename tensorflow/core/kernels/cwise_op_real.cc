@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER2(UnaryOp, CPU, "Real", functor::get_real, complex64, complex128);
-
+REGISTER_KERNEL_BUILDER(Name("Real").Device(DEVICE_CPU),
+                        UnaryOp<CPUDevice, functor::get_real<complex64>>);
 #if GOOGLE_CUDA
-REGISTER2(UnaryOp, GPU, "Real", functor::get_real, complex64, complex128);
+REGISTER_KERNEL_BUILDER(Name("Real").Device(DEVICE_GPU),
+                        UnaryOp<GPUDevice, functor::get_real<complex64>>);
 #endif
 }  // namespace tensorflow
