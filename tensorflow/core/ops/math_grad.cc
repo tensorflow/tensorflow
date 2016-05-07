@@ -511,9 +511,12 @@ Status MinGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Min", MinGrad);
 
-static Status MatMulGradHelper(FunctionDef* g, const string& x0, bool tx0,
-                               const string& x1, bool tx1, const string& y0,
-                               bool ty0, const string& y1, bool ty1) {
+static Status MatMulGradHelper(FunctionDef* g, const string& opname,
+                               const string& attr_adj_x,
+                               const string& attr_adj_y, const string& x0,
+                               bool ax0, const string& x1, bool ax1,
+                               const string& y0, bool ay0, const string& y1,
+                               bool ay1) {
   *g = FDH::Define(
       // Arg defs
       {"x: T", "y: T", "dz: T"},
@@ -524,18 +527,20 @@ static Status MatMulGradHelper(FunctionDef* g, const string& x0, bool tx0,
       // Nodes
       {
           {{"dx"},
-           "MatMul",
+           opname,
            {x0, x1},
-           {{"T", "$T"}, {"transpose_a", tx0}, {"transpose_b", tx1}}},
+           {{"T", "$T"}, {attr_adj_x, ax0}, {attr_adj_y, ax1}}},
           {{"dy"},
-           "MatMul",
+           opname,
            {y0, y1},
-           {{"T", "$T"}, {"transpose_a", ty0}, {"transpose_b", ty1}}},
+           {{"T", "$T"}, {attr_adj_x, ay0}, {attr_adj_y, ay1}}},
       });
   return Status::OK();
 }
 
-Status MatMulGrad(const AttrSlice& attrs, FunctionDef* g) {
+Status MatMulGradCommon(const string& opname, const string& attr_adj_x,
+                        const string& attr_adj_y, const AttrSlice& attrs,
+                        FunctionDef* g) {
   DataType T;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
   if (T == DT_COMPLEX64) {
@@ -544,24 +549,36 @@ Status MatMulGrad(const AttrSlice& attrs, FunctionDef* g) {
   }
   bool ta;
   bool tb;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "transpose_a", &ta));
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "transpose_b", &tb));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_adj_x, &ta));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_adj_y, &tb));
   if (!ta && !tb) {
-    return MatMulGradHelper(g, "dz", false, "y", true, "x", true, "dz", false);
+    return MatMulGradHelper(g, opname, attr_adj_x, attr_adj_y, "dz", false, "y",
+                            true, "x", true, "dz", false);
   }
   if (!ta && tb) {
-    return MatMulGradHelper(g, "dz", false, "y", false, "dz", true, "x", false);
+    return MatMulGradHelper(g, opname, attr_adj_x, attr_adj_y, "dz", false, "y",
+                            false, "dz", true, "x", false);
   }
   if (ta && !tb) {
-    return MatMulGradHelper(g, "y", false, "dz", true, "x", false, "dz", false);
+    return MatMulGradHelper(g, opname, attr_adj_x, attr_adj_y, "y", false, "dz",
+                            true, "x", false, "dz", false);
   }
   CHECK(ta && tb);
-  return MatMulGradHelper(g, "y", true, "dz", true, "dz", true, "x", true);
+  return MatMulGradHelper(g, opname, attr_adj_x, attr_adj_y, "y", true, "dz",
+                          true, "dz", true, "x", true);
+}
+
+Status MatMulGrad(const AttrSlice& attrs, FunctionDef* g) {
+  return MatMulGradCommon("MatMul", "transpose_a", "transpose_b", attrs, g);
 }
 REGISTER_OP_GRADIENT("MatMul", MatMulGrad);
 
+Status BatchMatMulGrad(const AttrSlice& attrs, FunctionDef* g) {
+  return MatMulGradCommon("BatchMatMul", "adj_x", "adj_y", attrs, g);
+}
+REGISTER_OP_GRADIENT("BatchMatMul", BatchMatMulGrad);
+
 // REGISTER_OP_GRADIENT("SparseMatMul", SparseMatMulGrad);
-// REGISTER_OP_GRADIENT("BatchMatMul", BatchMatMulGrad);
 
 // Comparison ops.
 REGISTER_OP_NO_GRADIENT("Less");

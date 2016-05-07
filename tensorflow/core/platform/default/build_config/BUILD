@@ -9,7 +9,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_get_cuda_version")
+load("//third_party/gpus/cuda:platform.bzl", "cuda_library_path")
 
 cc_library(
     name = "gtest",
@@ -31,7 +31,16 @@ tf_cuda_library(
     name = "stream_executor",
     deps = [
         "//tensorflow/stream_executor",
-    ],
+    ] + select({
+        "//third_party/gpus/cuda:darwin": ["IOKit"],
+        "//conditions:default": []
+    }),
+)
+
+# OSX framework for device driver access
+cc_library(
+  name = "IOKit",
+  linkopts = ["-framework IOKit"],
 )
 
 cc_library(
@@ -69,12 +78,18 @@ filegroup(
 cc_library(
     name = "cuda",
     data = [
-        "//third_party/gpus/cuda:lib64/libcudart.so" + tf_get_cuda_version(),
+        "//third_party/gpus/cuda:{}".format(cuda_library_path("cudart")),
     ],
-    linkopts = [
-        "-Wl,-rpath,third_party/gpus/cuda/lib64",
-        "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib64",
-    ],
+    linkopts = select({
+        "//third_party/gpus/cuda:darwin": [
+            "-Wl,-rpath,third_party/gpus/cuda/lib",
+            "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib"
+        ],
+        "//conditions:default": [
+            "-Wl,-rpath,third_party/gpus/cuda/lib64",
+            "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib64"
+        ]
+    }),
     deps = [
         "//third_party/gpus/cuda:cudart",
     ],

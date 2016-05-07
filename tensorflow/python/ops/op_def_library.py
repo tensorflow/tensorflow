@@ -32,7 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import constant_op
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
@@ -290,7 +290,6 @@ class OpDefLibrary(object):
     # pylint: disable=g-doc-args
     """Add a node invoking a registered Op to a graph.
 
-    Config proto extensions must be provided via the 'ext' keyword argument.
     Example usage:
        # input1 and input2 can be Tensors or anything ops.convert_to_tensor()
        # will convert to a Tensor.

@@ -36,7 +36,8 @@ class TreePredictionsTest(test_util.TensorFlowTestCase):
 
     tree = [[1, 0], [-1, 0], [-1, 0]]
     tree_thresholds = [0., 0., 0.]
-    node_pcw = [[0.3, 0.4, 0.3], [0.1, 0.1, 0.8], [0.5, 0.25, 0.25]]
+    node_pcw = [[1.0, 0.3, 0.4, 0.3], [1.0, 0.1, 0.1, 0.8],
+                [1.0, 0.5, 0.25, 0.25]]
 
     with self.test_session():
       predictions = self.ops.tree_predictions(
@@ -53,7 +54,8 @@ class TreePredictionsTest(test_util.TensorFlowTestCase):
 
     tree = [[1, 0], [-1, 0], [-1, 0]]
     tree_thresholds = [0., 0., 0.]
-    node_pcw = [[3.0, 9.0, 3.0], [1.0, 1.0, 3.0], [5.0, 20.0, 0.0]]
+    node_pcw = [[15.0, 3.0, 9.0, 3.0], [5.0, 1.0, 1.0, 3.0],
+                [25.0, 5.0, 20.0, 0.0]]
 
     with self.test_session():
       predictions = self.ops.tree_predictions(
@@ -71,7 +73,8 @@ class TreePredictionsTest(test_util.TensorFlowTestCase):
 
     tree = [[1, 0], [-1, 0], [-1, 0]]
     tree_thresholds = [0., 0., 0.]
-    node_pcw = [[0.3, 0.4, 0.3], [0.1, 0.1, 0.8], [0.5, 0.25, 0.25]]
+    node_pcw = [[1.0, 0.3, 0.4, 0.3], [1.0, 0.1, 0.1, 0.8],
+                [1.0, 0.5, 0.25, 0.25]]
 
     with self.test_session():
       predictions = self.ops.tree_predictions(
@@ -86,7 +89,8 @@ class TreePredictionsTest(test_util.TensorFlowTestCase):
 
     tree = [[1, 0], [-1, 0], [-1, 0]]
     tree_thresholds = [0., 0.]  # not enough nodes.
-    node_pcw = [[0.3, 0.4, 0.3], [0.1, 0.1, 0.8], [0.5, 0.25, 0.25]]
+    node_pcw = [[1.0, 0.3, 0.4, 0.3], [1.0, 0.1, 0.1, 0.8],
+                [1.0, 0.5, 0.25, 0.25]]
 
     with self.test_session():
       with self.assertRaisesOpError(

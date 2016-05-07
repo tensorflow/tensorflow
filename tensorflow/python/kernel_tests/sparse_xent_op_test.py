@@ -49,8 +49,8 @@ class SparseXentTest(tf.test.TestCase):
           np_features, np_labels)
       backprop = loss.op.outputs[1]
       tf_loss, tf_backprop = sess.run([loss, backprop])
-    self.assertAllClose(np_loss, tf_loss)
-    self.assertAllClose(np_backprop, tf_backprop)
+    self.assertAllCloseAccordingToType(np_loss, tf_loss)
+    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
   def _testAll(self, features, labels):
     self._testXent(features, labels, use_gpu=False)
@@ -136,6 +136,12 @@ class SparseXentTest(tf.test.TestCase):
           np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
           np.array([0, 3]).astype(label_dtype),
           use_gpu=False)
+
+  def testHalf(self):
+    for label_dtype in np.int32, np.int64:
+      self._testAll(
+          np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16),
+          np.array([3, 0]).astype(label_dtype))
 
   def testGradient(self):
     with self.test_session():

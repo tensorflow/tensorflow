@@ -505,7 +505,7 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
                                        PerOpGpuDevice* device, int stream_id,
                                        Allocator* allocator) {
   ConcretePerOpGpuDevice* concrete_device =
-      dynamic_cast<ConcretePerOpGpuDevice*>(device);
+      static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
 #if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
   concrete_device->Reinitialize(context, streams_[stream_id].compute, allocator,
@@ -595,16 +595,17 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
   int64 total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
 
-  int64 allocated_memory = available_memory;
+  int64 allocated_memory;
   double config_memory_fraction =
       options.config.gpu_options().per_process_gpu_memory_fraction();
   if (config_memory_fraction == 0) {
+    allocated_memory = available_memory;
     const int64 min_system_memory = MinSystemMemory(available_memory);
     if (min_system_memory < allocated_memory) {
       allocated_memory -= min_system_memory;
     }
   } else {
-    allocated_memory *= config_memory_fraction;
+    allocated_memory = total_memory * config_memory_fraction;
   }
 
   Bytes allocated_bytes = static_cast<Bytes>(allocated_memory);

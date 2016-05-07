@@ -1134,7 +1134,7 @@ The output tensor is 3-D or higher with shape `[..., r_o, c_o]`, where:
 
 It is computed as:
 
-    out[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
 
 ##### Args:
 
@@ -1674,28 +1674,28 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
 
 - - -
 
-### `tf.conj(in_, name=None)` {#conj}
+### `tf.conj(input, name=None)` {#conj}
 
 Returns the complex conjugate of a complex number.
 
-Given a tensor `in` of complex numbers, this operation returns a tensor of
-complex numbers that are the complex conjugate of each element in `in`. The
-complex numbers in `in` must be of the form \\(a + bj\\), where *a* is the real
-part and *b* is the imaginary part.
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+complex numbers that are the complex conjugate of each element in `input`. The
+complex numbers in `input` must be of the form \\(a + bj\\), where *a* is the
+real part and *b* is the imaginary part.
 
 The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
 For example:
 
 ```
-# tensor 'in' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.conj(in) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 ```
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`.
+*  <b>`input`</b>: A `Tensor` of type `complex64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1705,26 +1705,26 @@ tf.conj(in) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 
 - - -
 
-### `tf.imag(in_, name=None)` {#imag}
+### `tf.imag(input, name=None)` {#imag}
 
 Returns the imaginary part of a complex number.
 
-Given a tensor `in` of complex numbers, this operation returns a tensor of type
-`float` that is the imaginary part of each element in `in`. All elements in `in`
-must be complex numbers of the form \\(a + bj\\), where *a* is the real part
-and *b* is the imaginary part returned by this operation.
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the imaginary part of each element in `input`. All
+elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
+is the real part and *b* is the imaginary part returned by this operation.
 
 For example:
 
 ```
-# tensor 'in' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.imag(in) ==> [4.75, 5.75]
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.imag(input) ==> [4.75, 5.75]
 ```
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`.
+*  <b>`input`</b>: A `Tensor` of type `complex64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1734,26 +1734,26 @@ tf.imag(in) ==> [4.75, 5.75]
 
 - - -
 
-### `tf.real(in_, name=None)` {#real}
+### `tf.real(input, name=None)` {#real}
 
 Returns the real part of a complex number.
 
-Given a tensor `in` of complex numbers, this operation returns a tensor of type
-`float` that is the real part of each element in `in`. All elements in `in`
-must be complex numbers of the form \\(a + bj\\), where *a* is the real part
-returned by this operation and *b* is the imaginary part.
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the real part of each element in `input`. All elements in
+`input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
+ part returned by this operation and *b* is the imaginary part.
 
 For example:
 
 ```
-# tensor 'in' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.real(in) ==> [-2.25, 3.25]
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.real(input) ==> [-2.25, 3.25]
 ```
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`.
+*  <b>`input`</b>: A `Tensor` of type `complex64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1763,230 +1763,233 @@ tf.real(in) ==> [-2.25, 3.25]
 
 - - -
 
-### `tf.fft(in_, name=None)` {#fft}
+### `tf.fft(input, name=None)` {#fft}
 
 Compute the 1-dimensional discrete Fourier Transform.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 vector.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`. The 1D Fourier Transform of `in`.
+  A `Tensor` of type `complex64`. The 1D Fourier Transform of `input`.
 
 
 - - -
 
-### `tf.ifft(in_, name=None)` {#ifft}
+### `tf.ifft(input, name=None)` {#ifft}
 
 Compute the inverse 1-dimensional discrete Fourier Transform.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 vector.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`. The inverse 1D Fourier Transform of `in`.
+  A `Tensor` of type `complex64`.
+  The inverse 1D Fourier Transform of `input`.
 
 
 - - -
 
-### `tf.fft2d(in_, name=None)` {#fft2d}
+### `tf.fft2d(input, name=None)` {#fft2d}
 
 Compute the 2-dimensional discrete Fourier Transform.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`. The 2D Fourier Transform of `in`.
+  A `Tensor` of type `complex64`. The 2D Fourier Transform of `input`.
 
 
 - - -
 
-### `tf.ifft2d(in_, name=None)` {#ifft2d}
+### `tf.ifft2d(input, name=None)` {#ifft2d}
 
 Compute the inverse 2-dimensional discrete Fourier Transform.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`. The inverse 2D Fourier Transform of `in`.
+  A `Tensor` of type `complex64`.
+  The inverse 2D Fourier Transform of `input`.
 
 
 - - -
 
-### `tf.fft3d(in_, name=None)` {#fft3d}
+### `tf.fft3d(input, name=None)` {#fft3d}
 
 Compute the 3-dimensional discrete Fourier Transform.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`. The 3D Fourier Transform of `in`.
+  A `Tensor` of type `complex64`. The 3D Fourier Transform of `input`.
 
 
 - - -
 
-### `tf.ifft3d(in_, name=None)` {#ifft3d}
+### `tf.ifft3d(input, name=None)` {#ifft3d}
 
 Compute the inverse 3-dimensional discrete Fourier Transform.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`. The inverse 3D Fourier Transform of `in`.
+  A `Tensor` of type `complex64`.
+  The inverse 3D Fourier Transform of `input`.
 
 
 - - -
 
-### `tf.batch_fft(in_, name=None)` {#batch_fft}
+### `tf.batch_fft(input, name=None)` {#batch_fft}
 
 Compute the 1-dimensional discrete Fourier Transform over the inner-most
 
-dimension of `in`.
+dimension of `input`.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `complex64`.
-  A complex64 tensor of the same shape as `in`. The inner-most dimension of
-  `in` is replaced with its 1D Fourier Transform.
+  A complex64 tensor of the same shape as `input`. The inner-most
+  dimension of `input` is replaced with its 1D Fourier Transform.
 
 
 - - -
 
-### `tf.batch_ifft(in_, name=None)` {#batch_ifft}
+### `tf.batch_ifft(input, name=None)` {#batch_ifft}
 
 Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
 
-dimension of `in`.
+dimension of `input`.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `complex64`.
-  A complex64 tensor of the same shape as `in`. The inner-most dimension of
-  `in` is replaced with its inverse 1D Fourier Transform.
+  A complex64 tensor of the same shape as `input`. The inner-most
+  dimension of `input` is replaced with its inverse 1D Fourier Transform.
 
 
 - - -
 
-### `tf.batch_fft2d(in_, name=None)` {#batch_fft2d}
+### `tf.batch_fft2d(input, name=None)` {#batch_fft2d}
 
 Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
-2 dimensions of `in`.
+2 dimensions of `input`.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `complex64`.
-  A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions
-  of `in` are replaced with their 2D Fourier Transform.
+  A complex64 tensor of the same shape as `input`. The inner-most 2
+  dimensions of `input` are replaced with their 2D Fourier Transform.
 
 
 - - -
 
-### `tf.batch_ifft2d(in_, name=None)` {#batch_ifft2d}
+### `tf.batch_ifft2d(input, name=None)` {#batch_ifft2d}
 
 Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
-2 dimensions of `in`.
+2 dimensions of `input`.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `complex64`.
-  A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions
-  of `in` are replaced with their inverse 2D Fourier Transform.
+  A complex64 tensor of the same shape as `input`. The inner-most 2
+  dimensions of `input` are replaced with their inverse 2D Fourier Transform.
 
 
 - - -
 
-### `tf.batch_fft3d(in_, name=None)` {#batch_fft3d}
+### `tf.batch_fft3d(input, name=None)` {#batch_fft3d}
 
 Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
 
-dimensions of `in`.
+dimensions of `input`.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `complex64`.
-  A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions
-  of `in` are replaced with their 3D Fourier Transform.
+  A complex64 tensor of the same shape as `input`. The inner-most 3
+  dimensions of `input` are replaced with their 3D Fourier Transform.
 
 
 - - -
 
-### `tf.batch_ifft3d(in_, name=None)` {#batch_ifft3d}
+### `tf.batch_ifft3d(input, name=None)` {#batch_ifft3d}
 
 Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
 
-3 dimensions of `in`.
+3 dimensions of `input`.
 
 ##### Args:
 
 
-*  <b>`in_`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
+*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `complex64`.
-  A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions
-  of `in` are replaced with their inverse 3D Fourier Transform.
+  A complex64 tensor of the same shape as `input`. The inner-most 3
+  dimensions of `input` are replaced with their inverse 3D Fourier Transform.
 
 
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -115,6 +116,41 @@ BM_BIAS_ADD_ALL(cpu);
 BM_BIAS_ADD_ALL(gpu);
 #undef BM_BIAS_ADD_ALL
 #undef BM_BIAS_ADD
+
+static Graph* BiasAddGrad(int rows, int cols) {
+  Graph* g = new Graph(OpRegistry::Global());
+  TensorShape lhs_shape;
+  lhs_shape = TensorShape({rows, cols});
+  Tensor lhs(DT_FLOAT, lhs_shape);
+  lhs.template flat<float>().setRandom();
+  Node* n;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BiasAddGrad")
+                  .Input(test::graph::Constant(g, lhs), /*index=*/0)
+                  .Finalize(g, &n));
+  return g;
+}
+
+#define BM_BIAS_ADD_GRAD(DEVICE, R, C)                                    \
+  static void BM_##DEVICE##_BiasAddGrad_R##R##_C##C(int iters, int arg) { \
+    const int rows = RowsFromArg(arg);                                    \
+    const int cols = ColsFromArg(arg);                                    \
+    const int64 tot = static_cast<int64>(iters) * rows * cols;            \
+    testing::ItemsProcessed(tot);                                         \
+    testing::BytesProcessed(tot * sizeof(float));                         \
+    test::Benchmark(#DEVICE, BiasAddGrad(rows, cols)).Run(iters);         \
+  }                                                                       \
+  BENCHMARK(BM_##DEVICE##_BiasAddGrad_R##R##_C##C)->Arg(RowsAndColsArg(R, C));
+
+#define BM_BIAS_ADD_GRAD_ALL(DEVICE)   \
+  BM_BIAS_ADD_GRAD(DEVICE, 512, 2048); \
+  BM_BIAS_ADD_GRAD(DEVICE, 512, 4096); \
+  BM_BIAS_ADD_GRAD(DEVICE, 2048, 512); \
+  BM_BIAS_ADD_GRAD(DEVICE, 4096, 512);
+
+BM_BIAS_ADD_GRAD_ALL(cpu);
+BM_BIAS_ADD_GRAD_ALL(gpu);
+#undef BM_BIAS_ADD_GRAD_ALL
+#undef BM_BIAS_ADD_GRAD
 
 static Graph* BcastAdd(int rows, int cols, int dim) {
   Graph* g = new Graph(OpRegistry::Global());

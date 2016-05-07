@@ -596,7 +596,7 @@ This is just a shortcut for `initialize_variables(local_variables())`
 
 ### `tf.is_variable_initialized(variable)` {#is_variable_initialized}
 
-Returns an Op to check if a variable has been initialized.
+Tests if a variable has been initialized.
 
 ##### Args:
 
@@ -605,7 +605,30 @@ Returns an Op to check if a variable has been initialized.
 
 ##### Returns:
 
-  An operation to check whether a variable has been initialized.
+  Returns a scalar boolean Tensor, `True` if the variable has been
+  initialized, `False` otherwise.
+
+
+- - -
+
+### `tf.report_uninitialized_variables(var_list=None, name='report_uninitialized_variables')` {#report_uninitialized_variables}
+
+Adds ops to list the names of uninitialized variables.
+
+When run, it returns a 1-D tensor containing the names of uninitialized
+variables if there are any, or an empty array if there are none.
+
+##### Args:
+
+
+*  <b>`var_list`</b>: List of `Variable` objects to check. Defaults to the
+    value of `all_variables() + local_variables()`
+*  <b>`name`</b>: Optional name of the `Operation`.
+
+##### Returns:
+
+  A 1-D tensor containing names of the unintialized variables, or an empty 1-D
+  tensor if there are no variables or no uninitialized variables.
 
 
 - - -
@@ -613,6 +636,9 @@ Returns an Op to check if a variable has been initialized.
 ### `tf.assert_variables_initialized(var_list=None)` {#assert_variables_initialized}
 
 Returns an Op to check if variables are initialized.
+
+NOTE: This function is obsolete and will be removed in 6 months.  Please
+change your implementation to use `report_uninitialized_variables()`.
 
 When run, the returned Op will raise the exception `FailedPreconditionError`
 if any of the variables has not yet been initialized.
@@ -1986,5 +2012,104 @@ The `Operation` that produces `values` as an output.
 
 The `Graph` that contains the values, indices, and shape tensors.
 
+
+
+
+
+## Exporting and Importing Meta Graphs
+
+- - -
+
+### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False)` {#export_meta_graph}
+
+Returns `MetaGraphDef` proto. Optionally writes it to filename.
+
+This function exports the graph, saver, and collection objects into
+`MetaGraphDef` protocol buffer with the intension of it being imported
+at a later time or location to restart training, run inference, or be
+a subgraph.
+
+##### Args:
+
+
+*  <b>`filename`</b>: Optional filename including the path for writing the
+    generated `MetaGraphDef` protocol buffer.
+*  <b>`meta_info_def`</b>: `MetaInfoDef` protocol buffer.
+*  <b>`graph_def`</b>: `GraphDef` protocol buffer.
+*  <b>`saver_def`</b>: `SaverDef` protocol buffer.
+*  <b>`collection_list`</b>: List of string keys to collect.
+*  <b>`as_text`</b>: If `True`, writes the `MetaGraphDef` as an ASCII proto.
+
+##### Returns:
+
+  A `MetaGraphDef` proto.
+
+
+- - -
+
+### `tf.train.import_meta_graph(meta_graph_or_file)` {#import_meta_graph}
+
+Recreates a Graph saved in a `MetaGraphDef` proto.
+
+This function takes a `MetaGraphDef` protocol buffer as input. If
+the argument is a file containing a `MetaGraphDef` protocol buffer ,
+it constructs a protocol buffer from the file content. The function
+then adds all the nodes from the `graph_def` field to the
+current graph, recreates all the collections, and returns a saver
+constructed from the `saver_def` field.
+
+In combination with `export_meta_graph()`, this function can be used to
+
+* Serialize a graph along with other Python objects such as `QueueRunner`,
+  `Variable` into a `MetaGraphDef`.
+
+* Restart training from a saved graph and checkpoints.
+
+* Run inference from a saved graph and checkpoints.
+
+```Python
+...
+# Create a saver.
+saver = tf.train.Saver(...variables...)
+# Remember the training_op we want to run by adding it to a collection.
+tf.add_to_collection('train_op', train_op)
+sess = tf.Session()
+for step in xrange(1000000):
+    sess.run(train_op)
+    if step % 1000 == 0:
+        # Saves checkpoint, which by default also exports a meta_graph
+        # named 'my-model-global_step.meta'.
+        saver.save(sess, 'my-model', global_step=step)
+```
+
+Later we can continue training from this saved `meta_graph` without building
+the model from scratch.
+
+```Python
+with tf.Session() as sess:
+  new_saver = tf.train.import_meta_graph('my-save-dir/my-model-10000.meta')
+  new_saver.restore(sess, 'my-save-dir/my-model-10000')
+  # tf.get_collection() returns a list. In this example we only want the
+  # first one.
+  train_op = tf.get_collection('train_op')[0]
+  for step in xrange(1000000):
+    sess.run(train_op)
+```
+
+NOTE: Restarting training from saved `meta_graph` only works if the
+device assignments have not changed.
+
+##### Args:
+
+
+*  <b>`meta_graph_or_file`</b>: `MetaGraphDef` protocol buffer or filename (including
+    the path) containing a `MetaGraphDef`.
+
+##### Returns:
+
+  A saver constructed from `saver_def` in `MetaGraphDef` or None.
+
+  A None value is returned if no variables exist in the `MetaGraphDef`
+  (i.e., there are no variables to restore).
 
 

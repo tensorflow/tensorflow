@@ -28,25 +28,14 @@ Properties out:
 <dom-module id="tf-run-selector">
   <template>
     <div id="top-text">
-      <template is="dom-if" if="[[xValue]]">
-        <div class="x-tooltip tooltip-container">
-          <div class="x-tooltip-label">[[xType]]</div>
-          <div class="x-tooltip-value">[[xValue]]</div>
-        </div>
-      </template>
-      <template is="dom-if" if="[[!xValue]]">
-        <h3 id="tooltip-help" class="tooltip-container">
-          Runs
-        </h3>
-      </template>
+      <h3 id="tooltip-help" class="tooltip-container">
+        Runs
+      </h3>
     </div>
     <tf-multi-checkbox
       names="[[runs]]"
-      tooltips="[[tooltips]]"
-      highlights="[[_arrayify(closestRun)]]"
       out-selected="{{outSelected}}"
       class-scale="[[classScale]]"
-      hide-missing-tooltips
     ></tf-multi-checkbox>
     <paper-button
       class="x-button"
@@ -82,17 +71,6 @@ Properties out:
         margin-top: 5px;
         color: var(--tb-ui-dark-accent);
       }
-      .x-tooltip {
-        display: flex;
-        flex-direction: row;
-      }
-      .x-tooltip-label {
-        flex-grow: 1;
-        align-self: flex-start;
-      }
-      .x-tooltip-value {
-        align-self: flex-end;
-      }
       #tooltip-help {
         color: var(--paper-grey-800);
         margin: 0;
@@ -112,11 +90,7 @@ Properties out:
       outSelected: {type: Array, notify: true},
       // runs: an array of strings, representing the run names that may be chosen
       runs: Array,
-      tooltips: {type: Object, value: null}, // {[run: string]: string}
-      xValue: {type: String, value: null}, // the string representing run's x val
-      xType: String, // string: relative, stpe, wall_time
       classScale: Object, // map from run name to color class (css)
-      closestRun: {type: String, value: null}, // which run has a value closest to mouse coordinate
     },
     _toggleAll: function() {
       if (this.outSelected.length > 0) {
@@ -124,9 +98,6 @@ Properties out:
       } else {
         this.outSelected = this.runs.slice();
       }
-    },
-    _arrayify: function(item) {
-      return [item];
     },
   });
   </script>

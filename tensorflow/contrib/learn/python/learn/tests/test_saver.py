@@ -26,60 +26,63 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_s
 
 class SaverTest(tf.test.TestCase):
 
-    def testIris(self):
-        path = tf.test.get_temp_dir() + '/tmp.saver'
-        random.seed(42)
-        iris = datasets.load_iris()
-        classifier = learn.TensorFlowLinearClassifier(n_classes=3)
-        classifier.fit(iris.data, iris.target)
-        classifier.save(path)
-        new_classifier = learn.TensorFlowEstimator.restore(path)
-        self.assertEqual(type(new_classifier), type(classifier))
-        score = accuracy_score(iris.target, new_classifier.predict(iris.data))
-        self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+  def testIris(self):
+    path = tf.test.get_temp_dir() + '/tmp.saver'
+    random.seed(42)
+    iris = datasets.load_iris()
+    classifier = learn.TensorFlowLinearClassifier(n_classes=3)
+    classifier.fit(iris.data, iris.target)
+    classifier.save(path)
+    new_classifier = learn.TensorFlowEstimator.restore(path)
+    self.assertEqual(type(new_classifier), type(classifier))
+    score = accuracy_score(iris.target, new_classifier.predict(iris.data))
+    self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
-    def testCustomModel(self):
-        path = tf.test.get_temp_dir() + '/tmp.saver2'
-        random.seed(42)
-        iris = datasets.load_iris()
-        def custom_model(X, y):
-            return learn.models.logistic_regression(X, y)
-        classifier = learn.TensorFlowEstimator(model_fn=custom_model,
-            n_classes=3)
-        classifier.fit(iris.data, iris.target)
-        classifier.save(path)
-        new_classifier = learn.TensorFlowEstimator.restore(path)
-        self.assertEqual(type(new_classifier), type(classifier))
-        score = accuracy_score(iris.target, new_classifier.predict(iris.data))
-        self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
-    
-    def testDNN(self):
-        path = tf.test.get_temp_dir() + '/tmp_saver3'
-        random.seed(42)
-        iris = datasets.load_iris()
-        classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
-        classifier.fit(iris.data, iris.target)
-        classifier.save(path)
-        new_classifier = learn.TensorFlowEstimator.restore(path)
-        self.assertEqual(type(new_classifier), type(classifier))
-        score = accuracy_score(iris.target, new_classifier.predict(iris.data))
-        self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+  def testCustomModel(self):
+    path = tf.test.get_temp_dir() + '/tmp.saver2'
+    random.seed(42)
+    iris = datasets.load_iris()
 
-    def testNoFolder(self):
-        with self.assertRaises(ValueError):
-            learn.TensorFlowEstimator.restore('no_model_path')
+    def custom_model(X, y):
+      return learn.models.logistic_regression(X, y)
 
-    def testNoCheckpoints(self):
-        path = tf.test.get_temp_dir() + '/tmp/tmp.saver4'
-        random.seed(42)
-        iris = datasets.load_iris()
-        classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
-        classifier.fit(iris.data, iris.target)
-        classifier.save(path)
-        os.remove(os.path.join(path, 'checkpoint'))
-        with self.assertRaises(ValueError):
-            learn.TensorFlowEstimator.restore(path)
-        
+    classifier = learn.TensorFlowEstimator(model_fn=custom_model, n_classes=3)
+    classifier.fit(iris.data, iris.target)
+    classifier.save(path)
+    new_classifier = learn.TensorFlowEstimator.restore(path)
+    self.assertEqual(type(new_classifier), type(classifier))
+    score = accuracy_score(iris.target, new_classifier.predict(iris.data))
+    self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
-if __name__ == "__main__":
-    tf.test.main()
+  def testDNN(self):
+    path = tf.test.get_temp_dir() + '/tmp_saver3'
+    random.seed(42)
+    iris = datasets.load_iris()
+    classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+                                               n_classes=3)
+    classifier.fit(iris.data, iris.target)
+    classifier.save(path)
+    new_classifier = learn.TensorFlowEstimator.restore(path)
+    self.assertEqual(type(new_classifier), type(classifier))
+    score = accuracy_score(iris.target, new_classifier.predict(iris.data))
+    self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
+
+  def testNoFolder(self):
+    with self.assertRaises(ValueError):
+      learn.TensorFlowEstimator.restore('no_model_path')
+
+  def testNoCheckpoints(self):
+    path = tf.test.get_temp_dir() + '/tmp/tmp.saver4'
+    random.seed(42)
+    iris = datasets.load_iris()
+    classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+                                               n_classes=3)
+    classifier.fit(iris.data, iris.target)
+    classifier.save(path)
+    os.remove(os.path.join(path, 'checkpoint'))
+    with self.assertRaises(ValueError):
+      learn.TensorFlowEstimator.restore(path)
+
+
+if __name__ == '__main__':
+  tf.test.main()

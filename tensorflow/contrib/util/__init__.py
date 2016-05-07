@@ -20,6 +20,7 @@
 @@constant_value
 @@make_tensor_proto
 @@make_ndarray
+@ops_used_by_graph_def
 @@stripped_op_list_for_graph
 
 """
@@ -32,6 +33,7 @@ from __future__ import print_function
 from tensorflow.python.framework.tensor_util import constant_value
 from tensorflow.python.framework.tensor_util import make_tensor_proto
 from tensorflow.python.framework.tensor_util import MakeNdarray as make_ndarray
+from tensorflow.python.training.saver import ops_used_by_graph_def
 from tensorflow.python.training.saver import stripped_op_list_for_graph
 from tensorflow.python.util.all_util import make_all
 

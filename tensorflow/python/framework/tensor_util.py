@@ -182,7 +182,7 @@ def _FlattenToStrings(nested_strings):
 
 _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
-    dtypes.int8, dtypes.int64
+    dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint32,
 ])
 
 
@@ -350,12 +350,16 @@ def make_tensor_proto(values, dtype=None, shape=None):
                          """ - got shape %s, but wanted %s.""" % (
                              values, list(nparray.shape),
                              _GetDenseDimensions(values)))
+
     # python/numpy default float type is float64. We prefer float32 instead.
     if (nparray.dtype == np.float64) and dtype is None:
       nparray = nparray.astype(np.float32)
     # python/numpy default int type is int64. We prefer int32 instead.
     elif (nparray.dtype == np.int64) and dtype is None:
-      nparray = nparray.astype(np.int32)
+      downcasted_array = nparray.astype(np.int32)
+      # Do not down cast if it leads to precision loss.
+      if np.array_equal(downcasted_array, nparray):
+        nparray = downcasted_array
 
   # if dtype is provided, it must be compatible with what numpy
   # conversion says.

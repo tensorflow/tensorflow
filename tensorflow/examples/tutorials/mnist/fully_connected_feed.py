@@ -150,20 +150,24 @@ def run_training():
     # Build the summary operation based on the TF collection of Summaries.
     summary_op = tf.merge_all_summaries()
 
+    # Add the variable initializer Op.
+    init = tf.initialize_all_variables()
+
     # Create a saver for writing training checkpoints.
     saver = tf.train.Saver()
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
 
-    # Run the Op to initialize the variables.
-    init = tf.initialize_all_variables()
-    sess.run(init)
-
     # Instantiate a SummaryWriter to output summaries and the Graph.
     summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 
-    # And then after everything is built, start the training loop.
+    # And then after everything is built:
+
+    # Run the Op to initialize the variables.
+    sess.run(init)
+
+    # Start the training loop.
     for step in xrange(FLAGS.max_steps):
       start_time = time.time()
 

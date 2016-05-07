@@ -30,7 +30,6 @@ namespace tensorflow {
 using tensorforest::IsAllInitialized;
 
 
-// TODO(gilberth): Reinitialize candidate splits that were finished last round.
 REGISTER_OP("SampleInputs")
   .Attr("split_initializations_per_input: int32")
   .Attr("split_sampling_random_seed: int32")

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>
 
 #include "tensorflow/core/kernels/ops_util.h"
@@ -67,6 +68,33 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
   }
   if (*new_height < 0 || *new_width < 0) {
     return errors::InvalidArgument("computed output size would be negative");
+  }
+  return Status::OK();
+}
+
+Status Get3dOutputSize(const std::array<int64, 3>& input,
+                       const std::array<int64, 3>& window,
+                       const std::array<int64, 3>& strides,
+                       Padding padding_type, std::array<int64, 3>* output_ptr,
+                       std::array<int64, 3>* padding_ptr) {
+  auto& output = *output_ptr;
+  auto& padding = *padding_ptr;
+  switch (padding_type) {
+    case Padding::VALID:
+      for (size_t i = 0; i < input.size(); ++i) {
+        output[i] = (input[i] - window[i] + strides[i]) / strides[i];
+        padding[i] = 0;
+      }
+      break;
+    case Padding::SAME:
+      for (size_t i = 0; i < input.size(); ++i) {
+        output[i] = (input[i] + strides[i] - 1) / strides[i];
+        const int64 delta = (output[i] - 1) * strides[i] + window[i] - input[i];
+        // For odd values of total padding, add more padding at the 'right'
+        // side of the given dimension.
+        padding[i] = std::max(delta / 2, 0ll);
+      }
+      break;
   }
   return Status::OK();
 }

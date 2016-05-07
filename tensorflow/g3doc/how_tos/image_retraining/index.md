@@ -143,6 +143,8 @@ You should see a list of flower labels, in most cases with daisy on top
 `--image` parameter with your own images to try those out, and use the C++ code
 as a template to integrate with your own applications.
 
+If you'd like to use the retrained model in a Python program [this example from @eldor4do shows what you'll need to do](https://github.com/eldor4do/Tensorflow-Examples/blob/master/retraining-example.py).
+
 ## Training on Your Own Categories
 
 If you've managed to get the script working on the flower example images, you

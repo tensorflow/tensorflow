@@ -123,6 +123,9 @@ class ResourceMgr {
   // Deletes all resources in all containers.
   void Clear();
 
+  // Returns a text description for all resources.
+  string DebugString() const;
+
  private:
   typedef std::pair<TypeIndex, string> Key;
   struct KeyHash {

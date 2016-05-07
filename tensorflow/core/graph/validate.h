@@ -25,7 +25,7 @@ namespace graph {
 
 // Returns OK if every NodeDef in `graph_def` is valid with respect to
 // its corresponding OpDef (as defined by ValidateNodeDef()) as
-// registered in `op_registry`.
+// registered in `op_registry`.  Also checks for deprecated ops.
 //
 // REQUIRES:
 //  * `op_registry` is not nullptr.

@@ -42,7 +42,8 @@ struct XentFunctor<GPUDevice, T> {
 };
 }  // end namespace functor
 
-// Instantiate the GPU implementation for float.
+// Instantiate the GPU implementation for half and float.
+template struct functor::XentFunctor<GPUDevice, Eigen::half>;
 template struct functor::XentFunctor<GPUDevice, float>;
 
 }  // end namespace tensorflow

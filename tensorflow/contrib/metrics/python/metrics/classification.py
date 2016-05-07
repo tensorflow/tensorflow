@@ -22,6 +22,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 
+# TODO(nsilberman): move into metrics/python/ops/
+
 
 def accuracy(predictions, labels, weights=None):
   """Computes the percentage of times that predictions matches labels.

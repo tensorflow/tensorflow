@@ -26,21 +26,21 @@ from tensorflow.contrib.learn.python.learn import datasets
 
 class RegressionTest(tf.test.TestCase):
 
-    def testLinearRegression(self):
-        rng = np.random.RandomState(67)
-        N = 1000
-        n_weights = 10
-        self.bias = 2
-        self.X = rng.uniform(-1, 1, (N, n_weights))
-        self.weights = 10 * rng.randn(n_weights)
-        self.y = np.dot(self.X, self.weights)
-        self.y += rng.randn(len(self.X)) * 0.05 + rng.normal(self.bias, 0.01)
-        regressor = learn.TensorFlowLinearRegressor(optimizer="SGD")
-        regressor.fit(self.X, self.y)
-        # Have to flatten weights since they come in (X, 1) shape
-        self.assertAllClose(self.weights, regressor.weights_.flatten(), rtol=0.01)
-        assert abs(self.bias - regressor.bias_) < 0.1
+  def testLinearRegression(self):
+    rng = np.random.RandomState(67)
+    N = 1000
+    n_weights = 10
+    self.bias = 2
+    self.X = rng.uniform(-1, 1, (N, n_weights))
+    self.weights = 10 * rng.randn(n_weights)
+    self.y = np.dot(self.X, self.weights)
+    self.y += rng.randn(len(self.X)) * 0.05 + rng.normal(self.bias, 0.01)
+    regressor = learn.TensorFlowLinearRegressor(optimizer="SGD")
+    regressor.fit(self.X, self.y)
+    # Have to flatten weights since they come in (X, 1) shape
+    self.assertAllClose(self.weights, regressor.weights_.flatten(), rtol=0.01)
+    assert abs(self.bias - regressor.bias_) < 0.1
 
 
 if __name__ == "__main__":
-    tf.test.main()
+  tf.test.main()

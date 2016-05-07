@@ -90,8 +90,12 @@ Status RemoveNewDefaultAttrsFromGraphDef(
     const OpRegistryInterface& producer_op_registry,
     std::set<std::pair<string, string>>* op_attr_removed);
 
-// Collect the ops used by a graph.
+// Two functions that collect the ops used by a graph.
 //
+// This returns the ops used as a set of strings.
+void OpsUsedByGraph(const GraphDef& graph_def,
+                    std::set<string>* ops_used_in_graph);
+
 // This function computes the stripped_op_list field of MetaGraphDef
 // and similar protos.  The op_registry should contain the ops used to
 // produce graph_def.  The resulting stripped_op_list can be

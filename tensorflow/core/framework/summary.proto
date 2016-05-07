@@ -48,6 +48,19 @@ message Summary {
     bytes encoded_image_string = 4;
   }
 
+  message Audio {
+    // Sample rate of the audio in Hz.
+    float sample_rate = 1;
+    // Number of channels of audio.
+    int64 num_channels = 2;
+    // Length of the audio in frames (samples per channel).
+    int64 length_frames = 3;
+    // Encoded audio data and its associated RFC 2045 content type (e.g.
+    // "audio/wav").
+    bytes encoded_audio_string = 4;
+    string content_type = 5;
+  }
+
   message Value {
     // Tag name for the data.  Will be used as the title of the graph
     // in the visualizer.
@@ -62,6 +75,7 @@ message Summary {
       bytes obsolete_old_style_histogram = 3;
       Image image = 4;
       HistogramProto histo = 5;
+      Audio audio = 6;
     }
   }
 

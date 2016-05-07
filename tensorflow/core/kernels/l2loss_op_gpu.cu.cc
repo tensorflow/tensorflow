@@ -25,6 +25,7 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 template struct functor::L2Loss<GPUDevice, float>;
+template struct functor::L2Loss<GPUDevice, Eigen::half>;
 
 }  // namespace tensorflow
 

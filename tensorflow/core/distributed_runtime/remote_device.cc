@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/distributed_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/lib/core/errors.h"

@@ -3,11 +3,6 @@
 load("//google/protobuf:protobuf.bzl", "cc_proto_library")
 load("//google/protobuf:protobuf.bzl", "py_proto_library")
 
-# configure may change the following lines to '.X.Y' or similar
-CUDA_VERSION = ""
-
-CUDNN_VERSION = ""
-
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
   tf_deps = []
@@ -96,9 +91,3 @@ def tf_additional_test_srcs():
 
 def tf_kernel_tests_linkstatic():
   return 0
-
-def tf_get_cuda_version():
-  return CUDA_VERSION
-
-def tf_get_cudnn_version():
-  return CUDNN_VERSION

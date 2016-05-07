@@ -27,6 +27,8 @@ We support different ways to install TensorFlow:
    impact existing Python programs on your machine.
 *  [Docker install](#docker-installation): Run TensorFlow in a Docker container
    isolated from all other programs on your machine.
+*  [Installing from sources](#installing-from-sources): Install TensorFlow by
+   building a pip wheel that you then install using pip.
 
 If you are familiar with Pip, Virtualenv, Anaconda, or Docker, please feel free to adapt
 the instructions to your particular needs.  The names of the pip and Docker
@@ -57,11 +59,11 @@ $ sudo easy_install pip
 Install TensorFlow:
 
 ```bash
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 2.7:
 $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -72,11 +74,11 @@ $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/mac/tenso
 For python3:
 
 ```bash
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 3.4:
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -132,11 +134,11 @@ $ source ~/tensorflow/bin/activate  # If using bash
 $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 2.7:
 (tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 (tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -150,11 +152,11 @@ $ source ~/tensorflow/bin/activate  # If using bash
 $ source ~/tensorflow/bin/activate.csh  # If using csh
 (tensorflow)$  # Your prompt should change
 
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 3.4:
 (tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 (tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -223,11 +225,11 @@ Use the `--ignore-installed` flag to prevent errors about `easy_install`.
 $ source activate tensorflow
 (tensorflow)$  # Your prompt should change
 
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 2.7:
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -240,11 +242,11 @@ and again for Python 3:
 $ source activate tensorflow
 (tensorflow)$  # Your prompt should change
 
-# Ubuntu/Linux 64-bit, CPU only:
+# Ubuntu/Linux 64-bit, CPU only, Python 3.4:
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled. Requires CUDA toolkit 7.5 and CuDNN v4.  For
-# other versions, see "Install from sources" below.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
+# For other versions, see "Install from sources" below.
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0rc0-cp34-cp34m-linux_x86_64.whl
 
 # Mac OS X, CPU only:
@@ -435,7 +437,10 @@ binary path.
 #### Install other dependencies
 
 ```bash
-$ sudo apt-get install python-numpy swig python-dev
+# For Python 2.7:
+$ sudo apt-get install python-numpy swig python-dev python-wheel
+# For Python 3.x:
+$ sudo apt-get install python3-numpy swig python3-dev python3-wheel
 ```
 
 #### Configure the installation
@@ -504,6 +509,9 @@ Please specify the location of python. [Default is /usr/bin/python]:
 Do you wish to build TensorFlow with GPU support? [y/N] y
 GPU support will be enabled for TensorFlow
 
+Please specify which gcc nvcc should use as the host compiler. [Default is 
+/usr/bin/gcc]: /usr/bin/gcc-4.9
+
 Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave
 empty to use system default]: 7.5
 
@@ -526,6 +534,8 @@ Setting up Cuda include
 Setting up Cuda lib64
 Setting up Cuda bin
 Setting up Cuda nvvm
+Setting up CUPTI include
+Setting up CUPTI lib64
 Configuration finished
 ```
 
