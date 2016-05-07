@@ -22,8 +22,7 @@ import tarfile
 
 import numpy as np
 
-from tensorflow.python.platform.default import _gfile as gfile
-
+from tensorflow.python.platform import gfile
 from tensorflow.contrib.learn.python.learn.datasets import base
 
 DBPEDIA_URL = 'https://googledrive.com/host/0Bz8a_Dbh9Qhbfll6bVpmNUtUcFdjYmF2SEpmZUZUcVNiMUw1TWN6RDV3a0JHT3kxLVhVR2M/dbpedia_csv.tar.gz'

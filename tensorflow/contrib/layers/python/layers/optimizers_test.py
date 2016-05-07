@@ -63,6 +63,37 @@ class OptimizersTest(tf.test.TestCase):
                                             learning_rate=0.1,
                                             optimizer=optimizer)
 
+  def testGradientNoise(self):
+    tf.set_random_seed(42)
+    with self.test_session() as session:
+      x, var, loss, global_step = _setup_model()
+      train = tf.contrib.layers.optimize_loss(loss,
+                                              global_step,
+                                              learning_rate=0.1,
+                                              optimizer="SGD",
+                                              gradient_noise_scale=10.0)
+      tf.initialize_all_variables().run()
+      session.run(train, feed_dict={x: 5})
+      var_value, global_step_value = session.run([var, global_step])
+      self.assertAlmostEqual(var_value, 8.58150, 4)
+      self.assertEqual(global_step_value, 1)
+
+  def testGradientNoiseWithClipping(self):
+    tf.set_random_seed(42)
+    with self.test_session() as session:
+      x, var, loss, global_step = _setup_model()
+      train = tf.contrib.layers.optimize_loss(loss,
+                                              global_step,
+                                              learning_rate=0.1,
+                                              optimizer="SGD",
+                                              gradient_noise_scale=10.0,
+                                              clip_gradients=10.0)
+      tf.initialize_all_variables().run()
+      session.run(train, feed_dict={x: 5})
+      var_value, global_step_value = session.run([var, global_step])
+      self.assertAlmostEqual(var_value, 9.0, 4)
+      self.assertEqual(global_step_value, 1)
+
   def testGradientClip(self):
     with self.test_session() as session:
       x, var, loss, global_step = _setup_model()
@@ -75,6 +106,22 @@ class OptimizersTest(tf.test.TestCase):
       session.run(train, feed_dict={x: 5})
       var_value, global_step_value = session.run([var, global_step])
       self.assertAlmostEqual(var_value, 9.98999, 4)
+      self.assertEqual(global_step_value, 1)
+
+  def testGradientMultiply(self):
+    with self.test_session() as session:
+      x, var, loss, global_step = _setup_model()
+      train = tf.contrib.layers.optimize_loss(loss,
+                                              global_step,
+                                              learning_rate=0.1,
+                                              optimizer="SGD",
+                                              gradient_multipliers={var: 7.})
+      tf.initialize_all_variables().run()
+      session.run(train, feed_dict={x: 5})
+      var_value, global_step_value = session.run([var, global_step])
+      # var(0) = 10, x = 5, var(0)/dx = 5,
+      # var(1) = var(0) - learning_rate * gradient_multiplier * var(0)/dx
+      self.assertAlmostEqual(var_value, 6.5, 4)
       self.assertEqual(global_step_value, 1)
 
   def testIgnoreVariablesWithNoGradients(self):

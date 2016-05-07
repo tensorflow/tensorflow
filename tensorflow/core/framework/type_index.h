@@ -47,7 +47,7 @@ class TypeIndex {
   bool operator!=(const TypeIndex& rhs) const { return (hash_ != rhs.hash_); }
   ~TypeIndex() {}
 
-  string name() const { return "[RTTI disabled for Android]"; }
+  const char* name() const { return "[RTTI disabled for Android]"; }
   uint64 hash_code() const { return hash_; }
 
   // Returns a TypeIndex object that corresponds to a typename.

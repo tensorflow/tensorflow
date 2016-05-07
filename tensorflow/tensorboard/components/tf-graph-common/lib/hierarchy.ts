@@ -1,13 +1,13 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -90,9 +90,9 @@ class HierarchyImpl implements Hierarchy {
   getBridgegraph(nodeName: string): graphlib.Graph<GroupNode|OpNode, Metaedge> {
     let node = this.index[nodeName];
     if (!node) {
-      throw Error("Could not find node in hierarchy: " + nodeName);
+      throw Error('Could not find node in hierarchy: ' + nodeName);
     }
-    if (!("metagraph" in node)) {
+    if (!('metagraph' in node)) {
       return null;
     }
     let groupNode = <GroupNode> node;
@@ -101,8 +101,8 @@ class HierarchyImpl implements Hierarchy {
     }
     let bridgegraph = groupNode.bridgegraph =
         createGraph<GroupNode|OpNode, Metaedge>(
-            "BRIDGEGRAPH", GraphType.BRIDGE);
-    if (!node.parentNode || !("metagraph" in node.parentNode)) {
+            'BRIDGEGRAPH', GraphType.BRIDGE);
+    if (!node.parentNode || !('metagraph' in node.parentNode)) {
       return bridgegraph;
     }
 
@@ -127,7 +127,7 @@ class HierarchyImpl implements Hierarchy {
           _.each(parentMetaedge.baseEdgeList, baseEdge => {
 
             // Based on the direction, figure out which is the descendant node
-            // and which is the "other" node (sibling of parent or ancestor).
+            // and which is the 'other' node (sibling of parent or ancestor).
             let [descendantName, otherName] =
               inbound ?
                 [baseEdge.w, parentEdgeObj.v] :
@@ -175,8 +175,8 @@ class HierarchyImpl implements Hierarchy {
       }
       currentNode = currentNode.parentNode;
     }
-    throw Error("Could not find immediate child for descendant: " +
-        descendantName);
+    throw Error(
+        'Could not find immediate child for descendant: ' + descendantName);
   };
 
   /**
@@ -189,16 +189,16 @@ class HierarchyImpl implements Hierarchy {
    * shared ancestor is the ROOT node. A and Z are the highest siblings. Here
    * are the results of calling getPredecessors():
    *
-   *  - getPredecessors("Z/Y/X") === {regular: ["A/B/C"], control: []};
-   *  - getPredecessors("Z/Y") === {regular: ["A"], control: []};
-   *  - getPredecessors("Z") === {regular: ["A"], control: []};
+   *  - getPredecessors('Z/Y/X') === {regular: ['A/B/C'], control: []};
+   *  - getPredecessors('Z/Y') === {regular: ['A'], control: []};
+   *  - getPredecessors('Z') === {regular: ['A'], control: []};
    *
-   * The reason getPredecessors("Z/Y") returns ["A"] (and not ["A/B"] as you
+   * The reason getPredecessors('Z/Y') returns ['A'] (and not ['A/B'] as you
    * might intuitively expect) is because it's not clear how far down the
    * other end of the hierarchy to traverse in the general case.
    *
    * Continuing this example, say there was another BaseEdge A/K->Z/Y/W. When
-   * we look at Z/Y's predecessors, the best we can say is ["A"] without getting
+   * we look at Z/Y's predecessors, the best we can say is ['A'] without getting
    * into the details of which of Z/Y's descendant nodes have predecessors to
    * which of A's descendants.
    *
@@ -208,7 +208,7 @@ class HierarchyImpl implements Hierarchy {
   getPredecessors(nodeName: string): Edges {
     let node = this.index[nodeName];
     if (!node) {
-      throw Error("Could not find node with name: " + nodeName);
+      throw Error('Could not find node with name: ' + nodeName);
     }
 
     let predecessors = this.getOneWayEdges(node, true);
@@ -234,7 +234,7 @@ class HierarchyImpl implements Hierarchy {
   getSuccessors(nodeName: string): Edges {
     let node = this.index[nodeName];
     if (!node) {
-      throw Error("Could not find node with name: " + nodeName);
+      throw Error('Could not find node with name: ' + nodeName);
     }
 
     let successors = this.getOneWayEdges(node, false);
@@ -274,9 +274,9 @@ class HierarchyImpl implements Hierarchy {
    * interested in the ordering under ROOT. In this case, any of the following
    * would be legitimate return values:
    *
-   *  - { "A": 0, "B": 1, "C": 2 } -- most likely
-   *  - { "A": 0, "B": 2, "C": 1 } -- less likely
-   *  - { "A": 12, "B": 100, "C": 99 } -- unlikely, but still OK
+   *  - { 'A': 0, 'B': 1, 'C': 2 } -- most likely
+   *  - { 'A': 0, 'B': 2, 'C': 1 } -- less likely
+   *  - { 'A': 12, 'B': 100, 'C': 99 } -- unlikely, but still OK
    *
    * The algorithm does not guarantee that all numbers from 0-N (where N is
    * the number of nodes) appear exactly once. Rather it guarantees that if
@@ -292,7 +292,7 @@ class HierarchyImpl implements Hierarchy {
   getTopologicalOrdering(nodeName: string): { [childName: string]: number } {
     let node = this.index[nodeName];
     if (!node) {
-      throw Error("Could not find node with name: " + nodeName);
+      throw Error('Could not find node with name: ' + nodeName);
     }
     if (!node.isGroupNode) {
       return null;
@@ -400,38 +400,40 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
     tracker: ProgressTracker): Promise<Hierarchy|void> {
   let h = new HierarchyImpl();
   let seriesNames: { [name: string]: string } = {};
-  return runAsyncTask("Adding nodes", 20, () => {
-    // Get all the possible device names.
-    let deviceNames = {};
-    _.each(graph.nodes, (node, nodeName) => {
-      if (node.device != null) {
-        deviceNames[node.device] = true;
-      }
-    });
-    h.devices = _.keys(deviceNames);
-    addNodes(h, graph);
-  }, tracker)
-  .then(() => {
-    return runAsyncTask("Detect series", 20, () => {
-      if (params.seriesNodeMinSize > 0) {
-        groupSeries(h.root, h, seriesNames, params.seriesNodeMinSize,
-          params.seriesMap);
-      }
-    }, tracker);
-  })
-  .then(() => {
-    return runAsyncTask("Adding edges", 30, () => {
-      addEdges(h, graph, seriesNames);
-    }, tracker);
-  })
-  .then(() => {
-    return runAsyncTask("Finding similar subgraphs", 30, () => {
-      h.templates = template.detect(h, params.verifyTemplate);
-    }, tracker);
-  })
-  .then(() => {
-    return h;
-  });
+  return runAsyncTask(
+             'Adding nodes', 20,
+             () => {
+               // Get all the possible device names.
+               let deviceNames = {};
+               _.each(graph.nodes, (node, nodeName) => {
+                 if (node.device != null) {
+                   deviceNames[node.device] = true;
+                 }
+               });
+               h.devices = _.keys(deviceNames);
+               addNodes(h, graph);
+             },
+             tracker)
+      .then(() => {
+        return runAsyncTask('Detect series', 20, () => {
+          if (params.seriesNodeMinSize > 0) {
+            groupSeries(
+                h.root, h, seriesNames, params.seriesNodeMinSize,
+                params.seriesMap);
+          }
+        }, tracker);
+      })
+      .then(() => {
+        return runAsyncTask('Adding edges', 30, () => {
+          addEdges(h, graph, seriesNames);
+        }, tracker);
+      })
+      .then(() => {
+        return runAsyncTask('Finding similar subgraphs', 30, () => {
+          h.templates = template.detect(h, params.verifyTemplate);
+        }, tracker);
+      })
+      .then(() => { return h; });
 };
 
 export function joinAndAggregateStats(h: Hierarchy, stats: StepStats) {
@@ -570,8 +572,8 @@ function addEdges(h: Hierarchy, graph: SlimGraph,
         // This would only occur if the two nodes were the same (a cycle in the
         // graph), or if one endpoint was a strict ancestor of the other. The
         // latter shouldn't happen because we rename nodes which are both
-        // metanodes and op nodes. E.g. "A/B" becomes "A/B/(B)".
-        throw Error("No difference found between ancestor paths.");
+        // metanodes and op nodes. E.g. 'A/B' becomes 'A/B/(B)'.
+        throw Error('No difference found between ancestor paths.');
       }
     }
 
@@ -690,7 +692,7 @@ function clusterNodes(metagraph: graphlib.Graph<GroupNode|OpNode, Metaedge>):
 
 /**
  * For each cluster of op-nodes based op type, try to detect groupings.
- * Infer series name using by trying to find pattern "<number>" in the node
+ * Infer series name using by trying to find pattern '<number>' in the node
  * name.
  *
  * @param clusters Dictionary output from clusterNodes().
@@ -714,22 +716,22 @@ function detectSeries(clusters: {[clusterId: string]: string[]},
     // number at the end of the name after an underscore, which is allowed to
     // vary.
     _.each(members, function(name: string) {
-      let isGroup = name.charAt(name.length - 1) === "*";
-      let namepath = name.split("/");
+      let isGroup = name.charAt(name.length - 1) === '*';
+      let namepath = name.split('/');
       let leaf = namepath[namepath.length - 1];
-      let parent = namepath.slice(0, namepath.length - 1).join("/");
+      let parent = namepath.slice(0, namepath.length - 1).join('/');
       let matches = leaf.match(/^(\D*)_(\d+)$/);
 
       let prefix;
       let id;
-      let suffix = "";
-      if (matches) { // if found "<number>" in the name, assign id.
+      let suffix = '';
+      if (matches) {         // if found '<number>' in the name, assign id.
         prefix = matches[1]; // the front non-numeric characters
         id = matches[2]; // the digits
-      } else { // for node without "_<number>", make them zero-th items.
+      } else {  // for node without '_<number>', make them zero-th items.
         prefix = isGroup ? leaf.substr(0, leaf.length - 1) : leaf;
         id = 0;
-        suffix = isGroup ? "*" : "";
+        suffix = isGroup ? '*' : '';
       }
       let seriesName = getSeriesNodeName(prefix, suffix, parent);
       candidatesDict[seriesName] = candidatesDict[seriesName] || [];

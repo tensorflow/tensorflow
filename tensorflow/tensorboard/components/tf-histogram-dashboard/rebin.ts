@@ -1,13 +1,15 @@
 module TF.Histogram {
-
- /**
-  * Re-bins histogram data into uniform-width bins. Assumes a uniform distribution of values in given bins.
-  *
-  * @param {HistogramBin[]} bins - The original histogram data,
-  * @param {number} numberOfBins - The number of uniform-width bins to split the data into.
-  * @return {HistogramBin[]} - Re-binned histogram data. Does not modify original data, returns a new array.
-  */
-  export function rebinHistogram(bins: TF.Backend.HistogramBin[], numberOfBins: number) {
+  /**
+   * Re-bins histogram data into uniform-width bins. Assumes a uniform
+   * distribution of values in given bins.
+   *
+   * @param bins - Original histogram data.
+   * @param numberOfBins Number of uniform-width bins to split the data into.
+   * @return Re-binned histogram data. Does not modify original data,
+   *      returns a new array.
+   */
+  export function rebinHistogram(
+      bins: TF.Backend.HistogramBin[], numberOfBins: number) {
     if (bins.length === 0) {
       return [];
     }

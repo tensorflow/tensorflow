@@ -24,39 +24,39 @@ from tensorflow.contrib.learn.python.learn.preprocessing import categorical_voca
 
 class CategoricalVocabularyTest(tf.test.TestCase):
 
-    def testIntVocabulary(self):
-        vocab = categorical_vocabulary.CategoricalVocabulary()
-        self.assertEqual(vocab.get(1), 1)
-        self.assertEqual(vocab.get(3), 2)
-        self.assertEqual(vocab.get(2), 3)
-        self.assertEqual(vocab.get(3), 2)
-        # This vocab doesn't handle nan specially.
-        self.assertEqual(vocab.get(float('nan')), 4)
-        self.assertEqual(len(vocab), 5)
+  def testIntVocabulary(self):
+    vocab = categorical_vocabulary.CategoricalVocabulary()
+    self.assertEqual(vocab.get(1), 1)
+    self.assertEqual(vocab.get(3), 2)
+    self.assertEqual(vocab.get(2), 3)
+    self.assertEqual(vocab.get(3), 2)
+    # This vocab doesn't handle nan specially.
+    self.assertEqual(vocab.get(float('nan')), 4)
+    self.assertEqual(len(vocab), 5)
 
-    def testWordVocabulary(self):
-        vocab = categorical_vocabulary.CategoricalVocabulary()
-        self.assertEqual(vocab.get('a'), 1)
-        self.assertEqual(vocab.get('b'), 2)
-        self.assertEqual(vocab.get('a'), 1)
-        self.assertEqual(vocab.get('b'), 2)
+  def testWordVocabulary(self):
+    vocab = categorical_vocabulary.CategoricalVocabulary()
+    self.assertEqual(vocab.get('a'), 1)
+    self.assertEqual(vocab.get('b'), 2)
+    self.assertEqual(vocab.get('a'), 1)
+    self.assertEqual(vocab.get('b'), 2)
 
-    def testCountsTrim(self):
-        vocab = categorical_vocabulary.CategoricalVocabulary()
-        vocab.get('c')
-        vocab.add('c', 5)
-        vocab.get('a')
-        vocab.add('a', 10)
-       # not in vocab yet, skips.
-        vocab.add('b', 5)
-        vocab.add('d', 12)
-        vocab.trim(7, 11)
-        vocab.freeze()
-        self.assertEqual(vocab.get('b'), 0)
-        self.assertEqual(vocab.get('c'), 0)
-        self.assertEqual(len(vocab), 2)
-        self.assertEqual(vocab.get('a'), 1)
+  def testCountsTrim(self):
+    vocab = categorical_vocabulary.CategoricalVocabulary()
+    vocab.get('c')
+    vocab.add('c', 5)
+    vocab.get('a')
+    vocab.add('a', 10)
+    # not in vocab yet, skips.
+    vocab.add('b', 5)
+    vocab.add('d', 12)
+    vocab.trim(7, 11)
+    vocab.freeze()
+    self.assertEqual(vocab.get('b'), 0)
+    self.assertEqual(vocab.get('c'), 0)
+    self.assertEqual(len(vocab), 2)
+    self.assertEqual(vocab.get('a'), 1)
 
 
-if __name__ == "__main__":
-    tf.test.main()
+if __name__ == '__main__':
+  tf.test.main()

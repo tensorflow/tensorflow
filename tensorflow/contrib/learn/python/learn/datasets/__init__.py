@@ -44,15 +44,14 @@ DATASETS = {
 
 
 def load_dataset(name):
-    """Loads dataset by name.
-    
-    Args:
-        name: Name of the dataset to load.
-    
-    Returns:
-        Features and targets for given dataset. Can be numpy or iterator.
-    """
-    if name not in DATASETS:
-        raise ValueError("Name of dataset is not found: %s" % name)
-    return DATASETS[name]()
-        
+  """Loads dataset by name.
+
+  Args:
+    name: Name of the dataset to load.
+
+  Returns:
+    Features and targets for given dataset. Can be numpy or iterator.
+  """
+  if name not in DATASETS:
+    raise ValueError('Name of dataset is not found: %s' % name)
+  return DATASETS[name]()

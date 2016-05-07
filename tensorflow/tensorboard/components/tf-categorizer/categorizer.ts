@@ -1,13 +1,13 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -15,11 +15,11 @@ limitations under the License.
 
 module Categorizer {
   /**
-   * This module contains methods that allow sorting tags into "categories".
+   * This module contains methods that allow sorting tags into 'categories'.
    * A category contains a name and a list of tags.
-   * The sorting strategy is defined by a "CustomCategorization", which contains
-   * "categoryDefinitions" which are regex rules used to construct a category.
-   * E.g. the regex rule "xent" will create a category called "xent" that
+   * The sorting strategy is defined by a 'CustomCategorization', which contains
+   * 'categoryDefinitions' which are regex rules used to construct a category.
+   * E.g. the regex rule 'xent' will create a category called 'xent' that
    * contains values whose tags match the regex.
    *
    * After custom categories are evaluated, the tags are sorted by a hardcoded
@@ -37,8 +37,8 @@ module Categorizer {
     // Defines a categorization strategy
     categoryDefinitions: string[];
     fallbackCategorizer: string;
-    /* {"TopLevelNamespaceCategorizer",
-        "LegacyUnderscoreCategorizer"} */
+    /* {'TopLevelNamespaceCategorizer',
+        'LegacyUnderscoreCategorizer'} */
   }
 
   export interface Categorizer {
@@ -55,25 +55,28 @@ module Categorizer {
   // are namespaced like l1_foo/bar or l2_baz/bam.
   // If there is no leading underscore before the first forward slash,
   // then it behaves the same as topLevelNamespaceCategorizer
-  export var legacyUnderscoreCategorizer: Categorizer = splitCategorizer(/[\/_]/);
+  export var legacyUnderscoreCategorizer: Categorizer =
+      splitCategorizer(/[\/_]/);
 
   export function fallbackCategorizer(s: string): Categorizer {
     switch (s) {
-      case "TopLevelNamespaceCategorizer":
+      case 'TopLevelNamespaceCategorizer':
         return topLevelNamespaceCategorizer;
-      case "LegacyUnderscoreCategorizer":
+      case 'LegacyUnderscoreCategorizer':
         return legacyUnderscoreCategorizer;
       default:
-        throw new Error("Unrecognized categorization strategy: " + s);
+        throw new Error('Unrecognized categorization strategy: ' + s);
     }
   }
 
-  /* An "extractor" is a function that takes a tag name, and "extracts" a category name.
+  /* An 'extractor' is a function that takes a tag name, and 'extracts' a
+   * category name.
    * This function takes an extractor, and produces a categorizer.
    * Currently, it is just used for the fallbackCategorizer, but we may want to
    * refactor the general categorization logic to use the concept of extractors.
    */
-  function extractorToCategorizer(extractor: (s: string) => string): Categorizer {
+  function extractorToCategorizer(extractor: (s: string) => string):
+      Categorizer {
     return (tags: string[]): Category[] => {
       if (tags.length === 0) {
         return [];
@@ -120,7 +123,8 @@ module Categorizer {
     return { name: ruledef, matches: f };
   }
 
-  export function _categorizer(rules: CategoryDefinition[], fallback: Categorizer) {
+  export function _categorizer(
+      rules: CategoryDefinition[], fallback: Categorizer) {
     return function(tags: string[]): Category[] {
       var remaining: d3.Set = d3.set(tags);
       var userSpecified = rules.map((def: CategoryDefinition) => {

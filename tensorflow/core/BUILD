@@ -53,9 +53,12 @@ load(
     "tf_cuda_library",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
+    "tf_genrule_cmd_append_to_srcs",
     "tf_proto_text_protos_relative",
     "cc_header_only_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # For platform specific build config
 load(
@@ -90,7 +93,7 @@ tf_proto_library(
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
-    py_api_version = 2,
+    py_api_version = 0,
     visibility = ["//visibility:public"],
 )
 
@@ -282,6 +285,7 @@ tf_cuda_library(
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/events_writer.h",
+        "util/example_proto_helper.h",
         "util/guarded_philox_random.h",
         "util/memmapped_file_system.h",
         "util/memmapped_file_system_writer.h",
@@ -592,6 +596,7 @@ filegroup(
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "common_runtime/gpu/gpu_tracer.cc",
+        "common_runtime/gpu/gpu_tracer.h",
     ] + glob(
         [
             "client/**/*.cc",
@@ -603,8 +608,6 @@ filegroup(
             "graph/**/*.cc",
             "lib/**/*.h",
             "lib/**/*.cc",
-            "platform/*.h",
-            "platform/*.cc",
             "platform/**/*.h",
             "platform/**/*.cc",
             "public/**/*.h",
@@ -616,41 +619,21 @@ filegroup(
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
-            "lib/jpeg/*.h",
-            "lib/jpeg/*.cc",
-            "lib/png/*.h",
-            "lib/png/*.cc",
-            "util/events_writer.cc",
-            "util/events_writer.h",
-            # Exclude all protobuf/google headers except protobuf_android.h
-            "platform/google/cord_coding.h",
-            "platform/google/dynamic_annotations.h",
-            "platform/google/integral_types.h",
-            "platform/google/mutex.h",
-            "platform/google/protobuf.h",
-            "platform/google/stream_executor.h",
-            "platform/google/tracing_impl.h",
-            "platform/google/*.cc",
-            "platform/google/test_benchmark.cc",
-            "platform/google/test_benchmark.h",
+            "lib/jpeg/**/*",
+            "lib/png/**/*",
+            "util/events_writer.*",
+            "platform/default/stream_executor.*",
+            "platform/cuda.h",
+            "platform/google/**/*",
+            "platform/jpeg.*",
+            "platform/stream_executor.*",
             "user_ops/**/*.cu.cc",
-            "common_runtime/gpu/*.cc",
-            "common_runtime/gpu_device_factory.cc",
+            "common_runtime/gpu/**/*",
+            "common_runtime/gpu_device_factory.*",
         ],
     ),
     visibility = ["//visibility:public"],
 )
-
-ANDROID_TF_LITE_HDRS = [
-    "framework/tensor.h",
-    "platform/default/integral_types.h",
-    "platform/env.h",
-    "platform/file_system.h",
-    "platform/logging.h",
-    "platform/platform.h",
-    "platform/types.h",
-    "public/session.h",
-] + proto_text_hdrs_and_srcs.hdrs
 
 # Native library support for Android applications.
 # Does not contain operators, use :android_tensorflow_lib if you want full
@@ -663,6 +646,9 @@ ANDROID_TF_LITE_HDRS = [
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
+#
+# Layering checks are explicitly disabled since hdrs are not used to
+# verify Android builds, which leads to incorrect and misleading header lists.
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs =
@@ -672,8 +658,8 @@ cc_library(
             ],
             "//conditions:default": [],
         }),
-    hdrs = ANDROID_TF_LITE_HDRS,
     copts = tf_copts() + ["-Os"],
+    features = ["-layering_check"],
     tags = [
         "manual",
         "notap",
@@ -698,6 +684,7 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = tf_copts(),
+    features = ["-layering_check"],
     tags = [
         "manual",
         "notap",
@@ -785,6 +772,7 @@ cc_library(
         "lib/gtl/edit_distance.h",
         "lib/gtl/int_type.h",
         "lib/gtl/iterator_range.h",
+        "lib/gtl/manual_constructor.h",
         "lib/gtl/top_n.h",
         "lib/io/iterator.h",
         "lib/io/match.h",
@@ -797,6 +785,8 @@ cc_library(
         "lib/strings/proto_text_util.h",
         "lib/strings/regexp.h",
         "lib/strings/scanner.h",
+        "lib/wav/wav_io.h",
+        "platform/demangle.h",
         "platform/denormal.h",
         "platform/platform.h",
         "platform/tensor_coding.h",
@@ -1225,6 +1215,7 @@ tf_cc_tests(
             "common_runtime/gpu/*_test.cc",
             # Run by tests below
             "common_runtime/constant_folding_test.cc",
+            "common_runtime/memory_types_test.cc",
             "common_runtime/direct_session*_test.cc",
             "common_runtime/function_test.cc",
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
@@ -1256,7 +1247,7 @@ tf_cc_tests(
 )
 
 # GPU-related tests
-tf_cc_tests(
+tf_cc_tests_gpu(
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
@@ -1287,6 +1278,31 @@ tf_cc_tests(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cc_test_gpu(
+    name = "common_runtime/memory_types_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cast_op",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1410,7 +1426,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_allocator_retry_test.cc",
     size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1432,7 +1448,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_stream_util_test.cc",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1525,22 +1541,14 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:bcast_ops",
-        "//tensorflow/core/kernels:cast_op",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:dynamic_stitch_op",
-        "//tensorflow/core/kernels:identity_op",
-        "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels:reduction_ops",
-        "//tensorflow/core/kernels:reshape_op",
-        "//tensorflow/core/kernels:sequence_ops",
-        "//tensorflow/core/kernels:shape_ops",
-        "//tensorflow/core/kernels:tile_ops",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:data_flow",
+        "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_tracer_test",
     size = "small",
     args = ["--heap_check=local"],

@@ -38,8 +38,7 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
     self.non_fertile_leaf_scores = [10., 15.]
     self.end_of_tree = [5]
     self.node_map = [-1, -1, 0, -1, -1, -1, -1]
-    self.candidate_counts = [[[10., 20.], [30., 10.]]]
-    self.total_counts = [[40., 40.]]
+    self.total_counts = [[80., 40., 40.]]
     self.ops = training_ops.Load()
 
   def testSimple(self):
@@ -47,7 +46,7 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
       (node_map_updates, accumulators_cleared, accumulators_allocated,
        new_nfl, new_nfl_scores) = self.ops.update_fertile_slots(
            self.finished, self.non_fertile_leaves, self.non_fertile_leaf_scores,
-           self.end_of_tree, self.depths, self.candidate_counts,
+           self.end_of_tree, self.depths,
            self.total_counts, self.node_map, max_depth=4)
 
       self.assertAllEqual([[2, 4], [-1, 0]], node_map_updates.eval())
@@ -61,7 +60,7 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
       (node_map_updates, accumulators_cleared, accumulators_allocated,
        new_nfl, new_nfl_scores) = self.ops.update_fertile_slots(
            self.finished, self.non_fertile_leaves, self.non_fertile_leaf_scores,
-           self.end_of_tree, self.depths, self.candidate_counts,
+           self.end_of_tree, self.depths,
            self.total_counts, self.node_map, max_depth=3)
 
       self.assertAllEqual([[2], [-1]], node_map_updates.eval())
@@ -75,7 +74,7 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
       (node_map_updates, accumulators_cleared, accumulators_allocated,
        new_nfl, new_nfl_scores) = self.ops.update_fertile_slots(
            [], self.non_fertile_leaves, self.non_fertile_leaf_scores,
-           self.end_of_tree, self.depths, self.candidate_counts,
+           self.end_of_tree, self.depths,
            self.total_counts, self.node_map, max_depth=4)
 
       self.assertAllEqual((2, 0), node_map_updates.eval().shape)
@@ -93,8 +92,7 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
         (node_map_updates, _, _, _, _) = self.ops.update_fertile_slots(
             self.finished, self.non_fertile_leaves,
             self.non_fertile_leaf_scores, self.end_of_tree, self.depths,
-            self.candidate_counts, self.total_counts,
-            self.node_map, max_depth=4)
+            self.total_counts, self.node_map, max_depth=4)
         self.assertAllEqual((2, 0), node_map_updates.eval().shape)
 
 

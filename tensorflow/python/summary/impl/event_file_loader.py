@@ -21,8 +21,8 @@ from __future__ import print_function
 from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.platform import app
-from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 

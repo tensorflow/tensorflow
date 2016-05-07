@@ -52,7 +52,7 @@ class BiasOp<CPUDevice, T> : public BinaryOp<T> {
       data_format_ = FORMAT_NHWC;
     }
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument("CPU BiasOp only suuports NHWC."));
+                errors::InvalidArgument("CPU BiasOp only supports NHWC."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -167,7 +167,7 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
       data_format_ = FORMAT_NHWC;
     }
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument("CPU BiasGradOp only suuports NHWC."));
+                errors::InvalidArgument("CPU BiasGradOp only supports NHWC."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -189,18 +189,15 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
     Tensor* output = nullptr;
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    int32 total_count = static_cast<int32>(output_backprop.NumElements());
-    int32 bias_size = channel;
-    const T* output_backprop_data = output_backprop.template flat<T>().data();
-    T* output_data = output->template flat<T>().data();
-    memset(output_data, 0, sizeof(T) * bias_size);
-    int32 bias_index = 0;
-    for (int32 i = 0; i < total_count; i++) {
-      output_data[bias_index++] += output_backprop_data[i];
-      if (bias_index >= bias_size) {
-        bias_index = 0;
-      }
-    }
+
+    Eigen::DSizes<int, 2> two_dims(batch * height * width, channel);
+#ifdef EIGEN_HAS_INDEX_LIST
+    Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
+#else
+    Eigen::array<int, 1> reduction_axis = {0};
+#endif
+    output->template flat<T>().device(context->eigen_device<CPUDevice>()) =
+        output_backprop.flat<T>().reshape(two_dims).sum(reduction_axis);
   }
 
  private:

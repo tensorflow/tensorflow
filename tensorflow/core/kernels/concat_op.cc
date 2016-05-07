@@ -124,9 +124,9 @@ class ConcatOp : public OpKernel {
         // Hence, we keep int32 indexing in the GPU kernel unless we need to
         // switch to int64.
         if (output->NumElements() < std::numeric_limits<int32>::max()) {
-          ConcatGPU64<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
-        } else {
           ConcatGPU32<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
+        } else {
+          ConcatGPU64<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
         }
       } else {
         ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
@@ -145,6 +145,8 @@ class ConcatOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
+REGISTER_CONCAT(quint16);
+REGISTER_CONCAT(qint16);
 REGISTER_CONCAT(qint32);
 REGISTER_CONCAT(bfloat16);
 

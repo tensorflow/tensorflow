@@ -10,9 +10,9 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 
@@ -39,7 +39,7 @@ py_library(
 
 py_library(
     name = "platform",
-    srcs = glob(["platform/**/*.py"]),
+    srcs = glob(["platform/*.py"]),
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/core:protos_all_py"],
 )
@@ -47,7 +47,6 @@ py_library(
 py_library(
     name = "platform_test",
     srcs = [
-        "platform/default/_googletest.py",
         "platform/googletest.py",
     ],
     srcs_version = "PY2AND3",
@@ -58,25 +57,27 @@ py_library(
 )
 
 py_tests(
-    name = "default_platform_tests",
+    name = "platform_tests",
     size = "small",
-    srcs = glob(["platform/default/*_test.py"]),
+    srcs = glob(["platform/*_test.py"]),
     additional_deps = [
         ":platform",
         ":platform_test",
     ],
-    prefix = "default_platform",
 )
 
-py_tests(
-    name = "google_platform_tests",
-    size = "small",
-    srcs = glob(["platform/google/*_test.py"]),
-    additional_deps = [
-        ":platform",
-        ":platform_test",
+cc_library(
+    name = "numpy_lib",
+    srcs = ["lib/core/numpy.cc"],
+    hdrs = [
+        "lib/core/numpy.h",
     ],
-    prefix = "google_platform",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/py/numpy:headers",
+        "//util/python:python_headers",
+    ],
 )
 
 cc_library(
@@ -86,6 +87,7 @@ cc_library(
         "lib/core/py_func.h",
     ],
     deps = [
+        ":numpy_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:script_ops_op_lib",
@@ -226,10 +228,13 @@ py_library(
         "ops/common_shapes.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":framework_for_generated_wrappers"],
+    deps = [
+        ":framework_for_generated_wrappers",
+        ":pywrap_tensorflow",
+    ],
 )
 
-# subinclude("//third_party/py/cython:build_defs")
+# load("//third_party/py/cython:build_defs.bzl", "pyx_library")
 
 py_library(
     name = "extra_py_tests_deps",
@@ -488,6 +493,7 @@ tf_gen_op_wrapper_py(
         "EditDistance",
         "MirrorPad",
         "MirrorPadGrad",
+        "OneHot",
         "Pack",
         "Pad",
         "Placeholder",
@@ -639,6 +645,7 @@ tf_gen_op_wrapper_py(
     name = "logging_ops",
     hidden = [
         "Assert",
+        "AudioSummary",
         "HistogramAccumulatorSummary",
         "HistogramSummary",
         "ImageSummary",
@@ -904,7 +911,7 @@ py_library(
     deps = ["//google/protobuf:protobuf_python"],
 )
 
-tf_proto_library_py(
+tf_proto_library(
     name = "protos_all",
     srcs = glob(
         ["**/*.proto"],
@@ -912,6 +919,7 @@ tf_proto_library_py(
             "util/protobuf/compare_test.proto",
         ],
     ),
+    go_api_version = 2,
 )
 
 tf_proto_library_py(
@@ -973,6 +981,7 @@ tf_cuda_library(
     hdrs = ["client/tf_session_helper.h"],
     deps = [
         ":construction_fails_op",
+        ":numpy_lib",
         ":test_ops_kernels",
         "//tensorflow/core",
         "//tensorflow/core:all_kernels",
@@ -1017,6 +1026,7 @@ tf_py_wrap_cc(
         "util/py_checkpoint_reader.i",
     ],
     deps = [
+        ":numpy_lib",
         ":py_checkpoint_reader",
         ":py_func_lib",
         ":py_record_reader_lib",
@@ -1142,6 +1152,7 @@ sharded_kernel_test_list = glob([
     "kernel_tests/cwise_ops_test.py",
     "kernel_tests/embedding_ops_test.py",
     "kernel_tests/linalg_grad_test.py",
+    "kernel_tests/conv_ops_3d_test.py",
 ])
 
 cpu_only_kernel_test_list = glob([
@@ -1170,6 +1181,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/matrix_solve_op_test.py",
     "kernel_tests/matrix_triangular_solve_op_test.py",
     "kernel_tests/matrix_solve_ls_op_test.py",
+    "kernel_tests/multinomial_op_test.py",
     "kernel_tests/mutex_ops_test.py",
     "kernel_tests/parsing_ops_test.py",
     "kernel_tests/partitioned_variables_test.py",
@@ -1288,6 +1300,7 @@ cuda_py_test(
     additional_deps = [
         ":training",
     ],
+    main = "training/session_manager_test.py",
 )
 
 py_test(
@@ -1379,4 +1392,5 @@ cuda_py_test(
     srcs = [
         "ops/batch_norm_benchmark.py",
     ],
+    main = "ops/batch_norm_benchmark.py",
 )

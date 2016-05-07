@@ -22,6 +22,7 @@ import numpy as np
 import tensorflow as tf
 
 
+# TODO(b/28426988): Add separate tests for non-legacy versions.
 class FullyConnectedTest(tf.test.TestCase):
 
   def setUp(self):
@@ -41,8 +42,9 @@ class FullyConnectedTest(tf.test.TestCase):
     assert not tf.get_collection(tf.GraphKeys.SUMMARIES)
 
   def _fully_connected_basic_use(self, x, num_output_units, expected_shape):
-    output = tf.contrib.layers.fully_connected(x, num_output_units,
-                                               activation_fn=tf.nn.relu)
+    output = tf.contrib.layers.legacy_fully_connected(x,
+                                                      num_output_units,
+                                                      activation_fn=tf.nn.relu)
 
     with tf.Session() as sess:
       with self.assertRaises(tf.errors.FailedPreconditionError):
@@ -71,7 +73,7 @@ class FullyConnectedTest(tf.test.TestCase):
           self.input_3_dim, last_dim, [2, 4, last_dim])
 
   def test_relu_layer_basic_use(self):
-    output = tf.contrib.layers.relu(self.input, 8)
+    output = tf.contrib.layers.legacy_relu(self.input, 8)
 
     with tf.Session() as sess:
       with self.assertRaises(tf.errors.FailedPreconditionError):
@@ -90,7 +92,7 @@ class FullyConnectedTest(tf.test.TestCase):
                      len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
 
   def test_relu6_layer_basic_use(self):
-    output = tf.contrib.layers.relu6(self.input, 8)
+    output = tf.contrib.layers.legacy_relu6(self.input, 8)
 
     with tf.Session() as sess:
       with self.assertRaises(tf.errors.FailedPreconditionError):
@@ -112,11 +114,11 @@ class FullyConnectedTest(tf.test.TestCase):
 
   def test_variable_reuse_with_scope(self):
     with tf.variable_scope('test') as vs:
-      output1 = tf.contrib.layers.relu(self.input, 8)
-      output2 = tf.contrib.layers.relu(self.input, 8)
+      output1 = tf.contrib.layers.legacy_relu(self.input, 8)
+      output2 = tf.contrib.layers.legacy_relu(self.input, 8)
 
     with tf.variable_scope(vs, reuse=True):
-      output3 = tf.contrib.layers.relu(self.input, 8)
+      output3 = tf.contrib.layers.legacy_relu(self.input, 8)
 
     with tf.Session() as sess:
       tf.initialize_all_variables().run()
@@ -127,7 +129,7 @@ class FullyConnectedTest(tf.test.TestCase):
 
   def test_variable_reuse_with_template(self):
     tmpl1 = tf.make_template('test',
-                             tf.contrib.layers.fully_connected,
+                             tf.contrib.layers.legacy_fully_connected,
                              num_output_units=8)
     output1 = tmpl1(self.input)
     output2 = tmpl1(self.input)
@@ -138,9 +140,11 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertAllClose(out_value1, out_value2)
 
   def _custom_initializers(self, x, num_output_units, expected_outputs):
-    output = tf.contrib.layers.relu(x, num_output_units,
-                                    weight_init=tf.constant_initializer(2.0),
-                                    bias_init=tf.constant_initializer(1.0))
+    output = tf.contrib.layers.legacy_relu(
+        x,
+        num_output_units,
+        weight_init=tf.constant_initializer(2.0),
+        bias_init=tf.constant_initializer(1.0))
 
     with tf.Session() as sess:
       tf.initialize_all_variables().run()
@@ -165,10 +169,11 @@ class FullyConnectedTest(tf.test.TestCase):
                                 [49.6, 49.6]]])
 
   def test_custom_collections(self):
-    tf.contrib.layers.relu(self.input, 2,
-                           weight_collections=['unbiased'],
-                           bias_collections=['biased'],
-                           output_collections=['output'])
+    tf.contrib.layers.legacy_relu(self.input,
+                                  2,
+                                  weight_collections=['unbiased'],
+                                  bias_collections=['biased'],
+                                  output_collections=['output'])
 
     self.assertEquals(1, len(tf.get_collection('unbiased')))
     self.assertEquals(1, len(tf.get_collection('biased')))
@@ -176,9 +181,10 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertEquals(2, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
 
   def test_all_custom_collections(self):
-    tf.contrib.layers.relu(self.input, 2,
-                           weight_collections=['unbiased', 'all'],
-                           bias_collections=['biased', 'all'])
+    tf.contrib.layers.legacy_relu(self.input,
+                                  2,
+                                  weight_collections=['unbiased', 'all'],
+                                  bias_collections=['biased', 'all'])
 
     self.assertEquals(1, len(tf.get_collection('unbiased')))
     self.assertEquals(1, len(tf.get_collection('biased')))
@@ -186,16 +192,16 @@ class FullyConnectedTest(tf.test.TestCase):
                       tf.get_collection('all'))
 
   def test_no_bias(self):
-    tf.contrib.layers.relu(self.input, 2, bias_init=None)
+    tf.contrib.layers.legacy_relu(self.input, 2, bias_init=None)
     self.assertEqual(1, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
 
   def test_no_activation(self):
-    y = tf.contrib.layers.fully_connected(self.input, 2)
+    y = tf.contrib.layers.legacy_fully_connected(self.input, 2)
     self.assertEquals(2, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
     self.assertEquals('BiasAdd', y.op.type)
 
   def test_no_activation_no_bias(self):
-    y = tf.contrib.layers.fully_connected(self.input, 2, bias_init=None)
+    y = tf.contrib.layers.legacy_fully_connected(self.input, 2, bias_init=None)
     self.assertEquals(1, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
     self.assertEquals('MatMul', y.op.type)
 
@@ -206,7 +212,9 @@ class FullyConnectedTest(tf.test.TestCase):
       cnt[0] += 1
       return tensor
 
-    tf.contrib.layers.fully_connected(self.input, 2, weight_regularizer=test_fn)
+    tf.contrib.layers.legacy_fully_connected(self.input,
+                                             2,
+                                             weight_regularizer=test_fn)
 
     self.assertEqual([tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
@@ -219,10 +227,12 @@ class FullyConnectedTest(tf.test.TestCase):
       cnt[0] += 1
       return tensor
 
-    tf.contrib.layers.fully_connected(self.input, 2,
-                                      weight_regularizer=test_fn)
-    tf.contrib.layers.fully_connected(self.input, 2,
-                                      weight_regularizer=test_fn)
+    tf.contrib.layers.legacy_fully_connected(self.input,
+                                             2,
+                                             weight_regularizer=test_fn)
+    tf.contrib.layers.legacy_fully_connected(self.input,
+                                             2,
+                                             weight_regularizer=test_fn)
 
     self.assertEqual([tensor, tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
@@ -236,12 +246,14 @@ class FullyConnectedTest(tf.test.TestCase):
       return tensor
 
     with tf.variable_scope('test') as vs:
-      tf.contrib.layers.fully_connected(self.input, 2,
-                                        weight_regularizer=test_fn)
+      tf.contrib.layers.legacy_fully_connected(self.input,
+                                               2,
+                                               weight_regularizer=test_fn)
 
     with tf.variable_scope(vs, reuse=True):
-      tf.contrib.layers.fully_connected(self.input, 2,
-                                        weight_regularizer=test_fn)
+      tf.contrib.layers.legacy_fully_connected(self.input,
+                                               2,
+                                               weight_regularizer=test_fn)
 
     self.assertEqual([tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
@@ -254,7 +266,9 @@ class FullyConnectedTest(tf.test.TestCase):
     with self.test_session():
       x = tf.constant([[]], shape=[0, 3])
       self.assertEqual(0, tf.size(x).eval())
-      y = tf.contrib.layers.fully_connected(x, 2, activation_fn=tf.nn.softmax)
+      y = tf.contrib.layers.legacy_fully_connected(x,
+                                                   2,
+                                                   activation_fn=tf.nn.softmax)
       tf.initialize_all_variables().run()
       expected_y = np.array([]).reshape(0, 2)
       np.testing.assert_array_equal(expected_y, y.eval())
@@ -262,7 +276,7 @@ class FullyConnectedTest(tf.test.TestCase):
   def test_shapes_variable_first_dim(self):
     # first dimension is not known statically.
     x = tf.placeholder(tf.float32, shape=[None, 4, 3])
-    y = tf.contrib.layers.fully_connected(x, 1)
+    y = tf.contrib.layers.legacy_fully_connected(x, 1)
     # in the output we still only know the 2nd and 3rd dimensions statically.
     self.assertEquals(y.get_shape().as_list(), [None, 4, 1])
     with self.test_session() as sess:
@@ -280,7 +294,7 @@ class FullyConnectedTest(tf.test.TestCase):
 
   def _unknown_dim_invalid_input(self, last_dim):
     x = tf.placeholder(tf.float32, shape=[3, last_dim])
-    tf.contrib.layers.fully_connected(x, 2, activation_fn=None)
+    tf.contrib.layers.legacy_fully_connected(x, 2, activation_fn=None)
 
   def test_known_dim_valid_input(self):
     self._unknown_dim_invalid_input(last_dim=3)
@@ -295,7 +309,9 @@ class FullyConnectedTest(tf.test.TestCase):
       with self.assertRaisesRegexp(ValueError,
                                    'rank of x must be at least 2 not: 1'):
         x = tf.constant([[]], shape=[0])
-        tf.contrib.layers.fully_connected(x, 2, activation_fn=tf.nn.softmax)
+        tf.contrib.layers.legacy_fully_connected(x,
+                                                 2,
+                                                 activation_fn=tf.nn.softmax)
 
 
 class Convolution2dTest(tf.test.TestCase):
@@ -308,8 +324,9 @@ class Convolution2dTest(tf.test.TestCase):
     assert not tf.get_collection(tf.GraphKeys.SUMMARIES)
 
   def test_basic_use(self):
-    output = tf.contrib.layers.convolution2d(self.input, 8, (3, 3),
-                                             activation_fn=tf.nn.relu)
+    output = tf.contrib.layers.legacy_convolution2d(self.input,
+                                                    8, (3, 3),
+                                                    activation_fn=tf.nn.relu)
 
     with tf.Session() as sess:
       with self.assertRaises(tf.errors.FailedPreconditionError):
@@ -328,17 +345,17 @@ class Convolution2dTest(tf.test.TestCase):
 
   def test_variable_reuse_with_scope(self):
     with tf.variable_scope('test') as vs:
-      output1 = tf.contrib.layers.convolution2d(self.input,
-                                                8, (3, 3),
-                                                activation_fn=tf.nn.relu)
-      output2 = tf.contrib.layers.convolution2d(self.input,
-                                                8, (3, 3),
-                                                activation_fn=tf.nn.relu)
+      output1 = tf.contrib.layers.legacy_convolution2d(self.input,
+                                                       8, (3, 3),
+                                                       activation_fn=tf.nn.relu)
+      output2 = tf.contrib.layers.legacy_convolution2d(self.input,
+                                                       8, (3, 3),
+                                                       activation_fn=tf.nn.relu)
 
     with tf.variable_scope(vs, reuse=True):
-      output3 = tf.contrib.layers.convolution2d(self.input,
-                                                8, (3, 3),
-                                                activation_fn=tf.nn.relu)
+      output3 = tf.contrib.layers.legacy_convolution2d(self.input,
+                                                       8, (3, 3),
+                                                       activation_fn=tf.nn.relu)
 
     with tf.Session() as sess:
       tf.initialize_all_variables().run()
@@ -349,7 +366,7 @@ class Convolution2dTest(tf.test.TestCase):
 
   def test_variable_reuse_with_template(self):
     tmpl1 = tf.make_template('test',
-                             tf.contrib.layers.convolution2d,
+                             tf.contrib.layers.legacy_convolution2d,
                              kernel_size=(3, 3),
                              num_output_channels=8)
     output1 = tmpl1(self.input)
@@ -361,10 +378,9 @@ class Convolution2dTest(tf.test.TestCase):
     self.assertAllClose(out_value1, out_value2)
 
   def test_custom_initializers(self):
-    output = tf.contrib.layers.convolution2d(
+    output = tf.contrib.layers.legacy_convolution2d(
         self.input,
-        2,
-        (3, 3),
+        2, (3, 3),
         activation_fn=tf.nn.relu,
         weight_init=tf.constant_initializer(2.0),
         bias_init=tf.constant_initializer(1.0),
@@ -378,21 +394,22 @@ class Convolution2dTest(tf.test.TestCase):
         np.array([[[[1261., 1261.]]], [[[3853., 3853.]]]]), out_value)
 
   def test_custom_collections(self):
-    tf.contrib.layers.convolution2d(self.input,
-                                    2, (3, 3),
-                                    activation_fn=tf.nn.relu,
-                                    weight_collections=['unbiased'],
-                                    bias_collections=['biased'])
+    tf.contrib.layers.legacy_convolution2d(self.input,
+                                           2, (3, 3),
+                                           activation_fn=tf.nn.relu,
+                                           weight_collections=['unbiased'],
+                                           bias_collections=['biased'])
 
     self.assertEquals(1, len(tf.get_collection('unbiased')))
     self.assertEquals(1, len(tf.get_collection('biased')))
 
   def test_all_custom_collections(self):
-    tf.contrib.layers.convolution2d(self.input,
-                                    2, (3, 3),
-                                    activation_fn=tf.nn.relu,
-                                    weight_collections=['unbiased', 'all'],
-                                    bias_collections=['biased', 'all'])
+    tf.contrib.layers.legacy_convolution2d(
+        self.input,
+        2, (3, 3),
+        activation_fn=tf.nn.relu,
+        weight_collections=['unbiased', 'all'],
+        bias_collections=['biased', 'all'])
 
     self.assertEquals(1, len(tf.get_collection('unbiased')))
     self.assertEquals(1, len(tf.get_collection('biased')))
@@ -407,15 +424,18 @@ class Convolution2dTest(tf.test.TestCase):
       cnt[0] += 1
       return tensor
 
-    tf.contrib.layers.convolution2d(self.input, 2, (3, 3),
-                                    weight_regularizer=test_fn)
+    tf.contrib.layers.legacy_convolution2d(self.input,
+                                           2, (3, 3),
+                                           weight_regularizer=test_fn)
 
     self.assertEqual([tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
     self.assertEqual(1, cnt[0])
 
   def test_no_bias(self):
-    tf.contrib.layers.convolution2d(self.input, 2, (3, 3), bias_init=None)
+    tf.contrib.layers.legacy_convolution2d(self.input,
+                                           2, (3, 3),
+                                           bias_init=None)
     self.assertEqual(1,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
 

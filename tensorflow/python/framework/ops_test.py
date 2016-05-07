@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
@@ -61,19 +62,23 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     indices = [[1, 2], [2, 0], [3, 4]]
     values = [b"a", b"b", b"c"]
     shape = [4, 5]
-    sp = ops.SparseTensor(indices, values, shape)
-    self.assertEqual(sp.indices.dtype, dtypes.int64)
-    self.assertEqual(sp.values.dtype, dtypes.string)
-    self.assertEqual(sp.shape.dtype, dtypes.int64)
-    with self.test_session() as sess:
-      value = sp.eval()
-      self.assertAllEqual(indices, value.indices)
-      self.assertAllEqual(values, value.values)
-      self.assertAllEqual(shape, value.shape)
-      sess_run_value = sess.run(sp)
-      self.assertAllEqual(sess_run_value.indices, value.indices)
-      self.assertAllEqual(sess_run_value.values, value.values)
-      self.assertAllEqual(sess_run_value.shape, value.shape)
+    sp_value = ops.SparseTensorValue(indices, values, shape)
+    for sp in [
+        ops.SparseTensor(indices, values, shape),
+        ops.SparseTensor.from_value(sp_value)]:
+      self.assertEqual(sp.indices.dtype, dtypes.int64)
+      self.assertEqual(sp.values.dtype, dtypes.string)
+      self.assertEqual(sp.shape.dtype, dtypes.int64)
+
+      with self.test_session() as sess:
+        value = sp.eval()
+        self.assertAllEqual(indices, value.indices)
+        self.assertAllEqual(values, value.values)
+        self.assertAllEqual(shape, value.shape)
+        sess_run_value = sess.run(sp)
+        self.assertAllEqual(sess_run_value.indices, value.indices)
+        self.assertAllEqual(sess_run_value.values, value.values)
+        self.assertAllEqual(sess_run_value.shape, value.shape)
 
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
@@ -114,7 +119,7 @@ class NodeDefConstructorTest(test_util.TensorFlowTestCase):
     nodedef = ops._NodeDef("foo", "bar", device="/device:baz:*")
     self.assertProtoEquals("op:'foo' name:'bar' device:'/device:baz:*'",
                            nodedef)
-    nodedef = ops._NodeDef("foo", "bar", device=pydev.Device(job="j"))
+    nodedef = ops._NodeDef("foo", "bar", device=pydev.DeviceSpec(job="j"))
     self.assertProtoEquals("op:'foo' name:'bar' device:'/job:j'", nodedef)
 
 
@@ -223,7 +228,8 @@ class OperationTest(test_util.TensorFlowTestCase):
         "op:'noop' name:'myop' device:'/job:goo/device:GPU:0' ",
         op.node_def)
     op = ops.Operation(ops._NodeDef("noop", "op2"), ops.Graph(), [], [])
-    op._set_device(pydev.Device(job="muu", device_type="CPU", device_index=0))
+    op._set_device(pydev.DeviceSpec(job="muu", device_type="CPU",
+                                    device_index=0))
     self.assertProtoEquals(
         "op:'noop' name:'op2' device:'/job:muu/device:CPU:0'",
         op.node_def)
@@ -526,9 +532,8 @@ class DeviceTest(test_util.TensorFlowTestCase):
 
   def testDeviceFull(self):
     g = ops.Graph()
-    with g.device(pydev.Device(job="worker", replica=2, task=0,
-                               device_type="CPU",
-                               device_index=3)):
+    with g.device(pydev.DeviceSpec(job="worker", replica=2, task=0,
+                                   device_type="CPU", device_index=3)):
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
@@ -750,7 +755,7 @@ class ObjectWithName(object):
 
 class CollectionTest(test_util.TensorFlowTestCase):
 
-  def testadd_to_collection(self):
+  def test_add_to_collection(self):
     g = ops.Graph()
     g.add_to_collection("key", 12)
     g.add_to_collection("other", "foo")
@@ -799,7 +804,45 @@ class CollectionTest(test_util.TensorFlowTestCase):
     empty_coll_ref3 = g.get_collection_ref("empty")
     self.assertTrue(empty_coll_ref3 is empty_coll_ref)
 
-  def testDefaulGraph(self):
+  def test_add_to_collections_uniquify(self):
+    g = ops.Graph()
+    g.add_to_collections([1, 2, 1], "key")
+    # Make sure "key" is not added twice
+    self.assertEqual(["key"], g.get_collection(1))
+
+  def test_add_to_collections_from_list(self):
+    g = ops.Graph()
+    g.add_to_collections(["abc", "123"], "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_tuple(self):
+    g = ops.Graph()
+    g.add_to_collections(("abc", "123"), "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_generator(self):
+    g = ops.Graph()
+    def generator():
+      yield "abc"
+      yield "123"
+    g.add_to_collections(generator(), "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_set(self):
+    g = ops.Graph()
+    g.add_to_collections(set(["abc", "123"]), "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_string(self):
+    g = ops.Graph()
+    g.add_to_collections("abc", "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+
+  def test_default_graph(self):
     with ops.Graph().as_default():
       ops.add_to_collection("key", 90)
       ops.add_to_collection("key", 100)
@@ -1378,7 +1421,7 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
       old = test_ops.old()
       g.graph_def_versions.producer = versions.GRAPH_DEF_VERSION
       with self.test_session(graph=g):
-        with self.assertRaisesOpError(self._error()):
+        with self.assertRaisesRegexp(errors.UnimplementedError, self._error()):
           old.run()
 
 

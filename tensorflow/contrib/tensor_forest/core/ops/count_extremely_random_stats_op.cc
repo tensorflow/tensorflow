@@ -18,6 +18,7 @@
 // only op that involves tree traversal, and is constructed so that it can
 // be run in parallel on separate batches of data.
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
@@ -110,11 +111,12 @@ void Evaluate(const Tensor& input_data, const Tensor& input_labels,
   }
 }
 
+
 REGISTER_OP("CountExtremelyRandomStats")
   .Attr("num_classes: int32")
+  .Attr("regression: bool = false")
   .Input("input_data: float")
-
-  .Input("input_labels: int32")
+  .Input("input_labels: float")
 
   .Input("tree: int32")
   .Input("tree_thresholds: float")
@@ -124,22 +126,38 @@ REGISTER_OP("CountExtremelyRandomStats")
   .Input("candidate_split_features: int32")
   .Input("candidate_split_thresholds: float")
 
-  .Output("pcw_node_delta: float")
+  .Output("pcw_node_sums_delta: float")
+  .Output("pcw_node_squares_delta: float")
   .Output("pcw_splits_indices: int32")
-  .Output("pcw_candidate_splits_delta: float")
+  .Output("pcw_candidate_splits_sums_delta: float")
+  .Output("pcw_candidate_splits_squares_delta: float")
   .Output("pcw_totals_indices: int32")
-  .Output("pcw_total_splits_delta: float")
+  .Output("pcw_totals_sums_delta: float")
+  .Output("pcw_totals_squares_delta: float")
 
   .Output("leaves: int32")
   .Doc(R"doc(
    Calculates incremental statistics for a batch of training data.
 
    Each training example in `input_data` is sent through the decision tree
-   represented by `tree` and `tree_thresholds`.  `pcw_node_delta[i]` is
+   represented by `tree` and `tree_thresholds`.
+   The shape and contents of the outputs differ depending on whether
+   `regression` is true or not.
+
+   For `regression` = false (classification), `pcw_node_sums_delta[i]` is
    incremented for every node i that it passes through, and the leaf it ends up
    in is recorded in `leaves[i]`.  Then, if the leaf is fertile and
    initialized, the statistics for its corresponding accumulator slot
    are updated in `pcw_candidate_splits_delta` and `pcw_total_splits_delta`.
+
+   For `regression` = true, outputs contain the sum of the input_labels
+   for the appropriate nodes.  In adddition, the *_squares outputs are filled
+   in with the sums of the squares of the input_labels. Since outputs are
+   all updated at once, the *_indicies outputs don't specify the output
+   dimension to update, rather the *_delta output contains updates for all the
+   outputs.  For example, `pcw_totals_indices` specifies the accumulators to
+   update, and `pcw_total_splits_sums_delta` contains the complete output
+   updates for each of those accumulators.
 
    The attr `num_classes` is needed to appropriately size the outputs.
 
@@ -159,27 +177,44 @@ REGISTER_OP("CountExtremelyRandomStats")
      index of the feature being considered by split s of accumulator slot a.
    candidate_split_thresholds: `candidate_split_thresholds[a][s]` is the
      threshold value being considered by split s of accumulator slot a.
-   pcw_node_delta: `pcw_node_delta[i][c]` is the number of training examples
-     in this training batch with class c that passed through node i.
-   pcw_splits_indices:= A 2-d tensor of shape (?, 3).
+   pcw_node_sums_delta: `pcw_node_sums_delta[i][c]` is the number of training
+     examples in this training batch with class c that passed through node i for
+     classification.  For regression, it is the sum of the input_labels that
+     have passed through node i.
+   pcw_node_squares_delta: `pcw_node_squares_delta[i][c]` is the sum of the
+     squares of the input labels that have passed through node i for
+     regression.  Not set for classification.
+   pcw_splits_indices:= A 2-d tensor of shape (?, 3) for classification and
+     (?, 2) for regression.
      `pcw_splits_indices[i]` gives the coordinates of an entry in
-     candidate_split_per_class_weights that needs to be updated.
-     This is meant to be passed with `pcw_candidate_splits_delta` to a
-     scatter_add for candidate_split_per_class_weights:
-       training_ops.scatter_add_ndim(candidate_split_per_class_weights,
-           pcw_splits_indices, pcw_candidate_splits_delta)
-   pcw_candidate_splits_delta: `pcw_candidate_splits_delta[i]` is the
+     candidate_split_pcw_sums and candidate_split_pcw_squares that need to be
+     updated.  This is meant to be passed with `pcw_candidate_splits_*_delta` to
+     a scatter_add for candidate_split_pcw_*:
+       training_ops.scatter_add_ndim(candidate_split_pcw_sums
+           pcw_splits_indices, pcw_candidate_splits_sums_delta)
+   pcw_candidate_splits_sums_delta: For classification,
+     `pcw_candidate_splits_sums_delta[i]` is the
      number of training examples in this training batch that correspond to
      the i-th entry in `pcw_splits_indices` which took the *left* branch of
-     candidate split.
-   pcw_totals_indices: 'pcw_totals_indices` contains the indices (accumulator,
-     class) into total_per_class_weights to update with pcw_total_splits_delta.
-   pcw_total_splits_delta: `pcw_total_splits_delta[i]` is the number of
-     training examples in this batch that ended up in the fertile
+     candidate split. For regression, it is the same but a 2-D tensor that has
+     the sum of the input_labels for each i-th entry in the indices.
+   pcw_candidate_splits_squares_delta: For regression, same as
+     `pcw_candidate_splits_sums_delta` but the sum of the squares. Not set
+     for classification.
+   pcw_totals_indices: For classification, 'pcw_totals_indices` contains the
+     indices (accumulator, class) into total_pcw_sums to update with
+     pcw_totals_sums_delta.  For regression, it only contains the accumulator
+     (not the class), because pcw_totals_*_delta will contain all the outputs.
+   pcw_totals_sums_delta: For classification, `pcw_totals_sums_delta[i]` is the
+     number of training examples in this batch that ended up in the fertile
      node with accumulator and class indicated by `pcw_totals_indices[i]`.
+     For regression, it is the sum of the input_labels corresponding to the
+     entries in `pcw_totals_indices[i]`.
+   pcw_totals_squares_delta: For regression, same as
+     `pcw_totals_sums_delta` but the sum of the squares. Not set
+     for classification.
    leaves: `leaves[i]` is the leaf that input i ended up in.
 )doc");
-
 
 class CountExtremelyRandomStats : public OpKernel {
  public:
@@ -187,6 +222,8 @@ class CountExtremelyRandomStats : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr(
         "num_classes", &num_classes_));
+    OP_REQUIRES_OK(context, context->GetAttr(
+        "regression", &regression_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -202,10 +239,6 @@ class CountExtremelyRandomStats : public OpKernel {
     OP_REQUIRES(context, input_data.shape().dims() == 2,
                 errors::InvalidArgument(
                     "input_data should be two-dimensional"));
-    OP_REQUIRES(context, input_labels.shape().dims() == 1,
-                errors::InvalidArgument(
-                    "input_labels should be one-dimensional"));
-
     OP_REQUIRES(context, tree_tensor.shape().dims() == 2,
             errors::InvalidArgument(
                 "tree should be two-dimensional"));
@@ -228,6 +261,7 @@ class CountExtremelyRandomStats : public OpKernel {
         errors::InvalidArgument(
             "Number of inputs should be the same in "
             "input_data and input_labels."));
+
     OP_REQUIRES(
         context,
         tree_tensor.shape().dim_size(0) ==
@@ -267,44 +301,75 @@ class CountExtremelyRandomStats : public OpKernel {
       Shard(num_threads, worker_threads->workers, num_data, 100, work);
     }
 
-    // Set output tensors.
-    const auto labels = input_labels.unaligned_flat<int32>();
+    if (regression_) {
+      ProcessResultsRegression(context, input_labels, std::move(results),
+                               tree_tensor.shape().dim_size(0));
+    } else {
+      ProcessResultsClassification(context, input_labels, std::move(results),
+                                   tree_tensor.shape().dim_size(0));
+    }
+  }
+
+ protected:
+  void ProcessResultsClassification(
+      OpKernelContext* context,
+      const Tensor &input_labels,
+      std::unique_ptr<InputDataResult[]> results,
+      int32 num_nodes) {
+    const int32 num_data = input_labels.shape().dim_size(0);
+    const auto labels = input_labels.unaligned_flat<float>();
+
+    // Unused outputs for classification.  Still have to specify them or
+    // tensorflow complains.
+    Tensor* dummy = nullptr;
+    TensorShape dummy_shape;
+    dummy_shape.AddDim(0);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(1, dummy_shape, &dummy));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(4, dummy_shape, &dummy));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(7, dummy_shape, &dummy));
 
     // node pcw delta
-    Tensor* output_node_pcw_delta = nullptr;
-    TensorShape node_pcw_shape;
-    node_pcw_shape.AddDim(tree_tensor.shape().dim_size(0));
-    node_pcw_shape.AddDim(num_classes_);
+    Tensor* output_node_pcw_sums_delta = nullptr;
+    TensorShape node_pcw_sums_shape;
+    node_pcw_sums_shape.AddDim(num_nodes);
+    node_pcw_sums_shape.AddDim(num_classes_);
     OP_REQUIRES_OK(context,
-                   context->allocate_output(0, node_pcw_shape,
-                                            &output_node_pcw_delta));
-    Initialize<float>(*output_node_pcw_delta, 0);
-    auto out_node = output_node_pcw_delta->tensor<float, 2>();
+                   context->allocate_output(0, node_pcw_sums_shape,
+                                            &output_node_pcw_sums_delta));
+    Initialize<float>(*output_node_pcw_sums_delta, 0);
+    auto out_node_sums = output_node_pcw_sums_delta->tensor<float, 2>();
 
     // leaves
     Tensor* output_leaves = nullptr;
+    TensorShape leaves_shape;
+    leaves_shape.AddDim(num_data);
     OP_REQUIRES_OK(context,
-                   context->allocate_output(5, input_labels.shape(),
-                                            &output_leaves));
+                   context->allocate_output(8, leaves_shape, &output_leaves));
     auto out_leaves = output_leaves->unaligned_flat<int32>();
 
     // <accumulator, class> -> count delta
-    std::unordered_map<pair<int32, int32>, int32, PairIntHash> total_delta;
+    PairMapType<int32> total_delta;
     // <accumulator, split, class> -> count delta
-    std::unordered_map<tuple<int32, int32, int32>,
-        int32, TupleIntHash> split_delta;
+    TupleMapType<int32> split_delta;
 
     for (int32 i = 0; i < num_data; ++i) {
       const int32 label = labels(i);
+      const int32 column = label + 1;
       const int32 accumulator = results[i].leaf_accumulator;
       for (const int32 node : results[i].node_indices) {
-        ++out_node(node, label);
+        ++out_node_sums(node, column);
+        ++out_node_sums(node, 0);
       }
       out_leaves(i) = results[i].node_indices.back();
       if (accumulator >= 0 && results[i].splits_initialized) {
-        ++total_delta[make_pair(accumulator, label)];
+        ++total_delta[make_pair(accumulator, column)];
+        ++total_delta[make_pair(accumulator, 0)];
         for (const int32 split : results[i].split_adds) {
-          ++split_delta[make_tuple(accumulator, split, label)];
+          ++split_delta[make_tuple(accumulator, split, column)];
+          ++split_delta[make_tuple(accumulator, split, 0)];
         }
       }
     }
@@ -315,7 +380,7 @@ class CountExtremelyRandomStats : public OpKernel {
     candidate_pcw_shape.AddDim(split_delta.size());
     candidate_pcw_shape.AddDim(3);
     OP_REQUIRES_OK(context,
-                   context->allocate_output(1, candidate_pcw_shape,
+                   context->allocate_output(2, candidate_pcw_shape,
                                             &output_candidate_pcw_indices));
     auto out_candidate_indices =
         output_candidate_pcw_indices->tensor<int32, 2>();
@@ -325,7 +390,7 @@ class CountExtremelyRandomStats : public OpKernel {
     TensorShape candidate_pcw_delta_shape;
     candidate_pcw_delta_shape.AddDim(split_delta.size());
     OP_REQUIRES_OK(context,
-                   context->allocate_output(2, candidate_pcw_delta_shape,
+                   context->allocate_output(3, candidate_pcw_delta_shape,
                                             &output_candidate_pcw_delta));
     auto out_candidate = output_candidate_pcw_delta->unaligned_flat<float>();
 
@@ -335,7 +400,7 @@ class CountExtremelyRandomStats : public OpKernel {
     total_pcw_shape.AddDim(total_delta.size());
     total_pcw_shape.AddDim(2);
     OP_REQUIRES_OK(context,
-                   context->allocate_output(3, total_pcw_shape,
+                   context->allocate_output(5, total_pcw_shape,
                                             &output_total_pcw_indices));
     auto out_total_indices = output_total_pcw_indices->tensor<int32, 2>();
 
@@ -344,7 +409,7 @@ class CountExtremelyRandomStats : public OpKernel {
     TensorShape total_pcw_delta_shape;
     total_pcw_delta_shape.AddDim(total_delta.size());
     OP_REQUIRES_OK(context,
-                   context->allocate_output(4, total_pcw_delta_shape,
+                   context->allocate_output(6, total_pcw_delta_shape,
                                             &output_total_pcw_delta));
     auto out_total = output_total_pcw_delta->unaligned_flat<float>();
 
@@ -368,13 +433,181 @@ class CountExtremelyRandomStats : public OpKernel {
     }
   }
 
- private:
+  void ProcessResultsRegression(
+      OpKernelContext* context,
+      const Tensor &input_labels,
+      std::unique_ptr<InputDataResult[]> results,
+      int32 num_nodes) {
+    const int32 num_data = input_labels.shape().dim_size(0);
+    int32 num_outputs = 1;
+    if (input_labels.shape().dims() > 1) {
+        num_outputs = static_cast<int32>(input_labels.shape().dim_size(1));
+    }
+    const auto labels = input_labels.unaligned_flat<float>();
+
+    // node pcw delta
+    Tensor* output_node_pcw_sums_delta = nullptr;
+    TensorShape node_pcw_sums_shape;
+    node_pcw_sums_shape.AddDim(num_nodes);
+    node_pcw_sums_shape.AddDim(num_classes_);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, node_pcw_sums_shape,
+                                            &output_node_pcw_sums_delta));
+    Initialize<float>(*output_node_pcw_sums_delta, 0);
+    auto out_node_sums = output_node_pcw_sums_delta->tensor<float, 2>();
+
+    Tensor* output_node_pcw_squares_delta = nullptr;
+    TensorShape node_pcw_squares_shape;
+    node_pcw_squares_shape.AddDim(num_nodes);
+    node_pcw_squares_shape.AddDim(num_classes_);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(1, node_pcw_squares_shape,
+                                            &output_node_pcw_squares_delta));
+    Initialize<float>(*output_node_pcw_squares_delta, 0);
+    auto out_node_squares = output_node_pcw_squares_delta->tensor<float, 2>();
+
+    // leaves
+    Tensor* output_leaves = nullptr;
+    TensorShape leaves_shape;
+    leaves_shape.AddDim(num_data);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(8, leaves_shape, &output_leaves));
+    auto out_leaves = output_leaves->unaligned_flat<int32>();
+
+    // <accumulator> -> label index
+    std::unordered_map<int32, std::unordered_set<int32>> total_delta;
+    // <accumulator, split> -> label index
+    PairMapType<std::unordered_set<int32>> split_delta;
+
+    for (int32 i = 0; i < num_data; ++i) {
+      const int32 accumulator = results[i].leaf_accumulator;
+      for (const int32 node : results[i].node_indices) {
+        for (int32 j = 0; j < num_outputs; ++j) {
+          const float output = labels(i * num_outputs + j);
+          out_node_sums(node, j + 1) += output;
+          out_node_squares(node, j + 1) += output * output;
+          ++out_node_sums(node, 0);
+          ++out_node_squares(node, 0);
+        }
+      }
+      out_leaves(i) = results[i].node_indices.back();
+      if (accumulator >= 0 && results[i].splits_initialized) {
+        total_delta[accumulator].insert(i);
+        for (const int32 split : results[i].split_adds) {
+          split_delta[make_pair(accumulator, split)].insert(i);
+        }
+      }
+    }
+
+    // candidate splits pcw indices
+    Tensor* output_candidate_pcw_indices = nullptr;
+    TensorShape candidate_pcw_shape;
+    candidate_pcw_shape.AddDim(split_delta.size());
+    candidate_pcw_shape.AddDim(2);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(2, candidate_pcw_shape,
+                                            &output_candidate_pcw_indices));
+    auto out_candidate_indices =
+        output_candidate_pcw_indices->tensor<int32, 2>();
+
+    // candidate splits pcw delta
+    // sums
+    Tensor* output_candidate_pcw_sums = nullptr;
+    TensorShape candidate_pcw_sums_shape;
+    candidate_pcw_sums_shape.AddDim(split_delta.size());
+    candidate_pcw_sums_shape.AddDim(num_classes_);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(3, candidate_pcw_sums_shape,
+                                            &output_candidate_pcw_sums));
+    Initialize<float>(*output_candidate_pcw_sums, 0);
+    auto out_split_sums = output_candidate_pcw_sums->tensor<float, 2>();
+
+    // squares
+    Tensor* output_candidate_pcw_squares = nullptr;
+    TensorShape candidate_pcw_squares_shape;
+    candidate_pcw_squares_shape.AddDim(split_delta.size());
+    candidate_pcw_squares_shape.AddDim(num_classes_);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(4, candidate_pcw_squares_shape,
+                                            &output_candidate_pcw_squares));
+    Initialize<float>(*output_candidate_pcw_squares, 0);
+    auto out_split_squares = output_candidate_pcw_squares->tensor<float, 2>();
+
+    // total splits indices
+    Tensor* output_total_pcw_indices = nullptr;
+    TensorShape total_pcw_shape;
+    total_pcw_shape.AddDim(total_delta.size());
+    total_pcw_shape.AddDim(1);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(5, total_pcw_shape,
+                                            &output_total_pcw_indices));
+    auto out_total_indices = output_total_pcw_indices->unaligned_flat<int32>();
+
+    // total splits delta
+    // sums
+    Tensor* output_total_pcw_sums = nullptr;
+    TensorShape total_pcw_sums_shape;
+    total_pcw_sums_shape.AddDim(total_delta.size());
+    total_pcw_sums_shape.AddDim(num_classes_);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(6, total_pcw_sums_shape,
+                                            &output_total_pcw_sums));
+    Initialize<float>(*output_total_pcw_sums, 0);
+    auto out_total_sums = output_total_pcw_sums->tensor<float, 2>();
+
+    // squares
+    Tensor* output_total_pcw_squares = nullptr;
+    TensorShape total_pcw_squares_shape;
+    total_pcw_squares_shape.AddDim(total_delta.size());
+    total_pcw_squares_shape.AddDim(num_classes_);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(7, total_pcw_squares_shape,
+                                            &output_total_pcw_squares));
+    Initialize<float>(*output_total_pcw_squares, 0);
+    auto out_total_squares = output_total_pcw_squares->tensor<float, 2>();
+
+    // Copy total deltas to output.
+    int32 output_slot = 0;
+    for (const auto& updates : total_delta) {
+      out_total_indices(output_slot) = updates.first;
+      for (const int32 i : updates.second) {
+        for (int32 j = 0; j < num_outputs; ++j) {
+          const float output = labels(i * num_outputs + j);
+          out_total_sums(output_slot, j + 1) += output;
+          out_total_squares(output_slot, j + 1) += output * output;
+        }
+      }
+      out_total_sums(output_slot, 0) += updates.second.size();
+      out_total_squares(output_slot, 0) += updates.second.size();
+      ++output_slot;
+    }
+
+    // Copy split deltas to output.
+    output_slot = 0;
+    for (const auto& updates : split_delta) {
+      out_candidate_indices(output_slot, 0) = updates.first.first;
+      out_candidate_indices(output_slot, 1) = updates.first.second;
+      for (const int32 i : updates.second) {
+        for (int32 j = 0; j < num_outputs; ++j) {
+          const float output = labels(i * num_outputs + j);
+          out_split_sums(output_slot, j + 1) += output;
+          out_split_squares(output_slot, j + 1) += output * output;
+        }
+      }
+      out_split_sums(output_slot, 0) += updates.second.size();
+      out_split_squares(output_slot, 0) += updates.second.size();
+      ++output_slot;
+    }
+  }
+
   struct PairIntHash {
    public:
     std::size_t operator()(const std::pair<int, int>& x) const {
       return std::hash<int>()(x.first) ^ std::hash<int>()(x.second);
     }
   };
+  template <typename V>
+  using PairMapType = std::unordered_map<pair<int32, int32>, V, PairIntHash>;
 
   struct TupleIntHash {
    public:
@@ -383,9 +616,14 @@ class CountExtremelyRandomStats : public OpKernel {
           std::hash<int32>()(get<2>(x));
     }
   };
+  template <typename V>
+  using TupleMapType = std::unordered_map<tuple<int32, int32, int32>, V,
+      TupleIntHash>;
 
   int32 num_classes_;
+  bool regression_;
 };
+
 
 REGISTER_KERNEL_BUILDER(Name("CountExtremelyRandomStats").Device(DEVICE_CPU),
                         CountExtremelyRandomStats);

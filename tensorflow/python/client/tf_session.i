@@ -280,11 +280,10 @@ tensorflow::ImportNumpy();
       if not isinstance(config, config_pb2.ConfigProto):
         raise TypeError("Expected config_pb2.ConfigProto, "
                         "but got %s" % type(config))
-      status = TF_NewStatus()
-      config_str = config.SerializeToString()
-      _TF_SetConfig(opts, config_str, status)
-      if TF_GetCode(status) != 0:
-        raise ValueError(TF_Message(status))
+      from tensorflow.python.framework import errors
+      with errors.raise_exception_on_not_ok_status() as status:
+        config_str = config.SerializeToString()
+        _TF_SetConfig(opts, config_str, status)
     return opts
 %}
 

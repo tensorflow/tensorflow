@@ -14,6 +14,7 @@
 # ==============================================================================
 
 from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import collections
@@ -171,12 +172,15 @@ with graph.as_default():
   similarity = tf.matmul(
       valid_embeddings, normalized_embeddings, transpose_b=True)
 
+  # Add variable initializer.
+  init = tf.initialize_all_variables()
+
 # Step 5: Begin training.
 num_steps = 100001
 
 with tf.Session(graph=graph) as session:
   # We must initialize all variables before we use them.
-  tf.initialize_all_variables().run()
+  init.run()
   print("Initialized")
 
   average_loss = 0

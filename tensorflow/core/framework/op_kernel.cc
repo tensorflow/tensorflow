@@ -91,10 +91,8 @@ OpKernel::OpKernel(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  NameRangesForNode(def_, context->op_def(), &input_name_map_,
                                    &output_name_map_));
-  if (context->op_def().has_deprecation()) {
-    const OpDeprecation& deprecation = context->op_def().deprecation();
-    OP_DEPRECATED(context, deprecation.version(), deprecation.explanation());
-  }
+  OP_REQUIRES_OK(context, CheckOpDeprecation(context->op_def(),
+                                             context->graph_def_version()));
 }
 
 OpKernel::~OpKernel() {}
@@ -204,6 +202,9 @@ OpKernelContext::OpKernelContext(Params* params, int noutputs)
                                          params_->op_device_context,
                                          eigen_gpu_allocator);
   record_tensor_accesses_ = params_->device->RequiresRecordingAccessedTensors();
+  if (record_tensor_accesses_) {
+    referenced_tensors_.Init();
+  }
 }
 
 OpKernelContext::~OpKernelContext() {
@@ -212,6 +213,7 @@ OpKernelContext::~OpKernelContext() {
       delete value.tensor;
     }
   }
+  if (record_tensor_accesses_) referenced_tensors_.Destroy();
 }
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
@@ -240,7 +242,7 @@ void OpKernelContext::SetStatus(const Status& status) {
 void OpKernelContext::really_record_tensor_reference(const Tensor& tensor) {
   mutex_lock l(mu_);
   // Keep a reference to the underlying memory around.
-  referenced_tensors_.Add(tensor);
+  referenced_tensors_->Add(tensor);
 }
 
 Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
@@ -453,8 +455,8 @@ Status OpKernelContext::allocate_tensor(
     LogMemory::RecordTensorAllocation(params_->op_kernel->name(),
                                       params_->step_id, new_tensor);
   }
-  *out_tensor = new_tensor;
   record_tensor_reference(new_tensor);
+  *out_tensor = std::move(new_tensor);
   return Status::OK();
 }
 

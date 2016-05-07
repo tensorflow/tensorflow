@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from scipy import stats
 import tensorflow as tf
 
 
@@ -87,14 +86,17 @@ class MultivariateNormalTest(tf.test.TestCase):
       mvn = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
 
       log_pdf = mvn.log_pdf(x)
-
-      scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
-      expected_log_pdf = scipy_mvn.logpdf(x)
-      expected_pdf = scipy_mvn.pdf(x)
-      self.assertAllClose(expected_log_pdf, log_pdf.eval())
-
       pdf = mvn.pdf(x)
-      self.assertAllClose(expected_pdf, pdf.eval())
+
+      try:
+        from scipy import stats  # pylint: disable=g-import-not-at-top
+        scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
+        expected_log_pdf = scipy_mvn.logpdf(x)
+        expected_pdf = scipy_mvn.pdf(x)
+        self.assertAllClose(expected_log_pdf, log_pdf.eval())
+        self.assertAllClose(expected_pdf, pdf.eval())
+      except ImportError as e:
+        tf.logging.warn("Cannot test stats functions: %s" % str(e))
 
   def testLogPDFScalarSigmaHalf(self):
     with tf.Session():
@@ -108,19 +110,21 @@ class MultivariateNormalTest(tf.test.TestCase):
       x = np.array([-2.5, 2.5, 1.0], dtype=np.float32)
       mvn = tf.contrib.distributions.MultivariateNormal(
           mu=mu, sigma_chol=sigma_chol)
-
       log_pdf = mvn.log_pdf(x)
+      pdf = mvn.pdf(x)
       sigma = mvn.sigma
 
-      scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
-      expected_log_pdf = scipy_mvn.logpdf(x)
-      expected_pdf = scipy_mvn.pdf(x)
-      self.assertEqual(sigma.get_shape(), (3, 3))
-      self.assertAllClose(sigma_v, sigma.eval())
-      self.assertAllClose(expected_log_pdf, log_pdf.eval())
-
-      pdf = mvn.pdf(x)
-      self.assertAllClose(expected_pdf, pdf.eval())
+      try:
+        from scipy import stats  # pylint: disable=g-import-not-at-top
+        scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
+        expected_log_pdf = scipy_mvn.logpdf(x)
+        expected_pdf = scipy_mvn.pdf(x)
+        self.assertEqual(sigma.get_shape(), (3, 3))
+        self.assertAllClose(sigma_v, sigma.eval())
+        self.assertAllClose(expected_log_pdf, log_pdf.eval())
+        self.assertAllClose(expected_pdf, pdf.eval())
+      except ImportError as e:
+        tf.logging.warn("Cannot test stats functions: %s" % str(e))
 
   def testLogPDF(self):
     with tf.Session():
@@ -130,17 +134,19 @@ class MultivariateNormalTest(tf.test.TestCase):
       sigma = tf.constant(sigma_v)
       x = np.array([[-2.5, 2.5], [4.0, 0.0], [-1.0, 2.0]], dtype=np.float32)
       mvn = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
-
       log_pdf = mvn.log_pdf(x)
-
-      scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
-      expected_log_pdf = scipy_mvn.logpdf(x)
-      expected_pdf = scipy_mvn.pdf(x)
-      self.assertEqual(log_pdf.get_shape(), (3,))
-      self.assertAllClose(expected_log_pdf, log_pdf.eval())
-
       pdf = mvn.pdf(x)
-      self.assertAllClose(expected_pdf, pdf.eval())
+
+      try:
+        from scipy import stats  # pylint: disable=g-import-not-at-top
+        scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
+        expected_log_pdf = scipy_mvn.logpdf(x)
+        expected_pdf = scipy_mvn.pdf(x)
+        self.assertEqual(log_pdf.get_shape(), (3,))
+        self.assertAllClose(expected_log_pdf, log_pdf.eval())
+        self.assertAllClose(expected_pdf, pdf.eval())
+      except ImportError as e:
+        tf.logging.warn("Cannot test stats functions: %s" % str(e))
 
   def testLogPDFMatchingDimension(self):
     with tf.Session():
@@ -150,17 +156,19 @@ class MultivariateNormalTest(tf.test.TestCase):
       sigma = tf.constant(np.vstack(3 * [sigma_v[np.newaxis, :]]))
       x = np.array([[-2.5, 2.5], [4.0, 0.0], [-1.0, 2.0]], dtype=np.float32)
       mvn = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
-
       log_pdf = mvn.log_pdf(x)
-
-      scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
-      expected_log_pdf = scipy_mvn.logpdf(x)
-      expected_pdf = scipy_mvn.pdf(x)
-      self.assertEqual(log_pdf.get_shape(), (3,))
-      self.assertAllClose(expected_log_pdf, log_pdf.eval())
-
       pdf = mvn.pdf(x)
-      self.assertAllClose(expected_pdf, pdf.eval())
+
+      try:
+        from scipy import stats  # pylint: disable=g-import-not-at-top
+        scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
+        expected_log_pdf = scipy_mvn.logpdf(x)
+        expected_pdf = scipy_mvn.pdf(x)
+        self.assertEqual(log_pdf.get_shape(), (3,))
+        self.assertAllClose(expected_log_pdf, log_pdf.eval())
+        self.assertAllClose(expected_pdf, pdf.eval())
+      except ImportError as e:
+        tf.logging.warn("Cannot test stats functions: %s" % str(e))
 
   def testLogPDFMultidimensional(self):
     with tf.Session():
@@ -171,17 +179,19 @@ class MultivariateNormalTest(tf.test.TestCase):
           np.vstack(15 * [sigma_v[np.newaxis, :]]).reshape(3, 5, 2, 2))
       x = np.array([-2.5, 2.5], dtype=np.float32)
       mvn = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
-
       log_pdf = mvn.log_pdf(x)
-
-      scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
-      expected_log_pdf = np.vstack(15 * [scipy_mvn.logpdf(x)]).reshape(3, 5)
-      expected_pdf = np.vstack(15 * [scipy_mvn.pdf(x)]).reshape(3, 5)
-      self.assertEqual(log_pdf.get_shape(), (3, 5))
-      self.assertAllClose(expected_log_pdf, log_pdf.eval())
-
       pdf = mvn.pdf(x)
-      self.assertAllClose(expected_pdf, pdf.eval())
+
+      try:
+        from scipy import stats  # pylint: disable=g-import-not-at-top
+        scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
+        expected_log_pdf = np.vstack(15 * [scipy_mvn.logpdf(x)]).reshape(3, 5)
+        expected_pdf = np.vstack(15 * [scipy_mvn.pdf(x)]).reshape(3, 5)
+        self.assertEqual(log_pdf.get_shape(), (3, 5))
+        self.assertAllClose(expected_log_pdf, log_pdf.eval())
+        self.assertAllClose(expected_pdf, pdf.eval())
+      except ImportError as e:
+        tf.logging.warn("Cannot test stats functions: %s" % str(e))
 
   def testEntropy(self):
     with tf.Session():
@@ -192,11 +202,14 @@ class MultivariateNormalTest(tf.test.TestCase):
       mvn = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
       entropy = mvn.entropy()
 
-      scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
-      expected_entropy = scipy_mvn.entropy()
-
-      self.assertEqual(entropy.get_shape(), ())
-      self.assertAllClose(expected_entropy, entropy.eval())
+      try:
+        from scipy import stats  # pylint: disable=g-import-not-at-top
+        scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
+        expected_entropy = scipy_mvn.entropy()
+        self.assertEqual(entropy.get_shape(), ())
+        self.assertAllClose(expected_entropy, entropy.eval())
+      except ImportError as e:
+        tf.logging.warn("Cannot test stats functions: %s" % str(e))
 
   def testEntropyMultidimensional(self):
     with tf.Session():
@@ -208,11 +221,14 @@ class MultivariateNormalTest(tf.test.TestCase):
       mvn = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
       entropy = mvn.entropy()
 
-      scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
-      expected_entropy = np.vstack(15 * [scipy_mvn.entropy()]).reshape(3, 5)
-
-      self.assertEqual(entropy.get_shape(), (3, 5))
-      self.assertAllClose(expected_entropy, entropy.eval())
+      try:
+        from scipy import stats  # pylint: disable=g-import-not-at-top
+        scipy_mvn = stats.multivariate_normal(mean=mu_v, cov=sigma_v)
+        expected_entropy = np.vstack(15 * [scipy_mvn.entropy()]).reshape(3, 5)
+        self.assertEqual(entropy.get_shape(), (3, 5))
+        self.assertAllClose(expected_entropy, entropy.eval())
+      except ImportError as e:
+        tf.logging.warn("Cannot test stats functions: %s" % str(e))
 
   def testSample(self):
     with tf.Session():
