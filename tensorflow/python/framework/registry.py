@@ -25,7 +25,7 @@ from __future__ import print_function
 
 import traceback
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 

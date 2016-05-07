@@ -68,6 +68,15 @@ class GPUUtil {
 
   static perftools::gputools::DeviceMemory<float> AsGPUFloat(const Tensor& t);
 
+  // Map a Tensor as a DeviceMemory object wrapping the given typed
+  // buffer.
+  template <typename T>
+  perftools::gputools::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
+    T* ptr = reinterpret_cast<T*>(const_cast<void*>(DMAHelper::base(&t)));
+    return perftools::gputools::DeviceMemory<T>(
+        perftools::gputools::DeviceMemoryBase(ptr, t.TotalBytes()));
+  }
+
   // Computes a checksum over the contents of "tensor", which is allocated
   // on "gpu_device".
   static uint64 Checksum(Device* gpu_device,

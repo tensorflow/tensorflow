@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session_interface.h"
-#include "tensorflow/core/distributed_runtime/process_util.h"
-#include "tensorflow/core/distributed_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/function.pb.h"

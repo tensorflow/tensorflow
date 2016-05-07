@@ -274,7 +274,7 @@ bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
     to_parse = strings::StrCat(field_name, ": ", text);
   }
 
-  return protobuf::TextFormat::ParseFromString(to_parse, out);
+  return ProtoParseFromString(to_parse, out);
 }
 
 #define DEFINE_SET_ATTR_VALUE_ONE(ARG_TYPE, FIELD) \

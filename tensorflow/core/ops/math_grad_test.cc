@@ -209,14 +209,16 @@ class MathGradTest : public ::testing::Test {
     *di = outputs[1];
   }
 
-  Tensor MatMul(const Tensor& x, bool tx, const Tensor& y, bool ty) {
+  Tensor MatMulCommon(const string& opname, const string& attr_adj_x,
+                      const string& attr_adj_y, const Tensor& x, bool ax,
+                      const Tensor& y, bool ay) {
     auto T = x.dtype();
     auto gdef = test::function::GDef(
         {
             f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
             f::NDef("y", "Placeholder", {}, {{"dtype", T}}),
-            f::NDef("z", "MatMul", {"x", "y"},
-                    {{"T", T}, {"transpose_a", tx}, {"transpose_b", ty}}),
+            f::NDef("z", opname, {"x", "y"},
+                    {{"T", T}, {attr_adj_x, ax}, {attr_adj_y, ay}}),
         },
         {});
     auto sess = NewSession();
@@ -229,8 +231,17 @@ class MathGradTest : public ::testing::Test {
     return outputs[0];
   }
 
-  void MatMulGrad(const Tensor& x, bool tx, const Tensor& y, bool ty,
-                  Tensor* dx, Tensor* dy) {
+  Tensor MatMul(const Tensor& x, bool ax, const Tensor& y, bool ay) {
+    return MatMulCommon("MatMul", "transpose_a", "transpose_b", x, ax, y, ay);
+  }
+
+  Tensor BatchMatMul(const Tensor& x, bool ax, const Tensor& y, bool ay) {
+    return MatMulCommon("BatchMatMul", "adj_x", "adj_y", x, ax, y, ay);
+  }
+
+  void MatMulGradCommon(const string& opname, const string& attr_adj_x,
+                        const string& attr_adj_y, const Tensor& x, bool ax,
+                        const Tensor& y, bool ay, Tensor* dx, Tensor* dy) {
     const DataType T = x.dtype();
     auto adef = [T](const string& name) {  // E.g., x:float, dy:double
       return strings::StrCat(name, ":", DataTypeString(T));
@@ -240,9 +251,9 @@ class MathGradTest : public ::testing::Test {
         FDH::Define("Test", {adef("x"), adef("y")}, {adef("l")}, {},
                     {
                         {{"z"},
-                         "MatMul",
+                         opname,
                          {"x", "y"},
-                         {{"T", T}, {"transpose_a", tx}, {"transpose_b", ty}}},
+                         {{"T", T}, {attr_adj_x, ax}, {attr_adj_y, ay}}},
                         FDH::Const("zero", 0),
                         FDH::Const("one", 1),
                         {{"r"}, "Rank", {"z"}, {{"T", T}}},
@@ -287,6 +298,18 @@ class MathGradTest : public ::testing::Test {
     delete sess;
     *dx = outputs[0];
     *dy = outputs[1];
+  }
+
+  void MatMulGrad(const Tensor& x, bool ax, const Tensor& y, bool ay,
+                  Tensor* dx, Tensor* dy) {
+    return MatMulGradCommon("MatMul", "transpose_a", "transpose_b", x, ax, y,
+                            ay, dx, dy);
+  }
+
+  void BatchMatMulGrad(const Tensor& x, bool ax, const Tensor& y, bool ay,
+                       Tensor* dx, Tensor* dy) {
+    return MatMulGradCommon("BatchMatMul", "adj_x", "adj_y", x, ax, y, ay, dx,
+                            dy);
   }
 
   void SelectGrad(const Tensor& c, const Tensor& x, const Tensor& y, Tensor* dc,
@@ -827,6 +850,54 @@ TEST_F(MathGradTest, MatMul_11) {
   auto dz = test::AsTensor<float>({1.f, 1.f}, TensorShape({2, 1}));
   test::ExpectClose(dx, MatMul(y, true, dz, true));
   test::ExpectClose(dy, MatMul(dz, true, x, true));
+}
+
+TEST_F(MathGradTest, BatchMatMul_00) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({1, 2, 3}));
+  auto y = test::AsTensor<float>({-1.f, .5f, 2.f}, TensorShape({1, 3, 1}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulGrad(x, false, y, false, &dx, &dy);
+  auto dz = test::AsTensor<float>({1.f, 1.f}, TensorShape({1, 2, 1}));
+  test::ExpectClose(dx, BatchMatMul(dz, false, y, true));
+  test::ExpectClose(dy, BatchMatMul(x, true, dz, false));
+}
+
+TEST_F(MathGradTest, BatchMatMul_01) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({1, 2, 3}));
+  auto y = test::AsTensor<float>({-1.f, .5f, 2.f}, TensorShape({1, 1, 3}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulGrad(x, false, y, true, &dx, &dy);
+  auto dz = test::AsTensor<float>({1.f, 1.f}, TensorShape({1, 2, 1}));
+  test::ExpectClose(dx, BatchMatMul(dz, false, y, false));
+  test::ExpectClose(dy, BatchMatMul(dz, true, x, false));
+}
+
+TEST_F(MathGradTest, BatchMatMul_10) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({1, 3, 2}));
+  auto y = test::AsTensor<float>({-1.f, .5f, 2.f}, TensorShape({1, 3, 1}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulGrad(x, true, y, false, &dx, &dy);
+  auto dz = test::AsTensor<float>({1.f, 1.f}, TensorShape({1, 2, 1}));
+  test::ExpectClose(dx, BatchMatMul(y, false, dz, true));
+  test::ExpectClose(dy, BatchMatMul(x, false, dz, false));
+}
+
+TEST_F(MathGradTest, BatchMatMul_11) {
+  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+                                 TensorShape({1, 3, 2}));
+  auto y = test::AsTensor<float>({-1.f, .5f, 2.f}, TensorShape({1, 1, 3}));
+  Tensor dx;
+  Tensor dy;
+  BatchMatMulGrad(x, true, y, true, &dx, &dy);
+  auto dz = test::AsTensor<float>({1.f, 1.f}, TensorShape({1, 2, 1}));
+  test::ExpectClose(dx, BatchMatMul(y, true, dz, true));
+  test::ExpectClose(dy, BatchMatMul(dz, true, x, true));
 }
 
 TEST_F(MathGradTest, Sum_dim0) {

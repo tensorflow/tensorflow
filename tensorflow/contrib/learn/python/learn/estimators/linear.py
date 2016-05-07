@@ -22,55 +22,79 @@ from tensorflow.contrib.learn.python.learn import models
 
 
 class TensorFlowLinearRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
-    """TensorFlow Linear Regression model."""
+  """TensorFlow Linear Regression model."""
 
-    def __init__(self, n_classes=0, batch_size=32, steps=200, optimizer="Adagrad",
-                 learning_rate=0.1, clip_gradients=5.0, continue_training=False,
-                 config=None, verbose=1):
+  def __init__(self,
+               n_classes=0,
+               batch_size=32,
+               steps=200,
+               optimizer='Adagrad',
+               learning_rate=0.1,
+               clip_gradients=5.0,
+               continue_training=False,
+               config=None,
+               verbose=1):
 
-        super(TensorFlowLinearRegressor, self).__init__(
-            model_fn=models.linear_regression_zero_init, n_classes=n_classes,
-            batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, clip_gradients=clip_gradients,
-            continue_training=continue_training, config=config,
-            verbose=verbose)
+    super(TensorFlowLinearRegressor, self).__init__(
+        model_fn=models.linear_regression_zero_init,
+        n_classes=n_classes,
+        batch_size=batch_size,
+        steps=steps,
+        optimizer=optimizer,
+        learning_rate=learning_rate,
+        clip_gradients=clip_gradients,
+        continue_training=continue_training,
+        config=config,
+        verbose=verbose)
 
-    @property
-    def weights_(self):
-        """Returns weights of the linear regression."""
-        return self.get_tensor_value('linear_regression/weights:0')
+  @property
+  def weights_(self):
+    """Returns weights of the linear regression."""
+    return self.get_tensor_value('linear_regression/weights:0')
 
-    @property
-    def bias_(self):
-        """Returns bias of the linear regression."""
-        return self.get_tensor_value('linear_regression/bias:0')
+  @property
+  def bias_(self):
+    """Returns bias of the linear regression."""
+    return self.get_tensor_value('linear_regression/bias:0')
 
 
 class TensorFlowLinearClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
-    """TensorFlow Linear Classifier model."""
+  """TensorFlow Linear Classifier model."""
 
-    def __init__(self, n_classes, batch_size=32, steps=200, optimizer="Adagrad",
-                 learning_rate=0.1, class_weight=None, clip_gradients=5.0,
-                 continue_training=False, config=None,
-                 verbose=1):
+  def __init__(self,
+               n_classes,
+               batch_size=32,
+               steps=200,
+               optimizer='Adagrad',
+               learning_rate=0.1,
+               class_weight=None,
+               clip_gradients=5.0,
+               continue_training=False,
+               config=None,
+               verbose=1):
 
-        super(TensorFlowLinearClassifier, self).__init__(
-            model_fn=models.logistic_regression_zero_init, n_classes=n_classes,
-            batch_size=batch_size, steps=steps, optimizer=optimizer,
-            learning_rate=learning_rate, class_weight=class_weight,
-            clip_gradients=clip_gradients,
-            continue_training=continue_training, config=config,
-            verbose=verbose)
+    super(TensorFlowLinearClassifier, self).__init__(
+        model_fn=models.logistic_regression_zero_init,
+        n_classes=n_classes,
+        batch_size=batch_size,
+        steps=steps,
+        optimizer=optimizer,
+        learning_rate=learning_rate,
+        class_weight=class_weight,
+        clip_gradients=clip_gradients,
+        continue_training=continue_training,
+        config=config,
+        verbose=verbose)
 
-    @property
-    def weights_(self):
-        """Returns weights of the linear classifier."""
-        return self.get_tensor_value('logistic_regression/weights:0')
+  @property
+  def weights_(self):
+    """Returns weights of the linear classifier."""
+    return self.get_tensor_value('logistic_regression/weights:0')
 
-    @property
-    def bias_(self):
-        """Returns weights of the linear classifier."""
-        return self.get_tensor_value('logistic_regression/bias:0')
+  @property
+  def bias_(self):
+    """Returns weights of the linear classifier."""
+    return self.get_tensor_value('logistic_regression/bias:0')
 
 
 TensorFlowRegressor = TensorFlowLinearRegressor

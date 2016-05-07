@@ -31,6 +31,7 @@ collected in the graph.
 @@initialize_variables
 @@initialize_local_variables
 @@is_variable_initialized
+@@report_uninitialized_variables
 @@assert_variables_initialized
 
 ## Saving and Restoring Variables
@@ -87,6 +88,13 @@ automatically by the optimizers in most cases.
 @@scatter_sub
 @@sparse_mask
 @@IndexedSlices
+
+
+## Exporting and Importing Meta Graphs
+
+@@export_meta_graph
+@@import_meta_graph
+
 """
 
 from __future__ import absolute_import

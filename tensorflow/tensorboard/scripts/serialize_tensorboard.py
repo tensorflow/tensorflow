@@ -60,6 +60,7 @@ FLAGS = tf.flags.FLAGS
 BAD_CHARACTERS = "#%&{}\\/<>*? $!'\":@+`|="
 DEFAULT_SUFFIX = '.json'
 IMAGE_SUFFIX = '.png'
+AUDIO_SUFFIX = '.wav'
 GRAPH_SUFFIX = '.pbtxt'
 
 
@@ -138,6 +139,13 @@ class TensorBoardStaticSerializer(object):
                 url = 'individualImage?' + im['query']
                 # pull down the images themselves.
                 self.GetAndSave(url, IMAGE_SUFFIX)
+          elif tag_type == 'audio':
+            for t in tags:
+              audio = self.GetRouteAndSave('audio', {'run': run, 'tag': t})
+              for snd in audio:
+                url = 'individualAudio?' + snd['query']
+                # pull down the audio clips themselves
+                self.GetAndSave(url, AUDIO_SUFFIX)
           else:
             for t in tags:
               # Save this, whatever it is :)

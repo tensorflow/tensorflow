@@ -99,6 +99,7 @@ class TileOp : public OpKernel {
     HANDLE_TYPE(DT_INT32);
     HANDLE_TYPE(DT_INT16);
     HANDLE_TYPE(DT_INT64);
+    HANDLE_TYPE(DT_HALF);
     HANDLE_TYPE(DT_STRING);  // when DEVICE=CPUDevice.
 
 #undef HANDLE_TYPE
@@ -169,6 +170,7 @@ HANDLE_CASE_DIM(CPUDevice, DT_UINT8);
 HANDLE_CASE_DIM(CPUDevice, DT_INT32);
 HANDLE_CASE_DIM(CPUDevice, DT_INT16);
 HANDLE_CASE_DIM(CPUDevice, DT_INT64);
+HANDLE_CASE_DIM(CPUDevice, DT_HALF);
 HANDLE_CASE_DIM(CPUDevice, DT_STRING);
 
 #if GOOGLE_CUDA
@@ -177,6 +179,7 @@ HANDLE_CASE_DIM(GPUDevice, DT_DOUBLE);
 HANDLE_CASE_DIM(GPUDevice, DT_INT16);
 HANDLE_CASE_DIM(GPUDevice, DT_INT32);
 HANDLE_CASE_DIM(GPUDevice, DT_INT64);
+HANDLE_CASE_DIM(GPUDevice, DT_HALF);
 #endif  // GOOGLE_CUDA
 
 #undef HANDLE_CASE_DIM
@@ -247,6 +250,7 @@ class TileGradientOp : public OpKernel {
     HANDLE_TYPE(DT_INT32);
     HANDLE_TYPE(DT_INT16);
     HANDLE_TYPE(DT_INT64);
+    HANDLE_TYPE(DT_HALF);
 
 #undef HANDLE_TYPE
 #undef HANDLE_DIM
@@ -387,6 +391,7 @@ HANDLE_CASE_DIM(CPUDevice, DT_DOUBLE);
 HANDLE_CASE_DIM(CPUDevice, DT_INT16);
 HANDLE_CASE_DIM(CPUDevice, DT_INT32);
 HANDLE_CASE_DIM(CPUDevice, DT_INT64);
+HANDLE_CASE_DIM(CPUDevice, DT_HALF);
 
 #if GOOGLE_CUDA
 HANDLE_CASE_DIM(GPUDevice, DT_FLOAT);
@@ -394,6 +399,8 @@ HANDLE_CASE_DIM(GPUDevice, DT_DOUBLE);
 HANDLE_CASE_DIM(GPUDevice, DT_INT16);
 HANDLE_CASE_DIM(GPUDevice, DT_INT32);
 HANDLE_CASE_DIM(GPUDevice, DT_INT64);
+HANDLE_CASE_DIM(GPUDevice, DT_HALF);
+
 #endif  // GOOGLE_CUDA
 
 #undef HANDLE_CASE_DIM
@@ -442,6 +449,7 @@ DEFINE_GPU_TYPE(double);
 DEFINE_GPU_TYPE(int64);
 DEFINE_GPU_TYPE(int32);
 DEFINE_GPU_TYPE(int16);
+DEFINE_GPU_TYPE(Eigen::half);
 }  // end namespace functor
 
 #undef DEFINE_GPU_DIM
@@ -459,6 +467,11 @@ REGISTER_KERNEL_BUILDER(Name("Tile")
                         TileOp<GPUDevice>);
 REGISTER_KERNEL_BUILDER(Name("Tile")
                             .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
+                            .HostMemory("multiples"),
+                        TileOp<GPUDevice>);
+REGISTER_KERNEL_BUILDER(Name("Tile")
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<int16>("T")
                             .HostMemory("multiples"),
                         TileOp<GPUDevice>);
@@ -471,6 +484,11 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
 REGISTER_KERNEL_BUILDER(Name("TileGrad")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<double>("T")
+                            .HostMemory("multiples"),
+                        TileGradientOp<GPUDevice>);
+REGISTER_KERNEL_BUILDER(Name("TileGrad")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
                             .HostMemory("multiples"),
                         TileGradientOp<GPUDevice>);
 REGISTER_KERNEL_BUILDER(Name("TileGrad")

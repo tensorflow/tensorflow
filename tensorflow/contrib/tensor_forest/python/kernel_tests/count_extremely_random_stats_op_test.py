@@ -25,7 +25,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
 
-class CountExtremelyRandomStatsTest(test_util.TensorFlowTestCase):
+class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self.input_data = [[-1., 0.], [-1., 2.],  # node 1
@@ -40,61 +40,59 @@ class CountExtremelyRandomStatsTest(test_util.TensorFlowTestCase):
 
   def testSimple(self):
     with self.test_session():
-      (pcw_node, pcw_splits_indices, pcw_splits_delta, pcw_totals_indices,
-       pcw_totals_delta, leaves) = (
+      (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
+       pcw_totals_indices, pcw_totals_sums, _, leaves) = (
            self.ops.count_extremely_random_stats(
                self.input_data, self.input_labels, self.tree,
                self.tree_thresholds, self.node_map,
-               self.split_features, self.split_thresholds, num_classes=4))
+               self.split_features, self.split_thresholds, num_classes=5,
+               regression=False))
 
       self.assertAllEqual(
-          [[1., 1., 1., 1.], [1., 1., 0., 0.], [0., 0., 1., 1.]],
-          pcw_node.eval())
-      self.assertAllEqual([[0, 0, 0]], pcw_splits_indices.eval())
-      self.assertAllEqual([1.], pcw_splits_delta.eval())
-      self.assertAllEqual([[0, 1], [0, 0]], pcw_totals_indices.eval())
-      self.assertAllEqual([1., 1.], pcw_totals_delta.eval())
+          [[4., 1., 1., 1., 1.], [2., 1., 1., 0., 0.], [2., 0., 0., 1., 1.]],
+          pcw_node_sums.eval())
+      self.assertAllEqual([[0, 0, 0], [0, 0, 1]], pcw_splits_indices.eval())
+      self.assertAllEqual([1., 1.], pcw_splits_sums.eval())
+      self.assertAllEqual([[0, 2], [0, 0], [0, 1]], pcw_totals_indices.eval())
+      self.assertAllEqual([1., 2., 1.], pcw_totals_sums.eval())
       self.assertAllEqual([1, 1, 2, 2], leaves.eval())
 
   def testThreaded(self):
     with self.test_session(
         config=tf.ConfigProto(intra_op_parallelism_threads=2)):
-      (pcw_node, pcw_splits_indices, pcw_splits_delta, pcw_totals_indices,
-       pcw_totals_delta,
-       leaves) = (self.ops.count_extremely_random_stats(self.input_data,
-                                                        self.input_labels,
-                                                        self.tree,
-                                                        self.tree_thresholds,
-                                                        self.node_map,
-                                                        self.split_features,
-                                                        self.split_thresholds,
-                                                        num_classes=4))
+      (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
+       pcw_totals_indices, pcw_totals_sums, _, leaves) = (
+           self.ops.count_extremely_random_stats(
+               self.input_data, self.input_labels, self.tree,
+               self.tree_thresholds, self.node_map, self.split_features,
+               self.split_thresholds, num_classes=5, regression=False))
 
-      self.assertAllEqual([[1., 1., 1., 1.], [1., 1., 0., 0.],
-                           [0., 0., 1., 1.]],
-                          pcw_node.eval())
-      self.assertAllEqual([[0, 0, 0]], pcw_splits_indices.eval())
-      self.assertAllEqual([1.], pcw_splits_delta.eval())
-      self.assertAllEqual([[0, 1], [0, 0]], pcw_totals_indices.eval())
-      self.assertAllEqual([1., 1.], pcw_totals_delta.eval())
+      self.assertAllEqual([[4., 1., 1., 1., 1.], [2., 1., 1., 0., 0.],
+                           [2., 0., 0., 1., 1.]],
+                          pcw_node_sums.eval())
+      self.assertAllEqual([[0, 0, 0], [0, 0, 1]], pcw_splits_indices.eval())
+      self.assertAllEqual([1., 1.], pcw_splits_sums.eval())
+      self.assertAllEqual([[0, 2], [0, 0], [0, 1]], pcw_totals_indices.eval())
+      self.assertAllEqual([1., 2., 1.], pcw_totals_sums.eval())
       self.assertAllEqual([1, 1, 2, 2], leaves.eval())
 
   def testNoAccumulators(self):
     with self.test_session():
-      (pcw_node, pcw_splits_indices, pcw_splits_delta, pcw_totals_indices,
-       pcw_totals_delta, leaves) = (
+      (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
+       pcw_totals_indices, pcw_totals_sums, _, leaves) = (
            self.ops.count_extremely_random_stats(
                self.input_data, self.input_labels, self.tree,
                self.tree_thresholds, [-1] * 3,
-               self.split_features, self.split_thresholds, num_classes=4))
+               self.split_features, self.split_thresholds, num_classes=5,
+               regression=False))
 
-      self.assertAllEqual([[1., 1., 1., 1.], [1., 1., 0., 0.],
-                           [0., 0., 1., 1.]],
-                          pcw_node.eval())
+      self.assertAllEqual([[4., 1., 1., 1., 1.], [2., 1., 1., 0., 0.],
+                           [2., 0., 0., 1., 1.]],
+                          pcw_node_sums.eval())
       self.assertEquals((0, 3), pcw_splits_indices.eval().shape)
-      self.assertAllEqual([], pcw_splits_delta.eval())
+      self.assertAllEqual([], pcw_splits_sums.eval())
       self.assertEquals((0, 2), pcw_totals_indices.eval().shape)
-      self.assertAllEqual([], pcw_totals_delta.eval())
+      self.assertAllEqual([], pcw_totals_sums.eval())
       self.assertAllEqual([1, 1, 2, 2], leaves.eval())
 
   def testBadInput(self):
@@ -104,13 +102,51 @@ class CountExtremelyRandomStatsTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(
           'Number of nodes should be the same in '
           'tree, tree_thresholds, and node_to_accumulator'):
-        pcw_node, _, _, _, _, _ = (
+        pcw_node, _, _, _, _, _, _, _, _ = (
             self.ops.count_extremely_random_stats(
                 self.input_data, self.input_labels, self.tree,
                 self.tree_thresholds, self.node_map,
-                self.split_features, self.split_thresholds, num_classes=4))
+                self.split_features, self.split_thresholds, num_classes=5,
+                regression=False))
 
         self.assertAllEqual([], pcw_node.eval())
+
+
+class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self.input_data = [[-1., 0.], [-1., 2.],  # node 1
+                       [1., 0.], [1., -2.]]  # node 2
+    self.input_labels = [[3.], [6.], [2.], [3.]]
+    self.tree = [[1, 0], [-1, 0], [-1, 0]]
+    self.tree_thresholds = [0., 0., 0.]
+    self.node_map = [-1, 0, -1]
+    self.split_features = [[1], [-1]]
+    self.split_thresholds = [[1.], [0.]]
+    self.ops = training_ops.Load()
+
+  def testSimple(self):
+    with self.test_session():
+      (pcw_node_sums, pcw_node_squares, pcw_splits_indices, pcw_splits_sums,
+       pcw_splits_squares, pcw_totals_indices,
+       pcw_totals_sums, pcw_totals_squares, leaves) = (
+           self.ops.count_extremely_random_stats(
+               self.input_data, self.input_labels, self.tree,
+               self.tree_thresholds, self.node_map,
+               self.split_features, self.split_thresholds, num_classes=2,
+               regression=True))
+
+      self.assertAllEqual(
+          [[4., 14.], [2., 9.], [2., 5.]], pcw_node_sums.eval())
+      self.assertAllEqual(
+          [[4., 58.], [2., 45.], [2., 13.]], pcw_node_squares.eval())
+      self.assertAllEqual([[0, 0]], pcw_splits_indices.eval())
+      self.assertAllEqual([[1., 3.]], pcw_splits_sums.eval())
+      self.assertAllEqual([[1., 9.]], pcw_splits_squares.eval())
+      self.assertAllEqual([[0]], pcw_totals_indices.eval())
+      self.assertAllEqual([[2., 9.]], pcw_totals_sums.eval())
+      self.assertAllEqual([[2., 45.]], pcw_totals_squares.eval())
+      self.assertAllEqual([1, 1, 2, 2], leaves.eval())
 
 
 if __name__ == '__main__':

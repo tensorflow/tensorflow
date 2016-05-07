@@ -36,7 +36,7 @@ inputs: Must all be the same size and shape.
 REGISTER_OP("BatchMatMul")
     .Input("x: T")
     .Input("y: T")
-    .Output("out: T")
+    .Output("output: T")
     .Attr("T: {float, double, int32, complex64}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
@@ -60,11 +60,11 @@ The output tensor is 3-D or higher with shape `[..., r_o, c_o]`, where:
 
 It is computed as:
 
-    out[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
 
 x: 3-D or higher with shape `[..., r_x, c_x]`.
 y: 3-D or higher with shape `[..., r_y, c_y]`.
-out: 3-D or higher with shape `[..., r_o, c_o]`
+output: 3-D or higher with shape `[..., r_o, c_o]`
 adj_x: If `True`, adjoint the slices of `x`. Defaults to `False`.
 adj_y: If `True`, adjoint the slices of `y`. Defaults to `False`.
 )doc");
@@ -471,7 +471,7 @@ Returns the truth value of (x >= y) element-wise.
 #define EQUALITY_COMPARISON()                                                  \
   Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr(       \
       "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, " \
-      "quint8, qint8, qint32, string}")
+      "quint8, qint8, qint32, string, bool}")
 
 REGISTER_OP("Equal")
     .EQUALITY_COMPARISON()
@@ -519,7 +519,7 @@ REGISTER_OP("Select")
     .Input("condition: bool")
     .Input("t: T")
     .Input("e: T")
-    .Output("out: T")
+    .Output("output: T")
     .Attr("T: type")
     .Doc(R"doc(
 Selects elements from `t` or `e`, depending on `condition`.
@@ -566,7 +566,7 @@ t:= A `Tensor` which may have the same shape as `condition`.
     If `condition` is rank 1, `t` may have higher rank,
     but its first dimension must match the size of `condition`.
 e:= A `Tensor` with the same type and shape as `t`.
-out:= A `Tensor` with the same type and shape as `t` and `e`.
+output:= A `Tensor` with the same type and shape as `t` and `e`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1141,7 +1141,7 @@ output: 1-D. The generated values.
 REGISTER_OP("Complex")
     .Input("real: float")
     .Input("imag: float")
-    .Output("out: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Converts two real numbers to a complex number.
 
@@ -1161,195 +1161,189 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ```
 )doc");
 
-REGISTER_OP("Real")
-    .Input("in: complex64")
-    .Output("out: float")
-    .Doc(R"doc(
+REGISTER_OP("Real").Input("input: complex64").Output("output: float").Doc(R"doc(
 Returns the real part of a complex number.
 
-Given a tensor `in` of complex numbers, this operation returns a tensor of type
-`float` that is the real part of each element in `in`. All elements in `in`
-must be complex numbers of the form \\(a + bj\\), where *a* is the real part
-returned by this operation and *b* is the imaginary part.
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the real part of each element in `input`. All elements in
+`input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
+ part returned by this operation and *b* is the imaginary part.
 
 For example:
 
 ```
-# tensor 'in' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.real(in) ==> [-2.25, 3.25]
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.real(input) ==> [-2.25, 3.25]
 ```
 )doc");
 
-REGISTER_OP("Imag")
-    .Input("in: complex64")
-    .Output("out: float")
-    .Doc(R"doc(
+REGISTER_OP("Imag").Input("input: complex64").Output("output: float").Doc(R"doc(
 Returns the imaginary part of a complex number.
 
-Given a tensor `in` of complex numbers, this operation returns a tensor of type
-`float` that is the imaginary part of each element in `in`. All elements in `in`
-must be complex numbers of the form \\(a + bj\\), where *a* is the real part
-and *b* is the imaginary part returned by this operation.
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the imaginary part of each element in `input`. All
+elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
+is the real part and *b* is the imaginary part returned by this operation.
 
 For example:
 
 ```
-# tensor 'in' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.imag(in) ==> [4.75, 5.75]
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.imag(input) ==> [4.75, 5.75]
 ```
 )doc");
 
 REGISTER_OP("Conj")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Returns the complex conjugate of a complex number.
 
-Given a tensor `in` of complex numbers, this operation returns a tensor of
-complex numbers that are the complex conjugate of each element in `in`. The
-complex numbers in `in` must be of the form \\(a + bj\\), where *a* is the real
-part and *b* is the imaginary part.
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+complex numbers that are the complex conjugate of each element in `input`. The
+complex numbers in `input` must be of the form \\(a + bj\\), where *a* is the
+real part and *b* is the imaginary part.
 
 The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
 For example:
 
 ```
-# tensor 'in' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.conj(in) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 ```
 )doc");
 
 REGISTER_OP("FFT")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the 1-dimensional discrete Fourier Transform.
 
-in: A complex64 vector.
-out: The 1D Fourier Transform of `in`.
+input: A complex64 vector.
+output: The 1D Fourier Transform of `input`.
 )doc");
 
 REGISTER_OP("IFFT")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the inverse 1-dimensional discrete Fourier Transform.
 
-in: A complex64 vector.
-out: The inverse 1D Fourier Transform of `in`.
+input: A complex64 vector.
+output: The inverse 1D Fourier Transform of `input`.
 )doc");
 
 REGISTER_OP("FFT2D")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the 2-dimensional discrete Fourier Transform.
 
-in: A complex64 matrix.
-out: The 2D Fourier Transform of `in`.
+input: A complex64 matrix.
+output: The 2D Fourier Transform of `input`.
 )doc");
 
 REGISTER_OP("IFFT2D")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the inverse 2-dimensional discrete Fourier Transform.
 
-in: A complex64 matrix.
-out: The inverse 2D Fourier Transform of `in`.
+input: A complex64 matrix.
+output: The inverse 2D Fourier Transform of `input`.
 )doc");
 
 REGISTER_OP("FFT3D")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the 3-dimensional discrete Fourier Transform.
 
-in: A complex64 3-D tensor.
-out: The 3D Fourier Transform of `in`.
+input: A complex64 3-D tensor.
+output: The 3D Fourier Transform of `input`.
 )doc");
 
 REGISTER_OP("IFFT3D")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the inverse 3-dimensional discrete Fourier Transform.
 
-in: A complex64 3-D tensor.
-out: The inverse 3D Fourier Transform of `in`.
+input: A complex64 3-D tensor.
+output: The inverse 3D Fourier Transform of `input`.
 )doc");
 
 REGISTER_OP("BatchFFT")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the 1-dimensional discrete Fourier Transform over the inner-most
-dimension of `in`.
+dimension of `input`.
 
-in: A complex64 tensor.
-out: A complex64 tensor of the same shape as `in`. The inner-most dimension of
-  `in` is replaced with its 1D Fourier Transform.
+input: A complex64 tensor.
+output: A complex64 tensor of the same shape as `input`. The inner-most
+  dimension of `input` is replaced with its 1D Fourier Transform.
 )doc");
 
 REGISTER_OP("BatchIFFT")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
-dimension of `in`.
+dimension of `input`.
 
-in: A complex64 tensor.
-out: A complex64 tensor of the same shape as `in`. The inner-most dimension of
-  `in` is replaced with its inverse 1D Fourier Transform.
+input: A complex64 tensor.
+output: A complex64 tensor of the same shape as `input`. The inner-most
+  dimension of `input` is replaced with its inverse 1D Fourier Transform.
 )doc");
 
 REGISTER_OP("BatchFFT2D")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the 2-dimensional discrete Fourier Transform over the inner-most
-2 dimensions of `in`.
+2 dimensions of `input`.
 
-in: A complex64 tensor.
-out: A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions
-  of `in` are replaced with their 2D Fourier Transform.
+input: A complex64 tensor.
+output: A complex64 tensor of the same shape as `input`. The inner-most 2
+  dimensions of `input` are replaced with their 2D Fourier Transform.
 )doc");
 
 REGISTER_OP("BatchIFFT2D")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
-2 dimensions of `in`.
+2 dimensions of `input`.
 
-in: A complex64 tensor.
-out: A complex64 tensor of the same shape as `in`. The inner-most 2 dimensions
-  of `in` are replaced with their inverse 2D Fourier Transform.
+input: A complex64 tensor.
+output: A complex64 tensor of the same shape as `input`. The inner-most 2
+  dimensions of `input` are replaced with their inverse 2D Fourier Transform.
 )doc");
 
 REGISTER_OP("BatchFFT3D")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
-dimensions of `in`.
+dimensions of `input`.
 
-in: A complex64 tensor.
-out: A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions
-  of `in` are replaced with their 3D Fourier Transform.
+input: A complex64 tensor.
+output: A complex64 tensor of the same shape as `input`. The inner-most 3
+  dimensions of `input` are replaced with their 3D Fourier Transform.
 )doc");
 
 REGISTER_OP("BatchIFFT3D")
-    .Input("in: complex64")
-    .Output("out: complex64")
+    .Input("input: complex64")
+    .Output("output: complex64")
     .Doc(R"doc(
 Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
-3 dimensions of `in`.
+3 dimensions of `input`.
 
-in: A complex64 tensor.
-out: A complex64 tensor of the same shape as `in`. The inner-most 3 dimensions
-  of `in` are replaced with their inverse 3D Fourier Transform.
+input: A complex64 tensor.
+output: A complex64 tensor of the same shape as `input`. The inner-most 3
+  dimensions of `input` are replaced with their inverse 3D Fourier Transform.
 )doc");
 
 // --------------------------------------------------------------------------

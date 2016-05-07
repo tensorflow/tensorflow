@@ -13,5 +13,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 module TF.TensorBoard {
-  export var TABS = ['events', 'images', 'graphs', 'histograms'];
+  export var TABS = ['events', 'images', 'audio', 'graphs', 'histograms'];
 }

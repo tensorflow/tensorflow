@@ -30,8 +30,10 @@ namespace core {
 
 // Lower-level versions of Put... that write directly into a character buffer
 // REQUIRES: dst has enough space for the value being written
+extern void EncodeFixed16(char* dst, uint16 value);
 extern void EncodeFixed32(char* dst, uint32 value);
 extern void EncodeFixed64(char* dst, uint64 value);
+extern void PutFixed16(string* dst, uint16 value);
 extern void PutFixed32(string* dst, uint32 value);
 extern void PutFixed64(string* dst, uint64 value);
 

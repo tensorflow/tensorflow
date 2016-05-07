@@ -113,6 +113,7 @@ class TensorboardServerTest(tf.test.TestCase):
                   'scalars': ['simple_values'],
                   'histograms': ['histogram'],
                   'images': ['image'],
+                  'audio': ['audio'],
                   'graph': True,
                   'run_metadata': ['test run']}})
 
@@ -152,6 +153,20 @@ class TensorboardServerTest(tf.test.TestCase):
         'width': 1
     }])
     response = self._get('/data/individualImage?%s' % image_query)
+    self.assertEqual(response.status, 200)
+
+  def testAudio(self):
+    """Test listing audio and retrieving an individual audio clip."""
+    audio_json = self._getJson('/data/audio?tag=audio&run=run1')
+    audio_query = audio_json[0]['query']
+    # We don't care about the format of the audio query.
+    del audio_json[0]['query']
+    self.assertEqual(audio_json, [{
+        'wall_time': 0,
+        'step': 0,
+        'content_type': 'audio/wav'
+    }])
+    response = self._get('/data/individualAudio?%s' % audio_query)
     self.assertEqual(response.status, 200)
 
   def testGraph(self):
@@ -230,13 +245,22 @@ class TensorboardServerTest(tf.test.TestCase):
                                    width=1,
                                    colorspace=1,
                                    encoded_image_string=encoded_image)
+
+    audio_value = tf.Summary.Audio(sample_rate=44100,
+                                   length_frames=22050,
+                                   num_channels=2,
+                                   encoded_audio_string=b'',
+                                   content_type='audio/wav')
     writer.add_event(tf.Event(wall_time=0,
                               step=0,
-                              summary=tf.Summary(value=[tf.Summary.Value(
-                                  tag='histogram',
-                                  histo=histogram_value), tf.Summary.Value(
-                                      tag='image',
-                                      image=image_value)])))
+                              summary=tf.Summary(value=[
+                                  tf.Summary.Value(tag='histogram',
+                                                   histo=histogram_value),
+                                  tf.Summary.Value(tag='image',
+                                                   image=image_value),
+                                  tf.Summary.Value(tag='audio',
+                                                   audio=audio_value)
+                              ])))
 
     # Write 100 simple values.
     for i in xrange(1, self._SCALAR_COUNT + 1):

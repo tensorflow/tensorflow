@@ -23,6 +23,11 @@ data](../../how_tos/reading_data/index.md#feeding).
 @@placeholder
 @@placeholder_with_default
 
+For feeding `SparseTensor`s which are composite type,
+there is a convenience function:
+
+@@sparse_placeholder
+
 ## Readers
 
 TensorFlow provides a set of Reader classes for reading data formats.

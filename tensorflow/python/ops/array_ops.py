@@ -240,7 +240,12 @@ def pack(values, name="pack"):
   Returns:
     output: A packed `Tensor` with the same type as `values`.
   """
-  return gen_array_ops._pack(values, name=name)
+  try:
+    # If the input is a constant list, it can just be converted to a constant op
+    return ops.convert_to_tensor(values, name=name)
+  except (TypeError, ValueError):
+    # Input list contains non-constant tensors
+    return gen_array_ops._pack(values, name=name)
 
 
 def unpack(value, num=None, name="unpack"):
@@ -423,7 +428,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
 
   ```python
   # 2-D example
-  a = [[1, 2], [3, 4], [5, 6]]
+  tensor = [[1, 2], [3, 4], [5, 6]]
   mask = [True, False, True]
   boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
   ```
@@ -764,6 +769,61 @@ def placeholder(dtype, shape=None, name=None):
       name=name)
   ret.set_shape(shape)
   return ret
+
+
+def sparse_placeholder(dtype, shape=None, name=None):
+  """Inserts a placeholder for a sparse tensor that will be always fed.
+
+  **Important**: This sparse tensor will produce an error if evaluated.
+  Its value must be fed using the `feed_dict` optional argument to
+  `Session.run()`, `Tensor.eval()`, or `Operation.run()`.
+
+  For example:
+
+  ```python
+  x = tf.sparse_placeholder(tf.float32)
+  y = tf.sparse_reduce_sum(x)
+
+  with tf.Session() as sess:
+    print(sess.run(y))  # ERROR: will fail because x was not fed.
+
+    indices = np.array([[3, 2, 0], [4, 5, 1]], dtype=np.int64)
+    values = np.array([1.0, 2.0], dtype=np.float32)
+    shape = np.array([7, 9, 2], dtype=np.int64)
+    print(sess.run(y, feed_dict={
+      x: tf.SparseTensorValue(indices, values, shape)}))  # Will succeed.
+    print(sess.run(y, feed_dict={
+      x: (indices, values, shape)}))  # Will succeed.
+
+    sp = tf.SparseTensor(indices=indices, values=values, shape=shape)
+    sp_value = sp.eval(session)
+    print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
+  ```
+
+  Args:
+    dtype: The type of `values` elements in the tensor to be fed.
+    shape: The shape of the tensor to be fed (optional). If the shape is not
+      specified, you can feed a sparse tensor of any shape.
+    name: A name for prefixing the operations (optional).
+
+  Returns:
+    A `SparseTensor` that may be used as a handle for feeding a value, but not
+    evaluated directly.
+  """
+  if shape is None:
+    shape = placeholder(
+        dtypes.int64, name=(name + "/shape") if name is not None else None)
+  else:
+    shape = ops.convert_to_tensor(
+        shape, name=(name + "/shape") if name is not None else None)
+  return ops.SparseTensor(
+      values=placeholder(
+          dtype, name=(name + "/values") if name is not None else None),
+      indices=placeholder(
+          dtypes.int64,
+          name=(name + "/indices") if name is not None else None),
+      shape=shape
+  )
 
 
 def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invalid-name
@@ -1755,6 +1815,112 @@ def _DepthToSpaceShape(op):
   new_depth = input_depth // (block_size * block_size)
   return [tensor_shape.TensorShape(
       [input_shape[0], height, width, new_depth])]
+
+
+def one_hot(indices, depth, on_value=1, off_value=0,
+            axis=None, dtype=dtypes.float32, name=None):
+  """Returns a one-hot tensor.
+
+  The locations represented by indices in `indices` take value `on_value`,
+  while all other locations take value `off_value`. By default, `on_value` is 1,
+  and `off_value` is 0. The type of the output tensor is specified by `dtype`, 
+  which defaults to `tf.float32`.
+
+  If the input `indices` is rank `N`, the output will have rank `N+1`. The
+  new axis is created at dimension `axis` (default: the new axis is appended
+  at the end).
+
+  If `indices` is a scalar the output shape will be a vector of length `depth`
+
+  If `indices` is a vector of length `features`, the output shape will be:
+  ```
+    features x depth if axis == -1
+    depth x features if axis == 0
+  ```
+
+  If `indices` is a matrix (batch) with shape `[batch, features]`, the output
+  shape will be:
+  ```
+    batch x features x depth if axis == -1
+    batch x depth x features if axis == 1
+    depth x batch x features if axis == 0
+  ```
+
+
+  Examples
+  =========
+
+  Suppose that
+
+  ```
+    indices = [0, 2, -1, 1]
+    depth = 3
+    on_value = 5.0
+    off_value = 0.0
+    axis = -1
+  ```
+
+  Then output is `[4 x 3]`:
+
+  ```
+    output =
+    [5.0 0.0 0.0]  // one_hot(0)
+    [0.0 0.0 5.0]  // one_hot(2)
+    [0.0 0.0 0.0]  // one_hot(-1)
+    [0.0 5.0 0.0]  // one_hot(1)
+  ```
+
+  Suppose that
+
+  ```
+    indices = [[0, 2], [1, -1]]
+    depth = 3
+    on_value = 1.0
+    off_value = 0.0
+    axis = -1
+  ```
+
+  Then output is `[2 x 2 x 3]`:
+
+  ```
+    output =
+    [
+      [1.0, 0.0, 0.0]  // one_hot(0)
+      [0.0, 0.0, 1.0]  // one_hot(2)
+    ][
+      [0.0, 1.0, 0.0]  // one_hot(1)
+      [0.0, 0.0, 0.0]  // one_hot(-1)
+    ]
+  ```
+
+  Args:
+    indices: A `Tensor` of indices.
+    depth: A scalar defining the depth of the one hot dimension.
+    on_value: A scalar defining the value to fill in output when `indices[j]
+      = i`. (default: 1)
+    off_value: A scalar defining the value to fill in output when `indices[j]
+      != i`. (default: 0)
+    axis: The axis to fill (default: -1, a new inner-most axis).
+    dtype: The data type of the output tensor.
+
+  Returns:
+    output: The one-hot tensor.
+
+  Raises:
+    TypeError: If dtype is `tf.string`
+  """
+  # Check for bad dtype specification
+  if dtype == dtypes.string:
+    raise TypeError("dtype must be a numeric type")
+
+  with ops.op_scope([indices, depth, on_value, off_value,
+            axis, dtype], name, "one_hot") as name:
+    on_value = ops.convert_to_tensor(on_value, dtype=dtype, name="on_value")
+    off_value = ops.convert_to_tensor(off_value, dtype=dtype, name="off_value")
+    indices = ops.convert_to_tensor(indices, dtype=dtypes.int64, name="indices")
+    depth = ops.convert_to_tensor(depth, dtype=dtypes.int32, name="depth")
+    return gen_array_ops._one_hot(indices, depth, on_value, 
+                                  off_value, axis, name)
 
 
 @ops.RegisterShape("OneHot")

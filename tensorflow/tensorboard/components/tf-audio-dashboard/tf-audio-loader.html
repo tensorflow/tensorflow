@@ -1,0 +1,57 @@
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-imports/lodash.html">
+
+<!--
+tf-audio-loader loads an individual audio clip from the TensorBoard backend.
+
+Right now it always loads the most recent audio clip. We should add support in the
+future for loading older clips.
+-->
+<dom-module id="tf-audio-loader">
+  <style>
+  :host {
+    display: block;
+  }
+  img {
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
+  </style>
+  <template>
+    <template is="dom-if" if="[[audioUrl]]">
+      <audio controls loop>
+        <source src="[[audioUrl]]" type="[[audioContentType]]" />
+      </audio>
+    </template>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-audio-loader",
+      properties: {
+        run: String,
+        tag: String,
+        audioGenerator: Function,
+        audioUrl: String,
+        audioContentType: String
+      },
+      reload: function() {
+        var _this = this;
+        this.audioUrl = ""; // force reload
+        this.audioContentType = "";
+        this.audioGenerator(this.tag, this.run).then(function(metadatas) {
+          var last_metadata = _.last(metadatas);
+          _this.audioUrl = last_metadata.url;
+          _this.audioContentType = last_metadata.content_type;
+        })
+      },
+      ready: function() {
+        // Need to test so that it will not error if it is constructed w/o
+        // all properties (so that it's possible to use stub to mock it out)
+        if (this.run != null && this.tag != null && this.audioGenerator != null) {
+          this.reload();
+        }
+      },
+    });
+  </script>
+</dom-module>

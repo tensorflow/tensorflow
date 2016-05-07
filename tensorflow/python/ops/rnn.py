@@ -409,7 +409,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     time_major: The shape format of the `inputs` and `outputs` Tensors.
       If true, these `Tensors` must be shaped `[max_time, batch_size, depth]`.
       If false, these `Tensors` must be shaped `[batch_size, max_time, depth]`.
-      Using time_major = True is a bit more efficient because it avoids
+      Using `time_major = True` is a bit more efficient because it avoids
       transposes at the beginning and end of the RNN calculation.  However,
       most TensorFlow data is batch-major, so by default this function
       accepts input and emits output in batch-major form.

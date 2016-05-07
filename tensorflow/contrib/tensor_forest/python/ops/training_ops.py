@@ -43,15 +43,23 @@ ops.NoGradient('UpdateFertileSlots')
 @ops.RegisterShape('CountExtremelyRandomStats')
 def _CountExtremelyRandomStatsShape(op):
   """Shape function for CountExtremelyRandomStats Op."""
+  regression = op.get_attr('regression')
   num_points = op.inputs[0].get_shape()[0].value
   num_nodes = op.inputs[2].get_shape()[0].value
   num_classes = op.get_attr('num_classes')
   # The output of TraverseTree is [leaf_node_index(x) for x in input_data].
-  return [tensor_shape.TensorShape([num_nodes, num_classes]),  # node pcw
-          tensor_shape.TensorShape([None, 3]),
-          tensor_shape.TensorShape([None]),
-          tensor_shape.TensorShape([None, 2]),
-          tensor_shape.TensorShape([None]),
+  return [tensor_shape.TensorShape([num_nodes, num_classes]),  # node sums
+          tensor_shape.TensorShape([num_nodes, num_classes]),  # node squares
+          tensor_shape.TensorShape([None, 2 if regression else 3]),
+          tensor_shape.TensorShape(
+              [None, num_classes] if regression else [None]),
+          tensor_shape.TensorShape(
+              [None, num_classes] if regression else [0]),
+          tensor_shape.TensorShape([None, 1 if regression else 2]),
+          tensor_shape.TensorShape(
+              [None, num_classes] if regression else [None]),
+          tensor_shape.TensorShape(
+              [None, num_classes] if regression else [0]),
           tensor_shape.TensorShape([num_points])]
 
 

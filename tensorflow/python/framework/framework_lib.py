@@ -67,6 +67,7 @@ from __future__ import division
 from __future__ import print_function
 
 # Classes used when building a Graph.
+from tensorflow.python.framework.device import DeviceSpec
 from tensorflow.python.framework.ops import Graph
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor

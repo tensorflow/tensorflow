@@ -19,7 +19,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import device as pydev
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 
@@ -73,14 +73,14 @@ class _ReplicaDeviceChooser(object):
     """
     if not self._merge_devices and op.device:
       return op.device
-    current_device = pydev.from_string(op.device or "")
-    spec = pydev.Device()
+    current_device = pydev.DeviceSpec.from_string(op.device or "")
+    spec = pydev.DeviceSpec()
     if self._ps_tasks and self._ps_device:
       node_def = op if isinstance(op, graph_pb2.NodeDef) else op.node_def
       if node_def.op in self._ps_ops:
         device_string = "%s/task:%d" % (self._ps_device, self._next_task())
         if self._merge_devices:
-          spec = pydev.from_string(device_string)
+          spec = pydev.DeviceSpec.from_string(device_string)
           spec.merge_from(current_device)
           return spec.to_string()
         else:
@@ -88,7 +88,7 @@ class _ReplicaDeviceChooser(object):
     if self._worker_device:
       if not self._merge_devices:
         return self._worker_device
-      spec = pydev.from_string(self._worker_device)
+      spec = pydev.DeviceSpec.from_string(self._worker_device)
 
     if not self._merge_devices:
       return ""

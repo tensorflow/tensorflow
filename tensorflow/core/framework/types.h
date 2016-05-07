@@ -191,6 +191,9 @@ bool DataTypeCanUseMemcpy(DataType dt);
 
 bool DataTypeIsQuantized(DataType dt);
 
+// Is the dtype nonquantized integral?
+bool DataTypeIsInteger(DataType dt);
+
 // Returns a 0 on failure
 int DataTypeSize(DataType dt);
 

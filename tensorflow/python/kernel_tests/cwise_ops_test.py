@@ -1433,6 +1433,8 @@ class MathOpsOverloadTest(tf.test.TestCase):
         (np.logical_and, _AND),
         (np.logical_or, _OR),
         (np.logical_xor, _XOR),
+        (np.equal, tf.equal),
+        (np.not_equal, tf.not_equal)
     ]
     for np_func, tf_func in logical_funcs:
       self._compareBinary(True, False, tf.bool, np_func, tf_func)

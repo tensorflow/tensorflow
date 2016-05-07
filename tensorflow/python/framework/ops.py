@@ -38,7 +38,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
@@ -524,7 +524,6 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
 
   ```python
   import numpy as np
-  array = np.random.rand(32, 100, 100)
 
   def my_func(arg):
     arg = tf.convert_to_tensor(arg, dtype=tf.float32)
@@ -547,7 +546,8 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
     dtype: Optional element type for the returned tensor. If missing, the
       type is inferred from the type of `value`.
     name: Optional name to use if a new `Tensor` is created.
-    as_ref: True if we want the result as a ref tensor.
+    as_ref: True if we want the result as a ref tensor. Only used if a new
+      `Tensor` is created.
 
   Returns:
     A `Tensor` based on `value`.
@@ -884,6 +884,13 @@ class SparseTensor(object):
   @@graph
   """
 
+  @classmethod
+  def from_value(cls, sparse_tensor_value):
+    return SparseTensor(
+        indices=sparse_tensor_value.indices,
+        values=sparse_tensor_value.values,
+        shape=sparse_tensor_value.shape)
+
   def __init__(self, indices, values, shape):
     """Creates a `SparseTensor`.
 
@@ -987,7 +994,7 @@ SparseTensorValue = collections.namedtuple("SparseTensorValue",
 
 
 def _device_string(dev_spec):
-  if isinstance(dev_spec, pydev.Device):
+  if isinstance(dev_spec, pydev.DeviceSpec):
     return dev_spec.to_string()
   else:
     return dev_spec
@@ -1812,6 +1819,7 @@ class Graph(object):
   may define additional collections by specifying a new name.
 
   @@add_to_collection
+  @@add_to_collections
   @@get_collection
   @@get_collection_ref
 
@@ -2004,6 +2012,7 @@ class Graph(object):
       if from_version is None or op_id > from_version:
         graph.node.extend([op.node_def])
         if op.outputs and add_shapes:
+          assert "_output_shapes" not in graph.node[-1].attr
           graph.node[-1].attr["_output_shapes"].list.shape.extend([
               output.get_shape().as_proto() for output in op.outputs])
         bytesize += op.node_def.ByteSize()
@@ -2426,12 +2435,17 @@ class Graph(object):
     `names` are ignored, but it will not check for pre-existing membership of
     `value` in any of the collections in `names`.
 
+    `names` can be any iterable, but if `names` is a string, it is treated as a
+    single collection name.
+
     Args:
       names: The keys for the collections to add to. The `GraphKeys` class
         contains many standard names for collections.
       value: The value to add to the collections.
     """
-    for name in set(names):
+    # Make sure names are unique, but treat strings as a single collection name
+    names = (names,) if isinstance(names, six.string_types) else set(names)
+    for name in names:
       self.add_to_collection(name, value)
 
   def get_collection_ref(self, name):
@@ -3589,6 +3603,8 @@ class GraphKeys(object):
   BIASES = "biases"
   # Key to collect activations
   ACTIVATIONS = "activations"
+  # Key to collect update_ops
+  UPDATE_OPS = "update_ops"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"

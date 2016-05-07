@@ -250,6 +250,48 @@ def random_crop(value, size, seed=None, name=None):
     return array_ops.slice(value, offset, size, name=name)
 
 
+def multinomial(logits, num_samples, seed=None, name=None):
+  """Draws samples from a multinomial distribution.
+
+  Example:
+
+    samples = tf.multinomial(tf.log([[0.5, 0.5]]), 10)
+    # samples has shape [1, 10], where each value is either 0 or 1.
+
+    samples = tf.multinomial([[1, -1, -1]], 10)
+    # samples is equivalent to tf.zeros([1, 10], dtype=tf.int64).
+
+  Args:
+    logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
+      `[i, :]` represents the unnormalized log probabilities for all classes.
+    num_samples: 0-D.  Number of independent samples to draw for each row slice.
+    seed: A Python integer. Used to create a random seed for the distribution.
+      See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+    name: Optional name for the operation.
+
+  Returns:
+    The drawn samples of shape `[batch_size, num_samples]`.
+  """
+  with ops.op_scope([logits], name, "multinomial"):
+    logits = ops.convert_to_tensor(logits, name="logits")
+    seed1, seed2 = random_seed.get_seed(seed)
+    return gen_random_ops.multinomial(logits, num_samples, seed=seed1,
+                                      seed2=seed2)
+
+
+@ops.RegisterShape("Multinomial")
+def _MultinomialShape(op):  # pylint: disable=invalid-name
+  logits_shape = op.inputs[0].get_shape().with_rank(2)
+  batch_size = logits_shape[0]
+  num_samples_or_none = tensor_util.constant_value(op.inputs[1])
+  return [tensor_shape.matrix(batch_size, num_samples_or_none)]
+
+
+ops.NoGradient("Multinomial")
+
+
 ops.NoGradient("RandomUniform")
 
 

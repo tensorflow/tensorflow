@@ -20,33 +20,24 @@ limitations under the License.
 
 namespace tensorflow {
 
-StepStatsCollector::StepStatsCollector(
-    StepStats* ss, std::unordered_map<const Graph*, CostModel*>* cm)
-    : step_stats_(ss), cost_models_(cm) {}
+StepStatsCollector::StepStatsCollector(StepStats* ss,
+                                       CostModelManager* cost_model_manager)
+    : step_stats_(ss), cost_model_manager_(cost_model_manager) {}
 
 void StepStatsCollector::UpdateCostModel(const NodeExecStats* nt,
                                          const Graph* graph, const Node* node) {
   mutex_lock l(mu_);
-  if (!cost_models_) {
+  if (cost_model_manager_ == nullptr) {
     return;
   }
-  CostModel* cm;
-  auto it = cost_models_->find(graph);
-  if (it == cost_models_->end()) {
-    cm = new CostModel(false);
-    cm->InitFromGraph(*graph);
-    cost_models_->emplace(graph, cm);
-  } else {
-    cm = (*it).second;
-  }
-
+  CostModel* cm = cost_model_manager_->FindOrCreateCostModel(graph);
   cm->RecordMaxExecutionTime(node, Microseconds(nt->op_end_rel_micros()));
 
   for (int i = 0; i < nt->output_size(); ++i) {
-    cm->RecordMaxSize(node, i, Bytes(nt->output(i)
-                                         .tensor_description()
-                                         .allocation_description()
-                                         .allocated_bytes()));
+    cm->RecordMaxMemSize(node, i, Bytes(nt->output(i)
+                                            .tensor_description()
+                                            .allocation_description()
+                                            .allocated_bytes()));
     cm->RecordAliases(node, i, nt->output(i)
                                    .tensor_description()
                                    .allocation_description()

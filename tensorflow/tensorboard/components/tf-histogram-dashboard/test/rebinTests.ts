@@ -1,13 +1,13 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -31,11 +31,10 @@ module TF.Histogram {
     // Rebinning
     //
 
-    it("Returns an empty array if you don't have any bins", function() {
-      assert.deepEqual(rebinHistogram([], 10), []);
-    });
+    it('Returns an empty array if you don\'t have any bins',
+       function() { assert.deepEqual(rebinHistogram([], 10), []); });
 
-    it("Collapses two bins into one.", function() {
+    it('Collapses two bins into one.', function() {
       var histogram = [
         {x: 0, dx: 1, y: 1},
         {x: 1, dx: 1, y: 2}
@@ -46,7 +45,7 @@ module TF.Histogram {
       assertHistogramEquality(rebinHistogram(histogram, 1), oneBin);
     });
 
-    it("Splits one bin into two.", function() {
+    it('Splits one bin into two.', function() {
       var histogram = [
         {x: 0, dx: 1, y: 3}
       ];
@@ -57,7 +56,7 @@ module TF.Histogram {
       assertHistogramEquality(rebinHistogram(histogram, 2), twoBin);
     });
 
-    it("Regularizes non-uniform bins.", function() {
+    it('Regularizes non-uniform bins.', function() {
       var histogram = [
         {x: 0, dx: 2, y: 3},
         {x: 2, dx: 3, y: 3},

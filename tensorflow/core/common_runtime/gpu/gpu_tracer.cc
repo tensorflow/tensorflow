@@ -257,7 +257,7 @@ CUPTIManager *GetCUPTIManager() {
 // TODO(pbar) Move this to platform specific header file?
 // Static thread local variable for POD types.
 #define TF_STATIC_THREAD_LOCAL_POD(_Type_, _var_)                  \
-  static thread_local _Type_ s_obj_##_var_;                        \
+  static __thread _Type_ s_obj_##_var_;                            \
   namespace {                                                      \
   class ThreadLocal_##_var_ {                                      \
    public:                                                         \

@@ -1,5 +1,4 @@
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../tf-event-dashboard/tf-tooltip-coordinator.html">
 <link rel="import" href="../tf-event-dashboard/tf-run-selector.html">
 <link rel="import" href="../tf-event-dashboard/tf-x-type-selector.html">
 <link rel="import" href="../tf-event-dashboard/tf-color-scale.html">
@@ -36,14 +35,6 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
         out-color-scale="{{colorScale}}"
         out-class-scale="{{classScale}}"
       ></tf-color-scale>
-
-      <tf-tooltip-coordinator
-        id="tooltipCoordinator"
-        out-tooltip-updater="{{tooltipUpdater}}"
-        out-tooltip-map="{{tooltipMap}}"
-        out-x-value="{{tooltipXValue}}"
-        out-closest-run="{{closestRun}}"
-      ></tf-tooltip-coordinator>
     </div>
 
     <tf-dashboard-layout>
@@ -67,10 +58,6 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
             runs="[[runs]]"
             class-scale="[[classScale]]"
             out-selected="{{selectedRuns}}"
-            tooltips="[[tooltipMap]]"
-            closest-run="[[closestRun]]"
-            x-value="[[tooltipXValue]]"
-            x-type="[[xType]]"
           ></tf-run-selector>
           </div>
       </div>
@@ -99,7 +86,6 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
                           color-scale="[[colorScale]]"
                           on-keyup="toggleSelected"
                           tabindex="2"
-                          tooltip-updater="[[tooltipUpdater]]"
                         ></tf-chart>
                         <paper-icon-button
                           class="expand-button"

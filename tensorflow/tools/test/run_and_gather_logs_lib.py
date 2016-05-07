@@ -27,7 +27,6 @@ import time
 
 import tensorflow as tf
 
-from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
 from tensorflow.tools.test import system_info_lib
 
@@ -80,9 +79,9 @@ def process_test_logs(test_name, test_args, start_time, run_time, log_files):
 def process_benchmarks(log_files):
   benchmarks = test_log_pb2.BenchmarkEntries()
   for f in log_files:
-    content = tf.gfile.GFile(f).read()
-    entry = benchmarks.entry.add()
-    text_format.Merge(content, entry)
+    content = tf.gfile.GFile(f, "rb").read()
+    if benchmarks.MergeFromString(content) != len(content):
+      raise Exception("Failed parsing benchmark entry from %s" % f)
   return benchmarks
 
 
