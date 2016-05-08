@@ -127,21 +127,25 @@ class DataFeederTest(tf.test.TestCase):
       self.assertAllClose(feed_dict[out.name], [[0., 0., 1.], [0., 1., 0.]])
 
   def test_hdf5_data_feeder(self):
-    if HAS_h5py:
-      from tensorflow.contrib.learn.python.learn.datasets import load_iris
+    try:
       import h5py
-      iris = load_iris()
-      h5f = h5py.File('iris.h5', 'w')
-      h5f.create_dataset('irisX', data=iris.data)
-      h5f.create_dataset('irisY', data=iris.target)
+      X = np.matrix([[1, 2], [3, 4]])
+      y = np.array([1, 2])
+      h5f = h5py.File('test_hdf5.h5', 'w')
+      h5f.create_dataset('X', data=X)
+      h5f.create_dataset('y', data=y)
       h5f.close()
-      h5f = h5py.File('iris.h5', 'r')
-      X = h5f['irisX']
-      y = h5f['irisY']
-      df = data_feeder.HDF5DataFeeder(X, y, n_classes=3, batch_size=2, random_state=1234)
+      h5f = h5py.File('test_hdf5.h5', 'r')
+      X = h5f['X']
+      y = h5f['y']
+      df = data_feeder.DataFeeder(X, y, n_classes=0, batch_size=3)
+      inp, out = df.input_builder()
       feed_dict_fn = df.get_feed_dict_fn()
       feed_dict = feed_dict_fn()
-      # TODO: check something
+      self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
+      self.assertAllClose(feed_dict[out.name], [2, 1])
+    except ImportError:
+      print("Skipped test for hdf5 since it's not installed.")
 
 class SetupPredictDataFeederTest(tf.test.TestCase):
 

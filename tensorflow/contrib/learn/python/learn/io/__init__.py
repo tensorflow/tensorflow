@@ -18,4 +18,3 @@ from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.io.pandas_io import *
 from tensorflow.contrib.learn.python.learn.io.dask_io import *
-from tensorflow.contrib.learn.python.learn.io.hdf5_io import *
