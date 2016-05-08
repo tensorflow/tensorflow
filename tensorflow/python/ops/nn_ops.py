@@ -68,15 +68,15 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   the amount of computation.
 
   For a description of atrous convolution and how it can be used for dense
-  feature extraction, please see: (Semantic Image Segmentation with Deep
-  Convolutional Nets and Fully Connected CRFs)[http://arxiv.org/abs/1412.7062].
-  The same operation is investigated further in (Multi-Scale Context Aggregation
-  by Dilated Convolutions)[http://arxiv.org/abs/1511.07122]. Previous works
+  feature extraction, please see: [Semantic Image Segmentation with Deep
+  Convolutional Nets and Fully Connected CRFs](http://arxiv.org/abs/1412.7062).
+  The same operation is investigated further in [Multi-Scale Context Aggregation
+  by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
   that effectively use atrous convolution in different ways are, among others,
-  (OverFeat: Integrated Recognition, Localization and Detection using
-  Convolutional Networks) [http://arxiv.org/abs/1312.6229] and (Fast Image
-  Scanning with Deep Max-Pooling Convolutional Neural Networks)
-  [http://arxiv.org/abs/1302.1700]. Atrous convolution is also closely related
+  [OverFeat: Integrated Recognition, Localization and Detection using
+  Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
+  Scanning with Deep Max-Pooling Convolutional Neural Networks]
+  (http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
   to the so-called noble identities in multi-rate signal processing.
 
   There are many different ways to implement atrous convolution (see the refs
@@ -227,8 +227,8 @@ def conv2d_transpose(value,
                      name=None):
   """The transpose of `conv2d`.
 
-  This operation is sometimes called "deconvolution" after (Deconvolutional
-  Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+  This operation is sometimes called "deconvolution" after [Deconvolutional
+  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
   actually the transpose (gradient) of `conv2d` rather than an actual
   deconvolution.
 
