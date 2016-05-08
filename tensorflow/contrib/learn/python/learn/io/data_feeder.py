@@ -88,8 +88,8 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
     if (isinstance(X, (dd.Series, dd.DataFrame)) and
         (y is None or isinstance(y, (dd.Series, dd.DataFrame)))):
       data_feeder_cls = DaskDataFeeder
-    else if (isinstance(X, h5py._hl.dataset.Dataset) and
-        (y is None or isinstance(y, h5py._hl.dataset.Dataset))):
+    else if (isinstance(X, h5py.Dataset) and
+        (y is None or isinstance(y, h5py.Dataset))):
       data_feeder_cls = HDF5DataFeeder
     else:
       data_feeder_cls = DataFeeder
