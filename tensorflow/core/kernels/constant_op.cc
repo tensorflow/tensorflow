@@ -117,7 +117,15 @@ struct FillFunctor<CPUDevice, T> {
 template <typename T>
 struct SetZeroFunctor<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat out) {
-    out.device(d) = out.constant(T());
+    out.device(d) = out.constant(T(0));
+  }
+};
+
+// Specialization of SetZeroFunctor<Device=CPUDevice, T=string>.
+template <>
+struct SetZeroFunctor<CPUDevice, string> {
+  void operator()(const CPUDevice& d, typename TTypes<string>::Flat out) {
+    out.device(d) = out.constant(string());
   }
 };
 
@@ -132,6 +140,7 @@ DEFINE_SETZERO_CPU(int32);
 DEFINE_SETZERO_CPU(int64);
 DEFINE_SETZERO_CPU(complex64);
 DEFINE_SETZERO_CPU(complex128);
+DEFINE_SETZERO_CPU(string);
 #undef DEFINE_SETZERO_CPU
 
 }  // end namespace functor

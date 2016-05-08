@@ -8,6 +8,12 @@
 ## Other Functions and Classes
 - - -
 
+### `class tf.contrib.learn.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
+
+
+
+- - -
+
 ### `class tf.contrib.learn.RunConfig` {#RunConfig}
 
 This class specifies the specific configurations for the run.

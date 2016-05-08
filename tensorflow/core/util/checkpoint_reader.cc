@@ -26,24 +26,14 @@ namespace checkpoint {
 class TensorSliceReader;
 
 CheckpointReader::CheckpointReader(const string& filename,
-                                   tensorflow::Status* out_status)
+                                   TF_Status* out_status)
     : reader_(nullptr), var_to_shape_map_ptr_(nullptr) {
   reader_ = new TensorSliceReader(filename);
-  if (reader_) {
-    if (out_status) {
-      *out_status = reader_->status();
-    }
-    if (reader_->status().ok()) {
-      var_to_shape_map_ptr_ = new TensorSliceReader::VarToShapeMap(
-          reader_->GetVariableToShapeMap());
-    }
+  if (!reader_->status().ok()) {
+    Set_TF_Status_from_Status(out_status, reader_->status());
   } else {
-    if (out_status) {
-      *out_status = errors::InvalidArgument(
-          "Unsuccessful TensorSliceReader constructor: "
-          "Failed to get matching files on ",
-          filename);
-    }
+    var_to_shape_map_ptr_ =
+        new TensorSliceReader::VarToShapeMap(reader_->GetVariableToShapeMap());
   }
 }
 
@@ -64,22 +54,6 @@ CheckpointReader::GetVariableToShapeMap() const {
 
 const string CheckpointReader::DebugString() const {
   return reader_->DebugString();
-}
-
-Status CheckpointReader::NewCheckpointReaderImpl(
-    const string& filepattern, std::unique_ptr<CheckpointReader>* out_reader) {
-  tensorflow::Status status;
-  std::unique_ptr<CheckpointReader> out(
-      new CheckpointReader(filepattern, &status));
-  if (status.ok()) {
-    std::swap(*out_reader, out);
-  }
-  return status;
-}
-
-Status NewCheckpointReader(const string& filepattern,
-                           std::unique_ptr<CheckpointReader>* out_reader) {
-  return CheckpointReader::NewCheckpointReaderImpl(filepattern, out_reader);
 }
 
 }  // namespace checkpoint

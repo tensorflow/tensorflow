@@ -57,6 +57,10 @@ const string RegisteredFactoriesErrorMessageLocked() {
   return strings::StrCat("Registered factories are {",
                          str_util::Join(factory_types, ", "), "}.");
 }
+string SessionOptionsToString(const SessionOptions& options) {
+  return strings::StrCat("target: \"", options.target, "\" config: ",
+                         options.config.ShortDebugString());
+}
 }  // namespace
 
 Status SessionFactory::GetFactory(const SessionOptions& options,
@@ -92,13 +96,15 @@ Status SessionFactory::GetFactory(const SessionOptions& options,
       factory_types.push_back(candidate_factory.first);
     }
     return errors::Internal(
-        "Multiple session factories registered for the given session options. "
-        "Candidate factories are {",
+        "Multiple session factories registered for the given session "
+        "options: {",
+        SessionOptionsToString(options), "} Candidate factories are {",
         str_util::Join(factory_types, ", "), "}. ",
         RegisteredFactoriesErrorMessageLocked());
   } else {
     return errors::NotFound(
-        "No session factory registered for the given session options. ",
+        "No session factory registered for the given session options: {",
+        SessionOptionsToString(options), "} ",
         RegisteredFactoriesErrorMessageLocked());
   }
 }

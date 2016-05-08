@@ -130,28 +130,40 @@ class Server(object):
         `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
       start: (Optional.) Boolean, indicating whether to start the server
         after creating it. Defaults to `True`.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        creating the TensorFlow server.
     """
     server_def = _make_server_def(server_or_cluster_def,
                                   job_name, task_index, protocol)
-    try:
-      self._server = pywrap_tensorflow.NewServer(server_def.SerializeToString())
-    except pywrap_tensorflow.StatusNotOK as e:
-      # pylint: disable=protected-access
-      raise errors._make_specific_exception(None, None, e.error_message, e.code)
-      # pylint: enable=protected-access
+    with errors.raise_exception_on_not_ok_status() as status:
+      self._server = pywrap_tensorflow.PyServer_New(
+          server_def.SerializeToString(), status)
     if start:
       self.start()
 
   def start(self):
-    """Starts this server."""
-    self._server.Start()
+    """Starts this server.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        starting the TensorFlow server.
+    """
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.PyServer_Start(self._server, status)
 
   def join(self):
     """Blocks until the server has shut down.
 
     This method currently blocks forever.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        joining the TensorFlow server.
     """
-    self._server.Join()
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.PyServer_Join(self._server, status)
 
   @property
   def target(self):
