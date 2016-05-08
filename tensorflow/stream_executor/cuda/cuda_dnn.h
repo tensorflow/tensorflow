@@ -44,6 +44,9 @@ class CudnnSupport : public dnn::DnnSupport {
 
   port::Status Init() override;
 
+  bool GetConvolveAlgorithms(
+      std::vector<dnn::AlgorithmType>* out_algorithms) override;
+
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
                   const DeviceMemory<float>& input_data,
                   const dnn::FilterDescriptor& filter_descriptor,
@@ -51,7 +54,9 @@ class CudnnSupport : public dnn::DnnSupport {
                   const dnn::ConvolutionDescriptor& convolution_descriptor,
                   const dnn::BatchDescriptor& output_descriptor,
                   DeviceMemory<float>* output_data,
-                  ScratchAllocator* scratch_allocator) override;
+                  ScratchAllocator* scratch_allocator,
+                  dnn::AlgorithmType algorithm,
+                  dnn::ProfileResult* output_profile_result) override;
 
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
                   const DeviceMemory<double>& input_data,

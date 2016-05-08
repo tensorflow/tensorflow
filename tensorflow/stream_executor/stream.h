@@ -66,6 +66,8 @@ namespace dnn {
 struct BatchDescriptor;
 struct FilterDescriptor;
 struct ConvolutionDescriptor;
+struct ProfileResult;
+typedef int64 AlgorithmType;
 }  // namespace dnn
 
 class StreamExecutor;
@@ -227,6 +229,16 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      dnn::AlgorithmType algorithm, dnn::ProfileResult *output_profile_result);
 
   Stream &ThenSeparableConvolve(
       const dnn::BatchDescriptor &input_descriptor,

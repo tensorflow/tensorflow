@@ -527,6 +527,30 @@ class PoolingDescriptor {
   std::vector<int64> strides_;
 };
 
+typedef int64 AlgorithmType;
+constexpr AlgorithmType kDefaultAlgorithm = -1;
+
+// Describes the result from a perf experiment.
+//
+// Arguments:
+//  is_valid: indicates whether a valid measurement was obtained.
+//  algorithm: returns the exact algorithm that was used.
+//  elapsed_time_in_ms: returns the measured elapsed time in milliseconds.
+class ProfileResult {
+ public:
+  bool is_valid() const { return is_valid_; }
+  void set_is_valid(bool val) { is_valid_ = val; }
+  AlgorithmType algorithm() const { return algorithm_; }
+  void set_algorithm(AlgorithmType val) { algorithm_ = val; }
+  float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
+  void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
+
+ private:
+  bool is_valid_ = false;
+  AlgorithmType algorithm_ = kDefaultAlgorithm;
+  float elapsed_time_in_ms_ = -1.0f;
+};
+
 // Describes a local response normalization (LRN). LRN is used e.g. in
 // dist_belief.
 //
@@ -655,6 +679,12 @@ class DnnSupport {
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
+  //  algorithm: an integer to specify which algorithm should be used for the
+  //    operation. kDefaultAlgorithm means the system will pick an algorithm
+  //    by default. The coding of the algorithm is be interpretted by the
+  //    underlying implementation.
+  //  output_profile_result: the output profile result for this call. The
+  //    profiling is only enabled when this is not nullptr.
   //
   // input_descriptor, filter_descriptor, convolution_descriptor and
   // output_descriptor together specify exactly how the convolution is aligned
@@ -677,8 +707,12 @@ class DnnSupport {
       const DeviceMemory<float>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data,
-      ScratchAllocator* scratch_allocator) = 0;
+      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the forward convolution pass.
+  virtual bool GetConvolveAlgorithms(
+      std::vector<AlgorithmType>* out_algorithms);
 
   // Enqueues a double-precision convolution operation onto the stream.
   // See DoConvolve above for argument details.
