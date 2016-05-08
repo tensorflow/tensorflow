@@ -299,7 +299,7 @@ def _DigammaGrad(op, grad):
   """Compute gradient of the digamma function with respect to its argument."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
-    return grad * math_ops.polygamma(array_ops.ones(array_ops.shape(x), dtype=x.dtype), x)
+    return grad * math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
 
 
 @ops.RegisterGradient("Igamma")
