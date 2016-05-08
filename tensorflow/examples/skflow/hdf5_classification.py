@@ -15,27 +15,35 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from sklearn import datasets, metrics, cross_validation
-import tensorflow as tf
+from sklearn import metrics, cross_validation
 from tensorflow.contrib import learn
+import h5py
 
-iris = datasets.load_iris()
+# Load dataset.
+iris = learn.datasets.load_dataset('iris')
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
     test_size=0.2, random_state=42)
 
-def my_model(X, y):
-    """
-    This is DNN with 10, 20, 10 hidden layers, and dropout of 0.5 probability.
+# Note that we are saving and load iris data as h5 format as a simple demonstration here.
+h5f = h5py.File('test_hdf5.h5', 'w')
+h5f.create_dataset('X_train', data=X_train)
+h5f.create_dataset('X_test', data=X_test)
+h5f.create_dataset('y_train', data=y_train)
+h5f.create_dataset('y_test', data=y_test)
+h5f.close()
 
-    Note: If you want to run this example with multiple GPUs, Cuda Toolkit 7.0 and 
-    CUDNN 6.5 V2 from NVIDIA need to be installed beforehand. 
-    """
-    with tf.device('/gpu:1'):
-    	layers = learn.ops.dnn(X, [10, 20, 10], dropout=0.5)
-    with tf.device('/gpu:2'):
-    	return learn.models.logistic_regression(layers, y)
+h5f = h5py.File('test_hdf5.h5', 'r')
+X_train = h5f['X_train']
+X_test = h5f['X_test']
+y_train = h5f['y_train']
+y_test = h5f['y_test']
 
-classifier = learn.TensorFlowEstimator(model_fn=my_model, n_classes=3)
+# Build 3 layer DNN with 10, 20, 10 units respectively.
+classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+    n_classes=3, steps=200)
+
+# Fit and predict.
 classifier.fit(X_train, y_train)
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
+

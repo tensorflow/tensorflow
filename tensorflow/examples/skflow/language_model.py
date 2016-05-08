@@ -22,7 +22,7 @@ import math
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 ### Training data
 
@@ -53,7 +53,7 @@ def unpack_xy(iter_obj):
   return (item[0] for item in X), (item[1] for item in y)
 
 
-byte_processor = skflow.preprocessing.ByteProcessor(
+byte_processor = learn.preprocessing.ByteProcessor(
     max_document_length=MAX_DOC_LENGTH)
 
 data = training_data(CORPUS_FILENAME)
@@ -68,31 +68,31 @@ HIDDEN_SIZE = 10
 
 def seq_autoencoder(X, y):
     """Sequence auto-encoder with RNN."""
-    inputs = skflow.ops.one_hot_matrix(X, 256)
-    in_X, in_y, out_y = skflow.ops.seq2seq_inputs(inputs, y, MAX_DOC_LENGTH, MAX_DOC_LENGTH)
+    inputs = learn.ops.one_hot_matrix(X, 256)
+    in_X, in_y, out_y = learn.ops.seq2seq_inputs(inputs, y, MAX_DOC_LENGTH, MAX_DOC_LENGTH)
     encoder_cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
     decoder_cell = tf.nn.rnn_cell.OutputProjectionWrapper(tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE), 256)
-    decoding, _, sampling_decoding, _ = skflow.ops.rnn_seq2seq(in_X, in_y, encoder_cell, decoder_cell)
-    return skflow.ops.sequence_classifier(decoding, out_y, sampling_decoding)
+    decoding, _, sampling_decoding, _ = learn.ops.rnn_seq2seq(in_X, in_y, encoder_cell, decoder_cell)
+    return learn.ops.sequence_classifier(decoding, out_y, sampling_decoding)
 
 
 def get_language_model(hidden_size):
     """Returns a language model with given hidden size."""
 
     def language_model(X, y):
-        inputs = skflow.ops.one_hot_matrix(X, 256)
-        inputs = skflow.ops.split_squeeze(1, MAX_DOC_LENGTH, inputs)
-        target = skflow.ops.split_squeeze(1, MAX_DOC_LENGTH, y)
+        inputs = learn.ops.one_hot_matrix(X, 256)
+        inputs = learn.ops.split_squeeze(1, MAX_DOC_LENGTH, inputs)
+        target = learn.ops.split_squeeze(1, MAX_DOC_LENGTH, y)
         encoder_cell = tf.nn.rnn_cell.OutputProjectionWrapper(tf.nn.rnn_cell.GRUCell(hidden_size),256)
         output, _ = tf.nn.rnn(encoder_cell, inputs, dtype=tf.float32)
-        return skflow.ops.sequence_classifier(output, target)
+        return learn.ops.sequence_classifier(output, target)
   
     return language_model
 
 
 ### Training model.
 
-estimator = skflow.TensorFlowEstimator(model_fn=get_language_model(HIDDEN_SIZE), 
+estimator = learn.TensorFlowEstimator(model_fn=get_language_model(HIDDEN_SIZE), 
                                        n_classes=256, 
                                        optimizer='Adam', learning_rate=0.01, 
                                        steps=1000, batch_size=64, continue_training=True)

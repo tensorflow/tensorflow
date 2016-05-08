@@ -18,8 +18,8 @@ from __future__ import print_function
 import random
 
 import tensorflow as tf
-from tensorflow.contrib.learn.python import learn
-from tensorflow.contrib.learn.python.learn import datasets
+from tensorflow.contrib import learn
+from tensorflow.contrib.learn import datasets
 
 # Load Iris Data
 iris = datasets.load_iris()
