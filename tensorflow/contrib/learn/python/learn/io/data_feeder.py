@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 
 from .pandas_io import HAS_PANDAS, extract_pandas_data, extract_pandas_matrix, extract_pandas_labels
 from .dask_io import HAS_DASK, extract_dask_data, extract_dask_labels
+from .hdf5_io import HAS_h5py
 
 
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
@@ -81,12 +82,15 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
     DataFeeder object that returns training data.
   """
   X, y = _data_type_filter(X, y)
-  if HAS_DASK:
+  if HAS_DASK or HAS_h5py:
     import dask.dataframe as dd
-    allowed_classes = (dd.Series, dd.DataFrame)
-    if (isinstance(X, allowed_classes) and
-        (y is None or isinstance(y, allowed_classes))):
+    import h5py
+    if (isinstance(X, (dd.Series, dd.DataFrame)) and
+        (y is None or isinstance(y, (dd.Series, dd.DataFrame)))):
       data_feeder_cls = DaskDataFeeder
+    else if (isinstance(X, h5py._hl.dataset.Dataset) and
+        (y is None or isinstance(y, h5py._hl.dataset.Dataset))):
+      data_feeder_cls = HDF5DataFeeder
     else:
       data_feeder_cls = DataFeeder
   else:
@@ -431,7 +435,6 @@ class DaskDataFeeder(object):
     input_dtype: dtype of input.
     output_dtype: dtype of output.
   """
-
   def __init__(self, X, y, n_classes, batch_size, random_state=None):
     import dask.dataframe as dd
     # TODO(terrytangyuan): check X and y dtypes in dask_io like pandas
@@ -485,7 +488,6 @@ class DaskDataFeeder(object):
       A function that when called samples a random subset of batch size
       from X and y.
     """
-
     def _feed_dict_fn():
       # TODO: option for with/without replacement (dev version of dask)
       sample = self.df.random_split(
@@ -505,7 +507,6 @@ class DaskDataFeeder(object):
       encoded_out[np.arange(out.size), out] = 1
       return {input_placeholder.name: inp,
               output_placeholder.name: encoded_out}
-
     return _feed_dict_fn
 
 
@@ -534,7 +535,6 @@ class HDF5DataFeeder(object):
     input_dtype: dtype of input.
     output_dtype: dtype of output.
   """
-
   def __init__(self, X, y, n_classes, batch_size, random_state=None):
     # TODO(terrytangyuan): make this compatible for unsupervised approaches
     self.X = X
@@ -573,7 +573,6 @@ class HDF5DataFeeder(object):
       A function that when called samples a random subset of batch size
       from X and y.
     """
-
     def _feed_dict_fn():
       sample_indices = np.random.randint(0, self.input_shape[0], self.batch_size)
       inp = self.X[sample_indices]

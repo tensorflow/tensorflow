@@ -1,4 +1,4 @@
-"""Tools to allow different io formats."""
+"""Methods to allow hdf5 datasets."""
 #  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.io.pandas_io import *
-from tensorflow.contrib.learn.python.learn.io.dask_io import *
-from tensorflow.contrib.learn.python.learn.io.hdf5_io import *
+try:
+  import h5py
+  HAS_h5py = True
+except ImportError:
+  HAS_h5py = False
