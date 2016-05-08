@@ -409,10 +409,8 @@ class DaskDataFeeder(object):
   """Data feeder for TF trainer that reads data from dask.Series and dask.DataFrame.
 
   Numpy arrays can be serialized to disk and it's possible to do random seeks
-  into them.
-  DaskDataFeeder will remove requirement to have full dataset in the memory
-  and still do
-  random seeks for sampling of batches.
+  into them. DaskDataFeeder will remove requirement to have full dataset in the 
+  memory and still do random seeks for sampling of batches.
 
   Parameters:
     X: iterator that returns for each element, returns features.
@@ -436,7 +434,7 @@ class DaskDataFeeder(object):
 
   def __init__(self, X, y, n_classes, batch_size, random_state=None):
     import dask.dataframe as dd
-    # TODO: check X and y dtypes in dask_io like pandas
+    # TODO(terrytangyuan): check X and y dtypes in dask_io like pandas
     self.X = X
     self.y = y
     # save column names
@@ -447,6 +445,8 @@ class DaskDataFeeder(object):
       # deal with cases where two DFs have overlapped default numeric colnames
       self.y_columns = len(self.X_columns) + 1
       self.y = self.y.rename(columns={y.columns[0]: self.y_columns})
+
+    # TODO(terrytangyuan): deal with unsupervised cases
     # combine into a data frame
     self.df = dd.multi.concat([self.X, self.y], axis=1)
     self.n_classes = n_classes
@@ -506,4 +506,91 @@ class DaskDataFeeder(object):
       return {input_placeholder.name: inp,
               output_placeholder.name: encoded_out}
 
+    return _feed_dict_fn
+
+
+class HDF5DataFeeder(object):
+  """Data feeder for TF trainer that reads data from HDF5 format.
+
+  HDF5 is a popular format to store complicated datasets (alternative to proto files).
+  This data feeder performs random samples on hdf5 data.
+
+  Parameters:
+    X: iterator that returns for each element, returns features.
+    y: iterator that returns for each element, returns 1 or many classes /
+      regression values.
+    n_classes: indicator of how many classes the target has.
+    batch_size: Mini batch size to accumulate.
+    random_state: random state for RNG. Note that it will mutate so use a
+      int value for this if you want consistent sized batches.
+
+  Attributes:
+    X: input features.
+    y: input target.
+    n_classes: number of classes.
+    batch_size: mini batch size to accumulate.
+    input_shape: shape of the input.
+    output_shape: shape of the output.
+    input_dtype: dtype of input.
+    output_dtype: dtype of output.
+  """
+
+  def __init__(self, X, y, n_classes, batch_size, random_state=None):
+    # TODO(terrytangyuan): make this compatible for unsupervised approaches
+    self.X = X
+    self.y = y
+    # TODO(terrytangyuan): save column names
+    self.n_classes = n_classes
+
+    X_shape = X.shape
+    y_shape = y.shape
+    self.input_shape, self.output_shape = _get_in_out_shape(X_shape, y_shape,
+                                                            n_classes,
+                                                            batch_size)
+    self.input_dtype, self.output_dtype = np.float32, np.float32
+    if random_state is None:
+      self.random_state = 66
+    else:
+      self.random_state = random_state
+    self.batch_size = batch_size
+
+  def get_feed_params(self):
+    """Function returns a dict with data feed params while training.
+
+    Returns:
+      A dict with data feed params while training.
+    """
+    return {'batch_size': self.batch_size}
+
+  def get_feed_dict_fn(self, input_placeholder, output_placeholder):
+    """Returns a function, that will sample data and provide it to placeholders.
+
+    Args:
+      input_placeholder: tf.Placeholder for input features mini batch.
+      output_placeholder: tf.Placeholder for output targets.
+
+    Returns:
+      A function that when called samples a random subset of batch size
+      from X and y.
+    """
+
+    def _feed_dict_fn():
+      sample_indices = np.random.randint(0, self.input_shape[0], self.batch_size)
+      inp = self.X[sample_indices]
+      # convert to correct dtype
+      inp = np.array(inp, dtype=self.input_dtype)
+      
+      out = np.zeros(self.output_shape, dtype=self.output_dtype)
+      for i in xrange(self.output_shape[0]):
+        if self.n_classes > 1:
+          if len(self.output_shape) == 2:
+            out.itemset((i, self.y[sample_indices]), 1.0)
+          else:
+            for idx, value in enumerate(self.y[sample_indices]):
+              out.itemset(tuple([i, idx, value]), 1.0)
+        else:
+          out[i] = self.y[sample_indices]
+      feed_dict[self._output_placeholder.name] = out
+      return {input_placeholder.name: inp,
+              output_placeholder.name: out}
     return _feed_dict_fn
