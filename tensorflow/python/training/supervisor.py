@@ -575,7 +575,7 @@ class Supervisor(object):
     """Writes graph_def to `logdir` and adds it to summary if applicable."""
     assert self._is_chief
     if self._logdir:
-      training_util.write_graph(self._graph.as_graph_def(),
+      training_util.write_graph(self._graph.as_graph_def(add_shapes=True),
                                 self._logdir, "graph.pbtxt")
     if self._summary_writer:
       self._summary_writer.add_graph(self._graph)
