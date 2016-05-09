@@ -1317,7 +1317,11 @@ def _import_meta_graph_def(meta_graph_def):
     (i.e., no variables to restore).
   """
   # Gathers the list of nodes we are interested in.
-  importer.import_graph_def(meta_graph_def.graph_def, name="")
+  producer_op_list = None
+  if meta_graph_def.meta_info_def.HasField("stripped_op_list"):
+    producer_op_list = meta_graph_def.meta_info_def.stripped_op_list
+  importer.import_graph_def(meta_graph_def.graph_def, name="",
+                            producer_op_list=producer_op_list)
 
   # Restores all the other collections.
   for key, col_def in meta_graph_def.collection_def.items():
