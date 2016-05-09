@@ -39,6 +39,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 DEFINE_TYPE(float)
 DEFINE_TYPE(double)
+DEFINE_TYPE(Eigen::half)
 DEFINE_TYPE(int64)
 DEFINE_TYPE(int32)
 DEFINE_TYPE(int16)

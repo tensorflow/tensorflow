@@ -37,6 +37,30 @@ class PackOpTest(tf.test.TestCase):
           c = tf.pack(xs)
           self.assertAllEqual(c.eval(), data)
 
+  def testConst(self):
+    np.random.seed(7)
+    for use_gpu in False, True:
+      with self.test_session(use_gpu=use_gpu):
+        for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+          data = np.random.randn(*shape).astype(np.float32)
+          # Pack back into a single tensorflow tensor directly using np array
+          c = tf.pack(data)
+          # This is implemented via a Const:
+          self.assertEqual(c.op.type, "Const")
+          self.assertAllEqual(c.eval(), data)
+
+          # Python lists also work for 1-D case:
+          if len(shape) == 1:
+            data_list = list(data)
+            cl = tf.pack(data_list)
+            self.assertEqual(cl.op.type, "Const")
+            self.assertAllEqual(cl.eval(), data)
+
+        # Verify that shape induction works with shapes produced via const pack
+        a = tf.constant([1, 2, 3, 4, 5, 6])
+        b = tf.reshape(a, tf.pack([2, 3]))
+        self.assertAllEqual(b.get_shape(), [2, 3])
+
   def testGradients(self):
     np.random.seed(7)
     for use_gpu in False, True:

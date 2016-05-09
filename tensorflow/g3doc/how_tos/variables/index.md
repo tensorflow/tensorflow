@@ -154,6 +154,10 @@ variables in the checkpoint files.  By default, it uses the value of the
 [`Variable.name`](../../api_docs/python/state_ops.md#Variable.name) property for
 each variable.
 
+To understand what variables are in a checkpoint, you can use the
+[`inspect_checkpoint`](https://www.tensorflow.org/code/tensorflow/python/tools/inspect_checkpoint.py)
+library, and in particular, the `print_tensors_in_checkpoint_file` function.
+
 ### Saving Variables
 
 Create a `Saver` with `tf.train.Saver()` to manage all variables in

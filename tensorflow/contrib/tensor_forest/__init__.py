@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Imports training and inference custom ops."""
+"""Random forest implementation in tensorflow."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.tensor_forest.python.ops.inference_ops import *
-from tensorflow.contrib.tensor_forest.python.ops.training_ops import *
+from tensorflow.contrib.tensor_forest.python import *

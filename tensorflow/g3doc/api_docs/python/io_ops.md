@@ -71,6 +71,56 @@ A placeholder op that passes though `input` when its output is not fed.
 
 
 
+For feeding `SparseTensor`s which are composite type,
+there is a convenience function:
+
+- - -
+
+### `tf.sparse_placeholder(dtype, shape=None, name=None)` {#sparse_placeholder}
+
+Inserts a placeholder for a sparse tensor that will be always fed.
+
+**Important**: This sparse tensor will produce an error if evaluated.
+Its value must be fed using the `feed_dict` optional argument to
+`Session.run()`, `Tensor.eval()`, or `Operation.run()`.
+
+For example:
+
+```python
+x = tf.sparse_placeholder(tf.float32)
+y = tf.sparse_reduce_sum(x)
+
+with tf.Session() as sess:
+  print(sess.run(y))  # ERROR: will fail because x was not fed.
+
+  indices = np.array([[3, 2, 0], [4, 5, 1]], dtype=np.int64)
+  values = np.array([1.0, 2.0], dtype=np.float32)
+  shape = np.array([7, 9, 2], dtype=np.int64)
+  print(sess.run(y, feed_dict={
+    x: tf.SparseTensorValue(indices, values, shape)}))  # Will succeed.
+  print(sess.run(y, feed_dict={
+    x: (indices, values, shape)}))  # Will succeed.
+
+  sp = tf.SparseTensor(indices=indices, values=values, shape=shape)
+  sp_value = sp.eval(session)
+  print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
+```
+
+##### Args:
+
+
+*  <b>`dtype`</b>: The type of `values` elements in the tensor to be fed.
+*  <b>`shape`</b>: The shape of the tensor to be fed (optional). If the shape is not
+    specified, you can feed a sparse tensor of any shape.
+*  <b>`name`</b>: A name for prefixing the operations (optional).
+
+##### Returns:
+
+  A `SparseTensor` that may be used as a handle for feeding a value, but not
+  evaluated directly.
+
+
+
 ## Readers
 
 TensorFlow provides a set of Reader classes for reading data formats.
@@ -1488,8 +1538,8 @@ This operation concatenates queue-element component tensors along
 the 0th dimension to make a single component tensor.  All of the
 components in the dequeued tuple will have size `n` in the 0th dimension.
 
-If the queue contains fewer than `n` elements when this operation
-executes, it will block until `n` elements have been dequeued.
+If the queue is closed and there are less than `n` elements left, then an
+`OutOfRange` exception is raised.
 
 ##### Args:
 
@@ -1566,6 +1616,37 @@ Constructs a queue object from a queue reference.
     as dtypes.  If the shape of any tensors in the element are constrained,
     all must be; shapes can be None if the shapes should not be constrained.
 *  <b>`queue_ref`</b>: The queue reference, i.e. the output of the queue op.
+
+
+- - -
+
+#### `tf.QueueBase.dequeue_up_to(n, name=None)` {#QueueBase.dequeue_up_to}
+
+Dequeues and concatenates `n` elements from this queue.
+
+**Note** This operation is not supported by all queues.  If a queue does not
+support DequeueUpTo, then an Unimplemented exception is raised.
+
+This operation concatenates queue-element component tensors along the
+0th dimension to make a single component tensor.  All of the components
+in the dequeued tuple will have size `n` in the 0th dimension.
+
+If the queue is closed and there are more than `0` but less than `n`
+elements remaining, then instead of raising an `OutOfRange` exception like
+`dequeue_many`, the remaining elements are returned immediately.
+If the queue is closed and there are `0` elements left in the queue, then
+an `OutOfRange` exception is raised just like in `dequeue_many`.
+Otherwise the behavior is identical to `dequeue_many`:
+
+##### Args:
+
+
+*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The tuple of concatenated tensors that was dequeued.
 
 
 - - -

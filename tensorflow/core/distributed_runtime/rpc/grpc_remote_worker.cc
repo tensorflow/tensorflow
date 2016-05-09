@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "grpc++/grpc++.h"
 
-#include "tensorflow/core/distributed_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"

@@ -27,7 +27,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 _VARIABLE_OPS = {
     "Assign",
@@ -58,7 +58,7 @@ def set_cpu0(device_string):
    Returns:
      A device string.
   """
-  parsed_device = pydev.from_string(device_string)
+  parsed_device = pydev.DeviceSpec.from_string(device_string)
   parsed_device.device_type = "CPU"
   parsed_device.device_index = 0
   return parsed_device.to_string()
@@ -214,7 +214,10 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names):
       variable_name = node.input[0]
       variable_dict_names.append(variable_name)
       variable_names.append(variable_name + ":0")
-  returned_variables = sess.run(variable_names)
+  if variable_names:
+    returned_variables = sess.run(variable_names)
+  else:
+    returned_variables = []
   found_variables = dict(zip(variable_dict_names, returned_variables))
   logging.info("Frozen %d variables." % len(returned_variables))
 

@@ -50,53 +50,10 @@ TUT_TEST_ROOT=/tmp/tf_tutorial_test
 TUT_TEST_DATA_DIR=/tmp/tf_tutorial_test_data
 LOGS_DIR=pip_test/tutorial_tests/logs
 
-# Helper functions
-die() {
-  echo $@
-  exit 1
-}
+# Current script directory
+SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+source "${SCRIPT_DIR}/builds_common.sh"
 
-
-realpath() {
-  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
-}
-
-
-run_in_directory() {
-  DEST_DIR="$1"
-  LOG_FILE="$2"
-  TUT_SCRIPT="$3"
-  shift 3
-  SCRIPT_ARGS=("$@")
-
-  # Get the absolute path of the log file
-  LOG_FILE_ABS=$(realpath "${LOG_FILE}")
-
-  cp "${TUT_SCRIPT}" "${DEST_DIR}"/
-  SCRIPT_BASENAME=$(basename "${TUT_SCRIPT}")
-
-  if [[ ! -f "${DEST_DIR}/${SCRIPT_BASENAME}" ]]; then
-    echo "FAILED to copy script ${TUT_SCRIPT} to temporary directory "\
-"${DEST_DIR}"
-    return 1
-  fi
-
-  pushd "${DEST_DIR}" > /dev/null
-
-  "${TIMEOUT_BIN}" --preserve-status ${TIMEOUT} \
-    "${PYTHON_BIN_PATH}" "${SCRIPT_BASENAME}" ${SCRIPT_ARGS[@]} 2>&1 \
-    > "${LOG_FILE_ABS}"
-
-  rm -f "${SCRIPT_BASENAME}"
-  popd > /dev/null
-
-  if [[ $? != 0 ]]; then
-    echo "Tutorial test \"${SCRIPT_BASENAME}\" FAILED"
-    return 1
-  fi
-
-  return 0
-}
 
 # Determine the binary path for "timeout"
 TIMEOUT_BIN="timeout"
@@ -333,73 +290,5 @@ test_translate_test() {
 
 
 # Run the tutorial tests
-NUM_TUT_TESTS=$(echo "${TUT_TESTS}" | wc -w)
-TUT_TESTS=(${TUT_TESTS})
-
-COUNTER=0
-PASSED_COUNTER=0
-FAILED_COUNTER=0
-FAILED_TESTS=""
-FAILED_TEST_LOGS=""
-SKIPPED_COUNTER=0
-for TUT_TEST in ${TUT_TESTS[@]}; do
-  ((COUNTER++))
-  STAT_STR="(${COUNTER} / ${NUM_TUT_TESTS})"
-
-  if [[ "${TF_BUILD_TUT_TEST_BLACKLIST}" == *"${TUT_TEST}"* ]]; then
-    ((SKIPPED_COUNTER++))
-    echo "${STAT_STR} Blacklisted tutorial test SKIPPED: ${TUT_TEST}"
-    continue
-  fi
-
-  START_TIME=$(date +'%s')
-
-  LOG_FILE="${LOGS_DIR}/${TUT_TEST}.log"
-  rm -rf ${LOG_FILE} ||
-  die "Unable to remove existing log file: ${LOG_FILE}"
-
-  "test_${TUT_TEST}" "${LOG_FILE}"
-  TEST_RESULT=$?
-
-  END_TIME=$(date +'%s')
-  ELAPSED_TIME="$((${END_TIME} - ${START_TIME})) s"
-
-  if [[ ${TEST_RESULT} == 0 ]]; then
-    ((PASSED_COUNTER++))
-    echo "${STAT_STR} Tutorial test-on-install PASSED: ${TUT_TEST} "\
-"(Elapsed time: ${ELAPSED_TIME})"
-  else
-    ((FAILED_COUNTER++))
-    FAILED_TESTS="${FAILED_TESTS} ${TUT_TEST}"
-    FAILED_TEST_LOGS="${FAILED_TEST_LOGS} ${LOG_FILE}"
-
-    echo "${STAT_STR} Tutorial test-on-install FAILED: ${TUT_TEST} "\
-"(Elapsed time: ${ELAPSED_TIME})"
-
-    echo "============== BEGINS failure log content =============="
-    cat ${LOG_FILE}
-    echo "============== ENDS failure log content =============="
-    echo ""
-  fi
-done
-
-echo "${NUM_TUT_TESTS} tutorial test(s): "\
-"${PASSED_COUNTER} passed; ${FAILED_COUNTER} failed; ${SKIPPED_COUNTER} skipped"
-
-if [[ ${FAILED_COUNTER} -eq 0  ]]; then
-  echo ""
-  echo "Tutorial test-on-install SUCCEEDED"
-
-  exit 0
-else
-  echo "FAILED test(s):"
-  FAILED_TEST_LOGS=($FAILED_TEST_LOGS)
-  FAIL_COUNTER=0
-  for TEST_NAME in ${FAILED_TESTS}; do
-    echo "  ${TEST_NAME} (Log @: ${FAILED_TEST_LOGS[${FAIL_COUNTER}]})"
-    ((FAIL_COUNTER++))
-  done
-
-  echo ""
-  die "Tutorial test-on-install FAILED"
-fi
+test_runner "tutorial test-on-install" \
+    "${TUT_TESTS}" "${TF_BUILD_TUT_TEST_BLACKLIST}" "${LOGS_DIR}"

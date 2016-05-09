@@ -52,6 +52,8 @@ class UniformDistribution<Generator, Eigen::half> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -74,6 +76,8 @@ class UniformDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -96,6 +100,8 @@ class UniformDistribution<Generator, double> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -118,6 +124,8 @@ class UniformDistribution<Generator, int32> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -150,6 +158,8 @@ class UniformDistribution<Generator, int64> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -239,6 +249,8 @@ class NormalDistribution<Generator, Eigen::half> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -264,6 +276,8 @@ class NormalDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -286,6 +300,8 @@ class NormalDistribution<Generator, double> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -328,6 +344,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, Eigen::half> {
   // The number of elements that will be returned.
   static const int kResultElementCount =
       SingleSampleGenerator::kNativeElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = true;
@@ -369,6 +387,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, float> {
   // The number of elements that will be returned.
   static const int kResultElementCount =
       SingleSampleGenerator::kNativeElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = true;
@@ -412,6 +432,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
       (SingleSampleGenerator::kNativeElementCount > 1)
           ? SingleSampleGenerator::kNativeElementCount / 2
           : 1;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = true;

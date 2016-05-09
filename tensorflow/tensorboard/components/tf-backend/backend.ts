@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 module TF.Backend {
   // TODO(cassandrax): Remove this interface.
   export interface RunEnumeration {
@@ -19,10 +20,10 @@ module TF.Backend {
     compressedHistogramTuples: string[];
     scalars: string[];
     images: string[];
+    audio: string[];
     graph: boolean;
     run_metadata: string[];
   }
-
 
   // TODO(cassandrax): Remove this interface.
   export interface RunsResponse { [runName: string]: RunEnumeration; }
@@ -48,9 +49,13 @@ module TF.Backend {
     bucketCounts: number[];
   }
 
-  export interface HistogramBin { x: number, dx: number, y: number }
+  export interface HistogramBin {
+    x: number;
+    dx: number;
+    y: number;
+  }
   export type HistogramSeriesDatum = HistogramSeries & Datum;
-  export interface HistogramSeries { bins: HistogramBin[] }
+  export interface HistogramSeries { bins: HistogramBin[]; }
 
   export type ImageDatum = Datum & Image;
   export interface Image {
@@ -59,9 +64,13 @@ module TF.Backend {
     url: string;
   }
 
-
+  export type AudioDatum = Datum & Audio;
+  export interface Audio {
+    content_type: string;
+    url: string;
+  }
   export var TYPES = [
-    'scalar', 'histogram', 'compressedHistogram', 'graph', 'image',
+    'scalar', 'histogram', 'compressedHistogram', 'graph', 'image', 'audio',
     'runMetadata'
   ];
   /**
@@ -122,6 +131,15 @@ module TF.Backend {
      */
     public imageRuns(): Promise<RunToTag> {
       return this.runs().then((x) => _.mapValues(x, 'images'));
+    }
+
+    /**
+     * Return a promise showing the Run-to-Tag mapping for audio data.
+     * TODO(cassandrax): Replace this with the direct route, when
+     * available.
+     */
+    public audioRuns(): Promise<RunToTag> {
+      return this.runs().then((x) => _.mapValues(x, 'audio'));
     }
 
     /**
@@ -203,6 +221,16 @@ module TF.Backend {
     }
 
     /**
+     * Return a promise containing AudioDatums for given run and tag.
+     */
+    public audio(tag: string, run: string): Promise<Array<AudioDatum>> {
+      let url = this.router.audio(tag, run);
+      let p: Promise<AudioMetadata[]>;
+      p = this.requestManager.request(url);
+      return p.then(map(this.createAudio.bind(this)));
+    }
+
+    /**
      * Returns a promise to load the string RunMetadata for given run/tag.
      */
     public runMetadata(tag: string, run: string): Promise<string> {
@@ -230,6 +258,15 @@ module TF.Backend {
         wall_time: timeToDate(x.wall_time),
         step: x.step,
         url: this.router.individualImage(x.query),
+      };
+    }
+
+    private createAudio(x: AudioMetadata): Audio&Datum {
+      return {
+        content_type: x.content_type,
+        wall_time: timeToDate(x.wall_time),
+        step: x.step,
+        url: this.router.individualAudio(x.query),
       };
     }
   }
@@ -296,14 +333,15 @@ module TF.Backend {
    * to visualize. When visualizing histograms, having the left edge and width
    * makes things quite a bit easier.
    *
-   * @param {histogram} Histogram - A histogram from tensorboard backend.
-   * @return {HistogramBin[]} - Each bin has an x (left edge), a dx (width), and a y (count).
+   * @param histogram A histogram from tensorboard backend.
+   * @return A histogram bin. Each bin has an x (left edge), a dx (width),
+   *     and a y (count).
    *
    * If given rightedges are inclusive, then these left edges (x) are exclusive.
    */
   export function convertBins(histogram: Histogram) {
     if (histogram.bucketRightEdges.length !== histogram.bucketCounts.length) {
-      throw(new Error('Edges and counts are of different lengths.'))
+      throw(new Error('Edges and counts are of different lengths.'));
     }
 
     var previousRightEdge = histogram.min;
@@ -325,11 +363,11 @@ module TF.Backend {
   }
 
   /**
-    * The following interfaces (TupleData, HistogramTuple,
-    * CompressedHistogramTuple, and ImageMetadata) describe how the data is sent
-    * over from the backend; the numbers are wall_time then step
-    */
-  type TupleData<T> = [number, number, T];
+   * The following interfaces (TupleData, HistogramTuple,
+   * CompressedHistogramTuple, ImageMetadata, and AudioMetadata) describe how
+   * the data is sent over from the backend.
+   */
+  type TupleData<T> = [number, number, T];  // wall_time, step
 
   // Min, Max, nItems, Sum, Sum_Squares, right edges of buckets, nItems in
   // buckets
@@ -339,6 +377,12 @@ module TF.Backend {
   interface ImageMetadata {
     width: number;
     height: number;
+    wall_time: number;
+    step: number;
+    query: string;
+  }
+  interface AudioMetadata {
+    content_type: string;
     wall_time: number;
     step: number;
     query: string;

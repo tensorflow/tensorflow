@@ -153,6 +153,7 @@ REGISTER_OP("RandomCrop")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetIsStateful()
+    .Deprecated(8, "Random crop is now pure Python")
     .Doc(R"doc(
 Randomly crop `image`.
 
@@ -267,6 +268,7 @@ REGISTER_OP("AdjustContrast")
     .Input("max_value: float")
     .Output("output: float")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Deprecated(2, "Use AdjustContrastv2 instead")
     .Doc(R"Doc(
 Deprecated. Disallowed in GraphDef version >= 2.
 )Doc");

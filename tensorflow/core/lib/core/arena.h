@@ -79,7 +79,7 @@ class Arena {
     size_t size;
   };
 
-  // Allocate new new block of at least block_size, with the specified
+  // Allocate new block of at least block_size, with the specified
   // alignment.
   // The returned AllocatedBlock* is valid until the next call to AllocNewBlock
   // or Reset (i.e. anything that might affect overflow_blocks_).

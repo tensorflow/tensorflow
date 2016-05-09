@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session_interface.h"
-#include "tensorflow/core/distributed_runtime/process_util.h"
-#include "tensorflow/core/distributed_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -276,7 +276,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   // Send/Recv nodes that are the result of client-added
   // feeds and fetches must be tracked so that the tensors
-  // can be be added to the local rendezvous.
+  // can be added to the local rendezvous.
   static void TrackFeedsAndFetches(Part* part, const PartitionOptions& popts);
 
   // The actual graph partitioning and registration implementation.

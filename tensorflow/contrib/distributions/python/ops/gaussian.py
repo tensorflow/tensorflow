@@ -88,7 +88,7 @@ class Gaussian(object):
 
   @property
   def mean(self):
-    return self._mu
+    return self._mu * array_ops.ones_like(self._sigma)
 
   def log_pdf(self, x, name=None):
     """Log pdf of observations in `x` under these Gaussian distribution(s).
@@ -170,7 +170,7 @@ class Gaussian(object):
       return 0.5 * math_ops.log(two_pi_e1 * math_ops.square(sigma))
 
   def sample(self, n, seed=None, name=None):
-    """Sample `n` observations the Gaussian Distributions.
+    """Sample `n` observations from the Gaussian Distributions.
 
     Args:
       n: `Scalar`, type int32, the number of observations to sample.
@@ -185,7 +185,7 @@ class Gaussian(object):
       broadcast_shape = (self._mu + self._sigma).get_shape()
       n = ops.convert_to_tensor(n)
       shape = array_ops.concat(
-          0, [array_ops.pack([n]), array_ops.shape(self._mu)])
+          0, [array_ops.pack([n]), array_ops.shape(self.mean)])
       sampled = random_ops.random_normal(
           shape=shape, mean=0, stddev=1, dtype=self._mu.dtype, seed=seed)
 

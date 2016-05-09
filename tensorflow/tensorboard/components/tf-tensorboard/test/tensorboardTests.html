@@ -8,11 +8,20 @@
   <link rel="stylesheet" type="text/css" href="../../../lib/css/global.css">
 </head>
 <body>
-  <test-fixture id="testElementFixture">
+  <test-fixture id="tensorboardFixture">
     <template>
-      <tf-tensorboard no-hash="true"></tf-tensorboard>
+      <tf-tensorboard no-hash="true">
+        <span id="inject-me">Injected content should be rendered by the element.</span>
+      </tf-tensorboard>
+    </template>
+  </test-fixture>
+
+  <test-fixture id="autoReloadFixture">
+    <template>
+      <autoreload-test-element></autoreload-test-element>
     </template>
   </test-fixture>
   <script src="tensorboardTests.js"></script>
+  <script src="autoReloadTests.js"></script>
 </body>
 </html>

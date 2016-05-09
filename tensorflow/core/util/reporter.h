@@ -29,8 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-// The TestReporter writes test / benchmark output to text Protobuf files
-// when the environment variable "TEST_REPORT_FILE_PREFIX" is defined.
+// The TestReporter writes test / benchmark output to binary Protobuf files when
+// the environment variable "TEST_REPORT_FILE_PREFIX" is defined.
 //
 // If this environment variable is not defined, no logging is performed.
 //
@@ -43,8 +43,8 @@ namespace tensorflow {
 //
 // For example, if the environment variable
 //   TEST_REPORT_FILE_PREFIX="/tmp/run_"
-// is set, and test_name is "BM_Foo/1/2", then a BenchmarkEntry pbtxt
-// is written to file:
+// is set, and test_name is "BM_Foo/1/2", then a BenchmarkEntries pb
+// with a single entry is written to file:
 //   /tmp/run_BM_Foo__1__2
 //
 class TestReporter {

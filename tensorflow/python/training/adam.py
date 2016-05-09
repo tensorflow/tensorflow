@@ -124,30 +124,39 @@ class AdamOptimizer(optimizer.Optimizer):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     return training_ops.apply_adam(
-        var, m, v, self._beta1_power, self._beta2_power,
-        self._lr_t, self._beta1_t, self._beta2_t,
-        self._epsilon_t, grad, use_locking=self._use_locking).op
+        var, m, v,
+        math_ops.cast(self._beta1_power, var.dtype.base_dtype),
+        math_ops.cast(self._beta2_power, var.dtype.base_dtype),
+        math_ops.cast(self._lr_t, var.dtype.base_dtype),
+        math_ops.cast(self._beta1_t, var.dtype.base_dtype),
+        math_ops.cast(self._beta2_t, var.dtype.base_dtype),
+        math_ops.cast(self._epsilon_t, var.dtype.base_dtype),
+        grad, use_locking=self._use_locking).op
 
   def _apply_sparse(self, grad, var):
-    lr = (self._lr_t *
-          math_ops.sqrt(1 - self._beta2_power)
-          / (1 - self._beta1_power))
+    beta1_power = math_ops.cast(self._beta1_power, var.dtype.base_dtype)
+    beta2_power = math_ops.cast(self._beta2_power, var.dtype.base_dtype)
+    lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
+    beta1_t = math_ops.cast(self._beta1_t, var.dtype.base_dtype)
+    beta2_t = math_ops.cast(self._beta2_t, var.dtype.base_dtype)
+    epsilon_t = math_ops.cast(self._epsilon_t, var.dtype.base_dtype)
+    lr = (lr_t * math_ops.sqrt(1 - beta2_power) / (1 - beta1_power))
     # m_t = beta1 * m + (1 - beta1) * g_t
     m = self.get_slot(var, "m")
-    m_scaled_g_values = grad.values * (1 - self._beta1_t)
-    m_t = state_ops.assign(m, m * self._beta1_t,
+    m_scaled_g_values = grad.values * (1 - beta1_t)
+    m_t = state_ops.assign(m, m * beta1_t,
                            use_locking=self._use_locking)
     m_t = state_ops.scatter_add(m_t, grad.indices, m_scaled_g_values,
                                use_locking=self._use_locking)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
-    v_scaled_g_values = (grad.values * grad.values) * (1 - self._beta2_t)
-    v_t = state_ops.assign(v, v * self._beta2_t, use_locking=self._use_locking)
+    v_scaled_g_values = (grad.values * grad.values) * (1 - beta2_t)
+    v_t = state_ops.assign(v, v * beta2_t, use_locking=self._use_locking)
     v_t = state_ops.scatter_add(v_t, grad.indices, v_scaled_g_values,
                                use_locking=self._use_locking)
     v_sqrt = math_ops.sqrt(v_t)
     var_update = state_ops.assign_sub(var,
-                                      lr * m_t / (v_sqrt + self._epsilon_t),
+                                      lr * m_t / (v_sqrt + epsilon_t),
                                       use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_t, v_t])
 

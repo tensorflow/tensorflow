@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package tensorflow;
+// option cc_enable_arenas = true;
+option java_outer_classname = "CostGraphProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+message CostGraphDef {
+  message Node {
+    // The name of the node.
+    string name = 1;
+
+    // The id of the node.
+    int32 id = 2;
+
+    // Inputs of this node. They must be executed before this node can be
+    // executed. An input is a particular output of another node, specified
+    // by the node id and the output index.
+    message InputInfo {
+      int32 preceding_node = 1;
+      int32 preceding_port = 2;
+    }
+    repeated InputInfo input_info = 3;
+
+    // Outputs of this node.
+    message OutputInfo {
+      int64 size = 1;
+      // If >= 0, the output is an alias of an input. Note that that input
+      // itself may be an alias. The algorithm will therefore need to follow
+      // those pointers.
+      int64 alias_input_port = 2;
+    }
+    repeated OutputInfo output_info = 4;
+
+    // Temporary memory used by this node.
+    int64 temporary_memory_size = 5;
+
+    // If true, the output is permanent: it can't be discarded, because this
+    // node is part of the "final output". Nodes may depend on final nodes.
+    bool is_final = 6;
+  }
+  repeated Node node = 1;
+}

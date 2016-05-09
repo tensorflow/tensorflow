@@ -27,7 +27,7 @@ import time
 import tensorflow as tf
 
 from tensorflow.core.util import event_pb2
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import tensorboard_logging
 
 

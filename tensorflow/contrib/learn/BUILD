@@ -16,7 +16,10 @@ py_library(
     name = "learn",
     srcs = glob([
         "python/learn/**/*.py",
-    ]) + ["__init__.py", "python/__init__.py"],
+    ]) + [
+        "__init__.py",
+        "python/__init__.py",
+    ],
     data = [":datasets"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/python:framework"],

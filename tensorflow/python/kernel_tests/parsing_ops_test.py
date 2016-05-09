@@ -434,15 +434,19 @@ class ParseSequenceExampleTest(tf.test.TestCase):
       if expected_err:
         with self.assertRaisesRegexp(expected_err[0], expected_err[1]):
           c_out, fl_out = tf.parse_single_sequence_example(**kwargs)
-          sess.run(flatten_values_tensors_or_sparse(c_out.values()))
-          sess.run(flatten_values_tensors_or_sparse(fl_out.values()))
+          if c_out:
+            sess.run(flatten_values_tensors_or_sparse(c_out.values()))
+          if fl_out:
+            sess.run(flatten_values_tensors_or_sparse(fl_out.values()))
       else:
         # Returns dicts w/ Tensors and SparseTensors.
         context_out, feat_list_out = tf.parse_single_sequence_example(**kwargs)
         context_result = sess.run(
-            flatten_values_tensors_or_sparse(context_out.values()))
+            flatten_values_tensors_or_sparse(
+                context_out.values())) if context_out else []
         feat_list_result = sess.run(
-            flatten_values_tensors_or_sparse(feat_list_out.values()))
+            flatten_values_tensors_or_sparse(
+                feat_list_out.values())) if feat_list_out else []
         # Check values.
         _compare_output_to_expected(
             self, context_out, expected_context_values, context_result)

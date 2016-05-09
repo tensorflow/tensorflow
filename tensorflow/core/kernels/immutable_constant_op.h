@@ -32,6 +32,11 @@ class ImmutableConstantOp : public OpKernel {
   bool IsExpensive() override { return false; }
   ~ImmutableConstantOp() override;
 
+  // Names of attributes that are used by this op
+  static constexpr char kDTypeAttr[] = "dtype";
+  static constexpr char kShapeAttr[] = "shape";
+  static constexpr char kMemoryRegionNameAttr[] = "memory_region_name";
+
  private:
   class ReadOnlyMemoryRegionAllocator : public ::tensorflow::Allocator {
    public:

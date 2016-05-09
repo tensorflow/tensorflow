@@ -38,7 +38,6 @@ template <typename Device, typename T>
 class AdjustContrastOp : public OpKernel {
  public:
   explicit AdjustContrastOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_DEPRECATED(context, 2, "Use AdjustContrastv2 instead");
   }
 
   void Compute(OpKernelContext* context) override {
@@ -183,12 +182,10 @@ void AdjustContrastv2<GPUDevice>::operator()(
     typename TTypes<float>::ConstScalar contrast_factor,
     typename TTypes<float, 4>::Tensor output);
 extern template struct AdjustContrastv2<GPUDevice>;
-#undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNEL_BUILDER(Name("AdjustContrastv2").Device(DEVICE_GPU),
                         AdjustContrastOpv2<GPUDevice>);
-
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

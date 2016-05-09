@@ -20,7 +20,7 @@ from __future__ import print_function
 import os
 import subprocess
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 # All GCS paths should start with this.
 PATH_PREFIX = 'gs://'

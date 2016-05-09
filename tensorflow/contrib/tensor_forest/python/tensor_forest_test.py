@@ -30,17 +30,17 @@ class TensorForestTest(test_util.TensorFlowTestCase):
   def testForestHParams(self):
     hparams = tensor_forest.ForestHParams(
         num_classes=2, num_trees=100, max_nodes=1000,
-        num_features=60).fill()
+        split_after_samples=25, num_features=60).fill()
     self.assertEquals(2, hparams.num_classes)
+    self.assertEquals(3, hparams.num_output_columns)
     # 2 * ceil(log_2(1000)) = 20
     self.assertEquals(20, hparams.max_depth)
     # sqrt(num_features) < 10, so num_splits_to_consider should be 10.
     self.assertEquals(10, hparams.num_splits_to_consider)
     # Don't have more fertile nodes than max # leaves, which is 500.
     self.assertEquals(500, hparams.max_fertile_nodes)
-    # We didn't set either of these, so they should be equal
-    self.assertEquals(hparams.split_after_samples,
-                      hparams.valid_leaf_threshold)
+    # Default value of valid_leaf_threshold
+    self.assertEquals(1, hparams.valid_leaf_threshold)
     # split_after_samples is larger than 10
     self.assertEquals(1, hparams.split_initializations_per_input)
     self.assertEquals(0, hparams.base_random_seed)
@@ -58,13 +58,27 @@ class TensorForestTest(test_util.TensorFlowTestCase):
     # floor(31.63 / 25) = 1
     self.assertEquals(1, hparams.split_initializations_per_input)
 
-  def testTrainingConstruction(self):
+  def testTrainingConstructionClassification(self):
     input_data = [[-1., 0.], [-1., 2.],  # node 1
                   [1., 0.], [1., -2.]]  # node 2
     input_labels = [0, 1, 2, 3]
 
     params = tensor_forest.ForestHParams(
-        num_classes=4, num_features=2, num_trees=10, max_nodes=1000).fill()
+        num_classes=4, num_features=2, num_trees=10, max_nodes=1000,
+        split_after_samples=25).fill()
+
+    graph_builder = tensor_forest.RandomForestGraphs(params)
+    graph = graph_builder.training_graph(input_data, input_labels)
+    self.assertTrue(isinstance(graph, tf.Operation))
+
+  def testTrainingConstructionRegression(self):
+    input_data = [[-1., 0.], [-1., 2.],  # node 1
+                  [1., 0.], [1., -2.]]  # node 2
+    input_labels = [0, 1, 2, 3]
+
+    params = tensor_forest.ForestHParams(
+        num_classes=4, num_features=2, num_trees=10, max_nodes=1000,
+        split_after_samples=25, regression=True).fill()
 
     graph_builder = tensor_forest.RandomForestGraphs(params)
     graph = graph_builder.training_graph(input_data, input_labels)
@@ -75,7 +89,8 @@ class TensorForestTest(test_util.TensorFlowTestCase):
                   [1., 0.], [1., -2.]]  # node 2
 
     params = tensor_forest.ForestHParams(
-        num_classes=4, num_features=2, num_trees=10, max_nodes=1000).fill()
+        num_classes=4, num_features=2, num_trees=10, max_nodes=1000,
+        split_after_samples=25).fill()
 
     graph_builder = tensor_forest.RandomForestGraphs(params)
     graph = graph_builder.inference_graph(input_data)
@@ -83,7 +98,8 @@ class TensorForestTest(test_util.TensorFlowTestCase):
 
   def testImpurityConstruction(self):
     params = tensor_forest.ForestHParams(
-        num_classes=4, num_features=2, num_trees=10, max_nodes=1000).fill()
+        num_classes=4, num_features=2, num_trees=10, max_nodes=1000,
+        split_after_samples=25).fill()
 
     graph_builder = tensor_forest.RandomForestGraphs(params)
     graph = graph_builder.average_impurity()

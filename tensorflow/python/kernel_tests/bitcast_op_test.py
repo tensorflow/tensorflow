@@ -32,6 +32,7 @@ class BitcastTest(tf.test.TestCase):
       buff_before = memoryview(x).tobytes()
       self.assertEqual(buff_before, buff_after)
       self.assertEqual(tf_ans.get_shape(), shape)
+      self.assertEqual(tf_ans.dtype, datatype)
 
   def testSmaller(self):
     x = np.random.rand(3, 2)
@@ -53,7 +54,7 @@ class BitcastTest(tf.test.TestCase):
   def testSameSize(self):
     x = np.random.rand(3, 4)
     shape = [3, 4]
-    self._testBitcast(x, tf.double, shape)
+    self._testBitcast(x, tf.int64, shape)
 
   def testErrors(self):
     x = np.zeros([1, 1], np.int8)

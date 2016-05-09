@@ -33,7 +33,6 @@ py_binary(
     ],
 )
 
-
 py_binary(
     name = "iris_run_config",
     srcs = ["iris_run_config.py"],
@@ -43,7 +42,6 @@ py_binary(
     ],
 )
 
-
 py_binary(
     name = "iris_custom_decay_dnn",
     srcs = ["iris_custom_decay_dnn.py"],
@@ -52,7 +50,6 @@ py_binary(
         "//tensorflow:tensorflow_py",
     ],
 )
-
 
 py_binary(
     name = "iris_custom_model",
@@ -227,3 +224,14 @@ py_binary(
     ],
 )
 
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)

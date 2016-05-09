@@ -95,11 +95,10 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-# TODO(irving): Reenable once the all_opensource_files mess is resolved.
-# py_test(
-#     name = "check_futures_test",
-#     size = "small",
-#     srcs = ["check_futures_test.py"],
-#     data = ["//tensorflow:all_opensource_files"],
-#     srcs_version = "PY2AND3",
-# )
+py_test(
+    name = "check_futures_test",
+    size = "small",
+    srcs = ["check_futures_test.py"],
+    data = ["//tensorflow:all_opensource_files"],
+    srcs_version = "PY2AND3",
+)

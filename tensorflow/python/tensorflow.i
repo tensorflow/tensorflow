@@ -21,8 +21,6 @@ limitations under the License.
 %include "tensorflow/python/util/py_checkpoint_reader.i"
 
 %include "tensorflow/python/lib/core/py_func.i"
-%include "tensorflow/python/lib/core/status.i"
-%include "tensorflow/python/lib/core/status_helper.i"
 
 %include "tensorflow/python/lib/io/py_record_reader.i"
 %include "tensorflow/python/lib/io/py_record_writer.i"

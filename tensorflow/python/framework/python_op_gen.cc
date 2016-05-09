@@ -661,7 +661,7 @@ from tensorflow.python.ops import op_def_library
 
     auto added = out->Add();
     *added = op_def;
-    RemoveDescriptionsFromOpDef(added);
+    RemoveNonDeprecationDescriptionsFromOpDef(added);
   }
 
   strings::Appendf(&result, R"(def _InitOpDefLibrary():

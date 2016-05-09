@@ -54,8 +54,13 @@ class QueueInterface : public ResourceBase {
   virtual void TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) = 0;
 
   // Same as above, but the stashed function object will attempt to dequeue
-  // num_elements items.
+  // num_elements items.  If allow_small_batch is true, and the Queue is
+  // closed but at least 1 element is available, there is no blocking
+  // and between 1 and num_elements items are immediately returned.
+  // If the queue does not support the allow_small_batch flag will
+  // return an Unimplemented error.
   virtual void TryDequeueMany(int num_elements, OpKernelContext* ctx,
+                              bool allow_small_batch,
                               CallbackWithTuple callback) = 0;
 
   // Signals that no more elements will be enqueued, and optionally

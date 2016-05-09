@@ -117,16 +117,30 @@ struct FillFunctor<CPUDevice, T> {
 template <typename T>
 struct SetZeroFunctor<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat out) {
-    out.device(d) = out.constant(T());
+    out.device(d) = out.constant(T(0));
   }
 };
 
-#define DEFINE_SETZERO_CPU(T) template struct SetZeroFunctor<CPUDevice, T>
+// Specialization of SetZeroFunctor<Device=CPUDevice, T=string>.
+template <>
+struct SetZeroFunctor<CPUDevice, string> {
+  void operator()(const CPUDevice& d, typename TTypes<string>::Flat out) {
+    out.device(d) = out.constant(string());
+  }
+};
+
+#define DEFINE_SETZERO_CPU(T) template struct SetZeroFunctor<CPUDevice, T>;
 DEFINE_SETZERO_CPU(Eigen::half);
 DEFINE_SETZERO_CPU(float);
 DEFINE_SETZERO_CPU(double);
+DEFINE_SETZERO_CPU(uint8);
+DEFINE_SETZERO_CPU(int8);
+DEFINE_SETZERO_CPU(int16);
 DEFINE_SETZERO_CPU(int32);
+DEFINE_SETZERO_CPU(int64);
 DEFINE_SETZERO_CPU(complex64);
+DEFINE_SETZERO_CPU(complex128);
+DEFINE_SETZERO_CPU(string);
 #undef DEFINE_SETZERO_CPU
 
 }  // end namespace functor
@@ -147,19 +161,10 @@ class FillOp : public OpKernel {
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         Tvalue.shape().DebugString()));
     auto dims = Tdims.flat<int32>();
-    OP_REQUIRES(context,
-                FastBoundsCheck(dims.size(), TensorShape::MaxDimensions()),
-                errors::InvalidArgument("dims must have size < ",
-                                        TensorShape::MaxDimensions()));
-    for (int i = 0; i < dims.size(); i++) {
-      OP_REQUIRES(context, dims(i) >= 0,
-                  errors::InvalidArgument("dims[", i, "] = ", dims(i),
-                                          " must be nonnegative."));
-    }
     TensorShape shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 reinterpret_cast<const int32*>(dims.data()),
-                                static_cast<int>(dims.size()), &shape));
+                                dims.size(), &shape));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     functor::FillFunctor<Device, T> functor;

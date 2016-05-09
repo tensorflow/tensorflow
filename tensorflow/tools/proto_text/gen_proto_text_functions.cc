@@ -53,12 +53,13 @@ static const char kTensorflowHeaderPrefix[] = "";
 int MainImpl(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  if (argc < 3) {
-    LOG(ERROR) << "Pass output path and at least proto file";
+  if (argc < 4) {
+    LOG(ERROR) << "Pass output path, relative path, and at least proto file";
     return -1;
   }
 
   const string output_root = argv[1];
+  const string relative_path = kTensorflowHeaderPrefix + string(argv[2]);
 
   tensorflow::protobuf::compiler::DiskSourceTree source_tree;
 
@@ -70,16 +71,14 @@ int MainImpl(int argc, char** argv) {
   tensorflow::protobuf::compiler::Importer importer(&source_tree,
                                                     &crash_on_error);
 
-  for (int i = 2; i < argc; i++) {
+  for (int i = 3; i < argc; i++) {
     const string proto_path = argv[i];
     const tensorflow::protobuf::FileDescriptor* fd =
         importer.Import(proto_path);
 
-    string proto_name = proto_path;
-    int index = proto_name.find_last_of("/");
-    if (index != string::npos) proto_name = proto_name.substr(index + 1);
-    index = proto_name.find_last_of(".");
-    if (index != string::npos) proto_name = proto_name.substr(0, index);
+    const int index = proto_path.find_last_of(".");
+    string proto_path_no_suffix = proto_path.substr(0, index);
+    proto_path_no_suffix = proto_path_no_suffix.substr(relative_path.size());
 
     const auto code =
         tensorflow::GetProtoTextFunctionCode(*fd, kTensorflowHeaderPrefix);
@@ -99,7 +98,7 @@ int MainImpl(int argc, char** argv) {
         data = code.cc;
       }
 
-      const string path = output_root + "/" + proto_name + suffix;
+      const string path = output_root + "/" + proto_path_no_suffix + suffix;
       FILE* f = fopen(path.c_str(), "w");
       if (fwrite(data.c_str(), 1, data.size(), f) != data.size()) {
         return -1;

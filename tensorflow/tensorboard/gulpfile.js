@@ -30,11 +30,10 @@ function getTask(task) {
 
 
 gulp.task('compile', getTask('compile'));
-gulp.task('typings', getTask('typings'));
 gulp.task('tslint', getTask('tslint')(true));
 // tslint.permissive warns without failing.
 gulp.task('tslint.permissive', getTask('tslint')(false));
-gulp.task('first-compile', ['typings'], getTask('compile'));
+gulp.task('first-compile', getTask('compile'));
 gulp.task('test.onlytest', getTask('test')); // if you don't want to lint, etc
 gulp.task('test', ['tslint', 'compile'], getTask('test'));
 

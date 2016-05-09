@@ -104,7 +104,7 @@ class TreePredictions : public OpKernel {
     Tensor* output_predictions = nullptr;
     TensorShape output_shape;
     output_shape.AddDim(num_data);
-    output_shape.AddDim(num_classes);
+    output_shape.AddDim(num_classes - 1);
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, output_shape,
                                             &output_predictions));
@@ -121,14 +121,12 @@ class TreePredictions : public OpKernel {
       while (true) {
         const int32 left_child = tree(node_index, CHILDREN_INDEX);
         if (left_child == LEAF_NODE) {
-          float sum = Sum<float>(node_per_class_weights.Slice(
-              node_index, node_index + 1));
+          float sum = node_pcw(node_index, 0);
           float parent_weight = 0.0;
           if (sum < valid_leaf_threshold_ && parent >= 0) {
             VLOG(1) << "not enough samples at leaf, including parent counts."
                     << "child sum = " << sum;
-            float parent_sum = Sum<float>(node_per_class_weights.Slice(
-                parent, parent + 1));
+            float parent_sum = node_pcw(parent, 0);
             // Weight the parent's counts just enough so that the new sum is
             // valid_leaf_threshold_, but never give any counts a weight of
             // more than 1.
@@ -137,12 +135,12 @@ class TreePredictions : public OpKernel {
             sum += parent_weight * parent_sum;
             VLOG(1) << "Sum w/ parent included = " << sum;
           }
-          for (int c = 0; c < num_classes; c++) {
+          for (int c = 1; c < num_classes; c++) {
             float w = node_pcw(node_index, c);
             if (parent_weight > 0.0) {
               w += parent_weight * node_pcw(parent, c);
             }
-            out(i, c) = w / sum;
+            out(i, c - 1) = w / sum;
           }
           break;
         } else if (left_child == FREE_NODE) {

@@ -25,7 +25,9 @@ import tensorflow as tf
 class InitializerTest(tf.test.TestCase):
 
   def test_xavier_wrong_dtype(self):
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Cannot create initializer for non-floating point type.'):
       tf.contrib.layers.xavier_initializer(dtype=tf.int32)
 
     self.assertIsNone(tf.contrib.layers.l1_regularizer(0.)(None))
@@ -36,7 +38,7 @@ class InitializerTest(tf.test.TestCase):
                             initializer=initializer(uniform=uniform, seed=1))
       sess.run(tf.initialize_all_variables())
       values = var.eval()
-      self.assertAllClose(np.var(values), variance, 1e-2, 1e-2)
+      self.assertAllClose(np.var(values), variance, 1e-3, 1e-3)
 
   def test_xavier_uniform(self):
     self._test_xavier(tf.contrib.layers.xavier_initializer,
@@ -54,6 +56,112 @@ class InitializerTest(tf.test.TestCase):
     self._test_xavier(tf.contrib.layers.xavier_initializer_conv2d,
                       [100, 40, 5, 7], 2. / (100. * 40 * (5 + 7)), False)
 
+
+class VarianceScalingInitializerTest(tf.test.TestCase):
+
+  def test_wrong_dtype(self):
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Cannot create initializer for non-floating point type.'):
+      tf.contrib.layers.variance_scaling_initializer(dtype=tf.int32)
+
+  def _test_variance(self, initializer, shape, variance, factor, mode, uniform):
+    with tf.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        var = tf.get_variable(name='test', shape=shape, dtype=tf.float32,
+                              initializer=initializer(factor=factor,
+                                                      mode=mode,
+                                                      uniform=uniform,
+                                                      seed=1))
+        sess.run(tf.initialize_all_variables())
+        values = var.eval()
+        self.assertAllClose(np.var(values), variance, 1e-3, 1e-3)
+
+  def test_fan_in(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100, 40],
+                          variance=2. / 100.,
+                          factor=2.0,
+                          mode='FAN_IN',
+                          uniform=uniform)
+
+  def test_fan_out(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100, 40],
+                          variance=2. / 40.,
+                          factor=2.0,
+                          mode='FAN_OUT',
+                          uniform=uniform)
+
+  def test_fan_avg(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100, 40],
+                          variance=4. / (100. + 40.),
+                          factor=2.0,
+                          mode='FAN_AVG',
+                          uniform=uniform)
+
+  def test_conv2d_fan_in(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100, 40, 5, 7],
+                          variance=2. / (100. * 40. * 5.),
+                          factor=2.0,
+                          mode='FAN_IN',
+                          uniform=uniform)
+
+  def test_conv2d_fan_out(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100, 40, 5, 7],
+                          variance=2. / (100. * 40. * 7.),
+                          factor=2.0,
+                          mode='FAN_OUT',
+                          uniform=uniform)
+
+  def test_conv2d_fan_avg(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100, 40, 5, 7],
+                          variance=2. / (100. * 40. * (5. + 7.)),
+                          factor=2.0,
+                          mode='FAN_AVG',
+                          uniform=uniform)
+
+  def test_xavier_uniform(self):
+    self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                        shape=[100, 40],
+                        variance=2. / (100. + 40.),
+                        factor=1.0,
+                        mode='FAN_AVG',
+                        uniform=True)
+
+  def test_xavier_normal(self):
+    self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                        shape=[100, 40],
+                        variance=2. / (100. + 40.),
+                        factor=1.0,
+                        mode='FAN_AVG',
+                        uniform=False)
+
+  def test_xavier_conv2d_uniform(self):
+    self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                        shape=[100, 40, 5, 7],
+                        variance=2. / (100. * 40. * (5. + 7.)),
+                        factor=1.0,
+                        mode='FAN_AVG',
+                        uniform=True)
+
+  def test_xavier_conv2d_normal(self):
+    self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                        shape=[100, 40, 5, 7],
+                        variance=2. / (100. * 40. * (5. + 7.)),
+                        factor=1.0,
+                        mode='FAN_AVG',
+                        uniform=True)
 
 if __name__ == '__main__':
   tf.test.main()

@@ -29,15 +29,16 @@ from tensorflow.python.ops import state_ops
 class TensorUtilTest(tf.test.TestCase):
 
   def testFloat(self):
-    t = tensor_util.make_tensor_proto(10.0)
+    value = 10.0
+    t = tensor_util.make_tensor_proto(value)
     self.assertProtoEquals("""
       dtype: DT_FLOAT
       tensor_shape {}
-      float_val: 10.0
-      """, t)
+      float_val: %.1f
+      """ % value, t)
     a = tensor_util.MakeNdarray(t)
     self.assertEquals(np.float32, a.dtype)
-    self.assertAllClose(np.array(10.0, dtype=np.float32), a)
+    self.assertAllClose(np.array(value, dtype=np.float32), a)
 
   def testFloatN(self):
     t = tensor_util.make_tensor_proto([10.0, 20.0, 30.0])
@@ -149,6 +150,36 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertEquals(np.int32, a.dtype)
     self.assertAllClose(np.array(10, dtype=np.int32), a)
 
+  def testLargeInt(self):
+    value = np.iinfo(np.int64).max
+    t = tensor_util.make_tensor_proto(value)
+    self.assertProtoEquals("""
+      dtype: DT_INT64
+      tensor_shape {}
+      int64_val: %d
+      """ % value, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.int64, a.dtype)
+    self.assertAllClose(np.array(value, dtype=np.int64), a)
+
+  def testLargeNegativeInt(self):
+    # We don't use the min np.int64 value here
+    # because it breaks np.abs().
+    #
+    # np.iinfo(np.int64).min = -9223372036854775808
+    # np.iinfo(np.int64).max = 9223372036854775807
+    # np.abs(-9223372036854775808) = -9223372036854775808
+    value = np.iinfo(np.int64).min + 1
+    t = tensor_util.make_tensor_proto(value)
+    self.assertProtoEquals("""
+      dtype: DT_INT64
+      tensor_shape {}
+      int64_val: %d
+      """ % value, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.int64, a.dtype)
+    self.assertAllClose(np.array(value, dtype=np.int64), a)
+
   def testIntNDefaultType(self):
     t = tensor_util.make_tensor_proto([10, 20, 30, 40], shape=[2, 2])
     self.assertProtoEquals("""
@@ -229,6 +260,40 @@ class TensorUtilTest(tf.test.TestCase):
     a = tensor_util.MakeNdarray(t)
     self.assertEquals(np.int64, a.dtype)
     self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
+
+  def testQuantizedTypes(self):
+    # Test with array.
+    data = [(21,), (22,), (23,)]
+
+    t = tensor_util.make_tensor_proto(data, dtype=tf.qint32)
+    self.assertProtoEquals("""
+      dtype: DT_QINT32
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "\025\000\000\000\026\000\000\000\027\000\000\000"
+      """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(tf.qint32.as_numpy_dtype, a.dtype)
+    self.assertAllEqual(np.array(data, dtype=a.dtype), a)
+
+    t = tensor_util.make_tensor_proto(data, dtype=tf.quint8)
+    self.assertProtoEquals("""
+      dtype: DT_QUINT8
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "\025\026\027"
+      """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(tf.quint8.as_numpy_dtype, a.dtype)
+    self.assertAllEqual(np.array(data, dtype=a.dtype), a)
+
+    t = tensor_util.make_tensor_proto(data, dtype=tf.qint8)
+    self.assertProtoEquals("""
+      dtype: DT_QINT8
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "\025\026\027"
+      """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(tf.qint8.as_numpy_dtype, a.dtype)
+    self.assertAllEqual(np.array(data, dtype=a.dtype), a)
 
   def testString(self):
     t = tensor_util.make_tensor_proto("foo")

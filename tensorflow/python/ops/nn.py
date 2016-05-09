@@ -106,7 +106,9 @@ concatenated.
 @@conv2d
 @@depthwise_conv2d
 @@separable_conv2d
+@@atrous_conv2d
 @@conv2d_transpose
+@@conv3d
 
 ## Pooling
 
@@ -126,6 +128,8 @@ to the `Convolution` section for details about the padding calculation.
 @@avg_pool
 @@max_pool
 @@max_pool_with_argmax
+@@avg_pool3d
+@@max_pool3d
 
 ## Normalization
 
@@ -263,7 +267,14 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
       = (1 - z) * x + log(1 + exp(-x))
       = x - x * z + log(1 + exp(-x))
 
-  To ensure stability and avoid overflow, the implementation uses
+  For x < 0, to avoid overflow in exp(-x), we reformulate the above
+
+        x - x * z + log(1 + exp(-x))
+      = log(exp(x)) - x * z + log(1 + exp(-x))
+      = - x * z + log(1 + exp(x))
+
+  Hence, to ensure stability and avoid overflow, the implementation uses this
+  equivalent formulation
 
       max(x, 0) - x * z + log(1 + exp(-abs(x)))
 
@@ -501,18 +512,8 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     if in_channels == 1:
       return nn_ops.conv2d(input, filter, strides, padding, name=name)
     else:
-      # Create one separate convolution per channel.
-      convs = []
-      for channel in xrange(in_channels):
-        with ops.name_scope("depth%d" % channel) as channel_scope:
-          t_in = array_ops.slice(input, [0, 0, 0, channel], [-1, -1, -1, 1],
-                                 name="slice_inputs")
-          f_in = array_ops.slice(filter, [0, 0, channel, 0], [-1, -1, 1, -1],
-                                 name="slice_params")
-          convs.append(nn_ops.conv2d(t_in, f_in,
-                                     strides, padding, name=channel_scope))
-      # Concatenate the per-channel convolutions along the channel dimension.
-      return array_ops.concat(3, convs, name=name)
+      return nn_ops.depthwise_conv2d_native(input, filter, strides, padding,
+                                            name=name)
 
 
 def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
@@ -572,13 +573,10 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
         # This would mean the separable convolutions is over-parametrized.
         assert channel_multiplier * in_channels < out_channels
     # The layout of the ops in the graph are expected to be as follows:
+    # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
-    # separable_conv2d/depthwise  // Concat op for the deptwise outputs.
-    # separable_conv2d/depthwise/depth0  // Conv2D op for depth 0
-    # separable_conv2d/depthwise/depth1  // Conv2D op for depth 1
-    # separable_conv2d/depthwise/depth2  // Conv2D op for depth 2
-    depthwise = depthwise_conv2d(input, depthwise_filter, strides,
-                                 padding, name="depthwise")
+    depthwise = nn_ops.depthwise_conv2d_native(input, depthwise_filter, strides,
+                                               padding, name="depthwise")
     return nn_ops.conv2d(depthwise, pointwise_filter, [1, 1, 1, 1],
                          padding="VALID", name=name)
 

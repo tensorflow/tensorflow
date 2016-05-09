@@ -25,6 +25,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import constant_op
@@ -54,22 +55,30 @@ def _BatchMatrixInverseGrad(op, grad):
                                 adj_x=True)
 
 
-# TODO(rmlarsen): Implement gradient for batch_matrix_determinant.
-# Adding an "adjoint" flag to matrix_inverse will make it simpler
-# and more efficient to do so.
 @ops.RegisterGradient("MatrixDeterminant")
 def _MatrixDeterminantGrad(op, grad):
   """Gradient for MatrixDeterminant."""
   a = op.inputs[0]
   c = op.outputs[0]
-  ainv = linalg_ops.matrix_inverse(a)
-  return grad * c * array_ops.transpose(ainv)
+  a_adj_inv = linalg_ops.matrix_inverse(a, adjoint=True)
+  return grad * c * a_adj_inv
+
+
+@ops.RegisterGradient("BatchMatrixDeterminant")
+def _BatchMatrixDeterminantGrad(op, grad):
+  """Gradient for BatchMatrixDeterminant."""
+  a = op.inputs[0]
+  c = op.outputs[0]
+  a_adj_inv = linalg_ops.batch_matrix_inverse(a, adjoint=True)
+  multipliers = array_ops.reshape(
+      grad * c, c.get_shape().concatenate(tensor_shape.TensorShape([1, 1])))
+  return multipliers * a_adj_inv
 
 
 @ops.RegisterGradient("Cholesky")
 def _cholesky_grad(op, grad):
   """Gradient for Cholesky."""
-  return linalg_ops.cholesky_grad( op.outputs[0] , grad )
+  return linalg_ops.cholesky_grad(op.outputs[0], grad)
 
 
 @ops.RegisterGradient("MatrixSolve")

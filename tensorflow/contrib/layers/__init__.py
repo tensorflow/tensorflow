@@ -42,6 +42,7 @@ size, data type, and purpose.
 
 @@xavier_initializer
 @@xavier_initializer_conv2d
+@@variance_scaling_initializer
 
 ## Summaries
 

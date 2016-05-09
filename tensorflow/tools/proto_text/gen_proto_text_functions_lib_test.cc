@@ -69,6 +69,8 @@ T RoundtripParseProtoOrDie(const T& input, bool short_debug) {
 TEST(CreateProtoDebugStringLibTest, ValidSimpleTypes) {
   TestAllTypes proto;
 
+  // Note that this also tests that output of fields matches tag number order,
+  // since some of these fields have high tag numbers.
   proto.Clear();
   proto.set_optional_int32(-1);
   proto.set_optional_int64(-2);
@@ -469,9 +471,26 @@ TEST(CreateProtoDebugStringLibTest, Oneof) {
   proto.set_oneof_string("abc");
   EXPECT_TEXT_TRANSFORMS_MATCH();
 
+  // Empty oneof_string is printed, as the setting of the value in the oneof is
+  // meaningful.
+  proto.Clear();
+  proto.set_oneof_string("");
+  EXPECT_TEXT_TRANSFORMS_MATCH();
+
   proto.Clear();
   proto.set_oneof_string("abc");
   proto.set_oneof_uint32(123);
+  EXPECT_TEXT_TRANSFORMS_MATCH();
+
+  // Zero uint32 is printed, as the setting of the value in the oneof is
+  // meaningful.
+  proto.Clear();
+  proto.set_oneof_uint32(0);
+  EXPECT_TEXT_TRANSFORMS_MATCH();
+
+  // Zero enum value is meaningful.
+  proto.Clear();
+  proto.set_oneof_enum(TestAllTypes::ZERO);
   EXPECT_TEXT_TRANSFORMS_MATCH();
 
   // Parse a text format that lists multiple members of the oneof.

@@ -384,6 +384,47 @@ op {
   }
 }
 op {
+  name: "AdjustContrast"
+  input_arg {
+    name: "images"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "contrast_factor"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_value"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_value"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  deprecation {
+    version: 2
+  }
+}
+op {
   name: "AdjustContrastv2"
   input_arg {
     name: "images"
@@ -2315,6 +2356,31 @@ op {
   }
 }
 op {
+  name: "Assert"
+  input_arg {
+    name: "condition"
+    type: DT_BOOL
+  }
+  input_arg {
+    name: "data"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "summarize"
+    type: "int"
+    default_value {
+      i: 3
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "Assign"
   input_arg {
     name: "ref"
@@ -2707,6 +2773,34 @@ op {
   }
 }
 op {
+  name: "AudioSummary"
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  attr {
+    name: "sample_rate"
+    type: "float"
+  }
+  attr {
+    name: "max_outputs"
+    type: "int"
+    default_value {
+      i: 3
+    }
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "AvgPool"
   input_arg {
     name: "value"
@@ -2801,6 +2895,120 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "AvgPool3D"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+}
+op {
+  name: "AvgPool3DGrad"
+  input_arg {
+    name: "orig_input_shape"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
       }
     }
   }
@@ -2945,6 +3153,28 @@ op {
   }
 }
 op {
+  name: "BatchFFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchFFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "BatchFFT2D"
   input_arg {
     name: "in"
@@ -2952,6 +3182,28 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -2967,6 +3219,28 @@ op {
   }
 }
 op {
+  name: "BatchFFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchFFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "BatchIFFT"
   input_arg {
     name: "in"
@@ -2974,6 +3248,28 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchIFFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchIFFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -2989,6 +3285,28 @@ op {
   }
 }
 op {
+  name: "BatchIFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchIFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "BatchIFFT3D"
   input_arg {
     name: "in"
@@ -2996,6 +3314,28 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchIFFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "BatchIFFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -3011,6 +3351,47 @@ op {
   }
   output_arg {
     name: "out"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_COMPLEX64
+      }
+    }
+  }
+  attr {
+    name: "adj_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adj_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "BatchMatMul"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
     type_attr: "T"
   }
   attr {
@@ -3136,6 +3517,34 @@ op {
   }
 }
 op {
+  name: "BatchMatrixInverse"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "BatchMatrixSolve"
   input_arg {
     name: "matrix"
@@ -3193,6 +3602,38 @@ op {
   }
 }
 op {
+  name: "BatchMatrixSolve"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "BatchMatrixSolveLs"
   input_arg {
     name: "matrix"
@@ -3217,6 +3658,42 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "fast"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
+  name: "BatchMatrixSolveLs"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2_regularizer"
+    type: DT_DOUBLE
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
@@ -3300,6 +3777,45 @@ op {
   }
 }
 op {
+  name: "BatchMatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "BatchNormWithGlobalNormalization"
   input_arg {
     name: "t"
@@ -3522,6 +4038,66 @@ op {
   }
 }
 op {
+  name: "BatchNormWithGlobalNormalization"
+  input_arg {
+    name: "t"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "m"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "v"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "gamma"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+  }
+  attr {
+    name: "scale_after_normalization"
+    type: "bool"
+  }
+  deprecation {
+    version: 9
+  }
+}
+op {
   name: "BatchNormWithGlobalNormalizationGrad"
   input_arg {
     name: "t"
@@ -3805,6 +4381,82 @@ op {
   attr {
     name: "scale_after_normalization"
     type: "bool"
+  }
+}
+op {
+  name: "BatchNormWithGlobalNormalizationGrad"
+  input_arg {
+    name: "t"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "m"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "v"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "gamma"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "dx"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "dm"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "dv"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "db"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "dg"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+  }
+  attr {
+    name: "scale_after_normalization"
+    type: "bool"
+  }
+  deprecation {
+    version: 9
   }
 }
 op {
@@ -3826,6 +4478,29 @@ op {
         type: DT_FLOAT
       }
     }
+  }
+}
+op {
+  name: "BatchToSpace"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "crops"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "block_size"
+    type: "int"
   }
 }
 op {
@@ -4677,6 +5352,32 @@ op {
   }
 }
 op {
+  name: "CheckNumerics"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "message"
+    type: "string"
+  }
+}
+op {
   name: "Cholesky"
   input_arg {
     name: "input"
@@ -4698,6 +5399,31 @@ op {
   }
 }
 op {
+  name: "CholeskyGrad"
+  input_arg {
+    name: "l"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "Complex"
   input_arg {
     name: "real"
@@ -4709,6 +5435,21 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "Complex"
+  input_arg {
+    name: "real"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "imag"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -4821,6 +5562,28 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "Conj"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "Conj"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -5169,6 +5932,173 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+      }
+    }
+  }
+}
+op {
+  name: "Conv3D"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+}
+op {
+  name: "Conv3DBackpropFilter"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+}
+op {
+  name: "Conv3DBackpropInput"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
       }
     }
   }
@@ -6332,6 +7262,44 @@ op {
   is_commutative: true
 }
 op {
+  name: "Equal"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_QUINT8
+        type: DT_QINT8
+        type: DT_QINT32
+        type: DT_STRING
+        type: DT_BOOL
+      }
+    }
+  }
+  is_commutative: true
+}
+op {
   name: "Erf"
   input_arg {
     name: "x"
@@ -6564,7 +7532,62 @@ op {
   }
 }
 op {
+  name: "FFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "FFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "FFT2D"
+  input_arg {
+    name: "in"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "FFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "FFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "FFT3D"
   input_arg {
     name: "in"
     type: DT_COMPLEX64
@@ -6577,11 +7600,22 @@ op {
 op {
   name: "FFT3D"
   input_arg {
-    name: "in"
+    name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "FFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -7434,7 +8468,62 @@ op {
   }
 }
 op {
+  name: "IFFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "IFFT"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
   name: "IFFT2D"
+  input_arg {
+    name: "in"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "IFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "IFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "IFFT3D"
   input_arg {
     name: "in"
     type: DT_COMPLEX64
@@ -7447,11 +8536,22 @@ op {
 op {
   name: "IFFT3D"
   input_arg {
-    name: "in"
+    name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
     name: "out"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "IFFT3D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -7551,6 +8651,28 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_FLOAT
+  }
+}
+op {
+  name: "Imag"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_FLOAT
+  }
+}
+op {
+  name: "Imag"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_FLOAT
   }
 }
@@ -8896,6 +10018,34 @@ op {
   }
 }
 op {
+  name: "MatrixInverse"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "MatrixSolve"
   input_arg {
     name: "matrix"
@@ -8953,6 +10103,38 @@ op {
   }
 }
 op {
+  name: "MatrixSolve"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "MatrixSolveLs"
   input_arg {
     name: "matrix"
@@ -8977,6 +10159,42 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "fast"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
+  name: "MatrixSolveLs"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2_regularizer"
+    type: DT_DOUBLE
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
@@ -9055,6 +10273,45 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "MatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
       }
     }
   }
@@ -9304,6 +10561,124 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+      }
+    }
+  }
+}
+op {
+  name: "MaxPool3D"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+}
+op {
+  name: "MaxPool3DGrad"
+  input_arg {
+    name: "orig_input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "orig_output"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
       }
     }
   }
@@ -10184,6 +11559,52 @@ op {
   is_commutative: true
 }
 op {
+  name: "Multinomial"
+  input_arg {
+    name: "logits"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "num_samples"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT64
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+}
+op {
   name: "Neg"
   input_arg {
     name: "x"
@@ -10452,6 +11873,44 @@ op {
         type: DT_QINT8
         type: DT_QINT32
         type: DT_STRING
+      }
+    }
+  }
+  is_commutative: true
+}
+op {
+  name: "NotEqual"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_QUINT8
+        type: DT_QINT8
+        type: DT_QINT32
+        type: DT_STRING
+        type: DT_BOOL
       }
     }
   }
@@ -11122,6 +12581,53 @@ op {
   }
 }
 op {
+  name: "Print"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "data"
+    type_list_attr: "U"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "U"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "message"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "first_n"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "summarize"
+    type: "int"
+    default_value {
+      i: 3
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "Prod"
   input_arg {
     name: "input"
@@ -11345,6 +12851,33 @@ op {
   }
 }
 op {
+  name: "PyFunc"
+  input_arg {
+    name: "input"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "token"
+    type: "string"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "QueueClose"
   input_arg {
     name: "handle"
@@ -11386,6 +12919,35 @@ op {
 }
 op {
   name: "QueueDequeueMany"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "n"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}
+op {
+  name: "QueueDequeueUpTo"
   input_arg {
     name: "handle"
     type: DT_STRING
@@ -11532,6 +13094,54 @@ op {
   is_stateful: true
 }
 op {
+  name: "RandomCrop"
+  input_arg {
+    name: "image"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  deprecation {
+    version: 8
+  }
+  is_stateful: true
+}
+op {
   name: "RandomShuffle"
   input_arg {
     name: "value"
@@ -11674,6 +13284,53 @@ op {
   is_stateful: true
 }
 op {
+  name: "RandomStandardNormal"
+  input_arg {
+    name: "shape"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "RandomUniform"
   input_arg {
     name: "shape"
@@ -11702,6 +13359,53 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "RandomUniform"
+  input_arg {
+    name: "shape"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -11903,6 +13607,28 @@ op {
   }
   output_arg {
     name: "out"
+    type: DT_FLOAT
+  }
+}
+op {
+  name: "Real"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "out"
+    type: DT_FLOAT
+  }
+}
+op {
+  name: "Real"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
     type: DT_FLOAT
   }
 }
@@ -14700,6 +16426,29 @@ op {
   }
 }
 op {
+  name: "Select"
+  input_arg {
+    name: "condition"
+    type: DT_BOOL
+  }
+  input_arg {
+    name: "t"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "e"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "SelfAdjointEig"
   input_arg {
     name: "input"
@@ -15228,6 +16977,36 @@ op {
   }
 }
 op {
+  name: "SoftmaxCrossEntropyWithLogits"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "labels"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "loss"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprop"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "Softplus"
   input_arg {
     name: "features"
@@ -15573,6 +17352,29 @@ op {
         type: DT_HALF
       }
     }
+  }
+}
+op {
+  name: "SpaceToBatch"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "block_size"
+    type: "int"
   }
 }
 op {
@@ -16744,6 +18546,96 @@ op {
   }
 }
 op {
+  name: "SparseDenseCwiseDiv"
+  input_arg {
+    name: "sp_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sp_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sp_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "dense"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+}
+op {
+  name: "SparseDenseCwiseMul"
+  input_arg {
+    name: "sp_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sp_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sp_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "dense"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+}
+op {
   name: "SparseMatMul"
   input_arg {
     name: "a"
@@ -16783,6 +18675,58 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+}
+op {
+  name: "SparseReduceSum"
+  input_arg {
+    name: "input_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "input_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "reduction_axes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "keep_dims"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
     }
   }
 }
@@ -17114,6 +19058,49 @@ op {
   }
 }
 op {
+  name: "SparseSoftmaxCrossEntropyWithLogits"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "labels"
+    type_attr: "Tlabels"
+  }
+  output_arg {
+    name: "loss"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprop"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tlabels"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "SparseSplit"
   input_arg {
     name: "split_dim"
@@ -17155,6 +19142,61 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "SparseTensorDenseAdd"
+  input_arg {
+    name: "a_indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "a_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_shape"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
 }
 op {
@@ -18393,6 +20435,28 @@ op {
   }
 }
 op {
+  name: "TileGrad"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "multiples"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 3
+  }
+}
+op {
   name: "TopK"
   input_arg {
     name: "input"
@@ -18598,6 +20662,53 @@ op {
         type: DT_HALF
       }
     }
+  }
+}
+op {
+  name: "TopK"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  attr {
+    name: "k"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "sorted"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  deprecation {
+    version: 7
   }
 }
 op {
@@ -18774,6 +20885,53 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "TruncatedNormal"
+  input_arg {
+    name: "shape"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }

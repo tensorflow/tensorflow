@@ -20,6 +20,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
@@ -58,6 +59,16 @@ class SelectOp : public OpKernel {
         ctx, TensorShapeUtils::IsVector(cond->shape()),
         errors::InvalidArgument("'cond' must be a vector, but saw shape: ",
                                 cond->shape().DebugString()));
+    OP_REQUIRES(
+        ctx, FastBoundsCheck(cond->NumElements(),
+                             std::numeric_limits<Eigen::DenseIndex>::max()),
+        errors::InvalidArgument("cond vector larger than ",
+                                std::numeric_limits<Eigen::DenseIndex>::max()));
+    OP_REQUIRES(
+        ctx, FastBoundsCheck(then->flat_outer_dims<T>().dimension(1),
+                             std::numeric_limits<Eigen::DenseIndex>::max()),
+        errors::InvalidArgument("flat outer dims dim 1 size >= ",
+                                std::numeric_limits<Eigen::DenseIndex>::max()));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(then->shape()),
                 errors::InvalidArgument(
@@ -66,7 +77,7 @@ class SelectOp : public OpKernel {
     OP_REQUIRES(
         ctx, then->shape().dim_size(0) == cond->NumElements(),
         errors::InvalidArgument(
-            "Number of batchs of 'then' must match size of 'cond', but saw: ",
+            "Number of batches of 'then' must match size of 'cond', but saw: ",
             then->shape().dim_size(0), " vs. ", cond->NumElements()));
     OP_REQUIRES(
         ctx, then->shape().IsSameSize(else_->shape()),
@@ -147,8 +158,8 @@ struct BatchSelectFunctor<CPUDevice, T> {
                   TTypes<bool>::ConstVec cond_vec,
                   typename TTypes<T>::ConstMatrix then_flat_outer_dims,
                   typename TTypes<T>::ConstMatrix else_flat_outer_dims) {
-    const int batch = cond_vec.size();
-    const int all_but_batch = then_flat_outer_dims.dimension(1);
+    const Eigen::DenseIndex batch = cond_vec.size();
+    const Eigen::DenseIndex all_but_batch = then_flat_outer_dims.dimension(1);
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::array<Eigen::DenseIndex, 2> broadcast_dims{{ 1, all_but_batch }};

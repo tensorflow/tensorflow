@@ -13,8 +13,8 @@ cc_library(
     srcs = ["ffmpeg_lib.cc"],
     hdrs = ["ffmpeg_lib.h"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//google/protobuf",
+        "//tensorflow/core:framework_headers_lib",
     ],
 )
 
@@ -26,6 +26,7 @@ cc_test(
     ],
     data = [
         ":testdata/test_sound1.mp3",
+        "//tensorflow/contrib/ffmpeg:test_data",
     ],
     tags = [
         "local",
@@ -58,4 +59,16 @@ cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

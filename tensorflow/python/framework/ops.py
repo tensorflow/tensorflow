@@ -38,7 +38,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
@@ -524,7 +524,6 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
 
   ```python
   import numpy as np
-  array = np.random.rand(32, 100, 100)
 
   def my_func(arg):
     arg = tf.convert_to_tensor(arg, dtype=tf.float32)
@@ -547,7 +546,8 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
     dtype: Optional element type for the returned tensor. If missing, the
       type is inferred from the type of `value`.
     name: Optional name to use if a new `Tensor` is created.
-    as_ref: True if we want the result as a ref tensor.
+    as_ref: True if we want the result as a ref tensor. Only used if a new
+      `Tensor` is created.
 
   Returns:
     A `Tensor` based on `value`.
@@ -884,6 +884,13 @@ class SparseTensor(object):
   @@graph
   """
 
+  @classmethod
+  def from_value(cls, sparse_tensor_value):
+    return SparseTensor(
+        indices=sparse_tensor_value.indices,
+        values=sparse_tensor_value.values,
+        shape=sparse_tensor_value.shape)
+
   def __init__(self, indices, values, shape):
     """Creates a `SparseTensor`.
 
@@ -987,7 +994,7 @@ SparseTensorValue = collections.namedtuple("SparseTensorValue",
 
 
 def _device_string(dev_spec):
-  if isinstance(dev_spec, pydev.Device):
+  if isinstance(dev_spec, pydev.DeviceSpec):
     return dev_spec.to_string()
   else:
     return dev_spec
@@ -1293,6 +1300,24 @@ class Operation(object):
     tensor._add_consumer(self)  # pylint: disable=protected-access
     self._recompute_node_def()
 
+  def _add_control_inputs(self, ops):
+    """Add a list of new control inputs to this operation.
+
+    Args:
+      ops: the list of Operations to add as control input.
+
+    Raises:
+      TypeError: if ops is not a list of Operations.
+      ValueError: if any op in ops is from a different graph.
+    """
+    if ops:
+      for op in ops:
+        if not isinstance(op, Operation):
+          raise TypeError("op must be an Operation: %s" % op)
+        _assert_same_graph(self, op)
+        self._control_inputs.append(op)
+      self._recompute_node_def()
+
   def _add_control_input(self, op):
     """Add a new control input to this operation.
 
@@ -1303,11 +1328,7 @@ class Operation(object):
       TypeError: if op is not an Operation.
       ValueError: if op is from a different graph.
     """
-    if not isinstance(op, Operation):
-      raise TypeError("op must be an Operation: %s" % op)
-    _assert_same_graph(self, op)
-    self._control_inputs.append(op)
-    self._recompute_node_def()
+    self._add_control_inputs([op])
 
   # Methods below are used when building the NodeDef and Graph proto.
   def _recompute_node_def(self):
@@ -1812,6 +1833,7 @@ class Graph(object):
   may define additional collections by specifying a new name.
 
   @@add_to_collection
+  @@add_to_collections
   @@get_collection
   @@get_collection_ref
 
@@ -2004,6 +2026,7 @@ class Graph(object):
       if from_version is None or op_id > from_version:
         graph.node.extend([op.node_def])
         if op.outputs and add_shapes:
+          assert "_output_shapes" not in graph.node[-1].attr
           graph.node[-1].attr["_output_shapes"].list.shape.extend([
               output.get_shape().as_proto() for output in op.outputs])
         bytesize += op.node_def.ByteSize()
@@ -2426,12 +2449,17 @@ class Graph(object):
     `names` are ignored, but it will not check for pre-existing membership of
     `value` in any of the collections in `names`.
 
+    `names` can be any iterable, but if `names` is a string, it is treated as a
+    single collection name.
+
     Args:
       names: The keys for the collections to add to. The `GraphKeys` class
         contains many standard names for collections.
       value: The value to add to the collections.
     """
-    for name in set(names):
+    # Make sure names are unique, but treat strings as a single collection name
+    names = (names,) if isinstance(names, six.string_types) else set(names)
+    for name in names:
       self.add_to_collection(name, value)
 
   def get_collection_ref(self, name):
@@ -2461,11 +2489,18 @@ class Graph(object):
   def get_collection(self, name, scope=None):
     """Returns a list of values in the collection with the given `name`.
 
+    This is different from `get_collection_ref()` which always returns the
+    actual collection list if it exists in that it returns a new list each time
+    it is called.
+
     Args:
       name: The key for the collection. For example, the `GraphKeys` class
         contains many standard names for collections.
       scope: (Optional.) If supplied, the resulting list is filtered to include
-        only items whose name begins with this string.
+        only items whose `name` attribute matches using `re.match`. Items
+        without a `name` attribute are never returned if a scope is supplied and
+        the choice or `re.match` means that a `scope` without special tokens
+        filters by prefix.
 
     Returns:
       The list of values in the collection with the given `name`, or
@@ -2480,8 +2515,9 @@ class Graph(object):
       return list(coll_list)
     else:
       c = []
+      regex = re.compile(scope)
       for item in coll_list:
-        if hasattr(item, "name") and item.name.startswith(scope):
+        if hasattr(item, "name") and regex.match(item.name):
           c.append(item)
       return c
 
@@ -3581,6 +3617,8 @@ class GraphKeys(object):
   BIASES = "biases"
   # Key to collect activations
   ACTIVATIONS = "activations"
+  # Key to collect update_ops
+  UPDATE_OPS = "update_ops"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
@@ -3647,7 +3685,10 @@ def get_collection(key, scope=None):
     key: The key for the collection. For example, the `GraphKeys` class
       contains many standard names for collections.
     scope: (Optional.) If supplied, the resulting list is filtered to include
-      only items whose name begins with this string.
+      only items whose `name` attribute matches using `re.match`. Items
+      without a `name` attribute are never returned if a scope is supplied and
+      the choice or `re.match` means that a `scope` without special tokens
+      filters by prefix.
 
   Returns:
     The list of values in the collection with the given `name`, or
@@ -3669,7 +3710,7 @@ def op_scope(values, name, default_name=None):
   """Returns a context manager for use when defining a Python op.
 
   This context manager validates that the given `values` are from the
-  same graph, ensures that that graph is the default graph, and pushes a
+  same graph, ensures that graph is the default graph, and pushes a
   name scope.
 
   For example, to define a new Python op called `my_op`:

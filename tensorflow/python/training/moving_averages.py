@@ -339,7 +339,7 @@ class ExponentialMovingAverage(object):
     """
     return var.op.name + "/" + self._name
 
-  def variables_to_restore(self):
+  def variables_to_restore(self, moving_avg_variables=None):
     """Returns a map of names to `Variables` to restore.
 
     If a variable has a moving average, use the moving average variable name as
@@ -359,6 +359,10 @@ class ExponentialMovingAverage(object):
       conv_4/conv2d_params/ExponentialMovingAverage: conv_4/conv2d_params,
       global_step: global_step
     ```
+    Args:
+      moving_avg_variables: a list of variables that require to use of the
+        moving variable name to be restored. If None, it will default to
+        variables.moving_average_variables() + variables.trainable_variables()
 
     Returns:
       A map from restore_names to variables. The restore_name can be the
@@ -366,15 +370,18 @@ class ExponentialMovingAverage(object):
       variable name.
     """
     name_map = {}
-    # Collect all the variables with moving average, including all
-    # the trainable variables and variables which have been explicitly
-    # added to the collection.
-    moving_avg_variables = list(set(variables.moving_average_variables() +
-                                    variables.trainable_variables()))
+    if moving_avg_variables is None:
+      # Include trainable variables and variables which have been explicitly
+      # added to the moving_average_variables collection.
+      moving_avg_variables = variables.trainable_variables()
+      moving_avg_variables += variables.moving_average_variables()
+    # Remove duplicates
+    moving_avg_variables = set(moving_avg_variables)
+    # Collect all the variables with moving average,
     for v in moving_avg_variables:
       name_map[self.average_name(v)] = v
     # Make sure we restore variables without moving average as well.
-    for v in list(set(variables.all_variables()) - set(moving_avg_variables)):
+    for v in list(set(variables.all_variables()) - moving_avg_variables):
       if v.op.name not in name_map:
         name_map[v.op.name] = v
     return name_map

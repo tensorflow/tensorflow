@@ -1,0 +1,65 @@
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="tf-audio-grid.html">
+<link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
+<link rel="import" href="../tf-backend/tf-backend.html">
+
+<!--
+tf-audio-dashboard displays a dashboard that loads audio from a TensorFlow run.
+-->
+<dom-module id="tf-audio-dashboard">
+  <template>
+    <div class="center">
+      <tf-no-data-warning
+        data-type="audio"
+        show-warning="[[dataNotFound]]"
+      ></tf-no-data-warning>
+      <tf-audio-grid
+        id="audioGrid"
+        run-to-audio="[[run2tag]]"
+        audio-generator="[[dataProvider]]"
+        tags="[[tags]]"
+        runs="[[runs]]"
+      ></tf-audio-grid>
+    </div>
+
+    <style>
+      .center {
+        padding-left: 10px;
+        padding-right: 10px;
+        height: 100%;
+        width: 100%;
+        -webkit-box-sizing: border-box;
+        -moz-box-sizing: border-box;
+        box-sizing: border-box;
+      }
+      :host {
+        height: 100%;
+        display: block;
+      }
+
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-audio-dashboard",
+      properties: {
+        dataType: {value: "audio"},
+      },
+      behaviors: [
+        TF.Dashboard.ReloadBehavior("tf-audio-loader"),
+        TF.Backend.Behavior
+      ],
+      attached: function() {
+        this.async(function() {
+          this.fire("rendered");
+        });
+      },
+      _hasAudio: function(runToAudioChange) {
+        return _.values(runToAudioChange.base).some(function(arr) {
+          return arr.length > 0;
+        });
+      },
+    });
+  </script>
+</dom-module>

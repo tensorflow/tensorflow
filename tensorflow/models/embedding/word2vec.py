@@ -81,8 +81,8 @@ flags.DEFINE_float("subsample", 1e-3,
 flags.DEFINE_boolean(
     "interactive", False,
     "If true, enters an IPython interactive session to play with the trained "
-    "model. E.g., try model.analogy('france', 'paris', 'russia') and "
-    "model.nearby(['proton', 'elephant', 'maxwell'])")
+    "model. E.g., try model.analogy(b'france', b'paris', b'russia') and "
+    "model.nearby([b'proton', b'elephant', b'maxwell'])")
 flags.DEFINE_integer("statistics_interval", 5,
                      "Print statistics every n seconds.")
 flags.DEFINE_integer("summary_interval", 5,
@@ -517,8 +517,8 @@ def main(_):
                      global_step=model.global_step)
     if FLAGS.interactive:
       # E.g.,
-      # [0]: model.analogy('france', 'paris', 'russia')
-      # [1]: model.nearby(['proton', 'elephant', 'maxwell'])
+      # [0]: model.analogy(b'france', b'paris', b'russia')
+      # [1]: model.nearby([b'proton', b'elephant', b'maxwell'])
       _start_shell(locals())
 
 

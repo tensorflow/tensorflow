@@ -297,9 +297,8 @@ def parse_example(serialized, features, name=None, example_names=None):
   Raises:
     ValueError: if any feature is invalid.
   """
-  # pylint: enable=line-too-long
   if not features:
-    raise ValueError("Missing features.")
+    raise ValueError("Missing: features was %s." % features)
   (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
    dense_shapes) = _features_to_raw_params(
        features, [VarLenFeature, FixedLenFeature])
@@ -526,15 +525,18 @@ def _parse_single_example_raw(serialized,
                                  name=name)
     if dense_keys is not None:
       for d in dense_keys:
-        outputs[d] = array_ops.squeeze(outputs[d], [0], name="Squeeze_%s" % d)
+        d_name = re.sub("[^A-Za-z0-9_.\\-/]", "_", d)
+        outputs[d] = array_ops.squeeze(
+            outputs[d], [0], name="Squeeze_%s" % d_name)
     if sparse_keys is not None:
       for s in sparse_keys:
+        s_name = re.sub("[^A-Za-z0-9_.\\-/]", "_", s)
         outputs[s] = ops.SparseTensor(
             array_ops.slice(outputs[s].indices,
-                            [0, 1], [-1, -1], name="Slice_Indices_%s" % s),
+                            [0, 1], [-1, -1], name="Slice_Indices_%s" % s_name),
             outputs[s].values,
             array_ops.slice(outputs[s].shape,
-                            [1], [-1], name="Squeeze_Shape_%s" % s))
+                            [1], [-1], name="Squeeze_Shape_%s" % s_name))
     return outputs
 
 

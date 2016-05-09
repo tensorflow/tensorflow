@@ -30,7 +30,8 @@ class FinishedNodesTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self.leaves = [1, 3, 4]
     self.node_map = [-1, -1, -1, 0, 1, -1]
-    self.pcw_total_splits = [[3, 3], [4, 7], [0, 0], [0, 0], [0, 0]]
+    self.pcw_total_splits = [[6, 3, 3], [11, 4, 7], [0, 0, 0], [0, 0, 0],
+                             [0, 0, 0]]
     self.ops = training_ops.Load()
 
   def testSimple(self):

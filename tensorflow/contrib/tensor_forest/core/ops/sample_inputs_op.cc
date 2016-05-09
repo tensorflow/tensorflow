@@ -30,7 +30,6 @@ namespace tensorflow {
 using tensorforest::IsAllInitialized;
 
 
-// TODO(gilberth): Reinitialize candidate splits that were finished last round.
 REGISTER_OP("SampleInputs")
   .Attr("split_initializations_per_input: int32")
   .Attr("split_sampling_random_seed: int32")
@@ -94,7 +93,7 @@ class SampleInputs : public OpKernel {
         "split_sampling_random_seed", &split_sampling_random_seed_));
     // Set up the random number generator.
     if (split_sampling_random_seed_ == 0) {
-      uint64 time_seed = static_cast<uint64>(std::time(NULL));
+      uint64 time_seed = static_cast<uint64>(std::clock());
       single_rand_ = std::unique_ptr<random::PhiloxRandom>(
           new random::PhiloxRandom(time_seed));
     } else {
