@@ -888,8 +888,9 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
                                             ", n=", n, ", k=", k));
-        return;
       }
+
+      return;
     }
 
     TensorShape compatible_input_shape;
@@ -1152,8 +1153,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
                                             ", n=", n, ", k=", k));
-        return;
       }
+      return;
     }
 
     Tensor compatible_input;
