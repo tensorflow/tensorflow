@@ -265,23 +265,25 @@ static ST MakeSparseTensor(Graph* g, int B, int M, int N, int nnz_inner) {
 }
 
 // [8, 4, N{nnz}] cmul [8, 4, N]
-static void BM_SparseMatCMulDenseMat(int iters, int N, int nnz_inner) {
-  Graph* g = new Graph(OpRegistry::Global());
-  Node* dense = MakeTensor(g, 8, 4, N);
-  ST sp = MakeSparseTensor(g, 8, 4, N, nnz_inner);
+#define BM_SparseMatCMulDenseMatArgs(N, NNZ_INNER)                             \
+  static void BM_SparseMatCMulDenseMat_##N##_##NNZ_INNER(int iters) {          \
+    Graph* g = new Graph(OpRegistry::Global());                                \
+    Node* dense = MakeTensor(g, 8, 4, N);                                      \
+    ST sp = MakeSparseTensor(g, 8, 4, N, NNZ_INNER);                           \
+                                                                               \
+    testing::ItemsProcessed(static_cast<int64>(iters * 8 * 4 * N * 2));        \
+    test::Benchmark(                                                           \
+        "cpu", SparseMatCMulDenseMat(g, sp.indices, sp.vals, sp.shape, dense)) \
+        .Run(iters);                                                           \
+  }                                                                            \
+  BENCHMARK(BM_SparseMatCMulDenseMat_##N##_##NNZ_INNER)
 
-  testing::ItemsProcessed(static_cast<int64>(iters * 8 * 4 * N * 2));
-  test::Benchmark(
-      "cpu", SparseMatCMulDenseMat(g, sp.indices, sp.vals, sp.shape, dense))
-      .Run(iters);
-}
-BENCHMARK(BM_SparseMatCMulDenseMat)
-    ->ArgPair(1 << 20, 1)
-    ->ArgPair(1 << 20, 8)
-    ->ArgPair(1 << 20, 32)
-    ->ArgPair(1 << 18, 1)
-    ->ArgPair(1 << 18, 8)
-    ->ArgPair(1 << 18, 32);
+BM_SparseMatCMulDenseMatArgs(1048576, 1);
+BM_SparseMatCMulDenseMatArgs(1048576, 8);
+BM_SparseMatCMulDenseMatArgs(1048576, 32);
+BM_SparseMatCMulDenseMatArgs(262144, 1);
+BM_SparseMatCMulDenseMatArgs(262144, 8);
+BM_SparseMatCMulDenseMatArgs(262144, 32);
 
 }  // namespace
 
