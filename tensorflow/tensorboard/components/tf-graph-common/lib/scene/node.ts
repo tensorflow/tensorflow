@@ -544,7 +544,7 @@ export function getFillForNode(templateIndex, colorBy,
         return colorParams.UNKNOWN;
       }
       let id = renderInfo.node.name;
-      let escapedId = tf.escapeQuerySelector(id);
+      let escapedId = tf.graph.util.escapeQuerySelector(id);
       let gradientDefs = d3.select('svg#svg defs #linearGradients');
       let linearGradient = gradientDefs.select('linearGradient#' + escapedId);
       // If the linear gradient is not there yet, create it.

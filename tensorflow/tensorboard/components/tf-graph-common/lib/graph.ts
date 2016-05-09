@@ -855,100 +855,115 @@ export function build(rawNodes: tf.TFNode[], params: BuildParams,
    */
   let nodeNames = new Array<string>(rawNodes.length);
 
-  return runAsyncTask('Normalizing names', 30, () => {
-           let opNodes = new Array<OpNode>(rawNodes.length);
-           let index = 0;
-           _.each(rawNodes, rawNode => {
-             let opNode = new OpNodeImpl(rawNode);
-             if (isInEmbeddedPred(opNode)) {
-               embeddingNodeNames.push(opNode.name);
-               inEmbedding[opNode.name] = opNode;
-               return;
-             }
+  return tf.graph.util
+      .runAsyncTask(
+          'Normalizing names', 30,
+          () => {
+            let opNodes = new Array<OpNode>(rawNodes.length);
+            let index = 0;
+            _.each(rawNodes, rawNode => {
+              let opNode = new OpNodeImpl(rawNode);
+              if (isInEmbeddedPred(opNode)) {
+                embeddingNodeNames.push(opNode.name);
+                inEmbedding[opNode.name] = opNode;
+                return;
+              }
 
-             if (isOutEmbeddedPred(opNode)) {
-               embeddingNodeNames.push(opNode.name);
-               outEmbedding[opNode.name] = opNode;
-               _.each(opNode.inputs, input => {
-                 let inputName = input.name;
-                 outEmbeddings[inputName] = outEmbeddings[inputName] || [];
-                 outEmbeddings[inputName].push(opNode);
-               });
-               return;
-             }
-             // The node is not an embedding, so add it to the names and nodes
-             // lists.
-             opNodes[index] = opNode;
-             nodeNames[index] = opNode.name;
-             index++;
-           });
-           opNodes.splice(index);
-           nodeNames.splice(index);
-           return opNodes;
-         }, tracker).then((opNodes) => {
-    // Create the graph data structure from the graphlib library.
-    return runAsyncTask('Building the data structure', 70, () => {
-      let normalizedNameDict = mapStrictHierarchy(nodeNames,
-        embeddingNodeNames);
-      let graph = new SlimGraph;
+              if (isOutEmbeddedPred(opNode)) {
+                embeddingNodeNames.push(opNode.name);
+                outEmbedding[opNode.name] = opNode;
+                _.each(opNode.inputs, input => {
+                  let inputName = input.name;
+                  outEmbeddings[inputName] = outEmbeddings[inputName] || [];
+                  outEmbeddings[inputName].push(opNode);
+                });
+                return;
+              }
+              // The node is not an embedding, so add it to the names and nodes
+              // lists.
+              opNodes[index] = opNode;
+              nodeNames[index] = opNode.name;
+              index++;
+            });
+            opNodes.splice(index);
+            nodeNames.splice(index);
+            return opNodes;
+          },
+          tracker)
+      .then((opNodes) => {
+        // Create the graph data structure from the graphlib library.
+        return tf.graph.util.runAsyncTask(
+            'Building the data structure', 70, () => {
+              let normalizedNameDict =
+                  mapStrictHierarchy(nodeNames, embeddingNodeNames);
+              let graph = new SlimGraph;
 
-      // Add the nodes to the graph.
-      _.each(opNodes, opNode => {
-        let normalizedName = normalizedNameDict[opNode.name] || opNode.name;
-        graph.nodes[normalizedName] = opNode;
-        // Check if the node has out-embeddings. If yes, add them to the
-        // node.
-        if (opNode.name in outEmbeddings) {
-          opNode.outEmbeddings = outEmbeddings[opNode.name];
-          // Normalize the names of the out-embeddings.
-          _.each(opNode.outEmbeddings, node => {
-            node.name = normalizedNameDict[node.name] || node.name;
-          });
-        }
-        // Update the name of the node.
-        opNode.name = normalizedName;
+              // Add the nodes to the graph.
+              _.each(opNodes, opNode => {
+                let normalizedName =
+                    normalizedNameDict[opNode.name] || opNode.name;
+                graph.nodes[normalizedName] = opNode;
+                // Check if the node has out-embeddings. If yes, add them to the
+                // node.
+                if (opNode.name in outEmbeddings) {
+                  opNode.outEmbeddings = outEmbeddings[opNode.name];
+                  // Normalize the names of the out-embeddings.
+                  _.each(opNode.outEmbeddings, node => {
+                    node.name = normalizedNameDict[node.name] || node.name;
+                  });
+                }
+                // Update the name of the node.
+                opNode.name = normalizedName;
+              });
+
+              // Visit each node's inputs to add the edges to the graph. If the
+              // input
+              // is an in-embedding, then add it to the node's in-embeddings
+              // instead.
+              _.each(opNodes, opNode => {
+                _.each(opNode.inputs, (input, i) => {
+                  let inputName = input.name;
+                  if (inputName in inEmbedding) {
+                    let inEmbedNode = inEmbedding[inputName];
+                    opNode.inEmbeddings.push(inEmbedNode);
+                    // Move the inputs of the in-embedding node into incoming
+                    // edges of
+                    // the main node. E.g. the control dependency of a constant
+                    // node
+                    // should be moved to the op node where the constant is
+                    // embedded.
+                    for (let embedInput of inEmbedNode.inputs) {
+                      addEdgeToGraph(
+                          graph, normalizedNameDict[embedInput.name] ||
+                              embedInput.name,
+                          opNode, embedInput.isControlDependency, params, i);
+                    }
+                  } else if (inputName in outEmbedding) {
+                    // Move the inputs of the out-embedding node into inputs of
+                    // the main node where the out-embedding points to.
+                    let outEmbedNode = outEmbedding[inputName];
+                    for (let embedInput of outEmbedNode.inputs) {
+                      addEdgeToGraph(
+                          graph, normalizedNameDict[embedInput.name] ||
+                              embedInput.name,
+                          opNode, input.isControlDependency, params, i);
+                    }
+                  } else {
+                    addEdgeToGraph(
+                        graph, normalizedNameDict[inputName] || inputName,
+                        opNode, input.isControlDependency, params, i);
+                  }
+                });
+              });
+
+              // Normalize the names of in-embeddings.
+              _.each(inEmbedding, (node, name) => {
+                node.name = normalizedNameDict[node.name] || node.name;
+              });
+
+              return graph;
+            }, tracker);
       });
-
-      // Visit each node's inputs to add the edges to the graph. If the input
-      // is an in-embedding, then add it to the node's in-embeddings instead.
-      _.each(opNodes, opNode => {
-        _.each(opNode.inputs, (input, i) => {
-          let inputName = input.name;
-          if (inputName in inEmbedding) {
-            let inEmbedNode = inEmbedding[inputName];
-            opNode.inEmbeddings.push(inEmbedNode);
-            // Move the inputs of the in-embedding node into incoming edges of
-            // the main node. E.g. the control dependency of a constant node
-            // should be moved to the op node where the constant is embedded.
-            for (let embedInput of inEmbedNode.inputs) {
-              addEdgeToGraph(graph,
-                  normalizedNameDict[embedInput.name] || embedInput.name,
-                  opNode, embedInput.isControlDependency, params, i);
-            }
-          } else if (inputName in outEmbedding) {
-            // Move the inputs of the out-embedding node into inputs of
-            // the main node where the out-embedding points to.
-            let outEmbedNode = outEmbedding[inputName];
-            for (let embedInput of outEmbedNode.inputs) {
-              addEdgeToGraph(graph,
-                  normalizedNameDict[embedInput.name] || embedInput.name,
-                  opNode, input.isControlDependency, params, i);
-            }
-          } else {
-            addEdgeToGraph(graph, normalizedNameDict[inputName] || inputName,
-                opNode, input.isControlDependency, params, i);
-          }
-        });
-      });
-
-      // Normalize the names of in-embeddings.
-      _.each(inEmbedding, (node, name) => {
-        node.name = normalizedNameDict[node.name] || node.name;
-      });
-
-      return graph;
-    }, tracker);
-  });
 };
 
 /**
