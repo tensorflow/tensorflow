@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -20,8 +21,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 
@@ -193,6 +197,91 @@ TEST_F(SparseDenseCMulTest, BroadcastDense) {
   test::FillValues<float>(&expected, {0, 1, 1.5, 0});
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
+
+// Benchmarking code follows.
+
+static Graph* SparseMatCMulDenseMat(Graph* g, Node* sp_indices, Node* sp_vals,
+                                    Node* sp_shape, Node* dense) {
+  Node* ret;
+  TF_CHECK_OK(
+      NodeBuilder(g->NewName("SparseDenseCwiseMul"), "SparseDenseCwiseMul")
+          .Input(sp_indices)
+          .Input(sp_vals)
+          .Input(sp_shape)
+          .Input(dense)
+          .Finalize(g, &ret));
+  return g;
+}
+
+static Node* MakeTensor(Graph* g, int B, int M, int N) {
+  Tensor data(DT_FLOAT, TensorShape({B, M, N}));
+  data.flat<float>().setRandom();
+  return test::graph::Constant(g, data);
+}
+
+struct ST {
+  Node* indices;
+  Node* vals;
+  Node* shape;
+};
+
+static ST MakeSparseTensor(Graph* g, int B, int M, int N, int nnz_inner) {
+  const int total_nnz = B * M * nnz_inner;
+  const int kNumDims = 3;
+
+  Tensor indices(DT_INT64, TensorShape({total_nnz, kNumDims}));
+  Tensor vals(DT_FLOAT, TensorShape({total_nnz}));
+  Tensor shape(DT_INT64, TensorShape({kNumDims}));
+  vals.flat<float>().setRandom();
+  test::FillValues(&shape, gtl::ArraySlice<int64>({B, M, N}));
+  auto indices_mat = indices.matrix<int64>();
+
+  int nnz_cnt = 0;
+  std::unordered_set<int> picked;
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dist(0, N - 1);
+
+  for (int i = 0; i < B; ++i) {
+    for (int j = 0; j < M; ++j) {
+      for (int k = 0; k < nnz_inner; ++k) {
+        indices_mat(nnz_cnt, 0) = i;
+        indices_mat(nnz_cnt, 1) = j;
+
+        int inner = dist(gen);
+        while (picked.count(inner) == 1) {
+          inner = dist(gen);
+        }
+        picked.insert(inner);
+        indices_mat(nnz_cnt, 2) = inner;
+
+        ++nnz_cnt;
+      }
+    }
+  }
+
+  return ST{test::graph::Constant(g, indices), test::graph::Constant(g, vals),
+            test::graph::Constant(g, shape)};
+}
+
+// [8, 4, N{nnz}] cmul [8, 4, N]
+static void BM_SparseMatCMulDenseMat(int iters, int N, int nnz_inner) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Node* dense = MakeTensor(g, 8, 4, N);
+  ST sp = MakeSparseTensor(g, 8, 4, N, nnz_inner);
+
+  testing::ItemsProcessed(static_cast<int64>(iters * 8 * 4 * N * 2));
+  test::Benchmark(
+      "cpu", SparseMatCMulDenseMat(g, sp.indices, sp.vals, sp.shape, dense))
+      .Run(iters);
+}
+BENCHMARK(BM_SparseMatCMulDenseMat)
+    ->ArgPair(1 << 20, 1)
+    ->ArgPair(1 << 20, 8)
+    ->ArgPair(1 << 20, 32)
+    ->ArgPair(1 << 18, 1)
+    ->ArgPair(1 << 18, 8)
+    ->ArgPair(1 << 18, 32);
 
 }  // namespace
 
