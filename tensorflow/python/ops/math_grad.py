@@ -721,3 +721,7 @@ def _CrossGrad(op, grad):
   u = op.inputs[0]
   v = op.inputs[1]
   return (math_ops.cross(v, grad), math_ops.cross(grad, u))
+
+
+ops.NoGradient("SparseDenseCwiseMul")
+ops.NoGradient("SparseDenseCwiseDiv")
