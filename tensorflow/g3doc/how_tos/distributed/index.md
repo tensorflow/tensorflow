@@ -199,7 +199,7 @@ FLAGS = tf.app.flags.FLAGS
 
 def main(_):
   ps_hosts = FLAGS.ps_hosts.split(",")
-  worker_hosts = FLAGS.worker_hosts(",")
+  worker_hosts = FLAGS.worker_hosts.split(",")
 
   # Create a cluster from the parameter server and worker hosts.
   cluster = tf.train.ClusterSpec({"ps": ps_hosts, "worker": worker_hosts})
