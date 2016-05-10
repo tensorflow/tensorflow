@@ -160,7 +160,7 @@ def check_array(array, dtype):
   """
   # skip check if array is instance of other classes, e.g. h5py.Dataset
   # to avoid copying array and loading whole data into memory
-  if isinstance(array, np.ndarray):
+  if isinstance(array, (np.ndarray, list)):
     array = np.array(array, dtype=dtype, order=None, copy=False)
   return array
 
