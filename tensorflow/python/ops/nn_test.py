@@ -854,9 +854,16 @@ class BatchNormalizationTest(tf.test.TestCase):
         for scale_after_normalization in [True, False]:
           # _batch_norm_with_global_normalization_grad is deprecated in v9
           tf.get_default_graph().graph_def_versions.producer = 8
-          dx, dm, dv, db, dg = (
+          grad = (
               gen_nn_ops._batch_norm_with_global_normalization_grad(
               x, m, v, gamma, backprop, epsilon, scale_after_normalization))
+          dx, dm, dv, db, dg = grad
+          self.assertEqual(grad.dx, dx)
+          self.assertEqual(grad.dm, dm)
+          self.assertEqual(grad.dv, dv)
+          self.assertEqual(grad.db, db)
+          self.assertEqual(grad.dg, dg)
+
           on = self._opsBatchNorm(
               x, m, v, beta, gamma, epsilon, scale_after_normalization, True)
           odx, odm, odv, odb, odg = tf.gradients(
