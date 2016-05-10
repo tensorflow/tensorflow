@@ -590,6 +590,18 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
   gpu::StreamExecutor* se =
       gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
   const gpu::DeviceDescription& desc = se->GetDeviceDescription();
+  int numa_node = desc.numa_node();
+  if (numa_node < 0) {
+    // For some reason the StreamExecutor couldn't get the NUMA
+    // affinity of the GPU.  If this is not a multi-socket mobo with
+    // GPUs local to different buses, it doesn't matter.  If it is, we
+    // may run into trouble later with data transfer operations.  The
+    // trouble may manifest as slower than expected performance, or
+    // outright failures.
+    LOG(ERROR) << "Could not identify NUMA node of " << name
+               << ", defaulting to 0.";
+    numa_node = 0;
+  }
 
   int64 total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
@@ -612,7 +624,7 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
   // Because GPUs are virtualized in some environments, we can't just
   // use the GPU id.
   BusAdjacency bus_adjacency = BUS_ANY;
-  switch (desc.numa_node()) {
+  switch (numa_node) {
     case 0:
       bus_adjacency = BUS_0;
       break;
@@ -623,7 +635,7 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
       bus_adjacency = BUS_ANY;
   }
   VLOG(1) << "GPUDevice id " << gpu_id << " on bus " << bus_adjacency
-          << " numa: " << desc.numa_node() << " pci: " << desc.pci_bus_id();
+          << " numa: " << numa_node << " pci: " << desc.pci_bus_id();
 
   ProcessState* process_state = ProcessState::singleton();
   return CreateGPUDevice(
@@ -631,7 +643,7 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
       GetShortDeviceDescription(gpu_id, desc),
       process_state->GetGPUAllocator(options.config.gpu_options(), gpu_id,
                                      allocated_memory),
-      process_state->GetCPUAllocator(desc.numa_node()));
+      process_state->GetCPUAllocator(numa_node));
 }
 
 static int GetMinGPUMultiprocessorCount() {
