@@ -211,13 +211,12 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       sync_every_op_(sync_every_op) {
   ProcessState::singleton()->EnableGPUDevice();
 
-  gpu::StreamExecutor* executor =
-      GPUMachineManager()->ExecutorForDevice(gpu_id_).ValueOrDie();
-  if (!executor) {
+  executor_ = GPUMachineManager()->ExecutorForDevice(gpu_id_).ValueOrDie();
+  if (!executor_) {
     LOG(ERROR) << "Failed to get StreamExecutor for device " << gpu_id_;
     return;
   }
-  em_.reset(new EventMgr(executor, options.config.gpu_options()));
+  em_.reset(new EventMgr(executor_, options.config.gpu_options()));
 
   if (max_streams < 1) {
     LOG(FATAL) << "Invalid value for max_streams.";
@@ -225,21 +224,21 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
 
   // Create the specified number of GPU streams
   for (int i = 0; i < max_streams; i++) {
-    auto stream = new gpu::Stream(executor);
+    auto stream = new gpu::Stream(executor_);
     stream->Init();
     VLOG(2) << "Created stream[" << i << "] = " << stream;
 
-    auto host_to_device_stream = new gpu::Stream(executor);
+    auto host_to_device_stream = new gpu::Stream(executor_);
     host_to_device_stream->Init();
     VLOG(2) << "Created host_to_device_stream[" << i
             << "] = " << host_to_device_stream;
 
-    auto device_to_host_stream = new gpu::Stream(executor);
+    auto device_to_host_stream = new gpu::Stream(executor_);
     device_to_host_stream->Init();
     VLOG(2) << "Created device_to_host_stream[" << i
             << "] = " << device_to_host_stream;
 
-    auto device_to_device_stream = new gpu::Stream(executor);
+    auto device_to_device_stream = new gpu::Stream(executor_);
     device_to_device_stream->Init();
     VLOG(2) << "Created device_to_device_stream[" << i
             << "] = " << device_to_device_stream;
