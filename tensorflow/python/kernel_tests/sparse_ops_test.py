@@ -401,15 +401,15 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
 
   def testCwiseDivAndMul(self):
     np.random.seed(1618)
-    sp_shapes = [(10, 10, 10), (5, 5), (1618,)]
-    dense_shapes = [(10, 10, 1), (5, 5), (1,)]
+    sp_shapes = [(10, 10, 10), (5, 5), (1618,), (3, 3, 7)]
+    dense_shapes = [(10, 10, 1), (5, 5), (1,), (1, 7)]
 
     with self.test_session(use_gpu=False):
       for dtype in [np.float32, np.float64, np.int32, np.int64]:
         for sp_shape, dense_shape in zip(sp_shapes, dense_shapes):
           sp_vals_np = np.random.rand(*sp_shape).astype(dtype) + 1
           dense_vals_np = np.random.rand(*dense_shape).astype(dtype) + 1
-          sp_t, unused_nnz = _sparsify(sp_vals_np)
+          sp_t, unused_nnz = _sparsify(sp_vals_np, thresh=1.5)
           sp_t_densified = sparse_ops.sparse_tensor_to_dense(sp_t).eval()
           dense_t = tf.constant(dense_vals_np)
 
@@ -421,6 +421,34 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
           if dtype in [np.int32, np.int64]:
             res = sp_t / dense_t  # should invoke "__truediv__"
             self.assertEqual(res.values.eval().dtype, np.float64)
+
+  def testGradients(self):
+    np.random.seed(1618)
+    sp_shapes = [(10, 10, 10), (5, 5), (1618,), (3, 3, 7)]
+    dense_shapes = [(10, 10, 1), (5, 5), (1,), (1, 7)]
+
+    with self.test_session(use_gpu=False):
+      for dtype in [np.float32, np.float64]:
+        for sp_shape, dense_shape in zip(sp_shapes, dense_shapes):
+          sp_vals_np = np.random.rand(*sp_shape).astype(dtype) + 1
+          dense_vals_np = np.random.rand(*dense_shape).astype(dtype) + 1
+          sp_t, nnz = _sparsify(sp_vals_np, thresh=1.5)
+          dense_t = tf.constant(dense_vals_np)
+
+          cmul = sp_t * dense_t
+          err = tf.test.compute_gradient_error([sp_t.values, dense_t],
+                                               [(nnz,), dense_shape],
+                                               cmul.values, (nnz,))
+          self.assertLess(err, 1e-4)
+
+          cdiv = sp_t / dense_t
+          err = tf.test.compute_gradient_error(sp_t.values, (nnz,),
+                                               cdiv.values, (nnz,))
+          self.assertLess(err, 1e-4)
+          err = tf.test.compute_gradient_error(dense_t, dense_shape,
+                                               cdiv.values, (nnz,),
+                                               x_init_value=dense_vals_np)
+          self.assertLess(err, 2e-4)
 
 
 if __name__ == "__main__":
