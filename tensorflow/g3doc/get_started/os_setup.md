@@ -258,7 +258,7 @@ using pip. You'll need pip for that, so install it as described
 ### Clone the TensorFlow repository
 
 ```bash
-$ git clone --recurse-submodules https://github.com/tensorflow/tensorflow
+$ git clone -b 0.6.0 --recurse-submodules https://github.com/tensorflow/tensorflow
 ```
 
 `--recurse-submodules` is required to fetch the protobuf library that TensorFlow
