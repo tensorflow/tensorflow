@@ -187,11 +187,13 @@ class Coordinator(object):
       if not self._stop_event.is_set():
         if ex and self._exc_info_to_raise is None:
           if isinstance(ex, tuple):
-            logging.info("Error reported to Coordinator: %s",
+            logging.info("Error reported to Coordinator: %s, %s",
+                         type(ex[1]),
                          compat.as_str_any(ex[1]))
             self._exc_info_to_raise = ex
           else:
-            logging.info("Error reported to Coordinator: %s",
+            logging.info("Error reported to Coordinator: %s, %s",
+                         type(ex),
                          compat.as_str_any(ex))
             self._exc_info_to_raise = sys.exc_info()
           # self._exc_info_to_raise should contain a tuple containing exception

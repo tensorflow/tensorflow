@@ -852,7 +852,8 @@ class Supervisor(object):
   # pylint: disable=g-doc-return-or-yield,broad-except
   @contextlib.contextmanager
   def managed_session(self, master="", config=None,
-                      start_standard_services=True):
+                      start_standard_services=True,
+                      close_summary_writer=True):
     """Returns a context manager for a managed session.
 
     This context manager creates and automatically recovers a session.  It
@@ -903,6 +904,8 @@ class Supervisor(object):
         Passed as-is to create the session.
       start_standard_services: Whether to start the standard services,
         such as checkpoint, summary and step counter.
+      close_summary_writer: Whether to close the summary writer when
+        closing the session.  Defaults to True.
 
     Returns:
       A context manager that yields a `Session` restored from the latest
@@ -929,7 +932,7 @@ class Supervisor(object):
         # about exceptions raised when closing.  This takes care of
         # blocked enqueue/dequeue calls.
         try:
-          sess.close()
+          sess.close(close_summary_writer=close_summary_writer)
         except Exception:
           # Silently ignore exceptions raised by close().
           pass
