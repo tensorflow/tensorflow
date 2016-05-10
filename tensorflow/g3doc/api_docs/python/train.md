@@ -1897,7 +1897,7 @@ Create a `Supervisor`.
 
 - - -
 
-#### `tf.train.Supervisor.managed_session(master='', config=None, start_standard_services=True)` {#Supervisor.managed_session}
+#### `tf.train.Supervisor.managed_session(master='', config=None, start_standard_services=True, close_summary_writer=True)` {#Supervisor.managed_session}
 
 Returns a context manager for a managed session.
 
@@ -1951,6 +1951,8 @@ the training loop and are considered normal termination.
     Passed as-is to create the session.
 *  <b>`start_standard_services`</b>: Whether to start the standard services,
     such as checkpoint, summary and step counter.
+*  <b>`close_summary_writer`</b>: Whether to close the summary writer when
+    closing the session.  Defaults to True.
 
 ##### Returns:
 

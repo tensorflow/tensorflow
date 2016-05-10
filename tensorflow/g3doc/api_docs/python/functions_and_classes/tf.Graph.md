@@ -232,6 +232,10 @@ string, a device function, or None:
 * If it is None, all `device()` invocations from the enclosing context
   will be ignored.
 
+For information about the valid syntax of device name strings, see
+the documentation in
+[`DeviceNameUtils`](https://www.tensorflow.org/code/tensorflow/core/util/device_name_utils.h).
+
 For example:
 
 ```python
