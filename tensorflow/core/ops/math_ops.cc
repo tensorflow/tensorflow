@@ -594,13 +594,15 @@ transpose_b: If true, "b" is transposed before multiplication.
 )doc");
 
 REGISTER_OP("SparseMatMul")
-    .Input("a: float")
-    .Input("b: float")
+    .Input("a: Ta")
+    .Input("b: Tb")
     .Output("product: float")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
     .Attr("a_is_sparse: bool = false")
     .Attr("b_is_sparse: bool = false")
+    .Attr("Ta: {float, bfloat16} = DT_FLOAT")
+    .Attr("Tb: {float, bfloat16} = DT_FLOAT")
     .Doc(R"doc(
 Multiply matrix "a" by matrix "b".
 

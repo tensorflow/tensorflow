@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_matmul_op.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -26,11 +27,13 @@ limitations under the License.
 namespace tensorflow {
 random::PhiloxRandom philox(1, 1);
 random::SimplePhilox rnd(&philox);
+using Eigen::operator==;
 
+template <typename T>
 void Sparsify(Tensor* t, float sparsity) {
   const int64 N = t->NumElements();
   CHECK_LE(sparsity, 1);
-  auto flat = t->flat<float>();
+  auto flat = t->flat<T>();
   if (sparsity == 1) {
     flat.setZero();
     return;
@@ -38,9 +41,9 @@ void Sparsify(Tensor* t, float sparsity) {
   static const uint32 K = 10000;
   for (int64 i = 0; i < N; ++i) {
     if (rnd.Uniform(K) < sparsity * K) {
-      flat(i) = 0;
-    } else if (flat(i) == 0) {
-      flat(i) = 0.1;
+      flat(i) = T(0);
+    } else if (flat(i) == T(0)) {
+      flat(i) = T(1);
     }
   }
 }
@@ -59,6 +62,7 @@ Node* SparseMatMulNode(Graph* g, Node* in0, Node* in1, bool transpose_a,
   return ret;
 }
 
+template <typename TA, typename TB>
 static Graph* SparseMatMulHelper(Graph* g, int m, int n, int d,
                                  float sparsity_a, float sparsity_b,
                                  bool transpose_a, bool transpose_b) {
@@ -66,14 +70,14 @@ static Graph* SparseMatMulHelper(Graph* g, int m, int n, int d,
   bool b_sparse = (sparsity_b > 0);
 
   auto left_shape = transpose_a ? TensorShape({d, m}) : TensorShape({m, d});
-  Tensor left(DataTypeToEnum<float>::value, left_shape);
-  left.flat<float>().setRandom();
-  Sparsify(&left, sparsity_a);
+  Tensor left(DataTypeToEnum<TA>::value, left_shape);
+  left.flat<TA>().setRandom();
+  Sparsify<TA>(&left, sparsity_a);
 
   auto right_shape = transpose_b ? TensorShape({n, d}) : TensorShape({d, n});
-  Tensor right(DataTypeToEnum<float>::value, right_shape);
-  right.flat<float>().setRandom();
-  Sparsify(&right, sparsity_b);
+  Tensor right(DataTypeToEnum<TB>::value, right_shape);
+  right.flat<TB>().setRandom();
+  Sparsify<TB>(&right, sparsity_b);
 
   SparseMatMulNode(g, test::graph::Constant(g, left),
                    test::graph::Constant(g, right), transpose_a, transpose_b,
@@ -81,59 +85,82 @@ static Graph* SparseMatMulHelper(Graph* g, int m, int n, int d,
   return g;
 }
 
+template <typename TA, typename TB>
 static Graph* SparseMatMul(int m, int n, int d, float sparsity_a,
                            float sparsity_b, bool transpose_a,
                            bool transpose_b) {
   Graph* g = new Graph(OpRegistry::Global());
-  return SparseMatMulHelper(g, m, n, d, sparsity_a, sparsity_b, transpose_a,
-                            transpose_b);
+  return SparseMatMulHelper<TA, TB>(g, m, n, d, sparsity_a, sparsity_b,
+                                    transpose_a, transpose_b);
 }
 
-#define BM_SPARSE(M, K, N, S1, S2, TA, TB)                                   \
-  static void BM_Sparse##_##M##_##K##_##N##_##S1##_##S2##_##TA##_##TB(       \
-      int iters) {                                                           \
-    testing::StopTiming();                                                   \
-    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);      \
-    std::string label =                                                      \
-        strings::Printf("tr_a: %d tr_b: %d sp_a: %0.2f sp_b: %0.2f", TA, TB, \
-                        S1 / 100.0, S2 / 100.0);                             \
-    testing::SetLabel(label);                                                \
-    testing::UseRealTime();                                                  \
-    auto g = SparseMatMul(M, N, K, S1 / 100.0, S2 / 100.0, TA, TB);          \
-    testing::StartTiming();                                                  \
-    test::Benchmark("cpu", g).Run(iters);                                    \
-  }                                                                          \
-  BENCHMARK(BM_Sparse##_##M##_##K##_##N##_##S1##_##S2##_##TA##_##TB);
+#define BM_SPARSE(M, K, N, S1, S2, TRA, TRB, TA, TB)                           \
+  static void                                                                  \
+      BM_Sparse##_##M##_##K##_##N##_##S1##_##S2##_##TRA##_##TRB##_##TA##_##TB( \
+          int iters) {                                                         \
+    testing::StopTiming();                                                     \
+    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);        \
+    std::string label =                                                        \
+        strings::Printf("tr_a: %d tr_b: %d sp_a: %0.2f sp_b: %0.2f", TRA, TRB, \
+                        S1 / 100.0, S2 / 100.0);                               \
+    testing::SetLabel(label);                                                  \
+    testing::UseRealTime();                                                    \
+    auto g = SparseMatMul<TA, TB>(M, N, K, S1 / 100.0, S2 / 100.0, TRA, TRB);  \
+    testing::StartTiming();                                                    \
+    test::Benchmark("cpu", g).Run(iters);                                      \
+  }                                                                            \
+  BENCHMARK(                                                                   \
+      BM_Sparse##_##M##_##K##_##N##_##S1##_##S2##_##TRA##_##TRB##_##TA##_##TB);
 
-BM_SPARSE(2048, 2048, 2048, 0, 0, false, false);
-BM_SPARSE(2048, 2048, 2048, 1, 0, false, false);
-BM_SPARSE(2048, 2048, 2048, 50, 0, false, false);
-BM_SPARSE(2048, 2048, 2048, 85, 0, false, false);
-BM_SPARSE(2048, 2048, 2048, 99, 0, false, false);
+#define BM_SPARSE_FLOAT(M, K, N, S1, S2, TRA, TRB) \
+  BM_SPARSE(M, K, N, S1, S2, TRA, TRB, float, float)
+#define BM_SPARSE_BFLOAT16(M, K, N, S1, S2, TRA, TRB) \
+  BM_SPARSE(M, K, N, S1, S2, TRA, TRB, bfloat16, bfloat16)
+#define BM_SPARSE_FLOAT_BFLOAT16(M, K, N, S1, S2, TRA, TRB) \
+  BM_SPARSE(M, K, N, S1, S2, TRA, TRB, float, bfloat16)
+#define BM_SPARSE_BFLOAT16_FLOAT(M, K, N, S1, S2, TRA, TRB) \
+  BM_SPARSE(M, K, N, S1, S2, TRA, TRB, bfloat16, float)
 
-BM_SPARSE(2048, 2048, 2048, 0, 50, false, false);
-BM_SPARSE(2048, 2048, 2048, 0, 85, false, false);
+// Test sparse b
+BM_SPARSE_FLOAT(2048, 2048, 2048, 0, 0, false, false);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 1, 0, false, false);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 50, 0, false, false);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 85, 0, false, false);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 99, 0, false, false);
+// Test sparse a
+BM_SPARSE_FLOAT(2048, 2048, 2048, 0, 50, false, false);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 0, 85, false, false);
+// Test transposing
+BM_SPARSE_FLOAT(2048, 2048, 2048, 85, 0, true, false);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 85, 0, false, true);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 85, 0, true, true);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 0, 85, true, false);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 0, 85, false, true);
+BM_SPARSE_FLOAT(2048, 2048, 2048, 0, 85, true, true);
 
-BM_SPARSE(2048, 2048, 2048, 85, 0, true, false);
-BM_SPARSE(2048, 2048, 2048, 85, 0, false, true);
-BM_SPARSE(2048, 2048, 2048, 85, 0, true, true);
+// Test smaller sizes
+BM_SPARSE_FLOAT(1024, 1024, 1024, 0, 0, false, false);
+BM_SPARSE_FLOAT(1024, 1024, 1024, 1, 0, false, false);
+BM_SPARSE_FLOAT(1024, 1024, 1024, 85, 0, false, false);
+BM_SPARSE_FLOAT(256, 256, 256, 1, 0, false, false);
+BM_SPARSE_FLOAT(512, 512, 512, 1, 0, false, false);
 
-BM_SPARSE(2048, 2048, 2048, 0, 85, true, false);
-BM_SPARSE(2048, 2048, 2048, 0, 85, false, true);
-BM_SPARSE(2048, 2048, 2048, 0, 85, true, true);
-
-BM_SPARSE(1024, 1024, 1024, 0, 0, false, false);
-BM_SPARSE(1024, 1024, 1024, 1, 0, false, false);
-BM_SPARSE(1024, 1024, 1024, 85, 0, false, false);
-
-BM_SPARSE(256, 256, 256, 1, 0, false, false);
-BM_SPARSE(512, 512, 512, 1, 0, false, false);
+// Test bfloat16
+BM_SPARSE_BFLOAT16(2048, 2048, 2048, 0, 0, false, false);
+BM_SPARSE_BFLOAT16(2048, 2048, 2048, 1, 0, false, false);
+BM_SPARSE_BFLOAT16(2048, 2048, 2048, 85, 0, false, false);
+BM_SPARSE_BFLOAT16(2048, 2048, 2048, 99, 0, false, false);
+BM_SPARSE_BFLOAT16_FLOAT(2048, 2048, 2048, 85, 0, false, false);
+BM_SPARSE_BFLOAT16_FLOAT(2048, 2048, 2048, 99, 0, false, false);
+BM_SPARSE_FLOAT_BFLOAT16(2048, 2048, 2048, 85, 0, false, false);
+BM_SPARSE_FLOAT_BFLOAT16(2048, 2048, 2048, 99, 0, false, false);
 
 static Graph* MultiSparseMatMul(int m, int n, int d, float sparsity_1,
                                 float sparsity_2) {
   Graph* g = new Graph(OpRegistry::Global());
-  SparseMatMulHelper(g, d, n, m, sparsity_1, sparsity_2, true, false);
-  SparseMatMulHelper(g, m, d, n, sparsity_2, 0, false, true);
+  SparseMatMulHelper<float, float>(g, d, n, m, sparsity_1, sparsity_2, true,
+                                   false);
+  SparseMatMulHelper<float, float>(g, m, d, n, sparsity_2, 0, false, true);
   return g;
 }
 

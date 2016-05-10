@@ -1107,6 +1107,7 @@ medium_kernel_test_list = glob([
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",
     "kernel_tests/sparse_ops_test.py",
+    "kernel_tests/sparse_matmul_op_test.py",
     "kernel_tests/sparse_tensor_dense_matmul_op_test.py",
 ])
 
@@ -1154,7 +1155,6 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/self_adjoint_eig_op_test.py",
     "kernel_tests/sparse_add_op_test.py",
     "kernel_tests/sparse_concat_op_test.py",
-    "kernel_tests/sparse_matmul_op_test.py",
     "kernel_tests/sparse_split_op_test.py",
     "kernel_tests/sparse_reorder_op_test.py",
     "kernel_tests/sparse_to_dense_op_test.py",
