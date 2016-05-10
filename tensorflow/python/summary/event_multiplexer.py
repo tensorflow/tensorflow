@@ -176,11 +176,13 @@ class EventMultiplexer(object):
       raise ValueError('AddRunsFromDirectory: path exists and is not a '
                        'directory, %s' % path)
     # ListRecursively just yields nothing if the path doesn't exist.
-    subdirs = [
+    # Should be a generator expression so we start loading immediately
+    # even if there is a very large tree to explore.
+    subdirs = (
         subdir
         for (subdir, files) in io_wrapper.ListRecursively(path)
         if list(filter(event_accumulator.IsTensorFlowEventsFile, files))
-    ]
+    )
 
     for subdir in subdirs:
       logging.info('Adding events from directory %s', subdir)
