@@ -662,7 +662,6 @@ struct gemm_pack_rhs<
     eigen_assert(offset == 0);
 
     EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
-    typedef typename DataMapper::LinearMapper LinearMapper;
     typedef typename packet_traits<Scalar>::type Packet;
 
     const Index packet_cols4 = (cols / 4) * 4;
