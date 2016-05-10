@@ -471,12 +471,12 @@ Block waiting for the coordinator to stop.
 #### Other Methods
 - - -
 
-#### `tf.train.Supervisor.Loop(timer_interval_secs, target, args=None)` {#Supervisor.Loop}
+#### `tf.train.Supervisor.Loop(timer_interval_secs, target, args=None, kwargs=None)` {#Supervisor.Loop}
 
 Start a LooperThread that calls a function periodically.
 
-If `timer_interval_secs` is None the thread calls `target(args)`
-repeatedly.  Otherwise `target(args)` is called every `timer_interval_secs`
+If `timer_interval_secs` is None the thread calls `target(*args, **kwargs)`
+repeatedly.  Otherwise it calls it every `timer_interval_secs`
 seconds.  The thread terminates when a stop is requested.
 
 The started thread is added to the list of threads managed by the supervisor
@@ -488,6 +488,7 @@ so it does not need to be passed to the `stop()` method.
 *  <b>`timer_interval_secs`</b>: Number. Time boundaries at which to call `target`.
 *  <b>`target`</b>: A callable object.
 *  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
 
 ##### Returns:
 
@@ -719,12 +720,23 @@ Return the Init Op used by the supervisor.
 
 - - -
 
-#### `tf.train.Supervisor.loop(timer_interval_secs, target, args=None)` {#Supervisor.loop}
+#### `tf.train.Supervisor.is_chief` {#Supervisor.is_chief}
+
+Return True if this is a chief supervisor.
+
+##### Returns:
+
+  A bool.
+
+
+- - -
+
+#### `tf.train.Supervisor.loop(timer_interval_secs, target, args=None, kwargs=None)` {#Supervisor.loop}
 
 Start a LooperThread that calls a function periodically.
 
-If `timer_interval_secs` is None the thread calls `target(args)`
-repeatedly.  Otherwise `target(args)` is called every `timer_interval_secs`
+If `timer_interval_secs` is None the thread calls `target(*args, **kwargs)`
+repeatedly.  Otherwise it calls it every `timer_interval_secs`
 seconds.  The thread terminates when a stop is requested.
 
 The started thread is added to the list of threads managed by the supervisor
@@ -736,6 +748,7 @@ so it does not need to be passed to the `stop()` method.
 *  <b>`timer_interval_secs`</b>: Number. Time boundaries at which to call `target`.
 *  <b>`target`</b>: A callable object.
 *  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
 
 ##### Returns:
 
