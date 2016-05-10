@@ -2473,7 +2473,7 @@ op {
     }
   }
   summary: "Calculates the Cholesky decomposition of a square matrix."
-  description: "The input has to be symmetric and positive definite. Only the lower-triangular\npart of the input will be used for this operation. The upper-triangular part\nwill not be read.\n\nThe result is the lower-triangular matrix of the Cholesky decomposition of the\ninput."
+  description: "The input has to be symmetric and positive definite. Only the lower-triangular\npart of the input will be used for this operation. The upper-triangular part\nwill not be read.\n\nThe result is the lower-triangular matrix of the Cholesky decomposition of the\ninput, `L`, so that `input = L L^*`."
 }
 op {
   name: "CholeskyGrad"
