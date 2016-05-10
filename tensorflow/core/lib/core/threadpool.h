@@ -47,6 +47,13 @@ class ThreadPool {
   // Schedule fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
 
+  // ParallelFor shards the "total" unit of work assuming each unit of work
+  // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
+  // indexed 0, 1, ..., total - 1. Each shard contains 1 or more units of work
+  // and the total cost of each shard is roughly the same.
+  void ParallelFor(int64 total, int64 cost_per_unit,
+                   std::function<void(int64, int64)> fn);
+
   struct Impl;
 
  private:
