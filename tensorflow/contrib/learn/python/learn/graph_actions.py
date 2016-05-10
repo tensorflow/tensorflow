@@ -368,6 +368,7 @@ def evaluate(graph,
       finally:
         # Make our own summary writer and write a summary to the eval dir
         if supervisor.summary_op is not None:
+          summary_writer = None
           try:
             summary_writer = SummaryWriter(output_dir,
                                            graph_def=session.graph_def)
@@ -376,7 +377,8 @@ def evaluate(graph,
             if summary_str:
               summary_writer.add_summary(summary_str, current_global_step)
           finally:
-            summary_writer.close()
+            if summary_writer:
+              summary_writer.close()
 
         # Call supervisor.Stop() from within a try block because it re-raises
         # exceptions thrown by the supervised threads.
