@@ -283,7 +283,7 @@ def tf_cuda_cc_tests(tests, deps, tags=[], size="medium", linkstatic=0, args=Non
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
                           **kwargs):
   cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
-                "-nvcc_options=relaxed-constexpr", "-nvcc_options=ftz=true",
+                "-nvcc_options=expt-relaxed-constexpr", "-nvcc_options=ftz=true",
                 "--gcudacc_flag=-ftz=true"] + cuda_copts
   native.cc_library(
       srcs = srcs,
