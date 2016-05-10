@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -82,73 +83,97 @@ BM_BINARY_SCALAR(cpu, Add);
 BM_BINARY_SCALAR(gpu, Add);
 #undef BM_BINARY_SCALAR
 
-static Graph* BiasAdd(int rows, int cols) {
+template <class T>
+static Graph* BiasAdd(int rows, int cols, DataType type) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor lhs(DT_FLOAT, TensorShape({rows, cols}));
-  lhs.flat<float>().setRandom();
+  Tensor lhs(type, TensorShape({rows, cols}));
+  lhs.template flat<T>().setRandom();
   TensorShape rhs_shape;
   rhs_shape = TensorShape({cols});
-  Tensor rhs(DT_FLOAT, rhs_shape);
-  rhs.flat<float>().setRandom();
+  Tensor rhs(type, rhs_shape);
+  rhs.template flat<T>().setRandom();
   test::graph::Binary(g, "BiasAdd", test::graph::Constant(g, lhs),
                       test::graph::Constant(g, rhs));
   return g;
 }
 
-#define BM_BIAS_ADD(DEVICE, R, C)                                     \
-  static void BM_##DEVICE##_BiasAdd_R##R##_C##C(int iters, int arg) { \
-    const int rows = RowsFromArg(arg);                                \
-    const int cols = ColsFromArg(arg);                                \
-    const int64 tot = static_cast<int64>(iters) * rows * cols;        \
-    testing::ItemsProcessed(tot);                                     \
-    testing::BytesProcessed(tot * sizeof(float));                     \
-    test::Benchmark(#DEVICE, BiasAdd(rows, cols)).Run(iters);         \
-  }                                                                   \
-  BENCHMARK(BM_##DEVICE##_BiasAdd_R##R##_C##C)->Arg(RowsAndColsArg(R, C));
+#define BM_BIAS_ADD(DEVICE, C_TYPE, TF_TYPE, R, C)                             \
+  static void BM_##DEVICE##_##C_TYPE##_BiasAdd_R##R##_C##C(int iters,          \
+                                                           int arg) {          \
+    const int rows = RowsFromArg(arg);                                         \
+    const int cols = ColsFromArg(arg);                                         \
+    const int64 tot = static_cast<int64>(iters) * rows * cols;                 \
+    testing::ItemsProcessed(tot);                                              \
+    testing::BytesProcessed(tot * sizeof(C_TYPE));                             \
+    test::Benchmark(#DEVICE, BiasAdd<C_TYPE>(rows, cols, TF_TYPE)).Run(iters); \
+  }                                                                            \
+  BENCHMARK(BM_##DEVICE##_##C_TYPE##_BiasAdd_R##R##_C##C)                      \
+      ->Arg(RowsAndColsArg(R, C));
 
-#define BM_BIAS_ADD_ALL(DEVICE)   \
-  BM_BIAS_ADD(DEVICE, 512, 2048); \
-  BM_BIAS_ADD(DEVICE, 512, 4096); \
-  BM_BIAS_ADD(DEVICE, 2048, 512); \
-  BM_BIAS_ADD(DEVICE, 4096, 512);
+#define BM_BIAS_ADD_ALL(DEVICE, C_TYPE, TF_TYPE)   \
+  BM_BIAS_ADD(DEVICE, C_TYPE, TF_TYPE, 512, 2048); \
+  BM_BIAS_ADD(DEVICE, C_TYPE, TF_TYPE, 512, 4096); \
+  BM_BIAS_ADD(DEVICE, C_TYPE, TF_TYPE, 2048, 512); \
+  BM_BIAS_ADD(DEVICE, C_TYPE, TF_TYPE, 4096, 512);
 
-BM_BIAS_ADD_ALL(cpu);
-BM_BIAS_ADD_ALL(gpu);
+using Eigen::half;
+BM_BIAS_ADD_ALL(cpu, float, DT_FLOAT);
+BM_BIAS_ADD_ALL(gpu, float, DT_FLOAT);
+BM_BIAS_ADD_ALL(cpu, half, DT_HALF);
+BM_BIAS_ADD_ALL(gpu, half, DT_HALF);
 #undef BM_BIAS_ADD_ALL
 #undef BM_BIAS_ADD
 
-static Graph* BiasAddGrad(int rows, int cols) {
+template <class T>
+static Graph* BiasAddGrad(int rows, int cols, int channels, DataType type,
+                          TensorFormat format) {
   Graph* g = new Graph(OpRegistry::Global());
   TensorShape lhs_shape;
-  lhs_shape = TensorShape({rows, cols});
-  Tensor lhs(DT_FLOAT, lhs_shape);
-  lhs.template flat<float>().setRandom();
+  if (format == FORMAT_NCHW) {
+    lhs_shape = TensorShape({channels, rows, cols});
+  } else {
+    lhs_shape = TensorShape({rows, cols, channels});
+  }
+  Tensor lhs(type, lhs_shape);
+  lhs.template flat<T>().setRandom();
   Node* n;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BiasAddGrad")
+                  .Attr("data_format", ToString(format))
                   .Input(test::graph::Constant(g, lhs), /*index=*/0)
                   .Finalize(g, &n));
   return g;
 }
 
-#define BM_BIAS_ADD_GRAD(DEVICE, R, C)                                    \
-  static void BM_##DEVICE##_BiasAddGrad_R##R##_C##C(int iters, int arg) { \
-    const int rows = RowsFromArg(arg);                                    \
-    const int cols = ColsFromArg(arg);                                    \
-    const int64 tot = static_cast<int64>(iters) * rows * cols;            \
-    testing::ItemsProcessed(tot);                                         \
-    testing::BytesProcessed(tot * sizeof(float));                         \
-    test::Benchmark(#DEVICE, BiasAddGrad(rows, cols)).Run(iters);         \
-  }                                                                       \
-  BENCHMARK(BM_##DEVICE##_BiasAddGrad_R##R##_C##C)->Arg(RowsAndColsArg(R, C));
+#define BM_BIAS_ADD_GRAD(DEVICE, FMT, C_TYPE, TF_TYPE, R, C, CH)               \
+  static void                                                                  \
+      BM_##DEVICE##_##FMT##_##C_TYPE##_BiasAddGrad_R##R##_C##C##_CH##CH(       \
+          int iters, int arg, int channels) {                                  \
+    const int rows = RowsFromArg(arg);                                         \
+    const int cols = ColsFromArg(arg);                                         \
+    const int64 tot = static_cast<int64>(iters) * rows * cols * channels;      \
+    testing::ItemsProcessed(tot);                                              \
+    testing::BytesProcessed(tot * sizeof(C_TYPE));                             \
+    test::Benchmark(#DEVICE, BiasAddGrad<C_TYPE>(rows, cols, channels,         \
+                                                 TF_TYPE, FORMAT_##FMT))       \
+        .Run(iters);                                                           \
+  }                                                                            \
+  BENCHMARK(BM_##DEVICE##_##FMT##_##C_TYPE##_BiasAddGrad_R##R##_C##C##_CH##CH) \
+      ->ArgPair(RowsAndColsArg(R, C), CH);
 
-#define BM_BIAS_ADD_GRAD_ALL(DEVICE)   \
-  BM_BIAS_ADD_GRAD(DEVICE, 512, 2048); \
-  BM_BIAS_ADD_GRAD(DEVICE, 512, 4096); \
-  BM_BIAS_ADD_GRAD(DEVICE, 2048, 512); \
-  BM_BIAS_ADD_GRAD(DEVICE, 4096, 512);
+#define BM_BIAS_ADD_GRAD_ALL(DEVICE, FORMAT, C_TYPE, TF_TYPE)       \
+  BM_BIAS_ADD_GRAD(DEVICE, FORMAT, C_TYPE, TF_TYPE, 64, 64, 64);    \
+  BM_BIAS_ADD_GRAD(DEVICE, FORMAT, C_TYPE, TF_TYPE, 512, 512, 4);   \
+  BM_BIAS_ADD_GRAD(DEVICE, FORMAT, C_TYPE, TF_TYPE, 512, 512, 1);   \
+  BM_BIAS_ADD_GRAD(DEVICE, FORMAT, C_TYPE, TF_TYPE, 4096, 4096, 4); \
+  BM_BIAS_ADD_GRAD(DEVICE, FORMAT, C_TYPE, TF_TYPE, 4096, 4096, 1);
 
-BM_BIAS_ADD_GRAD_ALL(cpu);
-BM_BIAS_ADD_GRAD_ALL(gpu);
+using Eigen::half;
+BM_BIAS_ADD_GRAD_ALL(gpu, NCHW, float, DT_FLOAT);
+BM_BIAS_ADD_GRAD_ALL(gpu, NCHW, half, DT_HALF);
+BM_BIAS_ADD_GRAD_ALL(cpu, NHWC, float, DT_FLOAT);
+BM_BIAS_ADD_GRAD_ALL(gpu, NHWC, float, DT_FLOAT);
+BM_BIAS_ADD_GRAD_ALL(cpu, NHWC, half, DT_HALF);
+BM_BIAS_ADD_GRAD_ALL(gpu, NHWC, half, DT_HALF);
 #undef BM_BIAS_ADD_GRAD_ALL
 #undef BM_BIAS_ADD_GRAD
 

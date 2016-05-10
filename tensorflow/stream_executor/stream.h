@@ -1231,7 +1231,6 @@ class Stream {
   // Entrain onto the stream: a memset of zero at a GPU location of size
   // bytes.
   // The location must not be null.
-  // TODO(leary) Presently the size must be a 4-byte multiple.
   Stream &ThenMemZero(DeviceMemoryBase *location, uint64 size);
 
   // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location
