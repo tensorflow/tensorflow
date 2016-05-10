@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The Normal (Gaussian) distribution class.
-
-@@Gaussian
-"""
+"""The Normal (Gaussian) distribution class."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -44,9 +41,46 @@ def _assert_all_positive(x):
 class Gaussian(object):
   """The scalar Gaussian distribution with mean and stddev parameters mu, sigma.
 
+  #### Mathematical details
+
   The PDF of this distribution is:
 
   ```f(x) = sqrt(1/(2*pi*sigma^2)) exp(-(x-mu)^2/(2*sigma^2))```
+
+  #### Examples
+
+  Examples of initialization of one or a batch of distributions.
+
+  ```python
+  # Define a single scalar Gaussian distribution.
+  dist = tf.contrib.Gaussian(mu=0, sigma=3)
+
+  # Evaluate the cdf at 1, returning a scalar.
+  dist.cdf(1)
+
+  # Define a batch of two scalar valued Gaussians.
+  # The first has mean 1 and standard deviation 11, the second 2 and 22.
+  dist = tf.contrib.distributions.Gaussian(mu=[1, 2.], sigma=[11, 22.])
+
+  # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
+  # returning a length two tensor.
+  dist.pdf([0, 1.5])
+
+  # Get 3 samples, returning a 3 x 2 tensor.
+  dist.sample(3)
+  ```
+
+  Arguments are broadcast when possible.
+
+  ```python
+  # Define a batch of two scalar valued Gaussians.
+  # Both have mean 1, but different standard deviations.
+  dist = tf.contrib.distributions.Gaussian(mu=1, sigma=[11, 22.])
+
+  # Evaluate the pdf of both distributions on the same point, 3.0,
+  # returning a length 2 tensor.
+  dist.pdf(3.0)
+  ```
 
   """
 
