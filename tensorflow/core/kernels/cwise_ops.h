@@ -480,6 +480,12 @@ template <typename T>
 struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};
 
 template <typename T>
+struct zeta : base<T, Eigen::internal::scalar_zeta_op<T>> {};
+
+template <typename T>
+struct polygamma : base<T, Eigen::internal::scalar_polygamma_op<T>> {};
+
+template <typename T>
 struct squared_difference
     : base<T, Eigen::internal::scalar_compose_op<
                   T, Eigen::internal::scalar_square_op<T>,

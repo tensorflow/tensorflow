@@ -58,6 +58,8 @@ mathematical functions to your graph.
 @@squared_difference
 @@igamma
 @@igammac
+@@zeta
+@@polygamma
 
 ## Matrix Math Functions
 
@@ -1311,6 +1313,8 @@ ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
 @ops.RegisterShape("GreaterEqual")
 @ops.RegisterShape("Igamma")
 @ops.RegisterShape("Igammac")
+@ops.RegisterShape("Zeta")
+@ops.RegisterShape("Polygamma")
 @ops.RegisterShape("Less")
 @ops.RegisterShape("LessEqual")
 @ops.RegisterShape("LogicalAnd")

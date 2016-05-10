@@ -287,8 +287,11 @@ def _LgammaGrad(op, grad):
 
 
 @ops.RegisterGradient("Digamma")
-def _DigammaGrad(op, grad):  # pylint: disable=unused-argument
-  raise NotImplementedError("grad(Digamma) == Polygamma(1) is not implemented")
+def _DigammaGrad(op, grad):
+  """Compute gradient of the digamma function with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    return grad * math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
 
 
 @ops.RegisterGradient("Igamma")
@@ -312,6 +315,40 @@ def _IgammaGrad(op, grad):
 def _IgammacGrad(op, grad):
   """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. a and x."""
   return [-1 * g if g is not None else None for g in _IgammaGrad(op, grad)]
+
+
+@ops.RegisterGradient("Zeta")
+def _ZetaGrad(op, grad):
+  """Returns gradient of zeta(x, q) with respect to x and q."""
+  # TODO(tillahoffmann): Add derivative with respect to x
+  x = op.inputs[0]
+  q = op.inputs[1]
+  # Broadcast gradients
+  sx = array_ops.shape(x)
+  sq = array_ops.shape(q)
+  unused_rx, rq = gen_array_ops._broadcast_gradient_args(sx, sq)
+  # Evaluate gradient
+  with ops.control_dependencies([grad.op]):
+    partial_q = -x * math_ops.zeta(x + 1, q)
+    return (None,
+            array_ops.reshape(math_ops.reduce_sum(partial_q * grad, rq), sq))
+
+
+@ops.RegisterGradient("Polygamma")
+def _PolygammaGrad(op, grad):
+  """Returns gradient of psi(n, x) with respect to n and x."""
+  # TODO(tillahoffmann): Add derivative with respect to n
+  n = op.inputs[0]
+  x = op.inputs[1]
+  # Broadcast gradients
+  sn = array_ops.shape(n)
+  sx = array_ops.shape(x)
+  unused_rn, rx = gen_array_ops._broadcast_gradient_args(sn, sx)
+  # Evaluate gradient
+  with ops.control_dependencies([grad.op]):
+    partial_x = math_ops.polygamma(n + 1, x)
+    return (None,
+            array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Sigmoid")

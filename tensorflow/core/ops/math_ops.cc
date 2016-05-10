@@ -433,6 +433,37 @@ Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
 Gamma function.
 )doc");
 
+REGISTER_OP("Zeta")
+    .Input("x: T")
+    .Input("q: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
+
+The Hurwitz zeta function is defined as:
+
+```
+\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}
+```
+)doc");
+
+REGISTER_OP("Polygamma")
+    .Input("a: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Compute the polygamma function \\(\psi^{(n)}(x)\\).
+
+The polygamma function is defined as:
+
+```
+\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
+```
+where \\(\psi(x)\\) is the digamma function.
+)doc");
+
 // --------------------------------------------------------------------------
 
 // Declares cwise binary comparison operations signature: 't, 't -> bool,
