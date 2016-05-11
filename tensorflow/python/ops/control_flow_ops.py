@@ -1577,7 +1577,9 @@ class WhileContext(ControlFlowContext):
     next_vars = [_NextIteration(x) for x in result]
 
     # Add the back edges to complete the loop.
-    assert len(merge_vars) == len(next_vars)
+    if len(merge_vars) != len(next_vars):
+      raise ValueError("Number of inputs and outputs of body must match "
+                       "loop_vars: %d, %d" % (len(merge_vars), len(next_vars)))
     for x in zip(merge_vars, next_vars):
       x[0].op._update_input(1, x[1])
 
