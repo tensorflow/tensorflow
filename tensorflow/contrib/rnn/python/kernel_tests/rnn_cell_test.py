@@ -142,29 +142,6 @@ class RNNCellTest(tf.test.TestCase):
       self.assertAllClose(basic_res[0], block_res[0])
       self.assertAllClose(basic_res[1].flatten(), block_res[1].flatten())
 
-  def testLSTMBasicToBlock(self):
-    with self.test_session() as sess:
-      x = tf.zeros([1, 2])
-      x_values = np.random.randn(1, 2)
-
-      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890212)
-      with tf.variable_scope("basic", initializer=initializer):
-        m = tf.zeros([1, 8])
-        g, out_m = tf.nn.rnn_cell.BasicLSTMCell(4)(x, m)
-        sess.run([tf.initialize_all_variables()])
-        basic_res = sess.run([g, out_m], {x.name: x_values,
-                                          m.name: 0.1 * np.ones([1, 8])})
-
-      with tf.variable_scope("block", initializer=initializer):
-        m = tf.zeros([1, 8])
-        g, out_m = tf.contrib.rnn.lstm_block([x], 4, initial_state=m)
-        sess.run([tf.initialize_all_variables()])
-        block_res = sess.run(g + out_m, {x.name: x_values,
-                                          m.name: 0.1 * np.ones([1, 8])})
-
-      self.assertAllClose(basic_res[0], block_res[0])
-      self.assertAllClose(basic_res[1].flatten(), block_res[1].flatten())
-
 
 if __name__ == "__main__":
   tf.test.main()

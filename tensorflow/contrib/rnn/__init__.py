@@ -23,4 +23,3 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import, line-too-long
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *
-from tensorflow.contrib.rnn.python.ops.rnn import *
