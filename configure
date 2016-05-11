@@ -7,8 +7,8 @@ DO_NOT_SUBMIT_WARNING="Unofficial setting. DO NOT SUBMIT!!!"
 if [[ ! -f "google/protobuf/protobuf.bzl" ]]; then
   echo "ERROR: It appears that the required submodule google/protobuf is not "\
 "available in this TensorFlow git clone."
-  echo "Please be sure to use the --recurse-submodules flag when performing "\
-"git clone of TensorFlow."
+  echo "Please re-run your git clone of Tensorflow with the --recurse-submodules flag or "\
+  "try git pull && git submodule init && git submodule update && git submodule status"
 
   exit 1
 fi
