@@ -95,9 +95,6 @@ class LSTMCellBlockOp : public OpKernel {
     const int64 input_size = x_tensor->dim_size(1);
     const int64 states_size = cell_size_ * 2;
 
-    perftools::gputools::Stream* stream =
-        ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
-
     // Sanity checks for our input shapes.
     OP_REQUIRES(ctx, states_prev_tensor->dim_size(0) == batch_size,
                 errors::InvalidArgument("states_prev.dims(0) != batch_size: ",
@@ -172,11 +169,15 @@ class LSTMCellBlockOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::v(),
         TensorShape({batch_size, cell_size_ * 4}), &icfo_tensor));
 
+    const Device& device = ctx->eigen_device<Device>();
+    perftools::gputools::Stream* stream = std::is_same<Device, GPUDevice>::value
+        ? ctx->op_device_context()->stream() : nullptr;
+
     functor::LSTMCellBlockFprop<Device, T, USE_CUBLAS>(
         batch_size, input_size, cell_size_)(
-        ctx, stream, ctx->eigen_device<Device>(), forget_bias_,
-        x_tensor->matrix<T>(), states_prev_tensor->matrix<T>(),
-        w_tensor->matrix<T>(), b_tensor->vec<T>(), cs_prev_tensor.matrix<T>(),
+        ctx, stream, device, forget_bias_, x_tensor->matrix<T>(),
+        states_prev_tensor->matrix<T>(), w_tensor->matrix<T>(),
+        b_tensor->vec<T>(), cs_prev_tensor.matrix<T>(),
         h_prev_tensor.matrix<T>(), xh_tensor.matrix<T>(),
         i_tensor->matrix<T>(), cs_tensor->matrix<T>(), f_tensor->matrix<T>(),
         o_tensor->matrix<T>(), ci_tensor->matrix<T>(), co_tensor->matrix<T>(),
@@ -202,15 +203,6 @@ REGISTER_KERNEL(double);
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                       \
   template <>                                                     \
-  void TensorMemZero<GPUDevice, T>::operator()(                   \
-      const GPUDevice& d, typename TTypes<T>::Vec x);             \
-                                                                  \
-  template <>                                                     \
-  void TensorMemCopy<GPUDevice, T>::operator()(                   \
-      const GPUDevice& d, typename TTypes<T>::ConstVec in,        \
-      typename TTypes<T>::Vec out);                               \
-                                                                  \
-  template <>                                                     \
   void LSTMCellBlockFprop<GPUDevice, T, true>::operator()(        \
       OpKernelContext* ctx, perftools::gputools::Stream* stream,  \
       const GPUDevice& d, const T forget_bias,                    \
@@ -231,8 +223,6 @@ namespace functor {
       typename TTypes<T>::Matrix states,                          \
       typename TTypes<T>::Matrix h);                              \
                                                                   \
-  extern template struct TensorMemZero<GPUDevice, T>;             \
-  extern template struct TensorMemCopy<GPUDevice, T>;             \
   extern template struct LSTMCellBlockFprop<GPUDevice, T, true>;
 
 DECLARE_GPU_SPEC(float);
@@ -301,10 +291,6 @@ class LSTMCellBlockGradOp : public OpKernel {
     const int64 batch_size = x_tensor->dim_size(0);
     const int64 input_size = x_tensor->dim_size(1);
     const int64 states_size = cell_size_ * 2;
-
-    const Device& device = ctx->eigen_device<Device>();
-    perftools::gputools::Stream* stream =
-        ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
     // Sanity checks for our input shapes.
     OP_REQUIRES(ctx, states_prev_tensor->dim_size(0) == batch_size,
@@ -476,6 +462,10 @@ class LSTMCellBlockGradOp : public OpKernel {
     Tensor b_grad_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::v(),
         TensorShape({0}), &b_grad_tensor));
+
+    const Device& device = ctx->eigen_device<Device>();
+    perftools::gputools::Stream* stream = std::is_same<Device, GPUDevice>::value
+        ? ctx->op_device_context()->stream() : nullptr;
 
     functor::LSTMCellBlockBprop<Device, T, USE_CUBLAS>(
         batch_size, input_size, cell_size_)(

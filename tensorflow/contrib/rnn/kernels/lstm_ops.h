@@ -19,21 +19,6 @@ class OpKernelContext;
 
 namespace functor {
 
-template <typename Device, typename T>
-struct TensorMemZero {
-  void operator()(const Device& d, typename TTypes<T>::Vec x) {
-    x.device(d) = x.constant(0);
-  }
-};
-
-template <typename Device, typename T>
-struct TensorMemCopy {
-  void operator()(const Device& d, typename TTypes<T>::ConstVec in,
-                  typename TTypes<T>::Vec out) {
-    out.device(d) = in;
-  }
-};
-
 template <typename T>
 struct TensorCuBlasGemm {
   void operator()(
@@ -87,47 +72,47 @@ struct LSTMCellBlock {
   LSTMCellBlock(const int batch_size, const int input_size, const int cell_size)
     : batch_size_(batch_size), input_size_(input_size), cell_size_(cell_size) {}
 
-  Eigen::array<int, 2> icfo_i_offsets() const {
+  inline Eigen::array<int, 2> icfo_i_offsets() const {
     return {0, cell_size_ * 0};
   }
 
-  Eigen::array<int, 2> icfo_c_offsets() const {
+  inline Eigen::array<int, 2> icfo_c_offsets() const {
     return {0, cell_size_ * 1};
   }
 
-  Eigen::array<int, 2> icfo_f_offsets() const {
+  inline Eigen::array<int, 2> icfo_f_offsets() const {
     return {0, cell_size_ * 2};
   }
 
-  Eigen::array<int, 2> icfo_o_offsets() const {
+  inline Eigen::array<int, 2> icfo_o_offsets() const {
     return {0, cell_size_ * 3};
   }
 
-  Eigen::array<int, 2> states_cs_offsets() const {
+  inline Eigen::array<int, 2> states_cs_offsets() const {
     return {0, 0};
   }
 
-  Eigen::array<int, 2> states_h_offsets() const {
+  inline Eigen::array<int, 2> states_h_offsets() const {
     return {0, cell_size_};
   }
 
-  Eigen::array<int, 2> cell_extents() const {
+  inline Eigen::array<int, 2> cell_extents() const {
     return {batch_size_, cell_size_};
   }
 
-  Eigen::array<int, 2> xh_x_offsets() const {
+  inline Eigen::array<int, 2> xh_x_offsets() const {
     return {0, 0};
   }
 
-  Eigen::array<int, 2> xh_x_extents() const {
+  inline Eigen::array<int, 2> xh_x_extents() const {
     return {batch_size_, input_size_};
   }
 
-  Eigen::array<int, 2> xh_h_offsets() const {
+  inline Eigen::array<int, 2> xh_h_offsets() const {
     return {0, input_size_};
   }
 
-  Eigen::array<int, 2> xh_h_extents() const {
+  inline Eigen::array<int, 2> xh_h_extents() const {
     return {batch_size_, cell_size_};
   }
 
@@ -266,7 +251,8 @@ struct LSTMCellBlockBprop : public LSTMCellBlock {
     // xh_grad = dstate4 * w^T
     typename TTypes<T>::ConstMatrix const_dicfo(
           dicfo.data(), dicfo.dimensions());
-    workers->Schedule([ctx, stream, d, const_dicfo, w, xh_grad, &counter]() {
+    workers->Schedule([ctx, stream, &d, &const_dicfo, &w, &xh_grad,
+                       &counter]() {
       TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
           ctx, stream, d, false, true, T(1), const_dicfo, w, T(0), xh_grad);
       counter.DecrementCount();

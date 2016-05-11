@@ -11,8 +11,6 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 #define DEFINE_GPU_SPECS(T)                                \
-  template struct TensorMemZero<GPUDevice, T>;             \
-  template struct TensorMemCopy<GPUDevice, T>;             \
   template struct LSTMCellBlockFprop<GPUDevice, T, true>;  \
   template struct LSTMCellBlockBprop<GPUDevice, T, true>;
 
