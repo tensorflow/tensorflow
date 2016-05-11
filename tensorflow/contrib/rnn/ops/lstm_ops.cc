@@ -84,7 +84,7 @@ REGISTER_OP("LSTMCellBlockGrad")
     .Doc(R"doc(
 Computes the LSTM cell backward propagation for 1 timestep.
 
-This implementation is to be used inconjunction of LSTMCellBlock.
+This implementation is to be used in conjunction of LSTMCellBlock.
 
 cell_size: The LSTM cell size.
 x: The input to the LSTM cell.
