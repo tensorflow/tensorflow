@@ -438,7 +438,8 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
       .then(() => { return h; });
 };
 
-export function joinAndAggregateStats(h: Hierarchy, stats: StepStats) {
+export function joinAndAggregateStats(
+    h: Hierarchy, stats: tf.graph.proto.StepStats) {
   // Get all the possible device names.
   let deviceNames = {};
   _.each(h.root.leaves(), nodeName => {

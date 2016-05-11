@@ -180,14 +180,15 @@ const METADATA_REPEATED_FIELDS: {[attrPath: string]: boolean} = {
 /**
  * Parses a blob of proto txt file into a raw Graph object.
  */
-export function parseGraphPbTxt(input: Blob): Promise<TFNode[]> {
+export function parseGraphPbTxt(input: Blob):
+    Promise<tf.graph.proto.NodeDef[]> {
   return parsePbtxtFile(input, GRAPH_REPEATED_FIELDS).then(obj => obj['node']);
 }
 
 /**
  * Parses a blob of proto txt file into a StepStats object.
  */
-function parseStatsPbTxt(input: Blob): Promise<StepStats> {
+function parseStatsPbTxt(input: Blob): Promise<tf.graph.proto.StepStats> {
   return parsePbtxtFile(input, METADATA_REPEATED_FIELDS)
       .then(obj => obj['step_stats']);
 }

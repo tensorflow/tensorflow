@@ -344,7 +344,7 @@ class OpNodeImpl implements OpNode {
    *
    * @param rawNode The raw node.
    */
-  constructor(rawNode: tf.TFNode) {
+  constructor(rawNode: tf.graph.proto.NodeDef) {
     this.op = rawNode.op;
     this.name = rawNode.name;
     this.device = rawNode.device;
@@ -375,8 +375,8 @@ export function createMetanode(name: string, opt = {}): Metanode {
  * Joins the information from the stats file (memory, compute time) with the
  * graph information.
  */
-export function joinStatsInfoWithGraph(graph: SlimGraph,
-    stats: StepStats): void {
+export function joinStatsInfoWithGraph(
+    graph: SlimGraph, stats: tf.graph.proto.StepStats): void {
   _.each(stats.dev_stats, devStats => {
     _.each(devStats.node_stats, nodeStats => {
       // Lookup the node in the graph by its original name, e.g. A. If not
@@ -824,7 +824,8 @@ function addEdgeToGraph(graph: SlimGraph, inputName: string,
   });
 }
 
-export function build(rawNodes: tf.TFNode[], params: BuildParams,
+export function build(
+    rawNodes: tf.graph.proto.NodeDef[], params: BuildParams,
     tracker: ProgressTracker): Promise<SlimGraph|void> {
   /**
    * A dictionary that maps each in-embedding node name to the node
