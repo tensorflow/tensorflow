@@ -196,7 +196,7 @@ var TF;
   <template>
     <div id="outer-container" class="scrollbar">
       <template is="dom-repeat" items="[[names]]">
-        <div class="run-row" color-class$="[[_applyColorClass(item, classScale)]]">
+        <div class="run-row">
           <div class="checkbox-container vertical-align-container">
             <paper-checkbox class="checkbox vertical-align-center" name="[[item]]" checked$="[[_isChecked(item,outSelected.*)]]" on-change="_checkboxChange"></paper-checkbox>
           </div>
@@ -273,13 +273,28 @@ var TF;
           return [];
         },
       },
-      classScale: Function, // map from run name to css class
+      colorScale: Object, // map from run name to css class
+    },
+    listeners: {
+      'dom-change': 'onDomChange',
     },
     observers: [
       "_initializeOutSelected(names.*)",
     ],
     _initializeOutSelected: function(change) {
       this.outSelected = change.base.slice();
+    },
+    onDomChange: function(e) {
+      var checkboxes = Array.prototype.slice.call(this.querySelectorAll("paper-checkbox"));
+      var scale = this.colorScale;
+      checkboxes.forEach(function(p) {
+        var color = scale.scale(p.name);
+        p.customStyle['--paper-checkbox-checked-color'] = color;
+        p.customStyle['--paper-checkbox-checked-ink-color'] = color;
+        p.customStyle['--paper-checkbox-unchecked-color'] = color;
+        p.customStyle['--paper-checkbox-unchecked-ink-color'] = color;
+      });
+      this.updateStyles();
     },
     _checkboxChange: function(e) {
       var name = e.srcElement.name;
@@ -318,7 +333,7 @@ var TF;
         Runs
       </h3>
     </div>
-    <tf-multi-checkbox names="[[runs]]" out-selected="{{outSelected}}" class-scale="[[classScale]]"></tf-multi-checkbox>
+    <tf-multi-checkbox id="multiCheckbox" names="[[runs]]" out-selected="{{outSelected}}" color-scale="[[colorScale]]"></tf-multi-checkbox>
     <paper-button class="x-button" id="toggle-all" on-tap="_toggleAll">
     Toggle All Runs
     </paper-button>
@@ -368,7 +383,7 @@ var TF;
       outSelected: {type: Array, notify: true},
       // runs: an array of strings, representing the run names that may be chosen
       runs: Array,
-      classScale: Object, // map from run name to color class (css)
+      colorScale: Object, // TF.ColorScale
     },
     _toggleAll: function() {
       if (this.outSelected.length > 0) {
@@ -452,58 +467,210 @@ var TF;
   </script>
 </dom-module>
 
-<dom-module id="tf-color-scale" assetpath="../tf-event-dashboard/">
+<dom-module id="tf-color-scale" assetpath="../tf-color-scale/">
+  <script>var TF;
+(function (TF) {
+    TF.palettes = {
+        googleStandard: [
+            '#db4437',
+            '#ff7043',
+            '#f4b400',
+            '#0f9d58',
+            '#00796b',
+            '#00acc1',
+            '#4285f4',
+            '#5c6bc0',
+            '#ab47bc' // purple 400
+        ],
+        googleCool: [
+            '#9e9d24',
+            '#0f9d58',
+            '#00796b',
+            '#00acc1',
+            '#4285f4',
+            '#5c6bc0',
+            '#607d8b' // blue gray 500
+        ],
+        googleWarm: [
+            '#795548',
+            '#ab47bc',
+            '#f06292',
+            '#c2185b',
+            '#db4437',
+            '#ff7043',
+            '#f4b400' // google yellow 700
+        ],
+        googleColorBlind: [
+            '#c53929',
+            '#ff7043',
+            '#f7cb4d',
+            '#0b8043',
+            '#80deea',
+            '#4285f4',
+            '#5e35b1' // deep purple 600
+        ],
+        // This rainbow palette attempts to keep a constant brightness across hues.
+        constantValue: [
+            '#f44336', '#ffa216', '#c2d22d', '#51b455', '#1ca091', '#505ec4',
+            '#a633ba'
+        ]
+    };
+})(TF || (TF = {}));
+</script>
+  <script>/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+// Each color scale is initialized with a configurable number of base hues.
+// There are also several palettes available.
+// TF.palettes.googleStandard, TF.palettes.googleColorBlind,
+// TF.palettes.googleCool, TF.palettes.googleWarm, TF.palettes.constantValue
+// Each string is hashed to an integer,
+// then mapped to one of the base hues above.
+// If there is a collision, the color that is later in an alphabetical sort
+// gets nudged a little darker or lighter to disambiguate.
+// I would call it mostly stable, in that the same array of strings will
+// always return the same colors, but the same individual string may
+// shift a little depending on its peers.
+//
+// runs = ["train", "test", "test1", "test2"]
+// ccs = new TF.ColorScale(12, "googleStandard");
+// ccs.domain(runs);
+// ccs.getColor("train");
+// ccs.getColor("test1");
+var TF;
+(function (TF) {
+    var ColorScale = (function () {
+        /**
+         * The palette you provide defines your spectrum. The colorscale will
+         * always use the full spectrum you provide. When you define "numColors"
+         * it resamples at regular intervals along the full extent of the spectrum.
+         * Thus you get the maximum distance between hues for the "numColors"
+         * given. This allows the programmer to tweak the algorithm depending on
+         * how big your expected domain is. If you generally think you're going to
+         * have a small number of elements in the domain, then a small numColors
+         * will be serviceable. With large domains, a small numColors would produce
+         * too many hash collisions, so you'd want to bump it up to the threshold
+         * of human perception (probably around 14 or 18).
+         *
+         * @param {number} [numColors=12] - The number of base colors you want
+         *                 in the palette. The more colors, the smaller the number
+         *                 the more hash collisions you will have, but the more
+         *                 differentiable the base colors will be.
+         *
+         * @param {string[]} [palette=TF.palettes.googleColorBlind] - The color
+         *                 palette you want as an Array of hex strings. Note, the
+         *                 length of the array in this palette is independent of the
+         *                 param numColors above. The scale will interpolate to
+         *                 create the proper "numColors" given in the first param.
+         *
+         */
+        function ColorScale(numColors, palette) {
+            if (numColors === void 0) { numColors = 12; }
+            if (palette === void 0) { palette = TF.palettes.googleColorBlind; }
+            this.numColors = numColors;
+            this.domain([]);
+            if (palette.length < 2) {
+                throw new Error('Not enough colors in palette. Must be more than one.');
+            }
+            var k = (this.numColors - 1) / (palette.length - 1);
+            this.internalColorScale =
+                d3.scale.linear()
+                    .domain(d3.range(palette.length).map(function (i) { return i * k; }))
+                    .range(palette);
+        }
+        ColorScale.prototype.hash = function (s) {
+            function h(hash, str) {
+                hash = (hash << 5) - hash + str.charCodeAt(0);
+                return hash & hash;
+            }
+            return Math.abs(Array.prototype.reduce.call(s, h, 0)) % this.numColors;
+        };
+        /**
+         * Set the domain of strings so we can calculate collisions preemptively.
+         * Can be reset at any point.
+         *
+         * @param {string[]} strings - An array of strings to use as the domain
+         *                             for your scale.
+         */
+        ColorScale.prototype.domain = function (strings) {
+            var _this = this;
+            this.buckets = d3.range(this.numColors).map(function () { return []; });
+            var sortedUniqueKeys = d3.set(strings).values().sort(function (a, b) {
+                return a.localeCompare(b);
+            });
+            sortedUniqueKeys.forEach(function (s) { return _this.addToDomain(s); });
+            return this;
+        };
+        ColorScale.prototype.getBucketForString = function (s) {
+            var bucketIdx = this.hash(s);
+            return this.buckets[bucketIdx];
+        };
+        ColorScale.prototype.addToDomain = function (s) {
+            var bucketIdx = this.hash(s);
+            var bucket = this.buckets[bucketIdx];
+            if (bucket.indexOf(s) === -1) {
+                bucket.push(s);
+            }
+        };
+        ColorScale.prototype.nudge = function (color, amount) {
+            // If amount is zero, just give back same color
+            if (amount === 0) {
+                return color;
+            }
+            else if (amount === 1) {
+                return d3.hcl(color).brighter(0.6);
+            }
+            else {
+                return d3.hcl(color).darker((amount - 1) / 2);
+            }
+        };
+        /**
+         * Use the color scale to transform an element in the domain into a color.
+         * If there was a hash conflict, the color will be "nudged" darker or
+         * lighter so that it is unique.
+         * @param {string} The input string to map to a color.
+         * @return {string} The color corresponding to that input string.
+         * @throws Will error if input string is not in the scale's domain.
+         */
+        ColorScale.prototype.scale = function (s) {
+            var bucket = this.getBucketForString(s);
+            var idx = bucket.indexOf(s);
+            if (idx === -1) {
+                throw new Error('String was not in the domain.');
+            }
+            var color = this.internalColorScale(this.hash(s));
+            return this.nudge(color, idx).toString();
+        };
+        return ColorScale;
+    }());
+    TF.ColorScale = ColorScale;
+})(TF || (TF = {}));
+</script>
   <script>
     (function() {
-      // TODO(danmane) - get Plottable team to make an API point for this
-      Plottable.Scales.Color._LOOP_LIGHTEN_FACTOR = 0;
-      var classColorPairs = [
-        ["light-blue", "#03A9F4"],
-        ["red"       , "#f44366"],
-        ["green"     , "#4CAF50"],
-        ["purple"    , "#9c27b0"],
-        ["teal"      , "#009688"],
-        ["pink"      , "#e91e63"],
-        ["orange"    , "#ff9800"],
-        ["brown"     , "#795548"],
-        ["indigo"    , "#3f51b5"],
-      ];
-      var classes = _.pluck(classColorPairs, 0);
-      var colors = _.pluck(classColorPairs, 1);
       Polymer({
         is: "tf-color-scale",
         properties: {
           runs: Array,
-          outClassScale: {
-            type: Object,
-            notify: true,
-            readOnly: true,
-            value: function() {
-              return new d3.scale.ordinal().range(classes);
-            },
-            // TODO(danmane): the class scale will not update if the domain changes.
-            // this behavior is inconsistent with the ColorScale.
-            // in practice we don't change runs after initial load so it's not currently an issue
-          },
           outColorScale: {
             type: Object,
+            computed: "makeColorScale(runs.*)",
             notify: true,
-            readOnly: true,
-            value: function() {
-              var scale = new Plottable.Scales.Color().range(colors);
-              scale.onUpdate(this._notifyColorScaleDomainChange.bind(this));
-              return scale;
-            },
           },
         },
-        observers: ["_changeRuns(runs.*)"],
-        _changeRuns: function(runs) {
-          this.outClassScale.domain(this.runs);
-          this.outColorScale.domain(this.runs);
-        },
-        _notifyColorScaleDomainChange: function() {
-          this.notifyPath("outColorScale.domain_path", this.outColorScale.domain());
-          this.outColorScale.domain_path = null;
+        makeColorScale: function(runs) {
+          return new TF.ColorScale().domain(this.runs);
         },
       });
     })();
@@ -1073,12 +1240,12 @@ var TF;
     var Y_AXIS_FORMATTER_PRECISION = 3;
     var TOOLTIP_Y_PIXEL_OFFSET = 15;
     var TOOLTIP_X_PIXEL_OFFSET = 0;
-    var TOOLTIP_CIRCLE_SIZE = 3;
+    var TOOLTIP_CIRCLE_SIZE = 4;
     var TOOLTIP_CLOSEST_CIRCLE_SIZE = 6;
     var BaseChart = (function () {
         function BaseChart(tag, dataFn, xType, colorScale, tooltip) {
             this.dataFn = dataFn;
-            this.datasets = {};
+            this.run2datasets = {};
             this.tag = tag;
             this.colorScale = colorScale;
             this.tooltip = tooltip;
@@ -1107,11 +1274,11 @@ var TF;
             });
         };
         BaseChart.prototype.getDataset = function (run) {
-            if (this.datasets[run] === undefined) {
-                this.datasets[run] =
+            if (this.run2datasets[run] === undefined) {
+                this.run2datasets[run] =
                     new Plottable.Dataset([], { run: run, tag: this.tag });
             }
-            return this.datasets[run];
+            return this.run2datasets[run];
         };
         BaseChart.prototype.buildChart = function (xType) {
             if (this.outer) {
@@ -1156,20 +1323,58 @@ var TF;
     TF.BaseChart = BaseChart;
     var LineChart = (function (_super) {
         __extends(LineChart, _super);
-        function LineChart() {
-            _super.apply(this, arguments);
+        function LineChart(tag, dataFn, xType, colorScale, tooltip) {
+            this.datasets = [];
+            // lastPointDataset is a dataset that contains just the last point of
+            // every dataset we're currently drawing.
+            this.lastPointsDataset = new Plottable.Dataset();
+            // need to do a single bind, so we can deregister the callback from
+            // old Plottable.Datasets. (Deregistration is done by identity checks.)
+            this.updateLastPointDataset = this._updateLastPointDataset.bind(this);
+            _super.call(this, tag, dataFn, xType, colorScale, tooltip);
         }
         LineChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
+            var _this = this;
             this.yAccessor = function (d) { return d.scalar; };
-            var plot = new Plottable.Plots.Line();
-            plot.x(xAccessor, xScale);
-            plot.y(this.yAccessor, yScale);
-            plot.attr('stroke', function (d, i, dataset) {
-                return dataset.metadata().run;
-            }, this.colorScale);
-            this.plot = plot;
-            var group = this.setupTooltips(plot);
-            return group;
+            var linePlot = new Plottable.Plots.Line();
+            linePlot.x(xAccessor, xScale);
+            linePlot.y(this.yAccessor, yScale);
+            linePlot.attr('stroke', function (d, i, dataset) {
+                return _this.colorScale.scale(dataset.metadata().run);
+            });
+            this.linePlot = linePlot;
+            var group = this.setupTooltips(linePlot);
+            // The scatterPlot will display the last point for each dataset.
+            // This way, if there is only one datum for the series, it is still
+            // visible. We hide it when tooltips are active to keep things clean.
+            var scatterPlot = new Plottable.Plots.Scatter();
+            scatterPlot.x(xAccessor, xScale);
+            scatterPlot.y(this.yAccessor, yScale);
+            scatterPlot.attr('fill', function (d) { return _this.colorScale.scale(d.run); });
+            scatterPlot.attr('opacity', 1);
+            scatterPlot.size(TOOLTIP_CIRCLE_SIZE * 2);
+            scatterPlot.datasets([this.lastPointsDataset]);
+            this.scatterPlot = scatterPlot;
+            return new Plottable.Components.Group([scatterPlot, group]);
+        };
+        /** Iterates over every dataset, takes the last point, and puts all these
+         * points in the lastPointsDataset.
+         */
+        LineChart.prototype._updateLastPointDataset = function () {
+            var relativeAccessor = relativeX().accessor;
+            var data = this.datasets
+                .map(function (d) {
+                var datum = null;
+                if (d.data().length > 0) {
+                    var idx = d.data().length - 1;
+                    datum = d.data()[idx];
+                    datum.run = d.metadata().run;
+                    datum.relative = relativeAccessor(datum, idx, d);
+                }
+                return datum;
+            })
+                .filter(function (x) { return x != null; });
+            this.lastPointsDataset.data(data);
         };
         LineChart.prototype.setupTooltips = function (plot) {
             var _this = this;
@@ -1181,6 +1386,7 @@ var TF;
             var group = new Plottable.Components.Group([plot, pointsComponent]);
             var hideTooltips = function () {
                 _this.tooltip.style('opacity', 0);
+                _this.scatterPlot.attr('opacity', 1);
                 pointsComponent.content().selectAll('.point').remove();
             };
             var enabled = true;
@@ -1233,6 +1439,7 @@ var TF;
         LineChart.prototype.drawTooltips = function (closestPoint) {
             var _this = this;
             // Formatters for value, step, and wall_time
+            this.scatterPlot.attr('opacity', 0);
             var valueFormatter = multiscaleFormatter(Y_TOOLTIP_FORMATTER_PRECISION);
             var stepFormatter = stepX().tooltipFormatter;
             var wall_timeFormatter = wallX().tooltipFormatter;
@@ -1282,9 +1489,11 @@ var TF;
         LineChart.prototype.changeRuns = function (runs) {
             var _this = this;
             _super.prototype.changeRuns.call(this, runs);
-            var datasets = runs.map(function (r) { return _this.getDataset(r); });
-            datasets.reverse(); // draw first run on top
-            this.plot.datasets(datasets);
+            runs.reverse(); // draw first run on top
+            this.datasets.forEach(function (d) { return d.offUpdate(_this.updateLastPointDataset); });
+            this.datasets = runs.map(function (r) { return _this.getDataset(r); });
+            this.datasets.forEach(function (d) { return d.onUpdate(_this.updateLastPointDataset); });
+            this.linePlot.datasets(this.datasets);
         };
         return LineChart;
     }(BaseChart));
@@ -1316,11 +1525,11 @@ var TF;
                 p.y(y, yScale);
                 p.y0(y0);
                 p.attr('fill', function (d, i, dataset) {
-                    return dataset.metadata().run;
-                }, _this.colorScale);
+                    return _this.colorScale.scale(dataset.metadata().run);
+                });
                 p.attr('stroke', function (d, i, dataset) {
-                    return dataset.metadata().run;
-                }, _this.colorScale);
+                    return _this.colorScale.scale(dataset.metadata().run);
+                });
                 p.attr('stroke-weight', function (d, i, m) { return '0.5px'; });
                 p.attr('stroke-opacity', function () { return opacities[i]; });
                 p.attr('fill-opacity', function () { return opacities[i]; });
@@ -1329,7 +1538,7 @@ var TF;
             var medianPlot = new Plottable.Plots.Line();
             medianPlot.x(xAccessor, xScale);
             medianPlot.y(medianAccessor, yScale);
-            medianPlot.attr('stroke', function (d, i, m) { return m.run; }, this.colorScale);
+            medianPlot.attr('stroke', function (d, i, m) { return _this.colorScale.scale(m.run); });
             this.plots = plots;
             return new Plottable.Components.Group(plots);
         };
@@ -1403,11 +1612,15 @@ var TF;
             scale: scale,
             axis: new Plottable.Axes.Numeric(scale, 'bottom'),
             accessor: function (d, index, dataset) {
+                // We may be rendering the final-point datum for scatterplot.
+                // If so, we will have already provided the 'relative' property
+                if (d.relative != null) {
+                    return d.relative;
+                }
                 var data = dataset.data();
-                // I can't imagine how this function would be called when the data
-                // is empty
-                // (after all, it iterates over the data), but lets guard just to be
-                // safe.
+                // I can't imagine how this function would be called when the data is
+                // empty (after all, it iterates over the data), but lets guard just
+                // to be safe.
                 var first = data.length > 0 ? +data[0].wall_time : 0;
                 return (+d.wall_time - first) / (60 * 60 * 1000); // ms to hours
             },
@@ -2633,7 +2846,7 @@ var TF;
 <dom-module id="tf-event-dashboard" assetpath="../tf-event-dashboard/">
   <template>
     <div id="plumbing">
-      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}" out-class-scale="{{classScale}}"></tf-color-scale>
+      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}"></tf-color-scale>
     </div>
 
     <tf-dashboard-layout>
@@ -2646,7 +2859,7 @@ var TF;
           <tf-x-type-selector id="xTypeSelector" out-x-type="{{xType}}"></tf-x-type-selector>
         </div>
         <div class="sidebar-section">
-          <tf-run-selector id="runSelector" runs="[[runs]]" class-scale="[[classScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
+          <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
         </div>
       </div>
       <div class="center">
@@ -2698,6 +2911,10 @@ var TF;
           computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
         },
         _show_download_links: Boolean,
+        colorScale: {
+          type: Object,
+          notify: true,
+        },
       },
       attached: function() {
         this.async(function() {
@@ -2742,7 +2959,7 @@ var TF;
 <dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
   <template>
     <div id="plumbing">
-      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}" out-class-scale="{{classScale}}"></tf-color-scale>
+      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}"></tf-color-scale>
     </div>
 
     <tf-dashboard-layout>
@@ -2754,7 +2971,7 @@ var TF;
           <tf-x-type-selector id="xTypeSelector" out-x-type="{{xType}}"></tf-x-type-selector>
         </div>
         <div class="sidebar-section">
-          <tf-run-selector id="runSelector" runs="[[runs]]" class-scale="[[classScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
+          <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
           </div>
       </div>
 
@@ -6028,6 +6245,21 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // Close module tf.graph.parser.
 </script>
+<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the 'License');
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an 'AS IS' BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+</script>
 <script>var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
@@ -9241,6 +9473,38 @@ var tf;
                 return querySelector.replace(/([:.\[\],/\\\(\)])/g, '\\$1');
             }
             util.escapeQuerySelector = escapeQuerySelector;
+            // For unit conversion.
+            util.MEMORY_UNITS = [
+                // Atomic unit.
+                { symbol: 'B' },
+                // numUnits specifies how many previous units this unit contains.
+                { symbol: 'KB', numUnits: 1024 }, { symbol: 'MB', numUnits: 1024 },
+                { symbol: 'GB', numUnits: 1024 }, { symbol: 'TB', numUnits: 1024 },
+                { symbol: 'PB', numUnits: 1024 }
+            ];
+            util.TIME_UNITS = [
+                // Atomic unit. Finest granularity in TensorFlow stat collection.
+                { symbol: 'µs' },
+                // numUnits specifies how many previous units this unit contains.
+                { symbol: 'ms', numUnits: 1000 }, { symbol: 's', numUnits: 1000 },
+                { symbol: 'min', numUnits: 60 }, { symbol: 'hr', numUnits: 60 },
+                { symbol: 'days', numUnits: 24 }
+            ];
+            /**
+             * Returns the human readable version of the unit.
+             * (e.g. 1.35 GB, 23 MB, 34 ms, 6.53 min etc).
+             */
+            function convertUnitsToHumanReadable(value, units, unitIndex) {
+                unitIndex = unitIndex == null ? 0 : unitIndex;
+                if (unitIndex + 1 < units.length &&
+                    value >= units[unitIndex + 1].numUnits) {
+                    return tf.graph.util.convertUnitsToHumanReadable(value / units[unitIndex + 1].numUnits, units, unitIndex + 1);
+                }
+                // toPrecision() has the tendency to return a number in scientific
+                // notation and (number - 0) brings it back to normal notation.
+                return (value.toPrecision(3) - 0) + ' ' + units[unitIndex].symbol;
+            }
+            util.convertUnitsToHumanReadable = convertUnitsToHumanReadable;
         })(util = graph.util || (graph.util = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {}));
@@ -10981,9 +11245,10 @@ Polymer({
 <dom-module id="tf-node-info" assetpath="../tf-graph-info/">
   <style>
   .sub-list-group {
-    padding: 8px 12px 0px;
     font-weight: 500;
     font-size: 12pt;
+    padding-bottom: 8px;
+    width: 100%;
   }
 
   .sub-list {
@@ -11007,6 +11272,24 @@ Polymer({
     font-weight: 400;
   }
 
+  .sub-list-table {
+    display: table;
+    width: 100%;
+  }
+
+  .sub-list-table-row {
+    display: table-row;
+  }
+
+  .sub-list-table-cell {
+    color: #565656;
+    display: table-cell;
+    font-size: 11pt;
+    font-weight: 400;
+    max-width: 200px;
+    padding: 0 4px;
+  }
+
   paper-item {
     padding: 0;
     background: #e9e9e9;
@@ -11018,7 +11301,7 @@ Polymer({
   }
 
   .expandedInfo {
-    padding: 0 0 8px;
+    padding: 8px 12px;
   }
 
   .controlDeps {
@@ -11188,6 +11471,31 @@ Polymer({
             </div>
           </template>
         </div>
+        <template is="dom-if" if="{{_hasDisplayableNodeStats}}">
+          <div class="sub-list-group node-stats">
+            Node Stats
+            <div class="sub-list-table">
+              <template is="dom-if" if="{{_nodeStats.totalBytes}}">
+                <div class="sub-list-table-row">
+                  <div class="sub-list-table-cell">Memory</div>
+                  <div class="sub-list-table-cell">[[_nodeStatsFormattedBytes]]</div>
+                </div>
+              </template>
+              <template is="dom-if" if="{{_nodeStats.totalMicros}}">
+                <div class="sub-list-table-row">
+                  <div class="sub-list-table-cell">Compute Time</div>
+                  <div class="sub-list-table-cell">[[_nodeStatsFormattedComputeTime]]</div>
+                </div>
+              </template>
+              <template is="dom-if" if="{{_nodeStats.outputSize}}">
+                <div class="sub-list-table-row">
+                  <div class="sub-list-table-cell">Tensor Output Size</div>
+                  <div class="sub-list-table-cell">[[_nodeStatsFormattedOutputSize]]</div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
         <div class="toggle-include-group">
           <paper-button raised="" class="toggle-include" on-click="_toggleInclude">
             <span>[[_auxButtonText]]</span>
@@ -11224,6 +11532,27 @@ Polymer({
             type: Object,
             computed: '_getNode(nodeName, graphHierarchy)',
             observer: '_resetState'
+          },
+          _nodeStats: {
+            type: Object,
+            computed: '_getNodeStats(nodeName, graphHierarchy)',
+            observer: '_resetState'
+          },
+          _hasDisplayableNodeStats: {
+            type: Object,
+            computed: '_getHasDisplayableNodeStats(_nodeStats)',
+          },
+          _nodeStatsFormattedBytes: {
+            type: String,
+            computed: '_getNodeStatsFormattedBytes(_nodeStats)',
+          },
+          _nodeStatsFormattedComputeTime: {
+            type: String,
+            computed: '_getNodeStatsFormattedComputeTime(_nodeStats)',
+          },
+          _nodeStatsFormattedOutputSize: {
+            type: String,
+            computed: '_getNodeStatsFormattedOutputSize(_nodeStats)',
           },
           // The enum value of the include property of the selected node.
           nodeInclude: {
@@ -11281,6 +11610,50 @@ Polymer({
         },
         _getNode: function(nodeName, graphHierarchy) {
           return graphHierarchy.node(nodeName);
+        },
+        _getNodeStats: function(nodeName, graphHierarchy) {
+          var node = this._getNode(nodeName, graphHierarchy);
+          if (node) {
+            return node.stats;
+          }
+          return null;
+        },
+        _getHasDisplayableNodeStats: function(stats) {
+          if (stats &&
+              (stats.totalBytes > 0 ||
+                  stats.totalBytes > 0 ||
+                  stats.outputSize)) {
+            return true;
+          }
+          return false;
+        },
+        _getNodeStatsFormattedBytes(stats) {
+          if (!stats || !stats.totalBytes) {
+            return;
+          }
+
+          return tf.graph.util.convertUnitsToHumanReadable(
+              stats.totalBytes, tf.graph.util.MEMORY_UNITS);
+        },
+        _getNodeStatsFormattedComputeTime(stats) {
+          if (!stats || !stats.totalMicros) {
+            return;
+          }
+
+          return tf.graph.util.convertUnitsToHumanReadable(
+              stats.totalMicros, tf.graph.util.TIME_UNITS);
+        },
+        _getNodeStatsFormattedOutputSize(stats) {
+          if (!stats || !stats.outputSize || !stats.outputSize.length) {
+            return;
+          }
+
+          // TODO(nsthorat): Display more than just the first tensor shape.
+          if (stats.outputSize[0].length === 0) {
+            return "scalar";
+          }
+
+          return "[" + stats.outputSize[0].join(", ") + "]";
         },
         _getPrintableHTMLNodeName: function(nodeName) {
           // Insert an optional line break before each slash so that
@@ -12097,11 +12470,15 @@ Polymer({
     var minValue = params.minValue;
     var maxValue = params.maxValue;
     if (colorBy === 'memory') {
-      minValue = convertToHumanReadable(minValue, MEMORY_UNITS);
-      maxValue = convertToHumanReadable(maxValue, MEMORY_UNITS);
+      minValue = tf.graph.util.convertUnitsToHumanReadable(
+          minValue, tf.graph.util.MEMORY_UNITS);
+      maxValue = tf.graph.util.convertUnitsToHumanReadable(
+          maxValue, tf.graph.util.MEMORY_UNITS);
     } else if (colorBy === 'compute_time') {
-      minValue = convertToHumanReadable(minValue, TIME_UNITS);
-      maxValue = convertToHumanReadable(maxValue, TIME_UNITS);
+      minValue = tf.graph.util.convertUnitsToHumanReadable(
+          minValue, tf.graph.util.TIME_UNITS);
+      maxValue = tf.graph.util.convertUnitsToHumanReadable(
+          maxValue, tf.graph.util.TIME_UNITS);
     }
     return {
       minValue: minValue,
@@ -12155,43 +12532,6 @@ Polymer({
     this.$.graphdownload.setAttribute('download', graphPath + '.png');
   }
 });
-
-// Private methods.
-var MEMORY_UNITS = [
-  // Atomic unit.
-  {symbol: 'B'},
-  // numUnits specifies how many previous units this unit contains.
-  {symbol: 'KB', numUnits: 1024},
-  {symbol: 'MB', numUnits: 1024},
-  {symbol: 'GB', numUnits: 1024},
-  {symbol: 'TB', numUnits: 1024},
-  {symbol: 'PB', numUnits: 1024}
-];
-var TIME_UNITS = [
-  // Atomic unit. Finest granularity in TensorFlow stat collection.
-  {symbol: 'µs'},
-  // numUnits specifies how many previous units this unit contains.
-  {symbol: 'ms', numUnits: 1000},
-  {symbol: 's', numUnits: 1000},
-  {symbol: 'min', numUnits: 60},
-  {symbol: 'hr', numUnits: 60},
-  {symbol: 'days', numUnits: 24}
-];
-
-/**
-  * Returns the human readable version of the unit.
-  * (e.g. 1.35 GB, 23 MB, 34 ms, 6.53 min etc).
-  */
-function convertToHumanReadable(value, units, unitIndex) {
-  unitIndex = unitIndex == null ? 0 : unitIndex;
-  if (unitIndex + 1 < units.length && value >= units[unitIndex + 1].numUnits) {
-    return convertToHumanReadable(value / units[unitIndex + 1].numUnits,
-        units, unitIndex + 1);
-  }
-  // toPrecision() has the tendency to return a number in scientific
-  // notation and (number - 0) brings it back to normal notation.
-  return (value.toPrecision(3) - 0) + ' ' + units[unitIndex].symbol;
-}
 })(); // Closing private scope.
 </script>
 </dom-module>

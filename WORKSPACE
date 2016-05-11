@@ -229,7 +229,7 @@ new_git_repository(
   name = "neon_animation",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/neon-animation.git",
-  tag = "v1.2.2",
+  tag = "v1.2.3",
 )
 
 new_git_repository(
