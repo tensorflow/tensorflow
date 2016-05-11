@@ -25,10 +25,12 @@ import numpy as np
 
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import summaries
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -331,6 +333,16 @@ def evaluate(graph,
   """
   global_step_tensor = contrib_variables.assert_or_get_global_step(
       graph, global_step_tensor)
+
+  # Add scalar summaries for every tensor in evaluation dict if there is not
+  # one existing already or it's a string.
+  existing_tags = [tensor_util.constant_value(summary.op.inputs[0])
+                   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES)]
+  for key, value in eval_dict.items():
+    if key in existing_tags:
+      continue
+    if isinstance(value, ops.Tensor):
+      summaries.summarize_tensor(value, tag=key)
 
   # TODO(wicke): Don't use supervisor here, or switch to output_dir=eval_dir.
   supervisor, session = _prepare_session(
