@@ -215,6 +215,7 @@ tf_kernel_library(
         "split_lib.h",
     ],
     deps = [
+        ":cuda_device_array",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
@@ -244,6 +245,18 @@ cc_library(
 cc_header_only_library(
     name = "bounds_check_lib",
     deps = [":bounds_check"],
+)
+
+cc_library(
+    name = "cuda_device_array",
+    hdrs = [
+        "cuda_device_array.h",
+        "cuda_device_array_gpu.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
@@ -318,6 +331,7 @@ tf_kernel_libraries(
         ":batchtospace_op",
         ":bounds_check",
         ":concat_lib",
+        ":cuda_device_array",
         ":depth_space_ops",
         ":fill_functor",
         ":ops_util",
