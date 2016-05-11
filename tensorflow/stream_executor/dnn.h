@@ -559,14 +559,14 @@ class ProfileResult {
 // input, across all coordinates (batch, y, x), by mapping each V to
 // another vector U of the same size using the formula
 //
-//   V_i = U_i / ((bias + alpha * (sum_j U_j^2)) ^ beta)
+//   U_i = V_i / ((bias + alpha * (sum_j V_j^2)) ^ beta)
 //
-// where the sum is taken for j in the inclusive range [i - range, i + range].
+// where the sum is taken over j in the closed range [i - range, i + range].
 //
-// When calculating V_i the j in the sum can extend beyond the bounds
-// of U. If wrap_around is true, then U_j = U_{j mod F} where F is the
-// size of U, which is the number of feature maps. If wrap_around is
-// false, then U_j = 0 for j outside [0, F-1].
+// When calculating U_i the j in the sum can extend beyond the bounds
+// of V. If wrap_around is true, then V_j = V_{j mod F} where F is the
+// size of V, which is the number of feature maps. If wrap_around is
+// false, then V_j = 0 for j outside [0, F-1].
 //
 // If segment_size <= F, where F is the number of feature_maps, then
 // segment_size has no effect. Otherwise, each consecutive segment of
@@ -769,7 +769,13 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& input_descriptor,
       DeviceMemory<float>* backward_input_data,
-      ScratchAllocator* scratch_allocator) = 0;
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the backward convolution pass for
+  // data.
+  virtual bool GetConvolveBackwardDataAlgorithms(
+      std::vector<AlgorithmType>* out_algorithms);
 
   // Enqueues a single-precision backward convolution (for filter) operation
   // onto the stream.
@@ -798,7 +804,13 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<float>* backward_filter_data,
-      ScratchAllocator* scratch_allocator) = 0;
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the backward convolution pass for
+  // filters.
+  virtual bool GetConvolveBackwardFilterAlgorithms(
+      std::vector<AlgorithmType>* out_algorithms);
 
   // Fully connects the "nodes" (float values) in input_data with
   // shape input_dimensions to output_data with output_dimensions

@@ -47,6 +47,12 @@ class CudnnSupport : public dnn::DnnSupport {
   bool GetConvolveAlgorithms(
       std::vector<dnn::AlgorithmType>* out_algorithms) override;
 
+  bool GetConvolveBackwardDataAlgorithms(
+      std::vector<dnn::AlgorithmType>* out_algorithms) override;
+
+  bool GetConvolveBackwardFilterAlgorithms(
+      std::vector<dnn::AlgorithmType>* out_algorithms) override;
+
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
                   const DeviceMemory<float>& input_data,
                   const dnn::FilterDescriptor& filter_descriptor,
@@ -87,7 +93,8 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& input_descriptor,
       DeviceMemory<float>* backward_input_data,
-      ScratchAllocator* scratch_allocator) override;
+      ScratchAllocator* scratch_allocator, dnn::AlgorithmType algorithm,
+      dnn::ProfileResult* output_profile_result) override;
 
   bool DoConvolveBackwardFilter(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,
@@ -97,7 +104,8 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       DeviceMemory<float>* backward_filter_data,
-      ScratchAllocator* scratch_allocator) override;
+      ScratchAllocator* scratch_allocator, dnn::AlgorithmType algorithm,
+      dnn::ProfileResult* output_profile_result) override;
 
   bool DoMatMul(Stream* stream, const DeviceMemory<float>& input_data,
                 const DeviceMemory<float>& weights,

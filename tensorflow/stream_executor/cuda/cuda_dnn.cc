@@ -275,6 +275,39 @@ cudnnConvolutionFwdAlgo_t ToConvForwardAlgo(dnn::AlgorithmType algorithm) {
   }
 }
 
+cudnnConvolutionBwdDataAlgo_t ToConvBackwardDataAlgo(
+    dnn::AlgorithmType algorithm) {
+  cudnnConvolutionBwdDataAlgo_t algo = cudnnConvolutionBwdDataAlgo_t(algorithm);
+  switch (algo) {
+    case CUDNN_CONVOLUTION_BWD_DATA_ALGO_0:
+    case CUDNN_CONVOLUTION_BWD_DATA_ALGO_1:
+    case CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT:
+    case CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING:
+      return algo;
+    default:
+      LOG(FATAL)
+          << "Unsupported Cudnn convolution backward algorithm for data: "
+          << algorithm;
+  }
+}
+
+cudnnConvolutionBwdFilterAlgo_t ToConvBackwardFilterAlgo(
+    dnn::AlgorithmType algorithm) {
+  cudnnConvolutionBwdFilterAlgo_t algo =
+      cudnnConvolutionBwdFilterAlgo_t(algorithm);
+  switch (algo) {
+    case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0:
+    case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1:
+    case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT:
+    case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3:
+      return algo;
+    default:
+      LOG(FATAL)
+          << "Unsupported Cudnn convolution backward algorithm for filter: "
+          << algorithm;
+  }
+}
+
 }  // namespace
 
 CudnnSupport::CudnnSupport(CUDAExecutor* parent)
@@ -784,7 +817,6 @@ bool CudnnSupport::DoConvolve(
     // to this stream. So it could take multiple profiling measurements.
     timer->Start(AsCUDAStream(stream));
   }
-
   status = dynload::cudnnConvolutionForward(
       parent_, ToHandle(dnn_handle_),
       /*alpha=*/&alpha, /*srcDesc=*/input_nd.handle(),
@@ -793,16 +825,6 @@ bool CudnnSupport::DoConvolve(
       /*algo=*/algo, /*workSpace=*/scratch.opaque(),
       /*workSpaceSizeInBytes=*/scratch.size(), /*beta=*/&beta,
       /*destDesc=*/output_nd.handle(), /*destData=*/output_data->opaque());
-
-  if (status != CUDNN_STATUS_SUCCESS) {
-    if (is_profiling) {
-      // Silently return when we are profiling.
-      return false;
-    }
-    LOG(FATAL) << "failed to enqueue convolution on stream: "
-               << ToString(status);
-  }
-
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
     output_profile_result->set_is_valid(true);
@@ -810,6 +832,15 @@ bool CudnnSupport::DoConvolve(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     timer->Destroy();
+  }
+
+  if (status != CUDNN_STATUS_SUCCESS) {
+    // Silently return when we are profiling.
+    if (!is_profiling) {
+      LOG(FATAL) << "failed to enqueue convolution on stream: "
+                 << ToString(status);
+    }
+    return false;
   }
 
   return true;
@@ -825,6 +856,32 @@ bool CudnnSupport::GetConvolveAlgorithms(
       CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
       CUDNN_CONVOLUTION_FWD_ALGO_FFT,
       CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING,
+      // clang-format on
+  });
+  return true;
+}
+
+bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
+    std::vector<dnn::AlgorithmType>* out_algorithms) {
+  out_algorithms->assign({
+      // clang-format off
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
+      // clang-format on
+  });
+  return true;
+}
+
+bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
+    std::vector<dnn::AlgorithmType>* out_algorithms) {
+  out_algorithms->assign({
+      // clang-format off
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT,
+      CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3,
       // clang-format on
   });
   return true;
@@ -883,7 +940,8 @@ bool CudnnSupport::DoConvolveBackwardData(
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& input_descriptor,
     DeviceMemory<float>* backward_input_data,
-    ScratchAllocator* scratch_allocator) {
+    ScratchAllocator* scratch_allocator, dnn::AlgorithmType algorithm,
+    dnn::ProfileResult* output_profile_result) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
                                         AsCUDAStreamValue(stream));
@@ -937,40 +995,68 @@ bool CudnnSupport::DoConvolveBackwardData(
 #endif
 
 #if CUDNN_VERSION >= 3000
-  auto get_algorithm = [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
-      dnn_handle_mutex_) -> cudnnConvolutionBwdDataAlgo_t {
-    cudnnConvolutionBwdDataPreference_t preference =
-        specify_limit ? CUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT
-                      : CUDNN_CONVOLUTION_BWD_DATA_NO_WORKSPACE;
+  const bool is_profiling = output_profile_result != nullptr;
+  cudnnConvolutionBwdDataAlgo_t algo;
+  DeviceMemory<uint8> scratch;
 
-    auto memory_limit_bytes =
-        scratch_allocator == nullptr
-            ? 0
-            : scratch_allocator->GetMemoryLimitInBytes(stream);
-    if (memory_limit_bytes < 0) {
-      memory_limit_bytes = 0;
+  if (algorithm == dnn::kDefaultAlgorithm) {
+    // With the default algorithm, use Cudnn's heuristics.
+    auto get_algorithm = [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
+        dnn_handle_mutex_) -> cudnnConvolutionBwdDataAlgo_t {
+      cudnnConvolutionBwdDataPreference_t preference =
+          specify_limit ? CUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT
+                        : CUDNN_CONVOLUTION_BWD_DATA_NO_WORKSPACE;
+
+      auto memory_limit_bytes =
+          scratch_allocator == nullptr
+              ? 0
+              : scratch_allocator->GetMemoryLimitInBytes(stream);
+      if (memory_limit_bytes < 0) {
+        memory_limit_bytes = 0;
+      }
+
+      cudnnConvolutionBwdDataAlgo_t algo_to_use;
+      cudnnStatus_t status = dynload::cudnnGetConvolutionBackwardDataAlgorithm(
+          parent_, ToHandle(dnn_handle_),
+          /*filterDesc=*/filter.handle(),
+          /*diffDesc=*/out_back_nd.handle(),
+          /*convDesc=*/conv.handle(),
+          /*gradDesc=*/in_back_nd.handle(),
+          /*preference=*/preference,
+          /*memoryLimitInBytes=*/memory_limit_bytes,
+          /*algo=*/&algo_to_use);
+      CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
+                                                "algorithm for doing backward "
+                                                "filter convolution";
+      return algo_to_use;
+    };
+
+    algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
+
+    if (scratch_allocator != nullptr) {
+      size_t size_in_bytes;
+      status = dynload::cudnnGetConvolutionBackwardDataWorkspaceSize(
+          parent_, ToHandle(dnn_handle_),
+          /*filterDesc=*/filter.handle(),
+          /*diffDesc=*/out_back_nd.handle(),
+          /*convDesc=*/conv.handle(),
+          /*gradDesc=*/in_back_nd.handle(),
+          /*algo=*/algo,
+          /*sizeInBytes=*/&size_in_bytes);
+      if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
+        scratch = scratch_allocator->AllocateBytes(stream, size_in_bytes)
+                      .ValueOrDie();
+      }
     }
 
-    cudnnConvolutionBwdDataAlgo_t algo;
-    cudnnStatus_t status = dynload::cudnnGetConvolutionBackwardDataAlgorithm(
-        parent_, ToHandle(dnn_handle_),
-        /*filterDesc=*/filter.handle(),
-        /*diffDesc=*/out_back_nd.handle(),
-        /*convDesc=*/conv.handle(),
-        /*gradDesc=*/in_back_nd.handle(),
-        /*preference=*/preference,
-        /*memoryLimitInBytes=*/memory_limit_bytes,
-        /*algo=*/&algo);
-    CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
-                                              "algorithm for doing backward "
-                                              "filter convolution";
-    return algo;
-  };
-
-  auto algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
-
-  DeviceMemory<uint8> scratch;
-  if (scratch_allocator != nullptr) {
+    // If we didn't allocate any scratch space (perhaps because of failed
+    // allocation), we force a switch back to the "no workspace" algorithm.
+    if (scratch == nullptr) {
+      algo = get_algorithm(/*specify_limit=*/false);
+    }
+  } else {
+    // An algorithm has been specified.
+    algo = ToConvBackwardDataAlgo(algorithm);
     size_t size_in_bytes;
     status = dynload::cudnnGetConvolutionBackwardDataWorkspaceSize(
         parent_, ToHandle(dnn_handle_),
@@ -980,16 +1066,37 @@ bool CudnnSupport::DoConvolveBackwardData(
         /*gradDesc=*/in_back_nd.handle(),
         /*algo=*/algo,
         /*sizeInBytes=*/&size_in_bytes);
-    if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
-      scratch =
-          scratch_allocator->AllocateBytes(stream, size_in_bytes).ValueOrDie();
+    if (status != CUDNN_STATUS_SUCCESS) {
+      if (is_profiling) {
+        // Silently return when we are profiling.
+        return false;
+      }
+      LOG(FATAL) << "Cannot query the size of workspace needed for the given "
+                    "algorithm: "
+                 << algorithm;
+    }
+    if (size_in_bytes != 0) {
+      if (scratch_allocator == nullptr) {
+        LOG(FATAL) << "An allocator must be specified when scratch memory is "
+                      "needed";
+      }
+      auto allocated = scratch_allocator->AllocateBytes(stream, size_in_bytes);
+      if (is_profiling && !allocated.ok()) {
+        // Silently return when we are profiling.
+        return false;
+      }
+      scratch = allocated.ValueOrDie();
     }
   }
 
-  // If we didn't allocate any scratch space (perhaps because of failed
-  // allocation), we force a switch back to the "no workspace" algorithm.
-  if (scratch == nullptr) {
-    algo = get_algorithm(/*specify_limit=*/false);
+  std::unique_ptr<CUDATimer> timer;
+  if (is_profiling) {
+    timer.reset(new CUDATimer(parent_));
+    timer->Init();
+    // The start and stop of the timer should be as close to the Cudnn call as
+    // possible. It is still possible for other threads to issue workload on
+    // to this stream. So it could take multiple profiling measurements.
+    timer->Start(AsCUDAStream(stream));
   }
 
 #if CUDNN_VERSION >= 5000
@@ -1010,9 +1117,20 @@ bool CudnnSupport::DoConvolveBackwardData(
       /*beta=*/&beta,
       /*gradDesc=*/in_back_nd.handle(),
       /*gradData=*/backward_input_data->opaque());
+  if (is_profiling) {
+    timer->Stop(AsCUDAStream(stream));
+    output_profile_result->set_is_valid(true);
+    output_profile_result->set_algorithm(algo);
+    output_profile_result->set_elapsed_time_in_ms(
+        timer->GetElapsedMilliseconds());
+    timer->Destroy();
+  }
   if (status != CUDNN_STATUS_SUCCESS) {
-    LOG(FATAL) << "failed to enqueue convolution on stream: "
-               << ToString(status);
+    // Silently return when we are profiling.
+    if (!is_profiling) {
+      LOG(FATAL) << "failed to enqueue convolution on stream: "
+                 << ToString(status);
+    }
     return false;
   }
   return true;
@@ -1027,7 +1145,8 @@ bool CudnnSupport::DoConvolveBackwardFilter(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemory<float>* backward_filter_data,
-    ScratchAllocator* scratch_allocator) {
+    ScratchAllocator* scratch_allocator, dnn::AlgorithmType algorithm,
+    dnn::ProfileResult* output_profile_result) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
                                         AsCUDAStreamValue(stream));
@@ -1080,59 +1199,108 @@ bool CudnnSupport::DoConvolveBackwardFilter(
 #endif
 
 #if CUDNN_VERSION >= 3000
-  // Lambda that retrieves the algorithm.
-  // specify_limit will occur when we have a scratch allocator and it succeeds
-  // in allocating; otherwise, we'll fall back to the "no workspace" version.
-  auto get_algorithm = [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
-      dnn_handle_mutex_) {
-    cudnnConvolutionBwdFilterPreference_t preference =
-        specify_limit ? CUDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT
-                      : CUDNN_CONVOLUTION_BWD_FILTER_NO_WORKSPACE;
+  const bool is_profiling = output_profile_result != nullptr;
+  cudnnConvolutionBwdFilterAlgo_t algo;
+  DeviceMemory<uint8> scratch;
 
-    auto memory_limit_bytes =
-        scratch_allocator == nullptr
-            ? 0
-            : scratch_allocator->GetMemoryLimitInBytes(stream);
-    if (memory_limit_bytes < 0) {
-      memory_limit_bytes = 0;
+  if (algorithm == dnn::kDefaultAlgorithm) {
+    // With the default algorithm, use Cudnn's heuristics.
+
+    // Lambda that retrieves the algorithm.
+    // specify_limit will occur when we have a scratch allocator and it succeeds
+    // in allocating; otherwise, we'll fall back to the "no workspace" version.
+    auto get_algorithm = [&](bool specify_limit) SHARED_LOCKS_REQUIRED(
+        dnn_handle_mutex_) {
+      cudnnConvolutionBwdFilterPreference_t preference =
+          specify_limit ? CUDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT
+                        : CUDNN_CONVOLUTION_BWD_FILTER_NO_WORKSPACE;
+
+      auto memory_limit_bytes =
+          scratch_allocator == nullptr
+              ? 0
+              : scratch_allocator->GetMemoryLimitInBytes(stream);
+      if (memory_limit_bytes < 0) {
+        memory_limit_bytes = 0;
+      }
+
+      cudnnConvolutionBwdFilterAlgo_t algo_to_use;
+      cudnnStatus_t status =
+          dynload::cudnnGetConvolutionBackwardFilterAlgorithm(
+              parent_, ToHandle(dnn_handle_),
+              /*srcDesc=*/input_nd.handle(),
+              /*diffDesc=*/out_back_nd.handle(),
+              /*convDesc=*/conv.handle(),
+              /*gradDesc=*/filter.handle(),
+              /*preference=*/preference,
+              /*memoryLimitInBytes=*/memory_limit_bytes,
+              /*algo=*/&algo_to_use);
+      CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
+                                                "algorithm for doing backward "
+                                                "filter convolution";
+      return algo_to_use;
+    };
+
+    algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
+
+    if (scratch_allocator != nullptr) {
+      size_t size_in_bytes;
+      status = dynload::cudnnGetConvolutionBackwardFilterWorkspaceSize(
+          parent_, ToHandle(dnn_handle_), /*srcDesc=*/input_nd.handle(),
+          /*diffDesc=*/out_back_nd.handle(), /*convDesc=*/conv.handle(),
+          /*gradDesc=*/filter.handle(), /*algo=*/algo,
+          /*sizeInBytes=*/&size_in_bytes);
+      if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
+        scratch = scratch_allocator->AllocateBytes(stream, size_in_bytes)
+                      .ValueOrDie();
+      }
     }
 
-    cudnnConvolutionBwdFilterAlgo_t algo;
-    cudnnStatus_t status = dynload::cudnnGetConvolutionBackwardFilterAlgorithm(
-        parent_, ToHandle(dnn_handle_),
-        /*srcDesc=*/input_nd.handle(),
-        /*diffDesc=*/out_back_nd.handle(),
-        /*convDesc=*/conv.handle(),
-        /*gradDesc=*/filter.handle(),
-        /*preference=*/preference,
-        /*memoryLimitInBytes=*/memory_limit_bytes,
-        /*algo=*/&algo);
-    CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
-                                              "algorithm for doing backward "
-                                              "filter convolution";
-    return algo;
-  };
+    // If we didn't allocate any scratch space (perhaps because of failed
+    // allocation), we force a switch back to the "no workspace" algorithm.
+    if (scratch == nullptr) {
+      algo = get_algorithm(/*specify_limit=*/false);
+    }
+  } else {
+    // An algorithm has been specified.
+    algo = ToConvBackwardFilterAlgo(algorithm);
 
-  auto algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
-
-  DeviceMemory<uint8> scratch;
-  if (scratch_allocator != nullptr) {
     size_t size_in_bytes;
     status = dynload::cudnnGetConvolutionBackwardFilterWorkspaceSize(
         parent_, ToHandle(dnn_handle_), /*srcDesc=*/input_nd.handle(),
         /*diffDesc=*/out_back_nd.handle(), /*convDesc=*/conv.handle(),
         /*gradDesc=*/filter.handle(), /*algo=*/algo,
         /*sizeInBytes=*/&size_in_bytes);
-    if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
-      scratch =
-          scratch_allocator->AllocateBytes(stream, size_in_bytes).ValueOrDie();
+    if (status != CUDNN_STATUS_SUCCESS) {
+      if (is_profiling) {
+        // Silently return when we are profiling.
+        return false;
+      }
+      LOG(FATAL) << "Cannot query the size of workspace needed for the given "
+                    "algorithm: "
+                 << algorithm;
+    }
+    if (size_in_bytes != 0) {
+      if (scratch_allocator == nullptr) {
+        LOG(FATAL) << "An allocator must be specified when scratch memory is "
+                      "needed";
+      }
+      auto allocated = scratch_allocator->AllocateBytes(stream, size_in_bytes);
+      if (is_profiling && !allocated.ok()) {
+        // Silently return when we are profiling.
+        return false;
+      }
+      scratch = allocated.ValueOrDie();
     }
   }
 
-  // If we didn't allocate any scratch space (perhaps because of failed
-  // allocation), we force a switch back to the "no workspace" algorithm.
-  if (scratch == nullptr) {
-    algo = get_algorithm(/*specify_limit=*/false);
+  std::unique_ptr<CUDATimer> timer;
+  if (is_profiling) {
+    timer.reset(new CUDATimer(parent_));
+    timer->Init();
+    // The start and stop of the timer should be as close to the Cudnn call as
+    // possible. It is still possible for other threads to issue workload on
+    // to this stream. So it could take multiple profiling measurements.
+    timer->Start(AsCUDAStream(stream));
   }
 
 #if CUDNN_VERSION >= 5000
@@ -1152,9 +1320,20 @@ bool CudnnSupport::DoConvolveBackwardFilter(
       /*beta=*/&beta,
       /*gradDesc=*/filter.handle(),
       /*gradData=*/backward_filter_data->opaque());
+  if (is_profiling) {
+    timer->Stop(AsCUDAStream(stream));
+    output_profile_result->set_is_valid(true);
+    output_profile_result->set_algorithm(algo);
+    output_profile_result->set_elapsed_time_in_ms(
+        timer->GetElapsedMilliseconds());
+    timer->Destroy();
+  }
   if (status != CUDNN_STATUS_SUCCESS) {
-    LOG(FATAL) << "failed to enqueue convolution on stream: "
-               << ToString(status);
+    // Silently return when we are profiling.
+    if (!is_profiling) {
+      LOG(FATAL) << "failed to enqueue convolution on stream: "
+                 << ToString(status);
+    }
     return false;
   }
   return true;

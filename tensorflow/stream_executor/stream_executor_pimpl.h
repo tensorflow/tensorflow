@@ -341,6 +341,15 @@ class StreamExecutor {
   // Get the list of supported algorithms for the forward convolution opeartion.
   bool GetConvolveAlgorithms(std::vector<dnn::AlgorithmType> *out_algorithms);
 
+  // Get the list of supported algorithms for the backward convolution on data.
+  bool GetConvolveBackwardDataAlgorithms(
+      std::vector<dnn::AlgorithmType> *out_algorithms);
+
+  // Get the list of supported algorithms for the backward convolution on the
+  // filter.
+  bool GetConvolveBackwardFilterAlgorithms(
+      std::vector<dnn::AlgorithmType> *out_algorithms);
+
   // Returns the device ordinal that this StreamExecutor was initialized with.
   // Meaningless before initialization.
   int device_ordinal() const { return device_ordinal_; }

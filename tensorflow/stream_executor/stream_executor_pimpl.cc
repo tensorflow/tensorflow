@@ -295,6 +295,24 @@ bool StreamExecutor::GetConvolveAlgorithms(
   return dnn_support->GetConvolveAlgorithms(out_algorithms);
 }
 
+bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
+    std::vector<dnn::AlgorithmType> *out_algorithms) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return false;
+  }
+  return dnn_support->GetConvolveBackwardDataAlgorithms(out_algorithms);
+}
+
+bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
+    std::vector<dnn::AlgorithmType> *out_algorithms) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return false;
+  }
+  return dnn_support->GetConvolveBackwardFilterAlgorithms(out_algorithms);
+}
+
 dnn::DnnSupport *StreamExecutor::AsDnn() {
   mutex_lock lock{mu_};
   if (dnn_ != nullptr) {

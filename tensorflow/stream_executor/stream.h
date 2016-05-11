@@ -269,6 +269,17 @@ class Stream {
       DeviceMemory<float> *backward_input_data,
       ScratchAllocator *scratch_allocator);
 
+  Stream &ThenConvolveBackwardDataWithAlgorithm(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<float> *backward_input_data,
+      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      dnn::ProfileResult *output_profile_result);
+
   Stream &ThenConvolveBackwardFilter(
       const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<float> &input_data,
@@ -287,6 +298,17 @@ class Stream {
       const dnn::FilterDescriptor &filter_descriptor,
       DeviceMemory<float> *backward_filter_data,
       ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveBackwardFilterWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<float> *backward_filter_data,
+      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenMatMul(const DeviceMemory<float> &input_data,
                      const DeviceMemory<float> &weights,

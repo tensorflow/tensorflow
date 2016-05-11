@@ -816,6 +816,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
+    cudnn_use_autotune_ = CudnnUseAutotune();
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -994,11 +995,62 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
         );
     CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                             context);
+    int device_id = stream->parent()->device_ordinal();
+    ConvParameters conv_parameters = {
+        batch,                // batch
+        in_depth,             // in_depths
+        input_desc.height(),  // in_rows
+        input_desc.width(),   // in_cols
+        out_depth,            // out_depths
+        filter_rows,          // filter_rows
+        filter_cols,          // filter_cols
+        stride_rows,          // stride_rows
+        stride_cols,          // stride_cols
+        padding_rows,         // padding_rows
+        padding_cols,         // padding_cols
+        device_id,            // device_id
+    };
+    using namespace perftools::gputools::dnn;
+    AlgorithmType algorithm = kDefaultAlgorithm;
+    if (cudnn_use_autotune_ &&
+        !conv_algorithm_map_.Find(conv_parameters, &algorithm)) {
+      std::vector<AlgorithmType> algorithms;
+      CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(&algorithms));
+      ProfileResult best_result;
+      best_result.set_elapsed_time_in_ms(std::numeric_limits<float>::max());
+      for (auto profile_algorithm : algorithms) {
+        // TODO(zhengxq): profile each algorithm multiple times to better
+        // accuracy.
+        CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                                context);
+        ProfileResult profile_result;
+        bool cudnn_launch_status =
+            stream
+                ->ThenConvolveBackwardDataWithAlgorithm(
+                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                    profile_algorithm, &profile_result)
+                .ok();
+        if (cudnn_launch_status) {
+          if (profile_result.is_valid() &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+        }
+      }
+      CHECK(best_result.is_valid() &&
+            best_result.algorithm() != kDefaultAlgorithm)
+          << "No algorithm worked!";
+      algorithm = best_result.algorithm();
+      conv_algorithm_map_.Insert(conv_parameters, algorithm);
+    }
     bool cudnn_launch_status =
         stream
-            ->ThenConvolveBackwardDataWithScratch(
+            ->ThenConvolveBackwardDataWithAlgorithm(
                 filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator)
+                conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                algorithm, nullptr)
             .ok();
 
     if (!cudnn_launch_status) {
@@ -1048,6 +1100,8 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
   Padding padding_;
   bool use_cudnn_;
   TensorFormat data_format_;
+  ConvAlgorithmMap<Device> conv_algorithm_map_;
+  bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropInputOp);
 };
@@ -1071,6 +1125,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
+    cudnn_use_autotune_ = CudnnUseAutotune();
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -1267,13 +1322,64 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
         );
+    int device_id = stream->parent()->device_ordinal();
+    ConvParameters conv_parameters = {
+        batch,                // batch
+        in_depth,             // in_depths
+        input_desc.height(),  // in_rows
+        input_desc.width(),   // in_cols
+        out_depth,            // out_depths
+        filter_rows,          // filter_rows
+        filter_cols,          // filter_cols
+        stride_rows,          // stride_rows
+        stride_cols,          // stride_cols
+        padding_rows,         // padding_rows
+        padding_cols,         // padding_cols
+        device_id,            // device_id
+    };
+    using namespace perftools::gputools::dnn;
+    AlgorithmType algorithm = kDefaultAlgorithm;
+    if (cudnn_use_autotune_ &&
+        !conv_algorithm_map_.Find(conv_parameters, &algorithm)) {
+      std::vector<AlgorithmType> algorithms;
+      CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms));
+      ProfileResult best_result;
+      best_result.set_elapsed_time_in_ms(std::numeric_limits<float>::max());
+      for (auto profile_algorithm : algorithms) {
+        // TODO(zhengxq): profile each algorithm multiple times to better
+        // accuracy.
+        CudnnScratchAllocator scratch_allocator(
+            ConvolveBackwardFilterScratchSize, context);
+        ProfileResult profile_result;
+        bool cudnn_launch_status =
+            stream
+                ->ThenConvolveBackwardFilterWithAlgorithm(
+                    input_desc, input_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, filter_desc, &filter_backprop_ptr,
+                    &scratch_allocator, profile_algorithm, &profile_result)
+                .ok();
+        if (cudnn_launch_status) {
+          if (profile_result.is_valid() &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+        }
+      }
+      CHECK(best_result.is_valid() &&
+            best_result.algorithm() != kDefaultAlgorithm)
+          << "No algorithm worked!";
+      algorithm = best_result.algorithm();
+      conv_algorithm_map_.Insert(conv_parameters, algorithm);
+    }
     CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                             context);
     bool cudnn_launch_status =
         stream
-            ->ThenConvolveBackwardFilterWithScratch(
+            ->ThenConvolveBackwardFilterWithAlgorithm(
                 input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-                filter_desc, &filter_backprop_ptr, &scratch_allocator)
+                filter_desc, &filter_backprop_ptr, &scratch_allocator,
+                algorithm, nullptr)
             .ok();
 
     if (!cudnn_launch_status) {
@@ -1295,6 +1401,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
   Padding padding_;
   bool use_cudnn_;
   TensorFormat data_format_;
+  ConvAlgorithmMap<Device> conv_algorithm_map_;
+  bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropFilterOp);
 };
