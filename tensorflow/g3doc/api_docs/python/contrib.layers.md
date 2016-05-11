@@ -672,7 +672,7 @@ Given loss and parameters for optimizer, returns a training op.
 
 - - -
 
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, max_steps=None, fail_on_nan_loss=True)` {#train}
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, max_steps=None, fail_on_nan_loss=True)` {#train}
 
 Train a model.
 
@@ -701,6 +701,7 @@ program is terminated with exit code 1.
     one is extracted from the graph using the same logic as in `Supervisor`.
 *  <b>`init_op`</b>: An op that initializes the graph. If `None`, use `Supervisor`'s
     default.
+*  <b>`init_fn`</b>: Optional callable passed to Supervisor to initialize the model.
 *  <b>`log_every_steps`</b>: Output logs regularly. The logs contain timing data and the
     current loss.
 *  <b>`supervisor_is_chief`</b>: Whether the current process is the chief supervisor in
