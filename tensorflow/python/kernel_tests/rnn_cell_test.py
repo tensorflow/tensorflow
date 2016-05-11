@@ -23,6 +23,11 @@ import functools
 import numpy as np
 import tensorflow as tf
 
+# TODO(ebrevdo): Remove once _linear is fully deprecated.
+# pylint: disable=protected-access
+from tensorflow.python.ops.rnn_cell import _linear as linear
+# pylint: enable=protected-access
+
 
 class RNNCellTest(tf.test.TestCase):
 
@@ -30,20 +35,20 @@ class RNNCellTest(tf.test.TestCase):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(1.0)):
         x = tf.zeros([1, 2])
-        l = tf.nn.rnn_cell.linear([x], 2, False)
+        l = linear([x], 2, False)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([l], {x.name: np.array([[1., 2.]])})
         self.assertAllClose(res[0], [[3.0, 3.0]])
 
         # Checks prevent you from accidentally creating a shared function.
         with self.assertRaises(ValueError):
-          l1 = tf.nn.rnn_cell.linear([x], 2, False)
+          l1 = linear([x], 2, False)
 
         # But you can create a new one in a new scope and share the variables.
         with tf.variable_scope("l1") as new_scope:
-          l1 = tf.nn.rnn_cell.linear([x], 2, False)
+          l1 = linear([x], 2, False)
         with tf.variable_scope(new_scope, reuse=True):
-          tf.nn.rnn_cell.linear([l1], 2, False)
+          linear([l1], 2, False)
         self.assertEqual(len(tf.trainable_variables()), 2)
 
   def testBasicRNNCell(self):
@@ -311,8 +316,8 @@ def basic_rnn_cell(inputs, state, num_units, scope=None):
     return init_output, init_state
   else:
     with tf.variable_op_scope([inputs, state], scope, "BasicRNNCell"):
-      output = tf.tanh(tf.nn.rnn_cell.linear([inputs, state],
-                                             num_units, True))
+      output = tf.tanh(linear([inputs, state],
+                              num_units, True))
     return output, output
 
 if __name__ == "__main__":
