@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
+#include "third_party/eigen3/Eigen/Core"
+
 namespace perftools {
 namespace gputools {
 
@@ -725,6 +727,19 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<double>* output_data) = 0;
 
+  // Enqueues a half-precision convolution operation onto the stream.
+  // See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
+
   // Variation of the above with the weight matrix split into two matrices.
   // first_weights: Coefficients of the first matrix.
   // second_weights: Coefficients of the second matrix.
@@ -777,6 +792,17 @@ class DnnSupport {
   virtual bool GetConvolveBackwardDataAlgorithms(
       std::vector<AlgorithmType>* out_algorithms);
 
+  virtual bool DoConvolveBackwardData(
+      Stream* stream, const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half> backward_output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const BatchDescriptor& input_descriptor,
+      DeviceMemory<Eigen::half>* backward_input_data,
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
+
   // Enqueues a single-precision backward convolution (for filter) operation
   // onto the stream.
   //
@@ -811,6 +837,17 @@ class DnnSupport {
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
       std::vector<AlgorithmType>* out_algorithms);
+
+  virtual bool DoConvolveBackwardFilter(
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half> backward_output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const FilterDescriptor& filter_descriptor,
+      DeviceMemory<Eigen::half>* backward_filter_data,
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
 
   // Fully connects the "nodes" (float values) in input_data with
   // shape input_dimensions to output_data with output_dimensions

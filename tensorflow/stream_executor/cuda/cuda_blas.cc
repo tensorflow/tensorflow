@@ -13,13 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Include cuBLAS headers early, and then set EIGEN_HAS_CUDA_FP16
+// if we have new enough CUDA (which we will only know after including
+// cuda.h). This ensures that Eigen's Half.h does not attempt to make its own
+// __half typedef if CUDA has already defined one (and conversely, that we do
+// not include <cuda_fp16.h> after Half.h has made its typedef).
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+
+#if CUDA_VERSION >= 7050
+#define EIGEN_HAS_CUDA_FP16
+#endif
+
 #include "tensorflow/stream_executor/cuda/cuda_blas.h"
 
 #include <dlfcn.h>
 
 #include <complex>
 
-#include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/stream_executor/cuda/cuda_helpers.h"
