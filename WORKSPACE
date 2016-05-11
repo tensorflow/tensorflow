@@ -187,7 +187,7 @@ new_git_repository(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-overlay-behavior.git",
-  tag = "1.7.2",
+  tag = "v1.7.3",
 )
 
 new_git_repository(
@@ -222,7 +222,7 @@ new_git_repository(
   name = "lodash",
   build_file = "bower.BUILD",
   remote = "https://github.com/lodash/lodash.git",
-  tag = "3.10.1",
+  tag = "3.8.0",
 )
 
 new_git_repository(

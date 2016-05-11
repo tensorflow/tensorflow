@@ -19,7 +19,6 @@
     "iron-range-behavior",
     "iron-resizable-behavior",
     "iron-validatable-behavior",
-    "lodash",
     "neon-animation",
     "paper-dialog-behavior",
     "paper-material",
@@ -91,8 +90,9 @@
     "web-animations-js": "web-animations/web-animations-js#2.0.0",
     "webcomponentsjs": "webcomponents/webcomponentsjs#0.7.22"
   },
-  "description": "Visualizations for TensorFlow",
+  "description": "TensorBoard: Visualizations for TensorFlow",
   "devDependencies": {
+    "iron-demo-helpers": "PolymerElements/iron-demo-helpers#^1.2.3",
     "web-component-tester": "Polymer/web-component-tester"
   },
   "ignore": [
@@ -103,7 +103,7 @@
     "tests"
   ],
   "license": "Apache-2.0",
-  "name": "tf-vis",
+  "name": "tensorboard",
   "private": true,
   "resolutions": {
     "d3": "3.5.15",
