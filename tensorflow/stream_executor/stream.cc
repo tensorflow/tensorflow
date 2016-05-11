@@ -2574,6 +2574,24 @@ Stream &Stream::ThenBlasTrsv(blas::UpperLower uplo, blas::Transpose trans,
 
 Stream &Stream::ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                              uint64 m, uint64 n, uint64 k, float alpha,
+                             const DeviceMemory<Eigen::half> &a, int lda,
+                             const DeviceMemory<Eigen::half> &b, int ldb,
+                             float beta,
+                             DeviceMemory<Eigen::half> *c, int ldc) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
+            PARAM(beta), PARAM(c), PARAM(ldc));
+
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64, uint64, uint64, float,
+               const DeviceMemory<Eigen::half> &, int,
+               const DeviceMemory<Eigen::half> &, int,
+               float, DeviceMemory<Eigen::half> *, int> impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemm, transa, transb, m, n, k,
+              alpha, a, lda, b, ldb, beta, c, ldc);
+}
+
+Stream &Stream::ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                             uint64 m, uint64 n, uint64 k, float alpha,
                              const DeviceMemory<float> &a, int lda,
                              const DeviceMemory<float> &b, int ldb, float beta,
                              DeviceMemory<float> *c, int ldc) {
