@@ -21,7 +21,7 @@ module TF {
   let Y_AXIS_FORMATTER_PRECISION = 3;
   let TOOLTIP_Y_PIXEL_OFFSET = 15;
   let TOOLTIP_X_PIXEL_OFFSET = 0;
-  let TOOLTIP_CIRCLE_SIZE = 3;
+  let TOOLTIP_CIRCLE_SIZE = 4;
   let TOOLTIP_CLOSEST_CIRCLE_SIZE = 6;
 
   interface Point {
@@ -36,7 +36,7 @@ module TF {
   export class BaseChart {
     protected dataFn: DataFn;
     protected tag: string;
-    private datasets: {[run: string]: Plottable.Dataset};
+    private run2datasets: {[run: string]: Plottable.Dataset};
     protected runs: string[];
 
     protected xAccessor: Plottable.Accessor<number | Date>;
@@ -57,7 +57,7 @@ module TF {
         tag: string, dataFn: DataFn, xType: string,
         colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
       this.dataFn = dataFn;
-      this.datasets = {};
+      this.run2datasets = {};
       this.tag = tag;
       this.colorScale = colorScale;
       this.tooltip = tooltip;
@@ -88,11 +88,11 @@ module TF {
     }
 
     protected getDataset(run: string) {
-      if (this.datasets[run] === undefined) {
-        this.datasets[run] =
+      if (this.run2datasets[run] === undefined) {
+        this.run2datasets[run] =
             new Plottable.Dataset([], {run: run, tag: this.tag});
       }
-      return this.datasets[run];
+      return this.run2datasets[run];
     }
 
     protected buildChart(xType: string) {
@@ -144,20 +144,68 @@ module TF {
   }
 
   export class LineChart extends BaseChart {
-    private plot: Plottable.Plots.Line<number | Date>;
+    private linePlot: Plottable.Plots.Line<number|Date>;
+    private scatterPlot: Plottable.Plots.Scatter<number|Date, Number>;
     private yAccessor: Plottable.Accessor<number>;
+    private lastPointsDataset: Plottable.Dataset;
+    private datasets: Plottable.Dataset[];
+    private updateLastPointDataset;
 
+    constructor(
+        tag: string, dataFn: DataFn, xType: string,
+        colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
+      this.datasets = [];
+      // lastPointDataset is a dataset that contains just the last point of
+      // every dataset we're currently drawing.
+      this.lastPointsDataset = new Plottable.Dataset();
+      // need to do a single bind, so we can deregister the callback from
+      // old Plottable.Datasets. (Deregistration is done by identity checks.)
+      this.updateLastPointDataset = this._updateLastPointDataset.bind(this);
+      super(tag, dataFn, xType, colorScale, tooltip);
+    }
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
       this.yAccessor = (d: Backend.ScalarDatum) => d.scalar;
-      let plot = new Plottable.Plots.Line<number|Date>();
-      plot.x(xAccessor, xScale);
-      plot.y(this.yAccessor, yScale);
-      plot.attr(
+      let linePlot = new Plottable.Plots.Line<number|Date>();
+      linePlot.x(xAccessor, xScale);
+      linePlot.y(this.yAccessor, yScale);
+      linePlot.attr(
           'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
                         this.colorScale.scale(dataset.metadata().run));
-      this.plot = plot;
-      let group = this.setupTooltips(plot);
-      return group;
+      this.linePlot = linePlot;
+      let group = this.setupTooltips(linePlot);
+
+      // The scatterPlot will display the last point for each dataset.
+      // This way, if there is only one datum for the series, it is still
+      // visible. We hide it when tooltips are active to keep things clean.
+      let scatterPlot = new Plottable.Plots.Scatter<number|Date, number>();
+      scatterPlot.x(xAccessor, xScale);
+      scatterPlot.y(this.yAccessor, yScale);
+      scatterPlot.attr('fill', (d: any) => this.colorScale.scale(d.run));
+      scatterPlot.attr('opacity', 1);
+      scatterPlot.size(TOOLTIP_CIRCLE_SIZE * 2);
+      scatterPlot.datasets([this.lastPointsDataset]);
+      this.scatterPlot = scatterPlot;
+      return new Plottable.Components.Group([scatterPlot, group]);
+    }
+
+    /** Iterates over every dataset, takes the last point, and puts all these
+     * points in the lastPointsDataset.
+     */
+    private _updateLastPointDataset() {
+      let relativeAccessor = relativeX().accessor;
+      let data = this.datasets
+                     .map((d) => {
+                       let datum = null;
+                       if (d.data().length > 0) {
+                         let idx = d.data().length - 1;
+                         datum = d.data()[idx];
+                         datum.run = d.metadata().run;
+                         datum.relative = relativeAccessor(datum, idx, d);
+                       }
+                       return datum;
+                     })
+                     .filter((x) => x != null);
+      this.lastPointsDataset.data(data);
     }
 
     private setupTooltips(plot: Plottable.XYPlot<number|Date, number>):
@@ -171,6 +219,7 @@ module TF {
 
       let hideTooltips = () => {
         this.tooltip.style('opacity', 0);
+        this.scatterPlot.attr('opacity', 1);
         pointsComponent.content().selectAll('.point').remove();
       };
 
@@ -234,6 +283,7 @@ module TF {
 
     private drawTooltips(closestPoint: Point) {
       // Formatters for value, step, and wall_time
+      this.scatterPlot.attr('opacity', 0);
       let valueFormatter = multiscaleFormatter(Y_TOOLTIP_FORMATTER_PRECISION);
       let stepFormatter = stepX().tooltipFormatter;
       let wall_timeFormatter = wallX().tooltipFormatter;
@@ -284,9 +334,11 @@ module TF {
 
     public changeRuns(runs: string[]) {
       super.changeRuns(runs);
-      let datasets = runs.map((r) => this.getDataset(r));
-      datasets.reverse();  // draw first run on top
-      this.plot.datasets(datasets);
+      runs.reverse();  // draw first run on top
+      this.datasets.forEach((d) => d.offUpdate(this.updateLastPointDataset));
+      this.datasets = runs.map((r) => this.getDataset(r));
+      this.datasets.forEach((d) => d.onUpdate(this.updateLastPointDataset));
+      this.linePlot.datasets(this.datasets);
     }
   }
 
@@ -417,16 +469,19 @@ module TF {
     return {
       scale: scale,
       axis: new Plottable.Axes.Numeric(scale, 'bottom'),
-      accessor:
-          (d: Backend.Datum, index: number, dataset: Plottable.Dataset) => {
-            let data = dataset.data();
-            // I can't imagine how this function would be called when the data
-            // is empty
-            // (after all, it iterates over the data), but lets guard just to be
-            // safe.
-            let first = data.length > 0 ? +data[0].wall_time : 0;
-            return (+d.wall_time - first) / (60 * 60 * 1000);  // ms to hours
-          },
+      accessor: (d: any, index: number, dataset: Plottable.Dataset) => {
+        // We may be rendering the final-point datum for scatterplot.
+        // If so, we will have already provided the 'relative' property
+        if (d.relative != null) {
+          return d.relative;
+        }
+        let data = dataset.data();
+        // I can't imagine how this function would be called when the data is
+        // empty (after all, it iterates over the data), but lets guard just
+        // to be safe.
+        let first = data.length > 0 ? +data[0].wall_time : 0;
+        return (+d.wall_time - first) / (60 * 60 * 1000);  // ms to hours
+      },
       tooltipFormatter: formatter,
     };
   }
