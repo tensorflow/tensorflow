@@ -111,6 +111,7 @@ def _prepare_session(graph,
                      start_services,
                      global_step_tensor,
                      init_op=None,
+                     init_fn=None,
                      supervisor_is_chief=True,
                      supervisor_master='',
                      supervisor_save_model_secs=600,
@@ -126,7 +127,8 @@ def _prepare_session(graph,
       saver=_make_saver(graph),
       global_step=global_step_tensor,
       save_model_secs=supervisor_save_model_secs,
-      save_summaries_secs=supervisor_save_summaries_secs)
+      save_summaries_secs=supervisor_save_summaries_secs,
+      init_fn=init_fn)
   session = supervisor.PrepareSession(master=supervisor_master,
                                       start_standard_services=start_services)
   supervisor.StartQueueRunners(session)
@@ -141,6 +143,7 @@ def train(graph,
           loss_op,
           global_step_tensor=None,
           init_op=None,
+          init_fn=None,
           log_every_steps=10,
           supervisor_is_chief=True,
           supervisor_master='',
@@ -173,6 +176,7 @@ def train(graph,
       one is extracted from the graph using the same logic as in `Supervisor`.
     init_op: An op that initializes the graph. If `None`, use `Supervisor`'s
       default.
+    init_fn: Optional callable passed to Supervisor to initialize the model.
     log_every_steps: Output logs regularly. The logs contain timing data and the
       current loss.
     supervisor_is_chief: Whether the current process is the chief supervisor in
@@ -206,6 +210,7 @@ def train(graph,
       start_services=True,
       global_step_tensor=global_step_tensor,
       init_op=init_op,
+      init_fn=init_fn,
       supervisor_is_chief=supervisor_is_chief,
       supervisor_master=supervisor_master,
       supervisor_save_model_secs=supervisor_save_model_secs,
