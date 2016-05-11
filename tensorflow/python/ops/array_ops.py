@@ -412,9 +412,8 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
   where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 
   Args:
-    tensor:  N-D tensor.  First K dimensions can be None, which allows e.g.
-      undefined batch size.  Trailing dimensions must be specified.
-    mask:  K-D boolean tensor, K <= N.
+    tensor:  N-D tensor.
+    mask:  K-D boolean tensor, K <= N and K must be known statically.
     name:  A name for this operation (optional).
 
   Returns:
@@ -453,7 +452,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
           ".  E.g. shape=[None] is ok, but shape=None is not.")
     shape_tensor[:ndims_mask].assert_is_compatible_with(shape_mask)
 
-    tensor = reshape(tensor, [-1] + shape_tensor.as_list()[ndims_mask:])
+    tensor = reshape(tensor, concat(0, [[-1], shape(tensor)[ndims_mask:]]))
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask)
 
