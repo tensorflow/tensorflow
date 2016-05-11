@@ -70,18 +70,19 @@ module TF {
         throw new Error('Not enough colors in palette. Must be more than one.');
       }
 
-      var k = (this.numColors - 1) / (palette.length - 1);
-      this.internalColorScale = d3.scale.linear<string>()
-        .domain(d3.range(palette.length).map((i) => i * k))
-        .range(palette);
+      let k = (this.numColors - 1) / (palette.length - 1);
+      this.internalColorScale =
+          d3.scale.linear<string>()
+              .domain(d3.range(palette.length).map((i) => i * k))
+              .range(palette);
     }
 
     private hash(s: string): number {
-     function h(hash, str) {
-       hash = (hash << 5) - hash + str.charCodeAt(0);
-       return hash & hash;
-     }
-     return Math.abs(Array.prototype.reduce.call(s, h, 0)) % this.numColors;
+      function h(hash, str) {
+        hash = (hash << 5) - hash + str.charCodeAt(0);
+        return hash & hash;
+      }
+      return Math.abs(Array.prototype.reduce.call(s, h, 0)) % this.numColors;
     }
 
     /**
@@ -91,22 +92,23 @@ module TF {
      * @param {string[]} strings - An array of strings to use as the domain
      *                             for your scale.
      */
-    public domain(strings: string[]) {
+    public domain(strings: string[]): this {
       this.buckets = d3.range(this.numColors).map(() => []);
-      var sortedUniqueKeys = d3.set(strings).values().sort(function(a, b) {
+      let sortedUniqueKeys = d3.set(strings).values().sort(function(a, b) {
         return a.localeCompare(b);
       });
       sortedUniqueKeys.forEach((s) => this.addToDomain(s));
+      return this;
     }
 
     private getBucketForString(s: string) {
-      var bucketIdx = this.hash(s);
+      let bucketIdx = this.hash(s);
       return this.buckets[bucketIdx];
     }
 
     private addToDomain(s: string) {
-      var bucketIdx = this.hash(s);
-      var bucket = this.buckets[bucketIdx];
+      let bucketIdx = this.hash(s);
+      let bucket = this.buckets[bucketIdx];
       if (bucket.indexOf(s) === -1) {
         bucket.push(s);
       }
@@ -117,11 +119,12 @@ module TF {
       if (amount === 0) {
         return color;
 
-      // For first tick, nudge lighter...
+        // For first tick, nudge lighter...
       } else if (amount === 1) {
         return d3.hcl(color).brighter(0.6);
 
-      // ..otherwise nudge darker. Darker will approach black, which is visible.
+        // ..otherwise nudge darker. Darker will approach black, which is
+        // visible.
       } else {
         return d3.hcl(color).darker((amount - 1) / 2);
       }
@@ -136,15 +139,14 @@ module TF {
      * @throws Will error if input string is not in the scale's domain.
      */
 
-    public getColor(s: string): string {
-      var bucket = this.getBucketForString(s);
-      var idx = bucket.indexOf(s);
+    public scale(s: string): string {
+      let bucket = this.getBucketForString(s);
+      let idx = bucket.indexOf(s);
       if (idx === -1) {
         throw new Error('String was not in the domain.');
       }
-      var color = this.internalColorScale(this.hash(s));
+      let color = this.internalColorScale(this.hash(s));
       return this.nudge(color, idx).toString();
     }
-
   }
 }

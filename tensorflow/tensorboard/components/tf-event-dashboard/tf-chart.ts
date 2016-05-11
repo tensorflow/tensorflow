@@ -154,8 +154,7 @@ module TF {
       plot.y(this.yAccessor, yScale);
       plot.attr(
           'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
-                        dataset.metadata().run,
-          this.colorScale);
+                        this.colorScale.scale(dataset.metadata().run));
       this.plot = plot;
       let group = this.setupTooltips(plot);
       return group;
@@ -318,12 +317,10 @@ module TF {
         p.y0(y0);
         p.attr(
             'fill', (d: any, i: number, dataset: Plottable.Dataset) =>
-                        dataset.metadata().run,
-            this.colorScale);
+                        this.colorScale.scale(dataset.metadata().run));
         p.attr(
             'stroke', (d: any, i: number, dataset: Plottable.Dataset) =>
-                          dataset.metadata().run,
-            this.colorScale);
+                          this.colorScale.scale(dataset.metadata().run));
         p.attr('stroke-weight', (d: any, i: number, m: any) => '0.5px');
         p.attr('stroke-opacity', () => opacities[i]);
         p.attr('fill-opacity', () => opacities[i]);
@@ -334,7 +331,8 @@ module TF {
       medianPlot.x(xAccessor, xScale);
       medianPlot.y(medianAccessor, yScale);
       medianPlot.attr(
-          'stroke', (d: any, i: number, m: any) => m.run, this.colorScale);
+          'stroke',
+          (d: any, i: number, m: any) => this.colorScale.scale(m.run));
 
       this.plots = plots;
       return new Plottable.Components.Group(plots);

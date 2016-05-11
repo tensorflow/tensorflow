@@ -1,0 +1,29 @@
+<link rel="import" href="../polymer/polymer.html">
+
+<!--
+tf-color-scale is a plumbing component that takes in an array of runs, and produces
+an upward-bindable outColorScale, which is a color scale mapping from those runs to
+a set of colors.
+-->
+<dom-module id="tf-color-scale">
+  <script src="palettes.js"></script>
+  <script src="colorScale.js"></script>
+  <script>
+    (function() {
+      Polymer({
+        is: "tf-color-scale",
+        properties: {
+          runs: Array,
+          outColorScale: {
+            type: Object,
+            computed: "makeColorScale(runs.*)",
+            notify: true,
+          },
+        },
+        makeColorScale: function(runs) {
+          return new TF.ColorScale().domain(this.runs);
+        },
+      });
+    })();
+  </script>
+</dom-module>
