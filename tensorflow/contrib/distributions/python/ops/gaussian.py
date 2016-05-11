@@ -103,8 +103,8 @@ class Gaussian(object):
       mu = ops.convert_to_tensor(mu)
       sigma = ops.convert_to_tensor(sigma)
       with ops.control_dependencies([_assert_all_positive(sigma)]):
-        self._mu = mu
-        self._sigma = sigma
+        self._mu = array_ops.identity(mu, name="mu")
+        self._sigma = array_ops.identity(sigma, name="sigma")
 
     contrib_tensor_util.assert_same_float_dtype((mu, sigma))
 
