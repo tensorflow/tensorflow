@@ -84,6 +84,8 @@ functions on matrices to your graph.
 
 @@cholesky
 @@batch_cholesky
+@@cholesky_solve
+@@batch_cholesky_solve
 
 @@self_adjoint_eig
 @@batch_self_adjoint_eig
