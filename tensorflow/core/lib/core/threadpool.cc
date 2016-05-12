@@ -83,7 +83,24 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
   Impl(Env* env, const ThreadOptions& thread_options, const string& name,
        int num_threads)
       : Eigen::ThreadPoolTempl<EigenEnvironment>(
-            num_threads, EigenEnvironment(env, thread_options, name)) {}
+            num_threads, EigenEnvironment(env, thread_options, name)),
+        num_threads_(num_threads) {}
+
+  void ParallelFor(int64 total, int64 cost_per_unit,
+                   std::function<void(int64, int64)> fn) {
+#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
+    CHECK_GE(total, 0);
+    CHECK_EQ(total, (int64)(Eigen::Index)total);
+    Eigen::ThreadPoolDevice device(this, num_threads_);
+    device.parallelFor(
+        total, Eigen::TensorOpCost(0, 0, cost_per_unit),
+        [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
+#else
+    CHECK(0);  // should not be used with the old thread pool
+#endif
+  }
+
+  const int num_threads_;
 };
 
 #else
@@ -93,6 +110,10 @@ struct ThreadPool::Impl {
        int num_threads);
   ~Impl();
   void Schedule(std::function<void()> fn);
+  void ParallelFor(int64 total, int64 cost_per_unit,
+                   std::function<void(int64, int64)> fn) {
+    CHECK(0);  // should not be used with the old thread pool
+  }
 
  private:
   struct Waiter {
@@ -214,6 +235,11 @@ ThreadPool::~ThreadPool() {}
 void ThreadPool::Schedule(std::function<void()> fn) {
   CHECK(fn != nullptr);
   impl_->Schedule(std::move(fn));
+}
+
+void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
+                             std::function<void(int64, int64)> fn) {
+  impl_->ParallelFor(total, cost_per_unit, std::move(fn));
 }
 
 }  // namespace thread

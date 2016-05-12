@@ -80,7 +80,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.git_repository(
     name = "grpc",
-    commit = "3d62fc6",
+    commit = "2bc7d80",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
   )
@@ -95,4 +95,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "grpc_lib",
     actual = "@grpc//:grpc++_unsecure",
+  )
+
+  native.new_git_repository(
+    name = "jsoncpp_git",
+    remote = "https://github.com/open-source-parsers/jsoncpp.git",
+    commit = "11086dd6a7eba04289944367ca82cea71299ed70",
+    build_file = path_prefix + "jsoncpp.BUILD",
+  )
+
+  native.bind(
+    name = "jsoncpp",
+    actual = "@jsoncpp_git//:jsoncpp",
   )

@@ -17,19 +17,27 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-bool CanUseCudnn() {
-  const char* tf_use_cudnn = getenv("TF_USE_CUDNN");
-  if (tf_use_cudnn != nullptr) {
-    string tf_use_cudnn_str = tf_use_cudnn;
-    if (tf_use_cudnn_str == "0") {
+static bool ReadBoolFromEnvVar(const char* env_var_name, bool default_val) {
+  const char* tf_env_var_val = getenv(env_var_name);
+  if (tf_env_var_val != nullptr) {
+    StringPiece tf_env_var_val_str(tf_env_var_val);
+    if (tf_env_var_val_str == "0") {
       return false;
     }
+    return true;
   }
-  return true;
+  return default_val;
+}
+
+bool CanUseCudnn() { return ReadBoolFromEnvVar("TF_USE_CUDNN", true); }
+
+bool CudnnUseAutotune() {
+  return ReadBoolFromEnvVar("TF_CUDNN_USE_AUTOTUNE", false);
 }
 
 }  // namespace tensorflow

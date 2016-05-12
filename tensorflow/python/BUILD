@@ -1106,6 +1106,8 @@ medium_kernel_test_list = glob([
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",
+    "kernel_tests/sparse_ops_test.py",
+    "kernel_tests/sparse_matmul_op_test.py",
     "kernel_tests/sparse_tensor_dense_matmul_op_test.py",
 ])
 
@@ -1153,7 +1155,6 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/self_adjoint_eig_op_test.py",
     "kernel_tests/sparse_add_op_test.py",
     "kernel_tests/sparse_concat_op_test.py",
-    "kernel_tests/sparse_matmul_op_test.py",
     "kernel_tests/sparse_split_op_test.py",
     "kernel_tests/sparse_reorder_op_test.py",
     "kernel_tests/sparse_to_dense_op_test.py",
@@ -1189,7 +1190,10 @@ cuda_py_tests(
         ["ops/*_test.py"],
         exclude = [
             "ops/image_ops_test.py",
+            "ops/nn_batchnorm_test.py",
+            "ops/nn_conv_test.py",
             "ops/nn_test.py",
+            "ops/nn_xent_test.py",
             "ops/op_def_library_test.py",
         ],
     ),
@@ -1198,7 +1202,12 @@ cuda_py_tests(
 cuda_py_tests(
     name = "medium_op_tests",
     size = "medium",
-    srcs = ["ops/nn_test.py"],
+    srcs = [
+        "ops/nn_batchnorm_test.py",
+        "ops/nn_conv_test.py",
+        "ops/nn_test.py",
+        "ops/nn_xent_test.py",
+    ],
 )
 
 cuda_py_tests(

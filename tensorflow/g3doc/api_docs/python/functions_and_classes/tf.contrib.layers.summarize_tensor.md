@@ -14,5 +14,5 @@ other tensors, `histogram_summary` is used.
 
 ##### Returns:
 
-  The summary op created.
+  The summary op created or None for string tensors.
 

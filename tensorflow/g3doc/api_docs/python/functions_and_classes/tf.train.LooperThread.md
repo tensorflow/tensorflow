@@ -14,7 +14,7 @@ the other threads it coordinates to stop.
 You typically pass looper threads to the supervisor `Join()` method.
 - - -
 
-#### `tf.train.LooperThread.__init__(coord, timer_interval_secs, target=None, args=None)` {#LooperThread.__init__}
+#### `tf.train.LooperThread.__init__(coord, timer_interval_secs, target=None, args=None, kwargs=None)` {#LooperThread.__init__}
 
 Create a LooperThread.
 
@@ -26,6 +26,7 @@ Create a LooperThread.
     if it should be called back to back.
 *  <b>`target`</b>: Optional callable object that will be executed in the thread.
 *  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
 
 ##### Raises:
 
@@ -124,7 +125,7 @@ exception.
 
 - - -
 
-#### `tf.train.LooperThread.loop(coord, timer_interval_secs, target, args=None)` {#LooperThread.loop}
+#### `tf.train.LooperThread.loop(coord, timer_interval_secs, target, args=None, kwargs=None)` {#LooperThread.loop}
 
 Start a LooperThread that calls a function periodically.
 
@@ -140,6 +141,7 @@ requested.
 *  <b>`timer_interval_secs`</b>: Number. Time boundaries at which to call `target`.
 *  <b>`target`</b>: A callable object.
 *  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
 
 ##### Returns:
 

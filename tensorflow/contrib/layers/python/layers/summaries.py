@@ -21,6 +21,7 @@ from __future__ import print_function
 import functools
 import re
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import standard_ops
@@ -114,8 +115,11 @@ def summarize_tensor(tensor, tag=None):
     tag: The tag to use, if None then use tensor's op's name.
 
   Returns:
-    The summary op created.
+    The summary op created or None for string tensors.
   """
+  # Skips string tensors.
+  if tensor.dtype.is_compatible_with(dtypes.string):
+    return None
 
   if tensor.get_shape().ndims == 0:
     # For scalars, use a scalar summary.

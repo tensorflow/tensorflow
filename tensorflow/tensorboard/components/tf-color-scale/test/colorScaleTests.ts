@@ -19,38 +19,36 @@ module TF {
   describe('ColorScale', function() {
     let ccs: ColorScale;
 
-    beforeEach(function() {
-      ccs = new ColorScale();
-    });
+    beforeEach(function() { ccs = new ColorScale(); });
 
     it('No collisions with train, eval and test', function() {
       ccs.domain(['train']);
-      var trainColor = ccs.getColor('train');
+      let trainColor = ccs.scale('train');
       ccs.domain(['eval']);
-      var evalColor = ccs.getColor('eval');
+      let evalColor = ccs.scale('eval');
       ccs.domain(['test']);
-      var testColor = ccs.getColor('test');
+      let testColor = ccs.scale('test');
       assert.notEqual(trainColor, evalColor, testColor);
     });
 
     it('Returns consistent colors, given no hash collisions', function() {
       // These three colors don't have hash collisions
       ccs.domain(['red', 'yellow']);
-      var firstRedColor = ccs.getColor('red');
+      let firstRedColor = ccs.scale('red');
       ccs.domain(['red', 'yellow', 'blue']);
-      var secondRedColor = ccs.getColor('red');
+      let secondRedColor = ccs.scale('red');
       assert.deepEqual(firstRedColor, secondRedColor);
     });
 
     it('A 2-color scale returns the first and last colors of the palette',
        function() {
-         var twoColorScale = new ColorScale(2, TF.palettes.googleStandard);
+         let twoColorScale = new ColorScale(2, TF.palettes.googleStandard);
          // No hash collisions with these.
          twoColorScale.domain(['red', 'blue']);
          assert.deepEqual(
-             twoColorScale.getColor('blue'), TF.palettes.googleStandard[0]);
+             twoColorScale.scale('blue'), TF.palettes.googleStandard[0]);
          assert.deepEqual(
-             twoColorScale.getColor('red'),
+             twoColorScale.scale('red'),
              TF.palettes.googleStandard[TF.palettes.googleStandard.length - 1]);
        });
 
@@ -62,32 +60,32 @@ module TF {
     it('Colors don\'t nudge away from colors from an old domain.', function() {
       // at 12 breaks, 'orange' and 'blue' collide.
       ccs.domain(['red', 'blue']);
-      var firstBlue = ccs.getColor('blue');
+      let firstBlue = ccs.scale('blue');
       ccs.domain(['red', 'orange']);
-      var firstOrange = ccs.getColor('orange');
+      let firstOrange = ccs.scale('orange');
       assert.deepEqual(firstBlue, firstOrange);
     });
 
     it('Nudges all colors, given only one base color', function() {
-      var ccsWithOneColor = new ColorScale(1);
+      let ccsWithOneColor = new ColorScale(1);
       ccsWithOneColor.domain(['one', 'two', 'three']);
       assert.notEqual(
-          ccsWithOneColor.getColor('one'), ccsWithOneColor.getColor('two'));
+          ccsWithOneColor.scale('one'), ccsWithOneColor.scale('two'));
       assert.notEqual(
-          ccsWithOneColor.getColor('two'), ccsWithOneColor.getColor('three'));
+          ccsWithOneColor.scale('two'), ccsWithOneColor.scale('three'));
       assert.notEqual(
-          ccsWithOneColor.getColor('one'), ccsWithOneColor.getColor('three'));
+          ccsWithOneColor.scale('one'), ccsWithOneColor.scale('three'));
     });
 
     it('Nudges a color if it has a hash collision', function() {
       // at 12 breaks, 'orange' and 'blue' collide.
       ccs.domain(['red', 'blue']);
-      var firstBlue = ccs.getColor('blue');
+      let firstBlue = ccs.scale('blue');
       ccs.domain(['red', 'orange']);
-      var firstOrange = ccs.getColor('orange');
+      let firstOrange = ccs.scale('orange');
       ccs.domain(['red', 'blue', 'orange']);
-      var secondBlue = ccs.getColor('blue');
-      var secondOrange = ccs.getColor('orange');
+      let secondBlue = ccs.scale('blue');
+      let secondOrange = ccs.scale('orange');
       assert.deepEqual(firstBlue, secondBlue);
       assert.deepEqual(firstBlue, firstOrange);
       assert.notEqual(secondBlue, secondOrange);
@@ -96,7 +94,7 @@ module TF {
     it('Throws an error if string is not in the domain', function() {
       ccs.domain(['red', 'yellow', 'green']);
       assert.throws(function() {
-        ccs.getColor('not in domain');
+        ccs.scale('not in domain');
       }, 'String was not in the domain.');
     });
   });

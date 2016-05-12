@@ -27,6 +27,18 @@ from tensorflow.python.ops import math_ops
 
 class ReducedShapeTest(tf.test.TestCase):
 
+  def testSimple(self):
+    with self.test_session():
+      def check(shape, axes, result):
+        output = math_ops.reduced_shape(shape, axes=axes)
+        self.assertAllEqual(output.eval(), result)
+      check([3], [], [3])
+      check([3], [0], [1])
+      check([5, 3], [], [5, 3])
+      check([5, 3], [0], [1, 3])
+      check([5, 3], [1], [5, 1])
+      check([5, 3], [0, 1], [1, 1])
+
   def testZeros(self):
     """Check that reduced_shape does the right thing with zero dimensions."""
     with self.test_session():

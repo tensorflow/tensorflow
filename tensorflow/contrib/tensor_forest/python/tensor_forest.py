@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import random
 
 import tensorflow as tf
 
@@ -46,11 +47,13 @@ class ForestHParams(object):
 
   def __init__(self, num_trees=100, max_nodes=10000, bagging_fraction=1.0,
                max_depth=0, num_splits_to_consider=0,
+               feature_bagging_fraction=1.0,
                max_fertile_nodes=0, split_after_samples=250,
                valid_leaf_threshold=1, **kwargs):
     self.num_trees = num_trees
     self.max_nodes = max_nodes
     self.bagging_fraction = bagging_fraction
+    self.feature_bagging_fraction = feature_bagging_fraction
     self.max_depth = max_depth
     self.num_splits_to_consider = num_splits_to_consider
     self.max_fertile_nodes = max_fertile_nodes
@@ -65,15 +68,30 @@ class ForestHParams(object):
 
   def fill(self):
     """Intelligently sets any non-specific parameters."""
-    # Fail fast if num_classes isn't set.
+    # Fail fast if num_classes or num_features isn't set.
     _ = getattr(self, 'num_classes')
+    _ = getattr(self, 'num_features')
 
     self.training_library_base_dir = getattr(
         self, 'training_library_base_dir', '')
     self.inference_library_base_dir = getattr(
         self, 'inference_library_base_dir', '')
 
+    self.bagged_num_features = int(self.feature_bagging_fraction *
+                                   self.num_features)
+
+    self.bagged_features = None
+    if self.feature_bagging_fraction < 1.0:
+      self.bagged_features = [random.sample(
+          range(self.num_features),
+          self.bagged_num_features) for _ in range(self.num_trees)]
+
     self.regression = getattr(self, 'regression', False)
+
+    # Num_outputs is the actual number of outputs (a single prediction for
+    # classification, a N-dimenensional point for regression).
+    self.num_outputs = self.num_classes if self.regression else 1
+
     # Add an extra column to classes for storing counts, which is needed for
     # regression and avoids having to recompute sums for classification.
     self.num_output_columns = self.num_classes + 1
@@ -121,6 +139,12 @@ class ForestHParams(object):
 
 # A simple container to hold the training variables for a single tree.
 class TreeTrainingVariables(object):
+  """Stores tf.Variables for training a single random tree.
+
+  Uses tf.get_variable to get tree-specific names so that this can be used
+  with a tf.learn-style implementation (one that trains a model, saves it,
+  then relies on restoring that model to evaluate).
+  """
 
   def __init__(self, params, tree_num, training):
     self.tree = tf.get_variable(
@@ -248,11 +272,12 @@ class ForestTrainingVariables(object):
     ... forest_variables.tree ...
   """
 
-  def __init__(self, params, device_assigner, training=True):
+  def __init__(self, params, device_assigner, training=True,
+               tree_variable_class=TreeTrainingVariables):
     self.variables = []
     for i in range(params.num_trees):
       with tf.device(device_assigner.get_device(i)):
-        self.variables.append(TreeTrainingVariables(params, i, training))
+        self.variables.append(tree_variable_class(params, i, training))
 
   def __setitem__(self, t, val):
     self.variables[t] = val
@@ -283,19 +308,28 @@ class RandomForestDeviceAssigner(object):
 class RandomForestGraphs(object):
   """Builds TF graphs for random forest training and inference."""
 
-  def __init__(self, params, device_assigner=None, variables=None):
+  def __init__(self, params, device_assigner=None, variables=None,
+               tree_graphs=None,
+               t_ops=training_ops,
+               i_ops=inference_ops):
     self.params = params
     self.device_assigner = device_assigner or RandomForestDeviceAssigner()
     tf.logging.info('Constructing forest with params = ')
     tf.logging.info(self.params.__dict__)
     self.variables = variables or ForestTrainingVariables(
         self.params, device_assigner=self.device_assigner)
+    tree_graph_class = tree_graphs or RandomTreeGraphs
     self.trees = [
-        RandomTreeGraphs(
+        tree_graph_class(
             self.variables[i], self.params,
-            training_ops.Load(self.params.training_library_base_dir),
-            inference_ops.Load(self.params.inference_library_base_dir))
+            t_ops.Load(self.params.training_library_base_dir),
+            i_ops.Load(self.params.inference_library_base_dir), i)
         for i in range(self.params.num_trees)]
+
+  def _bag_features(self, tree_num, input_data):
+    split_data = tf.split(1, self.params.num_features, input_data)
+    return tf.concat(1, [split_data[ind]
+                         for ind in self.params.bagged_features[tree_num]])
 
   def training_graph(self, input_data, input_labels):
     """Constructs a TF graph for training a random forest.
@@ -328,6 +362,9 @@ class RandomForestGraphs(object):
           # them for use in calculating statistics later.
           tree_data = tf.gather(input_data, gather_indices)
           tree_labels = tf.gather(input_labels, gather_indices)
+        if self.params.bagged_features:
+          tree_data = self._bag_features(i, tree_data)
+
         tree_graphs.append(
             self.trees[i].training_graph(tree_data, tree_labels, seed))
     return tf.group(*tree_graphs)
@@ -344,7 +381,10 @@ class RandomForestGraphs(object):
     probabilities = []
     for i in range(self.params.num_trees):
       with tf.device(self.device_assigner.get_device(i)):
-        probabilities.append(self.trees[i].inference_graph(input_data))
+        tree_data = input_data
+        if self.params.bagged_features:
+          tree_data = self._bag_features(i, input_data)
+        probabilities.append(self.trees[i].inference_graph(tree_data))
     with tf.device(self.device_assigner.get_device(0)):
       all_predict = tf.pack(probabilities)
       return tf.reduce_sum(all_predict, 0) / self.params.num_trees
@@ -384,11 +424,12 @@ class RandomForestGraphs(object):
 class RandomTreeGraphs(object):
   """Builds TF graphs for random tree training and inference."""
 
-  def __init__(self, variables, params, t_ops, i_ops):
+  def __init__(self, variables, params, t_ops, i_ops, tree_num):
     self.training_ops = t_ops
     self.inference_ops = i_ops
     self.variables = variables
     self.params = params
+    self.tree_num = tree_num
 
   def _gini(self, class_counts):
     """Calculate the Gini impurity.

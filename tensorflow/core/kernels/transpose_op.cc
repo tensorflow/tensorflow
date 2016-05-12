@@ -167,6 +167,7 @@ Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                               .HostMemory("perm"),    \
                           TransposeCpuOp);
 TF_CALL_ALL_TYPES(REGISTER)
+REGISTER(bfloat16);
 #undef REGISTER
 
 #if GOOGLE_CUDA

@@ -112,7 +112,7 @@ test_ffmpeg_lib() {
     return $?
   else
     bazel test tensorflow/contrib/ffmpeg/kernels:ffmpeg_lib_installed_test \
-        tensorflow/contrib/ffmpeg/python/kernel_tests:decode_audio_op_test
+        tensorflow/contrib/ffmpeg:decode_audio_op_test
     return $?
   fi
 }
