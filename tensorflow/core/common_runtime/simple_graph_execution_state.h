@@ -44,16 +44,16 @@ struct SimpleGraphExecutionStateOptions {
   const SessionOptions* session_options = nullptr;
 };
 
-// A ClientGraph is simply a sub-graph of the full graph as induced by
+// A SimpleClientGraph is simply a sub-graph of the full graph as induced by
 // BuildGraphOptions.
-struct ClientGraph {
+struct SimpleClientGraph {
   Graph graph;
-  explicit ClientGraph(const OpRegistryInterface* ops) : graph(ops) {}
+  explicit SimpleClientGraph(const OpRegistryInterface* ops) : graph(ops) {}
   int32 placement_version;
 };
 
 // SimpleGraphExecutionState is responsible for generating an
-// executable ClientGraph from the original GraphDef that specifies
+// executable SimpleClientGraph from the original GraphDef that specifies
 // the complete graph and from BuildGraphOptions which specifies
 // input/output nodes.
 //
@@ -69,9 +69,9 @@ struct ClientGraph {
 // Nodes get sensible initial device assignments in the graph
 // definition.
 //
-// Subsequently, SimpleGraphExecutionState generates a ClientGraph on
+// Subsequently, SimpleGraphExecutionState generates a SimpleClientGraph on
 // demand, which is a sub-graph of the latest placement of the full
-// Graph.  MasterSession uses such a ClientGraph to execute one or
+// Graph.  MasterSession uses such a SimpleClientGraph to execute one or
 // more similar client requests.
 //
 // SimpleGraphExecutionState is thread-safe.
@@ -102,11 +102,11 @@ class SimpleGraphExecutionState {
   Status Extend(const GraphDef& extension_def,
                 SimpleGraphExecutionState** out) const;
 
-  // Builds a ClientGraph (a sub-graph of the full graph as induced by
+  // Builds a SimpleClientGraph (a sub-graph of the full graph as induced by
   // the Node set specified in "options").  If successful, returns OK
   // and the caller takes the ownership of "*out". Otherwise, returns
   // an error.
-  Status BuildGraph(const BuildGraphOptions& options, ClientGraph** out);
+  Status BuildGraph(const BuildGraphOptions& options, SimpleClientGraph** out);
 
   // Returns OK if the named node is found in the placed full graph owned
   // by this execution_state, and sets *out to the NodeDef for that node.
