@@ -1588,8 +1588,8 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = exit_vars
 
     for m_var, n_var, e_var in zip(merge_vars, next_vars, exit_vars):
-      if m_var.get_shape().is_compatible_with(n_var.get_shape()):
-        e_var.set_shape(m_var.get_shape().merge_with(n_var.get_shape()))
+      if not m_var.get_shape() == n_var.get_shape():
+        e_var._shape = tensor_shape.unknown_shape()
 
     # Exit the loop.
     self.ExitResult(exit_vars)
