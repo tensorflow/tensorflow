@@ -27,7 +27,8 @@ until the element has been enqueued.
 ##### Args:
 
 
-*  <b>`vals`</b>: The tuple of `Tensor` objects to be enqueued.
+*  <b>`vals`</b>: A tensor, a list or tuple of tensors, or a dictionary containing
+    the values to enqueue.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -51,8 +52,8 @@ until all of the elements have been enqueued.
 ##### Args:
 
 
-*  <b>`vals`</b>: The tensor or tuple of tensors from which the queue elements
-    are taken.
+*  <b>`vals`</b>: A tensor, a list or tuple of tensors, or a dictionary
+    from which the queue elements are taken.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -154,9 +155,13 @@ be cancelled.
 #### Other Methods
 - - -
 
-#### `tf.QueueBase.__init__(dtypes, shapes, queue_ref)` {#QueueBase.__init__}
+#### `tf.QueueBase.__init__(dtypes, shapes, names, queue_ref)` {#QueueBase.__init__}
 
 Constructs a queue object from a queue reference.
+
+The two optional lists, `shapes` and `names`, must be of the same length
+as `dtypes` if provided.  The values at a given index `i` indicate the
+shape and name to use for the corresponding queue component in `dtypes`.
 
 ##### Args:
 
@@ -167,7 +172,15 @@ Constructs a queue object from a queue reference.
     A list of shape tuples or None. This list is the same length
     as dtypes.  If the shape of any tensors in the element are constrained,
     all must be; shapes can be None if the shapes should not be constrained.
+*  <b>`names`</b>: Optional list of names.  If provided, the `enqueue()` and
+    `dequeue()` methods will use dictionaries with these names as keys.
+    Must be None or a list or tuple of the same length as `dtypes`.
 *  <b>`queue_ref`</b>: The queue reference, i.e. the output of the queue op.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
 
 
 - - -
@@ -237,6 +250,13 @@ Create a queue using the queue reference from `queues[index]`.
 #### `tf.QueueBase.name` {#QueueBase.name}
 
 The name of the underlying queue.
+
+
+- - -
+
+#### `tf.QueueBase.names` {#QueueBase.names}
+
+The list of names for each component of a queue element.
 
 
 - - -
