@@ -138,9 +138,9 @@ string GetCudnnVersion() { return ""; }
 static std::vector<string>* CreatePrimordialRpaths() {
   auto rpaths = new std::vector<string>;
 #if defined(__APPLE__)
-  rpaths->push_back("driver/driver_sh.runfiles/third_party/gpus/cuda/lib");
+  rpaths->push_back("driver/driver_sh.runfiles/org_tensorflow/third_party/gpus/cuda/lib");
 #else
-  rpaths->push_back("driver/driver_sh.runfiles/third_party/gpus/cuda/lib64");
+  rpaths->push_back("driver/driver_sh.runfiles/org_tensorflow/third_party/gpus/cuda/lib64");
 #endif
   return rpaths;
 }
