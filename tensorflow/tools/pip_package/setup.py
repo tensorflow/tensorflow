@@ -39,7 +39,7 @@ if platform.system() == "Darwin":
 REQUIRED_PACKAGES = [
     'numpy >= %s' % numpy_version,
     'six >= 1.10.0',
-    'protobuf == 3.0.0b2',
+    'protobuf == 3.0.0b2.post2',
 ]
 
 # python3 requires wheel 0.26
