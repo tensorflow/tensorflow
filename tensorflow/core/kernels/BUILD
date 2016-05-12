@@ -615,6 +615,17 @@ tf_kernel_libraries(
     ],
 )
 
+tf_kernel_library(
+    name = "attention_mask_ops",
+    prefix = "attention_mask",
+    deps = [
+        "//tensorflow/core:attention_mask_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_cc_tests(
     size = "small",
     tests = [
