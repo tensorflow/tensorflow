@@ -17,7 +17,7 @@ from __future__ import print_function
 
 from sklearn import datasets, metrics, cross_validation
 
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 
 # Load dataset.
@@ -27,10 +27,10 @@ X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, 
 
 # You can define you configurations by providing a RunConfig object to
 # estimator to control session configurations, e.g. num_cores and gpu_memory_fraction
-run_config = skflow.estimators.RunConfig(num_cores=3, gpu_memory_fraction=0.6)
+run_config = learn.estimators.RunConfig(num_cores=3, gpu_memory_fraction=0.6)
 
 # Build 3 layer DNN with 10, 20, 10 units respecitvely.
-classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
     n_classes=3, steps=200, config=run_config)
 
 # Fit and predict.

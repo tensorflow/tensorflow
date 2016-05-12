@@ -83,9 +83,8 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
   X, y = _data_type_filter(X, y)
   if HAS_DASK:
     import dask.dataframe as dd
-    allowed_classes = (dd.Series, dd.DataFrame)
-    if (isinstance(X, allowed_classes) and
-        (y is None or isinstance(y, allowed_classes))):
+    if (isinstance(X, (dd.Series, dd.DataFrame)) and
+        (y is None or isinstance(y, (dd.Series, dd.DataFrame)))):
       data_feeder_cls = DaskDataFeeder
     else:
       data_feeder_cls = DataFeeder
@@ -150,7 +149,7 @@ def setup_processor_data_feeder(X):
 
 
 def check_array(array, dtype):
-  """Checks array on dtype and convers it if different.
+  """Checks array on dtype and converts it if different.
 
   Args:
     array: Input array.
@@ -159,7 +158,10 @@ def check_array(array, dtype):
   Returns:
     Original array or converted.
   """
-  array = np.array(array, dtype=dtype, order=None, copy=False)
+  # skip check if array is instance of other classes, e.g. h5py.Dataset
+  # to avoid copying array and loading whole data into memory
+  if isinstance(array, (np.ndarray, list)):
+    array = np.array(array, dtype=dtype, order=None, copy=False)
   return array
 
 
@@ -409,10 +411,8 @@ class DaskDataFeeder(object):
   """Data feeder for TF trainer that reads data from dask.Series and dask.DataFrame.
 
   Numpy arrays can be serialized to disk and it's possible to do random seeks
-  into them.
-  DaskDataFeeder will remove requirement to have full dataset in the memory
-  and still do
-  random seeks for sampling of batches.
+  into them. DaskDataFeeder will remove requirement to have full dataset in the 
+  memory and still do random seeks for sampling of batches.
 
   Parameters:
     X: iterator that returns for each element, returns features.
@@ -433,10 +433,9 @@ class DaskDataFeeder(object):
     input_dtype: dtype of input.
     output_dtype: dtype of output.
   """
-
   def __init__(self, X, y, n_classes, batch_size, random_state=None):
     import dask.dataframe as dd
-    # TODO: check X and y dtypes in dask_io like pandas
+    # TODO(terrytangyuan): check X and y dtypes in dask_io like pandas
     self.X = X
     self.y = y
     # save column names
@@ -447,6 +446,8 @@ class DaskDataFeeder(object):
       # deal with cases where two DFs have overlapped default numeric colnames
       self.y_columns = len(self.X_columns) + 1
       self.y = self.y.rename(columns={y.columns[0]: self.y_columns})
+
+    # TODO(terrytangyuan): deal with unsupervised cases
     # combine into a data frame
     self.df = dd.multi.concat([self.X, self.y], axis=1)
     self.n_classes = n_classes
@@ -485,7 +486,6 @@ class DaskDataFeeder(object):
       A function that when called samples a random subset of batch size
       from X and y.
     """
-
     def _feed_dict_fn():
       # TODO: option for with/without replacement (dev version of dask)
       sample = self.df.random_split(
@@ -505,5 +505,4 @@ class DaskDataFeeder(object):
       encoded_out[np.arange(out.size), out] = 1
       return {input_placeholder.name: inp,
               output_placeholder.name: encoded_out}
-
     return _feed_dict_fn
