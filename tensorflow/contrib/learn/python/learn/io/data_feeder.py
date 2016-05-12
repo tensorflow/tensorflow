@@ -20,10 +20,9 @@ from __future__ import print_function
 import itertools
 import math
 
+import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
-
-import numpy as np
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.framework import dtypes
@@ -171,14 +170,16 @@ class DataFeeder(object):
     y: target vector, either floats for regression or class id for
       classification. If matrix, will consider as a sequence
       of targets. Can be None for unsupervised setting.
-    n_classes: number of classes, 0 and 1 are considered regression.
+    n_classes: number of classes, 0 and 1 are considered regression, None will
+      pass through the input labels without one-hot conversion.
     batch_size: mini batch size to accumulate.
     random_state: numpy RandomState object to reproduce sampling.
 
   Attributes:
     X: input features.
     y: input target.
-    n_classes: number of classes.
+    n_classes: number of classes (if None, pass through indices without
+      one-hot conversion).
     batch_size: mini batch size to accumulate.
     input_shape: shape of the input.
     output_shape: shape of the output.
@@ -188,9 +189,14 @@ class DataFeeder(object):
 
   def __init__(self, X, y, n_classes, batch_size, random_state=None):
     x_dtype = np.int64 if X.dtype == np.int64 else np.float32
-    y_dtype = np.int64 if n_classes > 1 else np.float32
+    y_dtype = (
+        np.int64 if n_classes is not None and n_classes > 1 else np.float32)
     self.X = check_array(X, dtype=x_dtype)
-    self.y = (None if y is None else check_array(y, dtype=y_dtype))
+    # self.n_classes is None means we're passing in raw target indices
+    if n_classes is not None:
+      self.y = (None if y is None else check_array(y, dtype=y_dtype))
+    else:
+      self.y = y
     self.n_classes = n_classes
     self.batch_size = batch_size
     self.input_shape, self.output_shape = _get_in_out_shape(self.X.shape, None
@@ -200,9 +206,11 @@ class DataFeeder(object):
                                                             batch_size)
     # Input dtype matches dtype of X.
     self.input_dtype = self.X.dtype
-    # Output dtype always float32 (because for classification we use
-    # one-hot vectors.
-    self.output_dtype = np.float32
+    # self.n_classes is None means we're passing in raw target indices
+    if n_classes is not None or y is None:
+      self.output_dtype = np.float32
+    else:
+      self.output_dtype = y.dtype
     self.random_state = np.random.RandomState(
         42) if random_state is None else random_state
     self.indices = self.random_state.permutation(self.X.shape[0])
@@ -266,25 +274,23 @@ class DataFeeder(object):
     }
 
   def get_feed_dict_fn(self):
-    """Returns a function, that will sample data and provide it to given
-    placeholders.
+    """Returns a function that samples data into given placeholders.
 
-    Args:
-      input_placeholder: tf.Placeholder for input features mini batch.
-      output_placeholder: tf.Placeholder for output targets.
     Returns:
       A function that when called samples a random subset of batch size
       from X and y.
     """
-    assert self._input_placeholder != None
-
     def _feed_dict_fn():
+      assert self._input_placeholder != None
       feed_dict = {}
       if self._epoch_placeholder is not None:
         feed_dict[self._epoch_placeholder.name] = self.epoch
 
       # take random indices
-      batch_indices = self.indices[self.offset:self.offset + self.batch_size]
+      if self.batch_size < 0:
+        batch_indices = self.indices
+      else:
+        batch_indices = self.indices[self.offset:self.offset + self.batch_size]
 
       # assign input features from random indices
       inp = np.array(self.X[batch_indices]).reshape((batch_indices.shape[0], 1)) \
@@ -307,14 +313,18 @@ class DataFeeder(object):
       out = np.zeros(self.output_shape, dtype=self.output_dtype)
       for i in xrange(out.shape[0]):
         sample = batch_indices[i]
-        if self.n_classes > 1:
-          if len(self.output_shape) == 2:
-            out.itemset((i, self.y[sample]), 1.0)
-          else:
-            for idx, value in enumerate(self.y[sample]):
-              out.itemset(tuple([i, idx, value]), 1.0)
-        else:
+        # self.n_classes is None means we're passing in raw target indices
+        if self.n_classes is None:
           out[i] = self.y[sample]
+        else:
+          if self.n_classes > 1:
+            if len(self.output_shape) == 2:
+              out.itemset((i, self.y[sample]), 1.0)
+            else:
+              for idx, value in enumerate(self.y[sample]):
+                out.itemset(tuple([i, idx, value]), 1.0)
+          else:
+            out[i] = self.y[sample]
       feed_dict[self._output_placeholder.name] = out
 
       return feed_dict

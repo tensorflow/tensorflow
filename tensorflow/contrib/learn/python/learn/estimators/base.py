@@ -189,7 +189,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
       self._monitor.create_val_feed_dict(self._inp, self._out)
 
       # Create session to run model with.
-      self._session = session.Session(self._config.tf_master,
+      self._session = session.Session(self._config.master,
                                       config=self._config.tf_config)
 
       # Run parameter initializers.
@@ -432,7 +432,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
 
             # Merge all summaries into single tensor.
             self._summaries = logging_ops.merge_all_summaries()
- 
+
             # Get all initializers for all trainable variables.
             self._initializers = variables.initialize_all_variables()
 
@@ -445,7 +445,8 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
             self._monitor.create_val_feed_dict(self._inp, self._out)
 
             # Create session to run model with.
-            self._session = session.Session(self._config.tf_master, config=self._config.tf_config)
+            self._session = session.Session(self._config.master,
+                                            config=self._config.tf_config)
 
             # Run parameter initializers.
             self._session.run(self._initializers)
@@ -728,7 +729,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
             if not isinstance(self._config, RunConfig):
                 self._config = RunConfig(verbose=self.verbose)
             self._session = session.Session(
-                self._config.tf_master,
+                self._config.master,
                 config=self._config.tf_config)
             checkpoint_path = train.latest_checkpoint(path)
             if checkpoint_path is None:
@@ -901,7 +902,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
       # Restore session.
       if not isinstance(self._config, RunConfig):
         self._config = RunConfig(verbose=self.verbose)
-      self._session = session.Session(self._config.tf_master,
+      self._session = session.Session(self._config.master,
                                       config=self._config.tf_config)
       checkpoint_path = train.latest_checkpoint(path)
       if checkpoint_path is None:
