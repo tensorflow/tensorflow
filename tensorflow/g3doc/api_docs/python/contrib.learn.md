@@ -8,6 +8,423 @@
 ## Other Functions and Classes
 - - -
 
+### `class tf.contrib.learn.BaseEstimator` {#BaseEstimator}
+
+Abstract BaseEstimator class to train and evaluate TensorFlow models.
+
+Concrete implementation of this class should provide following functions:
+  * _get_train_ops
+  * _get_eval_ops
+  * _get_predict_ops
+It may override _get_default_metric_functions.
+
+`Estimator` implemented below is a good example of how to use this class.
+
+Parameters:
+  model_dir: Directory to save model parameters, graph and etc.
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.__init__(model_dir=None)` {#BaseEstimator.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=100, metrics=None)` {#BaseEstimator.evaluate}
+
+Evaluates given model with provided evaluation data.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
+    if input_fn is set.
+*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`metrics`</b>: Dict of metric ops to run.
+
+##### Returns:
+
+  Returns self.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+
+
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.fit(x, y, steps, batch_size=32, monitor=None)` {#BaseEstimator.fit}
+
+Trains a model given training data X and y.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+     iterator that returns arrays of features. The training input
+     samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of targets. The training target values
+     (class labels in classification, real numbers in regression).
+*  <b>`steps`</b>: number of steps to train model for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`monitor`</b>: monitor object to print training progress and invoke
+           early stopping.
+
+##### Returns:
+
+  Returns self.
+
+
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.get_params(deep=True)` {#BaseEstimator.get_params}
+
+Get parameters for this estimator.
+
+Parameters
+----------
+deep: boolean, optional
+    If True, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+Returns
+-------
+params : mapping of string to any
+    Parameter names mapped to their values.
+
+
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.partial_fit(x, y, steps=1, batch_size=32, monitor=None)` {#BaseEstimator.partial_fit}
+
+Incremental fit on a batch of samples.
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`steps`</b>: number of steps to train model for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke
+           early stopping.
+
+##### Returns:
+
+  Returns self.
+
+
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.predict(x, axis=None, batch_size=None)` {#BaseEstimator.predict}
+
+Returns predictions for given features.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`axis`</b>: Axis on which to argmax. (for classification).
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted classes or regression values.
+
+
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.predict_proba(x, batch_size=None)` {#BaseEstimator.predict_proba}
+
+Returns prediction probabilities for given features (classification).
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`batch_size`</b>: OVerride default batch size.
+
+##### Returns:
+
+  Numpy array of predicted probabilities.
+
+
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.set_params(**params)` {#BaseEstimator.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+Returns
+-------
+self
+
+
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.train(input_fn, steps, monitor=None)` {#BaseEstimator.train}
+
+Trains a model given input builder function.
+
+##### Args:
+
+
+*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
+            dict and Tensor.
+*  <b>`steps`</b>: number of steps to train model for.
+*  <b>`monitor`</b>: monitor object to print training progress and invoke
+           early stopping.
+
+##### Returns:
+
+  Returns self.
+
+
+
+- - -
+
+### `class tf.contrib.learn.Estimator` {#Estimator}
+
+Estimator class is the basic TensorFlow model trainer/evaluator.
+
+Parameters:
+  model_fn: Model function, takes features and targets tensors or dicts of
+            tensors and returns predictions and loss tensors.
+            E.g. `(features, targets) -> (predictions, loss)`.
+  model_dir: Directory to save model parameters, graph and etc.
+  classification: boolean, true if classification problem.
+  learning_rate: learning rate for the model.
+  optimizer: optimizer for the model, can be:
+             string: name of optimizer, like 'SGD', 'Adam', 'Adagrad', 'Ftl',
+               'Momentum', 'RMSProp', 'Momentum').
+               Full list in contrib/layers/optimizers.py
+             class: sub-class of Optimizer
+               (like tf.train.GradientDescentOptimizer).
+  clip_gradients: clip_norm value for call to `clip_by_global_norm`. None
+                  denotes no gradient clipping.
+- - -
+
+#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, classification=True, learning_rate=0.01, optimizer='SGD', clip_gradients=None)` {#Estimator.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=100, metrics=None)` {#Estimator.evaluate}
+
+Evaluates given model with provided evaluation data.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
+    if input_fn is set.
+*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`metrics`</b>: Dict of metric ops to run.
+
+##### Returns:
+
+  Returns self.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.fit(x, y, steps, batch_size=32, monitor=None)` {#Estimator.fit}
+
+Trains a model given training data X and y.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+     iterator that returns arrays of features. The training input
+     samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of targets. The training target values
+     (class labels in classification, real numbers in regression).
+*  <b>`steps`</b>: number of steps to train model for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`monitor`</b>: monitor object to print training progress and invoke
+           early stopping.
+
+##### Returns:
+
+  Returns self.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.get_params(deep=True)` {#Estimator.get_params}
+
+Get parameters for this estimator.
+
+Parameters
+----------
+deep: boolean, optional
+    If True, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+Returns
+-------
+params : mapping of string to any
+    Parameter names mapped to their values.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.partial_fit(x, y, steps=1, batch_size=32, monitor=None)` {#Estimator.partial_fit}
+
+Incremental fit on a batch of samples.
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`steps`</b>: number of steps to train model for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`monitor`</b>: Monitor object to print training progress and invoke
+           early stopping.
+
+##### Returns:
+
+  Returns self.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.predict(x, axis=None, batch_size=None)` {#Estimator.predict}
+
+Returns predictions for given features.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`axis`</b>: Axis on which to argmax. (for classification).
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted classes or regression values.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.predict_proba(x, batch_size=None)` {#Estimator.predict_proba}
+
+Returns prediction probabilities for given features (classification).
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`batch_size`</b>: OVerride default batch size.
+
+##### Returns:
+
+  Numpy array of predicted probabilities.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.set_params(**params)` {#Estimator.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+Returns
+-------
+self
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.train(input_fn, steps, monitor=None)` {#Estimator.train}
+
+Trains a model given input builder function.
+
+##### Args:
+
+
+*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
+            dict and Tensor.
+*  <b>`steps`</b>: number of steps to train model for.
+*  <b>`monitor`</b>: monitor object to print training progress and invoke
+           early stopping.
+
+##### Returns:
+
+  Returns self.
+
+
+
+- - -
+
+### `class tf.contrib.learn.ModeKeys` {#ModeKeys}
+
+Standard names for model modes.
+
+The following standard keys are defined:
+
+* `TRAIN`: training mode.
+* `EVAL`: evaluation mode.
+* `INFER`: inference mode.
+
+- - -
+
 ### `class tf.contrib.learn.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
 
 
@@ -19,8 +436,21 @@
 This class specifies the specific configurations for the run.
 
 Parameters:
-  tf_master: TensorFlow master. Empty string is default for local.
-  num_cores: Number of cores to be used. (default: 4)
+  execution_mode: Runners use this flag to execute different tasks, like
+    training vs evaluation. 'all' (the default) executes both training and
+    eval.
+  master: TensorFlow master. Empty string (the default) for local.
+  task: Task id of the replica running the training (default: 0).
+  num_ps_replicas: Number of parameter server tasks to use (default: 0).
+  training_worker_session_startup_stagger_secs: Seconds to sleep between the
+    startup of each worker task session (default: 5).
+  training_worker_max_startup_secs: Max seconds to wait before starting any
+    worker (default: 60).
+  eval_delay_secs: Number of seconds between the beginning of each eval run.
+    If one run takes more than this amount of time, the next run will start
+    immediately once that run completes (default 60).
+  eval_steps: Number of steps to run in each eval (default: 100).
+  num_cores: Number of cores to be used (default: 4).
   verbose: Controls the verbosity, possible values:
     0: the algorithm and debug information is muted.
     1: trainer prints the progress.
@@ -28,7 +458,7 @@ Parameters:
   gpu_memory_fraction: Fraction of GPU memory used by the process on
     each GPU uniformly on the same machine.
   tf_random_seed: Random seed for TensorFlow initializers.
-    Setting this value, allows consistency between reruns.
+    Setting this value allows consistency between reruns.
   keep_checkpoint_max: The maximum number of recent checkpoint files to keep.
     As new files are created, older files are deleted.
     If None or 0, all checkpoint files are kept.
@@ -45,7 +475,7 @@ Attributes:
   keep_checkpoint_every_n_hours: Number of hours between each checkpoint.
 - - -
 
-#### `tf.contrib.learn.RunConfig.__init__(tf_master='', num_cores=4, verbose=1, gpu_memory_fraction=1, tf_random_seed=42, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
+#### `tf.contrib.learn.RunConfig.__init__(execution_mode='all', master='', task=0, num_ps_replicas=0, training_worker_session_startup_stagger_secs=5, training_worker_max_startup_secs=60, eval_delay_secs=60, eval_steps=100, num_cores=4, verbose=1, gpu_memory_fraction=1, tf_random_seed=42, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
 
 
 
@@ -2679,7 +3109,7 @@ Returns weights of the linear regression.
 
 - - -
 
-### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, max_steps=None)` {#evaluate}
+### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, feed_fn=None, max_steps=None)` {#evaluate}
 
 Evaluate a model loaded from a checkpoint.
 
@@ -2710,6 +3140,8 @@ and written to `output_dir`.
 *  <b>`supervisor_master`</b>: The master string to use when preparing the session.
 *  <b>`log_every_steps`</b>: Integer. Output logs every `log_every_steps` evaluation
     steps. The logs contain the `eval_dict` and timing information.
+*  <b>`feed_fn`</b>: A function that is called every iteration to produce a `feed_dict`
+    passed to `session.run` calls. Optional.
 *  <b>`max_steps`</b>: Integer. Evaluate `eval_dict` this many times.
 
 ##### Returns:

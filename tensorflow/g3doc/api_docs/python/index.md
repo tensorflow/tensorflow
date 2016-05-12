@@ -543,6 +543,8 @@
   * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
 
 * **[Learn (contrib)](../../api_docs/python/contrib.learn.md)**:
+  * [`BaseEstimator`](../../api_docs/python/contrib.learn.md#BaseEstimator)
+  * [`Estimator`](../../api_docs/python/contrib.learn.md#Estimator)
   * [`evaluate`](../../api_docs/python/contrib.learn.md#evaluate)
   * [`extract_dask_data`](../../api_docs/python/contrib.learn.md#extract_dask_data)
   * [`extract_dask_labels`](../../api_docs/python/contrib.learn.md#extract_dask_labels)
@@ -550,6 +552,7 @@
   * [`extract_pandas_labels`](../../api_docs/python/contrib.learn.md#extract_pandas_labels)
   * [`extract_pandas_matrix`](../../api_docs/python/contrib.learn.md#extract_pandas_matrix)
   * [`infer`](../../api_docs/python/contrib.learn.md#infer)
+  * [`ModeKeys`](../../api_docs/python/contrib.learn.md#ModeKeys)
   * [`NanLossDuringTrainingError`](../../api_docs/python/contrib.learn.md#NanLossDuringTrainingError)
   * [`run_feeds`](../../api_docs/python/contrib.learn.md#run_feeds)
   * [`run_n`](../../api_docs/python/contrib.learn.md#run_n)
