@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <dlfcn.h>
 #include <functional>
+#include <memory>
 
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
+#include "tensorflow/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/lib/env.h"
@@ -36,7 +38,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
+// clang-format off
 #include "third_party/gpus/cuda/include/cudnn.h"
+// clang-format on
 
 namespace {
 
@@ -253,6 +257,22 @@ namespace {
 
 cudnnHandle_t ToHandle(void* opaque_handle) {
   return static_cast<cudnnHandle_t>(opaque_handle);
+}
+
+cudnnConvolutionFwdAlgo_t ToConvForwardAlgo(dnn::AlgorithmType algorithm) {
+  cudnnConvolutionFwdAlgo_t algo = cudnnConvolutionFwdAlgo_t(algorithm);
+  switch (algo) {
+    case CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM:
+    case CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM:
+    case CUDNN_CONVOLUTION_FWD_ALGO_GEMM:
+    case CUDNN_CONVOLUTION_FWD_ALGO_DIRECT:
+    case CUDNN_CONVOLUTION_FWD_ALGO_FFT:
+    case CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING:
+      return algo;
+    default:
+      LOG(FATAL) << "Unsupported Cudnn convolution forward algorithm: "
+                 << algorithm;
+  }
 }
 
 }  // namespace
@@ -647,7 +667,8 @@ bool CudnnSupport::DoConvolve(
     const DeviceMemory<float>& filter_data,
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& output_descriptor, DeviceMemory<float>* output_data,
-    ScratchAllocator* scratch_allocator) {
+    ScratchAllocator* scratch_allocator, dnn::AlgorithmType algorithm,
+    dnn::ProfileResult* output_profile_result) {
   ScopedTensorDescriptor input_nd{parent_, batch_descriptor, CUDNN_DATA_FLOAT};
   ScopedTensorDescriptor output_nd{parent_, output_descriptor,
                                    CUDNN_DATA_FLOAT};
@@ -667,52 +688,101 @@ bool CudnnSupport::DoConvolve(
   // Beta is the scaling factor for output.
   float beta = 0.0;
 
-  auto get_algorithm = [&](bool specify_limit)
-      SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) {
-        cudnnConvolutionFwdPreference_t preference =
-            specify_limit ? CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT
-                          : CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
-
-        auto memory_limit_bytes =
-            scratch_allocator == nullptr
-                ? 0
-                : scratch_allocator->GetMemoryLimitInBytes(stream);
-        if (memory_limit_bytes < 0) {
-          memory_limit_bytes = 0;
-        }
-
-        cudnnConvolutionFwdAlgo_t algo;
-        status = dynload::cudnnGetConvolutionForwardAlgorithm(
-            parent_, ToHandle(dnn_handle_), input_nd.handle(), filter.handle(),
-            conv.handle(), output_nd.handle(),
-            /*preference=*/preference,
-            /*memoryLimitInBytes=*/memory_limit_bytes, /*algo=*/&algo);
-        CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
-                                                  "algorithm for doing forward "
-                                                  "convolution";
-        return algo;
-      };
-
-  auto algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
-
+  const bool is_profiling = output_profile_result != nullptr;
+  cudnnConvolutionFwdAlgo_t algo;
   DeviceMemory<uint8> scratch;
-  if (scratch_allocator != nullptr) {
+
+  if (algorithm == dnn::kDefaultAlgorithm) {
+    // With the default algorithm, use Cudnn's heuristics.
+    auto get_algorithm = [&](bool specify_limit)
+        SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) {
+          cudnnConvolutionFwdPreference_t preference =
+              specify_limit ? CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT
+                            : CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
+
+          auto memory_limit_bytes =
+              scratch_allocator == nullptr
+                  ? 0
+                  : scratch_allocator->GetMemoryLimitInBytes(stream);
+          if (memory_limit_bytes < 0) {
+            memory_limit_bytes = 0;
+          }
+
+          cudnnConvolutionFwdAlgo_t algo_to_use;
+          status = dynload::cudnnGetConvolutionForwardAlgorithm(
+              parent_, ToHandle(dnn_handle_), input_nd.handle(),
+              filter.handle(), conv.handle(), output_nd.handle(),
+              /*preference=*/preference,
+              /*memoryLimitInBytes=*/memory_limit_bytes,
+              /*algo=*/&algo_to_use);
+          CHECK_EQ(status, CUDNN_STATUS_SUCCESS)
+              << "Unable to find a suitable "
+                 "algorithm for doing forward "
+                 "convolution";
+          return algo_to_use;
+        };
+
+    algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
+
+    if (scratch_allocator != nullptr) {
+      size_t size_in_bytes;
+      status = dynload::cudnnGetConvolutionForwardWorkspaceSize(
+          parent_, ToHandle(dnn_handle_), /*srcDesc=*/input_nd.handle(),
+          /*filterDesc=*/filter.handle(), /*convDesc=*/conv.handle(),
+          /*destDesc=*/output_nd.handle(), /*algo=*/algo,
+          /*sizeInBytes=*/&size_in_bytes);
+      if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
+        scratch = scratch_allocator->AllocateBytes(stream, size_in_bytes)
+                      .ValueOrDie();
+      }
+    }
+
+    // If we didn't allocate any scratch space (perhaps because of failed
+    // allocation), we force a switch back to the "no workspace" algorithm.
+    if (scratch == nullptr) {
+      algo = get_algorithm(/*specify_limit=*/false);
+    }
+  } else {
+    // An algorithm has been specified.
+    algo = ToConvForwardAlgo(algorithm);
+
     size_t size_in_bytes;
     status = dynload::cudnnGetConvolutionForwardWorkspaceSize(
         parent_, ToHandle(dnn_handle_), /*srcDesc=*/input_nd.handle(),
         /*filterDesc=*/filter.handle(), /*convDesc=*/conv.handle(),
         /*destDesc=*/output_nd.handle(), /*algo=*/algo,
         /*sizeInBytes=*/&size_in_bytes);
-    if (status == CUDNN_STATUS_SUCCESS && size_in_bytes != 0) {
-      scratch =
-          scratch_allocator->AllocateBytes(stream, size_in_bytes).ValueOrDie();
+    if (status != CUDNN_STATUS_SUCCESS) {
+      if (is_profiling) {
+        // Silently return when we are profiling.
+        return false;
+      }
+      LOG(FATAL) << "Cannot query the size of workspace needed for the given "
+                    "algorithm: "
+                 << algorithm;
+    }
+    if (size_in_bytes != 0) {
+      if (scratch_allocator == nullptr) {
+        LOG(FATAL) << "An allocator must be specified when scratch memory is "
+                      "needed";
+      }
+      auto allocated = scratch_allocator->AllocateBytes(stream, size_in_bytes);
+      if (is_profiling && !allocated.ok()) {
+        // Silently return when we are profiling.
+        return false;
+      }
+      scratch = allocated.ValueOrDie();
     }
   }
 
-  // If we didn't allocate any scratch space (perhaps because of failed
-  // allocation), we force a switch back to the "no workspace" algorithm.
-  if (scratch == nullptr) {
-    algo = get_algorithm(/*specify_limit=*/false);
+  std::unique_ptr<CUDATimer> timer;
+  if (is_profiling) {
+    timer.reset(new CUDATimer(parent_));
+    timer->Init();
+    // The start and stop of the timer should be as close to the Cudnn call as
+    // possible. It is still possible for other threads to issue workload on
+    // to this stream. So it could take multiple profiling measurements.
+    timer->Start(AsCUDAStream(stream));
   }
 
   status = dynload::cudnnConvolutionForward(
@@ -725,11 +795,38 @@ bool CudnnSupport::DoConvolve(
       /*destDesc=*/output_nd.handle(), /*destData=*/output_data->opaque());
 
   if (status != CUDNN_STATUS_SUCCESS) {
+    if (is_profiling) {
+      // Silently return when we are profiling.
+      return false;
+    }
     LOG(FATAL) << "failed to enqueue convolution on stream: "
                << ToString(status);
-    return false;
   }
 
+  if (is_profiling) {
+    timer->Stop(AsCUDAStream(stream));
+    output_profile_result->set_is_valid(true);
+    output_profile_result->set_algorithm(algo);
+    output_profile_result->set_elapsed_time_in_ms(
+        timer->GetElapsedMilliseconds());
+    timer->Destroy();
+  }
+
+  return true;
+}
+
+bool CudnnSupport::GetConvolveAlgorithms(
+    std::vector<dnn::AlgorithmType>* out_algorithms) {
+  out_algorithms->assign({
+      // clang-format off
+      CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
+      CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+      CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
+      CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
+      CUDNN_CONVOLUTION_FWD_ALGO_FFT,
+      CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING,
+      // clang-format on
+  });
   return true;
 }
 

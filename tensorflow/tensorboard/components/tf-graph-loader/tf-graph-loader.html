@@ -66,7 +66,7 @@ Polymer({
       value: 0,
       msg: ''
     });
-    var tracker = tf.getTracker(this);
+    var tracker = tf.graph.util.getTracker(this);
     tf.graph.parser.fetchAndParseMetadata(path, tracker)
     .then(function(stats) {
       this._setOutStats(stats);
@@ -78,7 +78,7 @@ Polymer({
       value: 0,
       msg: ''
     });
-    var tracker = tf.getTracker(this);
+    var tracker = tf.graph.util.getTracker(this);
     var hierarchyParams = {
       verifyTemplate: true,
       // If a set of numbered op nodes has at least this number of nodes
@@ -91,7 +91,7 @@ Polymer({
       seriesMap: {},
     };
     this._setOutHierarchyParams(hierarchyParams);
-    var dataTracker = tf.getSubtaskTracker(tracker, 30, 'Data');
+    var dataTracker = tf.graph.util.getSubtaskTracker(tracker, 30, 'Data');
     tf.graph.parser.fetchAndParseGraphData(path, pbTxtFile, dataTracker)
     .then(function(graph) {
       // Build the flat graph (consists only of Op nodes).
@@ -119,12 +119,12 @@ Polymer({
         outEmbeddingTypes: ['^[a-zA-Z]+Summary$'],
         refEdges: refEdges
       };
-      var graphTracker = tf.getSubtaskTracker(tracker, 20, 'Graph');
+      var graphTracker = tf.graph.util.getSubtaskTracker(tracker, 20, 'Graph');
       return tf.graph.build(graph, buildParams, graphTracker);
     })
     .then(function(graph) {
       this._setOutGraph(graph);
-      var hierarchyTracker = tf.getSubtaskTracker(tracker, 50,
+      var hierarchyTracker = tf.graph.util.getSubtaskTracker(tracker, 50,
           'Namespace hierarchy');
       return tf.graph.hierarchy.build(graph, hierarchyParams, hierarchyTracker);
     }.bind(this))

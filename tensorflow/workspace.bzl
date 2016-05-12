@@ -80,7 +80,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.git_repository(
     name = "grpc",
-    commit = "3d62fc6",
+    commit = "2bc7d80",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
   )
@@ -95,4 +95,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "grpc_lib",
     actual = "@grpc//:grpc++_unsecure",
+  )
+
+  native.bind(
+    name = "python_headers",
+    actual = tf_repo_name + "//util/python:python_headers",
   )

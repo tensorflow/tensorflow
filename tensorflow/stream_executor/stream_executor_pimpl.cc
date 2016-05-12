@@ -286,6 +286,15 @@ bool StreamExecutor::SupportsDnn() const {
   return implementation_->SupportsDnn();
 }
 
+bool StreamExecutor::GetConvolveAlgorithms(
+    std::vector<dnn::AlgorithmType> *out_algorithms) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return false;
+  }
+  return dnn_support->GetConvolveAlgorithms(out_algorithms);
+}
+
 dnn::DnnSupport *StreamExecutor::AsDnn() {
   mutex_lock lock{mu_};
   if (dnn_ != nullptr) {

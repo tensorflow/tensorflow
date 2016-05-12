@@ -1676,7 +1676,7 @@ after calling this function will result in undefined behavior.
 
 - - -
 
-### `tf.import_graph_def(graph_def, input_map=None, return_elements=None, name=None, op_dict=None)` {#import_graph_def}
+### `tf.import_graph_def(graph_def, input_map=None, return_elements=None, name=None, op_dict=None, producer_op_list=None)` {#import_graph_def}
 
 Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
 
@@ -1703,6 +1703,12 @@ protocol buffer, and extract individual objects in the `GraphDef` as
 *  <b>`op_dict`</b>: (Optional.) A dictionary mapping op type names to `OpDef` protos.
     Must contain an `OpDef` proto for each op type named in `graph_def`.
     If omitted, uses the `OpDef` protos registered in the global registry.
+*  <b>`producer_op_list`</b>: (Optional.) An `OpList` proto with the (possibly stripped)
+    list of `OpDef`s used by the producer of the graph. If provided, attrs
+    for ops in `graph_def` that are not in `op_dict` that have their default
+    value according to `producer_op_list` will be removed. This will allow
+    some more `GraphDef`s produced by later binaries to be accepted by
+    earlier binaries.
 
 ##### Returns:
 
