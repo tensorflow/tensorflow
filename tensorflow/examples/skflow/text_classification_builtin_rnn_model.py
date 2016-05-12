@@ -20,12 +20,12 @@ from sklearn import metrics
 import pandas
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 ### Training data
 
 # Downloads, unpacks and reads DBpedia dataset.
-dbpedia = skflow.datasets.load_dataset('dbpedia')
+dbpedia = learn.datasets.load_dataset('dbpedia')
 X_train, y_train = pandas.DataFrame(dbpedia.train.data)[1], pandas.Series(dbpedia.train.target)
 X_test, y_test = pandas.DataFrame(dbpedia.test.data)[1], pandas.Series(dbpedia.test.target)
 
@@ -33,7 +33,7 @@ X_test, y_test = pandas.DataFrame(dbpedia.test.data)[1], pandas.Series(dbpedia.t
 
 MAX_DOCUMENT_LENGTH = 10
 
-vocab_processor = skflow.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH)
+vocab_processor = learn.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH)
 X_train = np.array(list(vocab_processor.fit_transform(X_train)))
 X_test = np.array(list(vocab_processor.transform(X_test)))
 
@@ -50,15 +50,15 @@ def input_op_fn(X):
     # This creates embeddings matrix of [n_words, EMBEDDING_SIZE] and then
     # maps word indexes of the sequence into [batch_size, sequence_length,
     # EMBEDDING_SIZE].
-    word_vectors = skflow.ops.categorical_variable(X, n_classes=n_words,
+    word_vectors = learn.ops.categorical_variable(X, n_classes=n_words,
         embedding_size=EMBEDDING_SIZE, name='words')
     # Split into list of embedding per word, while removing doc length dim.
     # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
-    word_list = skflow.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
+    word_list = learn.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
     return word_list
 
 # Single direction GRU with a single layer
-classifier = skflow.TensorFlowRNNClassifier(rnn_size=EMBEDDING_SIZE, 
+classifier = learn.TensorFlowRNNClassifier(rnn_size=EMBEDDING_SIZE, 
     n_classes=15, cell_type='gru', input_op_fn=input_op_fn,
     num_layers=1, bidirectional=False, sequence_length=None,
     steps=1000, optimizer='Adam', learning_rate=0.01, continue_training=True)

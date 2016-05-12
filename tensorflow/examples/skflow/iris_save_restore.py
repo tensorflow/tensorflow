@@ -18,13 +18,13 @@ from __future__ import print_function
 import shutil
 
 from sklearn import datasets, metrics, cross_validation
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
     test_size=0.2, random_state=42)
 
-classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
+classifier = learn.TensorFlowLinearClassifier(n_classes=3)
 classifier.fit(X_train, y_train)
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
@@ -40,6 +40,6 @@ classifier.save('/tmp/skflow_examples/iris_custom_model')
 classifier = None
 
 ## Restore everything
-new_classifier = skflow.TensorFlowEstimator.restore('/tmp/skflow_examples/iris_custom_model')
+new_classifier = learn.TensorFlowEstimator.restore('/tmp/skflow_examples/iris_custom_model')
 score = metrics.accuracy_score(y_test, new_classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))

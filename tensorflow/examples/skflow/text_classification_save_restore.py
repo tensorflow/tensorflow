@@ -21,12 +21,12 @@ from sklearn import metrics
 import pandas
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 ### Training data
 
 # Downloads, unpacks and reads DBpedia dataset.
-dbpedia = skflow.datasets.load_dataset('dbpedia')
+dbpedia = learn.datasets.load_dataset('dbpedia')
 X_train, y_train = pandas.DataFrame(dbpedia.train.data)[1], pandas.Series(dbpedia.train.target)
 X_test, y_test = pandas.DataFrame(dbpedia.test.data)[1], pandas.Series(dbpedia.test.target)
 
@@ -34,7 +34,7 @@ X_test, y_test = pandas.DataFrame(dbpedia.test.data)[1], pandas.Series(dbpedia.t
 
 MAX_DOCUMENT_LENGTH = 10
 
-vocab_processor = skflow.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH)
+vocab_processor = learn.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH)
 X_train = np.array(list(vocab_processor.fit_transform(X_train)))
 X_test = np.array(list(vocab_processor.transform(X_test)))
 
@@ -46,10 +46,10 @@ print('Total words: %d' % n_words)
 EMBEDDING_SIZE = 50
 
 def average_model(X, y):
-    word_vectors = skflow.ops.categorical_variable(X, n_classes=n_words,
+    word_vectors = learn.ops.categorical_variable(X, n_classes=n_words,
         embedding_size=EMBEDDING_SIZE, name='words')
     features = tf.reduce_max(word_vectors, reduction_indices=1)
-    return skflow.models.logistic_regression(features, y)
+    return learn.models.logistic_regression(features, y)
 
 def rnn_model(X, y):
     """Recurrent neural network model to predict from sequence of words
@@ -58,11 +58,11 @@ def rnn_model(X, y):
     # This creates embeddings matrix of [n_words, EMBEDDING_SIZE] and then
     # maps word indexes of the sequence into [batch_size, sequence_length,
     # EMBEDDING_SIZE].
-    word_vectors = skflow.ops.categorical_variable(X, n_classes=n_words,
+    word_vectors = learn.ops.categorical_variable(X, n_classes=n_words,
         embedding_size=EMBEDDING_SIZE, name='words')
     # Split into list of embedding per word, while removing doc length dim.
     # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
-    word_list = skflow.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
+    word_list = learn.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
     # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
     cell = tf.nn.rnn_cell.GRUCell(EMBEDDING_SIZE)
     # Create an unrolled Recurrent Neural Networks to length of
@@ -71,13 +71,13 @@ def rnn_model(X, y):
     # Given encoding of RNN, take encoding of last step (e.g hidden size of the
     # neural network of last step) and pass it as features for logistic
     # regression over output classes.
-    return skflow.models.logistic_regression(encoding, y)
+    return learn.models.logistic_regression(encoding, y)
 
 model_path = '/tmp/skflow_examples/text_classification'
 if os.path.exists(model_path):
-    classifier = skflow.TensorFlowEstimator.restore(model_path)
+    classifier = learn.TensorFlowEstimator.restore(model_path)
 else:
-    classifier = skflow.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
+    classifier = learn.TensorFlowEstimator(model_fn=rnn_model, n_classes=15,
         steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
     # Continuously train for 1000 steps

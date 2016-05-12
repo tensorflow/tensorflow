@@ -32,12 +32,12 @@ from sklearn import metrics
 import pandas
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 ### Training data
 
 # Downloads, unpacks and reads DBpedia dataset.
-dbpedia = skflow.datasets.load_dataset('dbpedia')
+dbpedia = learn.datasets.load_dataset('dbpedia')
 X_train, y_train = pandas.DataFrame(dbpedia.train.data)[1], pandas.Series(dbpedia.train.target)
 X_test, y_test = pandas.DataFrame(dbpedia.test.data)[1], pandas.Series(dbpedia.test.target)
 
@@ -45,7 +45,7 @@ X_test, y_test = pandas.DataFrame(dbpedia.test.data)[1], pandas.Series(dbpedia.t
 
 MAX_DOCUMENT_LENGTH = 100
 
-char_processor = skflow.preprocessing.ByteProcessor(MAX_DOCUMENT_LENGTH)
+char_processor = learn.preprocessing.ByteProcessor(MAX_DOCUMENT_LENGTH)
 X_train = np.array(list(char_processor.fit_transform(X_train)))
 X_test = np.array(list(char_processor.transform(X_test)))
 
@@ -59,11 +59,11 @@ POOLING_STRIDE = 2
 
 def char_cnn_model(X, y):
     """Character level convolutional neural network model to predict classes."""
-    byte_list = tf.reshape(skflow.ops.one_hot_matrix(X, 256), 
+    byte_list = tf.reshape(learn.ops.one_hot_matrix(X, 256), 
         [-1, MAX_DOCUMENT_LENGTH, 256, 1])
     with tf.variable_scope('CNN_Layer1'):
         # Apply Convolution filtering on input sequence.
-        conv1 = skflow.ops.conv2d(byte_list, N_FILTERS, FILTER_SHAPE1, padding='VALID')
+        conv1 = learn.ops.conv2d(byte_list, N_FILTERS, FILTER_SHAPE1, padding='VALID')
         # Add a RELU for non linearity.
         conv1 = tf.nn.relu(conv1)
         # Max pooling across output of Convlution+Relu.
@@ -73,14 +73,14 @@ def char_cnn_model(X, y):
         pool1 = tf.transpose(pool1, [0, 1, 3, 2])
     with tf.variable_scope('CNN_Layer2'):
         # Second level of convolution filtering.
-        conv2 = skflow.ops.conv2d(pool1, N_FILTERS, FILTER_SHAPE2,
+        conv2 = learn.ops.conv2d(pool1, N_FILTERS, FILTER_SHAPE2,
             padding='VALID')
         # Max across each filter to get useful features for classification.
         pool2 = tf.squeeze(tf.reduce_max(conv2, 1), squeeze_dims=[1])
     # Apply regular WX + B and classification.
-    return skflow.models.logistic_regression(pool2, y)
+    return learn.models.logistic_regression(pool2, y)
 
-classifier = skflow.TensorFlowEstimator(model_fn=char_cnn_model, n_classes=15,
+classifier = learn.TensorFlowEstimator(model_fn=char_cnn_model, n_classes=15,
     steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
 # Continuously train for 1000 steps & predict on test set.

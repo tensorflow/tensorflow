@@ -32,12 +32,12 @@ from sklearn import metrics
 import pandas
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 ### Training data
 
 # Downloads, unpacks and reads DBpedia dataset.
-dbpedia = skflow.datasets.load_dataset('dbpedia')
+dbpedia = learn.datasets.load_dataset('dbpedia')
 X_train, y_train = pandas.DataFrame(dbpedia.train.data)[1], pandas.Series(dbpedia.train.target)
 X_test, y_test = pandas.DataFrame(dbpedia.test.data)[1], pandas.Series(dbpedia.test.target)
 
@@ -45,7 +45,7 @@ X_test, y_test = pandas.DataFrame(dbpedia.test.data)[1], pandas.Series(dbpedia.t
 
 MAX_DOCUMENT_LENGTH = 100
 
-char_processor = skflow.preprocessing.ByteProcessor(MAX_DOCUMENT_LENGTH)
+char_processor = learn.preprocessing.ByteProcessor(MAX_DOCUMENT_LENGTH)
 X_train = np.array(list(char_processor.fit_transform(X_train)))
 X_test = np.array(list(char_processor.transform(X_test)))
 
@@ -54,13 +54,13 @@ X_test = np.array(list(char_processor.transform(X_test)))
 HIDDEN_SIZE = 20
 
 def char_rnn_model(X, y):
-    byte_list = skflow.ops.one_hot_matrix(X, 256)
-    byte_list = skflow.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, byte_list)
+    byte_list = learn.ops.one_hot_matrix(X, 256)
+    byte_list = learn.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, byte_list)
     cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
     _, encoding = tf.nn.rnn(cell, byte_list, dtype=tf.float32)
-    return skflow.models.logistic_regression(encoding, y)
+    return learn.models.logistic_regression(encoding, y)
 
-classifier = skflow.TensorFlowEstimator(model_fn=char_rnn_model, n_classes=15,
+classifier = learn.TensorFlowEstimator(model_fn=char_rnn_model, n_classes=15,
     steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
 # Continuously train for 1000 steps & predict on test set.
