@@ -210,7 +210,7 @@ REGISTER_CPU(complex64);
 REGISTER_CPU(complex128);
 #if GOOGLE_CUDA
 REGISTER_GPU(float);
-// REGISTER_GPU(double);
+REGISTER_GPU(double);
 #if CUDA_VERSION >= 7050
 REGISTER_GPU(Eigen::half);
 #endif
