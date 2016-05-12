@@ -36,3 +36,4 @@ from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import testing
 from tensorflow.contrib import util
 from tensorflow.contrib import copy_graph
+from tensorflow.contrib import immediate
