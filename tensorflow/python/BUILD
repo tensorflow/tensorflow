@@ -1190,7 +1190,10 @@ cuda_py_tests(
         ["ops/*_test.py"],
         exclude = [
             "ops/image_ops_test.py",
+            "ops/nn_batchnorm_test.py",
+            "ops/nn_conv_test.py",
             "ops/nn_test.py",
+            "ops/nn_xent_test.py",
             "ops/op_def_library_test.py",
         ],
     ),
@@ -1199,7 +1202,12 @@ cuda_py_tests(
 cuda_py_tests(
     name = "medium_op_tests",
     size = "medium",
-    srcs = ["ops/nn_test.py"],
+    srcs = [
+        "ops/nn_batchnorm_test.py",
+        "ops/nn_conv_test.py",
+        "ops/nn_test.py",
+        "ops/nn_xent_test.py",
+    ],
 )
 
 cuda_py_tests(
