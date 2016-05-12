@@ -284,7 +284,7 @@ class DataFeeder(object):
       assert self._input_placeholder != None
       feed_dict = {}
       if self._epoch_placeholder is not None:
-        feed_dict[self._epoch_placeholder.name] = self.epoch
+        feed_dict[self._epoch_placeholder.name] = [self.epoch]
 
       # take random indices
       if self.batch_size < 0:

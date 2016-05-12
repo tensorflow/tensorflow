@@ -56,16 +56,16 @@ class DataFeederTest(tf.test.TestCase):
       feed_dict_fn = feeder.get_feed_dict_fn()
       # First input
       feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[epoch.name], 0)
+      self.assertAllClose(feed_dict[epoch.name], [0])
       # Second input
       feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[epoch.name], 0)
+      self.assertAllClose(feed_dict[epoch.name], [0])
       # Third input
       feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[epoch.name], 0)
+      self.assertAllClose(feed_dict[epoch.name], [0])
       # Back to the first input again, so new epoch.
       feed_dict = feed_dict_fn()
-      self.assertAllClose(feed_dict[epoch.name], 1)
+      self.assertAllClose(feed_dict[epoch.name], [1])
 
   def test_data_feeder_multioutput_regression(self):
     X = np.matrix([[1, 2], [3, 4]])
