@@ -19,10 +19,12 @@ from __future__ import print_function
 
 import collections as py_collections
 import itertools
+import sys
 import time
 
 import numpy as np
 
+from six import reraise
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import summaries
@@ -227,35 +229,43 @@ def train(graph,
     loss_value = None
     logging.info('Training steps [%d,%s)', last_step, 'inf'
                  if max_steps is None else str(max_steps))
+    excinfo = None
     try:
+      while not supervisor.ShouldStop() and (
+          (max_steps is None) or (last_step < max_steps)):
+        start_time = time.time()
+        _, loss_value = session.run([train_op, loss_op])
+        if np.isnan(loss_value):
+          failure_message = 'Model diverged with loss = NaN.'
+          if fail_on_nan_loss:
+            logging.error(failure_message)
+            raise NanLossDuringTrainingError()
+          else:
+            logging.warning(failure_message)
+
+        this_step = get_current_step()
+
+        if this_step <= last_step:
+          logging.error(
+              'Global step was not incremented by train op at step %s'
+              ': new step %d' % (last_step, this_step))
+
+        last_step = this_step
+        is_last_step = (max_steps is not None) and (last_step >= max_steps)
+        if is_last_step or (last_step - last_log_step >= log_every_steps):
+          logging.info(
+              'training step %d, loss = %.5f (%.3f sec/batch).',
+              last_step, loss_value, float(time.time() - start_time))
+          last_log_step = last_step
+    except errors.OutOfRangeError as e:
+      logging.warn('Got exception during tf.learn training loop possibly '
+                   'due to exhausted input queue %s.', e)
+    except BaseException as e:  # pylint: disable=broad-except
+      # Hold on to any other exceptions while we try recording a final
+      # checkpoint and summary.
+      excinfo = sys.exc_info()
+    finally:
       try:
-        while not supervisor.ShouldStop() and (
-            (max_steps is None) or (last_step < max_steps)):
-          start_time = time.time()
-          _, loss_value = session.run([train_op, loss_op])
-          if np.isnan(loss_value):
-            failure_message = 'Model diverged with loss = NaN.'
-            if fail_on_nan_loss:
-              logging.error(failure_message)
-              raise NanLossDuringTrainingError()
-            else:
-              logging.warning(failure_message)
-
-          this_step = get_current_step()
-
-          if this_step <= last_step:
-            logging.error(
-                'Global step was not incremented by train op at step %s'
-                ': new step %d' % (last_step, this_step))
-
-          last_step = this_step
-          is_last_step = (max_steps is not None) and (last_step >= max_steps)
-          if is_last_step or (last_step - last_log_step >= log_every_steps):
-            logging.info(
-                'training step %d, loss = %.5f (%.3f sec/batch).',
-                last_step, loss_value, float(time.time() - start_time))
-            last_log_step = last_step
-      finally:
         # Call supervisor.Stop() from within a try block because it re-raises
         # exceptions thrown by the supervised threads.
         supervisor.Stop(close_summary_writer=False)
@@ -277,11 +287,21 @@ def train(graph,
             supervisor.summary_writer.add_session_log(
                 SessionLog(status=SessionLog.STOP), last_step)
             supervisor.summary_writer.close()
-    # catch OutOfRangeError which is thrown when queue is out of data (and for
-    # other reasons as well).
-    except errors.OutOfRangeError as e:
-      logging.warn('Got exception during tf.learn training loop possibly '
-                   'due to exhausted input queue %s.', e)
+      # catch OutOfRangeError which is thrown when queue is out of data (and for
+      # other reasons as well).
+      except errors.OutOfRangeError as e:
+        logging.warn('OutOfRangeError in tf.learn final checkpoint possibly '
+                     'due to exhausted input queue. Note: summary_op is not '
+                     'expected to trigger dequeues. %s.', e)
+      except BaseException as e:  # pylint: disable=broad-except
+        # If we don't already have an exception to re-raise, raise this one.
+        if not excinfo:
+          raise
+        # Otherwise, log this one and raise the other in the finally block.
+        logging.error('Got exception during tf.learn final checkpoint %s.', e)
+      finally:
+        if excinfo:
+          reraise(*excinfo)
     return loss_value
 
 
