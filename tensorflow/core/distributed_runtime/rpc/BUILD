@@ -347,6 +347,10 @@ tf_cuda_cc_tests(
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:server_lib",
     ],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cuda_cc_tests(
