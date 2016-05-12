@@ -11,7 +11,8 @@ REGISTER_OP("BernoulliSample")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Doc(R"doc(
-Sample `a` with probability `p, or equivalently sample `b` with probability (1 - `p`).
+Sample `a` with probability `p`, or equivalently sample `b` with probability
+(1 - `p`).
 
 p: The probability to sample `a`.
 a: Heads.
