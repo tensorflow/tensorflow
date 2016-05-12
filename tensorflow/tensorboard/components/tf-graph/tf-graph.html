@@ -113,7 +113,7 @@ Polymer({
     }
   },
   _buildRenderHierarchy: function(graphHierarchy) {
-    tf.time('new tf.graph.render.Hierarchy', function() {
+    tf.graph.util.time('new tf.graph.render.Hierarchy', function() {
       if (graphHierarchy.root.type !== tf.graph.NodeType.META) {
         // root must be metanode but sometimes Polymer's dom-if has not
         // remove tf-graph element yet in <tf-node-info>
@@ -265,8 +265,8 @@ Polymer({
       value: 0,
       msg: ''
     });
-    var tracker = tf.getTracker(this);
-    var hierarchyTracker = tf.getSubtaskTracker(tracker, 100,
+    var tracker = tf.graph.util.getTracker(this);
+    var hierarchyTracker = tf.graph.util.getSubtaskTracker(tracker, 100,
           'Namespace hierarchy');
     tf.graph.hierarchy.build(this.basicGraph, this.hierarchyParams, hierarchyTracker)
     .then(function(graphHierarchy) {

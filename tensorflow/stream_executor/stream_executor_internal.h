@@ -209,6 +209,8 @@ class StreamExecutorInterface {
                                                uint64 size) = 0;
   virtual bool MemZero(Stream *stream, DeviceMemoryBase *location,
                        uint64 size) = 0;
+  virtual bool Memset(Stream *stream, DeviceMemoryBase *location,
+                      uint8 pattern, uint64 size) = 0;
   virtual bool Memset32(Stream *stream, DeviceMemoryBase *location,
                         uint32 pattern, uint64 size) = 0;
   virtual bool Memcpy(Stream *stream, void *host_dst,

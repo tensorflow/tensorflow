@@ -64,10 +64,10 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
           self.CheckVersusNumpy(ndims_mask, arr_shape)
 
   def testWorksWithDimensionsEqualToNoneDuringGraphBuild(self):
-    # The leading dimensions of tensor can be None, allowing for minibatch size
-    # None.  This is explained in the docstring as well.
+    # The rank of the mask tensor must be specified. This is explained
+    # in the docstring as well.
     with self.test_session() as sess:
-      ph_tensor = array_ops.placeholder(dtypes.int32, shape=[None, 2])
+      ph_tensor = array_ops.placeholder(dtypes.int32, shape=None)
       ph_mask = array_ops.placeholder(dtypes.bool, shape=[None])
 
       arr = np.array([[1, 2], [3, 4]])
@@ -79,8 +79,8 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
       np.testing.assert_allclose(masked_tensor, arr[mask])
 
   def testMaskDimensionsSetToNoneRaises(self):
-    # The leading dimensions of tensor can be None, allowing for minibatch size
-    # None.  This is explained in the docstring as well.
+    # The rank of the mask tensor must be specified. This is explained
+    # in the docstring as well.
     with self.test_session():
       tensor = array_ops.placeholder(dtypes.int32, shape=[None, 2])
       mask = array_ops.placeholder(dtypes.bool, shape=None)

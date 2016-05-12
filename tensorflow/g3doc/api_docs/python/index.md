@@ -156,6 +156,7 @@
   * [`argmax`](../../api_docs/python/math_ops.md#argmax)
   * [`argmin`](../../api_docs/python/math_ops.md#argmin)
   * [`batch_cholesky`](../../api_docs/python/math_ops.md#batch_cholesky)
+  * [`batch_cholesky_solve`](../../api_docs/python/math_ops.md#batch_cholesky_solve)
   * [`batch_fft`](../../api_docs/python/math_ops.md#batch_fft)
   * [`batch_fft2d`](../../api_docs/python/math_ops.md#batch_fft2d)
   * [`batch_fft3d`](../../api_docs/python/math_ops.md#batch_fft3d)
@@ -174,6 +175,7 @@
   * [`batch_self_adjoint_eig`](../../api_docs/python/math_ops.md#batch_self_adjoint_eig)
   * [`ceil`](../../api_docs/python/math_ops.md#ceil)
   * [`cholesky`](../../api_docs/python/math_ops.md#cholesky)
+  * [`cholesky_solve`](../../api_docs/python/math_ops.md#cholesky_solve)
   * [`complex`](../../api_docs/python/math_ops.md#complex)
   * [`complex_abs`](../../api_docs/python/math_ops.md#complex_abs)
   * [`conj`](../../api_docs/python/math_ops.md#conj)
@@ -511,6 +513,13 @@
   * [`get_temp_dir`](../../api_docs/python/test.md#get_temp_dir)
   * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
   * [`main`](../../api_docs/python/test.md#main)
+
+* **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
+  * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
+  * [`Gaussian`](../../api_docs/python/contrib.distributions.md#Gaussian)
+  * [`gaussian_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#gaussian_congugates_known_sigma_predictive)
+  * [`gaussian_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#gaussian_conjugates_known_sigma_posterior)
+  * [`MultivariateNormal`](../../api_docs/python/contrib.distributions.md#MultivariateNormal)
 
 * **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
   * [`apply_regularization`](../../api_docs/python/contrib.layers.md#apply_regularization)

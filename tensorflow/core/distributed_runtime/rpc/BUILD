@@ -337,6 +337,7 @@ tf_cuda_cc_tests(
         ":grpc_testlib",
         ":rpc_rendezvous_mgr",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",

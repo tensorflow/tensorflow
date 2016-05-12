@@ -19,16 +19,20 @@ from __future__ import print_function
 
 import collections as py_collections
 import itertools
+import sys
 import time
 
 import numpy as np
 
+from six import reraise
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import summaries
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -111,6 +115,7 @@ def _prepare_session(graph,
                      start_services,
                      global_step_tensor,
                      init_op=None,
+                     init_fn=None,
                      supervisor_is_chief=True,
                      supervisor_master='',
                      supervisor_save_model_secs=600,
@@ -126,7 +131,8 @@ def _prepare_session(graph,
       saver=_make_saver(graph),
       global_step=global_step_tensor,
       save_model_secs=supervisor_save_model_secs,
-      save_summaries_secs=supervisor_save_summaries_secs)
+      save_summaries_secs=supervisor_save_summaries_secs,
+      init_fn=init_fn)
   session = supervisor.PrepareSession(master=supervisor_master,
                                       start_standard_services=start_services)
   supervisor.StartQueueRunners(session)
@@ -141,6 +147,7 @@ def train(graph,
           loss_op,
           global_step_tensor=None,
           init_op=None,
+          init_fn=None,
           log_every_steps=10,
           supervisor_is_chief=True,
           supervisor_master='',
@@ -173,6 +180,7 @@ def train(graph,
       one is extracted from the graph using the same logic as in `Supervisor`.
     init_op: An op that initializes the graph. If `None`, use `Supervisor`'s
       default.
+    init_fn: Optional callable passed to Supervisor to initialize the model.
     log_every_steps: Output logs regularly. The logs contain timing data and the
       current loss.
     supervisor_is_chief: Whether the current process is the chief supervisor in
@@ -206,6 +214,7 @@ def train(graph,
       start_services=True,
       global_step_tensor=global_step_tensor,
       init_op=init_op,
+      init_fn=init_fn,
       supervisor_is_chief=supervisor_is_chief,
       supervisor_master=supervisor_master,
       supervisor_save_model_secs=supervisor_save_model_secs,
@@ -220,35 +229,43 @@ def train(graph,
     loss_value = None
     logging.info('Training steps [%d,%s)', last_step, 'inf'
                  if max_steps is None else str(max_steps))
+    excinfo = None
     try:
+      while not supervisor.ShouldStop() and (
+          (max_steps is None) or (last_step < max_steps)):
+        start_time = time.time()
+        _, loss_value = session.run([train_op, loss_op])
+        if np.isnan(loss_value):
+          failure_message = 'Model diverged with loss = NaN.'
+          if fail_on_nan_loss:
+            logging.error(failure_message)
+            raise NanLossDuringTrainingError()
+          else:
+            logging.warning(failure_message)
+
+        this_step = get_current_step()
+
+        if this_step <= last_step:
+          logging.error(
+              'Global step was not incremented by train op at step %s'
+              ': new step %d' % (last_step, this_step))
+
+        last_step = this_step
+        is_last_step = (max_steps is not None) and (last_step >= max_steps)
+        if is_last_step or (last_step - last_log_step >= log_every_steps):
+          logging.info(
+              'training step %d, loss = %.5f (%.3f sec/batch).',
+              last_step, loss_value, float(time.time() - start_time))
+          last_log_step = last_step
+    except errors.OutOfRangeError as e:
+      logging.warn('Got exception during tf.learn training loop possibly '
+                   'due to exhausted input queue %s.', e)
+    except BaseException as e:  # pylint: disable=broad-except
+      # Hold on to any other exceptions while we try recording a final
+      # checkpoint and summary.
+      excinfo = sys.exc_info()
+    finally:
       try:
-        while not supervisor.ShouldStop() and (
-            (max_steps is None) or (last_step < max_steps)):
-          start_time = time.time()
-          _, loss_value = session.run([train_op, loss_op])
-          if np.isnan(loss_value):
-            failure_message = 'Model diverged with loss = NaN.'
-            if fail_on_nan_loss:
-              logging.error(failure_message)
-              raise NanLossDuringTrainingError()
-            else:
-              logging.warning(failure_message)
-
-          this_step = get_current_step()
-
-          if this_step <= last_step:
-            logging.error(
-                'Global step was not incremented by train op at step %s'
-                ': new step %d' % (last_step, this_step))
-
-          last_step = this_step
-          is_last_step = (max_steps is not None) and (last_step >= max_steps)
-          if is_last_step or (last_step - last_log_step >= log_every_steps):
-            logging.info(
-                'training step %d, loss = %.5f (%.3f sec/batch).',
-                last_step, loss_value, float(time.time() - start_time))
-            last_log_step = last_step
-      finally:
         # Call supervisor.Stop() from within a try block because it re-raises
         # exceptions thrown by the supervised threads.
         supervisor.Stop(close_summary_writer=False)
@@ -270,11 +287,21 @@ def train(graph,
             supervisor.summary_writer.add_session_log(
                 SessionLog(status=SessionLog.STOP), last_step)
             supervisor.summary_writer.close()
-    # catch OutOfRangeError which is thrown when queue is out of data (and for
-    # other reasons as well).
-    except errors.OutOfRangeError as e:
-      logging.warn('Got exception during tf.learn training loop possibly '
-                   'due to exhausted input queue %s.', e)
+      # catch OutOfRangeError which is thrown when queue is out of data (and for
+      # other reasons as well).
+      except errors.OutOfRangeError as e:
+        logging.warn('OutOfRangeError in tf.learn final checkpoint possibly '
+                     'due to exhausted input queue. Note: summary_op is not '
+                     'expected to trigger dequeues. %s.', e)
+      except BaseException as e:  # pylint: disable=broad-except
+        # If we don't already have an exception to re-raise, raise this one.
+        if not excinfo:
+          raise
+        # Otherwise, log this one and raise the other in the finally block.
+        logging.error('Got exception during tf.learn final checkpoint %s.', e)
+      finally:
+        if excinfo:
+          reraise(*excinfo)
     return loss_value
 
 
@@ -327,6 +354,16 @@ def evaluate(graph,
   global_step_tensor = contrib_variables.assert_or_get_global_step(
       graph, global_step_tensor)
 
+  # Add scalar summaries for every tensor in evaluation dict if there is not
+  # one existing already or it's a string.
+  existing_tags = [tensor_util.constant_value(summary.op.inputs[0])
+                   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES)]
+  for key, value in eval_dict.items():
+    if key in existing_tags:
+      continue
+    if isinstance(value, ops.Tensor):
+      summaries.summarize_tensor(value, tag=key)
+
   # TODO(wicke): Don't use supervisor here, or switch to output_dir=eval_dir.
   supervisor, session = _prepare_session(
       graph=graph,
@@ -368,6 +405,7 @@ def evaluate(graph,
       finally:
         # Make our own summary writer and write a summary to the eval dir
         if supervisor.summary_op is not None:
+          summary_writer = None
           try:
             summary_writer = SummaryWriter(output_dir,
                                            graph_def=session.graph_def)
@@ -376,7 +414,8 @@ def evaluate(graph,
             if summary_str:
               summary_writer.add_summary(summary_str, current_global_step)
           finally:
-            summary_writer.close()
+            if summary_writer:
+              summary_writer.close()
 
         # Call supervisor.Stop() from within a try block because it re-raises
         # exceptions thrown by the supervised threads.

@@ -190,7 +190,8 @@ def tensor_shape_from_node_def_name(graph, input_name):
   return shape
 
 
-def convert_variables_to_constants(sess, input_graph_def, output_node_names):
+def convert_variables_to_constants(sess, input_graph_def, output_node_names,
+                                   variable_names_whitelist=None):
   """Replaces all the variables in a graph with constants of the same values.
 
   If you have a trained graph containing Variable ops, it can be convenient to
@@ -202,6 +203,8 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names):
     sess: Active TensorFlow session containing the variables.
     input_graph_def: GraphDef object holding the network.
     output_node_names: List of name strings for the result nodes of the graph.
+    variable_names_whitelist: The set of variable names to convert (by default,
+                              all variables are converted).
 
   Returns:
     GraphDef containing a simplified version of the original.
@@ -212,6 +215,9 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names):
   for node in input_graph_def.node:
     if node.op == "Assign":
       variable_name = node.input[0]
+      if (variable_names_whitelist is not None and
+          variable_name not in variable_names_whitelist):
+        continue
       variable_dict_names.append(variable_name)
       variable_names.append(variable_name + ":0")
   if variable_names:

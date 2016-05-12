@@ -229,6 +229,19 @@ py_test(
     ],
 )
 
+py_test(
+    name = "checkpoints_test",
+    size = "small",
+    srcs = ["python/learn/utils/checkpoints_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

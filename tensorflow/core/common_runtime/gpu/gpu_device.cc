@@ -211,13 +211,12 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       sync_every_op_(sync_every_op) {
   ProcessState::singleton()->EnableGPUDevice();
 
-  gpu::StreamExecutor* executor =
-      GPUMachineManager()->ExecutorForDevice(gpu_id_).ValueOrDie();
-  if (!executor) {
+  executor_ = GPUMachineManager()->ExecutorForDevice(gpu_id_).ValueOrDie();
+  if (!executor_) {
     LOG(ERROR) << "Failed to get StreamExecutor for device " << gpu_id_;
     return;
   }
-  em_.reset(new EventMgr(executor, options.config.gpu_options()));
+  em_.reset(new EventMgr(executor_, options.config.gpu_options()));
 
   if (max_streams < 1) {
     LOG(FATAL) << "Invalid value for max_streams.";
@@ -225,21 +224,21 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
 
   // Create the specified number of GPU streams
   for (int i = 0; i < max_streams; i++) {
-    auto stream = new gpu::Stream(executor);
+    auto stream = new gpu::Stream(executor_);
     stream->Init();
     VLOG(2) << "Created stream[" << i << "] = " << stream;
 
-    auto host_to_device_stream = new gpu::Stream(executor);
+    auto host_to_device_stream = new gpu::Stream(executor_);
     host_to_device_stream->Init();
     VLOG(2) << "Created host_to_device_stream[" << i
             << "] = " << host_to_device_stream;
 
-    auto device_to_host_stream = new gpu::Stream(executor);
+    auto device_to_host_stream = new gpu::Stream(executor_);
     device_to_host_stream->Init();
     VLOG(2) << "Created device_to_host_stream[" << i
             << "] = " << device_to_host_stream;
 
-    auto device_to_device_stream = new gpu::Stream(executor);
+    auto device_to_device_stream = new gpu::Stream(executor_);
     device_to_device_stream->Init();
     VLOG(2) << "Created device_to_device_stream[" << i
             << "] = " << device_to_device_stream;
@@ -591,6 +590,18 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
   gpu::StreamExecutor* se =
       gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
   const gpu::DeviceDescription& desc = se->GetDeviceDescription();
+  int numa_node = desc.numa_node();
+  if (numa_node < 0) {
+    // For some reason the StreamExecutor couldn't get the NUMA
+    // affinity of the GPU.  If this is not a multi-socket mobo with
+    // GPUs local to different buses, it doesn't matter.  If it is, we
+    // may run into trouble later with data transfer operations.  The
+    // trouble may manifest as slower than expected performance, or
+    // outright failures.
+    LOG(ERROR) << "Could not identify NUMA node of " << name
+               << ", defaulting to 0.";
+    numa_node = 0;
+  }
 
   int64 total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
@@ -614,7 +625,7 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
   // Because GPUs are virtualized in some environments, we can't just
   // use the GPU id.
   BusAdjacency bus_adjacency = BUS_ANY;
-  switch (desc.numa_node()) {
+  switch (numa_node) {
     case 0:
       bus_adjacency = BUS_0;
       break;
@@ -625,7 +636,7 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
       bus_adjacency = BUS_ANY;
   }
   VLOG(1) << "GPUDevice id " << gpu_id << " on bus " << bus_adjacency
-          << " numa: " << desc.numa_node() << " pci: " << desc.pci_bus_id();
+          << " numa: " << numa_node << " pci: " << desc.pci_bus_id();
 
   ProcessState* process_state = ProcessState::singleton();
   return CreateGPUDevice(
@@ -633,7 +644,7 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
       GetShortDeviceDescription(gpu_id, desc),
       process_state->GetGPUAllocator(options.config.gpu_options(), gpu_id,
                                      allocated_memory),
-      process_state->GetCPUAllocator(desc.numa_node()));
+      process_state->GetCPUAllocator(numa_node));
 }
 
 static int GetMinGPUMultiprocessorCount() {

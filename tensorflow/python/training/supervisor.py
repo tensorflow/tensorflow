@@ -461,6 +461,15 @@ class Supervisor(object):
     self._global_step = global_step
 
   @property
+  def is_chief(self):
+    """Return True if this is a chief supervisor.
+
+    Returns:
+      A bool.
+    """
+    return self._is_chief
+
+  @property
   def session_manager(self):
     """Return the SessionManager used by the Supervisor.
 
@@ -575,7 +584,7 @@ class Supervisor(object):
     """Writes graph_def to `logdir` and adds it to summary if applicable."""
     assert self._is_chief
     if self._logdir:
-      training_util.write_graph(self._graph.as_graph_def(),
+      training_util.write_graph(self._graph.as_graph_def(add_shapes=True),
                                 self._logdir, "graph.pbtxt")
     if self._summary_writer:
       self._summary_writer.add_graph(self._graph)
@@ -708,11 +717,11 @@ class Supervisor(object):
     self._started_threads.extend(threads)
     return threads
 
-  def loop(self, timer_interval_secs, target, args=None):
+  def loop(self, timer_interval_secs, target, args=None, kwargs=None):
     """Start a LooperThread that calls a function periodically.
 
-    If `timer_interval_secs` is None the thread calls `target(args)`
-    repeatedly.  Otherwise `target(args)` is called every `timer_interval_secs`
+    If `timer_interval_secs` is None the thread calls `target(*args, **kwargs)`
+    repeatedly.  Otherwise it calls it every `timer_interval_secs`
     seconds.  The thread terminates when a stop is requested.
 
     The started thread is added to the list of threads managed by the supervisor
@@ -722,12 +731,13 @@ class Supervisor(object):
       timer_interval_secs: Number. Time boundaries at which to call `target`.
       target: A callable object.
       args: Optional arguments to pass to `target` when calling it.
+      kwargs: Optional keyword arguments to pass to `target` when calling it.
 
     Returns:
       The started thread.
     """
     looper = coordinator.LooperThread(self._coord, timer_interval_secs,
-                                      target=target, args=args)
+                                      target=target, args=args, kwargs=kwargs)
     looper.start()
     self._started_threads.append(looper)
     return looper
@@ -852,7 +862,8 @@ class Supervisor(object):
   # pylint: disable=g-doc-return-or-yield,broad-except
   @contextlib.contextmanager
   def managed_session(self, master="", config=None,
-                      start_standard_services=True):
+                      start_standard_services=True,
+                      close_summary_writer=True):
     """Returns a context manager for a managed session.
 
     This context manager creates and automatically recovers a session.  It
@@ -903,6 +914,8 @@ class Supervisor(object):
         Passed as-is to create the session.
       start_standard_services: Whether to start the standard services,
         such as checkpoint, summary and step counter.
+      close_summary_writer: Whether to close the summary writer when
+        closing the session.  Defaults to True.
 
     Returns:
       A context manager that yields a `Session` restored from the latest
@@ -929,7 +942,7 @@ class Supervisor(object):
         # about exceptions raised when closing.  This takes care of
         # blocked enqueue/dequeue calls.
         try:
-          sess.close()
+          sess.close(close_summary_writer=close_summary_writer)
         except Exception:
           # Silently ignore exceptions raised by close().
           pass

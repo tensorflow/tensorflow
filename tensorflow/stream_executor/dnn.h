@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
+#include "third_party/eigen3/Eigen/Core"
+
 namespace perftools {
 namespace gputools {
 
@@ -527,6 +529,30 @@ class PoolingDescriptor {
   std::vector<int64> strides_;
 };
 
+typedef int64 AlgorithmType;
+constexpr AlgorithmType kDefaultAlgorithm = -1;
+
+// Describes the result from a perf experiment.
+//
+// Arguments:
+//  is_valid: indicates whether a valid measurement was obtained.
+//  algorithm: returns the exact algorithm that was used.
+//  elapsed_time_in_ms: returns the measured elapsed time in milliseconds.
+class ProfileResult {
+ public:
+  bool is_valid() const { return is_valid_; }
+  void set_is_valid(bool val) { is_valid_ = val; }
+  AlgorithmType algorithm() const { return algorithm_; }
+  void set_algorithm(AlgorithmType val) { algorithm_ = val; }
+  float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
+  void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
+
+ private:
+  bool is_valid_ = false;
+  AlgorithmType algorithm_ = kDefaultAlgorithm;
+  float elapsed_time_in_ms_ = -1.0f;
+};
+
 // Describes a local response normalization (LRN). LRN is used e.g. in
 // dist_belief.
 //
@@ -535,14 +561,14 @@ class PoolingDescriptor {
 // input, across all coordinates (batch, y, x), by mapping each V to
 // another vector U of the same size using the formula
 //
-//   V_i = U_i / ((bias + alpha * (sum_j U_j^2)) ^ beta)
+//   U_i = V_i / ((bias + alpha * (sum_j V_j^2)) ^ beta)
 //
-// where the sum is taken for j in the inclusive range [i - range, i + range].
+// where the sum is taken over j in the closed range [i - range, i + range].
 //
-// When calculating V_i the j in the sum can extend beyond the bounds
-// of U. If wrap_around is true, then U_j = U_{j mod F} where F is the
-// size of U, which is the number of feature maps. If wrap_around is
-// false, then U_j = 0 for j outside [0, F-1].
+// When calculating U_i the j in the sum can extend beyond the bounds
+// of V. If wrap_around is true, then V_j = V_{j mod F} where F is the
+// size of V, which is the number of feature maps. If wrap_around is
+// false, then V_j = 0 for j outside [0, F-1].
 //
 // If segment_size <= F, where F is the number of feature_maps, then
 // segment_size has no effect. Otherwise, each consecutive segment of
@@ -655,6 +681,12 @@ class DnnSupport {
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
+  //  algorithm: an integer to specify which algorithm should be used for the
+  //    operation. kDefaultAlgorithm means the system will pick an algorithm
+  //    by default. The coding of the algorithm is be interpretted by the
+  //    underlying implementation.
+  //  output_profile_result: the output profile result for this call. The
+  //    profiling is only enabled when this is not nullptr.
   //
   // input_descriptor, filter_descriptor, convolution_descriptor and
   // output_descriptor together specify exactly how the convolution is aligned
@@ -677,8 +709,12 @@ class DnnSupport {
       const DeviceMemory<float>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data,
-      ScratchAllocator* scratch_allocator) = 0;
+      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the forward convolution pass.
+  virtual bool GetConvolveAlgorithms(
+      std::vector<AlgorithmType>* out_algorithms);
 
   // Enqueues a double-precision convolution operation onto the stream.
   // See DoConvolve above for argument details.
@@ -690,6 +726,19 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<double>* output_data) = 0;
+
+  // Enqueues a half-precision convolution operation onto the stream.
+  // See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
 
   // Variation of the above with the weight matrix split into two matrices.
   // first_weights: Coefficients of the first matrix.
@@ -735,7 +784,24 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& input_descriptor,
       DeviceMemory<float>* backward_input_data,
-      ScratchAllocator* scratch_allocator) = 0;
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the backward convolution pass for
+  // data.
+  virtual bool GetConvolveBackwardDataAlgorithms(
+      std::vector<AlgorithmType>* out_algorithms);
+
+  virtual bool DoConvolveBackwardData(
+      Stream* stream, const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half> backward_output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const BatchDescriptor& input_descriptor,
+      DeviceMemory<Eigen::half>* backward_input_data,
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for filter) operation
   // onto the stream.
@@ -764,7 +830,24 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<float>* backward_filter_data,
-      ScratchAllocator* scratch_allocator) = 0;
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the backward convolution pass for
+  // filters.
+  virtual bool GetConvolveBackwardFilterAlgorithms(
+      std::vector<AlgorithmType>* out_algorithms);
+
+  virtual bool DoConvolveBackwardFilter(
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half> backward_output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const FilterDescriptor& filter_descriptor,
+      DeviceMemory<Eigen::half>* backward_filter_data,
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
 
   // Fully connects the "nodes" (float values) in input_data with
   // shape input_dimensions to output_data with output_dimensions

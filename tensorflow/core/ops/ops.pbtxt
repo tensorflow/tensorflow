@@ -2473,7 +2473,7 @@ op {
     }
   }
   summary: "Calculates the Cholesky decomposition of a square matrix."
-  description: "The input has to be symmetric and positive definite. Only the lower-triangular\npart of the input will be used for this operation. The upper-triangular part\nwill not be read.\n\nThe result is the lower-triangular matrix of the Cholesky decomposition of the\ninput."
+  description: "The input has to be symmetric and positive definite. Only the lower-triangular\npart of the input will be used for this operation. The upper-triangular part\nwill not be read.\n\nThe result is the lower-triangular matrix of the Cholesky decomposition of the\ninput, `L`, so that `input = L L^*`."
 }
 op {
   name: "CholeskyGrad"
@@ -11102,11 +11102,11 @@ op {
   name: "SparseMatMul"
   input_arg {
     name: "a"
-    type: DT_FLOAT
+    type_attr: "Ta"
   }
   input_arg {
     name: "b"
-    type: DT_FLOAT
+    type_attr: "Tb"
   }
   output_arg {
     name: "product"
@@ -11138,6 +11138,32 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "Ta"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_BFLOAT16
+      }
+    }
+  }
+  attr {
+    name: "Tb"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_BFLOAT16
+      }
     }
   }
   summary: "Multiply matrix \"a\" by matrix \"b\"."

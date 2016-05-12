@@ -84,21 +84,16 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
   @property
   def weights_(self):
     """Returns weights of the DNN weight layers."""
-    weights = []
-    for layer in range(len(self.hidden_units)):
-      weights.append(self.get_tensor_value('dnn/layer%d/Linear/Matrix:0' %
-                                           layer))
-    weights.append(self.get_tensor_value('logistic_regression/weights:0'))
-    return weights
+    return [self._session.run(w)
+            for w in self._graph.get_collection('dnn_weights')
+           ] + [self.get_tensor_value('logistic_regression/weights:0')]
 
   @property
   def bias_(self):
     """Returns bias of the DNN's bias layers."""
-    biases = []
-    for layer in range(len(self.hidden_units)):
-      biases.append(self.get_tensor_value('dnn/layer%d/Linear/Bias:0' % layer))
-    biases.append(self.get_tensor_value('logistic_regression/bias:0'))
-    return biases
+    return [self._session.run(b)
+            for b in self._graph.get_collection('dnn_biases')
+           ] + [self.get_tensor_value('logistic_regression/bias:0')]
 
 
 class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
@@ -162,18 +157,13 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
   @property
   def weights_(self):
     """Returns weights of the DNN weight layers."""
-    weights = []
-    for layer in range(len(self.hidden_units)):
-      weights.append(self.get_tensor_value('dnn/layer%d/Linear/Matrix:0' %
-                                           layer))
-    weights.append(self.get_tensor_value('linear_regression/weights:0'))
-    return weights
+    return [self._session.run(w)
+            for w in self._graph.get_collection('dnn_weights')
+           ] + [self.get_tensor_value('linear_regression/weights:0')]
 
   @property
   def bias_(self):
     """Returns bias of the DNN's bias layers."""
-    biases = []
-    for layer in range(len(self.hidden_units)):
-      biases.append(self.get_tensor_value('dnn/layer%d/Linear/Bias:0' % layer))
-    biases.append(self.get_tensor_value('linear_regression/bias:0'))
-    return biases
+    return [self._session.run(b)
+            for b in self._graph.get_collection('dnn_biases')
+           ] + [self.get_tensor_value('linear_regression/bias:0')]

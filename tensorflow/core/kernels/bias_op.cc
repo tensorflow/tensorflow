@@ -149,6 +149,18 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
   }
 }
 
+template <class T>
+struct AccumulatorType {
+  typedef T type;
+};
+
+// float is faster on the CPU than half, and also more precise,
+// so use float for the temporary accumulators.
+template <>
+struct AccumulatorType<Eigen::half> {
+  typedef float type;
+};
+
 }  // namespace
 
 template <typename Device, typename T>
@@ -197,7 +209,11 @@ class BiasGradOp<CPUDevice, T> : public OpKernel {
     Eigen::array<int, 1> reduction_axis = {0};
 #endif
     output->template flat<T>().device(context->eigen_device<CPUDevice>()) =
-        output_backprop.flat<T>().reshape(two_dims).sum(reduction_axis);
+        output_backprop.flat<T>()
+            .template cast<typename AccumulatorType<T>::type>()
+            .reshape(two_dims)
+            .sum(reduction_axis)
+            .template cast<T>();
   }
 
  private:
@@ -268,7 +284,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
       Name("BiasAddV1").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       BiasOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GPU_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 template <typename T>
@@ -302,7 +318,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
     perftools::gputools::DeviceMemoryBase output_ptr(
         output->flat<T>().data(), output->NumElements() * sizeof(T));
-    stream->ThenMemset32(&output_ptr, 0, output->NumElements() * sizeof(T));
+    stream->ThenMemZero(&output_ptr, output->NumElements() * sizeof(T));
     BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
                             output_backprop.template flat<T>().data(),
                             output->flat<T>().data(), batch, width, height,
@@ -319,7 +335,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       Name("BiasAddGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       BiasGradOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GPU_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA

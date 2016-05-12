@@ -227,12 +227,6 @@ class DeviceSpec(object):
     return DeviceSpec().parse_from_string(spec)
 
 
-# For backwards compatibility.
-# TODO(rjryan): Fix all callers then remove.
-Device = DeviceSpec
-from_string = DeviceSpec.from_string
-
-
 def check_valid(spec):
   """Check that a device spec is valid.
 

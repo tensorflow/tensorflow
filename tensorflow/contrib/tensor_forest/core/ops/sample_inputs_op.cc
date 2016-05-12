@@ -21,12 +21,14 @@
 #include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
+using tensorforest::CheckTensorBounds;
 using tensorforest::IsAllInitialized;
 
 
@@ -134,22 +136,36 @@ class SampleInputs : public OpKernel {
         errors::InvalidArgument(
             "split_features and split_thresholds should be the same shape."));
 
+    // Check tensor bounds.
+    if (!CheckTensorBounds(context, input_data)) return;
+    if (!CheckTensorBounds(context, node_to_accumulator)) return;
+    if (!CheckTensorBounds(context, leaves)) return;
+    if (!CheckTensorBounds(context, split_features)) return;
+    if (!CheckTensorBounds(context, split_thresholds)) return;
+
     const auto inputs = input_data.tensor<float, 2>();
     const auto leaves_vec = leaves.unaligned_flat<int32>();
     const auto node_map = node_to_accumulator.unaligned_flat<int32>();
     const auto features = split_features.tensor<int32, 2>();
     const auto thresholds = split_thresholds.tensor<float, 2>();
 
-    const int32 num_data = leaves.shape().dim_size(0);
-    const int32 num_splits = split_features.shape().dim_size(1);
-    const int32 num_features = input_data.shape().dim_size(1);
+    const int32 num_data = static_cast<int32>(leaves.shape().dim_size(0));
+    const int32 num_splits = static_cast<int32>(
+        split_features.shape().dim_size(1));
+    const int32 num_features = static_cast<int32>(
+        input_data.shape().dim_size(1));
+    const int32 num_accumulators = static_cast<int32>(
+        split_features.shape().dim_size(0));
 
     std::unordered_map<int32, std::set<int32>> accumulator_to_leaves;
 
     // The first pass just calculates num_output_accumulators.
-    for (int i = 0; i < num_data; i++) {
-      const int32 leaf = leaves_vec(i);
-      const int32 accumulator = node_map(leaf);
+    for (int32 i = 0; i < num_data; i++) {
+      const int32 leaf = internal::SubtleMustCopy(leaves_vec(i));
+      OP_REQUIRES(context, FastBoundsCheck(leaf, node_map.size()),
+                  errors::InvalidArgument("leaf not in valid range."))
+      const int32 accumulator = internal::SubtleMustCopy(node_map(leaf));
+
       // Check for non-fertile node or fertile node that is already
       // initialized.
       if (accumulator >= 0 &&
@@ -160,7 +176,8 @@ class SampleInputs : public OpKernel {
     }
 
     // Now we can allocate the outputs.
-    int num_output_accumulators = accumulator_to_leaves.size();
+    int32 num_output_accumulators = static_cast<int32>(
+        accumulator_to_leaves.size());
     VLOG(1) << "num output accumulators = " << num_output_accumulators;
     Tensor* accumulators_tensor = nullptr;
     TensorShape accumulators_shape;
@@ -194,6 +211,8 @@ class SampleInputs : public OpKernel {
     int output_slot = 0;
     for (const auto& active : accumulator_to_leaves) {
       const int32 accumulator = active.first;
+      OP_REQUIRES(context, FastBoundsCheck(accumulator, num_accumulators),
+                  errors::InvalidArgument("accumulator not in valid range."))
       const std::set<int32> inputs_for_accumulator = active.second;
       VLOG(1) << "Accumulator " << accumulator
                   << " gets new output slot " << output_slot;

@@ -86,6 +86,8 @@ functions on matrices to your graph.
 
 @@cholesky
 @@batch_cholesky
+@@cholesky_solve
+@@batch_cholesky_solve
 
 @@self_adjoint_eig
 @@batch_self_adjoint_eig
@@ -205,6 +207,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import state_ops
 # go/tf-wildcard-import
@@ -507,31 +510,44 @@ ops.Tensor._override_operator("__abs__", abs)
 ops.Tensor._override_operator("__invert__", gen_math_ops.logical_not)
 
 
-def _OverrideBinaryOperatorHelper(func, op_name):
+def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   """Register operators with different tensor and scalar versions.
+
+  If `clazz_object` is `SparseTensor`, assumes `func` takes `(sp_indices,
+  sp_values, sp_shape, dense)` and outputs `(new_sp_values)`.
 
   Args:
     func: the operator
     op_name: name of the operator being overridden
+    clazz_object: class to override for.  Either `Tensor` or `SparseTensor`.
   """
-
   def binary_op_wrapper(x, y):
     with ops.op_scope([x, y], None, op_name) as name:
-      assert isinstance(x, ops.Tensor)
-      y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+      if not isinstance(y, ops.SparseTensor):
+        y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
       return func(x, y, name=name)
 
-  ops.Tensor._override_operator("__%s__" % op_name, binary_op_wrapper)
-  del binary_op_wrapper
+  def binary_op_wrapper_sparse(sp_x, y):
+    with ops.op_scope([sp_x, y], None, op_name) as name:
+      y = ops.convert_to_tensor(y, dtype=sp_x.dtype.base_dtype, name="y")
+      return ops.SparseTensor(sp_x.indices, func(sp_x.indices, sp_x.values,
+                                                 sp_x.shape, y, name=name),
+                              sp_x.shape)
 
   def r_binary_op_wrapper(y, x):
     with ops.op_scope([x, y], None, op_name) as name:
-      assert isinstance(y, ops.Tensor)
       x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
       return func(x, y, name=name)
 
-  ops.Tensor._override_operator("__r%s__" % op_name, r_binary_op_wrapper)
-  del r_binary_op_wrapper
+  if clazz_object is ops.Tensor:
+    clazz_object._override_operator("__%s__" % op_name, binary_op_wrapper)
+    del binary_op_wrapper
+    clazz_object._override_operator("__r%s__" % op_name, r_binary_op_wrapper)
+    del r_binary_op_wrapper
+  else:
+    clazz_object._override_operator("__%s__" % op_name,
+                                    binary_op_wrapper_sparse)
+    del binary_op_wrapper_sparse
 
 
 # Conversion table for __truediv__.  None entries mean no conversion required.
@@ -546,6 +562,31 @@ _TRUEDIV_TABLE = {
     dtypes.float64: None,
     dtypes.complex64: None,
 }
+
+
+# NOTE: the support of "sparse (true)div dense" is currently not baked in into
+# "tf.(true_)div()".  Until such an API decision is made, the supported usage is
+# to explicitly use the "/" operator to invoke either truediv or div.
+def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
+  """Internal helper function for 'sp_t / dense_t'."""
+  with ops.op_scope([sp_indices, sp_values, sp_shape, y],
+                    name, "truediv") as name:
+    sp_values = ops.convert_to_tensor(sp_values, name="sp_values")
+    y = ops.convert_to_tensor(y, name="y")
+    x_dtype = sp_values.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError("x and y must have the same dtype, got %r != %r" %
+                      (x_dtype, y_dtype))
+    try:
+      dtype = _TRUEDIV_TABLE[x_dtype]
+    except KeyError:
+      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
+    if dtype is not None:
+      sp_values = cast(sp_values, dtype)
+      y = cast(y, dtype)
+    return gen_sparse_ops.sparse_dense_cwise_div(sp_indices, sp_values,
+                                                 sp_shape, y, name=name)
 
 
 def truediv(x, y, name=None):
@@ -628,9 +669,29 @@ def floordiv(x, y, name=None):
       return gen_math_ops.div(x, y, name=name)
 
 
+def _mul_dispatch(x, y, name=None):
+  """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
+  is_tensor_y = isinstance(y, ops.Tensor)
+  if is_tensor_y:
+    return gen_math_ops.mul(x, y, name=name)
+  else:
+    assert isinstance(y, ops.SparseTensor)  # Case: Dense * Sparse.
+    new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
+                                                     y.shape, x, name)
+    return ops.SparseTensor(y.indices, new_vals, y.shape)
+
+
+_OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_div, "div",
+                              ops.SparseTensor)
+_OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
+                              ops.SparseTensor)
+_OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
+                              ops.SparseTensor)
+
+
 _OverrideBinaryOperatorHelper(gen_math_ops.add, "add")
 _OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
-_OverrideBinaryOperatorHelper(gen_math_ops.mul, "mul")
+_OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(gen_math_ops.div, "div")
 _OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
@@ -1030,7 +1091,14 @@ def matmul(a, b,
   with ops.op_scope([a, b], name, "MatMul") as name:
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
-    if a.dtype == dtypes.float32 and (a_is_sparse or b_is_sparse):
+    sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
+    use_sparse_matmul = (a.dtype in sparse_matmul_types and
+                         b.dtype in sparse_matmul_types and
+                         (a_is_sparse or b_is_sparse))
+    if dtypes.bfloat16 in (a.dtype, b.dtype):
+      # matmul currently doesn't handle bfloat16 inputs.
+      use_sparse_matmul = True
+    if use_sparse_matmul:
       return sparse_matmul(a, b,
                            transpose_a=transpose_a,
                            transpose_b=transpose_b,
@@ -1370,6 +1438,14 @@ def _BroadcastShape(op):
       raise ValueError("Incompatible shapes for broadcasting: %s and %s"
                        % (shape_x, shape_y))
   return [tensor_shape.TensorShape(return_dims)]
+
+
+@ops.RegisterShape("SparseDenseCwiseMul")
+@ops.RegisterShape("SparseDenseCwiseDiv")
+def _SparseDenseBinaryOpShape(op):  # pylint: disable=invalid-name
+  """Common shape for 'sparse <binary cwise op> dense -> sparse' operators."""
+  nnz = op.inputs[1].get_shape()[0]
+  return [tensor_shape.TensorShape(nnz)]
 
 
 @ops.RegisterShape("AddN")

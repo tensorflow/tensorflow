@@ -89,20 +89,25 @@ def ListRecursively(top):
 def IsDirectory(path):
   """Returns true if path exists and is a directory."""
   path = path.rstrip('/')
-  ls = ListDirectory(path)
-  if not ls:
+  try:
+    ls = ListDirectory(path)
+  except subprocess.CalledProcessError:
     # Doesn't exist.
     return False
-  elif len(ls) == 1:
+  if len(ls) == 1:
     # Either it's a file (which ls-es as itself) or it's a dir with one file.
-    return ls[0] == path
+    return ls[0] != path
   else:
     return True
 
 
 def Exists(path):
   """Returns true if path exists."""
-  return bool(ListDirectory(path))
+  try:
+    ListDirectory(path)
+    return True
+  except subprocess.CalledProcessError:
+    return False
 
 
 def IsGCSPath(path):

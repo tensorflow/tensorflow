@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -202,6 +203,22 @@ TEST(AppendFeatureValuesTest, StringValuesUsingInitializerList) {
   Example example;
 
   AppendFeatureValues({"FOO", "BAR", "BAZ"}, "tag", &example);
+
+  auto tag_ro = GetFeatureValues<string>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_EQ("FOO", tag_ro.Get(0));
+  EXPECT_EQ("BAR", tag_ro.Get(1));
+  EXPECT_EQ("BAZ", tag_ro.Get(2));
+}
+
+TEST(AppendFeatureValuesTest, StringVariablesUsingInitializerList) {
+  Example example;
+
+  string string1("FOO");
+  string string2("BAR");
+  string string3("BAZ");
+
+  AppendFeatureValues({string1, string2, string3}, "tag", &example);
 
   auto tag_ro = GetFeatureValues<string>("tag", example);
   ASSERT_EQ(3, tag_ro.size());

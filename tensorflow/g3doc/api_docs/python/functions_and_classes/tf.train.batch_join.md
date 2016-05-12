@@ -1,24 +1,28 @@
-### `tf.train.batch_join(tensor_list_list, batch_size, capacity=32, enqueue_many=False, shapes=None, dynamic_pad=False, shared_name=None, name=None)` {#batch_join}
+### `tf.train.batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False, shapes=None, dynamic_pad=False, shared_name=None, name=None)` {#batch_join}
 
 Runs a list of tensors to fill a queue to create batches of examples.
+
+The `tensors_list` argument is a list of tuples of tensors, or a list of
+dictionaries of tensors.  Each element in the list is treated similarily
+to the `tensors` argument of `tf.train.batch()`.
 
 Enqueues a different list of tensors in different threads.
 Implemented using a queue -- a `QueueRunner` for the queue
 is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
-`len(tensor_list_list)` threads will be started,
+`len(tensors_list)` threads will be started,
 with thread `i` enqueuing the tensors from
-`tensor_list_list[i]`. `tensor_list_list[i1][j]` must match
-`tensor_list_list[i2][j]` in type and shape, except in the first
+`tensors_list[i]`. `tensors_list[i1][j]` must match
+`tensors_list[i2][j]` in type and shape, except in the first
 dimension if `enqueue_many` is true.
 
-If `enqueue_many` is `False`, each `tensor_list_list[i]` is assumed
+If `enqueue_many` is `False`, each `tensors_list[i]` is assumed
 to represent a single example. An input tensor `x` will be output as a
 tensor with shape `[batch_size] + x.shape`.
 
-If `enqueue_many` is `True`, `tensor_list_list[i]` is assumed to
+If `enqueue_many` is `True`, `tensors_list[i]` is assumed to
 represent a batch of examples, where the first dimension is indexed
-by example, and all members of `tensor_list_list[i]` should have the
+by example, and all members of `tensors_list[i]` should have the
 same size in the first dimension.  The slices of any input tensor
 `x` are treated as examples, and the output tensors will have shape
 `[batch_size] + x.shape[1:]`.
@@ -34,7 +38,7 @@ you are responsible for catching this yourself.
 
 *N.B.:* If `dynamic_pad` is `False`, you must ensure that either
 (i) the `shapes` argument is passed, or (ii) all of the tensors in
-`tensor_list` must have fully-defined shapes. `ValueError` will be
+`tensors_list` must have fully-defined shapes. `ValueError` will be
 raised if neither of these conditions holds.
 
 If `dynamic_pad` is `True`, it is sufficient that the *rank* of the
@@ -48,7 +52,7 @@ the empty string.  See `PaddingFIFOQueue` for more info.
 ##### Args:
 
 
-*  <b>`tensor_list_list`</b>: A list of tuples of tensors to enqueue.
+*  <b>`tensors_list`</b>: A list of tuples or dictionaries of tensors to enqueue.
 *  <b>`batch_size`</b>: An integer. The new batch size pulled from the queue.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list_list` is a single
@@ -64,8 +68,8 @@ the empty string.  See `PaddingFIFOQueue` for more info.
 
 ##### Returns:
 
-  A list of tensors with the same number and types as
-  `tensor_list_list[i]`.
+  A list or dictionary of tensors with the same number and types as
+  `tensors_list[i]`.
 
 ##### Raises:
 

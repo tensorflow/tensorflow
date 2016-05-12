@@ -53,16 +53,21 @@ export function fetchPbTxt(filepath: string): Promise<string> {
  * Fetches the metadata file, parses it and returns a promise of the result.
  */
 export function fetchAndParseMetadata(path: string, tracker: ProgressTracker) {
-  return runTask('Reading metadata pbtxt', 40, () => {
-           if (path == null) {
-             return Promise.resolve(null);
-           }
-           return fetchPbTxt(path).then(text => new Blob([text]));
-         }, tracker).then((blob: Blob) => {
-    return runTask('Parsing metadata.pbtxt', 60, () => {
-      return blob != null ? parseStatsPbTxt(blob) : null;
-    }, tracker);
-  });
+  return tf.graph.util
+      .runTask(
+          'Reading metadata pbtxt', 40,
+          () => {
+            if (path == null) {
+              return Promise.resolve(null);
+            }
+            return fetchPbTxt(path).then(text => new Blob([text]));
+          },
+          tracker)
+      .then((blob: Blob) => {
+        return tf.graph.util.runTask('Parsing metadata.pbtxt', 60, () => {
+          return blob != null ? parseStatsPbTxt(blob) : null;
+        }, tracker);
+      });
 }
 
 /**
@@ -70,14 +75,19 @@ export function fetchAndParseMetadata(path: string, tracker: ProgressTracker) {
  */
 export function fetchAndParseGraphData(path: string, pbTxtFile: Blob,
     tracker: ProgressTracker) {
-  return runTask('Reading graph pbtxt', 40, () => {
-           return pbTxtFile ? Promise.resolve(pbTxtFile) :
-                              fetchPbTxt(path).then(text => new Blob([text]));
-         }, tracker).then(blob => {
-    return runTask('Parsing graph.pbtxt', 60, () => {
-      return parseGraphPbTxt(blob);
-    }, tracker);
-  });
+  return tf.graph.util
+      .runTask(
+          'Reading graph pbtxt', 40,
+          () => {
+            return pbTxtFile ? Promise.resolve(pbTxtFile) :
+                               fetchPbTxt(path).then(text => new Blob([text]));
+          },
+          tracker)
+      .then(blob => {
+        return tf.graph.util.runTask('Parsing graph.pbtxt', 60, () => {
+          return parseGraphPbTxt(blob);
+        }, tracker);
+      });
 }
 
 /**
@@ -170,14 +180,15 @@ const METADATA_REPEATED_FIELDS: {[attrPath: string]: boolean} = {
 /**
  * Parses a blob of proto txt file into a raw Graph object.
  */
-export function parseGraphPbTxt(input: Blob): Promise<TFNode[]> {
+export function parseGraphPbTxt(input: Blob):
+    Promise<tf.graph.proto.NodeDef[]> {
   return parsePbtxtFile(input, GRAPH_REPEATED_FIELDS).then(obj => obj['node']);
 }
 
 /**
  * Parses a blob of proto txt file into a StepStats object.
  */
-function parseStatsPbTxt(input: Blob): Promise<StepStats> {
+function parseStatsPbTxt(input: Blob): Promise<tf.graph.proto.StepStats> {
   return parsePbtxtFile(input, METADATA_REPEATED_FIELDS)
       .then(obj => obj['step_stats']);
 }

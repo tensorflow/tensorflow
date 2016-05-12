@@ -17,7 +17,3 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.models.rnn import rnn
-from tensorflow.models.rnn import rnn_cell
-from tensorflow.models.rnn import seq2seq

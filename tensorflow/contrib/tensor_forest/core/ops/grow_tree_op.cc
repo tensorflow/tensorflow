@@ -26,6 +26,7 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/logging.h"
 
 
@@ -33,9 +34,9 @@ namespace tensorflow {
 
 using tensorforest::CHILDREN_INDEX;
 using tensorforest::FEATURE_INDEX;
-
 using tensorforest::LEAF_NODE;
 
+using tensorforest::CheckTensorBounds;
 
 REGISTER_OP("GrowTree")
   .Input("end_of_tree: int32")
@@ -150,6 +151,15 @@ class GrowTree : public OpKernel {
             "Number of splits should be the same in "
             "candidate_split_features and candidate_split_thresholds."));
 
+    // Check tensor bounds.
+    if (!CheckTensorBounds(context, end_of_tree)) return;
+    if (!CheckTensorBounds(context, tree_depths)) return;
+    if (!CheckTensorBounds(context, node_to_accumulator)) return;
+    if (!CheckTensorBounds(context, finished)) return;
+    if (!CheckTensorBounds(context, best_splits)) return;
+    if (!CheckTensorBounds(context, candidate_split_features)) return;
+    if (!CheckTensorBounds(context, candidate_split_thresholds)) return;
+
     int32 current_end_of_tree = end_of_tree.unaligned_flat<int32>()(0);
     const auto depths = tree_depths.unaligned_flat<int32>();
     const auto node_map = node_to_accumulator.unaligned_flat<int32>();
@@ -158,8 +168,13 @@ class GrowTree : public OpKernel {
     const auto split_features = candidate_split_features.tensor<int32, 2>();
     const auto split_thresholds = candidate_split_thresholds.tensor<float, 2>();
 
-    const int32 num_finished = finished.shape().dim_size(0);
-    const int32 num_nodes = node_to_accumulator.shape().dim_size(0);
+    const int32 num_finished = static_cast<int32>(finished.shape().dim_size(0));
+    const int32 num_nodes = static_cast<int32>(
+        node_to_accumulator.shape().dim_size(0));
+    const int32 num_accumulators = static_cast<int32>(
+        candidate_split_features.shape().dim_size(0));
+    const int32 num_splits = static_cast<int32>(
+        candidate_split_features.shape().dim_size(1));
 
     // Converting a leaf node into an internal node requires space for its
     // two children.
@@ -203,14 +218,22 @@ class GrowTree : public OpKernel {
     auto depth_updates_flat = depth_updates_tensor->tensor<int32, 1>();
 
     int output_slot = 0;
-    for (int i = 0; i < nodes_we_can_allocate; i++) {
-      const int32 node = finished_vec(i);
-      const int32 best = best_vec(i);
-      const int32 accumulator = node_map(node);
+    for (int32 i = 0; i < nodes_we_can_allocate; i++) {
+      const int32 node = internal::SubtleMustCopy(finished_vec(i));
+      OP_REQUIRES(context, FastBoundsCheck(node, std::min(node_map.size(),
+                                                          depths.size())),
+                  errors::InvalidArgument("finished node not in valid range."))
+      const int32 best = internal::SubtleMustCopy(best_vec(i));
+      const int32 accumulator = internal::SubtleMustCopy(node_map(node));
       if (accumulator < 0) {
         LOG(ERROR) << "Finished node doesn't have an accumulator.";
         continue;
       }
+
+      OP_REQUIRES(context, FastBoundsCheck(accumulator, num_accumulators),
+                  errors::InvalidArgument("accumulator not in valid range."))
+      OP_REQUIRES(context, FastBoundsCheck(best, num_splits),
+                  errors::InvalidArgument("best split not in valid range."))
 
       if (current_end_of_tree >= num_nodes - 1) {
         LOG(ERROR) << "Could not grow tree any further.";

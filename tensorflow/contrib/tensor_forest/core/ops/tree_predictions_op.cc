@@ -20,6 +20,7 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -28,6 +29,7 @@ using tensorforest::FEATURE_INDEX;
 using tensorforest::LEAF_NODE;
 using tensorforest::FREE_NODE;
 
+using tensorforest::CheckTensorBounds;
 using tensorforest::DecideNode;
 using tensorforest::Sum;
 
@@ -98,8 +100,18 @@ class TreePredictions : public OpKernel {
             "Number of nodes should be the same in "
             "tree, tree_thresholds and node_pcw."));
 
-    const int32 num_classes = node_per_class_weights.shape().dim_size(1);
-    const int32 num_data = input_data.shape().dim_size(0);
+    // Check tensor bounds.
+    if (!CheckTensorBounds(context, input_data)) return;
+    if (!CheckTensorBounds(context, tree_tensor)) return;
+    if (!CheckTensorBounds(context, tree_thresholds)) return;
+    if (!CheckTensorBounds(context, node_per_class_weights)) return;
+
+    const int32 num_classes = static_cast<int32>(
+        node_per_class_weights.shape().dim_size(1));
+    const int32 num_data = static_cast<int32>(
+        input_data.shape().dim_size(0));
+    const int32 num_nodes = static_cast<int32>(
+        tree_tensor.shape().dim_size(0));
 
     Tensor* output_predictions = nullptr;
     TensorShape output_shape;
@@ -119,6 +131,8 @@ class TreePredictions : public OpKernel {
       int node_index = 0;
       int parent = -1;
       while (true) {
+        OP_REQUIRES(context, FastBoundsCheck(node_index, num_nodes),
+                    errors::InvalidArgument("node_index not in valid range."))
         const int32 left_child = tree(node_index, CHILDREN_INDEX);
         if (left_child == LEAF_NODE) {
           float sum = node_pcw(node_index, 0);

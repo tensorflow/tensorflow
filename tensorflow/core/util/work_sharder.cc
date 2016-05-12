@@ -22,6 +22,9 @@ namespace tensorflow {
 
 void Shard(int num_workers, thread::ThreadPool* workers, int64 total,
            int64 cost_per_unit, std::function<void(int64, int64)> work) {
+#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
+  workers->ParallelFor(total, cost_per_unit, work);
+#else
   CHECK_GE(total, 0);
   if (total == 0) {
     return;
@@ -68,6 +71,7 @@ void Shard(int num_workers, thread::ThreadPool* workers, int64 total,
   // Inline execute the 1st shard.
   work(0, std::min(block_size, total));
   counter.Wait();
+#endif
 }
 
 }  // end namespace tensorflow

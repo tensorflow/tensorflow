@@ -123,7 +123,7 @@ Status SimpleGraphExecutionState::InitBaseGraph() {
 }
 
 Status SimpleGraphExecutionState::BuildGraph(const BuildGraphOptions& options,
-                                             ClientGraph** out) {
+                                             SimpleClientGraph** out) {
   VLOG(1) << "BuildGraph";
   mutex_lock l(mu_);
   // Lazily initialize the base graph.
@@ -131,7 +131,7 @@ Status SimpleGraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     TF_RETURN_IF_ERROR(InitBaseGraph());
   }
 
-  std::unique_ptr<ClientGraph> cgraph(new ClientGraph(ops_));
+  std::unique_ptr<SimpleClientGraph> cgraph(new SimpleClientGraph(ops_));
   CopyGraph(*graph_, &cgraph->graph);
 
   // Extract the subset of the graph that needs to be run, adding feed/fetch
@@ -144,7 +144,7 @@ Status SimpleGraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   // since the local CostModel used to record its stats is sized by
   // the largest node id.
   {
-    std::unique_ptr<ClientGraph> dense_copy(new ClientGraph(ops_));
+    std::unique_ptr<SimpleClientGraph> dense_copy(new SimpleClientGraph(ops_));
     CopyGraph(cgraph->graph, &dense_copy->graph);
     cgraph = std::move(dense_copy);
   }

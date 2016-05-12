@@ -46,7 +46,8 @@ class BitcastOp : public OpKernel {
     OP_REQUIRES(context, in_size_ >= out_size_ ||
                              (input_tensor.dims() > 0 &&
                               input_tensor.dim_size(input_tensor.dims() - 1) ==
-                                  out_size_ / in_size_),
+                                  out_size_ / in_size_) ||
+                             input_tensor.dim_size(input_tensor.dims()) == -1,
                 errors::InvalidArgument(
                     "Cannot bitcast from ", DataTypeString(input_data_type_),
                     " to ", DataTypeString(output_data_type_), ": shape ",

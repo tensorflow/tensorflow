@@ -159,7 +159,7 @@ function ping() {
   colorEnter.append("div")
       .attr("class", "swatch");
 
-  color.select(".swatch").style("background-color", (d) => ccs.getColor(d));
+  color.select(".swatch").style("background-color", (d) => ccs.scale(d));
 
   colorEnter.append("div")
       .attr("class", "label")
