@@ -18,9 +18,11 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
+using tensorforest::CheckTensorBounds;
 using tensorforest::Sum;
 
 REGISTER_OP("FinishedNodes")
@@ -70,19 +72,32 @@ class FinishedNodes : public OpKernel {
                 errors::InvalidArgument(
                     "accumulator_sums should be two-dimensional"));
 
+    // Check tensor bounds.
+    if (!CheckTensorBounds(context, leaf_tensor)) return;
+    if (!CheckTensorBounds(context, node_to_accumulator)) return;
+    if (!CheckTensorBounds(context, accumulator_sums)) return;
+
     const auto leaves = leaf_tensor.unaligned_flat<int32>();
     const auto node_map = node_to_accumulator.unaligned_flat<int32>();
     const auto sums = accumulator_sums.tensor<float, 2>();
 
-    const int32 num_leaves = leaf_tensor.shape().dim_size(0);
+    const int32 num_leaves = static_cast<int32>(
+        leaf_tensor.shape().dim_size(0));
+    const int32 num_accumulators = static_cast<int32>(
+        accumulator_sums.shape().dim_size(0));
 
     std::vector<int32> finished;
-    for (int i = 0; i < num_leaves; i++) {
-      const int32 leaf = leaves(i);
-      const int32 accumulator = node_map(leaf);
+    for (int32 i = 0; i < num_leaves; i++) {
+      const int32 leaf = internal::SubtleMustCopy(leaves(i));
+      OP_REQUIRES(context, FastBoundsCheck(leaf, node_map.size()),
+                  errors::InvalidArgument("leaf not in valid range."))
+      const int32 accumulator = internal::SubtleMustCopy(node_map(leaf));
       if (accumulator < 0) {
         continue;
       }
+
+      OP_REQUIRES(context, FastBoundsCheck(accumulator, num_accumulators),
+                  errors::InvalidArgument("accumulator not in valid range."))
 
       // The first column holds the number of samples seen.
       // For classification, this should be the sum of the other columns.
