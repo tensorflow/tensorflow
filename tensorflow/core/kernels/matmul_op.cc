@@ -207,7 +207,7 @@ REGISTER_CPU(int32);
 REGISTER_CPU(complex64);
 #if GOOGLE_CUDA
 REGISTER_GPU(float);
-// REGISTER_GPU(double);
+REGISTER_GPU(double);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

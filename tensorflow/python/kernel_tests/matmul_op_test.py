@@ -68,6 +68,7 @@ class MatMulTest(tf.test.TestCase):
     x = np.arange(1., 5.).reshape([4, 1]).astype(np.float64)
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.float64)
     self._testCpuMatmul(x, y)
+    self._testGpuMatmul(x, y)
 
   def testInt32Basic(self):
     x = np.arange(1., 5.).reshape([4, 1]).astype(np.int32)
@@ -94,6 +95,7 @@ class MatMulTest(tf.test.TestCase):
       x = self._randMatrix(n, k, np.float64)
       y = self._randMatrix(k, m, np.float64)
       self._testCpuMatmul(x, y)
+      self._testGpuMatmul(x, y)
 
   def testInt32Random(self):
     for _ in range(10):
@@ -126,6 +128,7 @@ class MatMulTest(tf.test.TestCase):
       x = self._randMatrix(k, n, np.float64)
       y = self._randMatrix(m, k, np.float64)
       self._testCpuMatmul(x, y, True, True)
+      self._testGpuMatmul(x, y, True, True)
 
   def testMatMul_OutEmpty_A(self):
     n, k, m = 0, 8, 3
