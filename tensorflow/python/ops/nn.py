@@ -306,10 +306,16 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
     #   x - x * z + log(1 + exp(-x))
     # For x < 0, a more numerically stable formula is
     #   -x * z + log(1 + exp(x))
-    # To avoid branching, we use the combined version
+    # Note that these two expressions can be combined into the following:
     #   max(x, 0) - x * z + log(1 + exp(-abs(x)))
-    return math_ops.add(nn_ops.relu(logits) - logits * targets,
-                        math_ops.log(1 + math_ops.exp(-math_ops.abs(logits))),
+    # To allow computing gradients at zero, we define custom versions of max and
+    # abs functions.
+    zeros = array_ops.zeros_like(logits, dtype=logits.dtype)
+    cond = (logits >= zeros)
+    relu_logits = math_ops.select(cond, logits, zeros)
+    neg_abs_logits = math_ops.select(cond, -logits, logits)
+    return math_ops.add(relu_logits - logits * targets,
+                        math_ops.log(1 + math_ops.exp(neg_abs_logits)),
                         name=name)
 
 
