@@ -112,6 +112,24 @@ def _SoftmaxGrad(op, grad_softmax):
   return grad_x
 
 
+@ops.RegisterGradient("LogSoftmax")
+def _LogSoftmaxGrad(op, grad):
+  """The gradient for log_softmax.
+
+      log_softmax = input - log(sum(exp(input))
+      dlog_softmax/dinput = diag - softmax(input)
+
+  Args:
+    op: The log softmax op.
+    grad: The tensor representing the gradient w.r.t. the output.
+
+  Returns:
+    The gradients w.r.t. the input.
+  """
+  softmax = math_ops.exp(op.outputs[0])
+  return grad - math_ops.reduce_sum(grad, 1, keep_dims=True) * softmax
+
+
 @ops.RegisterGradient("BiasAdd")
 def _BiasAddGrad(op, received_grad):
   """Return the gradients for the 2 inputs of bias_op.
