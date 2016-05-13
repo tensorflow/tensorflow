@@ -47,17 +47,18 @@ limitations under the License.
 
 // Call "m" for all number types that support the comparison operations "<" and
 // ">".
-#define TF_CALL_INTEGRAL_TYPES(m)                                      \
-  m(::tensorflow::int64) m(::tensorflow::int32) m(::tensorflow::uint8) \
-      m(::tensorflow::int16) m(::tensorflow::int8)
+#define TF_CALL_INTEGRAL_TYPES(m)                                       \
+  m(::tensorflow::int64) m(::tensorflow::int32) m(::tensorflow::uint16) \
+      m(::tensorflow::int16) m(::tensorflow::uint8) m(::tensorflow::int8)
 
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
   TF_CALL_INTEGRAL_TYPES(m)          \
   m(Eigen::half) m(float) m(double)
 
-#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)              \
-  m(Eigen::half) m(float) m(double) m(::tensorflow::int64) \
-      m(::tensorflow::uint8) m(::tensorflow::int16) m(::tensorflow::int8)
+#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)                               \
+  m(Eigen::half) m(float) m(double) m(::tensorflow::int64)                  \
+      m(::tensorflow::uint16) m(::tensorflow::int16) m(::tensorflow::uint8) \
+          m(::tensorflow::int8)
 
 // Call "m" for all number types, including complex64 and complex128.
 #define TF_CALL_NUMBER_TYPES(m) \

@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -178,6 +177,23 @@ DirectSession::~DirectSession() {
   if (options_.config.use_per_session_threads()) {
     delete thread_pool_;
   }
+
+  execution_state_.reset(nullptr);
+  flib_def_.reset(nullptr);
+}
+
+void DirectSession::MaybeInitializeExecutionState(const GraphDef& graph) {
+  // If already initialied, do nothing.
+  if (flib_def_ && execution_state_) {
+    return;
+  }
+  // Set up the per-session execution state.
+  flib_def_.reset(new FunctionLibraryDefinition(graph.library()));
+  SimpleGraphExecutionStateOptions options;
+  options.device_set = &device_set_;
+  options.session_options = &options_;
+  execution_state_.reset(
+      new SimpleGraphExecutionState(flib_def_.get(), options));
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
@@ -195,57 +211,14 @@ Status DirectSession::Extend(const GraphDef& graph) {
 }
 
 Status DirectSession::ExtendLocked(const GraphDef& graph) {
-  // Merge versions
-  if (graph_def_.has_versions()) {
-    if (graph_def_.versions().producer() != graph.versions().producer()) {
-      return errors::InvalidArgument(
-          "Can't extend GraphDef at version ", graph_def_.versions().producer(),
-          " with graph at version ", graph.versions().producer());
-    }
-    VersionDef* versions = graph_def_.mutable_versions();
-    versions->set_min_consumer(
-        std::max(versions->min_consumer(), graph.versions().min_consumer()));
-    if (graph.versions().bad_consumers_size()) {
-      // Add new bad_consumers that aren't already marked bad.
-      //
-      // Note: This implementation is quadratic time if there are many calls to
-      // ExtendLocked with many bad consumers.  Since this is unlikely, and
-      // fixing it would require data structures outside of this routine,
-      // quadratic time it is.
-      auto* bad_consumers = versions->mutable_bad_consumers();
-      const std::unordered_set<int> existing(bad_consumers->begin(),
-                                             bad_consumers->end());
-      for (const int v : graph.versions().bad_consumers()) {
-        if (existing.find(v) == existing.end()) {
-          bad_consumers->Add(v);
-        }
-      }
-    }
-  } else {
-    graph_def_.mutable_versions()->CopyFrom(graph.versions());
-  }
+  MaybeInitializeExecutionState(graph);
+  std::unique_ptr<SimpleGraphExecutionState> old_state;
+  SimpleGraphExecutionState* new_state = nullptr;
+  TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &new_state));
 
-  const int node_size_before_merge = graph_def_.node_size();
-  graph_def_.MergeFrom(graph);
-
-  FunctionLibraryDefinition fdefs(graph_def_.library());
-  // Add default attributes to all new nodes in the graph.
-  Status s =
-      AddDefaultAttrsToGraphDef(&graph_def_, fdefs, node_size_before_merge);
-  if (!s.ok()) {
-    // One of the nodes was invalid, return the state of graph_def_
-    // to what it was before this function.
-    const int nodes_added = graph_def_.node_size() - node_size_before_merge;
-    graph_def_.mutable_node()->DeleteSubrange(node_size_before_merge,
-                                              nodes_added);
-    return s;
-  }
-
-  if (graph_def_.versions().producer() >= 5) {
-    // Validate the graph: we assume that merging two valid graphs
-    // should maintain graph validity.
-    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(graph_def_, fdefs));
-  }
+  // Swap out the old state.
+  old_state = std::move(execution_state_);
+  execution_state_.reset(new_state);
 
   graph_created_ = true;  // In case this is first call
   return Status::OK();
@@ -680,16 +653,19 @@ Status DirectSession::GetOrCreateExecutors(
     }
   }
 
+  BuildGraphOptions options;
+  options.feed_endpoints = inputs_sorted;
+  options.fetch_endpoints = outputs_sorted;
+  options.target_nodes = tn_sorted;
+
   // The executor_lock_ is intentionally released while executor is
   // being created.
-  FunctionLibraryDefinition* fdefs;
   std::unordered_map<string, Graph*> graphs;
-  Status s = CreateGraphs(inputs, outputs, target_nodes, &fdefs, &graphs,
-                          run_state_args);
+  Status s = CreateGraphs(options, &graphs, run_state_args);
   TF_RETURN_IF_ERROR(s);
 
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
-  ek->func_defs = fdefs;
+  ek->func_defs = flib_def_.get();
   if (run_state_args->is_partial_run) {
     ek->graph = run_state_args->graph;
     ek->name_to_node = new NameNodeMap;
@@ -724,9 +700,9 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib =
-        NewFunctionLibraryRuntime(device_mgr_.get(), device, runner,
-                                  graph_def_version, fdefs, optimizer_opts);
+    item->flib = NewFunctionLibraryRuntime(device_mgr_.get(), device, runner,
+                                           graph_def_version, flib_def_.get(),
+                                           optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;
@@ -802,67 +778,67 @@ Status DirectSession::GetOrCreateExecutors(
   return Status::OK();
 }
 
-void DirectSession::SaveStatefulNodes(Graph* graph) {
-  for (Node* n : graph->nodes()) {
-    if (n->op_def().is_stateful()) {
-      VLOG(2) << "Saving " << n->DebugString();
-      stateful_placements_[n->name()] = n->assigned_device_name();
-    }
-  }
-}
-
-void DirectSession::RestoreStatefulNodes(Graph* graph) {
-  for (Node* n : graph->nodes()) {
-    if (n->op_def().is_stateful()) {
-      auto iter = stateful_placements_.find(n->name());
-      if (iter != stateful_placements_.end()) {
-        n->set_assigned_device_name(iter->second);
-        VLOG(2) << "Restored " << n->DebugString();
-      }
-    }
-  }
-}
-
-Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
-                                   gtl::ArraySlice<string> fetches,
-                                   gtl::ArraySlice<string> target_nodes,
-                                   FunctionLibraryDefinition** func_defs,
+Status DirectSession::CreateGraphs(const BuildGraphOptions& options,
                                    std::unordered_map<string, Graph*>* outputs,
                                    RunStateArgs* run_state_args) {
-  std::unique_ptr<FunctionLibraryDefinition> fdefs;
-  std::unique_ptr<Graph> graph;
-  {
-    mutex_lock l(graph_def_lock_);
-    fdefs.reset(new FunctionLibraryDefinition(graph_def_.library()));
-    graph.reset(new Graph(fdefs.get()));
-    GraphConstructorOptions opts;
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def_, graph.get()));
+  std::unique_ptr<SimpleClientGraph> client_graph;
+  SimpleClientGraph* cgraph = nullptr;
+
+  std::unique_ptr<SimpleGraphExecutionState> temp_exec_state_holder;
+  SimpleGraphExecutionState* execution_state = nullptr;
+  if (options_.config.graph_options().place_pruned_graph()) {
+    // Because we are placing pruned graphs, we need to create a
+    // new SimpleGraphExecutorState for every new unseen graph,
+    // and then place it.
+    SimpleGraphExecutionStateOptions prune_options;
+    prune_options.device_set = &device_set_;
+    prune_options.session_options = &options_;
+    temp_exec_state_holder.reset(
+        new SimpleGraphExecutionState(flib_def_.get(), prune_options));
+    {
+      mutex_lock l(mu_);
+      temp_exec_state_holder->SetStatefulPlacements(stateful_placements_);
+    }
+
+    TF_RETURN_IF_ERROR(temp_exec_state_holder->Extend(
+        execution_state_->original_graph_def(), &execution_state));
+    temp_exec_state_holder.reset(execution_state);
+  } else {
+    execution_state = execution_state_.get();
   }
+
+  TF_RETURN_IF_ERROR(execution_state->BuildGraph(options, &cgraph));
+  {
+    auto current_stateful_placements = execution_state->GetStatefulPlacements();
+    mutex_lock l(mu_);
+    // Update our current state based on the execution_state's
+    // placements.  If there are any mismatches for a node,
+    // we should fail, as this should never happen.
+    for (auto placement_pair : current_stateful_placements) {
+      const string& node_name = placement_pair.first;
+      const string& placement = placement_pair.second;
+      auto iter = stateful_placements_.find(node_name);
+      if (iter == stateful_placements_.end()) {
+        stateful_placements_.insert(std::make_pair(node_name, placement));
+      } else if (iter->second != placement) {
+        return errors::Internal(
+            "Stateful placement mismatch. "
+            "Current assignment of ",
+            node_name, " to ", iter->second, " does not match ", placement);
+      }
+    }
+
+    stateful_placements_ = execution_state->GetStatefulPlacements();
+  }
+  client_graph.reset(cgraph);
 
   // Remember the graph in run state if this is a partial run.
   if (run_state_args->is_partial_run) {
-    run_state_args->graph = new Graph(fdefs.get());
-    CopyGraph(*graph.get(), run_state_args->graph);
-  }
-
-  TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-      graph.get(), feeds, fetches, target_nodes,
-      device_set_.client_device()->attributes()));
-
-  // Run the simple placer after rewriting the graph.
-  SimplePlacer placer(graph.get(), &device_set_, &options_);
-
-  {
-    mutex_lock l(mu_);
-    // Restore stateful nodes.
-    RestoreStatefulNodes(graph.get());
-    TF_RETURN_IF_ERROR(placer.Run());
-    // Save stateful nodes.
-    SaveStatefulNodes(graph.get());
+    run_state_args->graph = new Graph(flib_def_.get());
+    CopyGraph(*execution_state->full_graph(), run_state_args->graph);
   }
 
   // Partition the graph across devices.
-  std::unordered_map<string, GraphDef> partitions;
   PartitionOptions popts;
   popts.node_to_loc = [](const Node* node) {
     return node->assigned_device_name();
@@ -877,7 +853,9 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
     return 1;
   };
   popts.control_flow_added = false;
-  TF_RETURN_IF_ERROR(Partition(popts, graph.get(), &partitions));
+
+  std::unordered_map<string, GraphDef> partitions;
+  TF_RETURN_IF_ERROR(Partition(popts, &client_graph->graph, &partitions));
 
   std::vector<string> device_names;
   for (auto device : devices_) {
@@ -917,12 +895,12 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
       // may be possible use cases where a device may want to modify
       // function definitions - in which case the library would need to be
       // replicated per device.
-      s = d->MaybeRewriteGraph(graph_def_.library(), graph_def);
+      s = d->MaybeRewriteGraph(flib_def_->ToProto(), graph_def);
       if (!s.ok()) {
         break;
       }
     }
-    Graph* device_graph = new Graph(fdefs.get());
+    Graph* device_graph = new Graph(flib_def_.get());
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now
     // allow.
@@ -940,7 +918,6 @@ Status DirectSession::CreateGraphs(gtl::ArraySlice<string> feeds,
     gtl::STLDeleteValues(outputs);
     return s;
   }
-  *func_defs = fdefs.release();
   return Status::OK();
 }
 

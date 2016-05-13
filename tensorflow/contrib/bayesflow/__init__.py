@@ -12,17 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for representing statistical distributions.
+"""Ops for representing Bayesian computation.
 
-## This package provides classes for statistical distributions.
+## This package provides classes for Bayesian computation with TensorFlow.
 
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-# pylint: disable=unused-import,wildcard-import, line-too-long
-from tensorflow.contrib.distributions.python.ops import gaussian_conjugate_posteriors
-from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
-from tensorflow.contrib.distributions.python.ops.gaussian import *
-# from tensorflow.contrib.distributions.python.ops.dirichlet import *  # pylint: disable=line-too-long

@@ -3,7 +3,7 @@
 Samples a set of classes from a distribution learned during training.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from
@@ -11,7 +11,7 @@ the base distribution.
 
 The base distribution for this operation is constructed on the fly
 during training.  It is a unigram distribution over the target
-classes seen so far during training.  Every integer in `[0, range_max]`
+classes seen so far during training.  Every integer in `[0, range_max)`
 begins with a weight of 1, and is incremented by 1 each time it is
 seen as a target class.  The base distribution is not saved to checkpoints,
 so it is reset when the model is reloaded.

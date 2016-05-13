@@ -515,11 +515,15 @@
   * [`main`](../../api_docs/python/test.md#main)
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
+  * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
+  * [`ContinuousDistribution`](../../api_docs/python/contrib.distributions.md#ContinuousDistribution)
   * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
+  * [`DiscreteDistribution`](../../api_docs/python/contrib.distributions.md#DiscreteDistribution)
   * [`Gaussian`](../../api_docs/python/contrib.distributions.md#Gaussian)
   * [`gaussian_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#gaussian_congugates_known_sigma_predictive)
   * [`gaussian_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#gaussian_conjugates_known_sigma_posterior)
   * [`MultivariateNormal`](../../api_docs/python/contrib.distributions.md#MultivariateNormal)
+  * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)
 
 * **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
   * [`apply_regularization`](../../api_docs/python/contrib.layers.md#apply_regularization)
@@ -543,6 +547,8 @@
   * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
 
 * **[Learn (contrib)](../../api_docs/python/contrib.learn.md)**:
+  * [`BaseEstimator`](../../api_docs/python/contrib.learn.md#BaseEstimator)
+  * [`Estimator`](../../api_docs/python/contrib.learn.md#Estimator)
   * [`evaluate`](../../api_docs/python/contrib.learn.md#evaluate)
   * [`extract_dask_data`](../../api_docs/python/contrib.learn.md#extract_dask_data)
   * [`extract_dask_labels`](../../api_docs/python/contrib.learn.md#extract_dask_labels)
@@ -550,7 +556,11 @@
   * [`extract_pandas_labels`](../../api_docs/python/contrib.learn.md#extract_pandas_labels)
   * [`extract_pandas_matrix`](../../api_docs/python/contrib.learn.md#extract_pandas_matrix)
   * [`infer`](../../api_docs/python/contrib.learn.md#infer)
+  * [`ModeKeys`](../../api_docs/python/contrib.learn.md#ModeKeys)
   * [`NanLossDuringTrainingError`](../../api_docs/python/contrib.learn.md#NanLossDuringTrainingError)
+  * [`read_batch_examples`](../../api_docs/python/contrib.learn.md#read_batch_examples)
+  * [`read_batch_features`](../../api_docs/python/contrib.learn.md#read_batch_features)
+  * [`read_batch_record_features`](../../api_docs/python/contrib.learn.md#read_batch_record_features)
   * [`run_feeds`](../../api_docs/python/contrib.learn.md#run_feeds)
   * [`run_n`](../../api_docs/python/contrib.learn.md#run_n)
   * [`RunConfig`](../../api_docs/python/contrib.learn.md#RunConfig)
@@ -564,6 +574,29 @@
   * [`TensorFlowRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRegressor)
   * [`TensorFlowRNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowRNNClassifier)
   * [`TensorFlowRNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRNNRegressor)
+
+* **[Metrics (contrib)](../../api_docs/python/contrib.metrics.md)**:
+  * [`accuracy`](../../api_docs/python/contrib.metrics.md#accuracy)
+  * [`auc_using_histogram`](../../api_docs/python/contrib.metrics.md#auc_using_histogram)
+  * [`confusion_matrix`](../../api_docs/python/contrib.metrics.md#confusion_matrix)
+  * [`set_difference`](../../api_docs/python/contrib.metrics.md#set_difference)
+  * [`set_intersection`](../../api_docs/python/contrib.metrics.md#set_intersection)
+  * [`set_size`](../../api_docs/python/contrib.metrics.md#set_size)
+  * [`set_union`](../../api_docs/python/contrib.metrics.md#set_union)
+  * [`streaming_accuracy`](../../api_docs/python/contrib.metrics.md#streaming_accuracy)
+  * [`streaming_auc`](../../api_docs/python/contrib.metrics.md#streaming_auc)
+  * [`streaming_mean`](../../api_docs/python/contrib.metrics.md#streaming_mean)
+  * [`streaming_mean_absolute_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_absolute_error)
+  * [`streaming_mean_cosine_distance`](../../api_docs/python/contrib.metrics.md#streaming_mean_cosine_distance)
+  * [`streaming_mean_relative_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_relative_error)
+  * [`streaming_mean_squared_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_squared_error)
+  * [`streaming_percentage_less`](../../api_docs/python/contrib.metrics.md#streaming_percentage_less)
+  * [`streaming_precision`](../../api_docs/python/contrib.metrics.md#streaming_precision)
+  * [`streaming_recall`](../../api_docs/python/contrib.metrics.md#streaming_recall)
+  * [`streaming_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_recall_at_k)
+  * [`streaming_root_mean_squared_error`](../../api_docs/python/contrib.metrics.md#streaming_root_mean_squared_error)
+  * [`streaming_sparse_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_k)
+  * [`streaming_sparse_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_recall_at_k)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
