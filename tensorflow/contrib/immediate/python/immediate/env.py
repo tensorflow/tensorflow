@@ -5,10 +5,6 @@ from __future__ import print_function
 
 __all__ = ["Env"]
 
-#from tensorflow.python.client.session import Session
-#from tensorflow.python.framework.ops import Graph
-
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
