@@ -31,6 +31,10 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load(
+    "//third_party/gpus/cuda:build_defs.bzl",
+    "if_cuda",
+)
 
 # List of proto files for android builds
 def tf_android_core_proto_sources():
@@ -81,12 +85,6 @@ def tf_android_core_proto_headers():
 def tf_proto_text_protos_relative():
   return [p for p in tf_android_core_proto_sources_relative()
           if p not in ("util/test_log.proto")]
-
-def if_cuda(a, b=[]):
-  return select({
-      "//third_party/gpus/cuda:cuda_crosstool_condition": a,
-      "//conditions:default": b,
-  })
 
 def if_android_arm(a, b=[]):
   return select({

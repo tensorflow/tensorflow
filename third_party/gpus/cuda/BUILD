@@ -1,6 +1,6 @@
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
-load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("//third_party/gpus/cuda:build_defs.bzl", "if_cuda")
 load("platform", "cuda_library_path")
 load("platform", "cuda_static_library_path")
 load("platform", "cudnn_library_path")
@@ -8,12 +8,6 @@ load("platform", "cupti_library_path")
 load("platform", "readlink_command")
 
 package(default_visibility = ["//visibility:public"])
-
-config_setting(
-    name = "cuda_crosstool_condition",
-    values = {"define": "using_cuda=true"},
-    visibility = ["//visibility:public"],
-)
 
 config_setting(
     name = "using_gcudacc",
