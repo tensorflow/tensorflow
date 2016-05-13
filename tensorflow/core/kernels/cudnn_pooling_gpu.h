@@ -31,6 +31,7 @@ namespace tensorflow {
 #if GOOGLE_CUDA
 
 // Runs (avg/max)pooling on GPU.
+// Dimension order for all array arguments is: x, y, z.
 template <typename T>
 class DnnPooling3dOp {
  public:
@@ -43,6 +44,7 @@ class DnnPooling3dOp {
 };
 
 // Computes the gradient of (avg/max)pooling on GPU.
+// Dimension order for all array arguments is: x, y, z.
 template <typename T>
 class DnnPooling3dGradOp {
  public:
