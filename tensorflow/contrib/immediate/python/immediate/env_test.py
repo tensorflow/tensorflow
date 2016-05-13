@@ -7,11 +7,11 @@ import tensorflow.contrib.immediate as immediate
 
 class EnvTest(tf.test.TestCase):
 
-  def atestInit(self):
+  def testInit(self):
     env = immediate.Env()
     self.assertTrue(True)
 
-  def atestNumpyConversion(self):
+  def testNumpyConversion(self):
     def testForDtype(dtype):
       a = np.array([[1,2],[3,4]], dtype=dtype)
       tensor_handle = env.numpy_to_handle(a)
@@ -24,7 +24,7 @@ class EnvTest(tf.test.TestCase):
     testForDtype(np.int32)
     testForDtype(np.int64)
 
-  def atestAdd(self):
+  def testAdd(self):
     env = immediate.Env()
     val = np.ones(())
     tensor1 = immediate.Tensor.numpy_to_tensor(env, val)
@@ -33,7 +33,7 @@ class EnvTest(tf.test.TestCase):
     tensor4 = env.add(tensor3, tensor2)
     self.assertAllEqual(tensor4.as_numpy(), 3*val)
 
-  def atestSub(self):
+  def testSub(self):
     env = immediate.Env()
     val = np.ones(())
     tensor1 = immediate.Tensor.numpy_to_tensor(env, val)
