@@ -50,7 +50,7 @@ class EnvTest(tf.test.TestCase):
     tensor0 = immediate.Tensor.numpy_to_tensor(env, val)
     tensor1 = immediate.Tensor.numpy_to_tensor(env, np.zeros(()))
 
-    # the first loop has to be long enough to trigger tensor
+    # the first loop needs to be long enough to trigger tensor
     # garbage collection since that modifies the graph
     for i in range(20):
       tensor1+=tensor0
