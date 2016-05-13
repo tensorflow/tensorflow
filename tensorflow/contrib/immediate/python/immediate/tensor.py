@@ -8,30 +8,31 @@ __all__ = ["Tensor"]
 
 class Tensor(object):
 
-  def __init__(self, env, array):
+  def __init__(self, env, handle):
     self.env = env
-    if env:
-      self.handle = env.upload_tensor(array)
+    self.handle = handle
 
+  @property
+  def tf_handle(self):
+    """Give string handle representing this tensor in TF runtime."""
+    return self.handle.handle
 
-  @staticmethod
-  def from_numpy(env, array):
-    """Upload numpy array into TensorFlow and return corresponding Tensor."""
+  @property
+  def dtype(self):
+    return self.handle._dtype
 
-    return Tensor(env, array)
-
-
-  def to_numpy(self):
+  def as_numpy(self):
     """Convert current Tensor into numpy array."""
 
-    python_handle = self.handle
-    tf_handle = python_handle.handle
-    array = self.env.download_tensor(tf_handle)
+    return self.env.handle_to_numpy(self.handle)
 
-    
+  @staticmethod
+  def numpy_to_tensor(env, array):
+    handle = env.numpy_to_handle(array)
+    return Tensor(env, handle)
+  
   def __str__(self):
-    return str(self.to_numpy())
-
+    return str(self.as_numpy())
 
   def __repr__(self):
     return "Tensor(%s)" % (self.__str__())
