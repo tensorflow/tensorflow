@@ -6,15 +6,18 @@ from __future__ import print_function
 
 __all__ = ["Tensor"]
 
+import tensorflow as tf
+
 class Tensor(object):
 
   def __init__(self, env, handle):
     self.env = env
-    self.handle = handle
+    self.handle = handle  # TensorHandle object
 
   @property
   def tf_handle(self):
-    """Give string handle representing this tensor in TF runtime."""
+    """Give string handle representing this tensor in TF runtime.
+    This string handle is suitable for feeding get_session_tensor op."""
     return self.handle.handle
 
   @property
@@ -26,11 +29,6 @@ class Tensor(object):
 
     return self.env.handle_to_numpy(self.handle)
 
-  @staticmethod
-  def numpy_to_tensor(env, array):
-    handle = env.numpy_to_handle(array)
-    return Tensor(env, handle)
-  
   def __str__(self):
     return str(self.as_numpy())
 
@@ -45,3 +43,6 @@ class Tensor(object):
   def __add__(self, other):
     return self.env.add(self, other)
 
+  def __bool__(self, other):
+    bool_tensor = self.env.cast(self, dtype=tf.bool)
+    return self.env.tensor_to_numpy(self)

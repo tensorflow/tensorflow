@@ -14,8 +14,8 @@ class TensorTest(tf.test.TestCase):
   def testNumpyInit(self):
     env = immediate.Env()
     a = np.array([[1,2],[3,4]], dtype=np.float32)
-    tensor1 = immediate.Tensor.numpy_to_tensor(env, a)
-    tensor2 = immediate.Tensor.numpy_to_tensor(env, a)
+    tensor1 = env.numpy_to_tensor(a)
+    tensor2 = env.numpy_to_tensor(a)
     print tensor1
     print tensor2
     
@@ -23,6 +23,11 @@ class TensorTest(tf.test.TestCase):
     array2 = tensor2.as_numpy()
     self.assertAllEqual(array1, array2)
 
+  def testBool(self):
+    env = immediate.Env()
+    value1 = env.numpy_to_tensor(False)
+    self.assertTrue(value1)
+    # test 
 
 if __name__ == "__main__":
   tf.test.main()

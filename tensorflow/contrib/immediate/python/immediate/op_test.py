@@ -12,8 +12,8 @@ class OpTest(tf.test.TestCase):
     op_factory = env.op_factory
 
     val = np.ones((), dtype=np.float32)
-    tensor1 = immediate.Tensor.numpy_to_tensor(env, val)
-    tensor2 = immediate.Tensor.numpy_to_tensor(env, val)
+    tensor1 = env.numpy_to_tensor(val)
+    tensor2 = env.numpy_to_tensor(val)
     op = op_factory("add", tensor1, tensor2)
     self.assertEqual(str(op), "Op('add', tf.float32, tf.float32)")
     tensor3 = op(tensor1, tensor2)
@@ -22,8 +22,8 @@ class OpTest(tf.test.TestCase):
   def testOpWrapper(self):
     env = immediate.Env()
     val = np.ones((), dtype=np.float32)
-    tensor1 = immediate.Tensor.numpy_to_tensor(env, val)
-    tensor2 = immediate.Tensor.numpy_to_tensor(env, val)
+    tensor1 = env.numpy_to_tensor(val)
+    tensor2 = env.numpy_to_tensor(val)
     op_wrapper = immediate.OpWrapper(env, "add")
     print op_wrapper(tensor1, tensor2)
     
