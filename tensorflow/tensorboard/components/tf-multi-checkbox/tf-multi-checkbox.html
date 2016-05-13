@@ -138,10 +138,13 @@ handle these situations gracefully.
         notify: true,
         computed: 'computeOutSelected(namesMatchingRegex.*, runToIsCheckedMapping.*)'
       },
-      colorScale: Object, // map from run name to css class
+      colorScale: {
+        type: Object,
+        observer: "synchronizeColors",
+      }, // map from run name to css class
     },
     listeners: {
-      'dom-change': 'onDomChange',
+      'dom-change': 'synchronizeColors',
     },
     observers: [
       "_initializeRunToIsCheckedMapping(names.*)",
@@ -176,7 +179,7 @@ handle these situations gracefully.
         return runToIsCheckedMapping[n];
       });
     },
-    onDomChange: function(e) {
+    synchronizeColors: function(e) {
       var checkboxes = Array.prototype.slice.call(this.querySelectorAll("paper-checkbox"));
       var scale = this.colorScale;
       checkboxes.forEach(function(p) {
@@ -187,6 +190,12 @@ handle these situations gracefully.
         p.customStyle['--paper-checkbox-unchecked-ink-color'] = color;
       });
       this.updateStyles();
+      // For some reason, the above updateStyles does not always update the
+      // styles on first page load, even though it is definitely called after
+      // the checkboxes are ready. As a hackfix, wait 8ms and then try again.
+      this.debounce('updateStyles', () => {
+        this.updateStyles();
+      }, 8);
     },
     _checkboxChange: function(e) {
       var name = e.srcElement.name;
