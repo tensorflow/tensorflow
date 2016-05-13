@@ -43,6 +43,10 @@ class Tensor(object):
   def __add__(self, other):
     return self.env.add(self, other)
 
-  def __bool__(self, other):
-    bool_tensor = self.env.cast(self, dtype=tf.bool)
-    return self.env.tensor_to_numpy(self)
+  def __bool__(self):
+    # TODO(yaroslavvb): add in cast after Python-only ops are supported
+    #    bool_tensor = self.env.cast(self, dtype=tf.bool)
+    return bool(self.env.tensor_to_numpy(self))
+
+  def __nonzero__(self):
+    return self.__bool__()

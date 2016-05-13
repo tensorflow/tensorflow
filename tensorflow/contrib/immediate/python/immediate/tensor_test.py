@@ -25,9 +25,8 @@ class TensorTest(tf.test.TestCase):
 
   def testBool(self):
     env = immediate.Env()
-    value1 = env.numpy_to_tensor(False)
-    self.assertTrue(value1)
-    # test 
+    self.assertFalse(env.numpy_to_tensor(False))
+    self.assertTrue(env.numpy_to_tensor(True))
 
 if __name__ == "__main__":
   tf.test.main()
