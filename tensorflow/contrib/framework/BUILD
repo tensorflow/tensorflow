@@ -14,10 +14,23 @@ py_library(
         "python/framework/__init__.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
+        "python/ops/arg_scope.py",
         "python/ops/ops.py",
         "python/ops/variables.py",
     ],
     srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "arg_scope_test",
+    srcs = ["python/ops/arg_scope_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
 )
 
 py_test(
