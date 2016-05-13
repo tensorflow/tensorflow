@@ -83,6 +83,5 @@ class SaverTest(tf.test.TestCase):
     with self.assertRaises(ValueError):
       learn.TensorFlowEstimator.restore(path)
 
-
 if __name__ == '__main__':
   tf.test.main()
