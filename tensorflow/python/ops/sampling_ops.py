@@ -24,8 +24,10 @@ import numpy as np
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sampling_ops import *
+# pylint: enable=wildcard-import
 
 
 @ops.RegisterShape("BernoulliSample")
@@ -33,7 +35,10 @@ def _BernoulliSampleShape(op):
   a_shape = op.inputs[1].get_shape().with_rank(1)
   b_shape = op.inputs[2].get_shape().with_rank(1)
 
-  assert a_shape == b_shape
+  if a_shape != b_shape:
+    raise ValueError(
+        "The inputs to BernoulliSample must have the same shape: %s vs. %s" %
+        (str(a_shape), str(b_shape)))
 
   return [a_shape]
 
