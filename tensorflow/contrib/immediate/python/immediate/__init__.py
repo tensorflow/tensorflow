@@ -18,9 +18,3 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-print('running tensorflow/contrib/immediate/python/immediate/__init__.py')
-#from tensorflow.contrib.immediate.python.immediate.op import *
-#from tensorflow.contrib.immediate.python.immediate.env import Env
-#from tensorflow.contrib.immediate.python.immediate.op import Op
-#from tensorflow.contrib.immediate.python.immediate.tensor import Tensor

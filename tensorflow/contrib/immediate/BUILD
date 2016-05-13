@@ -20,7 +20,17 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-         "//tensorflow/python:framework"
+         "//tensorflow:tensorflow_py",
+
+         # Targets below are here in case we decide to refactor things to
+         # remove the general dependency. The general dependency above 
+         # prevents tf immediate from being included in tensorflow_py
+         # search for <generaldep> for other places this would need to be done
+         "//tensorflow/python:framework",
+         "//tensorflow/python:client",
+         "//tensorflow/python:lib",
+         "//tensorflow/python:ops",
+         "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
