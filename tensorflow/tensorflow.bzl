@@ -273,6 +273,37 @@ def tf_cuda_cc_tests(tests, deps, tags=[], size="medium", linkstatic=0, args=Non
   for t in tests:
     tf_cuda_cc_test(t, deps, tags=tags, size=size, linkstatic=linkstatic, args=args)
 
+def _cuda_copts():
+    """Gets the appropriate set of copts for (maybe) CUDA compilation.
+
+    If we're doing CUDA compilation, returns copts for our particular CUDA
+    compiler.  If we're not doing CUDA compilation, returns an empty list.
+
+    """
+    common_cuda_opts = ["-x", "cuda", "-DGOOGLE_CUDA=1"]
+    return select({
+        "//conditions:default": [],
+        "//third_party/gpus/cuda:using_nvcc": (
+            common_cuda_opts +
+            [
+                "-nvcc_options=relaxed-constexpr",
+                "-nvcc_options=ftz=true",
+            ]
+        ),
+        "//third_party/gpus/cuda:using_gcudacc": (
+            common_cuda_opts +
+            ["--gcudacc_flag=-ftz=true"]
+        ),
+        "//third_party/gpus/cuda:using_clang": (
+            common_cuda_opts +
+            [
+                "-fcuda-flush-denormals-to-zero",
+                "--cuda-path=third_party/gpus/cuda",
+                "--cuda-gpu-arch=sm_35",
+            ]
+        ),
+    })
+
 # Build defs for TensorFlow kernels
 
 # When this target is built using --config=cuda, a cc_library is built
@@ -280,13 +311,12 @@ def tf_cuda_cc_tests(tests, deps, tags=[], size="medium", linkstatic=0, args=Non
 # libraries needed by GPU kernels.
 def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
                           **kwargs):
-  cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
-                "-nvcc_options=relaxed-constexpr", "-nvcc_options=ftz=true",
-                "--gcudacc_flag=-ftz=true"] + cuda_copts
+  copts = copts + _cuda_copts() + if_cuda(cuda_copts)
+
   native.cc_library(
       srcs = srcs,
       hdrs = hdrs,
-      copts = copts + if_cuda(cuda_copts),
+      copts = copts,
       deps = deps + if_cuda([
           "//tensorflow/core:cuda",
           "//tensorflow/core:gpu_lib",
@@ -500,14 +530,10 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
   deps = deps + tf_custom_op_library_additional_deps()
   if gpu_srcs:
     basename = name.split(".")[0]
-    cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
-                  "-nvcc_options=relaxed-constexpr", "-nvcc_options=ftz=true",
-                  "--gcudacc_flag=-ftz=true"]
-
     native.cc_library(
         name = basename + "_gpu",
         srcs = gpu_srcs,
-        copts = if_cuda(cuda_copts),
+        copts = _cuda_copts(),
         deps = deps + if_cuda(cuda_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
 
