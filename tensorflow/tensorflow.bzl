@@ -9,7 +9,7 @@ def _parse_bazel_version(bazel_version):
   # as a tuple of integers.
   parts = version.split('-', 1)
 
-  # Turn "release" into a tuple of strings 
+  # Turn "release" into a tuple of strings
   version_tuple = ()
   for number in parts[0].split('.'):
     version_tuple += (str(number),)
@@ -543,12 +543,30 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
               deps=deps + extra_deps,
               module_name=module_name,
               py_module_name=name)
+  extra_linkopts = select({
+      "//third_party/gpus/cuda:darwin": [
+          "-Wl,-exported_symbols_list",
+          "//tensorflow:tf_exported_symbols.lds"
+      ],
+      "//conditions:default": [
+          "-Wl,--version-script",
+          "//tensorflow:tf_version_script.lds"
+      ]})
+  extra_deps += select({
+      "//third_party/gpus/cuda:darwin": [
+        "//tensorflow:tf_exported_symbols.lds"
+      ],
+      "//conditions:default": [
+        "//tensorflow:tf_version_script.lds"
+      ]
+  })
+
   native.cc_binary(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
       copts=(copts + ["-Wno-self-assign", "-Wno-write-strings"]
              + tf_extension_copts()),
-      linkopts=tf_extension_linkopts(),
+      linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,
       linkshared=1,
       deps=deps + extra_deps)
