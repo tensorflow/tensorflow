@@ -68,6 +68,7 @@ namespace functor {
   extern template struct L2Loss<GPUDevice, T>;
 
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -79,6 +80,7 @@ DECLARE_GPU_SPEC(Eigen::half);
       L2LossOp<GPUDevice, T>);
 
 REGISTER_GPU_KERNEL(float);
+REGISTER_GPU_KERNEL(double);
 REGISTER_GPU_KERNEL(Eigen::half);
 #undef REGISTER_GPU_KERNEL
 
