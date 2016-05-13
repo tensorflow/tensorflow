@@ -23,11 +23,11 @@ import tempfile
 import time
 
 import six
-import sklearn
 
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import losses
+from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.graph_actions import evaluate
@@ -93,7 +93,7 @@ def _get_predict_input_fn(x, batch_size):
   return df.input_builder, df.get_feed_dict_fn()
 
 
-class BaseEstimator(sklearn.base.BaseEstimator):
+class BaseEstimator(sklearn.BaseEstimator):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
   Concrete implementation of this class should provide following functions:
