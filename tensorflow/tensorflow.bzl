@@ -520,37 +520,6 @@ def tf_custom_op_library_additional_deps():
       "//tensorflow/core:framework_headers_lib",
   ]
 
-# Process the "deps" attribute of the rule.
-# Raise an error if deps has one of the "disallowed_deps".
-# Note : The aspect function gets called on all targets of the dependency
-# graph reachable via "deps" edges.
-def _collect_deps_aspect_impl(target, ctx):
-  disallowed_deps = ["tensorflow/core:framework", "tensorflow/core:lib"]
-  if hasattr(ctx.rule.attr, "deps"):
-    for dep in ctx.rule.attr.deps:
-      label_name = dep.label.package + ":" + dep.label.name
-      for disallowed_dep in disallowed_deps:
-        if label_name.endswith(disallowed_dep):
-          fail("tf_custom_op_library cannot depend on " + disallowed_dep)
-  return struct()
-
-collect_deps_aspect = aspect(
-    implementation=_collect_deps_aspect_impl,
-    attr_aspects=["deps"])
-
-# A dummy rule just so we can have an aspect function process the transitive
-# dependencies of a cc_{library, binary}
-def _collect_deps_impl(ctx):
-  return struct()
-
-collect_deps = rule(
-    _collect_deps_impl,
-    attrs = {
-        "deps": attr.label_list(
-            aspects=[collect_deps_aspect],
-        )},
-)
-
 # Helper to build a dynamic library (.so) from the sources containing
 # implementations of custom ops and kernels.
 def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
@@ -558,23 +527,19 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
       "//tensorflow/core:stream_executor_headers_lib",
       "//third_party/gpus/cuda:cudart_static",
   ]
-  deps = deps + tf_custom_op_library_additional_deps() + if_cuda(cuda_deps)
+  deps = deps + tf_custom_op_library_additional_deps()
   if gpu_srcs:
     basename = name.split(".")[0]
     native.cc_library(
         name = basename + "_gpu",
         srcs = gpu_srcs,
         copts = _cuda_copts(),
-        deps = deps)
-    deps.extend([":" + basename + "_gpu"])
-
-  collect_deps(name=name+"_check_deps",
-               deps=deps)
+        deps = deps + if_cuda(cuda_deps))
+    cuda_deps.extend([":" + basename + "_gpu"])
 
   native.cc_binary(name=name,
                    srcs=srcs,
-                   deps=deps,
-                   data=[name + "_check_deps"],
+                   deps=deps + if_cuda(cuda_deps),
                    linkshared=1,
                    linkopts = select({
                        "//conditions:default": [
