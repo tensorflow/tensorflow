@@ -18,8 +18,7 @@ config_setting(
 config_setting(
     name = "using_gcudacc",
     values = {
-        "define": "using_cuda=true",
-        "copt": "--use_gcudacc",
+        "define": "using_cuda_gcudacc=true",
     },
     visibility = ["//visibility:public"],
 )
@@ -27,8 +26,7 @@ config_setting(
 config_setting(
     name = "using_nvcc",
     values = {
-        "define": "using_cuda=true",
-        "copt": "--use_nvcc",
+        "define": "using_cuda_nvcc=true",
     },
 )
 
