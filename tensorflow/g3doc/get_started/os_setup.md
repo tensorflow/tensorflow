@@ -190,7 +190,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh.
 
 [Anaconda](https://www.continuum.io/why-anaconda) is a Python distribution that
 includes a large number of standard numeric and scientific computing packages.
-Anaconda uses a package manager called "conda" that has its own 
+Anaconda uses a package manager called "conda" that has its own
 [environment system](http://conda.pydata.org/docs/using/envs.html) similar to Virtualenv.
 
 As with Virtualenv, conda environments keep the dependencies required by
@@ -495,7 +495,7 @@ sudo chmod a+r /usr/local/cuda/lib64/libcudnn*
 ##### Configure TensorFlow's canonical view of Cuda libraries
 
 When running the `configure` script from the root of your source tree, select
-the option `Y` when asked to build TensorFlow with GPU support. If you have 
+the option `Y` when asked to build TensorFlow with GPU support. If you have
 several versions of Cuda or cuDNN installed, you should definitely select
 one explicitly instead of relying on the system default. You should see
 prompts like the following:
@@ -506,7 +506,7 @@ Please specify the location of python. [Default is /usr/bin/python]:
 Do you wish to build TensorFlow with GPU support? [y/N] y
 GPU support will be enabled for TensorFlow
 
-Please specify which gcc nvcc should use as the host compiler. [Default is 
+Please specify which gcc nvcc should use as the host compiler. [Default is
 /usr/bin/gcc]: /usr/bin/gcc-4.9
 
 Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave
@@ -522,11 +522,11 @@ Please specify the location where the cuDNN 4.0.4 library is installed. Refer to
 README.md for more details. [default is: /usr/local/cuda]: /usr/local/cudnn-r4-rc/
 
 Please specify a list of comma-separated Cuda compute capabilities you want to
-build with. You can find the compute capability of your device at: 
+build with. You can find the compute capability of your device at:
 https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your
 build time and binary size. [Default is: \"3.5,5.2\"]: 3.5
-    
+
 Setting up Cuda include
 Setting up Cuda lib64
 Setting up Cuda bin
@@ -786,6 +786,24 @@ SSLError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed
 ```
 
 Solution: Download the wheel manually via curl or wget, and pip install locally.
+
+
+#### Operation not permitted
+
+If, despite using `sudo`, you encounter an error like:
+
+```bash
+...
+Installing collected packages: setuptools, protobuf, wheel, numpy, tensorflow
+Found existing installation: setuptools 1.1.6
+Uninstalling setuptools-1.1.6:
+Exception:
+...
+[Errno 1] Operation not permitted: '/tmp/pip-a1DXRT-uninstall/System/Library/Frameworks/Python.framework/Versions/2.7/Extras/lib/python/_markerlib'
+```
+
+Solution: Add an `--ignore_installed` flag to the pip command.
+
 
 ### Linux issues
 
