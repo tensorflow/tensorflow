@@ -37,6 +37,8 @@ from .op import OpFactory
 from .op import OpWrapper
 from .op import Op
 
+import numpy as np
+
 def _create_namespace_map():
   namespace_map = {}
   import tensorflow as tf
@@ -61,7 +63,10 @@ def _create_namespace_map():
 
 
 class Env(object):
-  
+
+  supported_numpy_types = {np.int32, np.int64, np.float32, np.float64,
+                           np.dtype('bool')}
+
   def __init__(self):
     self.sess = session.Session()
     self.op_factory = OpFactory(self)
@@ -99,7 +104,7 @@ class Env(object):
 
     holder, tensor = session_ops.get_session_tensor(tensor_handle._dtype)
 
-    # TODO(yaroslavvb): use session settings
+    # TODO(yaroslavvb): use session settings for .run call
     array = self.sess.run(tensor, feed_dict={holder: tensor_handle.handle})
     return array
 
@@ -121,6 +126,22 @@ class Env(object):
     tensor_handle = self.sess.run(tensor_handle_op, feed_dict={holder: array})
     return tensor_handle
 
+  def numpy_to_tensor(self, array):
+    # try to convert Python lists to numpy array
+    if not isinstance(array, np.ndarray):
+      array = np.array(array)
+      if not array.dtype in self.supported_numpy_types:
+        raise ValueError("Unsupported type %s, only support types %s" % (
+            repr(array.dtype), [repr(s) for s in self.supported_numpy_types]))
+
+    handle = self.numpy_to_handle(array)
+    return Tensor(self, handle)
+  
+  def tensor_to_numpy(self, tensor):
+    return self.handle_to_numpy(tensor.handle)
+    handle = self.numpy_to_handle(array)
+    return Tensor(env, handle)
+  
   def get_session_tensor(self, dtype):
     holder, tensor = session_ops.get_session_tensor(dtype)
     return holder, tensor

@@ -24,11 +24,15 @@ class EnvTest(tf.test.TestCase):
     testForDtype(np.int32)
     testForDtype(np.int64)
 
+  def testNumpyBoolConversion(self):
+    env = immediate.Env()
+    tensor = env.numpy_to_tensor(False)
+
   def testAdd(self):
     env = immediate.Env()
     val = np.ones(())
-    tensor1 = immediate.Tensor.numpy_to_tensor(env, val)
-    tensor2 = immediate.Tensor.numpy_to_tensor(env, val)
+    tensor1 = env.numpy_to_tensor(val)
+    tensor2 = env.numpy_to_tensor(val)
     tensor3 = env.add(tensor1, tensor2)
     tensor4 = env.add(tensor3, tensor2)
     self.assertAllEqual(tensor4.as_numpy(), 3*val)
@@ -36,8 +40,8 @@ class EnvTest(tf.test.TestCase):
   def testSub(self):
     env = immediate.Env()
     val = np.ones(())
-    tensor1 = immediate.Tensor.numpy_to_tensor(env, val)
-    tensor2 = immediate.Tensor.numpy_to_tensor(env, val)
+    tensor1 = env.numpy_to_tensor(val)
+    tensor2 = env.numpy_to_tensor(val)
     tensor3 = env.sub(tensor1, tensor2)
     tensor4 = env.sub(tensor3, tensor2)
     self.assertAllEqual(tensor4.as_numpy(), -1*val)
@@ -47,8 +51,8 @@ class EnvTest(tf.test.TestCase):
     # make sure that graph is not modified in a loop
     env = immediate.Env()
     val = np.ones(())
-    tensor0 = immediate.Tensor.numpy_to_tensor(env, val)
-    tensor1 = immediate.Tensor.numpy_to_tensor(env, np.zeros(()))
+    tensor0 = env.numpy_to_tensor(val)
+    tensor1 = env.numpy_to_tensor(np.zeros(()))
 
     # the first loop needs to be long enough to trigger tensor
     # garbage collection since that modifies the graph
