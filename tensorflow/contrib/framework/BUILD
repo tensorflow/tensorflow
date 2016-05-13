@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 py_library(
     name = "framework_py",
     srcs = [
@@ -14,6 +16,7 @@ py_library(
         "python/framework/__init__.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
+        "python/ops/embedding_ops.py",
         "python/ops/ops.py",
         "python/ops/variables.py",
     ],
@@ -51,6 +54,17 @@ py_test(
     deps = [
         ":framework_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "embedding_ops_test",
+    size = "small",
+    srcs = ["python/ops/embedding_ops_test.py"],
+    additional_deps = [
+        ":framework_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

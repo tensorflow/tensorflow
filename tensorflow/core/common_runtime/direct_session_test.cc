@@ -240,7 +240,9 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
 
   test::graph::ToGraphDef(&graph, &def);
 
-  std::unique_ptr<Session> session(CreateSession());
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  std::unique_ptr<Session> session(NewSession(options));
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -254,7 +256,7 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   def.Clear();
   y->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
   test::graph::ToGraphDef(&graph, &def);
-  session.reset(CreateSession());
+  session.reset(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   TF_ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
 }
@@ -429,6 +431,50 @@ TEST(DirectSessionTest, DarthKernel) {
   auto s = sess->Run({}, {y->name() + ":0"}, {}, &outputs);
   EXPECT_TRUE(errors::IsInternal(s));
   delete sess;
+}
+
+// Have the Darth op in the graph placed on GPU, but don't run it.
+TEST(DirectSessionTest, PlacePrunedGraph) {
+  {
+    Graph g(OpRegistry::Global());
+    Tensor vx(DT_FLOAT, TensorShape({}));
+    vx.scalar<float>()() = 1.0;
+    Node* x = test::graph::Constant(&g, vx);
+    Node* y = test::graph::Unary(&g, "Darth", x);
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    GraphDef def;
+    test::graph::ToGraphDef(&g, &def);
+
+    // By default, we place the entire graph, so we should fail the
+    // call to Run, even if we don't run the bad op.
+    SessionOptions options;
+    std::unique_ptr<Session> sess(NewSession(options));
+    TF_ASSERT_OK(sess->Create(def));
+    std::vector<Tensor> outputs;
+    auto s = sess->Run({}, {x->name() + ":0"}, {}, &outputs);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+  }
+
+  {
+    Graph g(OpRegistry::Global());
+    Tensor vx(DT_FLOAT, TensorShape({}));
+    vx.scalar<float>()() = 1.0;
+    Node* x = test::graph::Constant(&g, vx);
+    Node* y = test::graph::Unary(&g, "Darth", x);
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    GraphDef def;
+    test::graph::ToGraphDef(&g, &def);
+
+    SessionOptions options;
+    // Set the option to place pruned graphs, we should expect this
+    // to run.
+    options.config.mutable_graph_options()->set_place_pruned_graph(true);
+    std::unique_ptr<Session> sess(NewSession(options));
+    TF_ASSERT_OK(sess->Create(def));
+    std::vector<Tensor> outputs;
+    auto s = sess->Run({}, {x->name() + ":0"}, {}, &outputs);
+    TF_EXPECT_OK(s);
+  }
 }
 
 TEST(DirectSessionTest, PartialRunTest) {

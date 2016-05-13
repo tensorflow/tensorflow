@@ -86,6 +86,29 @@ py_test(
 )
 
 py_test(
+    name = "tensor_signature_test",
+    srcs = ["python/learn/estimators/tensor_signature_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "estimator_test",
+    size = "small",
+    srcs = ["python/learn/estimators/estimator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "test_grid_search",
     size = "small",
     srcs = ["python/learn/tests/test_grid_search.py"],
@@ -233,6 +256,19 @@ py_test(
     name = "checkpoints_test",
     size = "small",
     srcs = ["python/learn/utils/checkpoints_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "graph_io_test",
+    size = "small",
+    srcs = ["python/learn/io/graph_io_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",

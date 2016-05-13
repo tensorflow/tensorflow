@@ -31,14 +31,12 @@ from tensorflow.python.platform import googletest
 
 class BooleanMaskTest(test_util.TensorFlowTestCase):
 
-  def CheckVersusNumpy(self, ndims_mask, arr_shape):
+  def CheckVersusNumpy(self, ndims_mask, arr_shape, make_mask=None):
     """Check equivalence between boolean_mask and numpy masking."""
-    arr_size = arr_shape.prod()
-    arr = np.random.rand(arr_size).reshape(arr_shape)
-    mask_shape = arr_shape[: ndims_mask]
-    mask_size = mask_shape.prod()
-    mask = np.random.randint(
-        0, 2, size=mask_size).reshape(mask_shape).astype(bool)
+    if make_mask is None:
+      make_mask = lambda shape: np.random.randint(0, 2, size=shape).astype(bool)
+    arr = np.random.rand(*arr_shape)
+    mask = make_mask(arr_shape[: ndims_mask])
     masked_arr = arr[mask]
     with self.test_session():
       masked_tensor = array_ops.boolean_mask(arr, mask)
@@ -47,6 +45,12 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
           masked_tensor.eval(),
           err_msg="masked_arr:\n%s\n\nmasked_tensor:\n%s" % (
               masked_arr, masked_tensor.eval()))
+      masked_tensor.get_shape().assert_is_compatible_with(masked_arr.shape)
+      self.assertSequenceEqual(
+          masked_tensor.get_shape()[1:].as_list(),
+          masked_arr.shape[1:],
+          msg="shape information lost %s -> %s" % (
+              masked_arr.shape, masked_tensor.get_shape()))
 
   def testOneDimensionalMask(self):
     # Do 1d separately because it's the only easy one to debug!
@@ -62,6 +66,14 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
         for _ in range(3):
           arr_shape = np.random.randint(1, 5, size=ndims_arr)
           self.CheckVersusNumpy(ndims_mask, arr_shape)
+
+  def testEmptyOutput(self):
+    make_mask = lambda shape: np.zeros(shape, dtype=bool)
+    for ndims_mask in range(1, 4):
+      for ndims_arr in range(ndims_mask, ndims_mask + 3):
+        for _ in range(3):
+          arr_shape = np.random.randint(1, 5, size=ndims_arr)
+          self.CheckVersusNumpy(ndims_mask, arr_shape, make_mask=make_mask)
 
   def testWorksWithDimensionsEqualToNoneDuringGraphBuild(self):
     # The rank of the mask tensor must be specified. This is explained

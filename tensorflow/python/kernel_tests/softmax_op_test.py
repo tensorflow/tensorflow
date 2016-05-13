@@ -39,12 +39,16 @@ class SoftmaxTest(tf.test.TestCase):
       return softmax
 
   def _testSoftmax(self, np_features, log=False, use_gpu=False):
+    # A previous version of the code checked the op name rather than the op type
+    # to distinguish between log and non-log.  Use an arbitrary name to catch
+    # this bug in future.
+    name = "arbitrary"
     np_softmax = self._npSoftmax(np_features, log=log)
     with self.test_session(use_gpu=use_gpu):
       if log:
-        tf_softmax = tf.nn.log_softmax(np_features)
+        tf_softmax = tf.nn.log_softmax(np_features, name=name)
       else:
-        tf_softmax = tf.nn.softmax(np_features)
+        tf_softmax = tf.nn.softmax(np_features, name=name)
       out = tf_softmax.eval()
     self.assertAllClose(np_softmax, out)
     self.assertShapeEqual(np_softmax, tf_softmax)
