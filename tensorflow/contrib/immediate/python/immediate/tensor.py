@@ -50,3 +50,21 @@ class Tensor(object):
 
   def __nonzero__(self):
     return self.__bool__()
+
+  def __lt__(self, other):
+    return self.env.less(self, other)
+  
+  def __le__(self, other):
+    return self.env.less_equal(self, other)
+
+  def __eq__(self, other):
+    return self.env.equal(self, other)
+
+  def __ne__(self, other):
+    return self.env.not_equal(self, other)
+
+  def __gt__(self, other):
+    return self.env.greater(self, other)
+
+  def __ge__(self, other):
+    return self.env.greater_equal(self, other)

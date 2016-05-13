@@ -64,7 +64,8 @@ def _create_namespace_map():
 
 class Env(object):
 
-  supported_numpy_types = {np.int32, np.int64, np.float32, np.float64,
+  supported_numpy_types = {np.dtype('int32'), np.dtype('int64'),
+                           np.dtype('float32'), np.dtype('float64'),
                            np.dtype('bool')}
 
   def __init__(self):

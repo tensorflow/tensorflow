@@ -28,5 +28,29 @@ class TensorTest(tf.test.TestCase):
     self.assertFalse(env.numpy_to_tensor(False))
     self.assertTrue(env.numpy_to_tensor(True))
 
+  def testComparison(self):
+    env = immediate.Env()
+    zero = env.numpy_to_tensor(0)
+    one = env.numpy_to_tensor(1)
+    self.assertTrue(one>=zero)
+    self.assertTrue(one>zero)
+    self.assertTrue(one>=one)
+    self.assertTrue(zero<=one)
+    self.assertTrue(zero<one)
+    self.assertTrue(zero<=zero)
+
+    self.assertFalse(zero>=one)
+    self.assertFalse(zero>one)
+    self.assertFalse(zero>=one)
+    self.assertFalse(one<=zero)
+    self.assertFalse(one<zero)
+    self.assertFalse(one<=zero)
+    
+    self.assertTrue(one==one)
+    self.assertTrue(zero==zero)
+    self.assertTrue(one!=zero)
+    self.assertFalse(one==zero)
+    
+
 if __name__ == "__main__":
   tf.test.main()
