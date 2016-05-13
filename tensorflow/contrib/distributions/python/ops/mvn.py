@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The Multivariate Normal distribution class.
-
-@@MultivariateNormal
-"""
+"""The Multivariate Normal distribution class."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -101,6 +98,8 @@ class MultivariateNormal(object):
   or alternatively mean `mu` and factored covariance (cholesky decomposed
   `sigma`) called `sigma_chol`.
 
+  #### Mathematical details
+
   The PDF of this distribution is:
 
   ```
@@ -123,6 +122,34 @@ class MultivariateNormal(object):
   ```
 
   where `tri_solve()` solves a triangular system of equations.
+
+  #### Examples
+
+  A single multi-variate Gaussian distribution is defined by a vector of means
+  of length `k`, and a covariance matrix of shape `k x k`.
+
+  Extra leading dimensions, if provided, allow for batches.
+
+  ```python
+  # Initialize a single 3-variate Gaussian with diagonal covariance.
+  mu = [1, 2, 3]
+  sigma = [[1, 0, 0], [0, 3, 0], [0, 0, 2]]
+  dist = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
+
+  # Evaluate this on an observation in R^3, returning a scalar.
+  dist.pdf([-1, 0, 1])
+
+  # Initialize a batch of two 3-variate Gaussians.
+  mu = [[1, 2, 3], [11, 22, 33]]
+  sigma = ...  # shape 2 x 3 x 3
+  dist = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
+
+  # Evaluate this on a two observations, each in R^3, returning a length two
+  # tensor.
+  x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
+  dist.pdf(x)
+  ```
+
   """
 
   def __init__(self, mu, sigma=None, sigma_chol=None, name=None):

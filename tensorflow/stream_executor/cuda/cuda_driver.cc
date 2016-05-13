@@ -94,6 +94,7 @@ PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuEventDestroy_v2);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuEventElapsedTime);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuEventQuery);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuEventRecord);
+PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuEventSynchronize);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuFuncGetAttribute);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuFuncSetCacheConfig);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuGetErrorName);
@@ -117,6 +118,7 @@ PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuMemHostUnregister);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuMemsetD32_v2);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuMemsetD32Async);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuMemsetD8_v2);
+PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuMemsetD8Async);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuModuleGetFunction);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuModuleGetGlobal_v2);
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuModuleLoadDataEx);
@@ -799,6 +801,22 @@ CUDADriver::ContextGetSharedMemConfig(CUcontext context) {
   return true;
 }
 
+/* static */ bool CUDADriver::AsynchronousMemsetUint8(CUcontext context,
+                                                      CUdeviceptr location,
+                                                      uint8 value,
+                                                      size_t uint32_count,
+                                                      CUstream stream) {
+  ScopedActivateContext activation{context};
+  CUresult res =
+      dynload::cuMemsetD8Async(location, value, uint32_count, stream);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
+    return false;
+  }
+  VLOG(2) << "successfully enqueued async memset operation";
+  return true;
+}
+
 /* static */ bool CUDADriver::AsynchronousMemsetUint32(CUcontext context,
                                                        CUdeviceptr location,
                                                        uint32 value,
@@ -1069,7 +1087,14 @@ CUDADriver::ContextGetSharedMemConfig(CUcontext context) {
                                                   float *elapsed_milliseconds,
                                                   CUevent start, CUevent stop) {
   ScopedActivateContext activated{context};
-  CUresult res = dynload::cuEventElapsedTime(elapsed_milliseconds, start, stop);
+  // The stop event must have completed in order for cuEventElapsedTime to
+  // work.
+  CUresult res = dynload::cuEventSynchronize(stop);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to synchronize the stop event: " << ToString(res);
+    return false;
+  }
+  res = dynload::cuEventElapsedTime(elapsed_milliseconds, start, stop);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to get elapsed time between events: "
                << ToString(res);

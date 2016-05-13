@@ -47,7 +47,6 @@ If the user does not interact, everything will be checked.
       >
         <div
           class="run-row"
-          color-class$="[[_applyColorClass(item, classScale)]]"
         >
           <div class="checkbox-container vertical-align-container">
             <paper-checkbox
@@ -130,13 +129,28 @@ If the user does not interact, everything will be checked.
           return [];
         },
       },
-      classScale: Function, // map from run name to css class
+      colorScale: Object, // map from run name to css class
+    },
+    listeners: {
+      'dom-change': 'onDomChange',
     },
     observers: [
       "_initializeOutSelected(names.*)",
     ],
     _initializeOutSelected: function(change) {
       this.outSelected = change.base.slice();
+    },
+    onDomChange: function(e) {
+      var checkboxes = Array.prototype.slice.call(this.querySelectorAll("paper-checkbox"));
+      var scale = this.colorScale;
+      checkboxes.forEach(function(p) {
+        var color = scale.scale(p.name);
+        p.customStyle['--paper-checkbox-checked-color'] = color;
+        p.customStyle['--paper-checkbox-checked-ink-color'] = color;
+        p.customStyle['--paper-checkbox-unchecked-color'] = color;
+        p.customStyle['--paper-checkbox-unchecked-ink-color'] = color;
+      });
+      this.updateStyles();
     },
     _checkboxChange: function(e) {
       var name = e.srcElement.name;

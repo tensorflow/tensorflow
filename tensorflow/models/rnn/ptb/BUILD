@@ -45,9 +45,6 @@ py_binary(
     deps = [
         ":reader",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/models/rnn",
-        "//tensorflow/models/rnn:rnn_cell",
-        "//tensorflow/models/rnn:seq2seq",
     ],
 )
 

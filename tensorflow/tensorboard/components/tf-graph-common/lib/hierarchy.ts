@@ -400,22 +400,23 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
     tracker: ProgressTracker): Promise<Hierarchy|void> {
   let h = new HierarchyImpl();
   let seriesNames: { [name: string]: string } = {};
-  return runAsyncTask(
-             'Adding nodes', 20,
-             () => {
-               // Get all the possible device names.
-               let deviceNames = {};
-               _.each(graph.nodes, (node, nodeName) => {
-                 if (node.device != null) {
-                   deviceNames[node.device] = true;
-                 }
-               });
-               h.devices = _.keys(deviceNames);
-               addNodes(h, graph);
-             },
-             tracker)
+  return tf.graph.util
+      .runAsyncTask(
+          'Adding nodes', 20,
+          () => {
+            // Get all the possible device names.
+            let deviceNames = {};
+            _.each(graph.nodes, (node, nodeName) => {
+              if (node.device != null) {
+                deviceNames[node.device] = true;
+              }
+            });
+            h.devices = _.keys(deviceNames);
+            addNodes(h, graph);
+          },
+          tracker)
       .then(() => {
-        return runAsyncTask('Detect series', 20, () => {
+        return tf.graph.util.runAsyncTask('Detect series', 20, () => {
           if (params.seriesNodeMinSize > 0) {
             groupSeries(
                 h.root, h, seriesNames, params.seriesNodeMinSize,
@@ -424,19 +425,21 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
         }, tracker);
       })
       .then(() => {
-        return runAsyncTask('Adding edges', 30, () => {
+        return tf.graph.util.runAsyncTask('Adding edges', 30, () => {
           addEdges(h, graph, seriesNames);
         }, tracker);
       })
       .then(() => {
-        return runAsyncTask('Finding similar subgraphs', 30, () => {
-          h.templates = template.detect(h, params.verifyTemplate);
-        }, tracker);
+        return tf.graph.util.runAsyncTask(
+            'Finding similar subgraphs', 30, () => {
+              h.templates = template.detect(h, params.verifyTemplate);
+            }, tracker);
       })
       .then(() => { return h; });
 };
 
-export function joinAndAggregateStats(h: Hierarchy, stats: StepStats) {
+export function joinAndAggregateStats(
+    h: Hierarchy, stats: tf.graph.proto.StepStats) {
   // Get all the possible device names.
   let deviceNames = {};
   _.each(h.root.leaves(), nodeName => {

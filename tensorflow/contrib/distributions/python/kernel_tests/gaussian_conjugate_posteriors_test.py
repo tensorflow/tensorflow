@@ -22,7 +22,7 @@ import math
 
 import tensorflow as tf
 
-gaussian_conjugate_posteriors = tf.contrib.distributions.gaussian_conjugate_posteriors  # pylint: disable=line-too-long
+distributions = tf.contrib.distributions
 
 
 class GaussianTest(tf.test.TestCase):
@@ -35,12 +35,12 @@ class GaussianTest(tf.test.TestCase):
       x = tf.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
       s = tf.reduce_sum(x)
       n = tf.size(x)
-      prior = tf.contrib.distributions.Gaussian(mu=mu0, sigma=sigma0)
-      posterior = gaussian_conjugate_posteriors.known_sigma_posterior(
+      prior = distributions.Gaussian(mu=mu0, sigma=sigma0)
+      posterior = distributions.gaussian_conjugates_known_sigma_posterior(
           prior=prior, sigma=sigma, s=s, n=n)
 
       # Smoke test
-      self.assertTrue(isinstance(posterior, tf.contrib.distributions.Gaussian))
+      self.assertTrue(isinstance(posterior, distributions.Gaussian))
       posterior_log_pdf = posterior.log_pdf(x).eval()
       self.assertEqual(posterior_log_pdf.shape, (6,))
 
@@ -54,12 +54,12 @@ class GaussianTest(tf.test.TestCase):
           tf.constant([[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=tf.float32))
       s = tf.reduce_sum(x)
       n = tf.size(x)
-      prior = tf.contrib.distributions.Gaussian(mu=mu0, sigma=sigma0)
-      posterior = gaussian_conjugate_posteriors.known_sigma_posterior(
+      prior = distributions.Gaussian(mu=mu0, sigma=sigma0)
+      posterior = distributions.gaussian_conjugates_known_sigma_posterior(
           prior=prior, sigma=sigma, s=s, n=n)
 
       # Smoke test
-      self.assertTrue(isinstance(posterior, tf.contrib.distributions.Gaussian))
+      self.assertTrue(isinstance(posterior, distributions.Gaussian))
       posterior_log_pdf = posterior.log_pdf(x).eval()
       self.assertEqual(posterior_log_pdf.shape, (6, 2))
 
@@ -75,12 +75,12 @@ class GaussianTest(tf.test.TestCase):
       s = tf.reduce_sum(x, reduction_indices=[1])
       x = tf.transpose(x)  # Reshape to shape (6, 2)
       n = tf.constant([6] * 2)
-      prior = tf.contrib.distributions.Gaussian(mu=mu0, sigma=sigma0)
-      posterior = gaussian_conjugate_posteriors.known_sigma_posterior(
+      prior = distributions.Gaussian(mu=mu0, sigma=sigma0)
+      posterior = distributions.gaussian_conjugates_known_sigma_posterior(
           prior=prior, sigma=sigma, s=s, n=n)
 
       # Smoke test
-      self.assertTrue(isinstance(posterior, tf.contrib.distributions.Gaussian))
+      self.assertTrue(isinstance(posterior, distributions.Gaussian))
 
       # Calculate log_pdf under the 2 models
       posterior_log_pdf = posterior.log_pdf(x)
@@ -96,14 +96,15 @@ class GaussianTest(tf.test.TestCase):
       x = tf.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
       s = tf.reduce_sum(x)
       n = tf.size(x)
-      prior = tf.contrib.distributions.Gaussian(mu=mu0, sigma=sigma0)
-      predictive = gaussian_conjugate_posteriors.known_sigma_predictive(
+      prior = distributions.Gaussian(mu=mu0, sigma=sigma0)
+      predictive = distributions.gaussian_congugates_known_sigma_predictive(
           prior=prior, sigma=sigma, s=s, n=n)
 
       # Smoke test
-      self.assertTrue(isinstance(predictive, tf.contrib.distributions.Gaussian))
+      self.assertTrue(isinstance(predictive, distributions.Gaussian))
       predictive_log_pdf = predictive.log_pdf(x).eval()
       self.assertEqual(predictive_log_pdf.shape, (6,))
+
 
 if __name__ == '__main__':
   tf.test.main()

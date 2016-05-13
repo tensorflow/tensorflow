@@ -110,14 +110,14 @@ new_git_repository(
   name = "iron_dropdown",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-dropdown.git",
-  tag = "v1.3.1",
+  tag = "v1.4.0",
 )
 
 new_git_repository(
   name = "iron_fit_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-fit-behavior.git",
-  tag = "v1.0.6",
+  tag = "v1.2.0",
 )
 
 new_git_repository(
@@ -187,7 +187,7 @@ new_git_repository(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-overlay-behavior.git",
-  tag = "v1.6.4",
+  tag = "v1.7.3",
 )
 
 new_git_repository(
@@ -215,21 +215,21 @@ new_git_repository(
   name = "iron_validatable_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-validatable-behavior.git",
-  tag = "v1.1.0",
+  tag = "v1.1.1",
 )
 
 new_git_repository(
   name = "lodash",
   build_file = "bower.BUILD",
   remote = "https://github.com/lodash/lodash.git",
-  tag = "3.10.1",
+  tag = "3.8.0",
 )
 
 new_git_repository(
   name = "neon_animation",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/neon-animation.git",
-  tag = "v1.2.2",
+  tag = "v1.2.3",
 )
 
 new_git_repository(
@@ -264,7 +264,7 @@ new_git_repository(
   name = "paper_dialog_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-dialog-behavior.git",
-  tag = "v1.2.5",
+  tag = "v1.2.6",
 )
 
 new_git_repository(
@@ -285,7 +285,7 @@ new_git_repository(
   name = "paper_icon_button",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-icon-button.git",
-  tag = "v1.0.7",
+  tag = "v1.1.1",
 )
 
 new_git_repository(
@@ -411,7 +411,7 @@ new_git_repository(
   name = "web_animations_js",
   build_file = "bower.BUILD",
   remote = "https://github.com/web-animations/web-animations-js.git",
-  tag = "2.2.0",
+  tag = "2.2.1",
 )
 
 new_git_repository(

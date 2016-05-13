@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/work_sharder.h"
 
+#include <atomic>
 #include <vector>
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
@@ -33,8 +34,10 @@ void RunSharding(int64 num_workers, int64 total, int64 cost_per_unit) {
   int64 num_done_work = 0;
   std::vector<bool> work(total, false);
   Shard(num_workers, &threads, total, cost_per_unit,
-        [&mu, &num_shards, &num_done_work, &work](int start, int limit) {
+        [=, &mu, &num_shards, &num_done_work, &work](int64 start, int64 limit) {
           VLOG(1) << "Shard [" << start << "," << limit << ")";
+          EXPECT_GE(start, 0);
+          EXPECT_LE(limit, total);
           mutex_lock l(mu);
           ++num_shards;
           for (; start < limit; ++start) {
@@ -43,7 +46,6 @@ void RunSharding(int64 num_workers, int64 total, int64 cost_per_unit) {
             work[start] = true;
           }
         });
-  EXPECT_LE(num_shards, num_workers + 1);
   EXPECT_EQ(num_done_work, total);
   LOG(INFO) << num_workers << " " << total << " " << cost_per_unit << " "
             << num_shards;
@@ -61,20 +63,15 @@ TEST(Shard, Basic) {
 
 TEST(Shard, OverflowTest) {
   thread::ThreadPool threads(Env::Default(), "test", 3);
-  mutex mu;
   for (auto workers : {1, 2, 3}) {
     const int64 total_elements = 1LL << 32;
-    const int64 cost_per_unit = 10000;
-    int num_shards = 0;
-    int64 num_elements = 0;
+    const int64 cost_per_unit = 10;
+    std::atomic<int64> num_elements(0);
     Shard(workers, &threads, total_elements, cost_per_unit,
-          [&mu, &num_shards, &num_elements](int64 start, int64 limit) {
-            mutex_lock l(mu);
-            ++num_shards;
+          [&num_elements](int64 start, int64 limit) {
             num_elements += limit - start;
           });
-    EXPECT_EQ(num_shards, workers);
-    EXPECT_EQ(num_elements, total_elements);
+    EXPECT_EQ(num_elements.load(), total_elements);
   }
 }
 

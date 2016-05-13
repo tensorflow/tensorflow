@@ -661,7 +661,8 @@ Status DirectSession::GetOrCreateExecutors(
 
   const string key = strings::StrCat(str_util::Join(inputs_sorted, ","), "->",
                                      str_util::Join(outputs_sorted, ","), "/",
-                                     str_util::Join(tn_sorted, ","));
+                                     str_util::Join(tn_sorted, ","), "/",
+                                     run_state_args->is_partial_run);
 
   // Set the handle.
   {

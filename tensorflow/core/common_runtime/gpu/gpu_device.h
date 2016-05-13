@@ -81,6 +81,8 @@ class BaseGPUDevice : public LocalDevice {
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
 
+  gpu::StreamExecutor* executor_;  // not owned
+
  private:
   struct StreamGroup {
     gpu::Stream* compute;

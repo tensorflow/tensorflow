@@ -29,6 +29,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import status_bar
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import event_file_inspector as efi
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 
@@ -51,12 +52,34 @@ flags.DEFINE_string('host', '0.0.0.0', 'What host to listen to. Defaults to '
                     'serving on 0.0.0.0, set to 127.0.0.1 (localhost) to'
                     'disable remote access (also quiets security warnings).')
 
+flags.DEFINE_boolean('inspect', False, """Use this flag to print out a digest
+of your event files to the command line, when no data is shown on TensorBoard or
+the data shown looks weird.
+
+Example usages:
+tensorboard --inspect --event_file=myevents.out
+tensorboard --inspect --event_file=myevents.out --tag=loss
+tensorboard --inspect --logdir=mylogdir
+tensorboard --inspect --logdir=mylogdir --tag=loss
+
+See tensorflow/python/summary/event_file_inspector.py for more info and
+detailed usage.
+""")
+flags.DEFINE_string(
+    'tag', '',
+    'The particular tag to query for. Only used if --inspect is present')
+flags.DEFINE_string(
+    'event_file', '',
+    'The particular event file to query for. Only used if --inspect is present '
+    'and --logdir is not specified.')
+
 flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
 
 flags.DEFINE_boolean('purge_orphaned_data', True, 'Whether to purge data that '
                      'may have been orphaned due to TensorBoard restarts. '
                      'Disabling purge_orphaned_data can be used to debug data '
                      'disappearance.')
+
 flags.DEFINE_integer('reload_interval', 60, 'How often the backend should load '
                      'more data.')
 
@@ -67,6 +90,13 @@ def main(unused_argv=None):
   if FLAGS.debug:
     logging.set_verbosity(logging.DEBUG)
     logging.info('TensorBoard is in debug mode.')
+
+  if FLAGS.inspect:
+    logging.info('Not bringing up TensorBoard, but inspecting event files.')
+    efi.inspect(logdir=FLAGS.logdir,
+                event_file=FLAGS.event_file,
+                tag=FLAGS.tag)
+    return 0
 
   if not FLAGS.logdir:
     msg = ('A logdir must be specified. Run `tensorboard --help` for '

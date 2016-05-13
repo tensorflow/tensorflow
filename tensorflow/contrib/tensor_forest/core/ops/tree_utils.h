@@ -15,7 +15,12 @@
 #ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
 
+#include <limits>
+
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -41,7 +46,7 @@ T Sum(Tensor counts) {
 // to determine the best split (lowest) and which nodes to allocate first
 // (highest).
 template<typename T>
-int32 WeightedGiniImpurity(const T& counts) {
+float WeightedGiniImpurity(const T& counts) {
   // Our split score is the Gini impurity times the number of examples
   // seen by the leaf.  If c(i) denotes the i-th class count and c = sum_i c(i)
   // then
@@ -66,15 +71,14 @@ float WeightedVariance(const T1& sums, const T2& squares, float count) {
 // Takes in the whole total and per-split count tensors because using
 // Tensor::Slice returns a tensor of the same dimensionality, which makes
 // things a little awkward.
-int32 BestFeatureClassification(
-    const Tensor& total_counts,
-    const Tensor& split_counts, int32 accumulator);
+int32 BestFeatureClassification(const Tensor& total_counts,
+                                const Tensor& split_counts, int32 accumulator);
 
 // Returns the best split to use based on the (lowest) variance.
-int32 BestFeatureRegression(
-    const Tensor& total_sums, const Tensor& total_squares,
-    const Tensor& split_sums, const Tensor& split_squares,
-    int32 accumulator);
+int32 BestFeatureRegression(const Tensor& total_sums,
+                            const Tensor& total_squares,
+                            const Tensor& split_sums,
+                            const Tensor& split_squares, int32 accumulator);
 
 // Initializes everything in the given tensor to the given value.
 template <typename T>
@@ -93,6 +97,21 @@ bool DecideNode(const Tensor& point, int32 feature, float bias);
 // This should only be called for a single allocator's candidate features
 // (i.e. candidate_split_features.Slice(accumulator, accumulator + 1) ).
 bool IsAllInitialized(const Tensor& features);
+
+// Tensorforest currently only allows tensors up to 2^31 elements.  Return false
+// if any dimension is greater than that, true otherwise.
+inline bool CheckTensorBounds(OpKernelContext* context, const Tensor& tensor) {
+  for (int i = 0; i < (tensor).dims(); ++i) {
+    if (!TF_PREDICT_TRUE(tensor.shape().dim_size(i) <
+                         std::numeric_limits<int32>::max())) {
+      context->CtxFailure((errors::InvalidArgument(
+          strings::StrCat("Tensor has a dimension that is greater than 2^31: ",
+                          tensor.DebugString()))));
+      return false;
+    }
+  }
+  return true;
+}
 
 }  // namespace tensorforest
 }  // namespace tensorflow

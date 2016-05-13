@@ -25,8 +25,9 @@ int32 BestFeatureClassification(
   int32 best_feature_index = -1;
   // We choose the split with the lowest score.
   float best_score = kint64max;
-  const int32 num_splits = split_counts.shape().dim_size(1);
-  const int32 num_classes = split_counts.shape().dim_size(2);
+  const int32 num_splits = static_cast<int32>(split_counts.shape().dim_size(1));
+  const int32 num_classes = static_cast<int32>(
+      split_counts.shape().dim_size(2));
   // Ideally, Eigen::Tensor::chip would be best to use here but it results
   // in seg faults, so we have to go with flat views of these tensors.  However,
   // it is still pretty efficient because we put off evaluation until the
@@ -62,8 +63,9 @@ int32 BestFeatureRegression(
   int32 best_feature_index = -1;
   // We choose the split with the lowest score.
   float best_score = kint64max;
-  const int32 num_splits = split_sums.shape().dim_size(1);
-  const int32 num_regression_dims = split_sums.shape().dim_size(2);
+  const int32 num_splits = static_cast<int32>(split_sums.shape().dim_size(1));
+  const int32 num_regression_dims = static_cast<int32>(
+      split_sums.shape().dim_size(2));
   // Ideally, Eigen::Tensor::chip would be best to use here but it results
   // in seg faults, so we have to go with flat views of these tensors.  However,
   // it is still pretty efficient because we put off evaluation until the
@@ -118,6 +120,7 @@ int32 BestFeatureRegression(
 
 bool DecideNode(const Tensor& point, int32 feature, float bias) {
   const auto p = point.unaligned_flat<float>();
+  CHECK_LT(feature, p.size());
   return p(feature) > bias;
 }
 

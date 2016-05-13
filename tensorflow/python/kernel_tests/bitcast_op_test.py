@@ -68,6 +68,11 @@ class BitcastTest(tf.test.TestCase):
     shape = [4]
     self._testBitcast(x, datatype, shape)
 
+  def testUnknown(self):
+    x = tf.placeholder(tf.float32)
+    datatype = tf.int8
+    tf.bitcast(x, datatype, None)
+
 
 if __name__ == "__main__":
   tf.test.main()

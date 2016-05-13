@@ -18,6 +18,8 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include <string.h>
+#include <map>
 #include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/padding.h"
@@ -89,10 +92,12 @@ struct LaunchConvOp;
 
 template <typename T>
 struct LaunchConvOp<CPUDevice, T> {
-  static void launch(OpKernelContext* ctx, bool use_cudnn, const Tensor& input,
+  static void launch(OpKernelContext* ctx, bool use_cudnn,
+                     bool cudnn_use_autotune, const Tensor& input,
                      const Tensor& filter, int row_stride, int col_stride,
                      const Eigen::PaddingType& padding, Tensor* output,
-                     TensorFormat data_format) {
+                     TensorFormat data_format,
+                     ConvAlgorithmMap<CPUDevice>* conv_algorithm_map) {
     LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, row_stride,
                                         col_stride, padding, output,
                                         data_format);
@@ -110,6 +115,7 @@ class Conv2DOp : public BinaryOp<T> {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
+    cudnn_use_autotune_ = CudnnUseAutotune();
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
@@ -222,9 +228,10 @@ class Conv2DOp : public BinaryOp<T> {
     if (out_shape.num_elements() == 0) {
       return;
     }
-    LaunchConvOp<Device, T>::launch(
-        context, use_cudnn_, input, filter, stride_rows, stride_cols,
-        BrainPadding2EigenPadding(padding_), output, data_format_);
+    LaunchConvOp<Device, T>::launch(context, use_cudnn_, cudnn_use_autotune_,
+                                    input, filter, stride_rows, stride_cols,
+                                    BrainPadding2EigenPadding(padding_), output,
+                                    data_format_, &conv_algorithm_map_);
   }
 
  private:
@@ -232,6 +239,8 @@ class Conv2DOp : public BinaryOp<T> {
   bool use_cudnn_;
   Padding padding_;
   TensorFormat data_format_;
+  ConvAlgorithmMap<Device> conv_algorithm_map_;
+  bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DOp);
 };
@@ -262,10 +271,11 @@ int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
 template <typename T>
 struct LaunchConvOp<GPUDevice, T> {
   static void launch(OpKernelContext* ctx, bool use_cudnn,
-                     const Tensor& input_param, const Tensor& filter,
-                     int row_stride, int col_stride,
+                     bool cudnn_use_autotune, const Tensor& input_param,
+                     const Tensor& filter, int row_stride, int col_stride,
                      const Eigen::PaddingType& padding, Tensor* output,
-                     TensorFormat data_format) {
+                     TensorFormat data_format,
+                     ConvAlgorithmMap<GPUDevice>* conv_algorithm_map) {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -345,6 +355,7 @@ struct LaunchConvOp<GPUDevice, T> {
             ctx->eigen_device<GPUDevice>(), To32Bit(input_param.tensor<T, 4>()),
             {{0, 0}}, {{rows_odd, cols_odd}},
             To32Bit(transformed_input.tensor<T, 4>()), data_format);
+
         input = transformed_input;
         in_rows = new_in_rows;
         in_cols = new_in_cols;
@@ -420,12 +431,64 @@ struct LaunchConvOp<GPUDevice, T> {
     static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
         );
+
+    int device_id = stream->parent()->device_ordinal();
+    ConvParameters conv_parameters = {
+        in_batch,      // batch
+        in_depths,     // in_depths
+        in_rows,       // in_rows
+        in_cols,       // in_cols
+        out_depths,    // out_depths
+        patch_rows,    // filter_rows
+        patch_cols,    // filter_cols
+        row_stride,    // stride_rows
+        col_stride,    // stride_cols
+        padding_rows,  // padding_rows
+        padding_cols,  // padding_cols
+        device_id,     // device_id
+    };
+    using namespace perftools::gputools::dnn;
+    AlgorithmType algorithm = kDefaultAlgorithm;
+    if (cudnn_use_autotune &&
+        !conv_algorithm_map->Find(conv_parameters, &algorithm)) {
+      std::vector<AlgorithmType> algorithms;
+      CHECK(stream->parent()->GetConvolveAlgorithms(&algorithms));
+      ProfileResult best_result;
+      best_result.set_elapsed_time_in_ms(std::numeric_limits<float>::max());
+      for (auto profile_algorithm : algorithms) {
+        // TODO(zhengxq): profile each algorithm multiple times to better
+        // accuracy.
+        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        ProfileResult profile_result;
+        bool cudnn_launch_status =
+            stream
+                ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                            filter_ptr, conv_desc, output_desc,
+                                            &output_ptr, &scratch_allocator,
+                                            profile_algorithm, &profile_result)
+                .ok();
+        if (cudnn_launch_status) {
+          if (profile_result.is_valid() &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+        }
+      }
+      CHECK(best_result.is_valid() &&
+            best_result.algorithm() != kDefaultAlgorithm)
+          << "No algorithm worked!";
+      algorithm = best_result.algorithm();
+      conv_algorithm_map->Insert(conv_parameters, algorithm);
+    }
+
     CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
     bool cudnn_launch_status =
         stream
-            ->ThenConvolveWithScratch(input_desc, input_ptr, filter_desc,
-                                      filter_ptr, conv_desc, output_desc,
-                                      &output_ptr, &scratch_allocator)
+            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                        filter_ptr, conv_desc, output_desc,
+                                        &output_ptr, &scratch_allocator,
+                                        algorithm, nullptr)
             .ok();
 
     if (!cudnn_launch_status) {

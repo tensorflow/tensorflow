@@ -249,6 +249,12 @@ struct ReverseTransformFilter {
 };
 
 }  // namespace functor
+
+template <class T>
+class ConvAlgorithmMap;
+
+template <>
+class ConvAlgorithmMap<Eigen::ThreadPoolDevice> {};
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONV_2D_H_

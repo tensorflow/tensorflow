@@ -120,6 +120,8 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   bool MemZero(Stream *stream, DeviceMemoryBase *location,
                uint64 size) override;
+  bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+              uint64 size) override;
   bool Memset32(Stream *stream, DeviceMemoryBase *location, uint32 pattern,
                 uint64 size) override;
 

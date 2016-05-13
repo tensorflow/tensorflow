@@ -412,9 +412,8 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
   where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 
   Args:
-    tensor:  N-D tensor.  First K dimensions can be None, which allows e.g.
-      undefined batch size.  Trailing dimensions must be specified.
-    mask:  K-D boolean tensor, K <= N.
+    tensor:  N-D tensor.
+    mask:  K-D boolean tensor, K <= N and K must be known statically.
     name:  A name for this operation (optional).
 
   Returns:
@@ -453,7 +452,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
           ".  E.g. shape=[None] is ok, but shape=None is not.")
     shape_tensor[:ndims_mask].assert_is_compatible_with(shape_mask)
 
-    tensor = reshape(tensor, [-1] + shape_tensor.as_list()[ndims_mask:])
+    tensor = reshape(tensor, concat(0, [[-1], shape(tensor)[ndims_mask:]]))
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask)
 
@@ -1127,17 +1126,19 @@ def _SqueezeShape(op):
 def _BitcastShape(op):
   """Shape function for Bitcast op."""
   input_shape = op.inputs[0].get_shape()
+  if input_shape == tensor_shape.unknown_shape():
+    return [tensor_shape.unknown_shape()]
   input_type = op.inputs[0].dtype
   size_of_input = input_type.size
   output = dtypes.as_dtype(op.get_attr("type"))
   size_of_output = output.size
   if size_of_input == size_of_output:
-    return [tensor_shape.TensorShape(input_shape)]
+    return [input_shape]
   else:
     if size_of_output > size_of_input:
-      new_shape = input_shape.as_list()
+      new_shape = input_shape.with_rank_at_least(1).as_list()
       last_val = new_shape[-1]
-      if last_val == (size_of_output // size_of_input):
+      if last_val is None or last_val == (size_of_output // size_of_input):
         new_shape = new_shape[:-1]
       else:
         raise ValueError(
@@ -1823,7 +1824,7 @@ def one_hot(indices, depth, on_value=1, off_value=0,
 
   The locations represented by indices in `indices` take value `on_value`,
   while all other locations take value `off_value`. By default, `on_value` is 1,
-  and `off_value` is 0. The type of the output tensor is specified by `dtype`, 
+  and `off_value` is 0. The type of the output tensor is specified by `dtype`,
   which defaults to `tf.float32`.
 
   If the input `indices` is rank `N`, the output will have rank `N+1`. The
@@ -1919,8 +1920,8 @@ def one_hot(indices, depth, on_value=1, off_value=0,
     off_value = ops.convert_to_tensor(off_value, dtype=dtype, name="off_value")
     indices = ops.convert_to_tensor(indices, dtype=dtypes.int64, name="indices")
     depth = ops.convert_to_tensor(depth, dtype=dtypes.int32, name="depth")
-    return gen_array_ops._one_hot(indices, depth, on_value, 
-                                  off_value, axis, name)
+    return gen_array_ops._one_hot(indices, depth, on_value, off_value, axis,
+                                  name)
 
 
 @ops.RegisterShape("OneHot")

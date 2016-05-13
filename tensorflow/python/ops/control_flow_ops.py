@@ -1577,7 +1577,9 @@ class WhileContext(ControlFlowContext):
     next_vars = [_NextIteration(x) for x in result]
 
     # Add the back edges to complete the loop.
-    assert len(merge_vars) == len(next_vars)
+    if len(merge_vars) != len(next_vars):
+      raise ValueError("Number of inputs and outputs of body must match "
+                       "loop_vars: %d, %d" % (len(merge_vars), len(next_vars)))
     for x in zip(merge_vars, next_vars):
       x[0].op._update_input(1, x[1])
 
@@ -1586,8 +1588,8 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = exit_vars
 
     for m_var, n_var, e_var in zip(merge_vars, next_vars, exit_vars):
-      if m_var.get_shape().is_compatible_with(n_var.get_shape()):
-        e_var.set_shape(m_var.get_shape().merge_with(n_var.get_shape()))
+      if not m_var.get_shape() == n_var.get_shape():
+        e_var._shape = tensor_shape.unknown_shape()
 
     # Exit the loop.
     self.ExitResult(exit_vars)

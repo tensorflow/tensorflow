@@ -971,6 +971,16 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(steps, len(res))
       self.assertEqual(2.0, res[-1])
 
+  def testRunAndPartialRun(self):
+    with session.Session() as sess:
+      a = constant_op.constant(2.0, dtypes.float32)
+      b = a * 2
+      c = b * 3
+      r1 = sess.run([b, c])
+      h = sess.partial_run_setup([b, c], [])
+      r2 = sess.partial_run(h, [b, c])
+      self.assertEqual(r1, r2)
+
   def testFeedDictKeyException(self):
     with session.Session() as sess:
       a = constant_op.constant(1.0, dtypes.float32, name='a')

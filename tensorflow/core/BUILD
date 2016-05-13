@@ -67,6 +67,7 @@ load(
     "tf_proto_library",
     "tf_proto_library_cc",
     "tf_additional_lib_srcs",
+    "tf_additional_lib_deps",
     "tf_additional_stream_executor_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
@@ -995,9 +996,9 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-        "//tensorflow/core/kernels:required",
         "//third_party/eigen3",
-    ],
+        "//tensorflow/core/kernels:required",
+    ] + tf_additional_lib_deps(),
     alwayslink = 1,
 )
 

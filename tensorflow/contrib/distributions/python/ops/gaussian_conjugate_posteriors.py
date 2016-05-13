@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The Gaussian distribution: conjugate posterior closed form calculations.
-
-@@known_sigma_posterior
-@@known_sigma_predictive
-"""
+"""The Gaussian distribution: conjugate posterior closed form calculations."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,7 +23,7 @@ from tensorflow.contrib.distributions.python.ops.gaussian import Gaussian  # pyl
 from tensorflow.python.ops import math_ops
 
 
-def known_sigma_posterior(prior, sigma, s, n):
+def gaussian_conjugates_known_sigma_posterior(prior, sigma, s, n):
   """Posterior Gaussian distribution with conjugate prior on the mean.
 
   This model assumes that `n` observations (with sum `s`) come from a
@@ -86,7 +82,7 @@ def known_sigma_posterior(prior, sigma, s, n):
       sigma=math_ops.sqrt(sigmap_2))
 
 
-def known_sigma_predictive(prior, sigma, s, n):
+def gaussian_congugates_known_sigma_predictive(prior, sigma, s, n):
   """Posterior predictive Gaussian distribution w. conjugate prior on the mean.
 
   This model assumes that `n` observations (with sum `s`) come from a

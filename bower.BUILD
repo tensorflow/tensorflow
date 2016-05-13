@@ -387,6 +387,7 @@ filegroup(
     srcs = [
         "index.html",
         "paper-icon-button.html",
+        "paper-icon-button-light.html",
     ],
 )
 
