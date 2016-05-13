@@ -41,6 +41,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
+    name = "farmhash_archive",
+    url = "https://github.com/google/farmhash/archive/34c13ddfab0e35422f4c3979f360635a8c050260.zip",
+    sha256 = "e3d37a59101f38fd58fb799ed404d630f0eee18bfc2a2433910977cc8fea9c28",
+    build_file = path_prefix + "farmhash.BUILD",
+  )
+
+  native.bind(
+    name = "farmhash",
+    actual = "@farmhash//:farmhash",
+  )
+
+  native.new_http_archive(
     name = "jpeg_archive",
     url = "http://www.ijg.org/files/jpegsrc.v9a.tar.gz",
     sha256 = "3a753ea48d917945dd54a2d97de388aa06ca2eb1066cbfdc6652036349fe05a7",

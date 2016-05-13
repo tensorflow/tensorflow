@@ -199,6 +199,7 @@ cc_library(
         "lib/strings/stringprintf.h",
         "platform/env.h",
         "platform/file_system.h",
+        "platform/fingerprint.h",
         "platform/host_info.h",  # TODO(josh11b): make internal
         "platform/init_main.h",
         "platform/logging.h",
