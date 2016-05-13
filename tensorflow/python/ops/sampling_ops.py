@@ -35,12 +35,9 @@ def _BernoulliSampleShape(op):
   a_shape = op.inputs[1].get_shape().with_rank(1)
   b_shape = op.inputs[2].get_shape().with_rank(1)
 
-  if a_shape != b_shape:
-    raise ValueError(
-        "The inputs to BernoulliSample must have the same shape: %s vs. %s" %
-        (str(a_shape), str(b_shape)))
+  a_shape.assert_is_compatible_with(b_shape)
 
-  return [a_shape]
+  return [a_shape.merge_with(b_shape)]
 
 ops.NoGradient("BernoulliSample")
 
