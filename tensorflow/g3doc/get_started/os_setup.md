@@ -630,7 +630,7 @@ $ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_pack
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
 # The name of the .whl file will depend on your platform.
-$ pip install /tmp/tensorflow_pkg/tensorflow-0.8.0-py2-none-linux_x86_64.whl
+$ sudo pip install /tmp/tensorflow_pkg/tensorflow-0.8.0-py2-none-any.whl
 ```
 
 ## Setting up TensorFlow for Development
