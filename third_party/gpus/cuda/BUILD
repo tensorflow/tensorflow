@@ -31,6 +31,13 @@ config_setting(
 )
 
 config_setting(
+    name = "using_clang",
+    values = {
+        "define": "using_cuda_clang=true",
+    },
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
