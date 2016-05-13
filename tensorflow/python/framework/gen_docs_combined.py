@@ -53,6 +53,7 @@ def get_module_to_name():
       tf.contrib.distributions: "tf.contrib.distributions",
       tf.contrib.layers: "tf.contrib.layers",
       tf.contrib.learn: "tf.contrib.learn",
+      tf.contrib.metrics: "tf.contrib.metrics",
       tf.contrib.util: "tf.contrib.util",
       tf.contrib.copy_graph: "tf.contrib.copy_graph",
   }
@@ -130,6 +131,7 @@ def all_libraries(module_to_name, members, documented):
               tf.contrib.distributions),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
+      library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)", 
               tf.contrib.copy_graph),
