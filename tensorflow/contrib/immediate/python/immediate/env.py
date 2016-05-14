@@ -3,7 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-__all__ = ["Env"]
+__all__ = ["Env", "Namespace"]
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
@@ -46,61 +46,12 @@ class Env(object):
                            np.dtype('float32'), np.dtype('float64'),
                            np.dtype('bool')}
 
-  def __init__(self):
+  def __init__(self, tf_namespace):
     self.sess = session.Session()
     self.op_factory = OpFactory(self)
+    self.tf =  Namespace(self, "tf", tf_namespace)
+    # TODO(yaroslavvb): add run options
     #    self.run_options = tf.RunOptions()
-
-    # Walk the tree of symbols in "tf." namespace and save mappings
-    # <generaldep> tfnamespace must be passed as an argument to __init__
-    # if we want Env to be part of TensorFlow wherein can't use import tensorflow
-    import tensorflow as tfnamespace
-
-    self.tf_gen_ops = {}  # native Python op wrappers
-    self.tf_python_ops = {}  # custom Python op functions
-    self.tf_other = {}  # everything else
-
-    for (name,symbol) in tfnamespace.__dict__.items():
-      # only include functions
-      if type(symbol) == types.FunctionType:
-        basename = os.path.basename(inspect.getsourcefile(symbol))
-        if re.match("^gen.*_ops.py$", basename):
-          self.tf_gen_ops[name] = symbol
-        elif re.match("^.*_ops.py$", basename):
-          self.tf_python_ops[name] = symbol
-        else:
-          self.tf_other[name] = symbol
-      else:
-          self.tf_other[name] = symbol
-
-      # add tf.nn functions
-      # TODO(yaroslavvb): refactor this to include both tf.image and tf.nn
-    for (name,symbol) in tfnamespace.nn.__dict__.items():
-      # only include functions
-      name = 'nn.'+name
-      if type(symbol) == types.FunctionType:
-        basename = os.path.basename(inspect.getsourcefile(symbol))
-        if re.match("^gen.*_ops.py$", basename):
-          self.tf_gen_ops[name] = symbol
-        elif re.match("^.*_ops.py$", basename):
-          self.tf_python_ops[name] = symbol
-        else:
-          self.tf_other[name] = symbol
-      else:
-          self.tf_other[name] = symbol
-
-    # wrapper to handle 'env.nn' calls
-    self.nn_submodule = EnvSubmoduleWrapper(self, 'nn.')
-
-
-  def __getattr__(self, tf_op_name):
-    if tf_op_name == 'nn':
-      return self.nn_submodule
-
-    if tf_op_name in self.tf_gen_ops:
-      return OpWrapper(self, tf_op_name)
-    else:
-      raise ValueError("Do not have implementation of op "+tf_op_name)    
 
   @property
   def g(self):
@@ -173,20 +124,45 @@ class Env(object):
     return self.sess.run(*args, **kwargs)
 
 
-class EnvSubmoduleWrapper(object):
-  """Object serving as a wrapper of submodules for tf. namespace. IE, if "tf"
-  namespace is represented by env, "tf.nn" will be an EnvSubmoduleWrapper that
-  executes operations in the parent Environment."""
-  
-  def __init__(self, env, prefix):
-    """Constructor for EnvSubmoduleWrapper.
-    Args:
-      env: Environment used for running operations
-      prefix: Prefix corresponding to current wrapper, ie, ".nn" or ".image"
-    """
+class Namespace(object):
+  """Object that is capable of mirroring namespace like "tf" but with immediate
+  execution semantics"""
+
+  def __init__(self, env, name, namespace, tf_root=True):
+    # Walk the tree of symbols in namespace and save mappings
 
     self.env = env
-    self.prefix = prefix
+    self.name = name
 
-  def __getattr__(self, tf_op_name):
-    return self.env.__getattr__(self.prefix+tf_op_name)
+    self.gen_ops = {}  # native Python op wrappers
+    self.python_ops = {}  # custom Python op functions
+    self.other = {}  # everything else
+    self.nested_modules = {}  # nested modules like tf.nn go here
+
+    for (name,symbol) in namespace.__dict__.items():
+      # only include functions
+      if type(symbol) == types.FunctionType:
+        basename = os.path.basename(inspect.getsourcefile(symbol))
+        if re.match("^gen.*_ops.py$", basename):
+          self.gen_ops[name] = symbol
+        elif re.match("^.*_ops.py$", basename):
+          self.python_ops[name] = symbol
+        else:
+          self.other[name] = symbol
+      else:  # non-functions
+          self.other[name] = symbol
+
+    # if we are wrapping root of "tf." also wrap submodules like tf.nn
+    if tf_root:
+      self.nested_modules['nn'] = Namespace(self.env, self.name+'.nn',
+                                            namespace.nn, tf_root=False)
+
+  def __getattr__(self, symbol_name):
+    if symbol_name in self.nested_modules:
+      return self.nested_modules[symbol_name]
+
+    if symbol_name in self.gen_ops:
+      return OpWrapper(self, self.env, self.name+"."+symbol_name,
+                       self.gen_ops[symbol_name])
+    else:
+      raise ValueError("Do not have implementation of op "+symbol_name)    

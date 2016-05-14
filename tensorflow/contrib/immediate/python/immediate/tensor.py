@@ -41,7 +41,7 @@ class Tensor(object):
 
 
   def __add__(self, other):
-    return self.env.add(self, other)
+    return self.env.tf.add(self, other)
 
   def __bool__(self):
     # TODO(yaroslavvb): add in cast after Python-only ops are supported
@@ -52,19 +52,19 @@ class Tensor(object):
     return self.__bool__()
 
   def __lt__(self, other):
-    return self.env.less(self, other)
+    return self.env.tf.less(self, other)
   
   def __le__(self, other):
-    return self.env.less_equal(self, other)
+    return self.env.tf.less_equal(self, other)
 
   def __eq__(self, other):
-    return self.env.equal(self, other)
+    return self.env.tf.equal(self, other)
 
   def __ne__(self, other):
-    return self.env.not_equal(self, other)
+    return self.env.tf.not_equal(self, other)
 
   def __gt__(self, other):
-    return self.env.greater(self, other)
+    return self.env.tf.greater(self, other)
 
   def __ge__(self, other):
-    return self.env.greater_equal(self, other)
+    return self.env.tf.greater_equal(self, other)

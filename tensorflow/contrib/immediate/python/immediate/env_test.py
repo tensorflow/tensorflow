@@ -8,7 +8,7 @@ import tensorflow.contrib.immediate as immediate
 class EnvTest(tf.test.TestCase):
 
   def testInit(self):
-    env = immediate.Env()
+    env = immediate.Env(tf)
     self.assertTrue(True)
 
   def testNumpyConversion(self):
@@ -18,42 +18,42 @@ class EnvTest(tf.test.TestCase):
       b = env.handle_to_numpy(tensor_handle)
       self.assertAllEqual(a, b)
 
-    env = immediate.Env()
+    env = immediate.Env(tf)
     testForDtype(np.float32)
     testForDtype(np.float64)
     testForDtype(np.int32)
     testForDtype(np.int64)
 
   def testNumpyBoolConversion(self):
-    env = immediate.Env()
+    env = immediate.Env(tf)
     tensor = env.numpy_to_tensor(False)
 
   def testAdd(self):
-    env = immediate.Env()
+    env = immediate.Env(tf)
     val = np.ones(())
     tensor1 = env.numpy_to_tensor(val)
     tensor2 = env.numpy_to_tensor(val)
-    tensor3 = env.add(tensor1, tensor2)
-    tensor4 = env.add(tensor3, tensor2)
+    tensor3 = env.tf.add(tensor1, tensor2)
+    tensor4 = env.tf.add(tensor3, tensor2)
     self.assertAllEqual(tensor4.as_numpy(), 3*val)
 
   def testSub(self):
-    env = immediate.Env()
+    env = immediate.Env(tf)
     val = np.ones(())
     tensor1 = env.numpy_to_tensor(val)
     tensor2 = env.numpy_to_tensor(val)
-    tensor3 = env.sub(tensor1, tensor2)
-    tensor4 = env.sub(tensor3, tensor2)
+    tensor3 = env.tf.sub(tensor1, tensor2)
+    tensor4 = env.tf.sub(tensor3, tensor2)
     self.assertAllEqual(tensor4.as_numpy(), -1*val)
 
   def testNN(self):
-    env = immediate.Env()
+    env = immediate.Env(tf)
     val = env.numpy_to_tensor(-1)
-    self.assertEqual(env.nn.relu(val), env.numpy_to_tensor(0))
+    self.assertEqual(env.tf.nn.relu(val), env.numpy_to_tensor(0))
 
   def testAddCaching(self):
     # make sure that graph is not modified in a loop
-    env = immediate.Env()
+    env = immediate.Env(tf)
     val = np.ones(())
     tensor0 = env.numpy_to_tensor(val)
     tensor1 = env.numpy_to_tensor(np.zeros(()))
