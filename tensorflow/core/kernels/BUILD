@@ -1769,7 +1769,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@re2//:re2",
         "//tensorflow/core:android_tensorflow_lib_lite",
         "//tensorflow/core:protos_cc",
         "//third_party/eigen3",
