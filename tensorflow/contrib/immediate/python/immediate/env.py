@@ -17,13 +17,15 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import session_ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -53,16 +55,37 @@ class Env(object):
   def __init__(self, tf_namespace):
     self.sess = session.Session()
     self.op_factory = OpFactory(self)
-    self.tf =  Namespace(self, "tf", tf_namespace)
 
     # these will hold namespaces like gen_math_ops
     # that will hold wrapped versions of those namespaces
     # they will used when substituting immediate execution logic
     # for non-native Python TensorFlow ops
-    self.gen_namespaces = {}
-    self.gen_namespaces['gen_math_ops'] = Namespace(self, 'gen_math_ops',
+    self.wrapped_namespaces = {}
+    self.wrapped_namespaces['gen_math_ops'] = Namespace(self, 'gen_math_ops',
                                                     gen_math_ops,
                                                     tf_root=False)
+    
+    self.wrapped_namespaces["array_ops"] = Namespace(self, "array_ops",
+                                                    array_ops,
+                                                    tf_root=False)
+
+    sub = {"array_ops": self.wrapped_namespaces["array_ops"],
+           "gen_math_ops": self.wrapped_namespaces['gen_math_ops']}
+
+    sub = {"gen_math_ops": self.wrapped_namespaces['gen_math_ops']}
+    self.wrapped_namespaces['math_ops'] = Namespace(self, 'math_ops',
+                                                    math_ops,
+                                                    tf_root=False,
+                                                    global_sub=sub)
+
+    self.tf =  Namespace(self, "tf", tf_namespace, tf_root=True,
+                         global_sub=sub)
+
+    # sinc
+    #    self.wrapped_namespaces['
+
+    #    self.wrapped_namespaces from tensorflow.python.ops import array_ops
+
 
     # TODO(yaroslavvb): add run options
     #    self.run_options = tf.RunOptions()
@@ -70,6 +93,11 @@ class Env(object):
   @property
   def g(self):
     return self.sess.graph
+
+  @property
+  def python_op_whitelist(self):
+    """Python-only ops whitelisted for wrapping."""
+    return {'tf.pow'}
 
   # Ops below are used by internal implementation of the immediate execution
   # system, so we get infinite recursion if we dispatch them through
@@ -150,16 +178,22 @@ class Env(object):
   def run(self, *args, **kwargs):
     return self.sess.run(*args, **kwargs)
 
-
+# TODO(yaroslavvb): better default for tf_root
 class Namespace(object):
   """Object that is capable of mirroring namespace like "tf" but with immediate
   execution semantics."""
 
-  def __init__(self, env, name, namespace, tf_root=True):
+  def __init__(self, env, name, namespace, global_sub = {}, tf_root=True):
+    """Initializes TF namespace wrapper
+    Args:
+      global_sub: stores a dictionary used to substituted __globals__ symbols
+      """
     # Walk the tree of symbols in namespace and save mappings
 
     self.env = env
     self.name = name
+    self.original_namespace = namespace
+    self.global_sub = global_sub
 
     self.gen_ops = {}  # native Python op wrappers
     self.python_ops = {}  # custom Python op functions
@@ -195,8 +229,20 @@ class Namespace(object):
       return OpWrapper(self, self.env, derived_symbol_name,
                        symbol)
     elif symbol_name in self.python_ops:
+      if not derived_symbol_name in self.env.python_op_whitelist:
+        raise ValueError("Python-only op %s is not whitelisted." %
+                         (derived_symbol_name))
       symbol = self.python_ops[symbol_name]
       return PythonOpWrapper(self, self.env, derived_symbol_name,
-                             symbol)
+                             symbol, self.global_sub)
     else:
-      raise ValueError("Do not have implementation of op "+symbol_name)    
+      raise ValueError("Do not have implementation of op "+derived_symbol_name)    
+
+  def __str__(self):
+    return "Namespace(name=%s, original_namespace=%s)" %(self.name,
+                                                         self.original_namespace.__name__)
+
+  def __repr__(self):
+    return "Namespace(name=%s, original_namespace=%s, global_sub=%s)" % (
+      self.name, self.original_namespace, self.global_sub)
+

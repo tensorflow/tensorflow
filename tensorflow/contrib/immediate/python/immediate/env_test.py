@@ -46,11 +46,6 @@ class EnvTest(tf.test.TestCase):
     tensor4 = env.tf.sub(tensor3, tensor2)
     self.assertAllEqual(tensor4.as_numpy(), -1*val)
 
-  def testNN(self):
-    env = immediate.Env(tf)
-    val = env.numpy_to_tensor(-1)
-    self.assertEqual(env.tf.nn.relu(val), env.numpy_to_tensor(0))
-
   def testPowOp(self):
     """Try a simple non-native op."""
     env = immediate.Env(tf)
@@ -65,6 +60,11 @@ class EnvTest(tf.test.TestCase):
     val2 = env.tf.reshape(val1, [-1])
     # TODO(yaroslavvb): implement slicing and get rid of numpy conversion
     self.assertAllEqual(env.tensor_to_numpy(val2), [1, 2])
+
+  def testRank(self):
+    env = immediate.Env(tf)
+    val1 = env.numpy_to_tensor([[1],[2]])
+    self.assertEqual(env.tf.rank(val1), 2)
 
   def testAddCaching(self):
     # make sure that graph is not modified in a loop

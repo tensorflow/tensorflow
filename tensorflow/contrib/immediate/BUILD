@@ -42,6 +42,19 @@ py_test(
 )
 
 py_test(
+    name = "env_test2",
+    size = "small",
+    srcs = ["python/immediate/env_test2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":immediate_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
     name = "tensor_test",
     size = "small",
     srcs = ["python/immediate/tensor_test.py"],
