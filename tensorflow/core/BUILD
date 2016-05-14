@@ -617,7 +617,7 @@ filegroup(
             "util/**/*.cc",
         ],
         exclude = [
-            "**/*test.cc",
+            "**/*test.*",
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
@@ -630,6 +630,7 @@ filegroup(
             "platform/cuda.h",
             "platform/google/**/*",
             "platform/jpeg.*",
+            "platform/png.*",
             "platform/stream_executor.*",
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/**/*",
