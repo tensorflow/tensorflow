@@ -51,12 +51,20 @@ class EnvTest(tf.test.TestCase):
     val = env.numpy_to_tensor(-1)
     self.assertEqual(env.tf.nn.relu(val), env.numpy_to_tensor(0))
 
-  def testPythonOp(self):
+  def testPowOp(self):
     """Try a simple non-native op."""
     env = immediate.Env(tf)
     val1 = env.numpy_to_tensor(2)
     val2 = env.numpy_to_tensor(3)
     self.assertEqual(env.tf.pow(val1, val2), env.numpy_to_tensor(8))
+
+  def testReshapeOpWithConversion(self):
+    """Try reshape op where arguments are implicitly converted to Tensors"""
+    env = immediate.Env(tf)
+    val1 = env.numpy_to_tensor([[1],[2]])
+    val2 = env.tf.reshape(val1, [-1])
+    # TODO(yaroslavvb): implement slicing and get rid of numpy conversion
+    self.assertAllEqual(env.tensor_to_numpy(val2), [1, 2])
 
   def testAddCaching(self):
     # make sure that graph is not modified in a loop
