@@ -39,10 +39,9 @@ from .op import Op
 
 import numpy as np
 
-def _create_namespace_map():
+def _create_namespace_map(tfnamespace):
   namespace_map = {}
-  import tensorflow as tf
-  for (name,symbol) in tf.__dict__.items():
+  for (name,symbol) in tfnamespace.__dict__.items():
     # only include functions
     if not type(symbol) == types.FunctionType:
       continue
@@ -54,10 +53,22 @@ def _create_namespace_map():
 
     namespace_map[name] = symbol
 
-    # needed for type-checking in OpFactory
-    namespace_map['Tensor'] = tf.Tensor
+  # add tf.nn functions
+  # TODO(yaroslavvb): refactor this to include both tf.image and tf.nn
+  for (name, symbol) in tfnamespace.nn.__dict__.items():
+    # only include functions
+    if not type(symbol) == types.FunctionType:
+      continue
 
-    # TODO(yaroslavvb): loop over "tf.nn" namespace here as well
+    basename = os.path.basename(inspect.getsourcefile(symbol))
+    # only include native TensorFlow ops
+    if not re.match("^gen.*.ops.py$", basename):
+      continue
+
+    namespace_map['nn.'+name] = symbol
+
+  # needed for type-checking in OpFactory
+  namespace_map['Tensor'] = tfnamespace.Tensor
 
   return namespace_map
 
@@ -75,10 +86,16 @@ class Env(object):
 
     # <generaldep> functionality below needs to be called from
     # outside of this package if we want Env to be part of TensorFlow
-    self.namespace_map = _create_namespace_map()
+    import tensorflow as tf
+    self.namespace_map = _create_namespace_map(tf)
+
+    self.nn_submodule = EnvSubmoduleWrapper(self, 'nn.')
 
 
   def __getattr__(self, tf_op_name):
+    if tf_op_name == 'nn':
+      return self.nn_submodule
+
     if tf_op_name in self.namespace_map:
       return OpWrapper(self, tf_op_name)
     else:
@@ -150,7 +167,25 @@ class Env(object):
   def get_session_handle(self, tf_tensor):
     handle_op = session_ops.get_session_handle(tf_tensor)
     return handle_op
-
   
   def run(self, *args, **kwargs):
     return self.sess.run(*args, **kwargs)
+
+
+class EnvSubmoduleWrapper(object):
+  """Object serving as a wrapper of submodules for tf. namespace. IE, if "tf"
+  namespace is represented by env, "tf.nn" will be an EnvSubmoduleWrapper that
+  executes operations in the parent Environment."""
+  
+  def __init__(self, env, prefix):
+    """Constructor for EnvSubmoduleWrapper.
+    Args:
+      env: Environment used for running operations
+      prefix: Prefix corresponding to current wrapper, ie, ".nn" or ".image"
+    """
+
+    self.env = env
+    self.prefix = prefix
+
+  def __getattr__(self, tf_op_name):
+    return self.env.__getattr__(self.prefix+tf_op_name)
