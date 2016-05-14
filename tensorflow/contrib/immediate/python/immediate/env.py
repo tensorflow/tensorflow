@@ -44,6 +44,8 @@ import numpy as np
 
 class Env(object):
 
+  # TODO(yaroslavvb): use dtypes.as_dtype(dtype) is not None instead
+  # note: np.int32 has different hash from np.dtype('int32'), so must use later
   supported_numpy_types = {np.dtype('int32'), np.dtype('int64'),
                            np.dtype('float32'), np.dtype('float64'),
                            np.dtype('bool')}
@@ -108,13 +110,26 @@ class Env(object):
     tensor_handle = self.sess.run(tensor_handle_op, feed_dict={holder: array})
     return tensor_handle
 
-  def numpy_to_tensor(self, array):
+  # TODO(yaroslavvb): test bad conversions
+
+  def numpy_to_tensor(self, array, dtype=None):
     # try to convert Python lists to numpy array
     if not isinstance(array, np.ndarray):
-      array = np.array(array)
+      array = np.array(array, dtype=dtype)
       if not array.dtype in self.supported_numpy_types:
         raise ValueError("Unsupported type %s, only support types %s" % (
             repr(array.dtype), [repr(s) for s in self.supported_numpy_types]))
+
+    # Follow downcasting convention as in python/framework/tensor_util.py#L357
+    # python/numpy default float type is float64. We prefer float32 instead.
+    if (array.dtype == np.float64) and dtype is None:
+      array = array.astype(np.float32)
+    # python/numpy default int type is int64. We prefer int32 instead.
+    elif (array.dtype == np.int64) and dtype is None:
+      downcasted_array = array.astype(np.int32)
+      # Do not down cast if it leads to precision loss.
+      if np.array_equal(downcasted_array, array):
+        array = downcasted_array
 
     handle = self.numpy_to_handle(array)
     return Tensor(self, handle)

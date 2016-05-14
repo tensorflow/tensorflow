@@ -6,14 +6,25 @@ __all__ = ["Op", "OpFactory", "OpWrapper", "PythonOpWrapper"]
 
 from .tensor import Tensor
 
+import sys
+
 # Implementation of Immediate Op
 class Op(object):
 
-  def __init__(self, env, input_holders, output_handle, key):
+  def __init__(self, env, input_holders, output_handle, key,
+               converted_tensors={}):
+    """Initialize Op.
+
+    Args:
+      converted_tensors: dictionary of argument position -> converted immedate
+        Tensor (only for argument positions where this conversion was made)
+    """
+
     self.env = env
     self.input_holders = input_holders
     self.output_handle = output_handle
     self.key = key
+    self.converted_tensors = converted_tensors
 
   def __call__(self, *args):
     if not len(args) == len(self.input_holders):
@@ -22,10 +33,12 @@ class Op(object):
                                len(self.input_holders)))
 
     feed_dict = {}
-    for (itensor, holder) in zip(args, self.input_holders):
+    for (i, (itensor, holder)) in enumerate(zip(args, self.input_holders)):
+      if i in self.converted_tensors:
+        itensor = self.converted_tensors[i]
       if not isinstance(itensor, Tensor):
-        raise ValueError("All positional arguments of %s must be immediate "
-                           "Tensors" % (self.__str__()))
+        raise ValueError("All positional arguments must be immediate "
+                         "Tensors, instead we see "+str(itensor))
       feed_dict[holder] = itensor.tf_handle
 
     tensor_handle = self.env.run(self.output_handle, feed_dict=feed_dict)
@@ -47,10 +60,22 @@ class OpFactory(object):
     
     # create the key to see if the op has been created before
     key = [symbol_name]
-    for itensor in args:
+
+    # converted_args stores args converted to Tensors, ie, Python list [1]
+    # becomes immediate.Tensor([1])), immediate.Tensor objects are unchanged
+    converted_args = []  
+    converted_tensors = {}
+    for i,itensor in enumerate(args):
       if not isinstance(itensor, Tensor):
-        raise ValueError("All positional arguments must be immediate "
-                         "Tensors, instead we see "+str(itensor))
+        try:
+          itensor = self.env.numpy_to_tensor(itensor)
+          converted_tensors[i] = itensor
+        except ValueError as e:
+          raise ValueError("All positional arguments must be immediate "
+                           "Tensors, or convertible to immediate Tensors "
+                           "instead we see %s (numpy error: %s)" % (
+                            str(itensor), sys.exc_info()[0]))
+      converted_args.append(itensor)
       key.append(itensor.dtype)
 
     # TODO(yaroslavvb): use signature binding to fill out default kwargs
@@ -71,7 +96,7 @@ class OpFactory(object):
       # connect up things
       input_tensors = []
       input_holders = []
-      for itensor in args:
+      for itensor in converted_args:
         holder, tensor = self.env.get_session_tensor(itensor.dtype)
         input_holders.append(holder)
         input_tensors.append(tensor)
@@ -92,7 +117,7 @@ class OpFactory(object):
       # Convert result to TensorHandle
       output_handle = self.env.get_session_handle(output)
 
-    op = Op(self.env, input_holders, output_handle, key)
+    op = Op(self.env, input_holders, output_handle, key, converted_tensors)
     self.cache[key] = op
 
     return op
