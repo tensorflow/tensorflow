@@ -143,12 +143,15 @@ class OpWrapper(object):
 class PythonOpWrapper(object):
   """A callable object that mirrors Python tensorflow function."""
 
-  def __init__(self, namespace, env, symbol_name, symbol):
+  def __init__(self, namespace, env, symbol_name, symbol, global_sub):
     self.namespace = namespace
     self.env = env
     self.symbol_name = symbol_name
     self.symbol = symbol
-    symbol.__globals__['gen_math_ops'] = self.env.gen_namespaces['gen_math_ops']
+    self.global_sub = global_sub
+    
+    for global_name in global_sub:
+      symbol.__globals__[global_name] = global_sub[global_name]
 
   def __call__(self, *args, **kwargs):
     return self.symbol(*args, **kwargs)
