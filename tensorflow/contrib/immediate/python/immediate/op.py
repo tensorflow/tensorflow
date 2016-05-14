@@ -44,7 +44,7 @@ class OpFactory(object):
     self.cache = {}
 
   def __call__(self, tf_op, *args, **kwargs):
-    if not tf_op in self.env.namespace_map:
+    if not tf_op in self.env.tf_gen_ops:
       raise ValueError("Unknown operation: "+tf_op)
     
     # special ops like "get_session_tensor" are used by the caching system
@@ -74,7 +74,7 @@ class OpFactory(object):
     # create the op
     with self.env.g.as_default():
       # retrieve Python generated wrapper
-      fun = self.env.namespace_map[tf_op]
+      fun = self.env.tf_gen_ops[tf_op]
       
       # convert args to TensorHandles
       # connect up things
@@ -95,7 +95,7 @@ class OpFactory(object):
       output = fun(*input_tensors, **kwargs)
 
       # TODO(yaroslavvb): allow for multiple return values like tf.split
-      if not isinstance(output, self.env.namespace_map['Tensor']):
+      if not isinstance(output, self.env.tf_other['Tensor']):
         raise ValueError("Only support TF ops that return a single Tensor.")
       
       # Convert result to TensorHandle

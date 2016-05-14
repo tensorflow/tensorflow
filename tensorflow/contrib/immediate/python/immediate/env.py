@@ -39,39 +39,6 @@ from .op import Op
 
 import numpy as np
 
-def _create_namespace_map(tfnamespace):
-  namespace_map = {}
-  for (name,symbol) in tfnamespace.__dict__.items():
-    # only include functions
-    if not type(symbol) == types.FunctionType:
-      continue
-
-    basename = os.path.basename(inspect.getsourcefile(symbol))
-    # only include native TensorFlow ops
-    if not re.match("^gen.*.ops.py$", basename):
-      continue
-
-    namespace_map[name] = symbol
-
-  # add tf.nn functions
-  # TODO(yaroslavvb): refactor this to include both tf.image and tf.nn
-  for (name, symbol) in tfnamespace.nn.__dict__.items():
-    # only include functions
-    if not type(symbol) == types.FunctionType:
-      continue
-
-    basename = os.path.basename(inspect.getsourcefile(symbol))
-    # only include native TensorFlow ops
-    if not re.match("^gen.*.ops.py$", basename):
-      continue
-
-    namespace_map['nn.'+name] = symbol
-
-  # needed for type-checking in OpFactory
-  namespace_map['Tensor'] = tfnamespace.Tensor
-
-  return namespace_map
-
 
 class Env(object):
 
@@ -84,11 +51,45 @@ class Env(object):
     self.op_factory = OpFactory(self)
     #    self.run_options = tf.RunOptions()
 
-    # <generaldep> functionality below needs to be called from
-    # outside of this package if we want Env to be part of TensorFlow
-    import tensorflow as tf
-    self.namespace_map = _create_namespace_map(tf)
+    # Walk the tree of symbols in "tf." namespace and save mappings
+    # <generaldep> tfnamespace must be passed as an argument to __init__
+    # if we want Env to be part of TensorFlow wherein can't use import tensorflow
+    import tensorflow as tfnamespace
 
+    self.tf_gen_ops = {}  # native Python op wrappers
+    self.tf_python_ops = {}  # custom Python op functions
+    self.tf_other = {}  # everything else
+
+    for (name,symbol) in tfnamespace.__dict__.items():
+      # only include functions
+      if type(symbol) == types.FunctionType:
+        basename = os.path.basename(inspect.getsourcefile(symbol))
+        if re.match("^gen.*_ops.py$", basename):
+          self.tf_gen_ops[name] = symbol
+        elif re.match("^.*_ops.py$", basename):
+          self.tf_python_ops[name] = symbol
+        else:
+          self.tf_other[name] = symbol
+      else:
+          self.tf_other[name] = symbol
+
+      # add tf.nn functions
+      # TODO(yaroslavvb): refactor this to include both tf.image and tf.nn
+    for (name,symbol) in tfnamespace.nn.__dict__.items():
+      # only include functions
+      name = 'nn.'+name
+      if type(symbol) == types.FunctionType:
+        basename = os.path.basename(inspect.getsourcefile(symbol))
+        if re.match("^gen.*_ops.py$", basename):
+          self.tf_gen_ops[name] = symbol
+        elif re.match("^.*_ops.py$", basename):
+          self.tf_python_ops[name] = symbol
+        else:
+          self.tf_other[name] = symbol
+      else:
+          self.tf_other[name] = symbol
+
+    # wrapper to handle 'env.nn' calls
     self.nn_submodule = EnvSubmoduleWrapper(self, 'nn.')
 
 
@@ -96,7 +97,7 @@ class Env(object):
     if tf_op_name == 'nn':
       return self.nn_submodule
 
-    if tf_op_name in self.namespace_map:
+    if tf_op_name in self.tf_gen_ops:
       return OpWrapper(self, tf_op_name)
     else:
       raise ValueError("Do not have implementation of op "+tf_op_name)    
