@@ -43,18 +43,12 @@ class OpFactory(object):
     self.env = env
     self.cache = {}
 
-  def __call__(self, tf_op, *args, **kwargs):
-    if not tf_op in self.env.tf_gen_ops:
-      raise ValueError("Unknown operation: "+tf_op)
+  def __call__(self, symbol_name, symbol, *args, **kwargs):
     
-    # special ops like "get_session_tensor" are used by the caching system
-    # itself, so exempt them "inputs must be immediate Tensors" rule
-    special_ops = {'get_session_tensor', 'get_session_handle'}
-
     # create the key to see if the op has been created before
-    key = [tf_op]
+    key = [symbol_name]
     for itensor in args:
-      if not tf_op in special_ops and not isinstance(itensor, Tensor):
+      if not isinstance(itensor, Tensor):
         raise ValueError("All positional arguments must be immediate "
                          "Tensors")
       key.append(itensor.dtype)
@@ -73,9 +67,6 @@ class OpFactory(object):
     
     # create the op
     with self.env.g.as_default():
-      # retrieve Python generated wrapper
-      fun = self.env.tf_gen_ops[tf_op]
-      
       # convert args to TensorHandles
       # connect up things
       input_tensors = []
@@ -92,10 +83,10 @@ class OpFactory(object):
           raise ValueError("Found Tensor in a keyword argument, use "
                            "positional arguments instead.")
 
-      output = fun(*input_tensors, **kwargs)
+      output = symbol(*input_tensors, **kwargs)
 
       # TODO(yaroslavvb): allow for multiple return values like tf.split
-      if not isinstance(output, self.env.tf_other['Tensor']):
+      if isinstance(output, list):
         raise ValueError("Only support TF ops that return a single Tensor.")
       
       # Convert result to TensorHandle
@@ -114,10 +105,12 @@ class OpWrapper(object):
   """A callable object that mirrors TF generated wrapper, but with immediate
   execution semantics."""
 
-  def __init__(self, env, function_name):
+  def __init__(self, namespace, env, symbol_name, symbol):
+    self.namespace = namespace
     self.env = env
-    self.function_name = function_name
+    self.symbol_name = symbol_name  # name of function, ie "tf.nn.relu"
+    self.symbol = symbol  # function object
   
   def __call__(self, *args, **kwargs):
-    op = self.env.op_factory(self.function_name, *args, **kwargs)
+    op = self.env.op_factory(self.symbol_name, self.symbol, *args, **kwargs)
     return op(*args)

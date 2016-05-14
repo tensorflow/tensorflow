@@ -20,14 +20,6 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-         "//tensorflow:tensorflow_py",
-
-         # Targets below are here in case we decide to refactor things to
-         # remove the general dependency in order to include immediate_py
-         # in the general TensorFlow runtime.
-         # in design doc, see notes under:
-         # "Adding immediate as dependency of tensorflow_py"
-         # Search for <generaldep> for other places this would need to be done
          "//tensorflow/python:framework",
          "//tensorflow/python:client",
          "//tensorflow/python:lib",
