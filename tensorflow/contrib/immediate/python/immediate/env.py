@@ -22,6 +22,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -35,6 +36,7 @@ import types
 from .tensor import Tensor
 from .op import OpFactory
 from .op import OpWrapper
+from .op import PythonOpWrapper
 from .op import Op
 
 import numpy as np
@@ -50,6 +52,16 @@ class Env(object):
     self.sess = session.Session()
     self.op_factory = OpFactory(self)
     self.tf =  Namespace(self, "tf", tf_namespace)
+
+    # these will hold namespaces like gen_math_ops
+    # that will hold wrapped versions of those namespaces
+    # they will used when substituting immediate execution logic
+    # for non-native Python TensorFlow ops
+    self.gen_namespaces = {}
+    self.gen_namespaces['gen_math_ops'] = Namespace(self, 'gen_math_ops',
+                                                    gen_math_ops,
+                                                    tf_root=False)
+
     # TODO(yaroslavvb): add run options
     #    self.run_options = tf.RunOptions()
 
@@ -126,7 +138,7 @@ class Env(object):
 
 class Namespace(object):
   """Object that is capable of mirroring namespace like "tf" but with immediate
-  execution semantics"""
+  execution semantics."""
 
   def __init__(self, env, name, namespace, tf_root=True):
     # Walk the tree of symbols in namespace and save mappings
@@ -161,8 +173,15 @@ class Namespace(object):
     if symbol_name in self.nested_modules:
       return self.nested_modules[symbol_name]
 
+      # TODO(yaroslavvb): remove duplication
+    derived_symbol_name = self.name+"."+symbol_name
     if symbol_name in self.gen_ops:
-      return OpWrapper(self, self.env, self.name+"."+symbol_name,
-                       self.gen_ops[symbol_name])
+      symbol = self.gen_ops[symbol_name]
+      return OpWrapper(self, self.env, derived_symbol_name,
+                       symbol)
+    elif symbol_name in self.python_ops:
+      symbol = self.python_ops[symbol_name]
+      return PythonOpWrapper(self, self.env, derived_symbol_name,
+                             symbol)
     else:
       raise ValueError("Do not have implementation of op "+symbol_name)    
