@@ -37,7 +37,7 @@ class Op(object):
   def __repr__(self):
     return self.__str__()
 
-# OpFactory
+# Implementating of OpFactory with graph caching
 class OpFactory(object):
   def __init__(self, env):
     self.env = env
@@ -112,7 +112,7 @@ class OpFactory(object):
 
 class OpWrapper(object):
   """A callable object that mirrors TF generated wrapper, but with immediate
-  execution semantics"""
+  execution semantics."""
 
   def __init__(self, env, function_name):
     self.env = env

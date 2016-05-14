@@ -46,6 +46,10 @@ class EnvTest(tf.test.TestCase):
     tensor4 = env.sub(tensor3, tensor2)
     self.assertAllEqual(tensor4.as_numpy(), -1*val)
 
+  def testNN(self):
+    env = immediate.Env()
+    val = env.numpy_to_tensor(-1)
+    self.assertEqual(env.nn.relu(val), env.numpy_to_tensor(0))
 
   def testAddCaching(self):
     # make sure that graph is not modified in a loop
