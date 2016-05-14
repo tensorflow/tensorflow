@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-__all__ = ["Op", "OpFactory", "OpWrapper"]
+__all__ = ["Op", "OpFactory", "OpWrapper", "PythonOpWrapper"]
 
 from .tensor import Tensor
 
@@ -50,7 +50,7 @@ class OpFactory(object):
     for itensor in args:
       if not isinstance(itensor, Tensor):
         raise ValueError("All positional arguments must be immediate "
-                         "Tensors")
+                         "Tensors, instead we see "+str(itensor))
       key.append(itensor.dtype)
 
     # TODO(yaroslavvb): use signature binding to fill out default kwargs
@@ -114,3 +114,16 @@ class OpWrapper(object):
   def __call__(self, *args, **kwargs):
     op = self.env.op_factory(self.symbol_name, self.symbol, *args, **kwargs)
     return op(*args)
+
+class PythonOpWrapper(object):
+  """A callable object that mirrors Python tensorflow function."""
+
+  def __init__(self, namespace, env, symbol_name, symbol):
+    self.namespace = namespace
+    self.env = env
+    self.symbol_name = symbol_name
+    self.symbol = symbol
+    symbol.__globals__['gen_math_ops'] = self.env.gen_namespaces['gen_math_ops']
+
+  def __call__(self, *args, **kwargs):
+    return self.symbol(*args, **kwargs)
