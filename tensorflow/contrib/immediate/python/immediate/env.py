@@ -6,6 +6,8 @@ from __future__ import print_function
 __all__ = ["Env", "Namespace"]
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import dtypes
+
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
@@ -185,6 +187,15 @@ class Env(object):
 
     handle = self.numpy_to_handle(array)
     return Tensor(self, handle)
+
+  def constant(self, values, dtype=None, shape=None, name='Const'):
+    if shape:
+      assert (isinstance(values, types.FloatType) or
+              isinstance(values, types.IntType) or
+              isinstance(values, types.LongType))
+      return self.numpy_to_tensor(values*np.ones(shape=shape), dtype=dtype)
+    return self.numpy_to_tensor(values, dtype)
+
   
   def tensor_to_numpy(self, tensor):
     return self.handle_to_numpy(tensor.handle)
@@ -225,6 +236,7 @@ class Namespace(object):
     self.nested_modules = {}  # nested modules like tf.nn go here
 
     for (name,symbol) in namespace.__dict__.items():
+        
       # only include functions
       if type(symbol) == types.FunctionType:
         basename = os.path.basename(inspect.getsourcefile(symbol))
@@ -243,11 +255,17 @@ class Namespace(object):
                                             namespace.nn, tf_root=False)
 
   def __getattr__(self, symbol_name):
+
+    derived_symbol_name = self.name+"."+symbol_name
+
+    # constant is #1 most often used op, treat it specially
+    if symbol_name == 'constant':
+      return ConstantOpWrapper(self, self.env, derived_symbol_name)
+
     if symbol_name in self.nested_modules:
       return self.nested_modules[symbol_name]
 
       # TODO(yaroslavvb): remove duplication
-    derived_symbol_name = self.name+"."+symbol_name
     if symbol_name in self.gen_ops:
       symbol = self.gen_ops[symbol_name]
       return OpWrapper(self, self.env, derived_symbol_name,
