@@ -17,8 +17,6 @@ class TensorTest(tf.test.TestCase):
     a = np.array([[1,2],[3,4]], dtype=np.float32)
     tensor1 = env.numpy_to_tensor(a)
     tensor2 = env.numpy_to_tensor(a)
-    print tensor1
-    print tensor2
     
     array1 = tensor1.as_numpy()
     array2 = tensor2.as_numpy()

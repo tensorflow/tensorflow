@@ -168,6 +168,13 @@ class OpWrapper(object):
     args, kwargs = _fixup_args(self.symbol_name, *args, **kwargs)
     return op(*args)
 
+  def __str__(self):
+    return "OpWrapper(%s, %s, %s, %s)"%(self.namespace, self.env,
+                                        self.symbol_name, self.symbol)
+
+  def __repr__(self):
+    return self.__str__()
+
 class PythonOpWrapper(object):
   """A callable object that mirrors Python tensorflow function."""
 
