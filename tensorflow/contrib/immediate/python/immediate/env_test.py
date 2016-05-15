@@ -83,7 +83,7 @@ class EnvTest(tf.test.TestCase):
 
   # TODO(yaroslavvb): test tf.ones for empty shape (ndarray.empty)
   def testOnes(self):
-fill(shape, constant(1, dtype=dtype), name=name)
+    #fill(shape, constant(1, dtype=dtype), name=name)
     env = immediate.Env(tf)
     val1 = env.tf.ones((3, 3))
     self.assertAllEqual(val1.as_numpy(), np.ones((3, 3)))
@@ -130,13 +130,21 @@ fill(shape, constant(1, dtype=dtype), name=name)
     sum_ = env.tf.reduce_sum(val)
     self.assertTrue(sum_ < n*n*2+1.)
     
-
   def testShape(self):
     env = immediate.Env(tf)
     val0 = env.numpy_to_tensor([[1,2,3],[4,5,6]])
     self.assertAllEqual(env.tf.shape(val0).as_numpy(), [2, 3])
         
-
+  def testSplit(self):
+    env = immediate.Env(tf)
+    value = env.tf.ones((1, 3))
+    split0, split1, split2 = env.tf.split(1, 3, value)
+    self.assertAllEqual(env.tf.shape(split0).as_numpy(), [1, 1])
+    split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2, 3, 4]))
+    self.assertAllEqual(split1.as_numpy(), [3, 4])
+    split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2]))
+    self.assertAllEqual(split0.as_numpy(), [1])
+    
   def testAddCaching(self):
     # make sure that graph is not modified in a loop
     env = immediate.Env(tf)
@@ -149,15 +157,35 @@ fill(shape, constant(1, dtype=dtype), name=name)
     for i in range(20):
       tensor1+=tensor0
 
-    number_of_graph_modifications = env.g.version
+    number_of_graph_modifications = env.graph_version
 
     for i in range(10):
       tensor1+=tensor0
 
     # check that graph hasn't been modified by checking its
     # graph version
-    self.assertEqual(number_of_graph_modifications, env.g.version)
+    self.assertEqual(number_of_graph_modifications, env.graph_version)
     self.assertEqual(tensor1.as_numpy(), 30)
+
+  def testSplitCaching(self):
+    # TODO(yaroslavvb): remove to_split_value1/2 when numpy conversion
+    # ops are properly cached
+    env = immediate.Env(tf)
+    value = env.tf.ones((1, 3))
+    to_split_value1 = env.numpy_to_tensor([1, 2])
+    to_split_value2 = env.numpy_to_tensor([1, 2, 3])
+    split0, split1, split2 = env.tf.split(1, 3, value)
+    self.assertAllEqual(env.tf.shape(split0).as_numpy(), [1, 1])
+    split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2, 3, 4]))
+    version1 = env.graph_version
+    split0, split1 = env.tf.split(0, 2, to_split_value1)
+    version2 = env.graph_version
+    splits = env.tf.split(0, 3, to_split_value2)
+    version3 = env.graph_version
+    self.assertEqual(version1, version2)
+    self.assertNotEqual(version2, version3)
+
+    
 
 if __name__ == "__main__":
   tf.test.main()

@@ -6,7 +6,7 @@ from __future__ import print_function
 
 __all__ = ["Tensor"]
 
-_ENABLE_DEBUG_LOGGING = True
+_ENABLE_DEBUG_LOGGING = False
 
 import tensorflow as tf
 
