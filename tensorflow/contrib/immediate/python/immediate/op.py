@@ -5,6 +5,7 @@ from __future__ import print_function
 __all__ = ["Op", "OpFactory", "OpWrapper", "PythonOpWrapper"]
 
 from .tensor import Tensor
+from .tensor import _ENABLE_DEBUG_LOGGING
 
 import sys
 
@@ -42,7 +43,10 @@ class Op(object):
       feed_dict[holder] = itensor.tf_handle
 
     tensor_handle = self.env.run(self.output_handle, feed_dict=feed_dict)
-    return Tensor(self.env, tensor_handle)
+    if isinstance(tensor_handle, list):
+      return [Tensor(self.env, t) for t in tensor_handle]
+    else:
+      return Tensor(self.env, tensor_handle)
 
   def __str__(self):
     return "Op%s" % (str(self.key))
@@ -61,11 +65,33 @@ def _fixup_args(symbol_name, *args, **kwargs):
       return args[:-1], kwargs
 
   # handle gen_random_ops._random_uniform(shape, dtype)
+  # move dtype to keyword argument
   if symbol_name == 'gen_random_ops._random_uniform':
     if len(args)==2:
       kwargs['dtype'] = args[1]
       return args[:-1], kwargs
     
+  # handle _split(num_split=3, split_dim=1, value=itensor)
+  if symbol_name == "gen_array_ops._split":
+    if 'value' in kwargs:
+      new_args = args+(kwargs['value'],)
+      del kwargs['value']
+      return new_args, kwargs
+
+  return args, kwargs
+
+def _unfixup_args(symbol_name, *args, **kwargs):
+  # for a native function that expects Tensor arguments to be positional
+  # move those kwargs back to be positional arguments
+  new_args = list(args)
+
+  # handle following usage: gen_array_ops._split(value, split_dim=..)
+  # move "value" back into keyword argument
+  if symbol_name == 'gen_array_ops._split':
+    if 'split_dim' in kwargs and len(args)==1:
+      kwargs['value'] = args[0]
+      return (), kwargs
+
   return args, kwargs
 
 # Implementating of OpFactory with graph caching
@@ -75,6 +101,8 @@ class OpFactory(object):
     self.cache = {}
 
   def __call__(self, symbol_name, symbol, *args, **kwargs):
+    if _ENABLE_DEBUG_LOGGING:
+      print("OpFactory: %s(%s, %s)" % (symbol_name, args, kwargs))
     
     # create the key to see if the op has been created before
     key = [symbol_name]
@@ -87,6 +115,9 @@ class OpFactory(object):
     # that rearranges args to conform to convention for several important
     # cases.
     args,kwargs = _fixup_args(symbol_name, *args, **kwargs)
+
+    #    if _ENABLE_DEBUG_LOGGING:
+    #    print("OpFactory fixup: %s(%s, %s)" % (symbol_name, args, kwargs))
 
     # converted_args stores args converted to Tensors, ie, Python list [1]
     # becomes immediate.Tensor([1])), immediate.Tensor objects are unchanged
@@ -135,14 +166,20 @@ class OpFactory(object):
           raise ValueError("Found Tensor in a keyword argument, use "
                            "positional arguments instead.")
 
+
+      input_tensors, kwargs = _unfixup_args(symbol_name, *input_tensors, **kwargs)
+
+  #      if _ENABLE_DEBUG_LOGGING:
+  #        print("OpFactory unfixup: %s(%s, %s)" % (symbol_name, args, kwargs))
+
       output = symbol(*input_tensors, **kwargs)
 
       # TODO(yaroslavvb): allow for multiple return values like tf.split
       if isinstance(output, list):
-        raise ValueError("Only support TF ops that return a single Tensor.")
-      
-      # Convert result to TensorHandle
-      output_handle = self.env.get_session_handle(output)
+        #  raise ValueError("Only support TF ops that return a single Tensor.")
+        output_handle = [self.env.get_session_handle(o) for o in output]
+      else:
+        output_handle = self.env.get_session_handle(output)
 
     op = Op(self.env, input_holders, output_handle, key, converted_tensors)
     self.cache[key] = op
@@ -153,6 +190,7 @@ class OpFactory(object):
   def _create_key(self, opname, *args, **kwargs):
     return opname
 
+# TODO(yaroslavvb): remove namespace from Op init
 class OpWrapper(object):
   """A callable object that mirrors TF generated wrapper, but with immediate
   execution semantics."""
@@ -169,11 +207,11 @@ class OpWrapper(object):
     return op(*args)
 
   def __str__(self):
-    return "OpWrapper(%s, %s, %s, %s)"%(self.namespace, self.env,
-                                        self.symbol_name, self.symbol)
+    return self.__repr__()
 
   def __repr__(self):
-    return self.__str__()
+    return "OpWrapper(%s, %s, %s, %s)"%(self.namespace, self.env,
+                                        self.symbol_name, self.symbol)
 
 class PythonOpWrapper(object):
   """A callable object that mirrors Python tensorflow function."""
@@ -189,7 +227,19 @@ class PythonOpWrapper(object):
       symbol.__globals__[global_name] = global_sub[global_name]
 
   def __call__(self, *args, **kwargs):
+    if _ENABLE_DEBUG_LOGGING:
+      print("%s, %s, %s" % (self, args, kwargs))
+
     return self.symbol(*args, **kwargs)
+
+  def __str__(self):
+    return "PythonOpWrapper(%s, %s, %s, %s)" % (self.namespace, self.env,
+                                                self.symbol_name, self.symbol)
+
+  def __repr__(self):
+    return "PythonOpWrapper(%s, %s, %s, %s, %s)" % (self.namespace, self.env,
+                                                self.symbol_name, self.symbol,
+                                                self.global_sub)
 
 class ConstantOpWrapper(object):
   """A callable object that mirrors tf.constant."""
@@ -214,3 +264,16 @@ class ConvertToTensorWrapper(object):
 
   def __call__(self, value, dtype=None, name=None, as_ref=False):
     return self.env.numpy_to_tensor(value, dtype)
+
+class ConcatOpWrapper(object):
+  """A callable object that mirrors gen_array_ops._concat"""
+
+  def __init__(self, namespace, env, symbol_name):
+    self.namespace = namespace
+    self.env = env
+    self.symbol_name = symbol_name
+    
+    
+    
+#  def __call__(self, concat_dim=concat_dim, values=values, name=name):
+#    return self.env.numpy_to_tensor(value, dtype)
