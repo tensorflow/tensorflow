@@ -11,6 +11,16 @@ class EnvTest(tf.test.TestCase):
     env = immediate.Env(tf)
     self.assertTrue(True)
 
+  def testNamespacePassthrough(self):
+    # test to make sure that non-ops pass-through the namespace without
+    # being wrapped
+    env = immediate.Env(tf)
+    from tensorflow.python.framework import ops
+
+    namespace = immediate.Namespace(env, "ops", ops, tf_root=False)
+    self.assertEqual(ops._convert_stack, namespace._convert_stack)
+
+
   def testNN(self):
     env = immediate.Env(tf)
     val = env.numpy_to_tensor(-1)
@@ -89,6 +99,14 @@ class EnvTest(tf.test.TestCase):
 
     val2 = env.constant([1, 2, 3, 4])
     self.assertAllEqual(val2.as_numpy(), [1, 2, 3, 4])
+
+
+  def testRandomUniform(self):
+    env = immediate.Env(tf)
+    n = 3
+    val = env.tf.random_uniform([n, n], -2, 2)
+    sum_ = env.tf.reduce_sum(val)
+    self.assertTrue(sum_ < n*n*2+1.)
 
   def testAddCaching(self):
     # make sure that graph is not modified in a loop
