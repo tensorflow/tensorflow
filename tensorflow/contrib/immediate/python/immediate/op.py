@@ -102,7 +102,7 @@ class OpFactory(object):
 
   def __call__(self, symbol_name, symbol, *args, **kwargs):
     if _ENABLE_DEBUG_LOGGING:
-      print("OpFactory: %s(%s, %s)" % (symbol_name, args, kwargs))
+      print("OpFactory __call__: %s(%s, %s)" % (symbol_name, args, kwargs))
     
     # create the key to see if the op has been created before
     key = [symbol_name]

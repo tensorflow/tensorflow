@@ -152,6 +152,12 @@ class Env(object):
     execution environment itself (like placeholder for feeding tensorhandle)"""
     return {"_placeholder", "placeholder"}
 
+  @property
+  def graph_version(self):
+    """Gives version of the graph. This can be used for checking if graph
+    modifications took place"""
+    return self.g.version
+
   # Ops below are used by internal implementation of the immediate execution
   # system, so we get infinite recursion if we dispatch them through
   # immediate execution, so instead we implement them manually below
@@ -200,6 +206,10 @@ class Env(object):
     if dtype:
       dtype = dtypes.as_dtype(dtype)
       dtype = dtype.as_numpy_dtype
+
+    if isinstance(array, Tensor):
+      raise ValueError("Passed immediate.Tensor instead of numpy into "
+                       "numpy_to_tensor.")
 
     # try to convert Python lists to numpy array
     if not isinstance(array, np.ndarray):
