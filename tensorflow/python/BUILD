@@ -766,6 +766,9 @@ tf_gen_op_wrapper_py(
   name = "batchnorm_training_op",
   out = "gen_batchnorm_training_op.py",
   require_shape_functions=False,
+  hidden=[
+    "BatchNormTrainingGrad"
+  ]
 )
 
 py_library(

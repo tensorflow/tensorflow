@@ -1947,7 +1947,6 @@ bool CudnnSupport::DoMemcpyH2DQuantized(
 bool CudnnSupport::DoBatchNormTrainingForward(
     Stream* stream,
     const double epsilon,
-    const double exponential_average_factor,
     const dnn::BatchDescriptor& input_dimensions,
     const DeviceMemory<float>& input_data,
     const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
@@ -1955,8 +1954,6 @@ bool CudnnSupport::DoBatchNormTrainingForward(
     const DeviceMemory<float>& bias_data,
     const dnn::BatchDescriptor& output_dimensions,
     DeviceMemory<float>* output_data,
-    DeviceMemory<float>* running_mean,
-    DeviceMemory<float>* running_inv_var,
     DeviceMemory<float>* save_mean,
     DeviceMemory<float>* save_inv_var) {
 
@@ -1979,14 +1976,23 @@ bool CudnnSupport::DoBatchNormTrainingForward(
   float alpha = 1.0;
   float beta = 0.0;
 
+  std::unique_ptr<TemporaryDeviceMemory<float>> tmp_running_mean;
+  std::unique_ptr<TemporaryDeviceMemory<float>> tmp_running_inv_var;
+
+  tmp_running_mean = stream->AllocateTemporaryArray<float>(save_mean->size()).ConsumeValueOrDie();
+  tmp_running_inv_var = stream->AllocateTemporaryArray<float>(save_inv_var->size()).ConsumeValueOrDie();
+
+  DeviceMemory<float> running_mean(*tmp_running_mean->mutable_device_memory());
+  DeviceMemory<float> running_inv_var(*tmp_running_inv_var->mutable_device_memory());
+
   status = dynload::cudnnBatchNormalizationForwardTraining(
       parent_, ToHandle(dnn_handle_), mode, &alpha, &beta,
       src_desc.handle(), input_data.opaque(), dest_desc.handle(),
       output_data->opaque(), scale_bias_mean_var_desc.handle(),
       scale_data.opaque(), bias_data.opaque(),
-      exponential_average_factor,
-      running_mean->opaque(),
-      running_inv_var->opaque(),
+      1.0, // exponential factor
+      running_mean.opaque(), // Currently not used
+      running_inv_var.opaque(), // Currently not used
       epsilon,
       save_mean->opaque(),
       save_inv_var->opaque());

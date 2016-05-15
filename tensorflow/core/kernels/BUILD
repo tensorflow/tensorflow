@@ -1548,6 +1548,7 @@ tf_kernel_library(
     deps = [
         ":ops_util",
         ":bounds_check",
+        ":conv_2d",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:batchnorm_training_op_op_lib",

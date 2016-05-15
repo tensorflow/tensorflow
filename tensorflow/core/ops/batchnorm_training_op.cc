@@ -21,16 +21,14 @@ REGISTER_OP("BatchNormTraining")
     .Input("input: T")
     .Input("scale: T")
     .Input("bias: T")
-    .Input("running_mean: Ref(T)")
-    .Input("running_inv_var: Ref(T)")
     .Output("out: T")
     .Output("save_mean: T")
     .Output("save_inv_var: T")
-    .Attr("T: {float}")
+    .Attr("T: {float, double}")
     .Attr("epsilon: float")
-    .Attr("exponential_average_factor: float")
+    .Attr("data_format: string")
     .Doc(R"doc(
-Perform batch normalization using batch statistics.
+Perform batch norm using batch statistics.
 
 input: A 4D input Tensor.
 scale: A 1D Tensor with size equal to the number of channels.
@@ -39,17 +37,10 @@ scale: A 1D Tensor with size equal to the number of channels.
 bias: A 1D Tensor with size equal to the number of channels.
   This is the learned bias value added post normalization.
   Also known as beta.
-running_mean: A 1D Tensor reference with size equal to the number of channels.
-  During training this reference is updated via a rolling average from the current
-  batch mean.
-running_inv_var: A 1D Tensor reference with size equal to the number of channels.
-  During training this reference is updated via a rolling average from 1 over the
-  current batch variance.
 out: A 4D output Tensor. The input after applying batch normalization.
 save_mean: A 1D Tensor. Computed means. To be used in the backward pass.
 save_inv_var: A 1D Tensor. Computed inverse variance. To be used in the backward pass.
 epsilon: float
-exponential_average_factor: float. Exponential decay on rolling average.
 )doc");
 
 REGISTER_OP("BatchNormTrainingGrad")
@@ -61,10 +52,11 @@ REGISTER_OP("BatchNormTrainingGrad")
     .Output("input_grad: T")
     .Output("scale_grad: T")
     .Output("bias_grad: T")
-    .Attr("T: {float}")
+    .Attr("T: {float, double}")
     .Attr("epsilon: float")
+    .Attr("data_format: string")
     .Doc(R"doc(
-Perform the backward pass for batch normalization using batch statistics.
+Perform the backward pass for batch norm using batch statistics.
 
 input: A 4D input Tensor.
 scale: A 1D Tensor with size equal to the number of channels.

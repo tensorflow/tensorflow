@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include "tensorflow/core/kernels/conv_2d.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
@@ -59,18 +60,17 @@ template <typename T>
 struct LaunchBatchNormTraining<GPUDevice, T> {
   static void launch(OpKernelContext* ctx,
                      const float epsilon,
-                     const float exponential_average_factor,
-                     const Tensor& input,
+                     const TensorFormat data_format,
+                     const Tensor& input_param,
                      const Tensor& scale_param, const Tensor& bias_param,
                      Tensor* output,
-                     Tensor* running_mean,
-                     Tensor* running_inv_var,
                      Tensor* save_mean,
                      Tensor* save_inv_var) {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream avalible"));
 
-    TensorFormat data_format = FORMAT_NCHW;
+    Tensor input = input_param;
+
     const int64 in_batch = GetTensorDim(input, data_format, 'N');
     const int64 in_depths = GetTensorDim(input, data_format, 'C');
     const int64 in_cols = GetTensorDim(input, data_format, 'H');
@@ -90,20 +90,44 @@ struct LaunchBatchNormTraining<GPUDevice, T> {
       .set_width(1)
       .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
 
+    Tensor transformed_output;
+    perftools::gputools::DeviceMemory<T> output_ptr;
+
+    if (data_format == FORMAT_NHWC) {
+      // Convert the input tensor from NHWC to NCHW.
+      Tensor transformed_input;
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NCHW, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_input));
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(
+          ctx->eigen_device<GPUDevice>(),
+          const_cast<const Tensor&>(input).tensor<T, 4>(),
+          transformed_input.tensor<T, 4>());
+      input = transformed_input;
+
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NCHW, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_output));
+
+      output_ptr = AsDeviceMemory(transformed_output.template flat<T>().data(),
+                                  transformed_output.template flat<T>().size());
+    } else {
+      output_ptr = AsDeviceMemory(output->template flat<T>().data(),
+                                  output->template flat<T>().size());
+    }
+
     auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                     input.template flat<T>().size());
-    auto output_ptr = AsDeviceMemory(output->template flat<T>().data(),
-                                     output->template flat<T>().size());
+
+
     auto scale_ptr = AsDeviceMemory(scale_param.template flat<T>().data(),
                                     scale_param.template flat<T>().size());
     auto bias_ptr = AsDeviceMemory(bias_param.template flat<T>().data(),
                                     bias_param.template flat<T>().size());
-
-    auto running_mean_ptr = AsDeviceMemory(running_mean->template flat<T>().data(),
-                                    running_mean->template flat<T>().size());
-
-    auto running_inv_var_ptr = AsDeviceMemory(running_inv_var->template flat<T>().data(),
-                                    running_inv_var->template flat<T>().size());
 
     auto save_mean_ptr = AsDeviceMemory(save_mean->template flat<T>().data(),
                                         save_mean->template flat<T>().size());
@@ -113,7 +137,6 @@ struct LaunchBatchNormTraining<GPUDevice, T> {
     bool cudnn_launch_status =
       stream
         ->ThenBatchNormTrainingForward(epsilon,
-                                    exponential_average_factor,
                                     input_desc,
                                     input_ptr,
                                     scale_bias_mean_var_desc,
@@ -121,8 +144,6 @@ struct LaunchBatchNormTraining<GPUDevice, T> {
                                     bias_ptr,
                                     input_desc,
                                     &output_ptr,
-                                    &running_mean_ptr,
-                                    &running_inv_var_ptr,
                                     &save_mean_ptr,
                                     &save_inv_var_ptr)
         .ok();
@@ -132,6 +153,13 @@ struct LaunchBatchNormTraining<GPUDevice, T> {
             "cuDNN launch failure : input shape(", input.shape().DebugString(),
             ")"));
       }
+
+    if (data_format == FORMAT_NHWC) {
+      functor::NCHWToNHWC<GPUDevice, T, 4>()(
+          ctx->eigen_device<GPUDevice>(),
+          const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
+          output->tensor<T, 4>());
+    }
   }
 };
 
@@ -140,50 +168,54 @@ class BatchNormTrainingOp : public OpKernel {
   public:
     explicit BatchNormTrainingOp(OpKernelConstruction* context) : OpKernel(context) {
       const DataType dt = DataTypeToEnum<T>::v();
-      const DataType dt_ref = DataTypeToEnum<T>::ref();
-      OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt, dt_ref, dt_ref}, {dt, dt, dt}));
-
-      //Do some type checking here
+      OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt}, {dt, dt, dt}));
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon_));
-      OP_REQUIRES_OK(context, context->GetAttr("exponential_average_factor",
-                                               &exponential_average_factor_));
+
+      string data_format;
+      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+      OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                  errors::InvalidArgument("Invalid data format"));
     }
 
     void Compute(OpKernelContext* context) override {
-      //TODO a whole bunch of error checking
       const Tensor& input = context->input(0);
       const Tensor& scale = context->input(1);
       const Tensor& bias = context->input(2);
 
-      Tensor running_mean = context->mutable_input(3, true);
-      Tensor running_inv_var = context->mutable_input(4, true);
+      OP_REQUIRES(context, input.shape().dims() == 4,
+          errors::InvalidArgument("input must be 4-dimensional", input.shape().DebugString()));
+      OP_REQUIRES(context, scale.shape().dims() == 1,
+          errors::InvalidArgument("scale must be 1-dimensional", scale.shape().DebugString()));
+      OP_REQUIRES(context, bias.shape().dims() == 1,
+          errors::InvalidArgument("bias must be 1-dimensional", bias.shape().DebugString()));
 
       Tensor* output = nullptr;
       TensorShape out_shape = input.shape();
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
-      TensorFormat data_format = FORMAT_NCHW;
-      const int64 in_depths = GetTensorDim(input, data_format, 'C');
+      const int64 in_depths = GetTensorDim(input, data_format_, 'C');
+      OP_REQUIRES(context, in_depths == scale.dim_size(0),
+          errors::InvalidArgument("scale size does not match channels of input"));
+      OP_REQUIRES(context, in_depths == bias.dim_size(0),
+          errors::InvalidArgument("bias size does not match channels of input"));
+
       TensorShape save_mean_var_shape = TensorShape({in_depths});
+
 
       Tensor* save_mean = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(1, save_mean_var_shape, &save_mean));
       Tensor* save_inv_var = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(2, save_mean_var_shape, &save_inv_var));
 
-      //TODO support other dimensions
-      OP_REQUIRES(context, input.dims() == 4,
-                  errors::InvalidArgument("input must be 4-dimensional", input.shape().DebugString()));
-
       LaunchBatchNormTraining<Device, T>::launch(
-          context, epsilon_, exponential_average_factor_,
+          context, epsilon_, data_format_,
           input, scale, bias, output,
-          &running_mean, &running_inv_var, save_mean, save_inv_var);
+          save_mean, save_inv_var);
     }
 
   private:
     float epsilon_;
-    float exponential_average_factor_;
+    TensorFormat data_format_;
 
     TF_DISALLOW_COPY_AND_ASSIGN(BatchNormTrainingOp);
 };
@@ -195,8 +227,9 @@ template <typename T>
 struct LaunchBatchNormTrainingGrad<GPUDevice, T> {
   static void launch(OpKernelContext* ctx,
                      const float epsilon,
-                     const Tensor& input,
-                     const Tensor& output_grad,
+                     const TensorFormat data_format,
+                     const Tensor& input_param,
+                     const Tensor& output_grad_param,
                      const Tensor& scale_param,
                      const Tensor& saved_mean,
                      const Tensor& saved_inv_var,
@@ -206,7 +239,9 @@ struct LaunchBatchNormTrainingGrad<GPUDevice, T> {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream avalible"));
 
-    TensorFormat data_format = FORMAT_NCHW;
+    Tensor input = input_param;
+    Tensor output_grad = output_grad_param;
+
     const int64 in_batch = GetTensorDim(input, data_format, 'N');
     const int64 in_depths = GetTensorDim(input, data_format, 'C');
     const int64 in_cols = GetTensorDim(input, data_format, 'H');
@@ -228,6 +263,51 @@ struct LaunchBatchNormTrainingGrad<GPUDevice, T> {
       .set_width(1)
       .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
 
+    Tensor transformed_input_grad;
+    perftools::gputools::DeviceMemory<T> input_grad_ptr;
+
+    if (data_format == FORMAT_NHWC) {
+      // Convert the input tensor from NHWC to NCHW.
+      Tensor transformed_input;
+      Tensor transformed_output_grad;
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NCHW, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_input));
+      // TODO I don't think 2 temp allocations are needed.
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NCHW, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_output_grad));
+
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(
+          ctx->eigen_device<GPUDevice>(),
+          const_cast<const Tensor&>(input).tensor<T, 4>(),
+          transformed_input.tensor<T, 4>());
+
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(
+          ctx->eigen_device<GPUDevice>(),
+          const_cast<const Tensor&>(output_grad).tensor<T, 4>(),
+          transformed_output_grad.tensor<T, 4>());
+
+      input = transformed_input;
+      output_grad = transformed_output_grad;
+
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NCHW, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_input_grad));
+
+      input_grad_ptr = AsDeviceMemory(transformed_input_grad.template flat<T>().data(),
+                                      transformed_input_grad.template flat<T>().size());
+    } else {
+      input_grad_ptr = AsDeviceMemory(input_grad->template flat<T>().data(),
+                                      input_grad->template flat<T>().size());
+    }
+
     auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                     input.template flat<T>().size());
     auto output_grad_ptr = AsDeviceMemory(output_grad.template flat<T>().data(),
@@ -239,8 +319,6 @@ struct LaunchBatchNormTrainingGrad<GPUDevice, T> {
     auto saved_inv_var_ptr = AsDeviceMemory(saved_inv_var.template flat<T>().data(),
                                          saved_inv_var.template flat<T>().size());
 
-    auto input_grad_ptr = AsDeviceMemory(input_grad->template flat<T>().data(),
-                                         input_grad->template flat<T>().size());
     auto scale_grad_ptr = AsDeviceMemory(scale_grad->template flat<T>().data(),
                                          scale_grad->template flat<T>().size());
     auto bias_grad_ptr = AsDeviceMemory(bias_grad->template flat<T>().data(),
@@ -266,6 +344,13 @@ struct LaunchBatchNormTrainingGrad<GPUDevice, T> {
             "cuDNN launch failure : input shape(", input.shape().DebugString(),
             ")"));
       }
+
+      if (data_format == FORMAT_NHWC) {
+        functor::NCHWToNHWC<GPUDevice, T, 4>()(
+            ctx->eigen_device<GPUDevice>(),
+            const_cast<const Tensor&>(transformed_input_grad).tensor<T, 4>(),
+            input_grad->tensor<T, 4>());
+      }
   }
 };
 
@@ -275,18 +360,46 @@ class BatchNormTrainingGradOp : public OpKernel {
     explicit BatchNormTrainingGradOp(OpKernelConstruction* context) : OpKernel(context) {
       const DataType dt = DataTypeToEnum<T>::v();
       OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt, dt, dt}, {dt, dt, dt}));
-
-      //Do some type checking here
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon_));
+
+      string data_format;
+      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+      OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                  errors::InvalidArgument("Invalid data format"));
     }
 
     void Compute(OpKernelContext* context) override {
-      //TODO a whole bunch of error checking
       const Tensor& input = context->input(0);
       const Tensor& output_grad = context->input(1);
       const Tensor& scale = context->input(2);
       const Tensor& saved_mean = context->input(3);
       const Tensor& saved_inv_var = context->input(4);
+
+      OP_REQUIRES(context, input.shape().dims() == 4,
+          errors::InvalidArgument("input must be 4-dimensional", input.shape().DebugString()));
+      OP_REQUIRES(context, output_grad.shape().dims() == 4,
+          errors::InvalidArgument("output_grad must be 4-dimensional", input.shape().DebugString()));
+      OP_REQUIRES(context, scale.shape().dims() == 1,
+          errors::InvalidArgument("scale must be 1-dimensional", scale.shape().DebugString()));
+      OP_REQUIRES(context, saved_mean.shape().dims() == 1,
+          errors::InvalidArgument("saved_mean must be 1-dimensional", saved_mean.shape().DebugString()));
+      OP_REQUIRES(context, saved_inv_var.shape().dims() == 1,
+          errors::InvalidArgument("saved_inv_var must be 1-dimensional", saved_inv_var.shape().DebugString()));
+
+      OP_REQUIRES(context, input.shape() == output_grad.shape(),
+          errors::InvalidArgument("input shape does not match output_grad shape"));
+
+      Tensor* output = nullptr;
+      TensorShape out_shape = input.shape();
+      OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+
+      const int64 in_depths = GetTensorDim(input, data_format_, 'C');
+      OP_REQUIRES(context, in_depths == scale.dim_size(0),
+          errors::InvalidArgument("scale size does not match channels of input"));
+      OP_REQUIRES(context, in_depths == saved_mean.dim_size(0),
+          errors::InvalidArgument("saved_mean size does not match channels of input"));
+      OP_REQUIRES(context, in_depths == saved_inv_var.dim_size(0),
+          errors::InvalidArgument("saved_inv_var size does not match channels of input"));
 
       Tensor* input_grad = nullptr;
       TensorShape input_shape = input.shape();
@@ -299,17 +412,15 @@ class BatchNormTrainingGradOp : public OpKernel {
       Tensor* bias_grad = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(2, scale_bias_shape, &bias_grad));
 
-      //TODO support other dimensions
-      OP_REQUIRES(context, input.dims() == 4,
-                  errors::InvalidArgument("input must be 4-dimensional", input.shape().DebugString()));
-
       LaunchBatchNormTrainingGrad<Device, T>::launch(
-          context, epsilon_, input, output_grad, scale, saved_mean, saved_inv_var,
+          context, epsilon_, data_format_,
+          input, output_grad, scale, saved_mean, saved_inv_var,
           input_grad, scale_grad, bias_grad);
     }
 
   private:
     float epsilon_;
+    TensorFormat data_format_;
 
     TF_DISALLOW_COPY_AND_ASSIGN(BatchNormTrainingGradOp);
 };

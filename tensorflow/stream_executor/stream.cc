@@ -802,7 +802,6 @@ Stream &Stream::ThenNormalize(
 
 Stream &Stream::ThenBatchNormTrainingForward(
                     const double epsilon,
-                    const double exponential_average_factor,
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
                     const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
@@ -810,8 +809,6 @@ Stream &Stream::ThenBatchNormTrainingForward(
                     const DeviceMemory<float>& bias_data,
                     const dnn::BatchDescriptor& output_dimensions,
                     DeviceMemory<float>* output_data,
-                    DeviceMemory<float>* running_mean,
-                    DeviceMemory<float>* running_inv_var,
                     DeviceMemory<float>* save_mean,
                     DeviceMemory<float>* save_inv_var) {
     VLOG_CALL(PARAM(input_dimensions),
@@ -820,14 +817,12 @@ Stream &Stream::ThenBatchNormTrainingForward(
     if (ok()) {
       if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
         CheckError(dnn->DoBatchNormTrainingForward(this,
-                                      epsilon, exponential_average_factor,
+                                      epsilon,
                                       input_dimensions, input_data,
                                       scale_bias_mean_var_dimensions,
                                       scale_data, bias_data,
                                       output_dimensions,
                                       output_data,
-                                      running_mean,
-                                      running_inv_var,
                                       save_mean,
                                       save_inv_var));
       } else {

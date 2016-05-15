@@ -314,6 +314,7 @@ tf_cuda_library(
 tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
+        "batchnorm_training_op",
         "candidate_sampling_ops",
         "control_flow_ops",
         "ctc_ops",
@@ -335,7 +336,6 @@ tf_gen_op_libs(
         "state_ops",
         "string_ops",
         "training_ops",
-        "batchnorm_training_op",
     ],
 )
 

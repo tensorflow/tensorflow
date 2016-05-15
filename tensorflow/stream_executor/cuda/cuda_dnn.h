@@ -67,7 +67,6 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoBatchNormTrainingForward(
                     Stream* stream,
                     const double epsilon,
-                    const double exponential_average_factor,
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
                     const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
@@ -75,8 +74,6 @@ class CudnnSupport : public dnn::DnnSupport {
                     const DeviceMemory<float>& bias_data,
                     const dnn::BatchDescriptor& output_dimensions,
                     DeviceMemory<float>* output_data,
-                    DeviceMemory<float>* running_mean,
-                    DeviceMemory<float>* running_inv_var,
                     DeviceMemory<float>* save_mean,
                     DeviceMemory<float>* save_inv_var) override;
 
