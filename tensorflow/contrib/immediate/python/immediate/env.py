@@ -101,15 +101,19 @@ class Env(object):
     self.wrapped_namespaces = {}
 
 
-    # wrap ops namespace (to override convert_to_tensor method)
-    wrapped_namespace = Namespace(self, "ops", ops, tf_root=False)
-    sub["ops"] = wrapped_namespace
-    
+    # Wrap gen.*ops modules
     for op_module in wrapping_util.gen_op_module_list:
       wrapped_namespace = Namespace(self, op_module, eval(op_module),
                                     tf_root=False)
       self.wrapped_namespaces[op_module] = wrapped_namespace
       sub[op_module] = wrapped_namespace
+
+    # wrap ops namespace (to override convert_to_tensor method)
+    wrapped_namespace = Namespace(self, "ops", ops, tf_root=False)
+    sub["ops"] = wrapped_namespace
+    
+    # Because of array_ops: tensorflow.python.ops.constant_op import constant
+    sub["constant"] =  ConstantOpWrapper(None, self, "constant")
 
     for op_module in wrapping_util.python_op_module_list_sorted():
       wrapped_namespace = Namespace(self, op_module,
@@ -133,7 +137,13 @@ class Env(object):
   @property
   def python_op_whitelist(self):
     """Python-only ops whitelisted for wrapping."""
-    return {"tf.pow", "tf.reduce_sum", "tf.range", "tf.random_uniform"}
+    return {"tf.pow", "tf.reduce_sum", "tf.range", "tf.random_uniform", "tf.ones"}
+
+  @property
+  def gen_op_blacklist(self):
+    """Ops blacklisted for wrapping, because they are used by the immediate
+    execution environment itself (like placeholder for feeding tensorhandle)"""
+    return {"_placeholder", "placeholder"}
 
   # Ops below are used by internal implementation of the immediate execution
   # system, so we get infinite recursion if we dispatch them through
@@ -204,11 +214,17 @@ class Env(object):
     return Tensor(self, handle)
 
   def constant(self, values, dtype=None, shape=None, name='Const'):
+    np_dtype = None
+    if dtype:
+      dtype = dtypes.as_dtype(dtype)
+      np_dtype = dtype.as_numpy_dtype
+
     if shape:
       assert (isinstance(values, types.FloatType) or
               isinstance(values, types.IntType) or
               isinstance(values, types.LongType))
-      return self.numpy_to_tensor(values*np.ones(shape=shape), dtype=dtype)
+      return self.numpy_to_tensor(values*np.ones(shape=shape, dtype=np_dtype),
+                                  dtype=dtype)
     return self.numpy_to_tensor(values, dtype)
 
   
@@ -251,9 +267,10 @@ class Namespace(object):
     self.nested_modules = {}  # nested modules like tf.nn go here
 
     for (name,symbol) in namespace.__dict__.items():
-        
+
       # only include functions
-      if type(symbol) == types.FunctionType:
+      if (type(symbol) == types.FunctionType and 
+          not name in self.env.gen_op_blacklist):
         basename = os.path.basename(inspect.getsourcefile(symbol))
         if re.match("^gen.*_ops.py$", basename):
           self.gen_ops[name] = symbol

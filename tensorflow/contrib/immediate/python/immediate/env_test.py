@@ -39,6 +39,19 @@ class EnvTest(tf.test.TestCase):
     testForDtype(np.int32)
     testForDtype(np.int64)
 
+  def testNumpySingleton(self):
+    def testForDtype(dtype):
+      a = np.array(1, dtype=dtype)
+      tensor_handle = env.numpy_to_handle(a)
+      b = env.handle_to_numpy(tensor_handle)
+      self.assertAllEqual(a, b)
+
+    env = immediate.Env(tf)
+    testForDtype(np.float32)
+    testForDtype(np.float64)
+    testForDtype(np.int32)
+    testForDtype(np.int64)
+
   def testNumpyBoolConversion(self):
     env = immediate.Env(tf)
     tensor = env.numpy_to_tensor(False)
