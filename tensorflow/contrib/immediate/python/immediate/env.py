@@ -20,6 +20,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_io_ops
@@ -60,19 +61,27 @@ class Env(object):
     # that will hold wrapped versions of those namespaces
     # they will used when substituting immediate execution logic
     # for non-native Python TensorFlow ops
+
+    # TODO(yaroslavvb): replace this with topological sort
+    sub = {}
     self.wrapped_namespaces = {}
     self.wrapped_namespaces['gen_math_ops'] = Namespace(self, 'gen_math_ops',
                                                     gen_math_ops,
                                                     tf_root=False)
+    sub["gen_math_ops"] = self.wrapped_namespaces['gen_math_ops']
+
+    self.wrapped_namespaces['gen_array_ops'] = Namespace(self, 'gen_array_ops',
+                                                    gen_array_ops,
+                                                    tf_root=False)
+    sub["gen_array_ops"] = self.wrapped_namespaces['gen_array_ops']
+    
     
     self.wrapped_namespaces["array_ops"] = Namespace(self, "array_ops",
                                                     array_ops,
-                                                    tf_root=False)
-
-    sub = {"array_ops": self.wrapped_namespaces["array_ops"],
-           "gen_math_ops": self.wrapped_namespaces['gen_math_ops']}
-
-    sub = {"gen_math_ops": self.wrapped_namespaces['gen_math_ops']}
+                                                    tf_root=False,
+                                                     global_sub=sub)
+    sub["array_ops"] = self.wrapped_namespaces["array_ops"]
+    
     self.wrapped_namespaces['math_ops'] = Namespace(self, 'math_ops',
                                                     math_ops,
                                                     tf_root=False,
@@ -97,7 +106,7 @@ class Env(object):
   @property
   def python_op_whitelist(self):
     """Python-only ops whitelisted for wrapping."""
-    return {'tf.pow'}
+    return {"tf.pow", "tf.reduce_sum", "tf.range"}
 
   # Ops below are used by internal implementation of the immediate execution
   # system, so we get infinite recursion if we dispatch them through

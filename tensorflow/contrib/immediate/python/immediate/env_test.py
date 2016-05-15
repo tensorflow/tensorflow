@@ -11,6 +11,11 @@ class EnvTest(tf.test.TestCase):
     env = immediate.Env(tf)
     self.assertTrue(True)
 
+  def testNN(self):
+    env = immediate.Env(tf)
+    val = env.numpy_to_tensor(-1)
+    self.assertEqual(env.tf.nn.relu(val), env.numpy_to_tensor(0))
+
   def testNumpyConversion(self):
     def testForDtype(dtype):
       a = np.array([[1,2],[3,4]], dtype=dtype)
@@ -65,6 +70,17 @@ class EnvTest(tf.test.TestCase):
     env = immediate.Env(tf)
     val1 = env.numpy_to_tensor([[1],[2]])
     self.assertEqual(env.tf.rank(val1), 2)
+
+  def testRange(self):
+    env = immediate.Env(tf)
+    val = env.tf.range(3)
+    self.assertAllEqual(env.tensor_to_numpy(val), [0, 1, 2])
+    
+  def testReduceSum(self):
+    """Try a simple non-native op."""
+    env = immediate.Env(tf)
+    val1 = env.numpy_to_tensor([1,2,3])
+    self.assertEqual(env.tf.reduce_sum(val1), 6)
 
   def testAddCaching(self):
     # make sure that graph is not modified in a loop
