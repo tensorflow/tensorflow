@@ -176,3 +176,15 @@ class PythonOpWrapper(object):
 
   def __call__(self, *args, **kwargs):
     return self.symbol(*args, **kwargs)
+
+class ConstantOpWrapper(object):
+  """A callable object that mirrors tf.constant."""
+
+  def __init__(self, namespace, env, symbol_name):
+    self.namespace = namespace
+    self.env = env
+    self.symbol_name = symbol_name
+    
+
+  def __call__(self, *args, **kwargs):
+    return self.env.constant(*args, **kwargs)

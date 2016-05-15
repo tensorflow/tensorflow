@@ -82,6 +82,14 @@ class EnvTest(tf.test.TestCase):
     val1 = env.numpy_to_tensor([1,2,3])
     self.assertEqual(env.tf.reduce_sum(val1), 6)
 
+  def testConstant(self):
+    env = immediate.Env(tf)
+    val1 = env.constant(1.5, shape=[2, 2])
+    self.assertAllEqual(val1.as_numpy(), [[1.5, 1.5], [1.5, 1.5]])
+
+    val2 = env.constant([1, 2, 3, 4])
+    self.assertAllEqual(val2.as_numpy(), [1, 2, 3, 4])
+
   def testAddCaching(self):
     # make sure that graph is not modified in a loop
     env = immediate.Env(tf)
