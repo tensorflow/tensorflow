@@ -64,7 +64,7 @@ class CudnnSupport : public dnn::DnnSupport {
                   dnn::AlgorithmType algorithm,
                   dnn::ProfileResult* output_profile_result) override;
 
-  bool DoBatchNormalizeTrainingForward(
+  bool DoBatchNormTrainingForward(
                     Stream* stream,
                     const double epsilon,
                     const double exponential_average_factor,
@@ -80,7 +80,7 @@ class CudnnSupport : public dnn::DnnSupport {
                     DeviceMemory<float>* save_mean,
                     DeviceMemory<float>* save_inv_var) override;
 
-  bool DoBatchNormalizeTrainingBackward(
+  bool DoBatchNormTrainingBackward(
       Stream* stream,
       const double epsilon,
       const dnn::BatchDescriptor& input_dimensions,

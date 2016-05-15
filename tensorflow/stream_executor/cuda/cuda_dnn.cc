@@ -1944,7 +1944,7 @@ bool CudnnSupport::DoMemcpyH2DQuantized(
   return false;
 }
 
-bool CudnnSupport::DoBatchNormalizeTrainingForward(
+bool CudnnSupport::DoBatchNormTrainingForward(
     Stream* stream,
     const double epsilon,
     const double exponential_average_factor,
@@ -1999,7 +1999,7 @@ bool CudnnSupport::DoBatchNormalizeTrainingForward(
   return true;
 }
 
-bool CudnnSupport::DoBatchNormalizeTrainingBackward(
+bool CudnnSupport::DoBatchNormTrainingBackward(
     Stream* stream,
     const double epsilon,
     const dnn::BatchDescriptor& input_dimensions,

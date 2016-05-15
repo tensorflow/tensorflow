@@ -994,7 +994,7 @@ class DnnSupport {
                            DeviceMemory<float>* output_data) = 0;
 
   // Perform batch normalization in training mode with running mean and varience
-  virtual bool DoBatchNormalizeTrainingForward(
+  virtual bool DoBatchNormTrainingForward(
       Stream* stream,
       const double epsilon,
       const double exponential_average_factor,
@@ -1010,7 +1010,7 @@ class DnnSupport {
       DeviceMemory<float>* save_mean,
       DeviceMemory<float>* save_inv_var) = 0;
 
-  virtual bool DoBatchNormalizeTrainingBackward(
+  virtual bool DoBatchNormTrainingBackward(
       Stream* stream,
       const double epsilon,
       const dnn::BatchDescriptor& input_dimensions,

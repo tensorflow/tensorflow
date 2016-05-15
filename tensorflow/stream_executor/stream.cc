@@ -800,7 +800,7 @@ Stream &Stream::ThenNormalize(
   return *this;
 }
 
-Stream &Stream::ThenBatchNormalizeTrainingForward(
+Stream &Stream::ThenBatchNormTrainingForward(
                     const double epsilon,
                     const double exponential_average_factor,
                     const dnn::BatchDescriptor& input_dimensions,
@@ -819,7 +819,7 @@ Stream &Stream::ThenBatchNormalizeTrainingForward(
 
     if (ok()) {
       if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-        CheckError(dnn->DoBatchNormalizeTrainingForward(this,
+        CheckError(dnn->DoBatchNormTrainingForward(this,
                                       epsilon, exponential_average_factor,
                                       input_dimensions, input_data,
                                       scale_bias_mean_var_dimensions,
@@ -840,7 +840,7 @@ Stream &Stream::ThenBatchNormalizeTrainingForward(
     return *this;
 }
 
-Stream &Stream::ThenBatchNormalizeTrainingBackward(
+Stream &Stream::ThenBatchNormTrainingBackward(
                     const double epsilon,
                     const dnn::BatchDescriptor& input_dimensions,
                     const DeviceMemory<float>& input_data,
@@ -858,7 +858,7 @@ Stream &Stream::ThenBatchNormalizeTrainingBackward(
 
     if (ok()) {
       if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-        CheckError(dnn->DoBatchNormalizeTrainingBackward(this,
+        CheckError(dnn->DoBatchNormTrainingBackward(this,
                                       epsilon,
                                       input_dimensions, input_data,
                                       output_dimensions,

@@ -689,7 +689,7 @@ class BatchNormalizationTest(tf.test.TestCase):
                                        atol=0.005)
 
   def testBatchNormTrainingWithRollingMoments(self):
-    """Test BatchNormalizeTraining ops
+    """Test BatchNormTraining ops
     """
     x_shape = [3, 5, 4, 2]
     param_shape = [5]

@@ -311,8 +311,8 @@ def _BatchNormWithGlobalNormalizationGrad(op, grad):
       op.get_attr("variance_epsilon"), op.get_attr("scale_after_normalization"))
   return dx, dm, dv, db, dg
 
-@ops.RegisterGradient("BatchNormalizeTraining")
-def _BatchNormalizeTrainingGrad(op, output_grad, running_mean_grad, running_var_grad):
+@ops.RegisterGradient("BatchNormTraining")
+def _BatchNormTrainingGrad(op, output_grad, running_mean_grad, running_var_grad):
     input_data = op.inputs[0]
     scale_data = op.inputs[1]
 

@@ -53,10 +53,10 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device, typename T>
-struct LaunchBatchNormalizeTraining;
+struct LaunchBatchNormTraining;
 
 template <typename T>
-struct LaunchBatchNormalizeTraining<GPUDevice, T> {
+struct LaunchBatchNormTraining<GPUDevice, T> {
   static void launch(OpKernelContext* ctx,
                      const float epsilon,
                      const float exponential_average_factor,
@@ -112,7 +112,7 @@ struct LaunchBatchNormalizeTraining<GPUDevice, T> {
 
     bool cudnn_launch_status =
       stream
-        ->ThenBatchNormalizeTrainingForward(epsilon,
+        ->ThenBatchNormTrainingForward(epsilon,
                                     exponential_average_factor,
                                     input_desc,
                                     input_ptr,
@@ -136,9 +136,9 @@ struct LaunchBatchNormalizeTraining<GPUDevice, T> {
 };
 
 template <typename Device, typename T>
-class BatchNormalizeTrainingOp : public OpKernel {
+class BatchNormTrainingOp : public OpKernel {
   public:
-    explicit BatchNormalizeTrainingOp(OpKernelConstruction* context) : OpKernel(context) {
+    explicit BatchNormTrainingOp(OpKernelConstruction* context) : OpKernel(context) {
       const DataType dt = DataTypeToEnum<T>::v();
       const DataType dt_ref = DataTypeToEnum<T>::ref();
       OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt, dt_ref, dt_ref}, {dt, dt, dt}));
@@ -175,7 +175,7 @@ class BatchNormalizeTrainingOp : public OpKernel {
       OP_REQUIRES(context, input.dims() == 4,
                   errors::InvalidArgument("input must be 4-dimensional", input.shape().DebugString()));
 
-      LaunchBatchNormalizeTraining<Device, T>::launch(
+      LaunchBatchNormTraining<Device, T>::launch(
           context, epsilon_, exponential_average_factor_,
           input, scale, bias, output,
           &running_mean, &running_inv_var, save_mean, save_inv_var);
@@ -185,14 +185,14 @@ class BatchNormalizeTrainingOp : public OpKernel {
     float epsilon_;
     float exponential_average_factor_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(BatchNormalizeTrainingOp);
+    TF_DISALLOW_COPY_AND_ASSIGN(BatchNormTrainingOp);
 };
 
 template <typename Device, typename T>
-struct LaunchBatchNormalizeTrainingGrad;
+struct LaunchBatchNormTrainingGrad;
 
 template <typename T>
-struct LaunchBatchNormalizeTrainingGrad<GPUDevice, T> {
+struct LaunchBatchNormTrainingGrad<GPUDevice, T> {
   static void launch(OpKernelContext* ctx,
                      const float epsilon,
                      const Tensor& input,
@@ -247,7 +247,7 @@ struct LaunchBatchNormalizeTrainingGrad<GPUDevice, T> {
                                         bias_grad->template flat<T>().size());
     bool cudnn_launch_status =
       stream
-        ->ThenBatchNormalizeTrainingBackward(epsilon,
+        ->ThenBatchNormTrainingBackward(epsilon,
                                              input_desc,
                                              input_ptr,
                                              output_desc,
@@ -270,9 +270,9 @@ struct LaunchBatchNormalizeTrainingGrad<GPUDevice, T> {
 };
 
 template <typename Device, typename T>
-class BatchNormalizeTrainingGradOp : public OpKernel {
+class BatchNormTrainingGradOp : public OpKernel {
   public:
-    explicit BatchNormalizeTrainingGradOp(OpKernelConstruction* context) : OpKernel(context) {
+    explicit BatchNormTrainingGradOp(OpKernelConstruction* context) : OpKernel(context) {
       const DataType dt = DataTypeToEnum<T>::v();
       OP_REQUIRES_OK(context, context->MatchSignature({dt, dt, dt, dt, dt}, {dt, dt, dt}));
 
@@ -303,7 +303,7 @@ class BatchNormalizeTrainingGradOp : public OpKernel {
       OP_REQUIRES(context, input.dims() == 4,
                   errors::InvalidArgument("input must be 4-dimensional", input.shape().DebugString()));
 
-      LaunchBatchNormalizeTrainingGrad<Device, T>::launch(
+      LaunchBatchNormTrainingGrad<Device, T>::launch(
           context, epsilon_, input, output_grad, scale, saved_mean, saved_inv_var,
           input_grad, scale_grad, bias_grad);
     }
@@ -311,18 +311,18 @@ class BatchNormalizeTrainingGradOp : public OpKernel {
   private:
     float epsilon_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(BatchNormalizeTrainingGradOp);
+    TF_DISALLOW_COPY_AND_ASSIGN(BatchNormTrainingGradOp);
 };
 
 #if GOOGLE_CUDA
 
 REGISTER_KERNEL_BUILDER(
-    Name("BatchNormalizeTraining").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    BatchNormalizeTrainingOp<GPUDevice, float>);
+    Name("BatchNormTraining").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    BatchNormTrainingOp<GPUDevice, float>);
 
 REGISTER_KERNEL_BUILDER(
-    Name("BatchNormalizeTrainingGrad").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    BatchNormalizeTrainingGradOp<GPUDevice, float>);
+    Name("BatchNormTrainingGrad").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    BatchNormTrainingGradOp<GPUDevice, float>);
 
 #endif // GOOGLE_CUDA
 

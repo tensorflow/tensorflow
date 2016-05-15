@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("BatchNormalizeTraining")
+REGISTER_OP("BatchNormTraining")
     .Input("input: T")
     .Input("scale: T")
     .Input("bias: T")
@@ -52,7 +52,7 @@ epsilon: float
 exponential_average_factor: float. Exponential decay on rolling average.
 )doc");
 
-REGISTER_OP("BatchNormalizeTrainingGrad")
+REGISTER_OP("BatchNormTrainingGrad")
     .Input("input: T")
     .Input("output_grad: T")
     .Input("scale: T")
