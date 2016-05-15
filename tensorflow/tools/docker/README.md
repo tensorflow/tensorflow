@@ -44,6 +44,10 @@ accomplished via
 
 Alternately, you can use the `docker_run_gpu.sh` script in this directory.
 
+In order to set Jupyter Notebook to require a password, the `-e PASSWORD=pass` option must be provided
+
+    $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES -e PASSWORD=pass gcr.io/tensorflow/tensorflow-devel-gpu
+
 ## Rebuilding the containers
 
 Just pick the dockerfile corresponding to the container you want to build, and run;
