@@ -13,19 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests for miscellaneous functionality in tensorflow.ops.nn."""
+"""Tests for tensorflow.ops.nn."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import math
 
+import tensorflow as tf
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-import tensorflow as tf
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import nn
 
 exp = math.exp
 log = math.log
@@ -91,68 +90,6 @@ class SigmoidCrossEntropyWithLogitsTest(tf.test.TestCase):
       tf.nn.sigmoid_cross_entropy_with_logits([[2, 1]], [1, 2, 3])
 
 
-class WeightedCrossEntropyTest(tf.test.TestCase):
-
-  def _WeightedCrossEntropy(self, logits, targets, pos_coeff):
-    assert len(logits) == len(targets)
-    pred = [1 / (1 + exp(-x)) for x in logits]
-    eps = 0.0001
-    pred = [min(max(p, eps), 1 - eps) for p in pred]
-    return [-z * pos_coeff * log(y) - (1 - z) * log(1 - y)
-            for y, z in zip(pred, targets)]
-
-  def _Inputs(self, x=None, y=None, q=3.0, dtype=tf.float64, sizes=None):
-    x = [-100, -2, -2, 0, 2, 2, 2, 100] if x is None else x
-    y = [0, 0, 1, 0, 0, 1, 0.5, 1] if y is None else y
-    assert len(x) == len(y)
-    sizes = sizes if sizes else [len(x)]
-    logits = tf.constant(x, shape=sizes, dtype=dtype, name="logits")
-    targets = tf.constant(y, shape=sizes, dtype=dtype, name="targets")
-    losses = np.array(self._WeightedCrossEntropy(x, y, q)).reshape(*sizes)
-    return logits, targets, q, losses
-
-  def testConstructionNamed(self):
-    with self.test_session():
-      logits, targets, pos_weight, _ = self._Inputs()
-      loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
-                                                      pos_weight, name="mybce")
-    self.assertEqual("mybce", loss.op.name)
-
-  def testOutput(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        logits, targets, pos_weight, losses = self._Inputs(dtype=tf.float32)
-        loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
-                                                        pos_weight)
-        np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
-      self.assertAllClose(np_loss, tf_loss, atol=0.001)
-
-  def testOutputMultiDim(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        logits, targets, pos_weight, losses = self._Inputs(dtype=tf.float32,
-                                                           sizes=[2, 2, 2])
-        loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
-                                                        pos_weight)
-        np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
-      self.assertAllClose(np_loss, tf_loss, atol=0.001)
-
-  def testGradient(self):
-    sizes = [4, 2]
-    with self.test_session():
-      logits, targets, pos_weight, _ = self._Inputs(sizes=sizes)
-      loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
-                                                      pos_weight)
-      err = tf.test.compute_gradient_error(logits, sizes, loss, sizes)
-    print("logistic loss gradient err = ", err)
-    self.assertLess(err, 1e-7)
-
-  def testShapeError(self):
-    with self.assertRaisesRegexp(ValueError, "must have the same shape"):
-      tf.nn.weighted_cross_entropy_with_logits([[2, 1]], [1, 2, 3], 2.0)
-
 class ZeroFractionTest(tf.test.TestCase):
 
   def _ZeroFraction(self, x):
@@ -209,6 +146,141 @@ class SoftmaxTest(tf.test.TestCase):
       err = tf.test.compute_gradient_error(x_tf, x_shape, y_tf, x_shape)
     eps = 1e-8
     self.assertLess(err, eps)
+
+
+class Conv2DTransposeTest(tf.test.TestCase):
+
+  def testConv2DTransposeSingleStride(self):
+    with self.test_session():
+      strides = [1, 1, 1, 1]
+
+      # Input, output: [batch, height, width, depth]
+      x_shape = [2, 6, 4, 3]
+      y_shape = [2, 6, 4, 2]
+
+      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+      f_shape = [3, 3, 2, 3]
+
+      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
+      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
+                                      padding="SAME")
+      value = output.eval()
+
+      # We count the number of cells being added at the locations in the output.
+      # At the center, #cells=kernel_height * kernel_width
+      # At the corners, #cells=ceil(kernel_height/2) * ceil(kernel_width/2)
+      # At the borders, #cells=ceil(kernel_height/2)*kernel_width or
+      #                        kernel_height * ceil(kernel_width/2)
+
+      for n in xrange(x_shape[0]):
+        for k in xrange(f_shape[2]):
+          for w in xrange(y_shape[2]):
+            for h in xrange(y_shape[1]):
+              target = 4 * 3.0
+              h_in = h > 0 and h < y_shape[1] - 1
+              w_in = w > 0 and w < y_shape[2] - 1
+              if h_in and w_in:
+                target += 5 * 3.0
+              elif h_in or w_in:
+                target += 2 * 3.0
+              self.assertAllClose(target, value[n, h, w, k])
+
+  def testConv2DTransposeSame(self):
+    with self.test_session():
+      strides = [1, 2, 2, 1]
+
+      # Input, output: [batch, height, width, depth]
+      x_shape = [2, 6, 4, 3]
+      y_shape = [2, 12, 8, 2]
+
+      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+      f_shape = [3, 3, 2, 3]
+
+      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
+      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
+                                      padding="SAME")
+      value = output.eval()
+
+      for n in xrange(x_shape[0]):
+        for k in xrange(f_shape[2]):
+          for w in xrange(y_shape[2]):
+            for h in xrange(y_shape[1]):
+              target = 3.0
+              # We add a case for locations divisible by the stride.
+              h_in = h % strides[1] == 0 and h > 0 and h < y_shape[1] - 1
+              w_in = w % strides[2] == 0 and w > 0 and w < y_shape[2] - 1
+              if h_in and w_in:
+                target += 9.0
+              elif h_in or w_in:
+                target += 3.0
+              self.assertAllClose(target, value[n, h, w, k])
+
+  def testConv2DTransposeValid(self):
+    with self.test_session():
+      strides = [1, 2, 2, 1]
+
+      # Input, output: [batch, height, width, depth]
+      x_shape = [2, 6, 4, 3]
+      y_shape = [2, 13, 9, 2]
+
+      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+      f_shape = [3, 3, 2, 3]
+
+      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
+      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
+                                      padding="VALID")
+      value = output.eval()
+
+      cache_values = np.zeros(y_shape, dtype=np.float32)
+
+      # The amount of padding added
+      pad = 1
+
+      for n in xrange(x_shape[0]):
+        for k in xrange(f_shape[2]):
+          for w in xrange(pad, y_shape[2] - pad):
+            for h in xrange(pad, y_shape[1] - pad):
+              target = 3.0
+              # We add a case for locations divisible by the stride.
+              h_in = h % strides[
+                  1] == 0 and h > pad and h < y_shape[1] - 1 - pad
+              w_in = w % strides[
+                  2] == 0 and w > pad and w < y_shape[2] - 1 - pad
+              if h_in and w_in:
+                target += 9.0
+              elif h_in or w_in:
+                target += 3.0
+              cache_values[n, h, w, k] = target
+
+          # copy values in the border
+          cache_values[n, :, 0, k] = cache_values[n, :, 1, k]
+          cache_values[n, :, -1, k] = cache_values[n, :, -2, k]
+          cache_values[n, 0, :, k] = cache_values[n, 1, :, k]
+          cache_values[n, -1, :, k] = cache_values[n, -2, :, k]
+
+    self.assertAllClose(cache_values, value)
+
+  def testGradient(self):
+    x_shape = [2, 6, 4, 3]
+    f_shape = [3, 3, 2, 3]
+    y_shape = [2, 12, 8, 2]
+    strides = [1, 2, 2, 1]
+    np.random.seed(1)  # Make it reproducible.
+    x_val = np.random.random_sample(x_shape).astype(np.float64)
+    f_val = np.random.random_sample(f_shape).astype(np.float64)
+    with self.test_session():
+      x = tf.constant(x_val, name="x", dtype=tf.float32)
+      f = tf.constant(f_val, name="f", dtype=tf.float32)
+      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
+                                      padding="SAME")
+      err = tf.test.compute_gradient_error(
+          [x, f], [x_shape, f_shape], output, y_shape)
+    print("DeConv gradient err = %g " % err)
+    err_tolerance = 0.0005
+    self.assertLess(err, err_tolerance)
 
 
 class L2LossTest(tf.test.TestCase):
@@ -406,6 +478,7 @@ class DropoutTest(tf.test.TestCase):
     _ = tf.nn.dropout(t, keep_prob, noise_shape=[1, y_dim])
     _ = tf.nn.dropout(t, keep_prob, noise_shape=[x_dim, 1])
     _ = tf.nn.dropout(t, keep_prob, noise_shape=[1, 1])
+
 
 class BatchNormalizationTest(tf.test.TestCase):
 
@@ -688,76 +761,6 @@ class BatchNormalizationTest(tf.test.TestCase):
     self._testBatchNormArbitraryShapes((2, 3, 2, 4, 5), (1, 1, 1, 4, 5),
                                        atol=0.005)
 
-  def testBatchNormTraining(self):
-    """Test BatchNormTraining ops
-    """
-    x_shape = [3, 5, 4, 2]
-    param_shape = [5]
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
-    beta_val = np.random.random_sample(param_shape).astype(np.float32)
-    gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-    # TODO check the non gpu case
-    use_gpu = True
-    with self.test_session(use_gpu=use_gpu) as sess:
-      # TODO support other arguments
-      scale_after_normalization = True
-      shift_after_normalization = True
-      x = tf.constant(x_val, name="x")
-      beta = tf.constant(beta_val, name="beta")
-      gamma = tf.constant(gamma_val, name="gamma")
-      epsilon = 0.001
-      # TODO check / implement shift after scale after
-      bn = nn.batch_norm_training(x, beta, gamma, epsilon, data_format="NCHW")
-      m_val = np.mean(x_val, axis=(0, 2, 3), keepdims=True)
-      v_val = np.var(x_val, axis=(0, 2, 3), keepdims=True)
-      beta_reshape = beta_val.reshape([1, param_shape[0], 1, 1])
-      gamma_reshape = gamma_val.reshape([1, param_shape[0], 1, 1])
-      np_bn = self._npBatchNorm(
-        x_val, m_val, v_val, beta_reshape, gamma_reshape, epsilon,
-        scale_after_normalization, shift_after_normalization)
-
-      bn_val = sess.run(bn)
-      self.assertAllClose(bn_val, np_bn, atol=1e-4, rtol=1e-4)
-
-      # Test NHWC
-      x_T = tf.transpose(x, (0, 2, 3, 1))
-      bn = nn.batch_norm_training(x_T, beta, gamma, epsilon, data_format="NHWC")
-      bn_val = sess.run(bn)
-      self.assertAllClose(bn_val, np_bn.transpose(0, 2, 3, 1), atol=1e-4, rtol=1e-4)
-
-
-  def testBatchNormTrainingGrad(self):
-    x_shape = [3, 5, 4, 6]
-    param_shape = [5]
-    np.random.seed(1)  # Make it reproducible.
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
-    beta_val = np.random.random_sample(param_shape).astype(np.float32)
-    gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-    with self.test_session():
-      x = tf.constant(x_val, name="x")
-      beta = tf.constant(beta_val, name="beta")
-      gamma = tf.constant(gamma_val, name="gamma")
-      epsilon = 0.001
-
-      output = tf.nn.batch_norm_training(x, beta, gamma, variance_epsilon=epsilon, data_format="NCHW")
-      all_params = [x, beta, gamma]
-      all_shapes = [x_shape, param_shape, param_shape]
-      for param_index in range(len(all_params)):
-        err = tf.test.compute_gradient_error(
-              all_params[param_index], all_shapes[param_index], output, x_shape)
-        self.assertLess(err, 1e-3)
-
-      # Test NHWC
-      x_T = tf.transpose(x, (0, 2, 3, 1))
-      x_T_shape = [x_shape[0], x_shape[2], x_shape[3], x_shape[1]]
-      output = tf.nn.batch_norm_training(x_T, beta, gamma, variance_epsilon=epsilon, data_format="NHWC")
-      all_params = [x_T, beta, gamma]
-      all_shapes = [x_T_shape, param_shape, param_shape]
-      for param_index in range(len(all_params)):
-        err = tf.test.compute_gradient_error(
-              all_params[param_index], all_shapes[param_index], output, x_T_shape)
-        self.assertLess(err, 1e-3)
-
 
 class SufficientStatisticsTest(tf.test.TestCase):
 
@@ -981,6 +984,7 @@ class MomentsTest(tf.test.TestCase):
       mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=True)
       self.assertEquals(mean.op.name, "moments/normalize/mean")
       self.assertEquals(var.op.name, "moments/normalize/variance")
+
 
 class ComputeSampledLogitsTest(tf.test.TestCase):
 
