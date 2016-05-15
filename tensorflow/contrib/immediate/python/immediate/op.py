@@ -50,6 +50,17 @@ class Op(object):
   def __repr__(self):
     return self.__str__()
 
+
+def _fixup_args(symbol_name, *args, **kwargs):
+  #  print("calling fixup_args for %s, %s, %s" % (symbol_name, args, kwargs))
+  
+  if symbol_name == 'gen_math_ops._sum':
+    # handle gen_math_ops._sum(tensor,tensor,false)
+    if len(args)==3:
+      kwargs['keep_dims'] = args[2]
+      return args[:-1], kwargs
+  return args, kwargs
+
 # Implementating of OpFactory with graph caching
 class OpFactory(object):
   def __init__(self, env):
@@ -60,6 +71,15 @@ class OpFactory(object):
     
     # create the key to see if the op has been created before
     key = [symbol_name]
+
+    # our heuristic that Tensor arguments are positional args and attributes
+    # are keyword args is failing in some popular cases, like reduce_sum
+    # which calls "sum(tensor1, tensor2, keep_dims)"
+    # This can be handled by following OpDef parsing logic in op_def_library.py
+    # to figure out which args are attributes. Until them, have a procedure
+    # that rearranges args to conform to convention for several important
+    # cases.
+    args,kwargs = _fixup_args(symbol_name, *args, **kwargs)
 
     # converted_args stores args converted to Tensors, ie, Python list [1]
     # becomes immediate.Tensor([1])), immediate.Tensor objects are unchanged
@@ -138,6 +158,7 @@ class OpWrapper(object):
   
   def __call__(self, *args, **kwargs):
     op = self.env.op_factory(self.symbol_name, self.symbol, *args, **kwargs)
+    args, kwargs = _fixup_args(self.symbol_name, *args, **kwargs)
     return op(*args)
 
 class PythonOpWrapper(object):
