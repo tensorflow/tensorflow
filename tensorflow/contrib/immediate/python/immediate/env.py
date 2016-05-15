@@ -72,6 +72,7 @@ import os
 import types
 
 from .tensor import Tensor
+from .tensor import _ENABLE_DEBUG_LOGGING
 from .op import OpFactory
 from .op import OpWrapper
 from .op import PythonOpWrapper
@@ -81,6 +82,7 @@ from .op import Op
 
 import numpy as np
 import wrapping_util
+
 
 class Env(object):
 
@@ -115,6 +117,10 @@ class Env(object):
     # Because of array_ops: tensorflow.python.ops.constant_op import constant
     sub["constant"] =  ConstantOpWrapper(None, self, "constant")
 
+    # Because of array_ops using "identity"
+    #    sub["identity"] =  OpWrapper(None, self, "identity")
+    sub["identity"] = sub["gen_array_ops"].identity
+
     for op_module in wrapping_util.python_op_module_list_sorted():
       wrapped_namespace = Namespace(self, op_module,
                                     eval(op_module),
@@ -137,7 +143,8 @@ class Env(object):
   @property
   def python_op_whitelist(self):
     """Python-only ops whitelisted for wrapping."""
-    return {"tf.pow", "tf.reduce_sum", "tf.range", "tf.random_uniform", "tf.ones"}
+    return {"tf.pow", "tf.reduce_sum", "tf.range", "tf.random_uniform", "tf.ones",
+            "tf.concat", "tf.split"}
 
   @property
   def gen_op_blacklist(self):
@@ -187,6 +194,8 @@ class Env(object):
   # TODO(yaroslavvb): test bad conversions
 
   def numpy_to_tensor(self, array, dtype=None):
+    """Converts numpy.ndarray or compatible type to immediate.Tensor."""
+
     # convert to numpy dtype if necessary
     if dtype:
       dtype = dtypes.as_dtype(dtype)
@@ -215,9 +224,14 @@ class Env(object):
 
   def constant(self, values, dtype=None, shape=None, name='Const'):
     np_dtype = None
+
     if dtype:
-      dtype = dtypes.as_dtype(dtype)
-      np_dtype = dtype.as_numpy_dtype
+      try:
+        dtype = dtypes.as_dtype(dtype)
+        np_dtype = dtype.as_numpy_dtype
+      except TypeError as e:
+        raise TypeError("Trying to create constant with dtype=%s, "
+                        "got TypeError(%s)" % (dtype, e.message))
 
     if shape:
       assert (isinstance(values, types.FloatType) or
@@ -294,8 +308,17 @@ class Namespace(object):
     if symbol_name == 'constant':
       return ConstantOpWrapper(self, self.env, derived_symbol_name)
 
+    # convert to Tensor is used as op.convert_to_tensor, override it with version that
+    # can returns immediate.Tensors
     if symbol_name == 'convert_to_tensor':
       return ConvertToTensorWrapper(self, self.env, derived_symbol_name)
+
+    # Concat infers numeric attribute for number of tensors, since we don't
+    # have attribute inference, override it with custom version
+    # for
+    # gen_array_ops._concat(concat_dim=concat_dim, values=values, name=name)
+    #    if derived_symbol_name == "gen_array_ops._concat":
+    #      return ConcatOpWrapper(self, self.env, derived_symbol_name)
 
     if symbol_name in self.nested_modules:
       return self.nested_modules[symbol_name]

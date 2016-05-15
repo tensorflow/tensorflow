@@ -81,6 +81,13 @@ class EnvTest(tf.test.TestCase):
     val2 = env.numpy_to_tensor(3)
     self.assertEqual(env.tf.pow(val1, val2), env.numpy_to_tensor(8))
 
+  # TODO(yaroslavvb): test tf.ones for empty shape (ndarray.empty)
+  def testOnes(self):
+fill(shape, constant(1, dtype=dtype), name=name)
+    env = immediate.Env(tf)
+    val1 = env.tf.ones((3, 3))
+    self.assertAllEqual(val1.as_numpy(), np.ones((3, 3)))
+
   def testReshapeOpWithConversion(self):
     """Try reshape op where arguments are implicitly converted to Tensors"""
     env = immediate.Env(tf)
@@ -113,6 +120,8 @@ class EnvTest(tf.test.TestCase):
     val2 = env.constant([1, 2, 3, 4])
     self.assertAllEqual(val2.as_numpy(), [1, 2, 3, 4])
 
+    val3 = env.constant(7, dtype=tf.int32)
+    self.assertAllEqual(val3.as_numpy(), 7)
 
   def testRandomUniform(self):
     env = immediate.Env(tf)
@@ -120,6 +129,13 @@ class EnvTest(tf.test.TestCase):
     val = env.tf.random_uniform([n, n], -2, 2)
     sum_ = env.tf.reduce_sum(val)
     self.assertTrue(sum_ < n*n*2+1.)
+    
+
+  def testShape(self):
+    env = immediate.Env(tf)
+    val0 = env.numpy_to_tensor([[1,2,3],[4,5,6]])
+    self.assertAllEqual(env.tf.shape(val0).as_numpy(), [2, 3])
+        
 
   def testAddCaching(self):
     # make sure that graph is not modified in a loop

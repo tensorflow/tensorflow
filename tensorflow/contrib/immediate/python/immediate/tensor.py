@@ -6,7 +6,11 @@ from __future__ import print_function
 
 __all__ = ["Tensor"]
 
+_ENABLE_DEBUG_LOGGING = True
+
 import tensorflow as tf
+
+from tensorflow.python.framework import tensor_shape
 
 class Tensor(object):
 
@@ -24,16 +28,23 @@ class Tensor(object):
   def dtype(self):
     return self.handle._dtype
 
+
   def as_numpy(self):
     """Convert current Tensor into numpy array."""
 
     return self.env.handle_to_numpy(self.handle)
 
+  # tf.Tensor compatibility
+  def get_shape(self):
+    shape_tensor = self.env.tf.shape(self)
+    shape_tuple = tuple(self.env.tensor_to_numpy(shape_tensor))
+    return tensor_shape.TensorShape(shape_tuple)
+
   def __str__(self):
     return str(self.as_numpy())
 
   def __repr__(self):
-    return "Tensor(%s)" % (self.__str__())
+    return "iTensor(%s)" % (self.__str__())
 
 
   # Methods to emulate Python numeric type
