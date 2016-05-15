@@ -64,6 +64,8 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_ops
 
+from tensorflow.python.framework import ops
+
 import inspect
 import re
 import os
@@ -73,6 +75,8 @@ from .tensor import Tensor
 from .op import OpFactory
 from .op import OpWrapper
 from .op import PythonOpWrapper
+from .op import ConstantOpWrapper
+from .op import ConvertToTensorWrapper
 from .op import Op
 
 import numpy as np
@@ -95,6 +99,12 @@ class Env(object):
     # for __globals__ substitution dictionary "sub" 
     sub = {}
     self.wrapped_namespaces = {}
+
+
+    # wrap ops namespace (to override convert_to_tensor method)
+    wrapped_namespace = Namespace(self, "ops", ops, tf_root=False)
+    sub["ops"] = wrapped_namespace
+    
     for op_module in wrapping_util.gen_op_module_list:
       wrapped_namespace = Namespace(self, op_module, eval(op_module),
                                     tf_root=False)
@@ -123,7 +133,7 @@ class Env(object):
   @property
   def python_op_whitelist(self):
     """Python-only ops whitelisted for wrapping."""
-    return {"tf.pow", "tf.reduce_sum", "tf.range"}
+    return {"tf.pow", "tf.reduce_sum", "tf.range", "tf.random_uniform"}
 
   # Ops below are used by internal implementation of the immediate execution
   # system, so we get infinite recursion if we dispatch them through
@@ -167,6 +177,11 @@ class Env(object):
   # TODO(yaroslavvb): test bad conversions
 
   def numpy_to_tensor(self, array, dtype=None):
+    # convert to numpy dtype if necessary
+    if dtype:
+      dtype = dtypes.as_dtype(dtype)
+      dtype = dtype.as_numpy_dtype
+
     # try to convert Python lists to numpy array
     if not isinstance(array, np.ndarray):
       array = np.array(array, dtype=dtype)
@@ -262,6 +277,9 @@ class Namespace(object):
     if symbol_name == 'constant':
       return ConstantOpWrapper(self, self.env, derived_symbol_name)
 
+    if symbol_name == 'convert_to_tensor':
+      return ConvertToTensorWrapper(self, self.env, derived_symbol_name)
+
     if symbol_name in self.nested_modules:
       return self.nested_modules[symbol_name]
 
@@ -277,8 +295,13 @@ class Namespace(object):
       symbol = self.python_ops[symbol_name]
       return PythonOpWrapper(self, self.env, derived_symbol_name,
                              symbol, self.global_sub)
+    # pass through the symbol to original implementation
+    elif symbol_name in self.other:
+      symbol = self.other[symbol_name]
+      return symbol
     else:
       raise ValueError("Do not have implementation of op "+derived_symbol_name)    
+
 
   def __str__(self):
     return "Namespace(name=%s, original_namespace=%s)" %(self.name,

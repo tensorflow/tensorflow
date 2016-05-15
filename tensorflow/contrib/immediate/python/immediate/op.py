@@ -55,10 +55,17 @@ def _fixup_args(symbol_name, *args, **kwargs):
   #  print("calling fixup_args for %s, %s, %s" % (symbol_name, args, kwargs))
   
   if symbol_name == 'gen_math_ops._sum':
-    # handle gen_math_ops._sum(tensor,tensor,false)
+    # handle gen_math_ops._sum(tensor,tensor,keep_dims)
     if len(args)==3:
       kwargs['keep_dims'] = args[2]
       return args[:-1], kwargs
+
+  # handle gen_random_ops._random_uniform(shape, dtype)
+  if symbol_name == 'gen_random_ops._random_uniform':
+    if len(args)==2:
+      kwargs['dtype'] = args[1]
+      return args[:-1], kwargs
+    
   return args, kwargs
 
 # Implementating of OpFactory with graph caching
@@ -188,3 +195,15 @@ class ConstantOpWrapper(object):
 
   def __call__(self, *args, **kwargs):
     return self.env.constant(*args, **kwargs)
+
+class ConvertToTensorWrapper(object):
+  """A callable object that mirrors tf.convert_to_tensor"""
+
+  def __init__(self, namespace, env, symbol_name):
+    self.namespace = namespace
+    self.env = env
+    self.symbol_name = symbol_name
+    
+
+  def __call__(self, value, dtype=None, name=None, as_ref=False):
+    return self.env.numpy_to_tensor(value, dtype)
