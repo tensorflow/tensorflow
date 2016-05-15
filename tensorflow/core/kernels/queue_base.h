@@ -31,6 +31,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace barrier {
+class Barrier;
+}  // namespace barrier
+
 // Functionality common to asynchronous QueueInterface implementations.
 class QueueBase : public QueueInterface {
  public:
@@ -65,6 +69,19 @@ class QueueBase : public QueueInterface {
 
   int32 capacity() const { return capacity_; }
 
+  bool closed() {
+    mutex_lock lock(mu_);
+    return closed_;
+  }
+
+  // Copies the index^th slice (in the first dimension) of parent into element.
+  static Status CopySliceToElement(const Tensor& parent, Tensor* element,
+                                   int64 index);
+
+  // Copies element into the index^th slice (in the first dimension) of parent.
+  static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
+                                   int64 index);
+
  protected:
   enum Action { kEnqueue, kDequeue };
   enum RunResult { kNoProgress, kProgress, kComplete };
@@ -97,14 +114,6 @@ class QueueBase : public QueueInterface {
     shape.AppendShape(component_shapes_[i]);
     return shape;
   }
-
-  // Copies the index^th slice (in the first dimension) of parent into element.
-  static Status CopySliceToElement(const Tensor& parent, Tensor* element,
-                                   int64 index);
-
-  // Copies element into the index^th slice (in the first dimension) of parent.
-  static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                   int64 index);
 
   void Cancel(Action action, CancellationManager* cancellation_manager,
               CancellationToken token);

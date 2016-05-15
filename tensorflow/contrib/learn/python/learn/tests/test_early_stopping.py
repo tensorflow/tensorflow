@@ -27,32 +27,36 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test
 
 class EarlyStoppingTest(tf.test.TestCase):
 
-    def testIrisES(self):
-        random.seed(42)
+  def testIrisES(self):
+    random.seed(42)
 
-        iris = datasets.load_iris()
-        X_train, X_test, y_train, y_test = train_test_split(iris.data,
-                                                            iris.target,
-                                                            test_size=0.2,
-                                                            random_state=42)
+    iris = datasets.load_iris()
+    X_train, X_test, y_train, y_test = train_test_split(iris.data,
+                                                        iris.target,
+                                                        test_size=0.2,
+                                                        random_state=42)
 
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2)
-        val_monitor = learn.monitors.ValidationMonitor(X_val, y_val, n_classes=3)
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_train, y_train, test_size=0.2)
+    val_monitor = learn.monitors.ValidationMonitor(X_val, y_val, n_classes=3)
 
-        # classifier without early stopping - overfitting
-        classifier1 = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                                     n_classes=3, steps=1000)
-        classifier1.fit(X_train, y_train)
-        score1 = accuracy_score(y_test, classifier1.predict(X_test))
+    # classifier without early stopping - overfitting
+    classifier1 = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+                                                n_classes=3,
+                                                steps=1000)
+    classifier1.fit(X_train, y_train)
+    score1 = accuracy_score(y_test, classifier1.predict(X_test))
 
-        # classifier with early stopping - improved accuracy on testing set
-        classifier2 = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                                     n_classes=3, steps=1000)
+    # classifier with early stopping - improved accuracy on testing set
+    classifier2 = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+                                                n_classes=3,
+                                                steps=1000)
 
-        classifier2.fit(X_train, y_train, val_monitor)
-        score2 = accuracy_score(y_test, classifier2.predict(X_test))
+    classifier2.fit(X_train, y_train, val_monitor)
+    score2 = accuracy_score(y_test, classifier2.predict(X_test))
 
-        # self.assertGreater(score2, score1, "No improvement using early stopping.")
+    # self.assertGreater(score2, score1, "No improvement using early stopping.")
+
 
 if __name__ == "__main__":
-    tf.test.main()
+  tf.test.main()

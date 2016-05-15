@@ -16,7 +16,10 @@ py_library(
     name = "learn",
     srcs = glob([
         "python/learn/**/*.py",
-    ]) + ["__init__.py", "python/__init__.py"],
+    ]) + [
+        "__init__.py",
+        "python/__init__.py",
+    ],
     data = [":datasets"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/python:framework"],
@@ -222,6 +225,19 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "checkpoints_test",
+    size = "small",
+    srcs = ["python/learn/utils/checkpoints_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
 )

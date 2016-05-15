@@ -70,6 +70,7 @@ struct CheckNumericsLaunch {
   }
 };
 
+template struct CheckNumericsLaunch<Eigen::half>;
 template struct CheckNumericsLaunch<float>;
 template struct CheckNumericsLaunch<double>;
 

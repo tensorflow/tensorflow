@@ -104,10 +104,6 @@ class LogMemory {
   static void RecordRawDeallocation(const string& operation, int64 step_id,
                                     void* ptr, Allocator* allocator,
                                     bool deferred);
-
- private:
-  // Write the message as a log entry
-  static void OutputToLog(const protobuf::Message& proto);
 };
 
 }  // namespace tensorflow

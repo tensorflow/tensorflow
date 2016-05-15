@@ -1,0 +1,176 @@
+<!doctype html>
+<meta charset="utf-8">
+<script src="../../../../components/d3/d3.min.js"></script>
+<script src="../palettes.js"></script>
+<script src="../colorScale.js"></script>
+
+<link rel="stylesheet" href="style.css">
+
+<style>
+
+.color-swatch {
+  display: inline-block;
+  height: 20px;
+}
+.stage {
+  margin-top: 40px;
+  margin-bottom: 200px;
+  position: relative;
+}
+.color {
+  position: absolute;
+  margin: 0 0 4px 0;
+}
+.swatch {
+  border-radius: 2px;
+  float: left;
+  width: 15px;
+  height: 15px;
+  margin-right: 10px;
+  margin-top: 8px;
+}
+
+.label {
+  display: inline;
+}
+</style>
+
+<header>
+  <h1 class="trunk">Stable and Unique Colors for Category Labels</h1>
+  <p class="trunk">A method for defining a stable categorical color scale for real-time, changing data.</p>
+
+</header>
+<h3 class="trunk">Base colors</h3>
+<p class="trunk">Each color scale is initialized with a configurable number of base hues. There are 18 shown below. There are also several palettes available.</p>
+<p class="palettes trunk"></p>
+<h3 class="trunk">A sample list of categories</h3>
+<p class="trunk">
+  Each string is hashed to an integer, then mapped to one of the base hues above. If there is a collision, the color that is later in an alphabetical sort gets nudged a little darker or lighter to disambiguate. I would call it <i>mostly</i> stable, in that the same array of strings will always return the same colors, but the same individual string may shift a little depending on its peers.
+</p>
+<p class="stage trunk"></p>
+
+<script type>
+"use strict";
+
+var runs = [
+  "A Midsummer Night's Dream",
+  "All's Well That Ends Well",
+  "Antony and Cleopatra",
+  "As You Like It",
+  "Coriolanus",
+  "Cymbeline",
+  "Hamlet",
+  "Henry IV",
+  "Henry VIII",
+  "Julius Caesar",
+  "King John",
+  "King Lear",
+  "Love's Labour's Lost",
+  "Macbeth",
+  "Measure for Measure",
+  "Much Ado About Nothing",
+  "Othello",
+  "Pericles, Prince of Tyre",
+  "Richard II",
+  "Richard III",
+  "Romeo and Juliet",
+  "The Comedy of Errors",
+  "The Merchant of Venice",
+  "The Merry Wives of Windsor",
+  "The Taming of the Shrew",
+  "The Tempest",
+  "The Two Noble Kinsmen",
+  "The Winter's Tale",
+  "Timon of Athens ",
+  "Titus Andronicus",
+  "Troilus and Cressida ",
+  "Twelfth Night",
+  "Two Gentlemen of Verona"
+];
+
+var palettes = [
+  "googleColorBlind",
+  "googleStandard",
+  "constantValue",
+  "googleWarm",
+  "googleCool"
+];
+
+var stage = d3.select(".stage");
+
+var palettesStage = d3.select(".palettes");
+
+var palette = palettesStage.selectAll(".palette")
+    .data(palettes)
+  .enter().append("div")
+    .attr("class", "palette");
+
+palette.each(function(d) {
+  d3.select(this).append("div").text(d);
+  var ccs = new TF.ColorScale(17, TF.palettes[d]);
+  var colorSwatches = d3.select(this).selectAll(".color-swatch")
+    .data(d3.range(ccs.numColors))
+  .enter().append("div")
+    .attr("class", "color-swatch")
+    .style("width", 100 / ccs.numColors + "%")
+    .style("background-color", (d) => ccs.internalColorScale(d));
+});
+
+var previousRuns = runs.slice(0, 10).concat(["train", "test", "eval"]);
+function ping() {
+  d3.shuffle(previousRuns);
+  previousRuns = previousRuns.slice(0, -Math.ceil(Math.random() * 3));
+  previousRuns = previousRuns.concat(d3.shuffle(runs).slice(0, Math.floor(Math.random() * 6))).sort();
+  previousRuns = d3.set(previousRuns).values().sort();
+  var ccs = new TF.ColorScale();
+  ccs.domain(previousRuns);
+
+  var color = stage.selectAll(".color")
+      .data(previousRuns, (d) => d);
+
+  color
+      .style("opacity", 1)
+      .style("left", 0)
+    .transition()
+      .delay(200)
+      .duration(300)
+      .style("top", (d, i) => i * 25 + "px");
+
+  var colorEnter = color.enter().append("div")
+      .attr("class", "color")
+      .style("left", "-100px")
+      .style("opacity", 0)
+      .style("top", (d, i) => i * 25 + "px");
+
+  colorEnter
+    .transition()
+      .delay(400)
+      .duration(300)
+      .style("left", "0px")
+      .style("opacity", 1);
+
+  color.exit()
+    .transition()
+      .duration(300)
+      .style("left", "100px")
+      .style("opacity", 0)
+      .remove();
+
+  colorEnter.append("div")
+      .attr("class", "swatch");
+
+  color.select(".swatch").style("background-color", (d) => ccs.scale(d));
+
+  colorEnter.append("div")
+      .attr("class", "label")
+      .text((d) => d);
+
+  stage.transition().duration(300)
+      .style("height", previousRuns.length * 25 + "px")
+}
+
+ping();
+setInterval(ping, 2000);
+
+
+</script>

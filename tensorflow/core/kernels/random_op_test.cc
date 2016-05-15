@@ -23,10 +23,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-Tensor VecShape(int32 v) {
-  Tensor shape(DT_INT32, TensorShape({1}));
-  shape.vec<int32>()(0) = v;
-  return shape;
+Tensor VecShape(int64 v) {
+  if (v >= std::numeric_limits<int32>::max()) {
+    Tensor shape(DT_INT32, TensorShape({1}));
+    shape.vec<int64>()(0) = v;
+    return shape;
+  } else {
+    Tensor shape(DT_INT64, TensorShape({1}));
+    shape.vec<int64>()(0) = v;
+    return shape;
+  }
 }
 
 Graph* RandomUniform(int64 n) {
@@ -97,11 +103,11 @@ static void BM_StdMTRandom(int iters) {
 
   std::mt19937 gen(0x12345);
 
-  int val = 1;
+  uint_fast32_t val = 1;
   for (int i = 0; i < iters; ++i) {
     for (int j = 0; j < count; ++j) {
       /// each invocation of gen() returns 32-bit sample
-      uint32 sample = gen();
+      uint_fast32_t sample = gen();
 
       // use the result trivially so the compiler does not optimize it away
       val ^= sample;

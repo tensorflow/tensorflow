@@ -18,32 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import random
 
 import tensorflow as tf
 
 from tensorflow.contrib.tensor_forest.python.ops import inference_ops
 from tensorflow.contrib.tensor_forest.python.ops import training_ops
 
-
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-
-
-# Default parameter values.  These are all only used if the corresponding
-# parameter is not specified when constructing the ForestHParams.
-flags.DEFINE_integer('num_trees', 100, 'Number of trees in forest')
-flags.DEFINE_integer('max_nodes', 10000, 'Maxmimum number of tree nodes.')
-flags.DEFINE_float(
-    'samples_to_decide', 25.0,
-    'Only decide on a split, or only fully use a leaf, after this many '
-    'training samples have been seen.')
-flags.DEFINE_float('bagging_fraction', 1.0,
-                   'Use this fraction of the input, randomly chosen, to train '
-                   'each tree in the forest.')
-flags.DEFINE_integer(
-    'num_splits_to_consider', 0,
-    'If non-zero, consider this many candidates for a splitting '
-    'rule at a fertile node.')
 
 # If tree[i][0] equals this value, then i is a leaf node.
 LEAF_NODE = -1
@@ -64,7 +45,21 @@ LEAF_NODE = -1
 class ForestHParams(object):
   """A base class for holding hyperparameters and calculating good defaults."""
 
-  def __init__(self, **kwargs):
+  def __init__(self, num_trees=100, max_nodes=10000, bagging_fraction=1.0,
+               max_depth=0, num_splits_to_consider=0,
+               feature_bagging_fraction=1.0,
+               max_fertile_nodes=0, split_after_samples=250,
+               valid_leaf_threshold=1, **kwargs):
+    self.num_trees = num_trees
+    self.max_nodes = max_nodes
+    self.bagging_fraction = bagging_fraction
+    self.feature_bagging_fraction = feature_bagging_fraction
+    self.max_depth = max_depth
+    self.num_splits_to_consider = num_splits_to_consider
+    self.max_fertile_nodes = max_fertile_nodes
+    self.split_after_samples = split_after_samples
+    self.valid_leaf_threshold = valid_leaf_threshold
+
     for name, value in kwargs.items():
       setattr(self, name, value)
 
@@ -73,27 +68,44 @@ class ForestHParams(object):
 
   def fill(self):
     """Intelligently sets any non-specific parameters."""
-    # Fail fast if num_classes isn't set.
+    # Fail fast if num_classes or num_features isn't set.
     _ = getattr(self, 'num_classes')
+    _ = getattr(self, 'num_features')
 
-    self.bagging_fraction = getattr(self, 'bagging_fraction',
-                                    FLAGS.bagging_fraction)
+    self.training_library_base_dir = getattr(
+        self, 'training_library_base_dir', '')
+    self.inference_library_base_dir = getattr(
+        self, 'inference_library_base_dir', '')
 
-    self.num_trees = getattr(self, 'num_trees', FLAGS.num_trees)
-    self.max_nodes = getattr(self, 'max_nodes', FLAGS.max_nodes)
+    self.bagged_num_features = int(self.feature_bagging_fraction *
+                                   self.num_features)
+
+    self.bagged_features = None
+    if self.feature_bagging_fraction < 1.0:
+      self.bagged_features = [random.sample(
+          range(self.num_features),
+          self.bagged_num_features) for _ in range(self.num_trees)]
+
+    self.regression = getattr(self, 'regression', False)
+
+    # Num_outputs is the actual number of outputs (a single prediction for
+    # classification, a N-dimenensional point for regression).
+    self.num_outputs = self.num_classes if self.regression else 1
+
+    # Add an extra column to classes for storing counts, which is needed for
+    # regression and avoids having to recompute sums for classification.
+    self.num_output_columns = self.num_classes + 1
 
     # Allow each tree to be unbalanced by up to a factor of 2.
-    self.max_depth = getattr(self, 'max_depth',
-                             int(2 * math.ceil(math.log(self.max_nodes, 2))))
+    self.max_depth = (self.max_depth or
+                      int(2 * math.ceil(math.log(self.max_nodes, 2))))
 
     # The Random Forest literature recommends sqrt(# features) for
     # classification problems, and p/3 for regression problems.
     # TODO(thomaswc): Consider capping this for large number of features.
-    self.num_splits_to_consider = getattr(self, 'num_splits_to_consider',
-                                          FLAGS.num_splits_to_consider)
-    if not self.num_splits_to_consider:
-      self.num_splits_to_consider = max(10, int(
-          math.ceil(math.sqrt(self.num_features))))
+    self.num_splits_to_consider = (
+        self.num_splits_to_consider or
+        max(10, int(math.ceil(math.sqrt(self.num_features)))))
 
     # max_fertile_nodes doesn't effect performance, only training speed.
     # We therefore set it primarily based upon space considerations.
@@ -103,22 +115,11 @@ class ForestHParams(object):
     num_fertile = int(math.ceil(self.max_nodes / self.num_splits_to_consider))
     # But always use at least 1000 accumulate slots.
     num_fertile = max(num_fertile, 1000)
-    self.max_fertile_nodes = getattr(self, 'max_fertile_nodes', num_fertile)
+    self.max_fertile_nodes = self.max_fertile_nodes or num_fertile
     # But it also never needs to be larger than the number of leaves,
     # which is max_nodes / 2.
     self.max_fertile_nodes = min(self.max_fertile_nodes,
                                  int(math.ceil(self.max_nodes / 2.0)))
-
-    # split_after_samples and valid_leaf_threshold should be about the same.
-    # Therefore, if either is set, use it to set the other.  Otherwise, fall
-    # back on FLAGS.samples_to_decide.
-    samples_to_decide = (
-        getattr(self, 'split_after_samples',
-                getattr(self, 'valid_leaf_threshold', FLAGS.samples_to_decide)))
-    self.split_after_samples = getattr(self, 'split_after_samples',
-                                       samples_to_decide)
-    self.valid_leaf_threshold = getattr(self, 'valid_leaf_threshold',
-                                        samples_to_decide)
 
     # We have num_splits_to_consider slots to fill, and we want to spend
     # approximately split_after_samples samples initializing them.
@@ -138,40 +139,104 @@ class ForestHParams(object):
 
 # A simple container to hold the training variables for a single tree.
 class TreeTrainingVariables(object):
+  """Stores tf.Variables for training a single random tree.
 
-  def __init__(self, params):
-    self.tree = tf.Variable(
-        [[-1, -1]] + [[-2, -1]] * (params.max_nodes - 1), name='tree')
-    self.tree_thresholds = tf.Variable(
-        [-1.0] * (params.max_nodes), name='tree_thresholds')
-    self.tree_depths = tf.Variable(
-        [1] * (params.max_nodes), name='tree_depths')
-    self.end_of_tree = tf.Variable([1], name='end_of_tree')
+  Uses tf.get_variable to get tree-specific names so that this can be used
+  with a tf.learn-style implementation (one that trains a model, saves it,
+  then relies on restoring that model to evaluate).
+  """
 
-    self.non_fertile_leaves = tf.Variable([0], name='non_fertile_leaves')
-    self.non_fertile_leaf_scores = tf.Variable(
-        [1.0], name='non_fertile_leaf_scores')
+  def __init__(self, params, tree_num, training):
+    self.tree = tf.get_variable(
+        name=self.get_tree_name('tree', tree_num), dtype=tf.int32,
+        initializer=tf.constant(
+            [[-1, -1]] + [[-2, -1]] * (params.max_nodes - 1)))
+    self.tree_thresholds = tf.get_variable(
+        name=self.get_tree_name('tree_thresholds', tree_num),
+        shape=[params.max_nodes],
+        initializer=tf.constant_initializer(-1.0))
+    self.tree_depths = tf.get_variable(
+        name=self.get_tree_name('tree_depths', tree_num),
+        shape=[params.max_nodes],
+        dtype=tf.int32,
+        initializer=tf.constant_initializer(1))
+    self.end_of_tree = tf.get_variable(
+        name=self.get_tree_name('end_of_tree', tree_num),
+        dtype=tf.int32,
+        initializer=tf.constant([1]))
 
-    self.node_to_accumulator_map = tf.Variable(
-        [-1] * params.max_nodes, name='node_to_accumulator_map')
+    if training:
+      self.non_fertile_leaves = tf.get_variable(
+          name=self.get_tree_name('non_fertile_leaves', tree_num),
+          dtype=tf.int32,
+          initializer=tf.constant([0]))
+      self.non_fertile_leaf_scores = tf.get_variable(
+          name=self.get_tree_name('non_fertile_leaf_scores', tree_num),
+          initializer=tf.constant([1.0]))
 
-    self.candidate_split_features = tf.Variable(
-        [[-1] * params.num_splits_to_consider] * params.max_fertile_nodes,
-        name='candidate_split_features')
-    self.candidate_split_thresholds = tf.Variable(
-        [[0.0] * params.num_splits_to_consider] * params.max_fertile_nodes,
-        name='candidate_split_thresholds')
+      self.node_to_accumulator_map = tf.get_variable(
+          name=self.get_tree_name('node_to_accumulator_map', tree_num),
+          shape=[params.max_nodes],
+          dtype=tf.int32,
+          initializer=tf.constant_initializer(-1))
 
-    self.node_per_class_weights = tf.Variable(
-        [[0.0] * params.num_classes] * params.max_nodes,
-        name='node_per_class_weights')
-    self.candidate_split_per_class_weights = tf.Variable(
-        [[[0.0] * params.num_classes] * params.num_splits_to_consider] *
-        params.max_fertile_nodes,
-        name='candidate_split_per_class_weights')
-    self.total_split_per_class_weights = tf.Variable(
-        [[-1.0] * params.num_classes] * params.max_fertile_nodes,
-        name='total_split_per_class_weights')
+      self.candidate_split_features = tf.get_variable(
+          name=self.get_tree_name('candidate_split_features', tree_num),
+          shape=[params.max_fertile_nodes, params.num_splits_to_consider],
+          dtype=tf.int32,
+          initializer=tf.constant_initializer(-1))
+      self.candidate_split_thresholds = tf.get_variable(
+          name=self.get_tree_name('candidate_split_thresholds', tree_num),
+          shape=[params.max_fertile_nodes, params.num_splits_to_consider],
+          initializer=tf.constant_initializer(0.0))
+
+    # Statistics shared by classification and regression.
+    self.node_sums = tf.get_variable(
+        name=self.get_tree_name('node_sums', tree_num),
+        shape=[params.max_nodes, params.num_output_columns],
+        initializer=tf.constant_initializer(0.0))
+
+    if training:
+      self.candidate_split_sums = tf.get_variable(
+          name=self.get_tree_name('candidate_split_sums', tree_num),
+          shape=[params.max_fertile_nodes, params.num_splits_to_consider,
+                 params.num_output_columns],
+          initializer=tf.constant_initializer(0.0))
+      self.accumulator_sums = tf.get_variable(
+          name=self.get_tree_name('accumulator_sums', tree_num),
+          shape=[params.max_fertile_nodes, params.num_output_columns],
+          initializer=tf.constant_initializer(-1.0))
+
+      # Regression also tracks second order stats.
+      if params.regression:
+        self.node_squares = tf.get_variable(
+            name=self.get_tree_name('node_squares', tree_num),
+            shape=[params.max_nodes, params.num_output_columns],
+            initializer=tf.constant_initializer(0.0))
+
+        self.candidate_split_squares = tf.get_variable(
+            name=self.get_tree_name('candidate_split_squares', tree_num),
+            shape=[params.max_fertile_nodes, params.num_splits_to_consider,
+                   params.num_output_columns],
+            initializer=tf.constant_initializer(0.0))
+
+        self.accumulator_squares = tf.get_variable(
+            name=self.get_tree_name('accumulator_squares', tree_num),
+            shape=[params.max_fertile_nodes, params.num_output_columns],
+            initializer=tf.constant_initializer(-1.0))
+
+      else:
+        self.node_squares = tf.constant(
+            0.0, name=self.get_tree_name('node_squares', tree_num))
+
+        self.candidate_split_squares = tf.constant(
+            0.0, name=self.get_tree_name('candidate_split_squares', tree_num))
+
+        self.accumulator_squares = tf.constant(
+            0.0, name=self.get_tree_name('accumulator_squares', tree_num))
+
+  def get_tree_name(self, name, num):
+    return '{0}-{1}'.format(name, num)
 
 
 class ForestStats(object):
@@ -207,11 +272,12 @@ class ForestTrainingVariables(object):
     ... forest_variables.tree ...
   """
 
-  def __init__(self, params, device_assigner):
+  def __init__(self, params, device_assigner, training=True,
+               tree_variable_class=TreeTrainingVariables):
     self.variables = []
     for i in range(params.num_trees):
       with tf.device(device_assigner.get_device(i)):
-        self.variables.append(TreeTrainingVariables(params))
+        self.variables.append(tree_variable_class(params, i, training))
 
   def __setitem__(self, t, val):
     self.variables[t] = val
@@ -242,16 +308,28 @@ class RandomForestDeviceAssigner(object):
 class RandomForestGraphs(object):
   """Builds TF graphs for random forest training and inference."""
 
-  def __init__(self, params, device_assigner=None, variables=None):
+  def __init__(self, params, device_assigner=None, variables=None,
+               tree_graphs=None,
+               t_ops=training_ops,
+               i_ops=inference_ops):
     self.params = params
     self.device_assigner = device_assigner or RandomForestDeviceAssigner()
     tf.logging.info('Constructing forest with params = ')
     tf.logging.info(self.params.__dict__)
     self.variables = variables or ForestTrainingVariables(
         self.params, device_assigner=self.device_assigner)
-    self.trees = [RandomTreeGraphs(self.variables[i], self.params,
-                                   training_ops.Load(), inference_ops.Load())
-                  for i in range(self.params.num_trees)]
+    tree_graph_class = tree_graphs or RandomTreeGraphs
+    self.trees = [
+        tree_graph_class(
+            self.variables[i], self.params,
+            t_ops.Load(self.params.training_library_base_dir),
+            i_ops.Load(self.params.inference_library_base_dir), i)
+        for i in range(self.params.num_trees)]
+
+  def _bag_features(self, tree_num, input_data):
+    split_data = tf.split(1, self.params.num_features, input_data)
+    return tf.concat(1, [split_data[ind]
+                         for ind in self.params.bagged_features[tree_num]])
 
   def training_graph(self, input_data, input_labels):
     """Constructs a TF graph for training a random forest.
@@ -284,6 +362,9 @@ class RandomForestGraphs(object):
           # them for use in calculating statistics later.
           tree_data = tf.gather(input_data, gather_indices)
           tree_labels = tf.gather(input_labels, gather_indices)
+        if self.params.bagged_features:
+          tree_data = self._bag_features(i, tree_data)
+
         tree_graphs.append(
             self.trees[i].training_graph(tree_data, tree_labels, seed))
     return tf.group(*tree_graphs)
@@ -300,7 +381,10 @@ class RandomForestGraphs(object):
     probabilities = []
     for i in range(self.params.num_trees):
       with tf.device(self.device_assigner.get_device(i)):
-        probabilities.append(self.trees[i].inference_graph(input_data))
+        tree_data = input_data
+        if self.params.bagged_features:
+          tree_data = self._bag_features(i, input_data)
+        probabilities.append(self.trees[i].inference_graph(tree_data))
     with tf.device(self.device_assigner.get_device(0)):
       all_predict = tf.pack(probabilities)
       return tf.reduce_sum(all_predict, 0) / self.params.num_trees
@@ -340,11 +424,12 @@ class RandomForestGraphs(object):
 class RandomTreeGraphs(object):
   """Builds TF graphs for random tree training and inference."""
 
-  def __init__(self, variables, params, t_ops, i_ops):
+  def __init__(self, variables, params, t_ops, i_ops, tree_num):
     self.training_ops = t_ops
     self.inference_ops = i_ops
     self.variables = variables
     self.params = params
+    self.tree_num = tree_num
 
   def _gini(self, class_counts):
     """Calculate the Gini impurity.
@@ -353,13 +438,13 @@ class RandomTreeGraphs(object):
       score = 1 - sum_i ( c(i) / c )^2
 
     Args:
-      class_counts: A 2-D tensor of per-class counts, from either
-        candidate_split_per_class_weights or total_split_per_class_weights.
+      class_counts: A 2-D tensor of per-class counts, usually a slice or
+        gather from variables.node_sums.
 
     Returns:
       A 1-D tensor of the Gini impurities for each row in the input.
     """
-    smoothed = 1.0 + class_counts
+    smoothed = 1.0 + tf.slice(class_counts, [0, 1], [-1, -1])
     sums = tf.reduce_sum(smoothed, 1)
     sum_squares = tf.reduce_sum(tf.square(smoothed), 1)
 
@@ -372,17 +457,37 @@ class RandomTreeGraphs(object):
       score = c * (1 - sum_i ( c(i) / c )^2 )
             = c - sum_i c(i)^2 / c
     Args:
-      class_counts: A 2-D tensor of per-class counts, from either
-        candidate_split_per_class_weights or total_split_per_class_weights.
+      class_counts: A 2-D tensor of per-class counts, usually a slice or
+        gather from variables.node_sums.
 
     Returns:
       A 1-D tensor of the Gini impurities for each row in the input.
     """
-    smoothed = 1.0 + class_counts
+    smoothed = 1.0 + tf.slice(class_counts, [0, 1], [-1, -1])
     sums = tf.reduce_sum(smoothed, 1)
     sum_squares = tf.reduce_sum(tf.square(smoothed), 1)
 
     return sums - sum_squares / sums
+
+  def _variance(self, sums, squares):
+    """Calculate the variance for each row of the input tensors.
+
+    Variance is V = E[x^2] - (E[x])^2.
+
+    Args:
+      sums: A tensor containing output sums, usually a slice from
+        variables.node_sums.  Should contain the number of examples seen
+        in index 0 so we can calculate expected value.
+      squares: Same as sums, but sums of squares.
+
+    Returns:
+      A 1-D tensor of the variances for each row in the input.
+    """
+    total_count = tf.slice(sums, [0, 0], [-1, 1])
+    e_x = sums / total_count
+    e_x2 = squares / total_count
+
+    return tf.reduce_sum(e_x2 - tf.square(e_x), 1)
 
   def training_graph(self, input_data, input_labels, random_seed):
     """Constructs a TF graph for training a random tree.
@@ -398,24 +503,38 @@ class RandomTreeGraphs(object):
       The last op in the random tree training graph.
     """
     # Count extremely random stats.
-    (pcw_node_delta, pcw_splits_indices, pcw_splits_delta, pcw_totals_indices,
-     pcw_totals_delta, input_leaves) = (
+    (node_sums, node_squares, splits_indices, splits_sums,
+     splits_squares, totals_indices, totals_sums,
+     totals_squares, input_leaves) = (
          self.training_ops.count_extremely_random_stats(
              input_data, input_labels, self.variables.tree,
              self.variables.tree_thresholds,
              self.variables.node_to_accumulator_map,
              self.variables.candidate_split_features,
              self.variables.candidate_split_thresholds,
-             num_classes=self.params.num_classes))
-    node_update_op = tf.assign_add(self.variables.node_per_class_weights,
-                                   pcw_node_delta)
-    candidate_update_op = self.training_ops.scatter_add_ndim(
-        self.variables.candidate_split_per_class_weights,
-        pcw_splits_indices, pcw_splits_delta)
+             num_classes=self.params.num_output_columns,
+             regression=self.params.regression))
+    node_update_ops = []
+    node_update_ops.append(
+        tf.assign_add(self.variables.node_sums, node_sums))
 
-    totals_update_op = self.training_ops.scatter_add_ndim(
-        self.variables.total_split_per_class_weights, pcw_totals_indices,
-        pcw_totals_delta)
+    splits_update_ops = []
+    splits_update_ops.append(self.training_ops.scatter_add_ndim(
+        self.variables.candidate_split_sums,
+        splits_indices, splits_sums))
+    splits_update_ops.append(self.training_ops.scatter_add_ndim(
+        self.variables.accumulator_sums, totals_indices,
+        totals_sums))
+
+    if self.params.regression:
+      node_update_ops.append(tf.assign_add(self.variables.node_squares,
+                                           node_squares))
+      splits_update_ops.append(self.training_ops.scatter_add_ndim(
+          self.variables.candidate_split_squares,
+          splits_indices, splits_squares))
+      splits_update_ops.append(self.training_ops.scatter_add_ndim(
+          self.variables.accumulator_squares, totals_indices,
+          totals_squares))
 
     # Sample inputs.
     update_indices, feature_updates, threshold_updates = (
@@ -434,25 +553,33 @@ class RandomTreeGraphs(object):
         threshold_updates)
 
     # Calculate finished nodes.
-    with tf.control_dependencies([totals_update_op]):
+    with tf.control_dependencies(splits_update_ops):
       children = tf.squeeze(tf.slice(self.variables.tree, [0, 0], [-1, 1]),
                             squeeze_dims=[1])
       is_leaf = tf.equal(LEAF_NODE, children)
       leaves = tf.to_int32(tf.squeeze(tf.where(is_leaf), squeeze_dims=[1]))
       finished = self.training_ops.finished_nodes(
           leaves, self.variables.node_to_accumulator_map,
-          self.variables.total_split_per_class_weights,
+          self.variables.accumulator_sums,
           num_split_after_samples=self.params.split_after_samples)
 
     # Update leaf scores.
     # TODO(gilberth): Optimize this. It currently calculates counts for
     # every non-fertile leaf.
-    with tf.control_dependencies([node_update_op]):
-      def f1():
+    with tf.control_dependencies(node_update_ops):
+      def dont_update_leaf_scores():
         return self.variables.non_fertile_leaf_scores
 
-      def f2():
-        counts = tf.gather(self.variables.node_per_class_weights,
+      def update_leaf_scores_regression():
+        sums = tf.gather(self.variables.node_sums,
+                         self.variables.non_fertile_leaves)
+        squares = tf.gather(self.variables.node_squares,
+                            self.variables.non_fertile_leaves)
+        new_scores = self._variance(sums, squares)
+        return tf.assign(self.variables.non_fertile_leaf_scores, new_scores)
+
+      def update_leaf_scores_classification():
+        counts = tf.gather(self.variables.node_sums,
                            self.variables.non_fertile_leaves)
         new_scores = self._weighted_gini(counts)
         return tf.assign(self.variables.non_fertile_leaf_scores, new_scores)
@@ -461,15 +588,21 @@ class RandomTreeGraphs(object):
       # garbage value of -1 in there.  Here we check for that so we don't
       # try to index into node_per_class_weights in a tf.gather with a negative
       # number.
-      update_nonfertile_leaves_scores_op = tf.cond(tf.less(
-          self.variables.non_fertile_leaves[0], 0), f1, f2)
+      update_nonfertile_leaves_scores_op = tf.cond(
+          tf.less(self.variables.non_fertile_leaves[0], 0),
+          dont_update_leaf_scores,
+          update_leaf_scores_regression if self.params.regression else
+          update_leaf_scores_classification)
 
     # Calculate best splits.
-    with tf.control_dependencies([candidate_update_op, totals_update_op]):
+    with tf.control_dependencies(splits_update_ops):
       split_indices = self.training_ops.best_splits(
           finished, self.variables.node_to_accumulator_map,
-          self.variables.candidate_split_per_class_weights,
-          self.variables.total_split_per_class_weights)
+          self.variables.candidate_split_sums,
+          self.variables.candidate_split_squares,
+          self.variables.accumulator_sums,
+          self.variables.accumulator_squares,
+          regression=self.params.regression)
 
     # Grow tree.
     with tf.control_dependencies([update_features_op, update_thresholds_op]):
@@ -497,10 +630,10 @@ class RandomTreeGraphs(object):
                finished, self.variables.non_fertile_leaves,
                self.variables.non_fertile_leaf_scores,
                self.variables.end_of_tree, self.variables.tree_depths,
-               self.variables.candidate_split_per_class_weights,
-               self.variables.total_split_per_class_weights,
+               self.variables.accumulator_sums,
                self.variables.node_to_accumulator_map,
-               max_depth=self.params.max_depth))
+               max_depth=self.params.max_depth,
+               regression=self.params.regression))
 
     # Ensure end_of_tree doesn't get updated until UpdateFertileSlots has
     # used it to calculate new leaves.
@@ -531,28 +664,36 @@ class RandomTreeGraphs(object):
     # Candidate split counts are always reset back to 0 for both cleared
     # and allocated accumulators. This means some accumulators might be doubly
     # reset to 0 if the were released and not allocated, then later allocated.
-    candidate_pcw_values = tf.tile(
+    split_values = tf.tile(
         tf.expand_dims(tf.expand_dims(
             tf.zeros_like(cleared_and_allocated_accumulators, dtype=tf.float32),
             1), 2),
-        [1, self.params.num_splits_to_consider, self.params.num_classes])
+        [1, self.params.num_splits_to_consider, self.params.num_output_columns])
     updates.append(tf.scatter_update(
-        self.variables.candidate_split_per_class_weights,
-        cleared_and_allocated_accumulators, candidate_pcw_values))
+        self.variables.candidate_split_sums,
+        cleared_and_allocated_accumulators, split_values))
+    if self.params.regression:
+      updates.append(tf.scatter_update(
+          self.variables.candidate_split_squares,
+          cleared_and_allocated_accumulators, split_values))
 
     # Calculate values to put into scatter update for total counts.
     total_cleared = tf.tile(
         tf.expand_dims(
             tf.neg(tf.ones_like(accumulators_cleared, dtype=tf.float32)), 1),
-        [1, self.params.num_classes])
+        [1, self.params.num_output_columns])
     total_reset = tf.tile(
         tf.expand_dims(
             tf.zeros_like(accumulators_allocated, dtype=tf.float32), 1),
-        [1, self.params.num_classes])
-    total_pcw_updates = tf.concat(0, [total_cleared, total_reset])
+        [1, self.params.num_output_columns])
+    accumulator_updates = tf.concat(0, [total_cleared, total_reset])
     updates.append(tf.scatter_update(
-        self.variables.total_split_per_class_weights,
-        cleared_and_allocated_accumulators, total_pcw_updates))
+        self.variables.accumulator_sums,
+        cleared_and_allocated_accumulators, accumulator_updates))
+    if self.params.regression:
+      updates.append(tf.scatter_update(
+          self.variables.accumulator_squares,
+          cleared_and_allocated_accumulators, accumulator_updates))
 
     # Calculate values to put into scatter update for candidate splits.
     split_features_updates = tf.tile(
@@ -576,11 +717,14 @@ class RandomTreeGraphs(object):
     """
     return self.inference_ops.tree_predictions(
         input_data, self.variables.tree, self.variables.tree_thresholds,
-        self.variables.node_per_class_weights,
+        self.variables.node_sums,
         valid_leaf_threshold=self.params.valid_leaf_threshold)
 
   def average_impurity(self):
     """Constructs a TF graph for evaluating the average leaf impurity of a tree.
+
+    If in regression mode, this is the leaf variance. If in classification mode,
+    this is the gini impurity.
 
     Returns:
       The last op in the graph.
@@ -589,7 +733,7 @@ class RandomTreeGraphs(object):
                           squeeze_dims=[1])
     is_leaf = tf.equal(LEAF_NODE, children)
     leaves = tf.to_int32(tf.squeeze(tf.where(is_leaf), squeeze_dims=[1]))
-    counts = tf.gather(self.variables.node_per_class_weights, leaves)
+    counts = tf.gather(self.variables.node_sums, leaves)
     impurity = self._weighted_gini(counts)
     return tf.reduce_sum(impurity) / tf.reduce_sum(counts + 1.0)
 

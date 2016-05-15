@@ -113,6 +113,7 @@ details.
 
 @@scalar_summary
 @@image_summary
+@@audio_summary
 @@histogram_summary
 @@zero_fraction
 
@@ -222,7 +223,6 @@ __all__.extend([
     "FeatureLists",
     "Features",
     "FloatList",
-    "InferenceExample",
     "Int64List",
     "LooperThread",
     "SaverDef",

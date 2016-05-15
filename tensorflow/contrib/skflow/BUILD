@@ -11,7 +11,9 @@ py_library(
     name = "skflow",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/contrib/learn"],
+    deps = [
+        "//tensorflow/contrib/learn",
+    ],
 )
 
 filegroup(

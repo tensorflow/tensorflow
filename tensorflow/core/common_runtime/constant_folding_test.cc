@@ -49,6 +49,11 @@ class ConstantFoldingTest : public ::testing::Test {
   }
 
   template <typename T>
+  Node* Constant(T v) {
+    return test::graph::Constant(g_.get(), test::AsScalar(v));
+  }
+
+  template <typename T>
   void ExpectNodeClose(const Node* n, gtl::ArraySlice<T> values,
                        TensorShape shape) {
     EXPECT_TRUE(n->IsConstant());
@@ -129,6 +134,20 @@ TEST_F(ConstantFoldingTest, ConsiderFunction) {
   EXPECT_EQ(1, s2->num_inputs());
   EXPECT_EQ(*(s2->in_nodes().begin()), m2);
 }
+
+TEST_F(ConstantFoldingTest, TestNoReplaceAnotherConstant) {
+  SIMPLE_GRAPH;
+  Node* d = Constant<float>({1.0, 0.0, 0.0, 1.0}, {2, 2});
+  g->AddControlEdge(g->source_node(), d);
+  Node* s3 = test::graph::Send(g, d, "d", "sender", 0, "receiver");
+  g->AddControlEdge(s3, g->sink_node());
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
+
+  // Nodes s3 should still have d as input
+  EXPECT_EQ(1, s3->num_inputs());
+  EXPECT_EQ(*(s3->in_nodes().begin()), d);
+}
+
 #undef SIMPLE_GRAPH
 
 TEST_F(ConstantFoldingTest, TwoOutputs) {
@@ -220,6 +239,26 @@ TEST_F(ConstantFoldingTest, TestNoReplaceOnGPU) {
     delete d;
   }
 #endif  // GOOGLE_CUDA
+}
+
+TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
+  Reset();
+  Graph* g = g_.get();
+  Node* s0 =
+      Constant<int>(std::vector<int>(5 * 1024 * 256, 0), {5 * 1024 * 256});
+  Node* s1 = Constant<int>(std::vector<int>(5 * 1024 * 256 + 1, 0),
+                           {5 * 1024 * 256 + 1});
+  Node* concat_dim = Constant<int>(0);
+  g->AddControlEdge(g->source_node(), s0);
+  g->AddControlEdge(g->source_node(), s1);
+  // Concat s0 and s1. The resulting tensor would be of size 10M + 1 bytes
+  Node* concat = test::graph::Concat(g, concat_dim, {s0, s1});
+  Node* concat_send =
+      test::graph::Send(g, concat, "concat_send", "sender", 0, "receiver");
+  g->AddControlEdge(concat_send, g->sink_node());
+
+  // The above concat should not have been constant folded.
+  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
 }
 
 }  // namespace

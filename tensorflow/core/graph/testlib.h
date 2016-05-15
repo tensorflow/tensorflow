@@ -164,6 +164,11 @@ Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
 // Gets a tensor stored in the session state.
 Node* GetSessionTensor(Graph* g, Node* in);
 
+// Adds a Concat node in "g". The first input is "concat_dim", the
+// dimension to concatenate on, and the tensors to concatenate are
+// given in "tensors".
+Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow

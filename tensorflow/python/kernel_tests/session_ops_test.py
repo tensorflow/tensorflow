@@ -153,5 +153,23 @@ class SessionOpsTest(tf.test.TestCase):
       f, x = tf.delete_session_tensor()
       sess.run(x, feed_dict={f: h})
 
+  def testMultiDevices(self):
+    with self.test_session() as sess:
+      with tf.device("/gpu:0"):
+        a = tf.constant(1.0)
+        a_handle = sess.run(tf.get_session_handle(a))
+      with tf.device("/cpu:0"):
+        b = tf.constant(2.0)
+        b_handle = sess.run(tf.get_session_handle(b))
+
+      a_p, a_t = tf.get_session_tensor(tf.float32)
+      b_p, b_t = tf.get_session_tensor(tf.float32)
+      c = tf.add(a_t, b_t)
+      c_handle = sess.run(
+          tf.get_session_handle(c),
+          feed_dict={a_p: a_handle.handle,
+                     b_p: b_handle.handle})
+      self.assertEqual(3.0, c_handle.eval())
+
 if __name__ == "__main__":
   tf.test.main()

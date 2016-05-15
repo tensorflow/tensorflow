@@ -232,20 +232,29 @@ void CostModel::CheckInitialized(const Graph& graph) const {
   }
 }
 
-void CostModel::RecordMaxSize(const Node* node, int output_slot, Bytes bytes) {
+void CostModel::RecordMaxMemSize(const Node* node, int output_slot,
+                                 Bytes bytes) {
   const int id = Id(node);
   if (id < 0) return;
   Ensure(id);
   max_mem_usage_[id].output_port_mem[output_slot] = bytes;
 }
 
-Bytes CostModel::MaxSize(const Node* node, int slot) const {
+Bytes CostModel::MaxMemSize(const Node* node, int slot) const {
   const int id = Id(node);
   if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
       slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
     return Bytes(0);
   }
   return max_mem_usage_[id].output_port_mem[slot];
+}
+
+Bytes CostModel::TempMemSize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].temp_memory_size;
 }
 
 void CostModel::RecordMaxExecutionTime(const Node* node, Microseconds time) {

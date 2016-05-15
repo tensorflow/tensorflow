@@ -6,7 +6,36 @@ When a Session is created with a given target, a new Session object is bound to 
 
 Example:
 
-{c++}   tensorflow::GraphDef graph;  // ... Create or load graph into "graph".   // This example uses the default options which connects  // to a local runtime.  tensorflow::SessionOptions options;  std::unique_ptr<tensorflow::Session>  session(tensorflow::NewSession(options));   // Create the session with this graph.  tensorflow::Status s = session->Create(graph);  if (!s.ok()) { ... }   // Run the graph and fetch the first output of the "output"  // operation, and also run to but do not return anything  // for the "update_state" operation.  std::vector<tensorflow::Tensor> outputs;  s = session->Run({}, {"output:0"}, {"update_state"}, &outputs);  if (!s.ok()) { ... }   // Map the output as a flattened float tensor, and do something  // with it.  auto output_tensor = outputs[0].flat<float>();  if (output_tensor(0) > 0.5) { ... }   // Close the session to release the resources associated with  // this session.  session->Close();
+```c++ tensorflow::GraphDef graph;
+// ... Create or load graph into "graph".
+
+// This example uses the default options which connects
+// to a local runtime.
+tensorflow::SessionOptions options;
+std::unique_ptr<tensorflow::Session>
+session(tensorflow::NewSession(options));
+
+// Create the session with this graph.
+tensorflow::Status s = session->Create(graph);
+if (!s.ok()) { ... }
+
+// Run the graph and fetch the first output of the "output"
+// operation, and also run to but do not return anything
+// for the "update_state" operation.
+std::vector<tensorflow::Tensor> outputs;
+s = session->Run({}, {"output:0"}, {"update_state"}, &outputs);
+if (!s.ok()) { ... }
+
+// Map the output as a flattened float tensor, and do something
+// with it.
+auto output_tensor = outputs[0].flat<float>();
+if (output_tensor(0) > 0.5) { ... }
+
+// Close the session to release the resources associated with
+// this session.
+session->Close();
+
+```
 
 A Session allows concurrent calls to Run() , though a Session must be created / extended by a single thread.
 
@@ -47,6 +76,8 @@ The order of tensors in `outputs` will match the order provided by `output_tenso
 If `Run` returns `OK()`, then `outputs->size()` will be equal to `output_tensor_names.size()`. If `Run` does not return `OK()`, the state of `outputs` is undefined.
 
 REQUIRES: The name of each Tensor of the input or output must match a "Tensor endpoint" in the `GraphDef` passed to ` Create() `.
+
+REQUIRES: At least one of `output_tensor_names` and `target_node_names` must be non-empty.
 
 REQUIRES: outputs is not nullptr if `output_tensor_names` is non-empty.
 

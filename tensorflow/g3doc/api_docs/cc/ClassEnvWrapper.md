@@ -36,7 +36,7 @@ Returns the file system schemes registered for this Env .
 
 
 
-#### `void tensorflow::EnvWrapper::RegisterFileSystem(const string &scheme, FileSystemRegistry::Factory factory) override` {#void_tensorflow_EnvWrapper_RegisterFileSystem}
+#### `Status tensorflow::EnvWrapper::RegisterFileSystem(const string &scheme, FileSystemRegistry::Factory factory) override` {#Status_tensorflow_EnvWrapper_RegisterFileSystem}
 
 
 

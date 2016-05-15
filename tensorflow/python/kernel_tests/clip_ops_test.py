@@ -156,6 +156,17 @@ class ClipTest(tf.test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
+  def testClipByGlobalNormPreservesDenseShape(self):
+    dense_shape = (1,)
+    slices = tf.IndexedSlices(
+        tf.constant([1.0]),
+        tf.constant([0]),
+        dense_shape=dense_shape)
+    ans, _ = tf.clip_by_global_norm([slices], 1.0)
+    modified_slices = ans[0]
+    self.assertEqual(dense_shape, slices.dense_shape)
+    self.assertEqual(dense_shape, modified_slices.dense_shape)
+
   def testClipByGlobalNormNotClipped(self):
     # No norm clipping when clip_norm >= 5
     with self.test_session():

@@ -53,6 +53,7 @@ class RandomShuffleQueue : public TypedQueue<std::vector<PersistentTensor> > {
                       DoneCallback callback) override;
   void TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) override;
   void TryDequeueMany(int num_elements, OpKernelContext* ctx,
+                      bool allow_small_batch,
                       CallbackWithTuple callback) override;
   Status MatchesNodeDef(const NodeDef& node_def) override;
 
@@ -256,7 +257,15 @@ void RandomShuffleQueue::TryDequeue(OpKernelContext* ctx,
 }
 
 void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
+                                        bool allow_small_batch,
                                         CallbackWithTuple callback) {
+  if (allow_small_batch) {
+    ctx->SetStatus(
+        errors::Unimplemented("Dequeue: Queue does not support small batches"));
+    callback(Tuple());
+    return;
+  }
+
   if (!specified_shapes()) {
     ctx->SetStatus(
         errors::InvalidArgument("RandomShuffleQueue's DequeueMany requires the "

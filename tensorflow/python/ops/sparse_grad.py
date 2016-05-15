@@ -26,12 +26,8 @@ from tensorflow.python.ops import sparse_ops
 
 
 ops.NoGradient("SparseAddGrad")
-
-
-ops.NoGradient("SparseToDense")
-
-
 ops.NoGradient("SparseConcat")
+ops.NoGradient("SparseToDense")
 
 
 @ops.RegisterGradient("SparseReorder")
@@ -98,6 +94,26 @@ def _SparseAddGrad(op, *grads):
   return (None, a_val_grad, None, None, b_val_grad, None, None)
 
 
+@ops.RegisterGradient("SparseTensorDenseAdd")
+def _SparseTensorDenseAddGrad(op, out_grad):
+  sp_indices = op.inputs[0]
+  # (sparse_indices, sparse_values, sparse_shape, dense)
+  return (None, array_ops.gather_nd(out_grad, sp_indices), None, out_grad)
+
+
+@ops.RegisterGradient("SparseReduceSum")
+def _SparseReduceSumGrad(op, out_grad):
+  """Similar to gradient for the Sum Op (i.e. tf.reduce_sum())."""
+  sp_indices = op.inputs[0]
+  sp_shape = op.inputs[2]
+  output_shape_kept_dims = math_ops.reduced_shape(sp_shape, op.inputs[3])
+  out_grad_reshaped = array_ops.reshape(out_grad, output_shape_kept_dims)
+  scale = sp_shape // math_ops.to_int64(output_shape_kept_dims)
+  # (sparse_indices, sparse_values, sparse_shape, reduction_axes)
+  return (None, array_ops.gather_nd(out_grad_reshaped, sp_indices // scale),
+          None, None)
+
+
 @ops.RegisterGradient("SparseTensorDenseMatMul")
 def _SparseTensorDenseMatMulGrad(op, grad):
   """Gradients for the dense tensor in the SparseTensorDenseMatMul op.
@@ -155,3 +171,50 @@ def _SparseTensorDenseMatMulGrad(op, grad):
 
   # gradients w.r.t. (a_indices, a_values, a_shape, b)
   return (None, a_values_grad, None, b_grad)
+
+
+def _SparseDenseCwiseMulOrDivGrad(op, grad, is_mul):
+  """Common code for SparseDenseCwise{Mul,Div} gradients."""
+  x_indices = op.inputs[0]
+  x_shape = op.inputs[2]
+  y = op.inputs[3]
+
+  y_shape = math_ops.to_int64(array_ops.shape(y))
+  num_added_dims = array_ops.expand_dims(
+      array_ops.size(x_shape) - array_ops.size(y_shape), 0)
+  augmented_y_shape = array_ops.concat(0, [array_ops.ones(num_added_dims,
+                                                          ops.dtypes.int64),
+                                           y_shape])
+
+  scaling = x_shape // augmented_y_shape
+  scaled_indices = x_indices // scaling
+  scaled_indices = array_ops.slice(scaled_indices,
+                                   array_ops.concat(0, [[0], num_added_dims]),
+                                   [-1, -1])
+  dense_vals = array_ops.gather_nd(y, scaled_indices)
+
+  if is_mul:
+    dx = grad * dense_vals
+    dy_val = grad * op.inputs[1]
+  else:
+    dx = grad / dense_vals
+    dy_val = grad * (-op.inputs[1] / math_ops.square(dense_vals))
+  # indices can repeat after scaling, so we can't use sparse_to_dense().
+  dy = sparse_ops.sparse_add(
+      array_ops.zeros_like(y),
+      ops.SparseTensor(scaled_indices, dy_val, y_shape))
+
+  # (sp_indices, sp_vals, sp_shape, dense)
+  return (None, dx, None, dy)
+
+
+@ops.RegisterGradient("SparseDenseCwiseMul")
+def _SparseDenseCwiseMulGrad(op, grad):
+  """Gradients for SparseDenseCwiseMul."""
+  return _SparseDenseCwiseMulOrDivGrad(op, grad, True)
+
+
+@ops.RegisterGradient("SparseDenseCwiseDiv")
+def _SparseDenseCwiseDivGrad(op, grad):
+  """Gradients for SparseDenseCwiseDiv."""
+  return _SparseDenseCwiseMulOrDivGrad(op, grad, False)

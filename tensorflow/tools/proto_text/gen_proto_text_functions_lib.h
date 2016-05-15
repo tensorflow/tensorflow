@@ -33,6 +33,17 @@ struct ProtoTextFunctionCode {
 // tensorflow library headers.
 //
 // Only works for proto3 messages.
+//
+// The generated API has, for enums and messages defined in the proto file:
+// 1. For each message:
+//    * ProtoDebugString(m): same as msg.DebugString(), except that google.any
+//      is not expanded.
+//    * ProtoShortDebugString(m): same as msg.ShorDebugString(), except that
+//      google.any is not expanded.
+//    * ProtoParseFromString(s, m): same as TextFormat.ParseFromString(s, &m);
+// 2. For each enum:
+//    * EnumName_<EnumTypeName>(enum_value): same as <EnumTypeName>(enum_value)
+//      in proto.
 ProtoTextFunctionCode GetProtoTextFunctionCode(
     const tensorflow::protobuf::FileDescriptor& fd,
     const string& tf_header_prefix);

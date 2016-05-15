@@ -36,118 +36,121 @@ def adam_update_numpy(param, g_t, t, m, v, alpha=0.001, beta1=0.9, beta2=0.999,
 class AdamOptimizerTest(tf.test.TestCase):
 
   def testSparse(self):
-    with self.test_session():
-      # Initialize variables for numpy implementation.
-      m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
-      var0_np = np.array([1.0, 2.0], dtype=np.float32)
-      grads0_np = np.array([0.1, 0.1], dtype=np.float32)
-      var1_np = np.array([3.0, 4.0], dtype=np.float32)
-      grads1_np = np.array([0.01, 0.01], dtype=np.float32)
+    for dtype in [tf.half, tf.float32]:
+      with self.test_session():
+        # Initialize variables for numpy implementation.
+        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-      var0 = tf.Variable(var0_np)
-      var1 = tf.Variable(var1_np)
-      grads0_np_indices = np.array([0, 1], dtype=np.int32)
-      grads0 = tf.IndexedSlices(tf.constant(grads0_np),
-                                tf.constant(grads0_np_indices),
-                                tf.constant([2]))
-      grads1_np_indices = np.array([0, 1], dtype=np.int32)
-      grads1 = tf.IndexedSlices(tf.constant(grads1_np),
-                                tf.constant(grads1_np_indices),
-                                tf.constant([2]))
-      opt = tf.train.AdamOptimizer()
-      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      tf.initialize_all_variables().run()
+        var0 = tf.Variable(var0_np)
+        var1 = tf.Variable(var1_np)
+        grads0_np_indices = np.array([0, 1], dtype=np.int32)
+        grads0 = tf.IndexedSlices(tf.constant(grads0_np),
+                                  tf.constant(grads0_np_indices),
+                                  tf.constant([2]))
+        grads1_np_indices = np.array([0, 1], dtype=np.int32)
+        grads1 = tf.IndexedSlices(tf.constant(grads1_np),
+                                  tf.constant(grads1_np_indices),
+                                  tf.constant([2]))
+        opt = tf.train.AdamOptimizer()
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        tf.initialize_all_variables().run()
 
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
 
-      beta1_power, beta2_power = opt._get_beta_accumulators()
+        beta1_power, beta2_power = opt._get_beta_accumulators()
 
-      # Run 3 steps of Adam
-      for t in range(1, 4):
-        self.assertAllClose(0.9 ** t, beta1_power.eval())
-        self.assertAllClose(0.999 ** t, beta2_power.eval())
-        update.run()
+        # Run 3 steps of Adam
+        for t in range(1, 4):
+          self.assertAllCloseAccordingToType(0.9 ** t, beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.999 ** t, beta2_power.eval())
+          update.run()
 
-        var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
-        var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
+          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
 
-        # Validate updated params
-        self.assertAllClose(var0_np, var0.eval())
-        self.assertAllClose(var1_np, var1.eval())
+          # Validate updated params
+          self.assertAllCloseAccordingToType(var0_np, var0.eval())
+          self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testBasic(self):
-    with self.test_session():
-      # Initialize variables for numpy implementation.
-      m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
-      var0_np = np.array([1.0, 2.0], dtype=np.float32)
-      grads0_np = np.array([0.1, 0.1], dtype=np.float32)
-      var1_np = np.array([3.0, 4.0], dtype=np.float32)
-      grads1_np = np.array([0.01, 0.01], dtype=np.float32)
+    for dtype in [tf.half, tf.float32]:
+      with self.test_session():
+        # Initialize variables for numpy implementation.
+        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-      var0 = tf.Variable(var0_np)
-      var1 = tf.Variable(var1_np)
-      grads0 = tf.constant(grads0_np)
-      grads1 = tf.constant(grads1_np)
-      opt = tf.train.AdamOptimizer()
-      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      tf.initialize_all_variables().run()
+        var0 = tf.Variable(var0_np)
+        var1 = tf.Variable(var1_np)
+        grads0 = tf.constant(grads0_np)
+        grads1 = tf.constant(grads1_np)
+        opt = tf.train.AdamOptimizer()
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        tf.initialize_all_variables().run()
 
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
 
-      beta1_power, beta2_power = opt._get_beta_accumulators()
+        beta1_power, beta2_power = opt._get_beta_accumulators()
 
-      # Run 3 steps of Adam
-      for t in range(1, 4):
-        self.assertAllClose(0.9 ** t, beta1_power.eval())
-        self.assertAllClose(0.999 ** t, beta2_power.eval())
-        update.run()
+        # Run 3 steps of Adam
+        for t in range(1, 4):
+          self.assertAllCloseAccordingToType(0.9 ** t, beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.999 ** t, beta2_power.eval())
+          update.run()
 
-        var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
-        var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
+          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
 
-        # Validate updated params
-        self.assertAllClose(var0_np, var0.eval())
-        self.assertAllClose(var1_np, var1.eval())
+          # Validate updated params
+          self.assertAllCloseAccordingToType(var0_np, var0.eval())
+          self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testTensorLearningRate(self):
-    with self.test_session():
-      # Initialize variables for numpy implementation.
-      m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
-      var0_np = np.array([1.0, 2.0], dtype=np.float32)
-      grads0_np = np.array([0.1, 0.1], dtype=np.float32)
-      var1_np = np.array([3.0, 4.0], dtype=np.float32)
-      grads1_np = np.array([0.01, 0.01], dtype=np.float32)
+    for dtype in [tf.half, tf.float32]:
+      with self.test_session():
+        # Initialize variables for numpy implementation.
+        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-      var0 = tf.Variable(var0_np)
-      var1 = tf.Variable(var1_np)
-      grads0 = tf.constant(grads0_np)
-      grads1 = tf.constant(grads1_np)
-      opt = tf.train.AdamOptimizer(tf.constant(0.001))
-      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      tf.initialize_all_variables().run()
+        var0 = tf.Variable(var0_np)
+        var1 = tf.Variable(var1_np)
+        grads0 = tf.constant(grads0_np)
+        grads1 = tf.constant(grads1_np)
+        opt = tf.train.AdamOptimizer(tf.constant(0.001))
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        tf.initialize_all_variables().run()
 
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
 
-      beta1_power, beta2_power = opt._get_beta_accumulators()
+        beta1_power, beta2_power = opt._get_beta_accumulators()
 
-      # Run 3 steps of Adam
-      for t in range(1, 4):
-        self.assertAllClose(0.9 ** t, beta1_power.eval())
-        self.assertAllClose(0.999 ** t, beta2_power.eval())
-        update.run()
+        # Run 3 steps of Adam
+        for t in range(1, 4):
+          self.assertAllCloseAccordingToType(0.9 ** t, beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.999 ** t, beta2_power.eval())
+          update.run()
 
-        var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
-        var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
+          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
 
-        # Validate updated params
-        self.assertAllClose(var0_np, var0.eval())
-        self.assertAllClose(var1_np, var1.eval())
+          # Validate updated params
+          self.assertAllCloseAccordingToType(var0_np, var0.eval())
+          self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testFloat64(self):
     with self.test_session():
@@ -183,44 +186,45 @@ class AdamOptimizerTest(tf.test.TestCase):
       opt.apply_gradients(zip(good_grads, good_vars))
 
   def testSharing(self):
-    with self.test_session():
-      # Initialize variables for numpy implementation.
-      m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
-      var0_np = np.array([1.0, 2.0], dtype=np.float32)
-      grads0_np = np.array([0.1, 0.1], dtype=np.float32)
-      var1_np = np.array([3.0, 4.0], dtype=np.float32)
-      grads1_np = np.array([0.01, 0.01], dtype=np.float32)
+    for dtype in [tf.half, tf.float32]:
+      with self.test_session():
+        # Initialize variables for numpy implementation.
+        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-      var0 = tf.Variable(var0_np)
-      var1 = tf.Variable(var1_np)
-      grads0 = tf.constant(grads0_np)
-      grads1 = tf.constant(grads1_np)
-      opt = tf.train.AdamOptimizer()
-      update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      tf.initialize_all_variables().run()
+        var0 = tf.Variable(var0_np)
+        var1 = tf.Variable(var1_np)
+        grads0 = tf.constant(grads0_np)
+        grads1 = tf.constant(grads1_np)
+        opt = tf.train.AdamOptimizer()
+        update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        tf.initialize_all_variables().run()
 
-      beta1_power, beta2_power = opt._get_beta_accumulators()
+        beta1_power, beta2_power = opt._get_beta_accumulators()
 
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
 
-      # Run 3 steps of intertwined Adam1 and Adam2.
-      for t in range(1, 4):
-        self.assertAllClose(0.9 ** t, beta1_power.eval())
-        self.assertAllClose(0.999 ** t, beta2_power.eval())
-        if t % 2 == 0:
-          update1.run()
-        else:
-          update2.run()
+        # Run 3 steps of intertwined Adam1 and Adam2.
+        for t in range(1, 4):
+          self.assertAllCloseAccordingToType(0.9 ** t, beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.999 ** t, beta2_power.eval())
+          if t % 2 == 0:
+            update1.run()
+          else:
+            update2.run()
 
-        var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
-        var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
+          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
 
-        # Validate updated params
-        self.assertAllClose(var0_np, var0.eval())
-        self.assertAllClose(var1_np, var1.eval())
+          # Validate updated params
+          self.assertAllCloseAccordingToType(var0_np, var0.eval())
+          self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
 
 if __name__ == "__main__":

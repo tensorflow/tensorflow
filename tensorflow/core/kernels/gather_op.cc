@@ -56,12 +56,7 @@ class GatherOp : public OpKernel {
         errors::InvalidArgument("params must be at least 1 dimensional"));
 
     // Check that we have enough index space
-    const int64 N_big = indices.NumElements();
-    OP_REQUIRES(c, N_big <= std::numeric_limits<int>::max(),
-                errors::InvalidArgument(
-                    "indices has too many elements for int indexing: ", N_big,
-                    " > ", std::numeric_limits<int>::max()));
-    const int N = indices.NumElements();
+    const int64 N = indices.NumElements();
     OP_REQUIRES(
         c, params.dim_size(0) <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("params.shape[0] too large for ",
@@ -83,7 +78,7 @@ class GatherOp : public OpKernel {
       auto out_flat = out->shaped<T, 2>({N, out->NumElements() / N});
 
       functor::Gather<Device, T, Index> functor;
-      Index bad_i = functor(c->eigen_device<Device>(), params_flat,
+      int64 bad_i = functor(c->eigen_device<Device>(), params_flat,
                             indices_flat, out_flat);
 
       OP_REQUIRES(
@@ -98,12 +93,15 @@ class GatherOp : public OpKernel {
 namespace functor {
 
 // Helper method to copy using memcpy.
-template <typename T, typename Index, int static_slice_elems>
-Index HandleCopies(typename TTypes<T>::ConstMatrix params,
-                   typename TTypes<Index>::ConstFlat indices, Index slice_elems,
-                   typename TTypes<T>::Matrix out) {
-  const int first_dim_size = indices.dimension(0);
-  const Index limit = params.dimension(0);
+template <typename T, typename Index, typename SliceIndex,
+          SliceIndex static_slice_elems>
+SliceIndex HandleCopies(typename TTypes<T>::ConstMatrix params,
+                        typename TTypes<Index>::ConstFlat indices,
+                        SliceIndex slice_elems,
+                        typename TTypes<T>::Matrix out) {
+  const SliceIndex first_dim_size =
+      static_cast<SliceIndex>(indices.dimension(0));
+  const Index limit = static_cast<Index>(params.dimension(0));
   T* out_base = &out(0, 0);
   const T* params_base = &params(0, 0);
   if (static_slice_elems >= 0) {
@@ -113,8 +111,8 @@ Index HandleCopies(typename TTypes<T>::ConstMatrix params,
   }
   // Compute slice_bytes here so that static knowledge is available
   const size_t slice_bytes = slice_elems * sizeof(T);
-  for (int i = 0; i < first_dim_size; i++) {
-    const int j = i + 1;
+  for (SliceIndex i = 0; i < first_dim_size; i++) {
+    const SliceIndex j = i + 1;
     if (j < first_dim_size) {
       port::prefetch<port::PREFETCH_HINT_T0>(&params(indices(j), 0));
       port::prefetch<port::PREFETCH_HINT_T0>(&out(j, 0));
@@ -138,15 +136,27 @@ Index HandleCopies(typename TTypes<T>::ConstMatrix params,
 // Specialization gather functor for CPU.
 template <typename T, typename Index>
 struct Gather<CPUDevice, T, Index> {
-  Index operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix params,
+  int64 operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T>::Matrix out) {
-    const int N = indices.size();
+    const int64 N = indices.size();
     const int64 slice_size = out.size() / N;
-    Index bad_i;
+    int64 bad_i;
 
-#define CALL(elems) \
-  bad_i = HandleCopies<T, Index, elems>(params, indices, slice_size, out)
+    bool use_large = (slice_size > std::numeric_limits<int32>::max() ||
+                      params.size() > std::numeric_limits<int32>::max() ||
+                      N > std::numeric_limits<int32>::max());
+#define CALL(elems)                                                   \
+  do {                                                                \
+    if (use_large) {                                                  \
+      bad_i = HandleCopies<T, Index, int64, elems>(params, indices,   \
+                                                   slice_size, out);  \
+    } else {                                                          \
+      const int32 small_slice = static_cast<int32>(slice_size);       \
+      bad_i = HandleCopies<T, Index, int32, elems>(params, indices,   \
+                                                   small_slice, out); \
+    }                                                                 \
+  } while (0)
 
     if (slice_size == 10)
       CALL(10);

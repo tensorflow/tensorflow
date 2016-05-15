@@ -54,6 +54,13 @@ class TensorShape {
   TensorShape(const TensorShape& b);
   void operator=(const TensorShape& b);
 
+  /// Move the specified shape.  After moving, <b> is safe for destruction and
+  // can be reassigned into, but its dimensions and number of elements can be
+  // nonsensical (e.g., negative dimension sizes, or number of elements not
+  // properly recomputed).
+  TensorShape(TensorShape&& b);
+  void operator=(TensorShape&& b);
+
   /// Returns `true` iff `proto` is a valid tensor shape.
   static bool IsValid(const TensorShapeProto& proto);
 
@@ -258,8 +265,8 @@ class TensorShapeUtils {
 
   /// \brief Returns a `TensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
-  static Status MakeShape(const int32* dims, int n, TensorShape* out);
-  static Status MakeShape(const int64* dims, int n, TensorShape* out);
+  static Status MakeShape(const int32* dims, int64 n, TensorShape* out);
+  static Status MakeShape(const int64* dims, int64 n, TensorShape* out);
 
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
 
@@ -308,6 +315,15 @@ inline TensorShape::TensorShape(const TensorShape& b) {
   }
 }
 
+inline TensorShape::TensorShape(TensorShape&& b) {
+  num_elements_ = b.num_elements_;
+  memcpy(buf(), b.buf(), sizeof(u_.buf));
+  // memcpy above Implicitly does:
+  //   set_ndims_byte(b.ndims_byte());
+  //   set_tag(b.tag());
+  b.set_tag(REP16);  // other shape no longer owns out-of-line data, if any.
+}
+
 inline TensorShape::~TensorShape() {
   if (tag() == REP_OUT_OF_LINE) {
     DestructorOutOfLine();
@@ -324,6 +340,18 @@ inline void TensorShape::operator=(const TensorShape& b) {
   } else {
     SlowCopyFrom(b);
   }
+}
+
+inline void TensorShape::operator=(TensorShape&& b) {
+  if (tag() == REP_OUT_OF_LINE) {
+    DestructorOutOfLine();
+  }
+  num_elements_ = b.num_elements_;
+  memcpy(buf(), b.buf(), sizeof(u_.buf));
+  // memcpy above Implicitly does:
+  //   set_ndims_byte(b.ndims_byte());
+  //   set_tag(b.tag());
+  b.set_tag(REP16);  // other shape no longer owns out-of-line data, if any.
 }
 
 }  // namespace tensorflow

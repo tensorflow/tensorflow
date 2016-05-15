@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
@@ -160,8 +161,8 @@ class MaxPoolingOp : public OpKernel {
           output->flat<T>().data(), params.depth,
           params.out_width * params.out_height * params.tensor_in_batch);
 
-      // Initializes the output tensor with MIN<T>.
-      output->flat<T>().setConstant(Eigen::NumTraits<T>::lowest());
+      const DeviceBase::CpuWorkerThreads& worker_threads =
+          *(context->device()->tensorflow_cpu_worker_threads());
 
       // The following code basically does the following:
       // 1. Flattens the input and output tensors into two dimensional arrays.
@@ -174,39 +175,65 @@ class MaxPoolingOp : public OpKernel {
       // tensor_in_as_matrix,
       //    and updates the corresponding column(s) in output_as_matrix with the
       //    max value.
-      for (int b = 0; b < params.tensor_in_batch; ++b) {
-        for (int h = 0; h < params.tensor_in_rows; ++h) {
-          for (int w = 0; w < params.tensor_in_cols; ++w) {
-            // (h_start, h_end) * (w_start, w_end) is the range that the input
-            // vector projects to.
-            const int hpad = h + params.pad_rows;
-            const int wpad = w + params.pad_cols;
-            const int h_start =
-                (hpad < params.window_rows)
-                    ? 0
-                    : (hpad - params.window_rows) / params.row_stride + 1;
-            const int h_end =
-                std::min(hpad / params.row_stride + 1, params.out_height);
-            const int w_start =
-                (wpad < params.window_cols)
-                    ? 0
-                    : (wpad - params.window_cols) / params.col_stride + 1;
-            const int w_end =
-                std::min(wpad / params.col_stride + 1, params.out_width);
-            // compute elementwise max
-            const int in_offset =
-                (b * params.tensor_in_rows + h) * params.tensor_in_cols + w;
-            for (int ph = h_start; ph < h_end; ++ph) {
-              for (int pw = w_start; pw < w_end; ++pw) {
-                const int out_offset =
-                    (b * params.out_height + ph) * params.out_width + pw;
-                out_mat.col(out_offset) =
-                    out_mat.col(out_offset).cwiseMax(in_mat.col(in_offset));
+      auto shard = [&params, &in_mat, &out_mat](int64 start, int64 limit) {
+
+        const int32 in_rows = params.tensor_in_rows;
+        const int32 in_cols = params.tensor_in_cols;
+        const int32 pad_rows = params.pad_rows;
+        const int32 pad_cols = params.pad_cols;
+        const int32 window_rows = params.window_rows;
+        const int32 window_cols = params.window_cols;
+        const int32 row_stride = params.row_stride;
+        const int32 col_stride = params.col_stride;
+        const int32 out_height = params.out_height;
+        const int32 out_width = params.out_width;
+
+        {
+          // Initializes the output tensor with MIN<T>.
+          const int32 output_image_size = out_height * out_width * params.depth;
+          EigenMatrixMap out_shard(out_mat.data() + start * output_image_size,
+                                   1, (limit - start) * output_image_size);
+          out_shard.setConstant(Eigen::NumTraits<T>::lowest());
+        }
+
+        for (int32 b = start; b < limit; ++b) {
+          const int32 out_offset_batch = b * out_height;
+          for (int32 h = 0; h < in_rows; ++h) {
+            for (int32 w = 0; w < in_cols; ++w) {
+              // (h_start, h_end) * (w_start, w_end) is the range that the input
+              // vector projects to.
+              const int32 hpad = h + pad_rows;
+              const int32 wpad = w + pad_cols;
+              const int32 h_start = (hpad < window_rows)
+                                        ? 0
+                                        : (hpad - window_rows) / row_stride + 1;
+              const int32 h_end = std::min(hpad / row_stride + 1, out_height);
+              const int32 w_start = (wpad < window_cols)
+                                        ? 0
+                                        : (wpad - window_cols) / col_stride + 1;
+              const int32 w_end = std::min(wpad / col_stride + 1, out_width);
+              // compute elementwise max
+              const int32 in_offset = (b * in_rows + h) * in_cols + w;
+              for (int32 ph = h_start; ph < h_end; ++ph) {
+                const int32 out_offset_base =
+                    (out_offset_batch + ph) * out_width;
+                for (int32 pw = w_start; pw < w_end; ++pw) {
+                  const int32 out_offset = out_offset_base + pw;
+                  out_mat.col(out_offset) =
+                      out_mat.col(out_offset).cwiseMax(in_mat.col(in_offset));
+                }
               }
             }
           }
         }
-      }
+      };
+
+      // TODO(andydavis) Consider sharding across batch x rows x cols.
+      // TODO(andydavis) Consider a higher resolution shard cost model.
+      const int64 shard_cost =
+          params.tensor_in_rows * params.tensor_in_cols * params.depth;
+      Shard(worker_threads.num_threads, worker_threads.workers,
+            params.tensor_in_batch, shard_cost, shard);
     }
   }
 

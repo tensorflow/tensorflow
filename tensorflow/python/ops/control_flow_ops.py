@@ -91,7 +91,7 @@ from tensorflow.python.ops import tensor_array_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -314,14 +314,21 @@ def _convert_tensorarrays_to_flows(tensors_or_tensor_arrays):
           for ta in tensors_or_tensor_arrays]
 
 
+def _make_tensor_array(ta, t_or_flow):
+  new_ta = tensor_array_ops.TensorArray(
+      dtype=ta.dtype, handle=ta.handle, flow=t_or_flow,
+      infer_shape=ta._infer_shape)
+  new_ta._elem_shape = ta._elem_shape
+  return new_ta
+
+
 def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
   if len(tensors_or_tensorarrays) != len(tensors_or_flows):
     raise ValueError(
         "Lengths of original Tensor list and new list do not match: %d vs. %d"
         % (len(tensors_or_tensorarrays), len(tensors_or_flows)))
   return [
-      tensor_array_ops.TensorArray(
-          dtype=ta.dtype, handle=ta.handle, flow=t_or_flow)
+      _make_tensor_array(ta, t_or_flow)
       if isinstance(ta, tensor_array_ops.TensorArray)
       else t_or_flow
       for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)]
@@ -634,12 +641,12 @@ class GradLoopState(object):
         if enter_op:
           # Special case: cur_value comes from a constant Enter node.
           cur_value = enter_op.inputs[0]
-          if self._outer_grad_state:
-            cur_grad_state = cur_grad_state.outer_grad_state
-          else:
+          cur_grad_state = cur_grad_state.outer_grad_state
+          if cur_grad_state is None:
             # We are now outside all nested loops for this gradient(),
             # so `value` is a loop invariant and there is no need to
-            # save the history of value.
+            # save the history of value. Just make cur_value to enter
+            # the right control flow context.
             real_value = self._grad_context.AddValue(cur_value)
             break
         else:
@@ -1071,10 +1078,13 @@ class CondContext(ControlFlowContext):
   def BuildCondBranch(self, fn):
     """Add the subgraph defined by fn() to the graph."""
     r = fn()
+    original_r = r
     result = []
     if r is not None:
       if not isinstance(r, list) and not isinstance(r, _basetuple):
         r = [r]
+        original_r = [original_r]
+      r = _convert_tensorarrays_to_flows(r)
       for v in r:
         real_v = v
         if isinstance(v, ops.Operation):
@@ -1093,7 +1103,7 @@ class CondContext(ControlFlowContext):
           if external_v is not None:
             real_v = external_v
         result.append(real_v)
-    return result
+    return original_r, result
 
 
 def cond(pred, fn1, fn2, name=None):
@@ -1101,6 +1111,20 @@ def cond(pred, fn1, fn2, name=None):
 
   `fn1` and `fn2` both return lists of output tensors. `fn1` and `fn2` must have
   the same non-zero number and type of outputs.
+
+  Note that the conditional execution applies only to the operations defined in
+  fn1 and fn2. Consider the following simple program:
+
+  ```python
+  z = tf.mul(a, b)
+  result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
+  ```
+
+  If x < y, the tf.add operation will be executed and tf.square
+  operation will not be executed. Since z is needed for at least one
+  branch of the cond, the tf.mul operation is always executed, unconditionally.
+  Although this behavior is consistent with the dataflow model of TensorFlow,
+  it has occasionally surprised some users who expected a lazier semantics.
 
   Args:
     pred: A scalar determining whether to return the result of `fn1` or `fn2`.
@@ -1147,14 +1171,14 @@ def cond(pred, fn1, fn2, name=None):
     # Build the graph for the true branch in a new context.
     context_t = CondContext(pred, pivot_1, branch=1)
     context_t.Enter()
-    res_t = context_t.BuildCondBranch(fn1)
+    orig_res, res_t = context_t.BuildCondBranch(fn1)
     context_t.ExitResult(res_t)
     context_t.Exit()
 
     # Build the graph for the false branch in a new context.
     context_f = CondContext(pred, pivot_2, branch=0)
     context_f.Enter()
-    res_f = context_f.BuildCondBranch(fn2)
+    _, res_f = context_f.BuildCondBranch(fn2)
     context_f.ExitResult(res_f)
     context_f.Exit()
 
@@ -1173,6 +1197,7 @@ def cond(pred, fn1, fn2, name=None):
         raise ValueError("Outputs of fn1 and fn2 must have the same type: "
                          "%s, %s" % (val_x.dtype.name, val_y.dtype.name))
     merges = [merge([x[0], x[1]])[0] for x in zip(res_f, res_t)]
+    merges = _convert_flows_to_tensorarrays(orig_res, merges)
     return merges[0] if len(merges) == 1 else merges
 
 
@@ -1270,9 +1295,8 @@ class WhileContext(ControlFlowContext):
       with ops.control_dependencies(None):
         enter = _Enter(result, self._name, is_constant=True,
                        parallel_iterations=self._parallel_iterations)
-      # pylint: disable=protected-access
-      enter.op._set_control_flow_context(self)
-      # pylint: enable=protected-access
+      # Fix the control inputs and control flow context of these enter ops.
+      self._FixControlInputsAndContext([enter])
 
       # Add `enter` in this context.
       self._values.add(enter.name)
@@ -1307,17 +1331,16 @@ class WhileContext(ControlFlowContext):
   def _AddOpInternal(self, op):
     """Add `op` to the current context."""
     if not op.inputs:
-      if not op.control_inputs:
+      control_inputs = [x for x in op.control_inputs
+                        if x._get_control_flow_context() == self]
+      if len(control_inputs) != len(op.control_inputs):
+        del op.control_inputs[:]
+        op._add_control_inputs(control_inputs)
+      if not control_inputs:
         # Add a control edge from the control pivot to this op.
         # pylint: disable=protected-access
         op._add_control_input(self.GetControlPivot().op)
         # pylint: enable=protected-access
-      else:
-        # Control edges must be in the same context.
-        for x in op.control_inputs:
-          assert x._get_control_flow_context() == self, (
-              "Control inputs must come from Operations in the same while "
-              "loop context (not an outer context).")
       for x in op.outputs:
         self._values.add(x.name)
     else:
@@ -1448,18 +1471,67 @@ class WhileContext(ControlFlowContext):
 
     add_acc = math_ops.add(switch_acc[1], value)
     next_acc = _NextIteration(add_acc)
-    merge_acc.op._update_input(1, next_acc)
+    merge_acc.op._update_input(1, next_acc)  # pylint: disable=protected-access
 
     acc_result = exit(switch_acc[0], name="b_acc")
     self.ExitResult([acc_result])
     return acc_result
+
+  def AddBackPropIndexedSlicesAccumulator(self, value):
+    """This is used for accumulating gradients that are IndexedSlices.
+
+    This is essentially the equavalent of AddBackPropAccumulator but optimized
+    for things like updating embeddings from within a while loop.
+
+    Args:
+      value: The partial gradients represented as an IndexedSlices.
+
+    Returns:
+      The accumulated IndexedSlices gradient of the loop invariant.
+    """
+    values = value.values
+    indices = value.indices
+
+    self.Exit()
+    shape = tensor_shape.TensorShape([tensor_shape.Dimension(1)] +
+                                     values.get_shape().dims[1:])
+    if not shape.is_fully_defined():
+      shape = None
+    if self.outer_context: self.outer_context.Enter()
+    values_acc = constant_op.constant(0, values.dtype, shape=shape,
+                                      name="b_acc")
+    if not shape:
+      values_acc._shape = shape  # pylint: disable=protected-access
+    indices_acc = constant_op.constant([0], indices.dtype)
+    if self.outer_context: self.outer_context.Exit()
+    self.Enter()
+    self.AddName(values_acc.name)
+    self.AddName(indices_acc.name)
+    enter_acc = [_Enter(x, self._name, is_constant=False,
+                        parallel_iterations=self._parallel_iterations,
+                        name="b_acc") for x in [indices_acc, values_acc]]
+    merge_acc = [merge([x, x], name="b_acc")[0] for x in enter_acc]
+    switch_acc = [switch(x, self._pivot) for x in merge_acc]
+
+    # The actual accumulation.
+    acc_value = [array_ops.concat(0, [xa[1], xv])
+                 for xa, xv in zip(switch_acc, [indices, values])]
+
+    next_acc = [_NextIteration(x) for x in acc_value]
+    for xm, xn in zip(merge_acc, next_acc):
+      xm.op._update_input(1, xn)  # pylint: disable=protected-access
+
+    acc_result = [exit(x[0], name="b_acc") for x in switch_acc]
+    self.ExitResult(acc_result)
+    return ops.IndexedSlices(values=acc_result[1], indices=acc_result[0],
+                             dense_shape=self.ExitResult(value.dense_shape))
 
   def BuildLoop(self, pred, body, loop_vars):
     """Add the loop termination condition and body to the graph."""
 
     # Keep original_loop_vars to identify which are TensorArrays
     original_loop_vars = loop_vars
-    # Connvert TensorArrays to their flow variables
+    # Convert TensorArrays to their flow variables
     loop_vars = _convert_tensorarrays_to_flows(loop_vars)
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     # Let the context know the loop variabes so the loop variables
@@ -1472,8 +1544,8 @@ class WhileContext(ControlFlowContext):
       enter_vars = [_Enter(x, self._name, is_constant=False,
                            parallel_iterations=self._parallel_iterations)
                     for x in real_vars]
-    for x in enter_vars:
-      x.op._set_control_flow_context(self)  # pylint: disable=protected-access
+    # Fix the control inputs and control flow context of these enter ops.
+    self._FixControlInputsAndContext(enter_vars)
     self._values = set([x.name for x in enter_vars])
 
     merge_vars = [merge([x, x])[0] for x in enter_vars]
@@ -1505,7 +1577,9 @@ class WhileContext(ControlFlowContext):
     next_vars = [_NextIteration(x) for x in result]
 
     # Add the back edges to complete the loop.
-    assert len(merge_vars) == len(next_vars)
+    if len(merge_vars) != len(next_vars):
+      raise ValueError("Number of inputs and outputs of body must match "
+                       "loop_vars: %d, %d" % (len(merge_vars), len(next_vars)))
     for x in zip(merge_vars, next_vars):
       x[0].op._update_input(1, x[1])
 
@@ -1514,8 +1588,8 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = exit_vars
 
     for m_var, n_var, e_var in zip(merge_vars, next_vars, exit_vars):
-      if m_var.get_shape().is_compatible_with(n_var.get_shape()):
-        e_var.set_shape(m_var.get_shape().merge_with(n_var.get_shape()))
+      if not m_var.get_shape() == n_var.get_shape():
+        e_var._shape = tensor_shape.unknown_shape()
 
     # Exit the loop.
     self.ExitResult(exit_vars)
@@ -1528,15 +1602,28 @@ class WhileContext(ControlFlowContext):
             if len(exit_vars) == 1
             else exit_vars_with_tensor_arrays)
 
+  def _FixControlInputsAndContext(self, input_tensors):
+    # pylint: disable=protected-access
+    graph = ops.get_default_graph()
+    control_inputs = graph._control_dependencies_for_inputs(input_tensors)
+    control_inputs = [op for op in control_inputs
+                      if op._get_control_flow_context() != self]
+    for x in input_tensors:
+      x.op._set_control_flow_context(self)
+      x.op._add_control_inputs(control_inputs)
+      graph._record_op_seen_by_control_dependencies(x.op)
+    # pylint: enable=protected-access
+
 
 def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
                swap_memory=False, name=None):
   """Repeat `body` while the condition `cond` is true.
 
-  `cond` is a callable taking a list of tensors and returning a boolean scalar
-  tensor. `body` is a callable taking a list of tensors and returning a list of
-  tensors of the same length and with the same types as the input. `loop_vars`
-  is a list of tensors that is passed to both `cond` and `body`.
+  `cond` is a callable returning a boolean scalar tensor. `body` is a callable
+  returning a list of tensors of the same length and with the same types as
+  `loop_vars`. `loop_vars` is a list of tensors that is passed to both `cond`
+  and `body`. `cond` and `body` both take as many arguments as there are
+  `loop_vars`.
 
   In addition to regular Tensors or IndexedSlices, the body may accept and
   return TensorArray objects.  The flows of the TensorArray objects will
@@ -1544,8 +1631,21 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
 
   While `cond` evaluates to true, `body` is executed.
 
+  `while_loop` implements non-strict semantics, enabling multiple iterations
+  to run in parallel. The maximum number of parallel iterations can be
+  controlled by `parallel_iterations`, which gives users some control over
+  memory consumption and execution order. For correct programs, `while_loop`
+  should return the same result for any parallel_iterations > 0.
+
+  For training, TensorFlow remembers the tensors that are produced in the
+  forward inference but needed in back propagation. These tensors can be a
+  main source of memory consumption and often cause OOM problems when training
+  on GPUs.  When the flag swap_memory is true, we swap out these tensors from
+  GPU to CPU.  This for example allows us to train RNN models with very long
+  sequences and large batches.
+
   Args:
-    cond: The termination condition of the loop.
+    cond: A callable that represents the termination condition of the loop.
     body: A callable that represents the loop body.
     loop_vars: The list of variable input tensors.
     parallel_iterations: The number of iterations allowed to run in parallel.

@@ -94,6 +94,9 @@ message OpDef {
   }
   repeated AttrDef attr = 4;
 
+  // Optional deprecation based on GraphDef versions.
+  OpDeprecation deprecation = 8;
+
   // One-line human-readable description of what the Op does.
   string summary = 5;
 
@@ -137,6 +140,15 @@ message OpDef {
   // field to true, to allow the Op to take an uninitialized Tensor as
   // input.
   bool allows_uninitialized_input = 19;  // for Assign, etc.
+};
+
+// Information about version-dependent deprecation of an op
+message OpDeprecation {
+  // First GraphDef version at which the op is disallowed.
+  int32 version = 1;
+
+  // Explanation of why it was deprecated and what to use instead.
+  string explanation = 2;
 };
 
 // A collection of OpDefs

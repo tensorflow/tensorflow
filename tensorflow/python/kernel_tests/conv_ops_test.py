@@ -327,11 +327,26 @@ class Conv2DTest(tf.test.TestCase):
                        expected=expected_output)
 
   def testConv2DKernelSmallerThanStrideSame(self):
-    expected_output = [1, 3, 7, 9]
     self._VerifyValues(tensor_in_sizes=[1, 3, 3, 1],
                        filter_in_sizes=[1, 1, 1, 1],
                        strides=[2, 2], padding="SAME",
-                       expected=expected_output)
+                       expected=[1, 3, 7, 9])
+
+    self._VerifyValues(tensor_in_sizes=[1, 4, 4, 1],
+                       filter_in_sizes=[1, 1, 1, 1],
+                       strides=[2, 2], padding="SAME",
+                       expected=[1, 3, 9, 11])
+
+    self._VerifyValues(tensor_in_sizes=[1, 4, 4, 1],
+                       filter_in_sizes=[2, 2, 1, 1],
+                       strides=[3, 3], padding="SAME",
+                       expected=[44, 28, 41, 16])
+
+    # TODO this currently fails.
+    #self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
+    #                   filter_in_sizes=[2, 2, 1, 1],
+    #                   strides=[4, 4], padding="SAME",
+    #                   expected=[72, 112, 392, 432])
 
   # Testing for backprops
   def _RunAndVerifyBackpropInput(self, input_sizes, filter_sizes, output_sizes,
@@ -450,6 +465,21 @@ class Conv2DTest(tf.test.TestCase):
                                       data_format=data_format,
                                       use_gpu=use_gpu)
 
+  def testConv2DStrideTwoFilterOneSameBackpropInput(self):
+    expected_output = [1.0, 0.0, 2.0, 0.0,
+                       0.0, 0.0, 0.0, 0.0,
+                       3.0, 0.0, 4.0, 0.0,
+                       0.0, 0.0, 0.0, 0.0]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropInput(input_sizes=[1, 4, 4, 1],
+                                      filter_sizes=[1, 1, 1, 1],
+                                      output_sizes=[1, 2, 2, 1],
+                                      strides=[2, 2],
+                                      padding="SAME",
+                                      expected=expected_output,
+                                      data_format=data_format,
+                                      use_gpu=use_gpu)
+
   # Testing for backprops
   def _RunAndVerifyBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
                                   strides, padding, expected, data_format,
@@ -552,6 +582,18 @@ class Conv2DTest(tf.test.TestCase):
                                        expected=expected,
                                        data_format=data_format,
                                        use_gpu=use_gpu)
+
+  def testConv2DStrideTwoFilterOneSameBackpropFilter(self):
+    expected_output = [78.]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropFilter(input_sizes=[1, 4, 4, 1],
+                                      filter_sizes=[1, 1, 1, 1],
+                                      output_sizes=[1, 2, 2, 1],
+                                      strides=[2, 2],
+                                      padding="SAME",
+                                      expected=expected_output,
+                                      data_format=data_format,
+                                      use_gpu=use_gpu)
 
   # Gradient checkers
   def ConstructAndTestGradient(self, batch, input_rows, input_cols, filter_rows,
@@ -862,14 +904,14 @@ class Conv2DTest(tf.test.TestCase):
 
     # Filter larger than input.
     with self.assertRaisesRegexp(ValueError,
-                                 "filter must not be larger than the input"):
+                                 "Filter must not be larger than the input"):
       tf.nn.conv2d(tf.placeholder(tf.float32,
                                           shape=[32, 20, 20, 3]),
                     tf.placeholder(tf.float32,
                                           shape=[20, 21, 3, 2]),
                     strides=[1, 1, 1, 1], padding="SAME")
     with self.assertRaisesRegexp(ValueError,
-                                 "filter must not be larger than the input"):
+                                 "Filter must not be larger than the input"):
       tf.nn.conv2d(tf.placeholder(tf.float32,
                                           shape=[32, 20, 20, 3]),
                     tf.placeholder(tf.float32,

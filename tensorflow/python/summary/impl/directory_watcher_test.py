@@ -51,8 +51,8 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     # Put everything in a directory so it's easier to delete.
     self._directory = os.path.join(self.get_temp_dir(), 'monitor_dir')
     os.mkdir(self._directory)
-    self._watcher = directory_watcher.DirectoryWatcher(
-        directory_watcher.SequentialFileProvider(self._directory), _ByteLoader)
+    self._watcher = directory_watcher.DirectoryWatcher(self._directory,
+                                                       _ByteLoader)
 
   def tearDown(self):
     shutil.rmtree(self._directory)
@@ -62,14 +62,19 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     with open(path, 'a') as f:
       f.write(data)
 
+  def _LoadAllEvents(self):
+    """Loads all events in the watcher."""
+    for _ in self._watcher.Load():
+      pass
+
   def assertWatcherYields(self, values):
     self.assertEqual(list(self._watcher.Load()), values)
 
   def testRaisesWithBadArguments(self):
     with self.assertRaises(ValueError):
-      directory_watcher.DirectoryWatcher(None, lambda x: [])
+      directory_watcher.DirectoryWatcher(None, lambda x: None)
     with self.assertRaises(ValueError):
-      directory_watcher.DirectoryWatcher(lambda x: None, None)
+      directory_watcher.DirectoryWatcher('dir', None)
 
   def testEmptyDirectory(self):
     self.assertWatcherYields([])
@@ -77,23 +82,27 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
   def testSingleWrite(self):
     self._WriteToFile('a', 'abc')
     self.assertWatcherYields(['a', 'b', 'c'])
+    self.assertFalse(self._watcher.OutOfOrderWritesDetected())
 
   def testMultipleWrites(self):
     self._WriteToFile('a', 'abc')
     self.assertWatcherYields(['a', 'b', 'c'])
     self._WriteToFile('a', 'xyz')
     self.assertWatcherYields(['x', 'y', 'z'])
+    self.assertFalse(self._watcher.OutOfOrderWritesDetected())
 
   def testMultipleLoads(self):
     self._WriteToFile('a', 'a')
     self._watcher.Load()
     self._watcher.Load()
     self.assertWatcherYields(['a'])
+    self.assertFalse(self._watcher.OutOfOrderWritesDetected())
 
   def testMultipleFilesAtOnce(self):
     self._WriteToFile('b', 'b')
     self._WriteToFile('a', 'a')
     self.assertWatcherYields(['a', 'b'])
+    self.assertFalse(self._watcher.OutOfOrderWritesDetected())
 
   def testFinishesLoadingFileWhenSwitchingToNewFile(self):
     self._WriteToFile('a', 'a')
@@ -103,23 +112,47 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     self._WriteToFile('b', 'c')
     # The watcher should finish its current file before starting a new one.
     self.assertWatcherYields(['b', 'c'])
+    self.assertFalse(self._watcher.OutOfOrderWritesDetected())
 
   def testIntermediateEmptyFiles(self):
     self._WriteToFile('a', 'a')
     self._WriteToFile('b', '')
     self._WriteToFile('c', 'c')
     self.assertWatcherYields(['a', 'c'])
+    self.assertFalse(self._watcher.OutOfOrderWritesDetected())
 
   def testPathFilter(self):
-    provider = directory_watcher.SequentialFileProvider(
-        self._directory,
-        path_filter=lambda path: 'do_not_watch_me' not in path)
-    self._watcher = directory_watcher.DirectoryWatcher(provider, _ByteLoader)
+    self._watcher = directory_watcher.DirectoryWatcher(
+        self._directory, _ByteLoader,
+        lambda path: 'do_not_watch_me' not in path)
 
     self._WriteToFile('a', 'a')
     self._WriteToFile('do_not_watch_me', 'b')
     self._WriteToFile('c', 'c')
     self.assertWatcherYields(['a', 'c'])
+    self.assertFalse(self._watcher.OutOfOrderWritesDetected())
+
+  def testDetectsNewOldFiles(self):
+    self._WriteToFile('b', 'a')
+    self._LoadAllEvents()
+    self._WriteToFile('a', 'a')
+    self._LoadAllEvents()
+    self.assertTrue(self._watcher.OutOfOrderWritesDetected())
+
+  def testIgnoresNewerFiles(self):
+    self._WriteToFile('a', 'a')
+    self._LoadAllEvents()
+    self._WriteToFile('q', 'a')
+    self._LoadAllEvents()
+    self.assertFalse(self._watcher.OutOfOrderWritesDetected())
+
+  def testDetectsChangingOldFiles(self):
+    self._WriteToFile('a', 'a')
+    self._WriteToFile('b', 'a')
+    self._LoadAllEvents()
+    self._WriteToFile('a', 'c')
+    self._LoadAllEvents()
+    self.assertTrue(self._watcher.OutOfOrderWritesDetected())
 
 
 if __name__ == '__main__':

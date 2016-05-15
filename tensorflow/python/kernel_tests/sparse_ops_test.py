@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -27,6 +28,20 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import googletest
+
+
+# TODO(zongheng): it'd be great to factor out this function and various random
+# SparseTensor gen funcs.
+def _sparsify(x, thresh=0.5, index_dtype=np.int64):
+  x[x < thresh] = 0
+
+  non_zero = np.where(x)
+  x_indices = np.vstack(non_zero).astype(index_dtype).T
+  x_values = x[non_zero]
+  x_shape = x.shape
+
+  return ops.SparseTensor(
+      indices=x_indices, values=x_values, shape=x_shape), len(x_values)
 
 
 class SparseToIndicatorTest(test_util.TensorFlowTestCase):
@@ -302,6 +317,138 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.values, [0, 10, 13, 14])
       self.assertAllEqual(output.shape, [2, 6])
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
+
+
+class SparseReduceSumTest(test_util.TensorFlowTestCase):
+
+  def _compare(self, sp_t, reduction_axes, keep_dims):
+    densified = sparse_ops.sparse_tensor_to_dense(sp_t).eval()
+
+    np_ans = densified
+    if reduction_axes is None:
+      np_ans = np.sum(np_ans, keepdims=keep_dims)
+    else:
+      if isinstance(reduction_axes, list):
+        reduction_axes = sorted(reduction_axes)  # loop below depends on sorted
+      reduction_axes = np.array(reduction_axes).astype(np.int32)
+      for ra in reduction_axes.ravel()[::-1]:
+        np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
+
+    with self.test_session():
+      tf_ans = sparse_ops.sparse_reduce_sum(sp_t, reduction_axes, keep_dims)
+      out = tf_ans.eval()
+
+    self.assertAllClose(np_ans, out)
+
+  def _compare_all(self, sp_t, reduction_axes):
+    self._compare(sp_t, reduction_axes, False)
+    self._compare(sp_t, reduction_axes, True)
+
+  def testSimpleAndRandomInputs(self):
+    # [[1, ?, 1]
+    #  [?, 1, ?]]
+    # where ? is implictly-zero.
+    ind = np.array([[0, 0], [0, 2], [1, 1]]).astype(np.int64)
+    vals = np.array([1, 1, 1]).astype(np.int32)
+    shape = np.array([2, 3]).astype(np.int64)
+    sp_t = ops.SparseTensor(ind, vals, shape)
+
+    with self.test_session(use_gpu=False):
+      self._compare_all(sp_t, None)
+      self._compare_all(sp_t, 0)
+      self._compare_all(sp_t, [1])
+      self._compare_all(sp_t, [0, 1])
+      self._compare_all(sp_t, [1, 0])
+
+    np.random.seed(1618)
+    test_dims = [(1618, 1, 11, 7, 1), (1,), (1, 1, 1)]
+    with self.test_session(use_gpu=False):
+      for dims in test_dims:
+        sp_t, unused_nnz = _sparsify(np.random.randn(*dims))
+        # reduce all using None
+        self._compare_all(sp_t, None)
+        # reduce random axes from 1D to N-D
+        for d in range(1, len(dims) + 1):
+          axes = np.random.choice(len(dims), size=d, replace=False).tolist()
+          self._compare_all(sp_t, axes)
+
+  def testGradient(self):
+    np.random.seed(8161)
+    test_dims = [(11, 1, 5, 7, 1), (2, 2)]
+    with self.test_session(use_gpu=False):
+      for dims in test_dims:
+        sp_t, nnz = _sparsify(np.random.randn(*dims))
+        # reduce random axes from 1D to N-D
+        for d in range(1, len(dims) + 1):
+          axes = np.random.choice(len(dims), size=d, replace=False).tolist()
+          reduced = sparse_ops.sparse_reduce_sum(sp_t, axes)
+
+          err = tf.test.compute_gradient_error(sp_t.values, (nnz,), reduced,
+                                               reduced.eval().shape)
+          self.assertLess(err, 1e-3)
+
+
+class SparseMathOpsTest(test_util.TensorFlowTestCase):
+
+  def _check(self, result_tensor, result_np, input_sp_t):
+    self.assertAllEqual(input_sp_t.indices.eval(), result_tensor.indices.eval())
+    self.assertAllEqual(input_sp_t.shape.eval(), result_tensor.shape.eval())
+
+    res_densified = sparse_ops.sparse_to_dense(result_tensor.indices,
+                                               result_tensor.shape,
+                                               result_tensor.values).eval()
+    self.assertAllEqual(res_densified, result_np)
+
+  def testCwiseDivAndMul(self):
+    np.random.seed(1618)
+    sp_shapes = [(10, 10, 10), (5, 5), (1618,), (3, 3, 7)]
+    dense_shapes = [(10, 10, 1), (5, 5), (1,), (1, 7)]
+
+    with self.test_session(use_gpu=False):
+      for dtype in [np.float32, np.float64, np.int32, np.int64]:
+        for sp_shape, dense_shape in zip(sp_shapes, dense_shapes):
+          sp_vals_np = np.random.rand(*sp_shape).astype(dtype) + 1
+          dense_vals_np = np.random.rand(*dense_shape).astype(dtype) + 1
+          sp_t, unused_nnz = _sparsify(sp_vals_np, thresh=1.5)
+          sp_t_densified = sparse_ops.sparse_tensor_to_dense(sp_t).eval()
+          dense_t = tf.constant(dense_vals_np)
+
+          self._check(sp_t / dense_t, sp_t_densified / dense_vals_np, sp_t)
+          # Check commutative.
+          self._check(sp_t * dense_t, sp_t_densified * dense_vals_np, sp_t)
+          self._check(dense_t * sp_t, sp_t_densified * dense_vals_np, sp_t)
+
+          if dtype in [np.int32, np.int64]:
+            res = sp_t / dense_t  # should invoke "__truediv__"
+            self.assertEqual(res.values.eval().dtype, np.float64)
+
+  def testGradients(self):
+    np.random.seed(1618)
+    sp_shapes = [(10, 10, 10), (5, 5), (1618,), (3, 3, 7)]
+    dense_shapes = [(10, 10, 1), (5, 5), (1,), (1, 7)]
+
+    with self.test_session(use_gpu=False):
+      for dtype in [np.float32, np.float64]:
+        for sp_shape, dense_shape in zip(sp_shapes, dense_shapes):
+          sp_vals_np = np.random.rand(*sp_shape).astype(dtype) + 1
+          dense_vals_np = np.random.rand(*dense_shape).astype(dtype) + 1
+          sp_t, nnz = _sparsify(sp_vals_np, thresh=1.5)
+          dense_t = tf.constant(dense_vals_np)
+
+          cmul = sp_t * dense_t
+          err = tf.test.compute_gradient_error([sp_t.values, dense_t],
+                                               [(nnz,), dense_shape],
+                                               cmul.values, (nnz,))
+          self.assertLess(err, 1e-4)
+
+          cdiv = sp_t / dense_t
+          err = tf.test.compute_gradient_error(sp_t.values, (nnz,),
+                                               cdiv.values, (nnz,))
+          self.assertLess(err, 1e-4)
+          err = tf.test.compute_gradient_error(dense_t, dense_shape,
+                                               cdiv.values, (nnz,),
+                                               x_init_value=dense_vals_np)
+          self.assertLess(err, 2e-4)
 
 
 if __name__ == "__main__":

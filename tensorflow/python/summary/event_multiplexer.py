@@ -23,7 +23,7 @@ import threading
 
 import six
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary.impl import io_wrapper
 
@@ -74,6 +74,7 @@ class EventMultiplexer(object):
   @@Histograms
   @@CompressedHistograms
   @@Images
+  @@Audio
   """
 
   def __init__(self,
@@ -171,22 +172,11 @@ class EventMultiplexer(object):
     Returns:
       The `EventMultiplexer`.
     """
-    if io_wrapper.Exists(path) and not io_wrapper.IsDirectory(path):
-      raise ValueError('AddRunsFromDirectory: path exists and is not a '
-                       'directory, %s' % path)
-    # ListRecursively just yields nothing if the path doesn't exist.
-    subdirs = [
-        subdir
-        for (subdir, files) in io_wrapper.ListRecursively(path)
-        if list(filter(event_accumulator.IsTensorFlowEventsFile, files))
-    ]
-
-    for subdir in subdirs:
+    for subdir in GetLogdirSubdirectories(path):
       logging.info('Adding events from directory %s', subdir)
       rpath = os.path.relpath(subdir, path)
       subname = os.path.join(name, rpath) if name else rpath
       self.AddRun(subdir, name=subname)
-
     return self
 
   def Reload(self):
@@ -306,6 +296,24 @@ class EventMultiplexer(object):
     accumulator = self._GetAccumulator(run)
     return accumulator.Images(tag)
 
+  def Audio(self, run, tag):
+    """Retrieve the audio events associated with a run and tag.
+
+    Args:
+      run: A string name of the run for which values are retrieved.
+      tag: A string name of the tag for which values are retrieved.
+
+    Raises:
+      KeyError: If the run is not found, or the tag is not available for
+        the given run.
+      RuntimeError: If the run's `EventAccumulator` has not been activated.
+
+    Returns:
+      An array of `event_accumulator.AudioEvents`.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.Audio(tag)
+
   def Runs(self):
     """Return all the run names in the `EventMultiplexer`.
 
@@ -326,3 +334,17 @@ class EventMultiplexer(object):
   def _GetAccumulator(self, run):
     with self._accumulators_mutex:
       return self._accumulators[run]
+
+
+def GetLogdirSubdirectories(path):
+  """Returns subdirectories with event files on path."""
+  if io_wrapper.Exists(path) and not io_wrapper.IsDirectory(path):
+    raise ValueError('GetLogdirSubdirectories: path exists and is not a '
+                     'directory, %s' % path)
+
+  # ListRecursively just yields nothing if the path doesn't exist.
+  return (
+      subdir
+      for (subdir, files) in io_wrapper.ListRecursively(path)
+      if list(filter(event_accumulator.IsTensorFlowEventsFile, files))
+  )

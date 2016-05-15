@@ -43,6 +43,7 @@ class PaddingFIFOQueue : public FIFOQueue {
   // Implementations of QueueInterface methods --------------------------------
 
   void TryDequeueMany(int num_elements, OpKernelContext* ctx,
+                      bool allow_small_batch,
                       CallbackWithTuple callback) override;
   Status MatchesNodeDef(const NodeDef& node_def) override;
 

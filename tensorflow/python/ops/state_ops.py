@@ -31,6 +31,7 @@ collected in the graph.
 @@initialize_variables
 @@initialize_local_variables
 @@is_variable_initialized
+@@report_uninitialized_variables
 @@assert_variables_initialized
 
 ## Saving and Restoring Variables
@@ -64,6 +65,10 @@ create variables contingent on certain conditions.
 @@zeros_initializer
 @@ones_initializer
 
+## Variable Partitioners for Sharding
+
+@@variable_axis_size_partitioner
+
 ## Sparse Variable Updates
 
 The sparse update ops modify a subset of the entries in a dense `Variable`,
@@ -83,6 +88,13 @@ automatically by the optimizers in most cases.
 @@scatter_sub
 @@sparse_mask
 @@IndexedSlices
+
+
+## Exporting and Importing Meta Graphs
+
+@@export_meta_graph
+@@import_meta_graph
+
 """
 
 from __future__ import absolute_import

@@ -84,6 +84,11 @@ class Tensor {
 
   Tensor(const Tensor& other);  /// Copy constructor.
 
+  // Move constructor.  After this call, <other> is safely destructible and can
+  // be assigned to, but other calls on it (e.g. shape manipulation) are not
+  // valid.
+  Tensor(Tensor&& other);
+
   ~Tensor();
 
   /// Returns the data type.
@@ -136,6 +141,9 @@ class Tensor {
     CopyFromInternal(other, other.shape());
     return *this;
   }
+
+  /// Move operator.  See move constructor for details.
+  Tensor& operator=(Tensor&& other);
 
   /// \brief Copy the other tensor into this tensor and reshape it.
   ///
@@ -361,8 +369,11 @@ class Tensor {
   void FillDimsAndValidateCompatibleShape(
       gtl::ArraySlice<int64> new_sizes,
       Eigen::array<Eigen::DenseIndex, NDIMS>* dims) const;
-  gtl::InlinedVector<int64, 5> ComputeFlatInnerDims(int64 num_out_dims) const;
-  gtl::InlinedVector<int64, 5> ComputeFlatOuterDims(int64 num_out_dims) const;
+
+  // TODO(rmlarsen): These shouldn't hardcode '4' so that it lines up with
+  // TensorShape's InlineVector.
+  gtl::InlinedVector<int64, 4> ComputeFlatInnerDims(int64 num_out_dims) const;
+  gtl::InlinedVector<int64, 4> ComputeFlatOuterDims(int64 num_out_dims) const;
 
   TensorShape shape_;
   TensorBuffer* buf_;
@@ -372,6 +383,7 @@ class Tensor {
   friend class TensorReference;       // For access to buf_
   friend class VariableOp;            // For access to set_shape
   friend class AutoReloadVariableOp;  // For access to set_shape
+  friend class TensorTestHelper;      // For access to set_shape
 
   // Creates a tensor with the input datatype, shape and buf.
   //
@@ -537,6 +549,24 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::flat_inner_dims() const {
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::flat_outer_dims() const {
   return shaped<T, NDIMS>(ComputeFlatOuterDims(NDIMS));
+}
+
+inline Tensor::Tensor(const Tensor& other)
+    : shape_(other.shape()), buf_(other.buf_) {
+  if (buf_) buf_->Ref();
+}
+
+inline Tensor::Tensor(Tensor&& other)
+    : shape_(std::move(other.shape())), buf_(other.buf_) {
+  other.buf_ = nullptr;
+}
+
+inline Tensor& Tensor::operator=(Tensor&& other) {
+  shape_ = std::move(other.shape_);
+  if (buf_) buf_->Unref();
+  buf_ = other.buf_;
+  other.buf_ = nullptr;
+  return *this;
 }
 
 }  // namespace tensorflow

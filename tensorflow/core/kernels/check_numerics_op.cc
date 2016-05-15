@@ -64,11 +64,10 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     // Check to see if any element of the tensor is NaN or Inf.
     int fp_props =
         std::accumulate(data, data + size, 0, [](const int& x, const T& y) {
-          int prop = std::fpclassify(y);
           int result = x;
-          if (prop == FP_INFINITE) {
+          if (Eigen::numext::isinf(y)) {
             result |= kInfBit;
-          } else if (prop == FP_NAN) {
+          } else if (Eigen::numext::isnan(y)) {
             result |= kNaNBit;
           }
           return result;
@@ -185,6 +184,10 @@ class CheckNumericsOp<GPUDevice, T> : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
                             .Device(DEVICE_CPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        CheckNumericsOp<CPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
+                            .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T"),
                         CheckNumericsOp<CPUDevice, float>);
 REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
@@ -192,6 +195,10 @@ REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
                             .TypeConstraint<double>("T"),
                         CheckNumericsOp<CPUDevice, double>);
 #if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        CheckNumericsOp<GPUDevice, Eigen::half>);
 REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T"),

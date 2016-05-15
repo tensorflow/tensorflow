@@ -17,11 +17,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool ParseProtoUnlimited(protobuf::Message* proto, const string& serialized) {
+bool ParseProtoUnlimited(protobuf::MessageLite* proto,
+                         const string& serialized) {
   return ParseProtoUnlimited(proto, serialized.data(), serialized.size());
 }
 
-bool ParseProtoUnlimited(protobuf::Message* proto, const void* serialized,
+bool ParseProtoUnlimited(protobuf::MessageLite* proto, const void* serialized,
                          size_t size) {
   protobuf::io::CodedInputStream coded_stream(
       reinterpret_cast<const uint8*>(serialized), size);

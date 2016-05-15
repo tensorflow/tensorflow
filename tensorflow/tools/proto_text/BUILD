@@ -14,6 +14,11 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_generate_proto_text_sources",
+)
+
 # For platform specific build config
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
@@ -44,17 +49,10 @@ tf_proto_library_cc(
     srcs = ["test.proto"],
 )
 
-genrule(
+tf_generate_proto_text_sources(
     name = "test_proto_text_srcs",
     srcs = ["test.proto"],
-    outs = [
-        "test.pb_text-impl.h",
-        "test.pb_text.h",
-        "test.pb_text.cc",
-    ],
-    cmd = "$(location :gen_proto_text_functions) " +
-          "$(@D) $(location test.proto)",
-    tools = [":gen_proto_text_functions"],
+    srcs_relative_dir = "tensorflow/tools/proto_text/",
 )
 
 cc_test(

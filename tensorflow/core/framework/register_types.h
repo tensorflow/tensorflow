@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_
 // This file is used by cuda code and must remain compilable by nvcc.
 
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
 
 // Macros to apply another macro to lists of supported types.  If you change
@@ -46,23 +47,26 @@ limitations under the License.
 
 // Call "m" for all number types that support the comparison operations "<" and
 // ">".
-#define TF_CALL_INTEGRAL_TYPES(m) m(int64) m(int32) m(uint8) m(int16) m(int8)
+#define TF_CALL_INTEGRAL_TYPES(m)                                      \
+  m(::tensorflow::int64) m(::tensorflow::int32) m(::tensorflow::uint8) \
+      m(::tensorflow::int16) m(::tensorflow::int8)
 
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
   TF_CALL_INTEGRAL_TYPES(m)          \
   m(Eigen::half) m(float) m(double)
 
-#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) \
-  m(Eigen::half) m(float) m(double) m(int64) m(uint8) m(int16) m(int8)
+#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)              \
+  m(Eigen::half) m(float) m(double) m(::tensorflow::int64) \
+      m(::tensorflow::uint8) m(::tensorflow::int16) m(::tensorflow::int8)
 
 // Call "m" for all number types, including complex64 and complex128.
 #define TF_CALL_NUMBER_TYPES(m) \
   TF_CALL_REAL_NUMBER_TYPES(m)  \
-  m(complex64) m(complex128)
+  m(::tensorflow::complex64) m(::tensorflow::complex128)
 
 #define TF_CALL_NUMBER_TYPES_NO_INT32(m) \
   TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)  \
-  m(complex64) m(complex128)
+  m(::tensorflow::complex64) m(::tensorflow::complex128)
 
 #define TF_CALL_POD_TYPES(m) \
   TF_CALL_NUMBER_TYPES(m)    \
@@ -71,7 +75,7 @@ limitations under the License.
 // Call "m" on all types.
 #define TF_CALL_ALL_TYPES(m) \
   TF_CALL_POD_TYPES(m)       \
-  m(string)
+  m(::tensorflow::string)
 
 // Call "m" on all types supported on GPU.
 #define TF_CALL_GPU_NUMBER_TYPES(m) m(Eigen::half) m(float) m(double)
@@ -81,15 +85,18 @@ limitations under the License.
   m(double)
 
 // Call "m" on all quantized types.
-#define TF_CALL_QUANTIZED_TYPES(m) m(qint8) m(quint8) m(qint32)
+#define TF_CALL_QUANTIZED_TYPES(m) \
+  m(::tensorflow::qint8) m(::tensorflow::quint8) m(::tensorflow::qint32)
 
 #elif defined(__ANDROID_TYPES_FULL__)
 
-#define TF_CALL_REAL_NUMBER_TYPES(m) m(Eigen::half) m(float) m(int32) m(int64)
+#define TF_CALL_REAL_NUMBER_TYPES(m) \
+  m(Eigen::half) m(float) m(::tensorflow::int32) m(::tensorflow::int64)
 
 #define TF_CALL_NUMBER_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
 
-#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) m(Eigen::half) m(float) m(int64)
+#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) \
+  m(Eigen::half) m(float) m(::tensorflow::int64)
 
 #define TF_CALL_NUMBER_TYPES_NO_INT32(m) TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)
 
@@ -101,11 +108,12 @@ limitations under the License.
 #define TF_CALL_GPU_NUMBER_TYPES(m) m(float) m(Eigen::half)
 
 // Call "m" on all quantized types.
-#define TF_CALL_QUANTIZED_TYPES(m) m(qint8) m(quint8) m(qint32)
+#define TF_CALL_QUANTIZED_TYPES(m) \
+  m(::tensorflow::qint8) m(::tensorflow::quint8) m(::tensorflow::qint32)
 
 #else  // defined(__ANDROID__) && !defined(__ANDROID_TYPES_FULL__)
 
-#define TF_CALL_REAL_NUMBER_TYPES(m) m(float) m(int32)
+#define TF_CALL_REAL_NUMBER_TYPES(m) m(float) m(::tensorflow::int32)
 
 #define TF_CALL_NUMBER_TYPES(m) TF_CALL_REAL_NUMBER_TYPES(m)
 

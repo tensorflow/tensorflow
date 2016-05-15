@@ -23,10 +23,13 @@
 #include <sys/wait.h>
 #include <tuple>
 #include <unistd.h>
+
 #include <vector>
 
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/host_info.h"
 
 using tensorflow::strings::StrCat;
 
@@ -37,19 +40,6 @@ namespace {
 const char kFfmpegExecutable[] = "ffmpeg";
 const int32 kDefaultProbeSize = 5000000;  // 5MB
 
-string GetTempFilename(const string& extension) {
-  for (const char* dir : std::vector<const char*>(
-           {getenv("TEST_TMPDIR"), getenv("TMPDIR"), getenv("TMP"), "/tmp"})) {
-    if (!dir || !dir[0]) {
-      continue;
-    }
-    struct stat statbuf;
-    if (!stat(dir, &statbuf) && S_ISDIR(statbuf.st_mode)) {
-      return io::JoinPath(dir, StrCat("tmp_file_", getpid(), ".", extension));
-    }
-  }
-  LOG(FATAL) << "No temp directory found.";
-}
 
 std::vector<string> FfmpegCommandLine(const string& input_filename,
                                       const string& output_filename,
@@ -88,7 +78,109 @@ std::vector<string> FfmpegCommandLine(const string& input_filename,
   ::_exit(error);
 }
 
+// Reads a PCM file using signed little endian 16-bit encoding (s16le).
+std::vector<float> ReadPcmFile(const string& filename) {
+  string raw_data;
+  TF_QCHECK_OK(ReadFileToString(Env::Default(), filename, &raw_data))
+      << "Could not read FFmpeg output file: " << filename;
+
+  std::vector<float> samples;
+  const int32 sample_count = raw_data.size() / sizeof(int16);
+  samples.reserve(sample_count);
+
+  for (int32 i = 0; i < sample_count; ++i) {
+    // Most of this is jumping through hoops in the standard to convert some
+    // bits into the right format. I hope that an optimizing compiler will
+    // remove almost all of this code.
+    char raw[2] = {raw_data[i * 2], raw_data[i * 2 + 1]};
+    if (!port::kLittleEndian) {
+      std::swap(raw[0], raw[1]);
+    }
+    int16 host_order;
+    ::memcpy(&host_order, raw, sizeof(host_order));
+    const double normalized =
+        static_cast<double>(host_order) / std::numeric_limits<int16>::max();
+    samples.push_back(normalized);
+  }
+  return samples;
+}
+
+template <typename UInt>
+string LittleEndianData(UInt data) {
+  static_assert(std::is_unsigned<UInt>::value, "UInt must be unsigned");
+  string str;
+  for (int i = 0; i < sizeof(UInt); ++i) {
+    const unsigned char bits = static_cast<unsigned char>(data & 0xFFU);
+    char ch;
+    ::memcpy(&ch, &bits, sizeof(bits));
+    str.push_back(ch);
+    data >>= 8;
+  }
+  return str;
+}
+
+string LittleEndianDataInt(uint32 data) {
+  return LittleEndianData<uint32>(data);
+}
+
+string LittleEndianDataShort(uint16 data) {
+  return LittleEndianData<uint16>(data);
+}
+
+string WavHeader(int32 samples_per_second, int32 channel_count,
+                 const std::vector<float>& samples) {
+  string header = "RIFF";
+  header += LittleEndianDataInt(36U + samples.size() * sizeof(int16));
+  header += "WAVEfmt ";
+  header += LittleEndianDataInt(16);
+  header += LittleEndianDataShort(1);
+  header += LittleEndianDataShort(channel_count);
+  header += LittleEndianDataInt(samples_per_second);
+  header +=
+      LittleEndianDataInt(samples_per_second * channel_count * sizeof(int16));
+  header += LittleEndianDataShort(channel_count * sizeof(int16));
+  header += LittleEndianDataShort(16);
+  header += "data";
+  header += LittleEndianDataInt(samples.size() * sizeof(int16));
+  CHECK_EQ(header.size(), 44);
+  return header;
+}
+
+// Creates the contents of a .wav file using pcm_s16le format (signed 16 bit
+// little endian integers).
+string BuildWavFile(int32 samples_per_second, int32 channel_count,
+                    const std::vector<float>& samples) {
+  string data = WavHeader(samples_per_second, channel_count, samples);
+  data.reserve(data.size() + samples.size() * sizeof(int16));
+  for (float value : samples) {
+    const int16 quantized =
+        static_cast<int16>(value * std::numeric_limits<int16>::max());
+    char raw[2];
+    ::memcpy(raw, &quantized, sizeof(int16));
+    if (!port::kLittleEndian) {
+      std::swap(raw[0], raw[1]);
+    }
+    data.push_back(raw[0]);
+    data.push_back(raw[1]);
+  }
+  return data;
+}
+
 }  // namespace
+
+string GetTempFilename(const string& extension) {
+  for (const char* dir : std::vector<const char*>(
+           {getenv("TEST_TMPDIR"), getenv("TMPDIR"), getenv("TMP"), "/tmp"})) {
+    if (!dir || !dir[0]) {
+      continue;
+    }
+    struct stat statbuf;
+    if (!stat(dir, &statbuf) && S_ISDIR(statbuf.st_mode)) {
+      return io::JoinPath(dir, StrCat("tmp_file_", getpid(), ".", extension));
+    }
+  }
+  LOG(FATAL) << "No temp directory found.";
+}
 
 Status ReadAudioFile(const string& filename,
                      const string& audio_format_id,
@@ -96,7 +188,7 @@ Status ReadAudioFile(const string& filename,
                      int32 channel_count,
                      std::vector<float>* output_samples) {
   // Create an argument list.
-  string output_filename = GetTempFilename(audio_format_id);
+  string output_filename = GetTempFilename("raw");
   const std::vector<string> args =
       FfmpegCommandLine(filename, output_filename, audio_format_id,
                         samples_per_second, channel_count);
@@ -111,13 +203,26 @@ Status ReadAudioFile(const string& filename,
   } else {
     int status_code;
     ::waitpid(child_pid, &status_code, 0);
-    if (!status_code) {
-      return Status::OK();
-    } else {
+    if (status_code) {
       return Status(error::Code::NOT_FOUND,
                     StrCat("FFmpeg execution failed: ", status_code));
     }
+    *output_samples = ReadPcmFile(output_filename);
+    TF_QCHECK_OK(Env::Default()->DeleteFile(output_filename))
+        << output_filename;
+    return Status::OK();
   }
+}
+
+Status CreateAudioFile(const string& audio_format_id, int32 samples_per_second,
+                       int32 channel_count, const std::vector<float>& samples,
+                       string* output_data) {
+  if (audio_format_id != "wav") {
+    return Status(error::Code::INVALID_ARGUMENT,
+                  "CreateAudioFile only supports the 'wav' audio format.");
+  }
+  *output_data = BuildWavFile(samples_per_second, channel_count, samples);
+  return Status::OK();
 }
 
 }  // namespace ffmpeg

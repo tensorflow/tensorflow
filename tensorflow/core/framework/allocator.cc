@@ -43,6 +43,8 @@ string AllocatorStats::DebugString() const {
       this->num_allocs, this->max_alloc_size);
 }
 
+constexpr size_t Allocator::kAllocatorAlignment;
+
 Allocator::~Allocator() {}
 
 // If true, cpu allocator collects more stats.

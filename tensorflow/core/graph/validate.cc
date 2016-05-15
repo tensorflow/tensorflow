@@ -27,11 +27,13 @@ namespace graph {
 Status ValidateGraphDef(const GraphDef& graph_def,
                         const OpRegistryInterface& op_registry) {
   Status s;
+  const int version = graph_def.versions().producer();
   for (const NodeDef& node_def : graph_def.node()) {
     // Look up the OpDef for the node_def's op name.
     const OpDef* op_def = op_registry.LookUp(node_def.op(), &s);
     TF_RETURN_IF_ERROR(s);
     TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *op_def));
+    TF_RETURN_IF_ERROR(CheckOpDeprecation(*op_def, version));
   }
 
   return s;

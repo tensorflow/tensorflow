@@ -66,6 +66,9 @@ struct AllocatorStats {
 // device memory.
 class Allocator {
  public:
+  // Align to 32 byte boundary.
+  static constexpr size_t kAllocatorAlignment = 32;
+
   virtual ~Allocator();
 
   // Return a string identifying this allocator
@@ -112,8 +115,8 @@ class Allocator {
       return NULL;
     }
 
-    void* p = AllocateRaw(32 /* align to 32 byte boundary */,
-                          sizeof(T) * num_elements, allocation_attr);
+    void* p = AllocateRaw(kAllocatorAlignment, sizeof(T) * num_elements,
+                          allocation_attr);
     T* typed_p = reinterpret_cast<T*>(p);
     if (typed_p) RunCtor<T>(typed_p, num_elements);
     return typed_p;
@@ -192,11 +195,10 @@ class Allocator {
   // without running their default ctors and dtors.
   template <typename T>
   struct is_simple {
-    static const bool value = std::is_trivial<T>::value ||
-                              std::is_same<T, Eigen::half>::value ||
-                              std::is_same<T, complex64>::value ||
-                              std::is_same<T, complex128>::value ||
-                              is_quantized<T>::value;
+    static constexpr bool value =
+        std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
+        std::is_same<T, complex64>::value ||
+        std::is_same<T, complex128>::value || is_quantized<T>::value;
   };
 
   // Fills in 'stats' with statistics collected by this allocator.

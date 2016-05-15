@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/tensor_array.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -239,6 +240,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           tensor_array->ElemType(), *tensor_array_output_handle, array_size,
           false /* dynamic_size */, true /* multiple_writes_aggregate */,
           true /* close_after_read */);
+      TF_RETURN_IF_ERROR((*ret)->CopyShapesFrom(tensor_array));
       return Status::OK();
     };
 
@@ -332,6 +334,7 @@ REGISTER_GPU(bfloat16);
 
 // READ ***********************************************************************
 
+template <typename Device, typename T>
 class TensorArrayReadOp : public OpKernel {
  public:
   explicit TensorArrayReadOp(OpKernelConstruction* context)
@@ -361,18 +364,24 @@ class TensorArrayReadOp : public OpKernel {
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
             " but Op requested dtype ", DataTypeString(dtype_), "."));
     PersistentTensor value;
-    OP_REQUIRES_OK(ctx, tensor_array->Read(index, &value));
+    Status s = tensor_array->Read<Device, T>(ctx, index, &value);
+    OP_REQUIRES_OK(ctx, s);
     ctx->set_output(0, *value.AccessTensor(ctx));
   }
-
-  bool IsExpensive() override { return false; }
 
  private:
   DataType dtype_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("TensorArrayRead").Device(DEVICE_CPU),
-                        TensorArrayReadOp);
+#define REGISTER_READ(type)                                   \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayRead")             \
+                              .Device(DEVICE_CPU)             \
+                              .TypeConstraint<type>("dtype"), \
+                          TensorArrayReadOp<CPUDevice, type>);
+
+TF_CALL_ALL_TYPES(REGISTER_READ)
+
+#undef REGISTER_READ
 
 #if GOOGLE_CUDA
 
@@ -382,7 +391,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayRead").Device(DEVICE_CPU),
                               .TypeConstraint<type>("dtype") \
                               .HostMemory("handle")          \
                               .HostMemory("index"),          \
-                          TensorArrayReadOp);
+                          TensorArrayReadOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
@@ -430,7 +439,8 @@ class TensorArrayPackOp : public OpKernel {
     // Read all the PersistentTensors into a vector to keep track of
     // their memory.
     std::vector<PersistentTensor> values;
-    OP_REQUIRES_OK(ctx, tensor_array->ReadMany(&values));
+    Status s = tensor_array->ReadMany<Device, T>(ctx, &values);
+    OP_REQUIRES_OK(ctx, s);
 
     const Tensor* value_0_t = values[0].AccessTensor(ctx);
     TensorShape output_shape(value_0_t->shape());
@@ -558,7 +568,8 @@ class TensorArrayConcatOp : public OpKernel {
     // Read all the PersistentTensors into a vector to keep track of
     // their memory.
     std::vector<PersistentTensor> values;
-    OP_REQUIRES_OK(ctx, tensor_array->ReadMany(&values));
+    Status s = tensor_array->ReadMany<Device, T>(ctx, &values);
+    OP_REQUIRES_OK(ctx, s);
 
     std::vector<const Tensor*> value_tensors;
     value_tensors.resize(values.size());
@@ -749,8 +760,11 @@ class TensorArrayUnpackOp : public OpKernel {
           tensor_value_i->shaped<T, 3>({1, 1, element_shape.num_elements()});
       indices[1] = i;
 
-      functor::Split<Device, T>()(ctx->eigen_device<Device>(), tensor_value_i_t,
-                                  tensor_value_t, indices, sizes);
+      if (element_shape.num_elements() > 0) {
+        functor::Split<Device, T>()(ctx->eigen_device<Device>(),
+                                    tensor_value_i_t, tensor_value_t, indices,
+                                    sizes);
+      }
 
       write_values.push_back(persistent_tensor);
     }

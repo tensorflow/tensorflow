@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session_interface.h"
-#include "tensorflow/core/distributed_runtime/process_util.h"
-#include "tensorflow/core/distributed_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -184,7 +184,7 @@ class MasterSession : public MasterSessionInterface {
 class MasterSession::ReffedClientGraph : public core::RefCounted {
  public:
   ReffedClientGraph(const string& handle, const BuildGraphOptions& bopts,
-                    ClientGraph* cg, const GraphOptions& graph_opts)
+                    SimpleClientGraph* cg, const GraphOptions& graph_opts)
       : session_handle_(handle),
         client_graph_(cg),
         bopts_(bopts),
@@ -205,7 +205,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     DeregisterPartitions();
   }
 
-  const ClientGraph* client_graph() { return client_graph_; }
+  const SimpleClientGraph* client_graph() { return client_graph_; }
 
   // Local execution methods.
 
@@ -229,7 +229,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
  private:
   const string session_handle_;
-  ClientGraph* const client_graph_ = nullptr;
+  SimpleClientGraph* const client_graph_ = nullptr;
   std::unordered_set<const Node*> nodes_needing_input_mapping_;
   BuildGraphOptions bopts_;
   const GraphOptions graph_opts_;
@@ -276,7 +276,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   // Send/Recv nodes that are the result of client-added
   // feeds and fetches must be tracked so that the tensors
-  // can be be added to the local rendezvous.
+  // can be added to the local rendezvous.
   static void TrackFeedsAndFetches(Part* part, const PartitionOptions& popts);
 
   // The actual graph partitioning and registration implementation.
@@ -799,7 +799,7 @@ Status MasterSession::StartStep(const RunStepRequest& req,
       // cache it.
       VLOG(1) << "Unseen hash " << hash << " for "
               << BuildGraphOptionsString(*opts);
-      ClientGraph* client_graph = nullptr;
+      SimpleClientGraph* client_graph = nullptr;
       TF_RETURN_IF_ERROR(execution_state_->BuildGraph(*opts, &client_graph));
       auto entry = new ReffedClientGraph(handle_, *opts, client_graph,
                                          session_opts_.config.graph_options());

@@ -25,7 +25,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -591,6 +590,19 @@ class ControlFlowTest(tf.test.TestCase):
     self._testWhile_Gpu_1(use_gpu=False)
     self._testWhile_Gpu_1(use_gpu=True)
 
+  def testWhileShape(self):
+    with self.test_session():
+      i = tf.constant(0)
+      m = tf.ones([2, 2])
+      c = lambda i, j: tf.less(i, 2)
+      def _b(i, j):
+        new_i = tf.add(i, 1)
+        new_j = tf.tile(j, [2, 2])
+        return [new_i, new_j]
+      r = tf.while_loop(c, _b, [i, m])
+      r = r[1] * tf.ones([8, 8])
+      self.assertAllEqual(np.ones((8, 8)), r.eval())
+
   def _testNestedWhile_1(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       n = tf.constant(0)
@@ -640,6 +652,14 @@ class ControlFlowTest(tf.test.TestCase):
 
       res = tf.while_loop(condition, body, [r], parallel_iterations=1)
       self.assertAllEqual(12, res.eval())
+
+  def testWhileWithControl_3(self):
+    with self.test_session() as sess:
+      b = tf.placeholder(tf.bool)
+      c = tf.constant(0)
+      with tf.control_dependencies([b]):
+        c = tf.while_loop(lambda x: x < 10, lambda x: x + 1, [c])
+      self.assertEqual(10, sess.run(c, {b: True}))
 
   def testCondWhile_1(self):
     with self.test_session():
@@ -904,14 +924,14 @@ class ControlFlowTest(tf.test.TestCase):
   def testWhileGrad_Shape(self):
     with self.test_session():
       x = tf.placeholder(tf.float32, shape=[None])
-      v = tf.constant(2.0, name="v")
+      v = tf.constant([2.0], name="v")
       n = tf.constant(0, name="n")
       c = lambda i, v: tf.less(i, 5)
       b = lambda i, v: [i + 1, tf.mul(x, v)]
       r = tf.while_loop(c, b, [n, v], parallel_iterations=1)
 
       r = tf.gradients(r[1], x)[0]
-      self.assertEqual(r.get_shape(), tensor_shape.unknown_shape())
+      self.assertEqual([None], r.get_shape().as_list())
       self.assertAllClose([810.0, 2560.0], r.eval(feed_dict={x: [3.0, 4.0]}))
 
   def testWhileGrad_MultipleUses(self):

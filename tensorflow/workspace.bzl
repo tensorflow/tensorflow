@@ -13,8 +13,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/4c94692de3e5.tar.gz",
-    sha256 = "381d8bf942e08d3746fe3fc41de977a1ef0b662e7a1df288652a34e2680adc61",
+    url = "https://bitbucket.org/eigen/eigen/get/50812b426b7c.tar.gz",
+    sha256 = "fa95e425c379c2c7b8a49d9ef7bd0c5a8369171c987affd6dbae5de8a8911c1a",
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -32,6 +32,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "re2",
     remote = "https://github.com/google/re2.git",
     commit = "791beff",
+  )
+
+  native.git_repository(
+    name = "gemmlowp",
+    remote = "https://github.com/google/gemmlowp.git",
+    commit = "96d3acab46fbb03855ca22c2ee2bb9831ac8c83c",
   )
 
   native.new_http_archive(
@@ -74,7 +80,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.git_repository(
     name = "grpc",
-    commit = "3d62fc6",
+    commit = "2bc7d80",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
   )
@@ -89,4 +95,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "grpc_lib",
     actual = "@grpc//:grpc++_unsecure",
+  )
+
+  native.new_git_repository(
+    name = "jsoncpp_git",
+    remote = "https://github.com/open-source-parsers/jsoncpp.git",
+    commit = "11086dd6a7eba04289944367ca82cea71299ed70",
+    build_file = path_prefix + "jsoncpp.BUILD",
+  )
+
+  native.bind(
+    name = "jsoncpp",
+    actual = "@jsoncpp_git//:jsoncpp",
   )

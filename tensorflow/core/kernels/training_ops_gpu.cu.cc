@@ -78,7 +78,6 @@ struct ApplyAdadelta<GPUDevice, T> {
   }
 };
 
-
 template <typename T>
 struct ApplyMomentum<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
@@ -151,21 +150,27 @@ struct ApplyRMSProp<GPUDevice, T> {
 
 }  // namespace functor
 
+template struct functor::ApplyGradientDescent<GPUDevice, Eigen::half>;
 template struct functor::ApplyGradientDescent<GPUDevice, float>;
 template struct functor::ApplyGradientDescent<GPUDevice, double>;
 
+template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagrad<GPUDevice, float>;
 template struct functor::ApplyAdagrad<GPUDevice, double>;
 
+template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdadelta<GPUDevice, float>;
 template struct functor::ApplyAdadelta<GPUDevice, double>;
 
+template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;
 template struct functor::ApplyMomentum<GPUDevice, double>;
 
+template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;
 template struct functor::ApplyAdam<GPUDevice, double>;
 
+template struct functor::ApplyRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyRMSProp<GPUDevice, float>;
 template struct functor::ApplyRMSProp<GPUDevice, double>;
 }  // end namespace tensorflow

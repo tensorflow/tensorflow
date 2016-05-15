@@ -902,7 +902,7 @@ tf.transpose(x, perm=[1, 0]) ==> [[1 4]
 #           [[7  8  9]
 #            [10 11 12]]]
 # Take the transpose of the matrices in dimension-0
-tf.transpose(b, perm=[0, 2, 1]) ==> [[[1  4]
+tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
                                       [2  5]
                                       [3  6]]
 
@@ -921,6 +921,93 @@ tf.transpose(b, perm=[0, 2, 1]) ==> [[[1  4]
 ##### Returns:
 
   A transposed `Tensor`.
+
+
+- - -
+
+### `tf.space_to_batch(input, paddings, block_size, name=None)` {#space_to_batch}
+
+SpaceToBatch for 4-D tensors of type T.
+
+Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
+More specifically, this op outputs a copy of the input tensor where values from
+the `height` and `width` dimensions are moved to the `batch` dimension. After
+the zero-padding, both `height` and `width` of the input must be divisible by the
+block size.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. 4-D with shape `[batch, height, width, depth]`.
+*  <b>`paddings`</b>: A `Tensor` of type `int32`.
+    2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
+      the padding of the input with zeros across the spatial dimensions as follows:
+
+          paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
+
+      The effective spatial dimensions of the zero-padded input tensor will be:
+
+          height_pad = pad_top + height + pad_bottom
+          width_pad = pad_left + width + pad_right
+
+    The attr `block_size` must be greater than one. It indicates the block size.
+
+      * Non-overlapping blocks of size `block_size x block size` in the height and
+        width dimensions are rearranged into the batch dimension at each location.
+      * The batch of the output tensor is `batch * block_size * block_size`.
+      * Both height_pad and width_pad must be divisible by block_size.
+
+    The shape of the output will be:
+
+        [batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
+         depth]
+
+*  <b>`block_size`</b>: An `int`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+
+
+- - -
+
+### `tf.batch_to_space(input, crops, block_size, name=None)` {#batch_to_space}
+
+BatchToSpace for 4-D tensors of type T.
+
+Rearranges (permutes) data from batch into blocks of spatial data, followed by
+cropping. This is the reverse transformation of SpaceToBatch. More specifically,
+this op outputs a copy of the input tensor where values from the `batch`
+dimension are moved in spatial blocks to the `height` and `width` dimensions,
+followed by cropping along the `height` and `width` dimensions.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. 4-D tensor with shape
+    `[batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
+      depth]`. Note that the batch size of the input tensor must be divisible by
+    `block_size * block_size`.
+*  <b>`crops`</b>: A `Tensor` of type `int32`.
+    2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
+    how many elements to crop from the intermediate result across the spatial
+    dimensions as follows:
+
+        crops = [[crop_top, crop_bottom], [crop_left, crop_right]]
+
+*  <b>`block_size`</b>: An `int`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  4-D with shape `[batch, height, width, depth]`, where:
+
+        height = height_pad - crop_top - crop_bottom
+        width = width_pad - crop_left - crop_right
+
+  The attr `block_size` must be greater than one. It indicates the block size.
 
 
 - - -
@@ -1312,9 +1399,8 @@ where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 ##### Args:
 
 
-*  <b>`tensor`</b>: N-D tensor.  First K dimensions can be None, which allows e.g.
-    undefined batch size.  Trailing dimensions must be specified.
-*  <b>`mask`</b>: K-D boolean tensor, K <= N.
+*  <b>`tensor`</b>: N-D tensor.
+*  <b>`mask`</b>: K-D boolean tensor, K <= N and K must be known statically.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -1340,18 +1426,20 @@ boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
 
 - - -
 
-### `tf.one_hot(indices, depth, on_value, off_value, axis=None, name=None)` {#one_hot}
+### `tf.one_hot(indices, depth, on_value=1, off_value=0, axis=None, dtype=tf.float32, name=None)` {#one_hot}
 
 Returns a one-hot tensor.
 
 The locations represented by indices in `indices` take value `on_value`,
-while all other locations take value `off_value`.
+while all other locations take value `off_value`. By default, `on_value` is 1,
+and `off_value` is 0. The type of the output tensor is specified by `dtype`,
+which defaults to `tf.float32`.
 
-If the input `indices` is rank `N`, the output will have rank `N+1`,
-The new axis is created at dimension `axis` (default: the new axis is
-appended at the end).
+If the input `indices` is rank `N`, the output will have rank `N+1`. The
+new axis is created at dimension `axis` (default: the new axis is appended
+at the end).
 
-If `indices` is a scalar the output shape will be a vector of length `depth`.
+If `indices` is a scalar the output shape will be a vector of length `depth`
 
 If `indices` is a vector of length `features`, the output shape will be:
 ```
@@ -1359,8 +1447,8 @@ If `indices` is a vector of length `features`, the output shape will be:
   depth x features if axis == 0
 ```
 
-If `indices` is a matrix (batch) with shape `[batch, features]`,
-the output shape will be:
+If `indices` is a matrix (batch) with shape `[batch, features]`, the output
+shape will be:
 ```
   batch x features x depth if axis == -1
   batch x depth x features if axis == 1
@@ -1383,35 +1471,14 @@ Suppose that
 
 Then output is `[4 x 3]`:
 
-    ```output =
-      [5.0 0.0 0.0]  // one_hot(0)
-      [0.0 0.0 5.0]  // one_hot(2)
-      [0.0 0.0 0.0]  // one_hot(-1)
-      [0.0 5.0 0.0]  // one_hot(1)
-    ```
-
-Suppose that
-
 ```
-  indices = [0, 2, -1, 1]
-  depth = 3
-  on_value = 0.0
-  off_value = 3.0
-  axis = 0
+  output =
+  [5.0 0.0 0.0]  // one_hot(0)
+  [0.0 0.0 5.0]  // one_hot(2)
+  [0.0 0.0 0.0]  // one_hot(-1)
+  [0.0 5.0 0.0]  // one_hot(1)
 ```
 
-Then output is `[3 x 4]`:
-
-    ```output =
-      [0.0 3.0 3.0 3.0]
-      [3.0 3.0 3.0 0.0]
-      [3.0 3.0 3.0 3.0]
-      [3.0 0.0 3.0 3.0]
-    //  ^                one_hot(0)
-    //      ^            one_hot(2)
-    //          ^        one_hot(-1)
-    //              ^    one_hot(1)
-    ```
 Suppose that
 
 ```
@@ -1424,32 +1491,38 @@ Suppose that
 
 Then output is `[2 x 2 x 3]`:
 
-    ```output =
-      [
-        [1.0, 0.0, 0.0]  // one_hot(0)
-        [0.0, 0.0, 1.0]  // one_hot(2)
-      ][
-        [0.0, 1.0, 0.0]  // one_hot(1)
-        [0.0, 0.0, 0.0]  // one_hot(-1)
-      ]```
+```
+  output =
+  [
+    [1.0, 0.0, 0.0]  // one_hot(0)
+    [0.0, 0.0, 1.0]  // one_hot(2)
+  ][
+    [0.0, 1.0, 0.0]  // one_hot(1)
+    [0.0, 0.0, 0.0]  // one_hot(-1)
+  ]
+```
 
 ##### Args:
 
 
-*  <b>`indices`</b>: A `Tensor` of type `int64`. A tensor of indices.
-*  <b>`depth`</b>: A `Tensor` of type `int32`.
-    A scalar defining the depth of the one hot dimension.
-*  <b>`on_value`</b>: A `Tensor`.
-    A scalar defining the value to fill in output when `indices[j] = i`.
-*  <b>`off_value`</b>: A `Tensor`. Must have the same type as `on_value`.
-    A scalar defining the value to fill in output when `indices[j] != i`.
-*  <b>`axis`</b>: An optional `int`. Defaults to `-1`.
-    The axis to fill (default: -1, a new inner-most axis).
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`indices`</b>: A `Tensor` of indices.
+*  <b>`depth`</b>: A scalar defining the depth of the one hot dimension.
+*  <b>`on_value`</b>: A scalar defining the value to fill in output when `indices[j]
+    = i`. (default: 1)
+*  <b>`off_value`</b>: A scalar defining the value to fill in output when `indices[j]
+    != i`. (default: 0)
+*  <b>`axis`</b>: The axis to fill (default: -1, a new inner-most axis).
+*  <b>`dtype`</b>: The data type of the output tensor.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `on_value`. The one-hot tensor.
+
+*  <b>`output`</b>: The one-hot tensor.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If dtype is `tf.string`
 
 
 

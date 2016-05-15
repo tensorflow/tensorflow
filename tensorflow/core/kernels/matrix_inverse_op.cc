@@ -34,7 +34,9 @@ class MatrixInverseOp
     : public UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
  public:
   explicit MatrixInverseOp(OpKernelConstruction* context)
-      : UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
+      : UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
+  }
   ~MatrixInverseOp() override {}
 
   TensorShape GetOutputMatrixShape(
@@ -65,7 +67,15 @@ class MatrixInverseOp
       // By definition, an empty matrix's inverse is an empty matrix.
       return;
     }
-    Eigen::PartialPivLU<Matrix> lu_decomposition(input);
+    Eigen::PartialPivLU<Matrix> lu_decomposition;
+    if (adjoint_) {
+      // TODO(rmlarsen): For Eigen 3.2, this creates a temporary copy.
+      // Make sure to backport: https://bitbucket.org/eigen/eigen/commits/ \
+      // bd2219a74c96dfe3f6bc2c23588749e36d2d8173
+      lu_decomposition.compute(input.adjoint());
+    } else {
+      lu_decomposition.compute(input);
+    }
     // TODO(rmlarsen): Add check based on condition number estimation.
     // PartialPivLU cannot give strong guarantees on invertibility, but
     // we can at least guard against exact zero pivots. This can occur as
@@ -80,6 +90,8 @@ class MatrixInverseOp
   }
 
  private:
+  bool adjoint_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
 };
 
