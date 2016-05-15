@@ -22,3 +22,4 @@ from __future__ import print_function
 from tensorflow.contrib.immediate.python.immediate.tensor import *
 from tensorflow.contrib.immediate.python.immediate.env import *
 from tensorflow.contrib.immediate.python.immediate.op import *
+from tensorflow.contrib.immediate.python.immediate.wrapping_util import *

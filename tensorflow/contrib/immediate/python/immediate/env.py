@@ -17,19 +17,50 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
+
+from tensorflow.python.platform import tf_logging as logging
+
+# Native TF ops
+from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_candidate_sampling_ops
+from tensorflow.python.ops import gen_control_flow_ops
+from tensorflow.python.ops import gen_ctc_ops
+from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import gen_image_ops
+from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_parsing_ops
+from tensorflow.python.ops import gen_random_ops
+from tensorflow.python.ops import gen_script_ops
+from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import gen_string_ops
+from tensorflow.python.ops import gen_user_ops
+
+# Python-only ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_data_flow_ops
-from tensorflow.python.ops import gen_io_ops
-from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import session_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variables
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.ops import tensor_array_ops
 
 import inspect
 import re
@@ -43,7 +74,7 @@ from .op import PythonOpWrapper
 from .op import Op
 
 import numpy as np
-
+import wrapping_util
 
 class Env(object):
 
@@ -57,43 +88,27 @@ class Env(object):
     self.sess = session.Session()
     self.op_factory = OpFactory(self)
 
-    # these will hold namespaces like gen_math_ops
-    # that will hold wrapped versions of those namespaces
-    # they will used when substituting immediate execution logic
-    # for non-native Python TensorFlow ops
 
-    # TODO(yaroslavvb): replace this with topological sort
+    # wrap all tensorflow op modules. Keep track of already wrapped modules
+    # for __globals__ substitution dictionary "sub" 
     sub = {}
     self.wrapped_namespaces = {}
-    self.wrapped_namespaces['gen_math_ops'] = Namespace(self, 'gen_math_ops',
-                                                    gen_math_ops,
-                                                    tf_root=False)
-    sub["gen_math_ops"] = self.wrapped_namespaces['gen_math_ops']
+    for op_module in wrapping_util.gen_op_module_list:
+      wrapped_namespace = Namespace(self, op_module, eval(op_module),
+                                    tf_root=False)
+      self.wrapped_namespaces[op_module] = wrapped_namespace
+      sub[op_module] = wrapped_namespace
 
-    self.wrapped_namespaces['gen_array_ops'] = Namespace(self, 'gen_array_ops',
-                                                    gen_array_ops,
-                                                    tf_root=False)
-    sub["gen_array_ops"] = self.wrapped_namespaces['gen_array_ops']
-    
-    
-    self.wrapped_namespaces["array_ops"] = Namespace(self, "array_ops",
-                                                    array_ops,
-                                                    tf_root=False,
-                                                     global_sub=sub)
-    sub["array_ops"] = self.wrapped_namespaces["array_ops"]
-    
-    self.wrapped_namespaces['math_ops'] = Namespace(self, 'math_ops',
-                                                    math_ops,
-                                                    tf_root=False,
-                                                    global_sub=sub)
+    for op_module in wrapping_util.python_op_module_list_sorted():
+      wrapped_namespace = Namespace(self, op_module,
+                                    eval(op_module),
+                                    tf_root=False, global_sub=sub)
+
+      self.wrapped_namespaces[op_module] = wrapped_namespace
+      sub[op_module] = wrapped_namespace
 
     self.tf =  Namespace(self, "tf", tf_namespace, tf_root=True,
                          global_sub=sub)
-
-    # sinc
-    #    self.wrapped_namespaces['
-
-    #    self.wrapped_namespaces from tensorflow.python.ops import array_ops
 
 
     # TODO(yaroslavvb): add run options
