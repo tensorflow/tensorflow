@@ -25,6 +25,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import nn
 
 exp = math.exp
 log = math.log
@@ -824,6 +825,54 @@ class BatchNormalizationTest(tf.test.TestCase):
     self._testBatchNormArbitraryShapes((2, 3, 2, 4, 5), (1, 1, 1, 4, 5),
                                        atol=0.005)
 
+  def testBatchNormTrainingWithRollingMoments(self):
+    """Test BatchNormalizeTraining ops
+    """
+    x_shape = [3, 5, 4, 2]
+    param_shape = [5]
+    x_val = np.random.random_sample(x_shape).astype(np.float32)
+    beta_val = np.random.random_sample(param_shape).astype(np.float32)
+    gamma_val = np.random.random_sample(param_shape).astype(np.float32)
+    # TODO check the non gpu case
+    use_gpu = True
+    with self.test_session(use_gpu=use_gpu) as sess:
+      # TODO support other arguments
+      scale_after_normalization = True
+      shift_after_normalization = True
+      x = tf.constant(x_val, name="x")
+      beta = tf.constant(beta_val, name="beta")
+      gamma = tf.constant(gamma_val, name="gamma")
+      rolling_means = tf.Variable(np.zeros(param_shape, dtype=np.float32))
+      rolling_inv_var = tf.Variable(np.zeros(param_shape, dtype=np.float32))
+      epsilon = 0.001
+      exponential_average_factor = 0.9
+      # TODO check / implement shift after scale after
+      bn, means, inv_var = nn.batch_norm_training_wih_rolling_moments(x, beta, gamma, rolling_means, rolling_inv_var, epsilon, exponential_average_factor)
+      m_val = np.mean(x_val, axis=[0, 2, 3], keepdims=True)
+      v_val = np.var(x_val, axis=[0, 2, 3], keepdims=True)
+      beta_reshape = beta_val.reshape([1, param_shape[0], 1, 1])
+      gamma_reshape = gamma_val.reshape([1, param_shape[0], 1, 1])
+      np_bn = self._npBatchNorm(
+        x_val, m_val, v_val, beta_reshape, gamma_reshape, epsilon,
+        scale_after_normalization, shift_after_normalization)
+      init = tf.initialize_variables([rolling_means, rolling_inv_var])
+      sess.run(init)
+      bn_val, means_val, inv_var_val = sess.run([bn, means, inv_var])
+      rolling_mean_val, rolling_inv_var_val = sess.run([rolling_means, rolling_inv_var])
+
+      self.assertAllClose(bn_val, np_bn, atol=0.00001)
+      self.assertAllClose(means_val, np.squeeze(m_val), atol=0.00001)
+      self.assertAllClose(inv_var_val, np.squeeze(1./v_val), atol=0.00001)
+
+      target_rolling_mean = np.squeeze(m_val) * .1
+      target_rolling_inv_var = np.squeeze(1. / v_val) * .1
+
+      self.assertAllClose(rolling_mean_val, target_rolling_mean, atol=0.00001)
+      self.assertAllClose(rolling_inv_var_val, target_rolling_inv_var, atol=0.00001)
+
+  def testBatchNormTrainingWithRollingMomentsGrad(self):
+      # TODO make this test
+      pass
 
 class SufficientStatisticsTest(tf.test.TestCase):
 

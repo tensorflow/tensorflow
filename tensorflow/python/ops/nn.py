@@ -803,8 +803,10 @@ def batch_norm_with_global_normalization(t,
   return batch_normalization(t, m, v, beta, gamma if scale_after_normalization
                              else None, variance_epsilon, name)
 
-def batch_norm_training_wih_rolling_moments(t, beta, gamma, variance_epsilon,
+def batch_norm_training_wih_rolling_moments(t, beta, gamma,
                                             rolling_means, rolling_inv_var,
+                                            variance_epsilon=0.0001,
+                                            exponential_average_factor=0.9,
                                             data_format="NCHW"):
     """ Batch Normalization in training mode
     Args:
@@ -813,9 +815,10 @@ def batch_norm_training_wih_rolling_moments(t, beta, gamma, variance_epsilon,
         An offset to be addded to the normalized tensor.
       gamma: A 1D beta Tenor with size matching the 'C' dimention of t.
         A scalar to be multipled with the normalized tensor
-      variance_epsilon: A small float number to avoid dividing by 0.
       rolling_means: A 1D Variable to store rolling means.
       rolling_inv_var: A 1D Variable to store rolling inverse variances.
+      variance_epsilon: A small float number to avoid dividing by 0.
+      exponential_average_factor: A float denoting the rolling average factor.
 
     Returns:
       output: a batch-normalized `t`.
@@ -828,8 +831,8 @@ def batch_norm_training_wih_rolling_moments(t, beta, gamma, variance_epsilon,
         gamma, beta, running_mean, running_inv_var, 0.01, 0.8)
     return output, mean, inv_var
 
-def batch_norm_inference(t, beta, gamma, variance_epsilon, population_means,
-                         population_inv_var, data_format="NCHW"):
+def batch_norm_inference(t, beta, gamma, population_means,
+                         population_inv_var, variance_epsilon, data_format="NCHW"):
     """ Batch Normalization in inference mode
     Args:
       t: A 4D input Tensor.
