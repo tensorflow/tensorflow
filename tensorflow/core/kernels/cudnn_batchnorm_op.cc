@@ -387,7 +387,8 @@ class BatchNormTrainingGradOp : public OpKernel {
           errors::InvalidArgument("saved_inv_var must be 1-dimensional", saved_inv_var.shape().DebugString()));
 
       OP_REQUIRES(context, input.shape() == output_grad.shape(),
-          errors::InvalidArgument("input shape does not match output_grad shape"));
+          errors::InvalidArgument("input shape(", input.shape().DebugString(),
+          "(does not match output_grad shape(", output_grad.shape().DebugString(), ")"));
 
       Tensor* output = nullptr;
       TensorShape out_shape = input.shape();

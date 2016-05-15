@@ -240,7 +240,7 @@ from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
 from tensorflow.python.util.all_util import make_all
 
-from tensorflow.python.gen_batchnorm_training_op import batch_normalize_training
+from tensorflow.python import gen_batchnorm_training_op
 
 # Bring more nn-associated functionality into this package.
 # go/tf-wildcard-import
@@ -801,11 +801,7 @@ def batch_norm_with_global_normalization(t,
   return batch_normalization(t, m, v, beta, gamma if scale_after_normalization
                              else None, variance_epsilon, name)
 
-def batch_norm_training_wih_rolling_moments(t, beta, gamma,
-                                            rolling_means, rolling_inv_var,
-                                            variance_epsilon=0.0001,
-                                            exponential_average_factor=0.9,
-                                            data_format="NCHW"):
+def batch_norm_training(t, beta, gamma, variance_epsilon=0.0001, data_format="NCHW"):
     """ Batch Normalization in training mode
     Args:
       t: A 4D input Tensor.
@@ -813,21 +809,15 @@ def batch_norm_training_wih_rolling_moments(t, beta, gamma,
         An offset to be addded to the normalized tensor.
       gamma: A 1D beta Tenor with size matching the 'C' dimention of t.
         A scalar to be multipled with the normalized tensor
-      rolling_means: A 1D Variable to store rolling means.
-      rolling_inv_var: A 1D Variable to store rolling inverse variances.
       variance_epsilon: A small float number to avoid dividing by 0.
-      exponential_average_factor: A float denoting the rolling average factor.
 
     Returns:
       output: a batch-normalized `t`.
       mean: 1D tensor with computed means for the batch.
       inv_var: A 1D tensor with computed inverse variances of the batch.
     """
-    if data_format != "NCHW":
-        raise AttributeError("Currently only NCHW data_format is supported.")
-    output, mean, inv_var = batch_normalize_training(t,
-        gamma, beta, running_mean, running_inv_var, 0.01, 0.8)
-    return output, mean, inv_var
+    output, _, _= gen_batchnorm_training_op.batch_norm_training(t, gamma, beta, epsilon=variance_epsilon, data_format=data_format)
+    return output
 
 def batch_norm_inference(t, beta, gamma, population_means,
                          population_inv_var, variance_epsilon, data_format="NCHW"):
@@ -846,9 +836,6 @@ def batch_norm_inference(t, beta, gamma, population_means,
     Returns:
       A batch normalized `t`
     """
-    if data_format != "NCHW":
-        raise AttributeError("Currently only NCHW data_format is supported.")
-
     channel_dim = t.get_shape()[1].value
 
     if beta.get_shape()[0].value != channel_dim:
