@@ -23,6 +23,7 @@ module TF {
   let TOOLTIP_X_PIXEL_OFFSET = 0;
   let TOOLTIP_CIRCLE_SIZE = 4;
   let TOOLTIP_CLOSEST_CIRCLE_SIZE = 6;
+  let NAN_SYMBOL_SIZE = 6;
 
   interface Point {
     run: string;
@@ -146,10 +147,12 @@ module TF {
   export class LineChart extends BaseChart {
     private linePlot: Plottable.Plots.Line<number|Date>;
     private scatterPlot: Plottable.Plots.Scatter<number|Date, Number>;
+    private nanDisplay: Plottable.Plots.Scatter<number|Date, Number>;
     private yAccessor: Plottable.Accessor<number>;
     private lastPointsDataset: Plottable.Dataset;
     private datasets: Plottable.Dataset[];
-    private updateLastPointDataset;
+    private updateSpecialDatasets;
+    private nanDataset: Plottable.Dataset;
 
     constructor(
         tag: string, dataFn: DataFn, xType: string,
@@ -158,9 +161,10 @@ module TF {
       // lastPointDataset is a dataset that contains just the last point of
       // every dataset we're currently drawing.
       this.lastPointsDataset = new Plottable.Dataset();
+      this.nanDataset = new Plottable.Dataset();
       // need to do a single bind, so we can deregister the callback from
       // old Plottable.Datasets. (Deregistration is done by identity checks.)
-      this.updateLastPointDataset = this._updateLastPointDataset.bind(this);
+      this.updateSpecialDatasets = this._updateSpecialDatasets.bind(this);
       super(tag, dataFn, xType, colorScale, tooltip);
     }
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
@@ -185,27 +189,77 @@ module TF {
       scatterPlot.size(TOOLTIP_CIRCLE_SIZE * 2);
       scatterPlot.datasets([this.lastPointsDataset]);
       this.scatterPlot = scatterPlot;
-      return new Plottable.Components.Group([scatterPlot, group]);
+
+      let nanDisplay = new Plottable.Plots.Scatter<number|Date, number>();
+      nanDisplay.x(xAccessor, xScale);
+      nanDisplay.y((x) => x.displayY, yScale);
+      nanDisplay.attr('fill', (d: any) => this.colorScale.scale(d.run));
+      nanDisplay.attr('opacity', 1);
+      nanDisplay.size(NAN_SYMBOL_SIZE * 2);
+      nanDisplay.datasets([this.nanDataset]);
+      nanDisplay.symbol(Plottable.SymbolFactories.triangleUp);
+      this.nanDisplay = nanDisplay;
+      return new Plottable.Components.Group([nanDisplay, scatterPlot, group]);
     }
 
-    /** Iterates over every dataset, takes the last point, and puts all these
-     * points in the lastPointsDataset.
+    /** Constructs special datasets. Each special dataset contains exceptional
+     * values from all of the regular datasetes, e.g. last points in series, or
+     * NaN values. Those points will have a `run` and `relative` property added
+     * (since usually those are context in the surrounding dataset).
      */
-    private _updateLastPointDataset() {
+    private _updateSpecialDatasets() {
       let relativeAccessor = relativeX().accessor;
-      let data = this.datasets
-                     .map((d) => {
-                       let datum = null;
-                       if (d.data().length > 0) {
-                         let idx = d.data().length - 1;
-                         datum = d.data()[idx];
-                         datum.run = d.metadata().run;
-                         datum.relative = relativeAccessor(datum, idx, d);
-                       }
-                       return datum;
-                     })
-                     .filter((x) => x != null);
-      this.lastPointsDataset.data(data);
+      // a very literal definition of NaN: true for NaN for a non-number type
+      // or null, etc. False for Infinity or -Infinity
+      let isNaN = (x) => +x !== x;
+      let lastPointsData =
+          this.datasets
+              .map((d) => {
+                let datum = null;
+                // filter out NaNs to ensure last point is a clean one
+                let nonNanData = d.data().filter((x) => !isNaN(x.scalar));
+                if (nonNanData.length > 0) {
+                  let idx = nonNanData.length - 1;
+                  datum = nonNanData[idx];
+                  datum.run = d.metadata().run;
+                  datum.relative = relativeAccessor(datum, -1, d);
+                }
+                return datum;
+              })
+              .filter((x) => x != null);
+      this.lastPointsDataset.data(lastPointsData);
+
+      // Take a dataset, return an array of NaN data points
+      // the NaN points will have a "displayY" property which is the
+      // y-value of a nearby point that was not NaN (0 if all points are NaN)
+      let datasetToNaNData = (d: Plottable.Dataset) => {
+        let displayY = null;
+        let data = d.data();
+        let i = 0;
+        while (i < data.length && displayY == null) {
+          if (!isNaN(data[i].scalar)) {
+            displayY = data[i].scalar;
+          }
+          i++;
+        }
+        if (displayY == null) {
+          displayY = 0;
+        }
+        let nanData = [];
+        for (i = 0; i < data.length; i++) {
+          if (!isNaN(data[i].scalar)) {
+            displayY = data[i].scalar;
+          } else {
+            data[i].run = d.metadata().run;
+            data[i].displayY = displayY;
+            data[i].relative = relativeAccessor(data[i], -1, d);
+            nanData.push(data[i]);
+          }
+        }
+        return nanData;
+      };
+      let nanData = _.flatten(this.datasets.map(datasetToNaNData));
+      this.nanDataset.data(nanData);
     }
 
     private setupTooltips(plot: Plottable.XYPlot<number|Date, number>):
@@ -335,9 +389,9 @@ module TF {
     public changeRuns(runs: string[]) {
       super.changeRuns(runs);
       runs.reverse();  // draw first run on top
-      this.datasets.forEach((d) => d.offUpdate(this.updateLastPointDataset));
+      this.datasets.forEach((d) => d.offUpdate(this.updateSpecialDatasets));
       this.datasets = runs.map((r) => this.getDataset(r));
-      this.datasets.forEach((d) => d.onUpdate(this.updateLastPointDataset));
+      this.datasets.forEach((d) => d.onUpdate(this.updateSpecialDatasets));
       this.linePlot.datasets(this.datasets);
     }
   }
