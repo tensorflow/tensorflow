@@ -190,10 +190,12 @@ class ValidationMonitor(BaseMonitor):
                val_y,
                n_classes=0,
                print_steps=100,
-               early_stopping_rounds=None):
+               early_stopping_rounds=None,
+               verbose=1):
     super(ValidationMonitor, self).__init__(
         print_steps=print_steps,
-        early_stopping_rounds=early_stopping_rounds)
+        early_stopping_rounds=early_stopping_rounds,
+        verbose=verbose)
     self.val_feeder = setup_train_data_feeder(val_X, val_y, n_classes, -1)
     self.print_val_loss_buffer = []
     self.all_val_loss_buffer = []
