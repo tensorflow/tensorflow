@@ -154,7 +154,7 @@ def tf_gen_op_wrapper_cc(name, out_ops_file, pkg=""):
 #  tf_gen_op_wrappers_cc("tf_ops_lib", [ "array_ops", "math_ops" ])
 #
 #
-# This will ultimately generate ops/* files and a library like:
+#This will ultimately generate ops/* files and a library like:
 #
 # cc_library(name = "tf_ops_lib",
 #            srcs = [ "ops/array_ops.cc",
@@ -667,7 +667,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs):
   out_srcs = [p.replace(".proto", ".pb_text.cc") for p in srcs]
   native.genrule(
         name = name,
-        srcs = srcs,
+        srcs = srcs + ["//tensorflow/tools/proto_text:placeholder.txt"],
         outs = out_hdrs + out_srcs,
         cmd = "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
               "$(@D) " + srcs_relative_dir + " $(SRCS)",
