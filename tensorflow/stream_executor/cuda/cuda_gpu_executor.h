@@ -217,7 +217,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   void *CudaContextHack() override;
 
-  CUcontext cuda_context();
+  CudaContext* cuda_context();
 
  private:
   // Attempts to find a more specific version of the file indicated by
@@ -272,7 +272,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   CUdevice device_;
 
   // Handle for session with the library/driver. Immutable post-initialization.
-  CUcontext context_;
+  CudaContext* context_;
 
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.

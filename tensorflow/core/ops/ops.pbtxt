@@ -6903,6 +6903,7 @@ op {
     }
   }
   summary: "Draws samples from a multinomial distribution."
+  is_stateful: true
 }
 op {
   name: "Neg"

@@ -13,8 +13,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/50812b426b7c.tar.gz",
-    sha256 = "fa95e425c379c2c7b8a49d9ef7bd0c5a8369171c987affd6dbae5de8a8911c1a",
+    url = "https://bitbucket.org/eigen/eigen/get/aaa010b0dd40.tar.gz",
+    sha256 = "948cccc08e3ce922e890fe39916b087d6651297cd7422a04524dbf44e372ed9a",
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -38,6 +38,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "gemmlowp",
     remote = "https://github.com/google/gemmlowp.git",
     commit = "96d3acab46fbb03855ca22c2ee2bb9831ac8c83c",
+  )
+
+  native.new_http_archive(
+    name = "farmhash_archive",
+    url = "https://github.com/google/farmhash/archive/34c13ddfab0e35422f4c3979f360635a8c050260.zip",
+    sha256 = "e3d37a59101f38fd58fb799ed404d630f0eee18bfc2a2433910977cc8fea9c28",
+    build_file = path_prefix + "farmhash.BUILD",
+  )
+
+  native.bind(
+    name = "farmhash",
+    actual = "@farmhash//:farmhash",
   )
 
   native.new_http_archive(

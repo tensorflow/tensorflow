@@ -23,9 +23,9 @@ import sys
 
 import tensorflow as tf
 
+from tensorflow.python.client import client_lib
 from tensorflow.python.framework import docs
 from tensorflow.python.framework import framework_lib
-from tensorflow.python.client import client_lib
 
 
 tf.flags.DEFINE_string("out_dir", None,
@@ -53,14 +53,23 @@ def get_module_to_name():
       tf.contrib.distributions: "tf.contrib.distributions",
       tf.contrib.layers: "tf.contrib.layers",
       tf.contrib.learn: "tf.contrib.learn",
+      tf.contrib.metrics: "tf.contrib.metrics",
       tf.contrib.util: "tf.contrib.util",
       tf.contrib.copy_graph: "tf.contrib.copy_graph",
   }
 
 
 def all_libraries(module_to_name, members, documented):
-  # A list of (filename, docs.Library) pairs representing the individual files
-  # that we want to create.
+  """Make a list of the individual files that we want to create.
+
+  Args:
+    module_to_name: Dictionary mapping modules to short names.
+    members: Dictionary mapping member name to (fullname, member).
+    documented: Set of documented names to update.
+
+  Returns:
+    List of (filename, docs.Library) pairs.
+  """
   def library(name, title, module=None, **args):
     if module is None:
       module = sys.modules["tensorflow.python.ops" +
@@ -130,8 +139,9 @@ def all_libraries(module_to_name, members, documented):
               tf.contrib.distributions),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
+      library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
-      library("contrib.copy_graph", "Copying Graph Elements (contrib)", 
+      library("contrib.copy_graph", "Copying Graph Elements (contrib)",
               tf.contrib.copy_graph),
   ]
 

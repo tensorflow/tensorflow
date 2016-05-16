@@ -41,8 +41,8 @@ class XentTest(tf.test.TestCase):
       loss = tf.nn.softmax_cross_entropy_with_logits(np_features, np_labels)
       backprop = loss.op.outputs[1]
       tf_loss, tf_backprop = sess.run([loss, backprop])
-    self.assertAllClose(np_loss, tf_loss)
-    self.assertAllClose(np_backprop, tf_backprop)
+    self.assertAllCloseAccordingToType(np_loss, tf_loss)
+    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
   def _testAll(self, features, labels):
     self._testXent(features, labels, use_gpu=False)

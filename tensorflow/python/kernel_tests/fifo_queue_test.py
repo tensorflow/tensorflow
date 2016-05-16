@@ -45,8 +45,7 @@ class FIFOQueueTest(tf.test.TestCase):
 
   def testMultiQueueConstructor(self):
     with tf.Graph().as_default():
-      q = tf.FIFOQueue(5, (tf.int32, tf.float32),
-                                  shared_name="foo", name="Q")
+      q = tf.FIFOQueue(5, (tf.int32, tf.float32), shared_name="foo", name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
     self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
@@ -106,6 +105,14 @@ class FIFOQueueTest(tf.test.TestCase):
                                   shapes=[(), (2,)])
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
       self.assertEqual(4, q.size().eval())
+
+  def testEnqueueDictWithoutNames(self):
+    with self.test_session():
+      q = tf.FIFOQueue(10, tf.float32)
+      with self.assertRaisesRegexp(ValueError, "must have names"):
+        q.enqueue({"a": 12.0})
+      with self.assertRaisesRegexp(ValueError, "must have names"):
+        q.enqueue_many({"a": [12.0, 13.0]})
 
   def testParallelEnqueue(self):
     with self.test_session() as sess:
@@ -1158,6 +1165,154 @@ class FIFOQueueTest(tf.test.TestCase):
 
     self.assertDeviceEqual("/job:ps", dequeued_t.device)
     self.assertEqual([b"loc:@q"], dequeued_t.op.colocation_groups())
+
+
+class FIFOQueueDictTest(tf.test.TestCase):
+
+  def testConstructor(self):
+    with tf.Graph().as_default():
+      q = tf.FIFOQueue(5, (tf.int32, tf.float32), names=("i", "j"),
+                       shared_name="foo", name="Q")
+    self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
+    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
+    self.assertProtoEquals("""
+      name:'Q' op:'FIFOQueue'
+      attr { key: 'component_types' value { list {
+        type: DT_INT32 type : DT_FLOAT
+      } } }
+      attr { key: 'shapes' value { list {} } }
+      attr { key: 'capacity' value { i: 5 } }
+      attr { key: 'container' value { s: '' } }
+      attr { key: 'shared_name' value { s: 'foo' } }
+      """, q.queue_ref.op.node_def)
+    self.assertEqual(["i", "j"], q.names)
+
+  def testConstructorWithShapes(self):
+    with tf.Graph().as_default():
+      q = tf.FIFOQueue(5, (tf.int32, tf.float32), names=("i", "f"),
+                       shapes=(tf.TensorShape([1, 1, 2, 3]),
+                               tf.TensorShape([5, 8])), name="Q")
+    self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
+    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
+    self.assertProtoEquals("""
+      name:'Q' op:'FIFOQueue'
+      attr { key: 'component_types' value { list {
+        type: DT_INT32 type : DT_FLOAT
+      } } }
+      attr { key: 'shapes' value { list {
+        shape { dim { size: 1 }
+                dim { size: 1 }
+                dim { size: 2 }
+                dim { size: 3 } }
+        shape { dim { size: 5 }
+                dim { size: 8 } }
+      } } }
+      attr { key: 'capacity' value { i: 5 } }
+      attr { key: 'container' value { s: '' } }
+      attr { key: 'shared_name' value { s: '' } }
+      """, q.queue_ref.op.node_def)
+    self.assertEqual(["i", "f"], q.names)
+
+  def testEnqueueDequeueOneComponent(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, tf.float32, shapes=((),), names="f")
+      # Verify that enqueue() checks that when using names we must enqueue a
+      # dictionary.
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op = q.enqueue(10.0)
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op = q.enqueue((10.0,))
+      # The dictionary keys must match the queue component names.
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"x": 12})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"f": 10.0, "s": "aa"})
+      enqueue_op = q.enqueue({"f": 10.0})
+      enqueue_op2 = q.enqueue({"f": 20.0})
+      enqueue_op3 = q.enqueue({"f": 30.0})
+      # Verify that enqueue_many() checks that when using names we must enqueue
+      # a dictionary.
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op4 = q.enqueue_many([40.0, 50.0])
+      # The dictionary keys must match the queue component names.
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"x": 12})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0], "s": ["aa", "bb"]})
+      enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0]})
+      dequeue = q.dequeue()
+      dequeue_2 = q.dequeue_many(2)
+      sess.run(enqueue_op)
+      sess.run(enqueue_op2)
+      sess.run(enqueue_op3)
+      sess.run(enqueue_op4)
+      f = sess.run(dequeue["f"])
+      self.assertEqual(10.0, f)
+      f = sess.run(dequeue_2["f"])
+      self.assertEqual([20.0, 30.0], list(f))
+      f = sess.run(dequeue_2["f"])
+      self.assertEqual([40.0, 50.0], list(f))
+
+  def testEnqueueDequeueMultipleComponent(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, (tf.float32, tf.int32, tf.string),
+                       shapes=((), (), ()), names=("f", "i", "s"))
+      # Verify that enqueue() checks that when using names we must enqueue a
+      # dictionary.
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op = q.enqueue((10.0, 123, "aa"))
+      # The dictionary keys must match the queue component names.
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"x": 10.0})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"i": 12, "s": "aa"})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"i": 123, "s": "aa", "f": 10.0, "x": 10.0})
+      enqueue_op = q.enqueue({"i": 123, "s": "aa", "f": 10.0})
+      enqueue_op2 = q.enqueue({"i": 124, "s": "bb", "f": 20.0})
+      enqueue_op3 = q.enqueue({"i": 125, "s": "cc", "f": 30.0})
+      # Verify that enqueue_many() checks that when using names we must enqueue
+      # a dictionary.
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op4 = q.enqueue_many(([40.0, 50.0], [126, 127], ["dd", "ee"]))
+      # The dictionary keys must match the queue component names.
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"x": [10.0, 20.0]})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"i": [12, 12], "s": ["aa", "bb"]})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0], "i": [126, 127],
+                                      "s": ["dd", "ee"], "x": [1, 2]})
+      enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0], "i": [126, 127],
+                                    "s": ["dd", "ee"]})
+      dequeue = q.dequeue()
+      dequeue_2 = q.dequeue_many(2)
+      sess.run(enqueue_op)
+      sess.run(enqueue_op2)
+      sess.run(enqueue_op3)
+      sess.run(enqueue_op4)
+      i, f, s = sess.run([dequeue["i"], dequeue["f"], dequeue["s"]])
+      self.assertEqual(123, i)
+      self.assertEqual(10.0, f)
+      self.assertEqual(tf.compat.as_bytes("aa"), s)
+      i, f, s = sess.run([dequeue_2["i"], dequeue_2["f"], dequeue_2["s"]])
+      self.assertEqual([124, 125], list(i))
+      self.assertTrue([20.0, 30.0], list(f))
+      self.assertTrue([tf.compat.as_bytes("bb"), tf.compat.as_bytes("cc")],
+                      list(s))
+      i, f, s = sess.run([dequeue_2["i"], dequeue_2["f"], dequeue_2["s"]])
+      self.assertEqual([126, 127], list(i))
+      self.assertTrue([40.0, 50.0], list(f))
+      self.assertTrue([tf.compat.as_bytes("dd"), tf.compat.as_bytes("ee")],
+                      list(s))
 
 
 class FIFOQueueWithTimeoutTest(tf.test.TestCase):

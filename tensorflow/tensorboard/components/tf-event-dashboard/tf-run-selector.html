@@ -1,6 +1,5 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-button/paper-button.html">
-<link rel="import" href="../paper-checkbox/paper-checkbox.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../tf-dashboard-common/scrollbar-style.html">
 <link rel="import" href="../tf-multi-checkbox/tf-multi-checkbox.html">
@@ -86,11 +85,7 @@ Properties out:
       colorScale: Object, // TF.ColorScale
     },
     _toggleAll: function() {
-      if (this.outSelected.length > 0) {
-        this.outSelected = [];
-      } else {
-        this.outSelected = this.runs.slice();
-      }
+      this.$.multiCheckbox.toggleAll();
     },
   });
   </script>

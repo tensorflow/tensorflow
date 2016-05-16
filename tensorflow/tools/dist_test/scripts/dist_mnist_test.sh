@@ -147,7 +147,7 @@ done
 COUNTER=0
 while true; do
   ((COUNTER++))
-  if [[ $(echo "${COUNTER}>${TIMEOUT}" | bc -l) == "1" ]]; then
+  if [[ "${COUNTER}" -gt "${TIMEOUT}" ]]; then
     die "Reached maximum polling steps while polling for final validation "\
 "cross entropies from all workers"
   fi
@@ -191,6 +191,6 @@ VAL_XENT=$(get_final_val_xent "${WKR_LOG_PREFIX}0.log")
 # to verify tha tthe 2-worker training gives significantly lower final cross
 # entropy
 echo "Final validation cross entropy from worker0: ${VAL_XENT}"
-if [[ $(echo "${VAL_XENT}>0" | bc -l) != "1" ]]; then
+if [[ $(python -c "print ${VAL_XENT}>0") != "True" ]]; then
   die "Sanity checks on the final validation cross entropy values FAILED"
 fi

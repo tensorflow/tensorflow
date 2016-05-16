@@ -469,7 +469,6 @@ class ColocationGraph {
 
       // If the NodeDef contains a device, then we interpret it as a
       // (partial) device specification.
-      string colocated_node_name;
       if (!node.def().device().empty()) {
         // The user has specified a device in the NodeDef, try to find a
         // valid device matching their specification in the set of
@@ -659,7 +658,6 @@ Status SimplePlacer::Run() {
     // and we can experiment with other algorithms when given a choice of
     // devices.
     node->set_assigned_device_name(devices[0]->name());
-
     // Log placement if log_device_placement is set.
     if (options_ && options_->config.log_device_placement()) {
       printf("%s: %s\n", node->name().c_str(),

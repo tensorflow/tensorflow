@@ -1685,8 +1685,9 @@ bool CUDABlas::DoBlasGemm(
       &beta,
       CUDAMemoryMutable(c), CUBLAS_DATA_HALF, ldc);
 #else
-  LOG(FATAL) << "fp16 sgemm is not implemented in this cuBLAS version "
+  LOG(ERROR) << "fp16 sgemm is not implemented in this cuBLAS version "
              << "(need at least CUDA 7.5)";
+  return false;
 #endif
 }
 

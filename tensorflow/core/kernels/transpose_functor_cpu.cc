@@ -56,14 +56,7 @@ void TransposeUsingEigen(const Device& d, const Tensor& in,
   auto y = typename TTypes<T, NDIMS>::Tensor(
       reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
       out->shape().AsEigenDSizes<NDIMS>());
-  auto nelem = in.NumElements();
-  static const int64 kInlineThreshold = 131072;
-  if (nelem * sizeof(T) < kInlineThreshold) {
-    // Don't bother multi-threaded transpose if 'in' is small.
-    y = x.shuffle(p);
-  } else {
-    y.device(d) = x.shuffle(p);
-  }
+  y.device(d) = x.shuffle(p);
 }
 
 }  // end namespace internal
