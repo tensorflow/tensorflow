@@ -122,14 +122,19 @@ class EigenAllocator : public ::Eigen::Allocator {
 #else
 class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
  public:
-  EigenCudaStreamDevice() { Eigen::initializeDeviceProp(); }
-
+  EigenCudaStreamDevice() : scratch_(nullptr) { Eigen::initializeDeviceProp(); }
+  ~EigenCudaStreamDevice() {
+    if (scratch_) {
+      deallocate(scratch_);
+    }
+  }
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
                     int gpu_id, ::tensorflow::Allocator* alloc) {
     if (LogMemory::IsEnabled()) {
       operation_ = context->op_kernel().name() + "/EigenAllocator";
       step_id_ = context->step_id();
     }
+    assert(!scratch_);
     stream_ = cuda_stream;
     allocator_ = alloc;
     device_prop_ = &Eigen::m_deviceProperties[gpu_id];
@@ -163,6 +168,15 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
     CHECK_EQ(err, cudaSuccess);
   }
 
+  // Return a pointer to a per stream scratchpad of 1024 bytes residing
+  // in global memory.
+  void* scratchpad() const {
+    if (scratch_ == nullptr) {
+      scratch_ = allocate(1024);
+    }
+    return scratch_;
+  }
+
  private:
   struct AsyncFreeData {
     AsyncFreeData(::tensorflow::Allocator* a, void* p, const string& o,
@@ -190,6 +204,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   const cudaStream_t* stream_;          // Not owned.
   const cudaDeviceProp* device_prop_;   // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
+  mutable void* scratch_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);
 };

@@ -24,6 +24,7 @@ import threading
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -897,6 +898,11 @@ class InteractiveSession(BaseSession):
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional) `ConfigProto` proto used to configure the session.
     """
+    if not config:
+      config = config_pb2.ConfigProto()
+    # Interactive sessions always place pruned graphs.
+    config.graph_options.place_pruned_graph = True
+
     super(InteractiveSession, self).__init__(target, graph, config)
     self._default_session = self.as_default()
     self._default_session.__enter__()

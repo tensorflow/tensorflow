@@ -190,7 +190,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
       self._monitor.create_val_feed_dict(self._inp, self._out)
 
       # Create session to run model with.
-      self._session = session.Session(self._config.tf_master,
+      self._session = session.Session(self._config.master,
                                       config=self._config.tf_config)
 
       # Run parameter initializers.
@@ -480,7 +480,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
       # Restore session.
       if not isinstance(self._config, RunConfig):
         self._config = RunConfig(verbose=self.verbose)
-      self._session = session.Session(self._config.tf_master,
+      self._session = session.Session(self._config.master,
                                       config=self._config.tf_config)
       checkpoint_path = train.latest_checkpoint(path)
       if checkpoint_path is None:

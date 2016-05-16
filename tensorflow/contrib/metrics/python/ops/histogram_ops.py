@@ -13,9 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=g-short-docstring-punctuation
-"""## Metrics that use histograms.
+"""Metrics that use histograms.
 
-@@auc_using_histogram
+Module documentation, including "@@" callouts, should be put in
+third_party/tensorflow/contrib/metrics/__init__.py
 """
 
 from __future__ import absolute_import

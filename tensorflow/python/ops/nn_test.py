@@ -83,6 +83,36 @@ class SoftmaxTest(tf.test.TestCase):
     self.assertLess(err, eps)
 
 
+class LogSoftmaxTest(tf.test.TestCase):
+
+  def _log_softmax(self, x):
+    assert len(x.shape) == 2
+    m = x.max(1)[:, np.newaxis]
+    u = x - m
+    return u - np.log(np.sum(np.exp(u), 1, keepdims=True))
+
+  def testLogSoftmax(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float32)
+    y_np = self._log_softmax(x_np)
+    with self.test_session():
+      x_tf = tf.constant(x_np)
+      y_tf = tf.nn.log_softmax(x_tf)
+      y_tf_np = y_tf.eval()
+    eps = 1e-3
+    self.assertAllClose(y_tf_np, y_np, eps)
+
+  def testGradient(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float64)
+    with self.test_session():
+      x_tf = tf.constant(x_np)
+      y_tf = tf.nn.log_softmax(x_tf)
+      err = tf.test.compute_gradient_error(x_tf, x_shape, y_tf, x_shape)
+    eps = 1e-7
+    self.assertLess(err, eps)
+
+
 class L2LossTest(tf.test.TestCase):
 
   def testL2Loss(self):

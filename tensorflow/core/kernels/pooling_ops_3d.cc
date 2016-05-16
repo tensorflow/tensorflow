@@ -99,6 +99,7 @@ class Pooling3DOp : public UnaryOp<T> {
     const int64 depth = tensor_in.dim_size(4);
     const int64 in_batch = tensor_in.dim_size(0);
 
+    // Dimension order for these arrays is: x, y, z.
     std::array<int64, 3> input_size{
         {tensor_in.dim_size(3), tensor_in.dim_size(2), tensor_in.dim_size(1)}};
     std::array<int64, 3> window({{ksize_[3], ksize_[2], ksize_[1]}});
@@ -406,6 +407,7 @@ class AvgPooling3dGradOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
+    // Dimension order for these arrays is x, y, z.
     std::array<int64, 3> input_size = {{output_shape.dim_size(3),
                                         output_shape.dim_size(2),
                                         output_shape.dim_size(1)}};

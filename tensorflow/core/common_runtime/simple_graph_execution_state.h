@@ -114,10 +114,44 @@ class SimpleGraphExecutionState {
   // execution, e.g. a send, recv or feed node.
   Status GlobalNodeDefByName(const string& name, NodeDef* out);
 
+  // The graph returned by BuildGraph may contain only the pruned
+  // graph, whereas some clients may want access to the full graph.
+  const Graph* full_graph() {
+    mutex_lock l(mu_);
+    return graph_;
+  }
+
+  // Returns a reference to the current graph_def.  Use must
+  // not extend beyond lifetime of SimpleGrahExecutionState object.
+  const GraphDef& original_graph_def() { return original_graph_def_; }
+
+  // Returns the map of stateful placements as a map of
+  // node name to placement string.
+  std::unordered_map<string, string> GetStatefulPlacements() const {
+    mutex_lock l(mu_);
+    return stateful_placements_;
+  }
+
+  // Restores the map of stateful placements as a map of
+  // node name to placement string.
+  void SetStatefulPlacements(const std::unordered_map<string, string>& sp) {
+    mutex_lock l(mu_);
+    stateful_placements_ = sp;
+  }
+
  private:
   mutable mutex mu_;
 
-  Status InitBaseGraph() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status InitBaseGraph(const BuildGraphOptions& options)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Map of placed stateful nodes, i.e. nodes for which is_stateful()
+  // is true, such as "params" and "queue" nodes.  Once placed these
+  // nodes can not be moved to a different device.  Maps node names to
+  // device names.
+  std::unordered_map<string, string> stateful_placements_ GUARDED_BY(mu_);
+  void SaveStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void RestoreStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const OpRegistryInterface* const ops_;   // Not owned
   GraphDef original_graph_def_;            // Immutable after ctor.

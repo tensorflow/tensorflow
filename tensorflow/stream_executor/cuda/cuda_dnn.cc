@@ -268,6 +268,9 @@ cudnnConvolutionFwdAlgo_t ToConvForwardAlgo(dnn::AlgorithmType algorithm) {
     case CUDNN_CONVOLUTION_FWD_ALGO_DIRECT:
     case CUDNN_CONVOLUTION_FWD_ALGO_FFT:
     case CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING:
+#if CUDNN_VERSION >= 5000
+    case CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD:
+#endif
       return algo;
     default:
       LOG(FATAL) << "Unsupported Cudnn convolution forward algorithm: "
@@ -283,6 +286,9 @@ cudnnConvolutionBwdDataAlgo_t ToConvBackwardDataAlgo(
     case CUDNN_CONVOLUTION_BWD_DATA_ALGO_1:
     case CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT:
     case CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING:
+#if CUDNN_VERSION >= 5000
+    case CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD:
+#endif
       return algo;
     default:
       LOG(FATAL)
@@ -865,6 +871,9 @@ bool CudnnSupport::GetConvolveAlgorithms(
       CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
       CUDNN_CONVOLUTION_FWD_ALGO_FFT,
       CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING,
+#if CUDNN_VERSION >= 5000
+      CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
+#endif
       // clang-format on
   });
   return true;
@@ -878,6 +887,9 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
       CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
       CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
       CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
+#if CUDNN_VERSION >= 5000
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD,
+#endif
       // clang-format on
   });
   return true;

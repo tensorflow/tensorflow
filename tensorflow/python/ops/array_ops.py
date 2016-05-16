@@ -453,6 +453,11 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     shape_tensor[:ndims_mask].assert_is_compatible_with(shape_mask)
 
     tensor = reshape(tensor, concat(0, [[-1], shape(tensor)[ndims_mask:]]))
+    first_dim = shape_tensor[:ndims_mask].num_elements()
+    tensor.set_shape(
+        tensor_shape.as_shape([first_dim])
+        .concatenate(shape_tensor[ndims_mask:]))
+
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask)
 

@@ -80,6 +80,15 @@ message GraphOptions {
   // Annotate each Node with Op output shape data, to the extent it can
   // be statically inferred.
   bool infer_shapes = 5;
+
+  // Only place the subgraphs that are run, rather than the entire graph.
+  //
+  // This is useful for interactive graph building, where one might
+  // produce graphs that cannot be placed during the debugging
+  // process.  In particular, it allows the client to continue work in
+  // a session after adding a node to a graph whose placement
+  // constraints are unsatisfiable.
+  bool place_pruned_graph = 6;
 };
 
 // Session configuration parameters.
