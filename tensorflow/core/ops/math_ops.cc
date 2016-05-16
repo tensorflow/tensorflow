@@ -37,7 +37,7 @@ REGISTER_OP("BatchMatMul")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr("T: {float, double, int32, complex64}")
+    .Attr("T: {float, double, int32, complex64, complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .Doc(R"doc(
@@ -111,7 +111,7 @@ an output element, this operation computes \\(y = |x|\\).
 )doc");
 
 REGISTER_OP("ComplexAbs")
-    .Input("x: complex64")
+    .Input("x: complex64 complex128")
     .Output("y: float")
     .Doc(R"doc(
 Computes the complex absolute value of a tensor.
@@ -132,7 +132,7 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
 // Declares cwise unary operations signature: 't -> 't
 #define UNARY()                      \
   Input("x: T").Output("y: T").Attr( \
-      "T: {half, float, double, int32, complex64, int64}")
+      "T: {half, float, double, int32, int64, complex64, complex128}")
 
 REGISTER_OP("Neg")
     .UNARY()
@@ -262,7 +262,7 @@ Returns which elements of x are finite.
 REGISTER_OP("Sign")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {half, float, double, int32, int64, complex64}")
+    .Attr("T: {half, float, double, int32, int64, complex64, complex128}")
     .Doc(R"doc(
 Returns an element-wise indication of the sign of a number.
 
@@ -291,11 +291,12 @@ Returns element-wise smallest integer in not less than x.
 
 #define BINARY_MORE()                              \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {half, float, double, uint8, int8, int16, int32, int64, complex64}")
+      "T: {half, float, double, uint8, int8, int16, int32, int64, "\
+      "complex64, complex128}")
 
 #define BINARY_FEWER()                             \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {half, float, double, int32, complex64, int64}")
+      "T: {half, float, double, int32, int64, complex64, complex128}")
 
 // TODO(mrry): Restore `SetIsCommutative()` for non-string types.
 REGISTER_OP("Add")
@@ -303,8 +304,8 @@ REGISTER_OP("Add")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
-        "string}")
+        "T: {half, float, double, uint8, int8, int16, int32, int64, "\
+        "complex64, complex128, string}")
     .Doc(R"doc(
 Returns x + y element-wise.
 
@@ -373,7 +374,7 @@ REGISTER_OP("Pow")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, int32, complex64, int64}")
+    .Attr("T: {half, float, double, int32, int64, complex64, complex128}")
     .Doc(R"doc(
 Computes the power of one value to another.
 
@@ -502,7 +503,7 @@ Returns the truth value of (x >= y) element-wise.
 #define EQUALITY_COMPARISON()                                                  \
   Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr(       \
       "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, " \
-      "quint8, qint8, qint32, string, bool}")
+      "complex128, quint8, qint8, qint32, string, bool}")
 
 REGISTER_OP("Equal")
     .EQUALITY_COMPARISON()
@@ -608,7 +609,7 @@ REGISTER_OP("MatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {float, double, int32, complex64}")
+    .Attr("T: {float, double, int32, int64, complex64, complex128}")
     .Doc(R"doc(
 Multiply the matrix "a" by the matrix "b".
 
@@ -1194,7 +1195,11 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ```
 )doc");
 
-REGISTER_OP("Real").Input("input: complex64").Output("output: float").Doc(R"doc(
+REGISTER_OP("Real")
+    .Input("input: T")
+    .Output("output: float")
+    .Attr("T: {complex64, complex128}")
+    .Doc(R"doc(
 Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
@@ -1210,7 +1215,11 @@ tf.real(input) ==> [-2.25, 3.25]
 ```
 )doc");
 
-REGISTER_OP("Imag").Input("input: complex64").Output("output: float").Doc(R"doc(
+REGISTER_OP("Imag")
+    .Input("input: T")
+    .Output("output: float")
+    .Attr("T: {complex64, complex128}")
+    .Doc(R"doc(
 Returns the imaginary part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
@@ -1227,8 +1236,9 @@ tf.imag(input) ==> [4.75, 5.75]
 )doc");
 
 REGISTER_OP("Conj")
-    .Input("input: complex64")
-    .Output("output: complex64")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {complex64, complex128}")
     .Doc(R"doc(
 Returns the complex conjugate of a complex number.
 

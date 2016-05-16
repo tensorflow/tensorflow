@@ -5558,33 +5558,63 @@ op {
   name: "Conj"
   input_arg {
     name: "in"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "out"
-    type: DT_COMPLEX64
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
   name: "Conj"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "out"
-    type: DT_COMPLEX64
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
   name: "Conj"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "output"
-    type: DT_COMPLEX64
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
@@ -8647,33 +8677,63 @@ op {
   name: "Imag"
   input_arg {
     name: "in"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "out"
     type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
   name: "Imag"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "out"
     type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
   name: "Imag"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "output"
     type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
@@ -13603,33 +13663,63 @@ op {
   name: "Real"
   input_arg {
     name: "in"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "out"
     type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
   name: "Real"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "out"
     type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
   name: "Real"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "output"
     type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
