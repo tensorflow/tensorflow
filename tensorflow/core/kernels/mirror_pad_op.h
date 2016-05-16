@@ -233,7 +233,6 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
     return result;
   }
 
-#ifdef EIGEN_USE_COST_MODEL
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorOpCost
   costPerCoeff(bool vectorized) const {
     constexpr int kPacketSize =
@@ -245,7 +244,6 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
     return impl_.costPerCoeff(vectorized) +
            TensorOpCost(1, 0, compute_cost, vectorized, kPacketSize);
   }
-#endif  // EIGEN_USE_COST_MODEL
 
   EIGEN_DEVICE_FUNC Scalar* data() const { return nullptr; }
 

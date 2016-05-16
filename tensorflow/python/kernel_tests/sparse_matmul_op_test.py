@@ -80,18 +80,17 @@ class SparseMatMulTest(tf.test.TestCase):
 
   # Tests random sized matrices.
   def testRandom(self):
-    for _ in range(10):
-      for tr_a in [True, False]:
-        for tr_b in [True, False]:
-          for sp_a in [True, False]:
-            for sp_b in [True, False]:
-              for x_dtype in (tf.float32, tf.bfloat16):
-                for y_dtype in (tf.float32, tf.bfloat16):
-                  n, k, m = np.random.randint(1, 100, size=3)
-                  x = RandMatrix(n, k, tr_a)
-                  y = RandMatrix(k, m, tr_b)
-                  self._testCpuMatmul(x, y, tr_a, tr_b, sp_a, sp_b,
-                                      x_dtype=x_dtype, y_dtype=y_dtype)
+    for tr_a in [True, False]:
+      for tr_b in [True, False]:
+        for sp_a in [True, False]:
+          for sp_b in [True, False]:
+            for x_dtype in (tf.float32, tf.bfloat16):
+              for y_dtype in (tf.float32, tf.bfloat16):
+                n, k, m = np.random.randint(1, 100, size=3)
+                x = RandMatrix(n, k, tr_a)
+                y = RandMatrix(k, m, tr_b)
+                self._testCpuMatmul(x, y, tr_a, tr_b, sp_a, sp_b,
+                                    x_dtype=x_dtype, y_dtype=y_dtype)
 
 
 class MatMulGradientTest(tf.test.TestCase):

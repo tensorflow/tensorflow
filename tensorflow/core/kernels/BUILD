@@ -1668,6 +1668,7 @@ filegroup(
         "reduction_ops_common.h",
         "relu_op.h",
         "relu_op_functor.h",
+        "reverse_op.h",
         "save_restore_tensor.h",
         "softplus_op.h",
         "softsign_op.h",
@@ -1732,6 +1733,7 @@ filegroup(
         "relu_op.cc",
         "resize_nearest_neighbor_op.cc",
         "restore_op.cc",
+        "reverse_op.cc",
         "save_op.cc",
         "save_restore_tensor.cc",
         "session_ops.cc",
@@ -1767,7 +1769,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@re2//:re2",
         "//tensorflow/core:android_tensorflow_lib_lite",
         "//tensorflow/core:protos_cc",
         "//third_party/eigen3",

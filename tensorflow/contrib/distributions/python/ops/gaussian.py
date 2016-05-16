@@ -53,7 +53,7 @@ class Gaussian(object):
 
   ```python
   # Define a single scalar Gaussian distribution.
-  dist = tf.contrib.Gaussian(mu=0, sigma=3)
+  dist = tf.contrib.distributions.Gaussian(mu=0, sigma=3)
 
   # Evaluate the cdf at 1, returning a scalar.
   dist.cdf(1)

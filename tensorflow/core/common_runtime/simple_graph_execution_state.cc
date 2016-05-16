@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
+#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -87,13 +88,52 @@ Status SimpleGraphExecutionState::Extend(
     }
   }
 
+  // 3. Merge the versions field.
   int old_node_size = gdef.node_size();
   gdef.mutable_node()->MergeFrom(extension_def.node());
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&gdef, *ops_, old_node_size));
+  // Merge versions
+  if (gdef.has_versions()) {
+    if (gdef.versions().producer() != extension_def.versions().producer()) {
+      return errors::InvalidArgument(
+          "Can't extend GraphDef at version ", gdef.versions().producer(),
+          " with graph at version ", extension_def.versions().producer());
+    }
+    VersionDef* versions = gdef.mutable_versions();
+    versions->set_min_consumer(std::max(
+        versions->min_consumer(), extension_def.versions().min_consumer()));
+    if (extension_def.versions().bad_consumers_size()) {
+      // Add new bad_consumers that aren't already marked bad.
+      //
+      // Note: This implementation is quadratic time if there are many calls to
+      // ExtendLocked with many bad consumers.  Since this is unlikely, and
+      // fixing it would require data structures outside of this routine,
+      // quadratic time it is.
+      auto* bad_consumers = versions->mutable_bad_consumers();
+      const std::unordered_set<int> existing(bad_consumers->begin(),
+                                             bad_consumers->end());
+      for (const int v : extension_def.versions().bad_consumers()) {
+        if (existing.find(v) == existing.end()) {
+          bad_consumers->Add(v);
+        }
+      }
+    }
 
-  // 3. Add the extension.
+  } else {
+    gdef.mutable_versions()->CopyFrom(extension_def.versions());
+  }
+
+  // 5. Validate that the final graphdef is valid.
+  if (gdef.versions().producer() >= 5) {
+    // Validate the graph: we assume that merging two valid graphs
+    // should maintain graph validity.
+    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *ops_));
+  }
+
+  // 6. Add the extension.
   SimpleGraphExecutionStateOptions combined_options;
   combined_options.device_set = device_set_;
+  combined_options.session_options = session_options_;
 
   SimpleGraphExecutionState* new_execution_state =
       new SimpleGraphExecutionState(ops_, combined_options);
@@ -102,6 +142,7 @@ Status SimpleGraphExecutionState::Extend(
     delete new_execution_state;
     return new_execution_state_status;
   }
+  new_execution_state->SetStatefulPlacements(GetStatefulPlacements());
   *out = new_execution_state;
 
   // TODO(mrry): This is likely to be used for non-throughput-sensitive
@@ -110,14 +151,47 @@ Status SimpleGraphExecutionState::Extend(
   return Status::OK();
 }
 
-Status SimpleGraphExecutionState::InitBaseGraph() {
+void SimpleGraphExecutionState::SaveStatefulNodes(Graph* graph) {
+  for (Node* n : graph->nodes()) {
+    if (n->op_def().is_stateful()) {
+      VLOG(2) << "Saving " << n->DebugString();
+      stateful_placements_[n->name()] = n->assigned_device_name();
+    }
+  }
+}
+
+void SimpleGraphExecutionState::RestoreStatefulNodes(Graph* graph) {
+  for (Node* n : graph->nodes()) {
+    if (n->op_def().is_stateful()) {
+      auto iter = stateful_placements_.find(n->name());
+      if (iter != stateful_placements_.end()) {
+        n->set_assigned_device_name(iter->second);
+        VLOG(2) << "Restored " << n->DebugString();
+      }
+    }
+  }
+}
+
+Status SimpleGraphExecutionState::InitBaseGraph(
+    const BuildGraphOptions& options) {
   std::unique_ptr<Graph> new_graph(new Graph(ops_));
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(opts, original_graph_def_, new_graph.get()));
+  if (session_options_ &&
+      session_options_->config.graph_options().place_pruned_graph()) {
+    // Rewrite the graph before placement.
+    TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
+        new_graph.get(), options.feed_endpoints, options.fetch_endpoints,
+        options.target_nodes, device_set_->client_device()->attributes()));
+  }
+
+  // Save stateful placements before placing.
+  RestoreStatefulNodes(new_graph.get());
   SimplePlacer placer(new_graph.get(), device_set_, session_options_);
   // TODO(mrry): Consider making the SimplePlacer cancelable.
   TF_RETURN_IF_ERROR(placer.Run());
+  SaveStatefulNodes(new_graph.get());
   graph_ = new_graph.release();
   return Status::OK();
 }
@@ -128,17 +202,20 @@ Status SimpleGraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   mutex_lock l(mu_);
   // Lazily initialize the base graph.
   if (!graph_) {
-    TF_RETURN_IF_ERROR(InitBaseGraph());
+    TF_RETURN_IF_ERROR(InitBaseGraph(options));
   }
 
   std::unique_ptr<SimpleClientGraph> cgraph(new SimpleClientGraph(ops_));
   CopyGraph(*graph_, &cgraph->graph);
 
-  // Extract the subset of the graph that needs to be run, adding feed/fetch
-  // ops as needed.
-  TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-      &cgraph->graph, options.feed_endpoints, options.fetch_endpoints,
-      options.target_nodes, device_set_->client_device()->attributes()));
+  if (session_options_ == nullptr ||
+      !session_options_->config.graph_options().place_pruned_graph()) {
+    // Extract the subset of the graph that needs to be run, adding feed/fetch
+    // ops as needed.
+    TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
+        &cgraph->graph, options.feed_endpoints, options.fetch_endpoints,
+        options.target_nodes, device_set_->client_device()->attributes()));
+  }
 
   // Copy the extracted graph in order to make its node ids dense,
   // since the local CostModel used to record its stats is sized by

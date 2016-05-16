@@ -1,4 +1,4 @@
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, max_steps=None, fail_on_nan_loss=True)` {#train}
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, feed_fn=None, max_steps=None, fail_on_nan_loss=True)` {#train}
 
 Train a model.
 
@@ -37,6 +37,8 @@ program is terminated with exit code 1.
     `supervisor_save_model_secs` seconds when training.
 *  <b>`supervisor_save_summaries_secs`</b>: Save summaries every
     `supervisor_save_summaries_secs` seconds when training.
+*  <b>`feed_fn`</b>: A function that is called every iteration to produce a `feed_dict`
+    passed to `session.run` calls. Optional.
 *  <b>`max_steps`</b>: Train until `global_step_tensor` evaluates to this value.
 *  <b>`fail_on_nan_loss`</b>: If true, raise `NanLossDuringTrainingError` if `loss_op`
     evaluates to `NaN`. If false, continue training as if nothing happened.

@@ -76,7 +76,7 @@ while true; do
       /var/tf-k8s/local/start_local_k8s_service.sh
 
   if [[ $? == "23" ]]; then
-    if [[ $(echo "${COUNTER}>=${MAX_ATTEMPTS}" | bc -l) == "1" ]]; then
+    if [[ "${COUNTER}" -ge "${MAX_ATTEMPTS}" ]]; then
       echo "Reached maximum number of attempts (${MAX_ATTEMPTS}) "\
 "while attempting to start docker-in-docker for local k8s TensorFlow cluster"
       exit 1

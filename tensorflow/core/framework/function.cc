@@ -707,6 +707,10 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
+    const FunctionLibraryDefinition& other)
+    : function_defs_(other.function_defs_), func_grad_(other.func_grad_) {}
+
+FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionDefLibrary& def_lib)
     : function_defs_(def_lib.function_size()) {
   for (const auto& fdef : def_lib.function()) {

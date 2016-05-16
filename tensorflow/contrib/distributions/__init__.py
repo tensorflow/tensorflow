@@ -12,16 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Classes representing statistical distributions.  Ops for working with them.
+"""Classes representing statistical distributions and ops for working with them.
 
 ## Classes for statistical distributions.
 
 Classes that represent batches of statistical distributions.  Each class is
 initialized with parameters that define the distributions.
 
+### Base classes
+
+@@BaseDistribution
+@@ContinuousDistribution
+@@DiscreteDistribution
+
 ### Univariate (scalar) distributions
 
 @@Gaussian
+@@Uniform
 
 ### Multivariate distributions
 
@@ -44,6 +51,8 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
+from tensorflow.contrib.distributions.python.ops.distribution import *
 from tensorflow.contrib.distributions.python.ops.gaussian import *
 from tensorflow.contrib.distributions.python.ops.gaussian_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
+from tensorflow.contrib.distributions.python.ops.uniform import *

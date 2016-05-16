@@ -27,6 +27,7 @@
 @@is_strictly_increasing
 @@local_variable
 @@reduce_sum_n
+@@safe_embedding_lookup_sparse
 @@with_shape
 @@with_same_shape
 

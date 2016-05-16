@@ -82,6 +82,14 @@ class SigmoidCrossEntropyWithLogitsTest(tf.test.TestCase):
     print("logistic loss gradient err = ", err)
     self.assertLess(err, 1e-7)
 
+  def testGradientAtZero(self):
+    with self.test_session():
+      logits = tf.constant([0.0, 0.0], dtype=tf.float64)
+      targets = tf.constant([0.0, 1.0], dtype=tf.float64)
+      loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, targets)
+      grads = tf.gradients(loss, logits)[0].eval()
+    self.assertAllClose(grads, [0.5, -0.5])
+
   def testShapeError(self):
     with self.assertRaisesRegexp(ValueError, "must have the same shape"):
       tf.nn.sigmoid_cross_entropy_with_logits([[2, 1]], [1, 2, 3])

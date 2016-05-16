@@ -1475,7 +1475,8 @@ until the element has been enqueued.
 ##### Args:
 
 
-*  <b>`vals`</b>: The tuple of `Tensor` objects to be enqueued.
+*  <b>`vals`</b>: A tensor, a list or tuple of tensors, or a dictionary containing
+    the values to enqueue.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1499,8 +1500,8 @@ until all of the elements have been enqueued.
 ##### Args:
 
 
-*  <b>`vals`</b>: The tensor or tuple of tensors from which the queue elements
-    are taken.
+*  <b>`vals`</b>: A tensor, a list or tuple of tensors, or a dictionary
+    from which the queue elements are taken.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1602,9 +1603,13 @@ be cancelled.
 #### Other Methods
 - - -
 
-#### `tf.QueueBase.__init__(dtypes, shapes, queue_ref)` {#QueueBase.__init__}
+#### `tf.QueueBase.__init__(dtypes, shapes, names, queue_ref)` {#QueueBase.__init__}
 
 Constructs a queue object from a queue reference.
+
+The two optional lists, `shapes` and `names`, must be of the same length
+as `dtypes` if provided.  The values at a given index `i` indicate the
+shape and name to use for the corresponding queue component in `dtypes`.
 
 ##### Args:
 
@@ -1615,7 +1620,15 @@ Constructs a queue object from a queue reference.
     A list of shape tuples or None. This list is the same length
     as dtypes.  If the shape of any tensors in the element are constrained,
     all must be; shapes can be None if the shapes should not be constrained.
+*  <b>`names`</b>: Optional list of names.  If provided, the `enqueue()` and
+    `dequeue()` methods will use dictionaries with these names as keys.
+    Must be None or a list or tuple of the same length as `dtypes`.
 *  <b>`queue_ref`</b>: The queue reference, i.e. the output of the queue op.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
 
 
 - - -
@@ -1689,6 +1702,13 @@ The name of the underlying queue.
 
 - - -
 
+#### `tf.QueueBase.names` {#QueueBase.names}
+
+The list of names for each component of a queue element.
+
+
+- - -
+
 #### `tf.QueueBase.queue_ref` {#QueueBase.queue_ref}
 
 The underlying queue reference.
@@ -1706,7 +1726,7 @@ this class.
 
 - - -
 
-#### `tf.FIFOQueue.__init__(capacity, dtypes, shapes=None, shared_name=None, name='fifo_queue')` {#FIFOQueue.__init__}
+#### `tf.FIFOQueue.__init__(capacity, dtypes, shapes=None, names=None, shared_name=None, name='fifo_queue')` {#FIFOQueue.__init__}
 
 Creates a queue that dequeues elements in a first-in first-out order.
 
@@ -1730,8 +1750,11 @@ but the use of `dequeue_many` is disallowed.
     that may be stored in this queue.
 *  <b>`dtypes`</b>: A list of `DType` objects. The length of `dtypes` must equal
     the number of tensors in each queue element.
-*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects,
-    with the same length as `dtypes` or `None`.
+*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects
+    with the same length as `dtypes`, or `None`.
+*  <b>`names`</b>: (Optional.) A list of string naming the components in the queue
+    with the same length as `dtypes`, or `None`.  If specified the dequeue
+    methods return a dictionary with the names as keys.
 *  <b>`shared_name`</b>: (Optional.) If non-empty, this queue will be shared under
     the given name across multiple sessions.
 *  <b>`name`</b>: Optional name for the queue operation.
@@ -1749,7 +1772,7 @@ this class.
 
 - - -
 
-#### `tf.RandomShuffleQueue.__init__(capacity, min_after_dequeue, dtypes, shapes=None, seed=None, shared_name=None, name='random_shuffle_queue')` {#RandomShuffleQueue.__init__}
+#### `tf.RandomShuffleQueue.__init__(capacity, min_after_dequeue, dtypes, shapes=None, names=None, seed=None, shared_name=None, name='random_shuffle_queue')` {#RandomShuffleQueue.__init__}
 
 Create a queue that dequeues elements in a random order.
 
@@ -1783,8 +1806,11 @@ queue has been closed.
 *  <b>`min_after_dequeue`</b>: An integer (described above).
 *  <b>`dtypes`</b>: A list of `DType` objects. The length of `dtypes` must equal
     the number of tensors in each queue element.
-*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects,
-    with the same length as `dtypes` or `None`.
+*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects
+    with the same length as `dtypes`, or `None`.
+*  <b>`names`</b>: (Optional.) A list of string naming the components in the queue
+    with the same length as `dtypes`, or `None`.  If specified the dequeue
+    methods return a dictionary with the names as keys.
 *  <b>`seed`</b>: A Python integer. Used to create a random seed. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
