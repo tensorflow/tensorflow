@@ -95,6 +95,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
+    elems = ops.convert_to_tensor(elems, name="elems")
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
                                             dynamic_size=False,
@@ -167,6 +168,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
+    elems = ops.convert_to_tensor(elems, name="elems")
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
                                             dynamic_size=False,
@@ -236,6 +238,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     if varscope.caching_device is None:
       varscope.set_caching_device(lambda op: op.device)
 
+    elems = ops.convert_to_tensor(elems, name="elems")
     dtype = dtype if dtype else elems.dtype
 
     # Convert elems to tensor array.
@@ -258,10 +261,8 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         back_prop=back_prop,
         swap_memory=swap_memory)
     result = r_a.pack()
-    elems_dims = ops.convert_to_tensor(elems).get_shape().dims
-    result_dims = result.get_shape().dims
-    if elems_dims and result_dims:
-      result.set_shape([elems_dims[0]] + result_dims[1:])
+    result.set_shape(elems.get_shape().with_rank_at_least(1)[0:1].concatenate(
+        result.get_shape()[1:]))
     return result
 
 
@@ -313,6 +314,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
+    elems = ops.convert_to_tensor(elems, name="elems")
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
                                             dynamic_size=False,
@@ -342,10 +344,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         parallel_iterations=parallel_iterations,
         back_prop=back_prop, swap_memory=swap_memory)
     result = r_a.pack()
-    elems_dims = ops.convert_to_tensor(elems).get_shape().dims
-    result_dims = result.get_shape().dims
-    if elems_dims and result_dims:
-      result.set_shape([elems_dims[0]] + result_dims[1:])
+    result.set_shape(elems.get_shape().with_rank_at_least(1)[0:1].concatenate(
+        result.get_shape()[1:]))
     return result
 
 
