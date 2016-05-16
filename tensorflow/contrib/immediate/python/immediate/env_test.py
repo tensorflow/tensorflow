@@ -145,6 +145,16 @@ class EnvTest(tf.test.TestCase):
     split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2]))
     self.assertAllEqual(split0.as_numpy(), [1])
     
+
+
+## TODO(yaroslavvb): move to env_test2
+#### Tests below are for development/checking the Graph Caching system
+#### They rely on private details of session_ops implementation
+#### (such as, how often deletion graphs are created).
+#### As such they should be removed after Graph Caching is shown to work
+#### reliably
+
+
   def testAddCaching(self):
     # make sure that graph is not modified in a loop
     env = immediate.Env(tf)

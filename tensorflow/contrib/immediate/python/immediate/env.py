@@ -74,17 +74,50 @@ import types
 from .tensor import Tensor
 from .tensor import _ENABLE_DEBUG_LOGGING
 from .op import OpFactory
-from .op import OpWrapper
-from .op import PythonOpWrapper
+from .op import OpWrapper 
+from .op import PythonOpWrapper  # deprecated
 from .op import ConstantOpWrapper
 from .op import ConvertToTensorWrapper
 from .op import Op
 
 import numpy as np
-import wrapping_util
+#import wrapping_util
+
+# TODO(yaroslavvb): organize this better
+from .wrapping_util import gen_op_module_list
+from .wrapping_util import python_op_module_list_sorted
+
+# TODO(yaroslavvb): find a good place for get_canonical_name
+canonical_name_re = re.compile(".*/(tensorflow/python/.*py)[c]?")
+def get_canonical_name(fname):
+  """Gets canonical name used to refer to TensorFlow modules.
+  The reflects location in tf directory hierarchy, starting with
+  tensorflow/python/...
+
+  Ie, tensorflow/_python_build/tensorflow/python/ops/gen_math_ops.py becomes
+  tensorflow/python/ops/gen_math_ops.py after canonicalizing."""
+
+  groups = canonical_name_re.finall(fname)
+  if groups and len(groups)==1:
+    return groups[0]
+  else:
+    raise ValueError("Couldn't extract canonical name from %s, match groups "
+                     "were %s" % (fname, groups))
 
 
 class Env(object):
+  """Env is an object that manages current graph and session and translates user facing commands into appropriate session.run calls.
+
+  It contains implementations of manually ported methods like
+"convert_to_tensor" (to mirror ops.convert_to_tensor), as well as handling
+automatically wrapped methods (like _slice in gen_array_ops)
+
+In addition, it runs the logic to remap a set of whitelisted Python-only operations to their immediate-only versions.
+
+init_namespace assumes session and whitelisting has been initialized, and
+launches namespace wrapping logic
+"""
+
 
   # TODO(yaroslavvb): use dtypes.as_dtype(dtype) is not None instead
   # note: np.int32 has different hash from np.dtype('int32'), so must use later
@@ -93,27 +126,51 @@ class Env(object):
                            np.dtype('bool')}
 
   def __init__(self, tf_namespace):
+    self.tf_namespace = tf_namespace
     self.sess = session.Session()
     self.op_factory = OpFactory(self)
 
+    self.symbol_replacements = {}
+    self.function_whitelist = set()
+    self.module_whitelist = set()
+
+    # TODO(yaroslavvb): remove last name arg in special wrappers
+    self.register_replacement("tensorflow/python/framework/ops.py",
+                              "convert_to_tensor",
+                              ConvertToTensorWrapper(None, self,
+                                                     "convert_to_tensor"))
+
+    self.register_replacement('tensorflow/python/ops/constant_op.py',
+                              "constant",
+                              ConstantOpWrapper(None, self, "constant"))
+    
+    self.whitelist_module('tensorflow/python/ops/array_ops.py')
+    self.whitelist_function('tensorflow/python/ops/array_ops.py',
+                            'reduce_sum')
+    
 
     # wrap all tensorflow op modules. Keep track of already wrapped modules
     # for __globals__ substitution dictionary "sub" 
     sub = {}
     self.wrapped_namespaces = {}
 
+    # Wrap ops twice
+    # Wrap op_def_library with ops replacement
 
     # Wrap gen.*ops modules
-    for op_module in wrapping_util.gen_op_module_list:
+    for op_module in gen_op_module_list:
       wrapped_namespace = Namespace(self, op_module, eval(op_module),
                                     tf_root=False)
       self.wrapped_namespaces[op_module] = wrapped_namespace
       sub[op_module] = wrapped_namespace
 
-    # wrap ops namespace (to override convert_to_tensor method)
-    wrapped_namespace = Namespace(self, "ops", ops, tf_root=False)
+    # convert_to_tensor is called on ops.convert_n_to_tensor
+    sub["convert_to_tensor"] = ConvertToTensorWrapper(None, self,
+                                                      "convert_to_tensor")
+    wrapped_namespace = Namespace(self, "ops", ops, tf_root=False,
+                                  global_sub=sub)
     sub["ops"] = wrapped_namespace
-    
+
     # Because of array_ops: tensorflow.python.ops.constant_op import constant
     sub["constant"] =  ConstantOpWrapper(None, self, "constant")
 
@@ -121,7 +178,7 @@ class Env(object):
     #    sub["identity"] =  OpWrapper(None, self, "identity")
     sub["identity"] = sub["gen_array_ops"].identity
 
-    for op_module in wrapping_util.python_op_module_list_sorted():
+    for op_module in python_op_module_list_sorted():
       wrapped_namespace = Namespace(self, op_module,
                                     eval(op_module),
                                     tf_root=False, global_sub=sub)
@@ -133,8 +190,35 @@ class Env(object):
                          global_sub=sub)
 
 
+  def init_namespace(self):
+    pass
+
     # TODO(yaroslavvb): add run options
     #    self.run_options = tf.RunOptions()
+
+  def register_replacement(self, module_name, symbol_name, replacement):
+    """Register module specific replacement."""
+
+    sym_name = module_name + ":" + symbol_name
+    self.symbol_replacements[sym_name] = replacement
+
+  def lookup_replacement(self, module_name, symbol_name, replacement):
+    sym_name = module_name + ":" + symbol_name
+    return self.symbol_replacements.get(sym_name, None)
+
+  def whitelist_module(self, module_name):
+    self.module_whitelist.add(module_name)
+
+  def is_module_whitelisted(self, module_name):
+    return module_name in self.module_whitelist
+
+  def whitelist_function(self, module_name, symbol_name):
+    sym_name = module_name + ":" + symbol_name
+    self.function_whitelist.add(sym_name)
+
+  def is_function_whitelisted(self, module_name, symbol_name):
+    sym_name = module_name + ":" + symbol_name
+    return sym_name in self.function_whitelist
 
   @property
   def g(self):
@@ -264,9 +348,48 @@ class Env(object):
   def get_session_handle(self, tf_tensor):
     handle_op = session_ops.get_session_handle(tf_tensor)
     return handle_op
-  
+
   def run(self, *args, **kwargs):
     return self.sess.run(*args, **kwargs)
+
+  # This method is called from wrapping manager when deciding how to wrap
+  # each function.
+  def wrap_function(self, symbol, new_globals):
+    # a function can be gen_.*_ops derived function in which case
+    # we use OpWrapper
+    # it can be a "special" function like convert_to_tensor for which we
+    # substitute our manually crafted implementation
+    # or it can be some other function, in which case we make a copy of it
+    # TODO(yaroslavvb): get rid of "derived_symbol_name" in OpWrapper
+
+    # TODO(yaroslavvb): precompile regex for efficiency
+    # TODO(yaroslavvb): decide if we need to substitute globals for
+    # gen_.*_ops functions, document this choice
+    module_name = get_canonical_name(inspect.getsourcefile(symbol))
+    basename = os.path.basename(module_name)
+    if re.match("^gen.*_ops.py$", basename):
+      return OpWrapper(self, self.env, "", symbol)
+    
+    manual_replacement = self.lookup_replacement(module_name, symbol.__name__)
+    if manual_replacement:
+      return manual_replacement
+
+    else: # neither genereated op, nor manually written replacement, return
+          # a copy with new globals dictionary
+      new_symbol = self.copy_python_function(symbol, new_globals)
+
+
+
+  def copy_python_function(f, new_globals):
+    """Utility function to create a copy of Python function."""
+
+    g = types.FunctionType(f.__code__, new_globals, name=f.__name__,
+                           argdefs=f.__defaults__,
+                           closure=f.__closure__)
+    g.__dict__.update(f.__dict__)
+    return g
+
+
 
 # TODO(yaroslavvb): better default for tf_root
 class Namespace(object):
@@ -286,6 +409,7 @@ class Namespace(object):
     self.global_sub = global_sub
 
     self.gen_ops = {}  # native Python op wrappers
+    # TODO(yaroslavvb): rename python_ops to wrapped_symbols
     self.python_ops = {}  # custom Python op functions
     self.other = {}  # everything else
     self.nested_modules = {}  # nested modules like tf.nn go here
