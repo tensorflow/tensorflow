@@ -661,7 +661,18 @@ def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
   ret = []
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
-    ret.append(convert_to_tensor(value, dtype=dtype, name=n, as_ref=as_ref))
+    try:
+      ttt = convert_to_tensor(value, dtype=dtype, name=n, as_ref=as_ref)
+    except:
+      import sys, traceback
+      
+      exc_type, exc_value, exc_traceback = sys.exc_info()
+      print("ops print_tb:")
+      traceback.print_tb(exc_traceback, limit=1, file=sys.stdout)
+      print("*** print_exception:")
+      traceback.print_exception(exc_type, exc_value, exc_traceback,
+                                limit=2, file=sys.stdout)
+    ret.append(ttt)
   return ret
 
 

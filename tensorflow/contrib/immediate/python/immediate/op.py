@@ -171,7 +171,8 @@ class OpFactory(object):
 
   #      if _ENABLE_DEBUG_LOGGING:
   #        print("OpFactory unfixup: %s(%s, %s)" % (symbol_name, args, kwargs))
-
+      if _ENABLE_DEBUG_LOGGING:
+        print("OpFactory redirect: %s(%s, %s)" % (symbol_name, args, kwargs))
       output = symbol(*input_tensors, **kwargs)
 
       # TODO(yaroslavvb): allow for multiple return values like tf.split
