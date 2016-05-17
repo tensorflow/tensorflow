@@ -37,7 +37,7 @@ REGISTER_OP("BatchMatMul")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr("T: {float, double, int32, complex64}")
+    .Attr("T: {half, float, double, int32, complex64}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .Doc(R"doc(
@@ -577,7 +577,7 @@ REGISTER_OP("MatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {float, double, int32, complex64}")
+    .Attr("T: {half, float, double, int32, complex64}")
     .Doc(R"doc(
 Multiply the matrix "a" by the matrix "b".
 

@@ -523,7 +523,7 @@ static Status MatMulGradHelper(FunctionDef* g, const string& opname,
       // Ret val defs
       {"dx: T", "dy: T"},
       // Attr defs
-      {{"T: {float, double}"}},
+      {{"T: {half, float, double}"}},
       // Nodes
       {
           {{"dx"},
