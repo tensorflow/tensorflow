@@ -78,6 +78,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import common_shapes
+from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import logging_ops
@@ -246,6 +247,94 @@ def pack(values, name="pack"):
   except (TypeError, ValueError):
     # Input list contains non-constant tensors
     return gen_array_ops._pack(values, name=name)
+
+
+# pylint: disable=invalid-name
+def _autopacking_helper(list_or_tuple, dtype, name):
+  """Converts the given list or tuple to a tensor by packing.
+
+  Args:
+    list_or_tuple: A (possibly nested) list or tuple containing a tensor.
+    dtype: The element type of the returned tensor.
+    name: A name for the returned tensor.
+
+  Returns:
+    A `tf.Tensor` with value equivalent to `list_or_tuple`.
+  """
+  must_pack = False
+  converted_elems = []
+  with ops.name_scope(name) as scope:
+    for i, elem in enumerate(list_or_tuple):
+      if ops.is_dense_tensor_like(elem):
+        if dtype is not None and elem.dtype.base_dtype != dtype:
+          raise TypeError(
+              "Cannot convert a list containing a tensor of dtype "
+              "%s to %s (Tensor is: %r)" % (elem.dtype, dtype, elem))
+        converted_elems.append(elem)
+        must_pack = True
+      elif isinstance(elem, (list, tuple)):
+        converted_elem = _autopacking_helper(elem, dtype, str(i))
+        if ops.is_dense_tensor_like(converted_elem):
+          must_pack = True
+        converted_elems.append(converted_elem)
+      else:
+        converted_elems.append(elem)
+    if must_pack:
+      elems_as_tensors = []
+      for i, elem in enumerate(converted_elems):
+        if ops.is_dense_tensor_like(elem):
+          elems_as_tensors.append(elem)
+        else:
+          # NOTE(mrry): This is inefficient, but it enables us to
+          # handle the case where the list arguments are other
+          # convertible-to-tensor types, such as numpy arrays.
+          elems_as_tensors.append(
+              constant_op.constant(elem, dtype=dtype, name=str(i)))
+      return gen_array_ops._pack(elems_as_tensors, name=scope)
+    else:
+      return converted_elems
+
+
+def _get_dtype_from_nested_lists(list_or_tuple):
+  """Returns the dtype of any tensor-like object in `list_or_tuple`, if found.
+
+  Args:
+    list_or_tuple: A list or tuple representing an object that can be
+      converted to a `tf.Tensor`.
+
+  Returns:
+    The dtype of any tensor-like object in `list_or_tuple`, or `None` if no
+    such object exists.
+  """
+  for elem in list_or_tuple:
+    if ops.is_dense_tensor_like(elem):
+      return elem.dtype.base_dtype
+    elif isinstance(elem, (list, tuple)):
+      maybe_dtype = _get_dtype_from_nested_lists(elem)
+      if maybe_dtype is not None:
+        return maybe_dtype
+  return None
+
+
+def _autopacking_conversion_function(v, dtype=None, name=None, as_ref=False):
+  """Tensor conversion function that automatically packs arguments."""
+  if as_ref:
+    return NotImplemented
+  inferred_dtype = _get_dtype_from_nested_lists(v)
+  if inferred_dtype is None:
+    # We did not find any tensor-like objects in the nested lists, so defer to
+    # other conversion functions.
+    return NotImplemented
+  if dtype is not None and dtype != inferred_dtype:
+    return NotImplemented
+  return _autopacking_helper(v, inferred_dtype, name or "packed")
+# pylint: enable=invalid-name
+
+
+# NOTE: Register this conversion function to run *before* one that
+# assumes every element is a value.
+ops.register_tensor_conversion_function(
+    (list, tuple), _autopacking_conversion_function, 99)
 
 
 def unpack(value, num=None, name="unpack"):
