@@ -1508,6 +1508,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -5888,6 +5889,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -11983,6 +11985,32 @@ op {
   }
   summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
   description: "The hash function is deterministic on the content of the string within the\nprocess.\n\nNote that the hash function may change from time to time."
+  deprecation {
+    version: 10
+    explanation: "Use tf.string_to_hash_bucket_fast()"
+  }
+}
+op {
+  name: "StringToHashBucketFast"
+  input_arg {
+    name: "input"
+    description: "The strings to assing a hash bucket."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "A Tensor of the same shape as the input `string_tensor`."
+    type: DT_INT64
+  }
+  attr {
+    name: "num_buckets"
+    type: "int"
+    description: "The number of buckets."
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
+  description: "The hash function is deterministic on the content of the string within the\nprocess and will never change. However, it is not suitable for cryptography."
 }
 op {
   name: "StringToNumber"
