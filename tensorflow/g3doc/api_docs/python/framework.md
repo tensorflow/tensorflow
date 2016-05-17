@@ -2483,6 +2483,10 @@ It must return a `Tensor` with the given `dtype` if specified. If the
 conversion function creates a new `Tensor`, it should use the given
 `name` if specified. All exceptions will be propagated to the caller.
 
+The conversion function may return `NotImplemented` for some
+inputs. In this case, the conversion process will continue to try
+subsequent conversion functions.
+
 If `as_ref` is true, the function must return a `Tensor` reference,
 such as a `Variable`.
 
