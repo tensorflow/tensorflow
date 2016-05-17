@@ -221,12 +221,6 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       self._lib.apply_op("Simple", wrong=7)
     self.assertEqual(str(cm.exception), "No argument for input a")
 
-    with self.assertRaises(TypeError) as cm:
-      self._lib.apply_op("Simple", a=[self.Tensor(dtypes.int32)])
-    self.assertStartsWith(str(cm.exception),
-                          "Expected int32, got list containing Tensors of type "
-                          "'_Message' instead.")
-
   def testReservedInput(self):
     self._add_op("name: 'ReservedInput' "
                  "input_arg { name: 'input' type: DT_INT32 } ")
@@ -266,11 +260,6 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       self._lib.apply_op("Polymorphic", a="s", T=dtypes.string)
     self.assertEqual(str(cm.exception),
                      "Should not specify value for inferred attr 'T'.")
-
-    with self.assertRaises(TypeError) as cm:
-      self._lib.apply_op("Polymorphic", a=[self.Tensor(dtypes.bool)])
-    self.assertEqual(str(cm.exception),
-                     "List of Tensors when single Tensor expected")
 
   def testPolymorphicOut(self):
     self._add_op("name: 'PolymorphicOut' "
