@@ -13,25 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/string_to_hash_bucket_op.h"
+#ifndef TENSORFLOW_CORE_KERNELS_STRING_TO_HASH_BUCKET_OP_H_
+#define TENSORFLOW_CORE_KERNELS_STRING_TO_HASH_BUCKET_OP_H_
 
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/fingerprint.h"
+#include <string>
+
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
-// Deprecated class. It also uses `string_tensor` as Op argument instead of
-// `input`.
-class LegacyStringToHashBuckeOp : public OpKernel {
+template <uint64 hash(const string&)>
+class StringToHashBucketOp : public OpKernel {
  public:
-  explicit LegacyStringToHashBuckeOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {
+  explicit StringToHashBucketOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_buckets", &num_buckets_));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor* input_tensor;
-    OP_REQUIRES_OK(context, context->input("string_tensor", &input_tensor));
+    OP_REQUIRES_OK(context, context->input("input", &input_tensor));
     const auto& input_flat = input_tensor->flat<string>();
 
     Tensor* output_tensor = nullptr;
@@ -42,7 +46,7 @@ class LegacyStringToHashBuckeOp : public OpKernel {
 
     typedef decltype(input_flat.size()) Index;
     for (Index i = 0; i < input_flat.size(); ++i) {
-      const uint64 input_hash = Hash64(input_flat(i));
+      const uint64 input_hash = hash(input_flat(i));
       const uint64 bucket_id = input_hash % num_buckets_;
       // The number of buckets is always in the positive range of int64 so is
       // the resulting bucket_id. Casting the bucket_id from uint64 to int64 is
@@ -54,14 +58,9 @@ class LegacyStringToHashBuckeOp : public OpKernel {
  private:
   int64 num_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(LegacyStringToHashBuckeOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(StringToHashBucketOp);
 };
 
-// StringToHashBucket is deprecated in favor of StringToHashBucketStable.
-REGISTER_KERNEL_BUILDER(Name("StringToHashBucket").Device(DEVICE_CPU),
-                        LegacyStringToHashBuckeOp);
-
-REGISTER_KERNEL_BUILDER(Name("StringToHashBucketFast").Device(DEVICE_CPU),
-                        StringToHashBucketOp<Fingerprint64>);
-
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_STRING_TO_HASH_BUCKET_OP_H_

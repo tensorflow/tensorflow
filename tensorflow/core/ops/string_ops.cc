@@ -17,10 +17,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("StringToHashBucketFast")
+    .Input("input: string")
+    .Output("output: int64")
+    .Attr("num_buckets: int >= 1")
+    .Doc(R"doc(
+Converts each string in the input Tensor to its hash mod by a number of buckets.
+
+The hash function is deterministic on the content of the string within the
+process and will never change. However, it is not suitable for cryptography.
+
+input: The strings to assing a hash bucket.
+num_buckets: The number of buckets.
+output: A Tensor of the same shape as the input `string_tensor`.
+)doc");
+
 REGISTER_OP("StringToHashBucket")
     .Input("string_tensor: string")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
+    .Deprecated(10, "Use tf.string_to_hash_bucket_fast()")
     .Doc(R"doc(
 Converts each string in the input Tensor to its hash mod by a number of buckets.
 
