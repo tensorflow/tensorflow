@@ -302,8 +302,12 @@
               </template>
               <template is="dom-if" if="{{_nodeStats.outputSize}}">
                 <div class="sub-list-table-row">
-                  <div class="sub-list-table-cell">Tensor Output Size</div>
-                  <div class="sub-list-table-cell">[[_nodeStatsFormattedOutputSize]]</div>
+                  <div class="sub-list-table-cell">Tensor Output Sizes</div>
+                  <div class="sub-list-table-cell">
+                    <template is="dom-repeat" items="{{_nodeStatsFormattedOutputSizes}}">
+                      [[item]] <br/>
+                    </template>
+                  </div>
                 </div>
               </template>
             </div>
@@ -363,9 +367,9 @@
             type: String,
             computed: '_getNodeStatsFormattedComputeTime(_nodeStats)',
           },
-          _nodeStatsFormattedOutputSize: {
-            type: String,
-            computed: '_getNodeStatsFormattedOutputSize(_nodeStats)',
+          _nodeStatsFormattedOutputSizes: {
+            type: Array,
+            computed: '_getNodeStatsFormattedOutputSizes(_nodeStats)',
           },
           // The enum value of the include property of the selected node.
           nodeInclude: {
@@ -456,47 +460,22 @@
           return tf.graph.util.convertUnitsToHumanReadable(
               stats.totalMicros, tf.graph.util.TIME_UNITS);
         },
-        _getNodeStatsFormattedOutputSize(stats) {
+        _getNodeStatsFormattedOutputSizes(stats) {
           if (!stats || !stats.outputSize || !stats.outputSize.length) {
             return;
           }
 
-          // TODO(nsthorat): Display more than just the first tensor shape.
-          if (stats.outputSize[0].length === 0) {
-            return "scalar";
-          }
-
-          return "[" + stats.outputSize[0].join(", ") + "]";
+          return _.map(stats.outputSize, function(shape) {
+            if (shape.length === 0) {
+              return "scalar";
+            }
+            return "[" + shape.join(", ") + "]";
+          });
         },
         _getPrintableHTMLNodeName: function(nodeName) {
           // Insert an optional line break before each slash so that
           // long node names wrap cleanly at path boundaries.
           return (nodeName || '').replace(/\//g, '<wbr>/');
-        },
-        _getPredEdgeLabel: function(sourceName) {
-          return this._getEdgeLabel(sourceName, this.nodeName);
-        },
-        _getSuccEdgeLabel: function(destName) {
-          return this._getEdgeLabel(this.nodeName, destName);
-        },
-        _getEdgeLabel: function(sourceName, destName) {
-          if (!this._node) {
-            // The user clicked outside, thus no node is selected and
-            // the info card should be hidden.
-            return;
-          }
-          var parent = this._node.parentNode;
-          var sourceNode = this.graphHierarchy.node(sourceName);
-          if (!sourceNode.isGroupNode) {
-            // Show the tensor shape directly.
-            return tf.graph.scene.edge.getShapeLabelFromNode(sourceNode);
-          }
-          sourceName = this.renderHierarchy.getNearestVisibleAncestor(sourceName);
-          destName = this.renderHierarchy.getNearestVisibleAncestor(destName);
-          var metaedge = parent.metagraph.edge(sourceName, destName) ||
-              parent.bridgegraph.edge(sourceName, destName);
-          return tf.graph.scene.edge.getLabelForEdge(metaedge,
-              this.renderHierarchy);
         },
         _getRenderInfo: function(nodeName, renderHierarchy) {
           return this.renderHierarchy.getOrCreateRenderNodeByName(nodeName);
@@ -532,7 +511,7 @@
             return {regular: [], control: []}
           }
           return this._convertEdgeListToEdgeInfoList(
-            hierarchy.getSuccessors(node.name), false);
+            hierarchy.getSuccessors(node.name), false, node.isGroupNode);
         },
         _getPredecessors: function(node, hierarchy) {
           this.async(this._resizeList.bind(this, "#outputsList"));
@@ -540,27 +519,55 @@
             return {regular: [], control: []}
           }
           return this._convertEdgeListToEdgeInfoList(
-            hierarchy.getPredecessors(node.name), true);
+            hierarchy.getPredecessors(node.name), true, node.isGroupNode);
         },
-        _convertEdgeListToEdgeInfoList: function(list, isPredecessor) {
+        _convertEdgeListToEdgeInfoList: function(list, isPredecessor, isGroupNode) {
+
+          /**
+           * Unpacks the metaedge into a list of base edge information
+           * that can be rendered.
+           */
+          var unpackMetaedge = function(metaedge) {
+            return _.map(metaedge.baseEdgeList, function(baseEdge) {
+              name = isPredecessor ? baseEdge.v : baseEdge.w;
+              return {
+                name: name,
+                node: this._getNode(name, this.graphHierarchy),
+                edgeLabel: tf.graph.scene.edge.getLabelForBaseEdge(baseEdge,
+                    this.renderHierarchy),
+                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
+              };
+            }, this);
+          }.bind(this);
+
+          /**
+           * Converts a list of metaedges to a list of edge information
+           * that can be rendered.
+           */
+          var toEdgeInfoList = function(edges) {
+            var edgeInfoList = [];
+            _.each(edges, function(metaedge) {
+              var name = isPredecessor ? metaedge.v : metaedge.w;
+              // Enumerate all the base edges if the node is an OpNode, or the
+              // metaedge has only 1 edge in it.
+              if (!isGroupNode || metaedge.baseEdgeList.length == 1) {
+                edgeInfoList = edgeInfoList.concat(unpackMetaedge(metaedge));
+              } else {
+                edgeInfoList.push({
+                  name: name,
+                  node: this._getNode(name, this.graphHierarchy),
+                  edgeLabel: tf.graph.scene.edge.getLabelForEdge(metaedge,
+                      this.renderHierarchy),
+                  renderInfo: this._getRenderInfo(name, this.renderHierarchy)
+                });
+              }
+            }, this);
+            return edgeInfoList;
+          }.bind(this);
+
           return {
-            regular: list.regular.map(function(name) {
-              return {
-                name: name,
-                node: this._getNode(name, this.graphHierarchy),
-                edgeLabel: isPredecessor
-                  ? this._getPredEdgeLabel(name)
-                  : this._getSuccEdgeLabel(name),
-                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
-              }
-            }, this),
-            control: list.control.map(function(name) {
-              return {
-                name: name,
-                node: this._getNode(name, this.graphHierarchy),
-                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
-              }
-            }, this)
+            regular: toEdgeInfoList(list.regular),
+            control: toEdgeInfoList(list.control)
           };
         },
         _getSubnodes: function(node) {

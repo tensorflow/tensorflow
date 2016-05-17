@@ -136,6 +136,53 @@ def _as_graph_element(obj):
   return None
 
 
+_TENSOR_LIKE_TYPES = tuple()
+
+
+def is_dense_tensor_like(t):
+  """EXPERIMENTAL: Returns true if `t` implements the tensor interface.
+
+  See `register_dense_tensor_like_type()` for the current definition of a
+  "tensor-like type".
+
+  Args:
+    t: An object.
+
+  Returns:
+    True iff `t` is an instance of one of the registered "tensor-like" types.
+  """
+  return isinstance(t, _TENSOR_LIKE_TYPES)
+
+
+def register_dense_tensor_like_type(tensor_type):
+  """EXPERIMENTAL: Registers `tensor_type` as implementing the tensor interface.
+
+  A "tensor-like type" can represent a single dense tensor, and implements
+  the `name` and `dtype` properties.
+
+  Args:
+    tensor_type: A type implementing the tensor interface.
+
+  Raises:
+    TypeError: If `tensor_type` does not implement the tensor interface.
+  """
+  try:
+    if not isinstance(tensor_type.name, property):
+      raise TypeError("Type %s does not define a `name` property")
+  except AttributeError:
+    raise TypeError("Type %s does not define a `name` property")
+  try:
+    if not isinstance(tensor_type.dtype, property):
+      raise TypeError("Type %s does not define a `dtype` property")
+  except AttributeError:
+    raise TypeError("Type %s does not define a `dtype` property")
+  # We expect this list to be small, so choose quadratic complexity
+  # for registration, so that we have a tuple that can be used for
+  # more efficient `isinstance` checks later.
+  global _TENSOR_LIKE_TYPES
+  _TENSOR_LIKE_TYPES = tuple(list(_TENSOR_LIKE_TYPES) + [tensor_type])
+
+
 class Tensor(object):
   """Represents a value produced by an `Operation`.
 
@@ -519,6 +566,7 @@ def _TensorTensorConversionFunction(t, dtype=None, name=None, as_ref=False):
 
 _tensor_conversion_func_registry = {
     0: [(Tensor, _TensorTensorConversionFunction)]}
+register_dense_tensor_like_type(Tensor)
 
 
 def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
@@ -570,6 +618,8 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
     for base_type, conversion_func in funcs_at_priority:
       if isinstance(value, base_type):
         ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
+        if ret is NotImplemented:
+          continue
         if not isinstance(ret, Tensor):
           raise RuntimeError(
               "%sConversion function %r for type %s returned non-Tensor: %r"
@@ -699,6 +749,10 @@ def register_tensor_conversion_function(base_type, conversion_func,
   It must return a `Tensor` with the given `dtype` if specified. If the
   conversion function creates a new `Tensor`, it should use the given
   `name` if specified. All exceptions will be propagated to the caller.
+
+  The conversion function may return `NotImplemented` for some
+  inputs. In this case, the conversion process will continue to try
+  subsequent conversion functions.
 
   If `as_ref` is true, the function must return a `Tensor` reference,
   such as a `Variable`.

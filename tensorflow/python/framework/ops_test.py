@@ -1425,5 +1425,54 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
           old.run()
 
 
+class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
+
+  def testSuccess(self):
+    op = ops.Operation(ops._NodeDef("noop", "myop"), ops.Graph(),
+                       [], [dtypes.float32])
+    t = op.outputs[0]
+    self.assertTrue(ops.is_dense_tensor_like(t))
+
+    v = variables.Variable([17])
+    self.assertTrue(ops.is_dense_tensor_like(v))
+
+  class BadClassNoName(object):
+    pass
+
+  class BadClassBadName(object):
+
+    def name(self):
+      pass
+
+  class BadClassNoDtype(object):
+
+    @property
+    def name(self):
+      pass
+
+  class BadClassBadDtype(object):
+
+    @property
+    def name(self):
+      pass
+
+    def dtype(self):
+      pass
+
+  def testBadClass(self):
+    with self.assertRaisesRegexp(TypeError, "`name`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassNoName)
+    with self.assertRaisesRegexp(TypeError, "`name`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassBadName)
+    with self.assertRaisesRegexp(TypeError, "`dtype`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassNoDtype)
+    with self.assertRaisesRegexp(TypeError, "`dtype`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassBadDtype)
+
+
 if __name__ == "__main__":
   googletest.main()

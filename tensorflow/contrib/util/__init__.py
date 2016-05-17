@@ -20,7 +20,7 @@
 @@constant_value
 @@make_tensor_proto
 @@make_ndarray
-@ops_used_by_graph_def
+@@ops_used_by_graph_def
 @@stripped_op_list_for_graph
 
 """

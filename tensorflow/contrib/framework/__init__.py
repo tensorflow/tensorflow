@@ -12,19 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Framework utilities.
 
-@@assert_negative
-@@assert_positive
-@@assert_non_negative
-@@assert_non_positive
-@@assert_less
-@@assert_less_equal
 @@assert_same_float_dtype
 @@assert_scalar_int
-@@is_numeric_tensor
-@@is_non_decreasing
-@@is_strictly_increasing
+@@convert_to_tensor_or_sparse_tensor
 @@local_variable
 @@reduce_sum_n
 @@safe_embedding_lookup_sparse
@@ -44,3 +37,5 @@ import sys
 from tensorflow.contrib.framework.python.framework import *
 from tensorflow.contrib.framework.python.ops import *
 from tensorflow.python.util.all_util import make_all
+
+__all__ = make_all(__name__)

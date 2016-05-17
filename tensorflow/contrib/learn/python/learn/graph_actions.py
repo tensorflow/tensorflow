@@ -11,13 +11,13 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 """High level operations on graphs."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as py_collections
 import itertools
 import sys
 import time
@@ -91,23 +91,6 @@ def _run_dict(session, run_dict, feed_dict=None):
   keys = run_dict.keys()
   values = session.run([run_dict[key] for key in keys], feed_dict=feed_dict)
   return dict(zip(keys, values))
-
-
-class SupervisorParams(py_collections.namedtuple(
-    'SupervisorParams',
-    ['is_chief', 'master', 'save_model_secs', 'save_summaries_secs'])):
-  """Parameters required to configure supervisor for training.
-
-  Fields:
-    is_chief: Whether the current process is the chief supervisor in charge of
-      restoring the model and running standard services.
-    master: The master string to use when preparing the session.
-    save_model_secs: Save a checkpoint every `save_model_secs` seconds when
-      training.
-    save_summaries_secs: Save summaries every `save_summaries_secs` seconds when
-      training.
-  """
-SupervisorParams.__new__.__defaults__ = (True, '', 600, 10)
 
 
 def _prepare_session(graph,
