@@ -18,6 +18,49 @@ suite('graph', () => {
 
   test('graphlib exists', () => { assert.isTrue(graphlib != null); });
 
-  // TODO(bp): write tests.
+  test('simple graph contruction', done => {
+    let pbtxt = `
+      node {
+        name: "Q"
+        op: "Input"
+      }
+      node {
+        name: "W"
+        op: "Input"
+      }
+      node {
+        name: "X"
+        op: "MatMul"
+        input: "Q:2"
+        input: "W"
+      }`;
+    let buildParams: tf.graph.BuildParams = {
+      enableEmbedding: true,
+      inEmbeddingTypes: ['Const'],
+      outEmbeddingTypes: ['^[a-zA-Z]+Summary$'],
+      refEdges: {}
+    };
+    let dummyTracker =
+        tf.graph.util.getTracker({set: () => { return; }, progress: 0});
+    tf.graph.parser.parseGraphPbTxt(new Blob([pbtxt])).then(nodes => {
+      tf.graph.build(nodes, buildParams, dummyTracker)
+          .then((slimGraph: tf.graph.SlimGraph) => {
+            assert.isTrue(slimGraph.nodes['X'] != null);
+            assert.isTrue(slimGraph.nodes['W'] != null);
+            assert.isTrue(slimGraph.nodes['Q'] != null);
 
+            let firstInputOfX = slimGraph.nodes['X'].inputs[0];
+            assert.equal(firstInputOfX.name, 'Q');
+            assert.equal(firstInputOfX.outputTensorIndex, 2);
+
+            let secondInputOfX = slimGraph.nodes['X'].inputs[1];
+            assert.equal(secondInputOfX.name, 'W');
+            assert.equal(secondInputOfX.outputTensorIndex, 0);
+
+            done();
+          });
+    });
+  });
+
+  // TODO(bp): write tests.
 });

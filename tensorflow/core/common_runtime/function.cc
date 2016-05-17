@@ -702,37 +702,14 @@ FunctionLibraryRuntime* NewFunctionLibraryRuntime(
 
 bool RemoveDeadNodes(Graph* g) {
   VLOG(2) << "Removing dead nodes";
-  std::vector<bool> visited(g->num_node_ids(), false);
-  std::deque<Node*> q;
+  std::unordered_set<const Node*> nodes;
   for (auto n : g->nodes()) {
     if (n->IsSource() || n->IsSink() || n->IsControlFlow() ||
         n->op_def().is_stateful()) {
-      q.push_back(n);
-      visited[n->id()] = true;
+      nodes.insert(n);
     }
   }
-  while (!q.empty()) {
-    const Node* n = q.front();
-    q.pop_front();
-    for (auto e : n->in_edges()) {
-      Node* p = e->src();
-      if (!visited[p->id()]) {
-        q.push_back(p);
-        visited[p->id()] = true;
-      }
-    }
-  }
-  bool removed_any = false;
-  for (std::size_t i = 0; i < visited.size(); ++i) {
-    if (!visited[i]) {
-      Node* n = g->FindNodeId(i);
-      if (n) {
-        g->RemoveNode(n);
-        removed_any = true;
-      }
-    }
-  }
-  return removed_any;
+  return PruneForReverseReachability(g, std::move(nodes));
 }
 
 namespace {

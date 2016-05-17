@@ -84,5 +84,118 @@ class PackOpTest(tf.test.TestCase):
           self.assertAllEqual(p, x)
 
 
+class AutomaticPackingTest(tf.test.TestCase):
+
+  def testSimple(self):
+    with self.test_session():
+      self.assertAllEqual([1, 0, 2],
+                          tf.convert_to_tensor([1, tf.constant(0), 2]).eval())
+      self.assertAllEqual(
+          [[0, 0, 0], [0, 1, 0], [0, 0, 0]],
+          tf.convert_to_tensor([[0, 0, 0],
+                                [0, tf.constant(1), 0],
+                                [0, 0, 0]]).eval())
+      self.assertAllEqual(
+          [[0, 0, 0], [0, 1, 0], [0, 0, 0]],
+          tf.convert_to_tensor([[0, 0, 0],
+                                tf.constant([0, 1, 0]),
+                                [0, 0, 0]]).eval())
+      self.assertAllEqual(
+          [[0, 0, 0], [0, 1, 0], [0, 0, 0]],
+          tf.convert_to_tensor([tf.constant([0, 0, 0]),
+                                tf.constant([0, 1, 0]),
+                                tf.constant([0, 0, 0])]).eval())
+
+  def testWithNDArray(self):
+    with self.test_session():
+      result = tf.convert_to_tensor([[[0., 0.],
+                                      tf.constant([1., 1.])],
+                                     np.array([[2., 2.], [3., 3.]],
+                                              dtype=np.float32)])
+      self.assertAllEqual(
+          [[[0., 0.], [1., 1.]], [[2., 2.], [3., 3.]]], result.eval())
+
+  def testVariable(self):
+    with self.test_session():
+      v = tf.Variable(17)
+      result = tf.convert_to_tensor([[0, 0, 0],
+                                     [0, v, 0],
+                                     [0, 0, 0]])
+      v.initializer.run()
+      self.assertAllEqual([[0, 0, 0], [0, 17, 0], [0, 0, 0]], result.eval())
+
+      v.assign(38).op.run()
+      self.assertAllEqual([[0, 0, 0], [0, 38, 0], [0, 0, 0]], result.eval())
+
+  def testDtype(self):
+    t_0 = tf.convert_to_tensor([[0., 0., 0.],
+                                [0., 0., 0.],
+                                [0., 0., 0.]])
+    self.assertEqual(tf.float32, t_0.dtype)
+
+    t_1 = tf.convert_to_tensor([[0., 0., 0.],
+                                tf.constant([0., 0., 0.], dtype=tf.float64),
+                                [0., 0., 0.]])
+    self.assertEqual(tf.float64, t_1.dtype)
+
+    t_2 = tf.convert_to_tensor([[0., 0., 0.],
+                                [0., 0., 0.],
+                                [0., 0., 0.]], dtype=tf.float64)
+    self.assertEqual(tf.float64, t_2.dtype)
+
+    with self.assertRaises(TypeError):
+      tf.convert_to_tensor([tf.constant([0., 0., 0.], dtype=tf.float32),
+                            tf.constant([0., 0., 0.], dtype=tf.float64),
+                            [0., 0., 0.]])
+
+    with self.assertRaises(TypeError):
+      tf.convert_to_tensor([[0., 0., 0.],
+                            tf.constant([0., 0., 0.], dtype=tf.float64),
+                            [0., 0., 0.]], dtype=tf.float32)
+
+    with self.assertRaises(TypeError):
+      tf.convert_to_tensor([tf.constant([0., 0., 0.], dtype=tf.float64)],
+                           dtype=tf.float32)
+
+  def testPlaceholder(self):
+    with self.test_session():
+      # Test using placeholder with a defined shape.
+      ph_0 = tf.placeholder(tf.int32, shape=[])
+      result_0 = tf.convert_to_tensor([[0, 0, 0],
+                                       [0, ph_0, 0],
+                                       [0, 0, 0]])
+      self.assertAllEqual([[0, 0, 0],
+                           [0, 1, 0],
+                           [0, 0, 0]],
+                          result_0.eval(feed_dict={ph_0: 1}))
+      self.assertAllEqual([[0, 0, 0],
+                           [0, 2, 0],
+                           [0, 0, 0]],
+                          result_0.eval(feed_dict={ph_0: 2}))
+
+      # Test using placeholder with an undefined shape.
+      ph_1 = tf.placeholder(tf.int32)
+      result_1 = tf.convert_to_tensor([[0, 0, 0],
+                                       [0, ph_1, 0],
+                                       [0, 0, 0]])
+      self.assertAllEqual([[0, 0, 0], [0, 1, 0], [0, 0, 0]],
+                          result_1.eval(feed_dict={ph_1: 1}))
+      self.assertAllEqual([[0, 0, 0], [0, 2, 0], [0, 0, 0]],
+                          result_1.eval(feed_dict={ph_1: 2}))
+
+  def testShapeErrors(self):
+    # Static shape error.
+    ph_0 = tf.placeholder(tf.int32, shape=[1])
+    with self.assertRaises(ValueError):
+      tf.convert_to_tensor([[0, 0, 0], [0, ph_0, 0], [0, 0, 0]])
+
+    # Dynamic shape error.
+    ph_1 = tf.placeholder(tf.int32)
+    result_1 = tf.convert_to_tensor([[0, 0, 0], [0, ph_1, 0], [0, 0, 0]])
+    with self.test_session():
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        result_1.eval(feed_dict={ph_1: [1]})
+
+
 if __name__ == "__main__":
   tf.test.main()

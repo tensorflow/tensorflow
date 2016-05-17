@@ -887,6 +887,7 @@ filegroup(
         "framework/op_def_util.h",
         "framework/op_kernel.h",
         "framework/partial_tensor_shape.h",
+        "framework/register_types.h",
         "framework/rendezvous.h",
         "framework/selective_registration.h",
         "framework/session_state.h",

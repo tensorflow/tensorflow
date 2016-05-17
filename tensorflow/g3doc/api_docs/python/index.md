@@ -531,9 +531,6 @@
   * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
   * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
   * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
-  * [`legacy_convolution2d`](../../api_docs/python/contrib.layers.md#legacy_convolution2d)
-  * [`legacy_fully_connected`](../../api_docs/python/contrib.layers.md#legacy_fully_connected)
-  * [`make_all`](../../api_docs/python/contrib.layers.md#make_all)
   * [`optimize_loss`](../../api_docs/python/contrib.layers.md#optimize_loss)
   * [`sum_regularizer`](../../api_docs/python/contrib.layers.md#sum_regularizer)
   * [`summarize_activation`](../../api_docs/python/contrib.layers.md#summarize_activation)
@@ -541,7 +538,6 @@
   * [`summarize_collection`](../../api_docs/python/contrib.layers.md#summarize_collection)
   * [`summarize_tensor`](../../api_docs/python/contrib.layers.md#summarize_tensor)
   * [`summarize_tensors`](../../api_docs/python/contrib.layers.md#summarize_tensors)
-  * [`train`](../../api_docs/python/contrib.layers.md#train)
   * [`variance_scaling_initializer`](../../api_docs/python/contrib.layers.md#variance_scaling_initializer)
   * [`xavier_initializer`](../../api_docs/python/contrib.layers.md#xavier_initializer)
   * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
@@ -564,7 +560,6 @@
   * [`run_feeds`](../../api_docs/python/contrib.learn.md#run_feeds)
   * [`run_n`](../../api_docs/python/contrib.learn.md#run_n)
   * [`RunConfig`](../../api_docs/python/contrib.learn.md#RunConfig)
-  * [`SupervisorParams`](../../api_docs/python/contrib.learn.md#SupervisorParams)
   * [`TensorFlowClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowClassifier)
   * [`TensorFlowDNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowDNNClassifier)
   * [`TensorFlowDNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowDNNRegressor)
@@ -574,6 +569,7 @@
   * [`TensorFlowRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRegressor)
   * [`TensorFlowRNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowRNNClassifier)
   * [`TensorFlowRNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRNNRegressor)
+  * [`train`](../../api_docs/python/contrib.learn.md#train)
 
 * **[Metrics (contrib)](../../api_docs/python/contrib.metrics.md)**:
   * [`accuracy`](../../api_docs/python/contrib.metrics.md#accuracy)
@@ -602,6 +598,7 @@
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
   * [`make_ndarray`](../../api_docs/python/contrib.util.md#make_ndarray)
   * [`make_tensor_proto`](../../api_docs/python/contrib.util.md#make_tensor_proto)
+  * [`ops_used_by_graph_def`](../../api_docs/python/contrib.util.md#ops_used_by_graph_def)
   * [`stripped_op_list_for_graph`](../../api_docs/python/contrib.util.md#stripped_op_list_for_graph)
 
 * **[Copying Graph Elements (contrib)](../../api_docs/python/contrib.copy_graph.md)**:

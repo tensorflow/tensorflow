@@ -941,6 +941,7 @@ ops.register_tensor_conversion_function(Variable,
 Variable._OverloadAllOperators()
 # pylint: enable=protected-access
 
+ops.register_dense_tensor_like_type(Variable)
 ops.register_proto_function(ops.GraphKeys.VARIABLES,
                             proto_type=variable_pb2.VariableDef,
                             to_proto=Variable.to_proto,
