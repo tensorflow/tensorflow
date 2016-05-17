@@ -601,6 +601,7 @@
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
   * [`make_ndarray`](../../api_docs/python/contrib.util.md#make_ndarray)
   * [`make_tensor_proto`](../../api_docs/python/contrib.util.md#make_tensor_proto)
+  * [`ops_used_by_graph_def`](../../api_docs/python/contrib.util.md#ops_used_by_graph_def)
   * [`stripped_op_list_for_graph`](../../api_docs/python/contrib.util.md#stripped_op_list_for_graph)
 
 * **[Copying Graph Elements (contrib)](../../api_docs/python/contrib.copy_graph.md)**:
