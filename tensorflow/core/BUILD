@@ -1261,6 +1261,7 @@ tf_cc_tests(
 # GPU-related tests
 tf_cc_tests_gpu(
     size = "small",
+    args = ["--gtest_death_test_style=threadsafe"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     tests = glob(
