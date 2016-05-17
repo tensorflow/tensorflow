@@ -118,6 +118,16 @@ time.
 @@streaming_sparse_recall_at_k
 @@auc_using_histogram
 
+@@accuracy
+@@confusion_matrix
+
+## Set `Ops`
+
+@@set_difference
+@@set_intersection
+@@set_size
+@@set_union
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -145,4 +155,7 @@ from tensorflow.contrib.metrics.python.ops.set_ops import set_difference
 from tensorflow.contrib.metrics.python.ops.set_ops import set_intersection
 from tensorflow.contrib.metrics.python.ops.set_ops import set_size
 from tensorflow.contrib.metrics.python.ops.set_ops import set_union
+from tensorflow.python.util.all_util import make_all
 
+
+__all__ = make_all(__name__)

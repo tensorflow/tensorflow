@@ -13,16 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor utility functions.
+"""Tensor utility functions."""
 
-@@assert_same_float_dtype
-@@assert_scalar_int
-@@convert_to_tensor_or_sparse_tensor
-@@local_variable
-@@reduce_sum_n
-@@with_shape
-@@with_same_shape
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
