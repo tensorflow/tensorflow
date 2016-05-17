@@ -153,6 +153,7 @@ output: A tensor of same shape and type as `value`, shuffled along its first
 )doc");
 
 REGISTER_OP("Multinomial")
+    .SetIsStateful()
     .Input("logits: T")
     .Input("num_samples: int32")
     .Output("output: int64")

@@ -69,6 +69,12 @@ class FunctionalOpsTest(tf.test.TestCase):
       r = tf.map_fn(lambda x: tf.mul(tf.add(x, 3), 2), elems)
       self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
 
+  def testMap_SimpleNotTensor(self):
+    with self.test_session():
+      nums = [1, 2, 3, 4, 5, 6]
+      r = tf.map_fn(lambda x: tf.mul(tf.add(x, 3), 2), nums)
+      self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
+
   def testScan_Simple(self):
     with self.test_session():
       elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
@@ -115,6 +121,11 @@ class FunctionalOpsTest(tf.test.TestCase):
       y = tf.map_fn(lambda e: e, x)
       self.assertAllEqual(y.get_shape(), y.eval().shape)
 
+  def testMapUnknownShape(self):
+    x = tf.placeholder(tf.float32)
+    y = tf.map_fn(lambda e: e, x)
+    self.assertIs(None, y.get_shape().dims)
+
   def testScanShape(self):
     with self.test_session():
       x = tf.constant([[1, 2, 3], [4, 5, 6]])
@@ -123,6 +134,15 @@ class FunctionalOpsTest(tf.test.TestCase):
       initializer = tf.constant([0, 0, 0])
       y = tf.scan(fn, x, initializer=initializer)
       self.assertAllEqual(y.get_shape(), y.eval().shape)
+
+  def testScanUnknownShape(self):
+    x = tf.placeholder(tf.float32)
+    initializer = tf.placeholder(tf.float32)
+    def fn(_, current_input):
+      return current_input
+    y = tf.scan(fn, x, initializer=initializer)
+    self.assertIs(None, y.get_shape().dims)
+
 
 if __name__ == "__main__":
   tf.test.main()

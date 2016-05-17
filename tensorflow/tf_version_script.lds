@@ -1,0 +1,6 @@
+tensorflow {
+  global:
+    *tensorflow*;
+  local:
+    *;
+};

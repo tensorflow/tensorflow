@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -119,7 +120,6 @@ class DirectSession : public Session {
         delete item.executor;
         delete item.flib;
       }
-      delete func_defs;
       delete graph;
       delete name_to_node;
     }
@@ -159,6 +159,10 @@ class DirectSession : public Session {
     Graph* graph = nullptr;
   };
 
+  // Initializes the base execution state given the 'graph',
+  // if not already initialized.
+  void MaybeInitializeExecutionState(const GraphDef& graph);
+
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(
@@ -168,10 +172,7 @@ class DirectSession : public Session {
 
   // Creates several graphs given the existing graph_def_ and the
   // input feeds and fetches, given 'devices'.
-  ::tensorflow::Status CreateGraphs(gtl::ArraySlice<string> feeds,
-                                    gtl::ArraySlice<string> fetches,
-                                    gtl::ArraySlice<string> target_nodes,
-                                    FunctionLibraryDefinition** func_defs,
+  ::tensorflow::Status CreateGraphs(const BuildGraphOptions& options,
                                     std::unordered_map<string, Graph*>* outputs,
                                     RunStateArgs* run_state_args);
 
@@ -239,13 +240,15 @@ class DirectSession : public Session {
 
   // Saves and restores device placements for stateful nodes.
   mutex mu_;
-  void SaveStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  void RestoreStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Map of placed stateful nodes, i.e. nodes for which is_stateful()
   // is true, such as "params" and "queue" nodes.  Once placed these
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
   std::unordered_map<string, string> stateful_placements_ GUARDED_BY(mu_);
+
+  // Execution_state; used when placing the entire graph.
+  std::unique_ptr<SimpleGraphExecutionState> execution_state_;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 
   // For generating unique names.
   int64 name_counter_ GUARDED_BY(mu_) = 0;

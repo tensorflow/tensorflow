@@ -123,14 +123,18 @@ def variable_axis_size_partitioner(
     partitions = [1] * shape.ndims
     bytes_per_slice = 1.0 * (
         shape.num_elements() / shape[axis].value) * element_size
-
-    axis_shards = bytes_per_slice / max_shard_bytes
-    axis_shards = min(shape[axis].value, max(1, int(math.ceil(axis_shards))))
+    # How many slices can we fit on one shard of size at most max_shard_bytes?
+    # At least one slice is required.
+    slices_per_shard = max(1, math.floor(max_shard_bytes / bytes_per_slice))
+    # How many shards do we need for axis given that each shard fits
+    # slices_per_shard slices from a total of shape[axis].value slices?
+    axis_shards = int(math.ceil(1.0 * shape[axis].value / slices_per_shard))
 
     partitions[axis] = axis_shards
     return partitions
 
   return _partitioner
+
 
 def create_partitioned_variables(
     shape, slicing, initializer, dtype=dtypes.float32,

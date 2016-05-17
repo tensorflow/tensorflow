@@ -3,7 +3,7 @@
 Samples a set of classes using the provided (fixed) base distribution.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from

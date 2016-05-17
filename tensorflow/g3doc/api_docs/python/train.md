@@ -1687,7 +1687,7 @@ with tf.Graph().as_default():
     # Use the session to train the graph.
     while not sv.should_stop():
       sess.run(<my_train_op>)
- ```
+```
 
 Within the `with sv.managed_session()` block all variables in the graph have
 been initialized.  In addition, a few services have been started to
