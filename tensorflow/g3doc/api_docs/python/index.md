@@ -255,6 +255,7 @@
 * **[Strings](../../api_docs/python/string_ops.md)**:
   * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
   * [`string_to_hash_bucket`](../../api_docs/python/string_ops.md#string_to_hash_bucket)
+  * [`string_to_hash_bucket_fast`](../../api_docs/python/string_ops.md#string_to_hash_bucket_fast)
 
 * **[Histograms](../../api_docs/python/histogram_ops.md)**:
   * [`histogram_fixed_width`](../../api_docs/python/histogram_ops.md#histogram_fixed_width)
