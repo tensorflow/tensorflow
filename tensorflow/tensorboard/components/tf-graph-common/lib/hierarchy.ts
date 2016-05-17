@@ -21,8 +21,8 @@ module tf.graph.hierarchy {
  * Class used as output for getPredecessors and getSuccessors methods
  */
 export interface Edges {
-  control: string[];
-  regular: string[];
+  control: Metaedge[];
+  regular: Metaedge[];
 }
 
 export interface Hierarchy {
@@ -179,32 +179,7 @@ class HierarchyImpl implements Hierarchy {
         'Could not find immediate child for descendant: ' + descendantName);
   };
 
-  /**
-   * Given the name of a node, return the names of its predecessors.
-   * For an OpNode, this will contain the targets from the underlying BaseEdges.
-   * For a GroupNode, this will contain the targets truncated to siblings of
-   * the shared ancestor.
-   *
-   * For example, consider an original non-control BaseEdge A/B/C->Z/Y/X. Their
-   * shared ancestor is the ROOT node. A and Z are the highest siblings. Here
-   * are the results of calling getPredecessors():
-   *
-   *  - getPredecessors('Z/Y/X') === {regular: ['A/B/C'], control: []};
-   *  - getPredecessors('Z/Y') === {regular: ['A'], control: []};
-   *  - getPredecessors('Z') === {regular: ['A'], control: []};
-   *
-   * The reason getPredecessors('Z/Y') returns ['A'] (and not ['A/B'] as you
-   * might intuitively expect) is because it's not clear how far down the
-   * other end of the hierarchy to traverse in the general case.
-   *
-   * Continuing this example, say there was another BaseEdge A/K->Z/Y/W. When
-   * we look at Z/Y's predecessors, the best we can say is ['A'] without getting
-   * into the details of which of Z/Y's descendant nodes have predecessors to
-   * which of A's descendants.
-   *
-   * On the other hand, for an OpNode it's clear what the final predecessors
-   * ought to be. There is no ambiguity.
-   */
+  /** Given the name of a node, return its incoming metaedges. */
   getPredecessors(nodeName: string): Edges {
     let node = this.index[nodeName];
     if (!node) {
@@ -212,21 +187,33 @@ class HierarchyImpl implements Hierarchy {
     }
 
     let predecessors = this.getOneWayEdges(node, true);
-
     // Add embedded predecessors, such as constants.
     if (!node.isGroupNode) {
       _.each((<OpNode>node).inEmbeddings, embeddedNode => {
-        predecessors.regular.push(embeddedNode.name);
+        _.each((<OpNode>node).inputs, input => {
+          if (input.name === embeddedNode.name) {
+            // Make a new metaedge holding the edge between the
+            // node and the in-embedding.
+            let metaedge = new MetaedgeImpl(embeddedNode.name, nodeName);
+            metaedge.addBaseEdge(
+                {
+                  isControlDependency: input.isControlDependency,
+                  outputTensorIndex: input.outputTensorIndex,
+                  isReferenceEdge: false,
+                  v: embeddedNode.name,
+                  w: nodeName
+                },
+                this);
+            predecessors.regular.push(metaedge);
+          }
+        });
       });
     }
     return predecessors;
   }
 
   /**
-   * Given the name of a node, return an array of the names of its successors.
-   * For an OpNode, this will contain the targets from the underlying BaseEdges.
-   * For a GroupNode, this will contain the targets truncated to sibling of
-   * the shared ancestor.
+   * Given the name of a node, return its outgoing metaedges.
    *
    * This is the inverse of getPredecessors(). See that method's documentation
    * for an in-depth example.
@@ -242,7 +229,23 @@ class HierarchyImpl implements Hierarchy {
     // Add embedded successors, such as summaries.
     if (!node.isGroupNode) {
       _.each((<OpNode>node).outEmbeddings, embeddedNode => {
-        successors.regular.push(embeddedNode.name);
+        _.each(embeddedNode.inputs, input => {
+          if (input.name === nodeName) {
+            // Make a new metaedge holding the edge between the
+            // node and the out-embedding.
+            let metaedge = new MetaedgeImpl(nodeName, embeddedNode.name);
+            metaedge.addBaseEdge(
+                {
+                  isControlDependency: input.isControlDependency,
+                  outputTensorIndex: input.outputTensorIndex,
+                  isReferenceEdge: false,
+                  v: nodeName,
+                  w: embeddedNode.name
+                },
+                this);
+            successors.regular.push(metaedge);
+          }
+        });
       });
     }
     return successors;
@@ -250,7 +253,7 @@ class HierarchyImpl implements Hierarchy {
 
   /** Helper method for getPredecessors and getSuccessors */
   getOneWayEdges(node: GroupNode|OpNode, inEdges: boolean) {
-    let edges = { control: [], regular: [] };
+    let edges: Edges = {control: [], regular: []};
     // A node with no parent cannot have any edges.
     if (!node.parentNode || !node.parentNode.isGroupNode) {
       return edges;
@@ -367,22 +370,10 @@ function findEdgeTargetsInGraph(
     node: Node, inbound: boolean, targets: Edges): void {
   let edges = inbound ? graph.inEdges(node.name) : graph.outEdges(node.name);
   _.each(edges, e => {
-    let otherName = inbound ? e.v : e.w;
     let metaedge = graph.edge(e);
-
-    if (node.isGroupNode && metaedge.baseEdgeList.length > 1) {
-      let targetList = metaedge.numRegularEdges
-        ? targets.regular : targets.control;
-      targetList.push(otherName);
-    } else {
-      // Enumerate all the base edges if the node is an OpNode, or the
-      // metaedge has only 1 edge in it.
-      _.each(metaedge.baseEdgeList, (baseEdge: BaseEdge) => {
-        let targetList = baseEdge.isControlDependency
-          ? targets.control : targets.regular;
-        targetList.push(inbound ? baseEdge.v : baseEdge.w);
-      });
-    }
+    let targetList =
+        metaedge.numRegularEdges ? targets.regular : targets.control;
+    targetList.push(metaedge);
   });
 }
 
