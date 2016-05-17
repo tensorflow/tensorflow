@@ -987,4 +987,50 @@ def top_k(input, k=1, sorted=True, name=None):
   """
   return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
 
+
+def conv1d(value, filters, stride, padding,
+           use_cudnn_on_gpu=None, data_format=None,
+           name=None):
+  """Computes a 1-D convolution given 3-D input and filter tensors.
+
+  Given an input tensor of shape [batch, in_width, in_channels]
+  and a filter / kernel tensor of shape
+  [filter_width, in_channels, out_channels], this op reshapes
+  the arguments to pass them to conv2d to perform the equivalent
+  convolution operation.
+
+  Internally, this op reshapes the input tensors and invokes
+  `tf.nn.conv2d`.  A tensor of shape [batch, in_width, in_channels]
+  is reshaped to [batch, 1, in_width, in_channels], and the filter
+  is reshaped to [1, filter_width, in_channels, out_channels].
+  The result is then reshaped back to [batch, out_width, out_channels]
+  (where out_width is a function of the stride and padding as in
+  conv2d) and returned to the caller.
+
+  Args:
+    value: A 3D `Tensor`.  Must be of type `float32` or `float64`.
+    filters: A 3D `Tensor`.  Must have the same type as `input`.
+    stride: An `integer`.  The number of entries by which
+      the filter is moved right at each step.
+    padding: 'SAME' or 'VALID'
+    use_cudnn_on_gpu: An optional `bool`.  Defaults to `True`.
+    data_format: An optional `string` from `"NHWC", "NCHW"`.  Defaults
+      to `"NHWC"`, the data is stored in the order of
+      [batch, in_width, in_channels].  The `"NCHW"` format stores
+      data as [batch, in_channels, in_width].
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`.  Has the same type as input.
+  """
+  with ops.op_scope([value, filters], name, "conv1d") as name:
+    # Reshape the input tensor to [batch, 1, in_width, in_channels]
+    value = array_ops.expand_dims(value, 1)
+    # And reshape the filter to [1, filter_width, in_channels, out_channels]
+    filters = array_ops.expand_dims(filters, 0)
+    result = gen_nn_ops.conv2d(value, filters, [1, 1, stride, 1], padding,
+                               use_cudnn_on_gpu=use_cudnn_on_gpu,
+                               data_format=data_format)
+    return array_ops.squeeze(result, [1])
+
 # pylint: enable=invalid-name
