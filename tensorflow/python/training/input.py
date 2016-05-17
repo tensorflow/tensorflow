@@ -722,8 +722,7 @@ def shuffle_batch(tensor_list, batch_size, capacity, min_after_dequeue,
         dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many)
     full = (math_ops.cast(math_ops.maximum(0, queue.size() - min_after_dequeue),
-        dtypes.float32) *
-        (constant_op.constant(1.) / (capacity - min_after_dequeue)))
+        dtypes.float32) / (capacity - min_after_dequeue))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
     summary_name = (
