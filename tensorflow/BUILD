@@ -72,6 +72,7 @@ filegroup(
         "//tensorflow/contrib/ffmpeg/kernels:all_files",
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/layers:all_files",
+        "//tensorflow/contrib/layers/kernels:all_files",
         "//tensorflow/contrib/learn:all_files",
         "//tensorflow/contrib/linear_optimizer:all_files",
         "//tensorflow/contrib/linear_optimizer/kernels:all_files",
