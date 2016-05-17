@@ -190,12 +190,11 @@ handle these situations gracefully.
         p.customStyle['--paper-checkbox-unchecked-ink-color'] = color;
       });
       this.updateStyles();
-      // For some reason, the above updateStyles does not always update the
-      // styles on first page load, even though it is definitely called after
-      // the checkboxes are ready. As a hackfix, wait 8ms and then try again.
-      this.debounce('updateStyles', () => {
-        this.updateStyles();
-      }, 8);
+      // The updateStyles call fails silently if the browser doesn't have focus,
+      // e.g. if TensorBoard was opened into a new tab that isn't visible.
+      // As a workaround... we know requestAnimationFrame won't fire until the
+      // page has focus, so updateStyles again on requestAnimationFrame.
+      window.requestAnimationFrame(() => this.updateStyles());
     },
     _checkboxChange: function(e) {
       var name = e.srcElement.name;
