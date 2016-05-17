@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Ops for building neural network losses."""
 
 from __future__ import absolute_import
@@ -22,4 +23,3 @@ import sys
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.losses.python.losses import *
-from tensorflow.python.util.all_util import make_all

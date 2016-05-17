@@ -889,7 +889,6 @@ numbers of bins and comparing results.
 
 
 
-## Other Functions and Classes
 - - -
 
 ### `tf.contrib.metrics.accuracy(predictions, labels, weights=None)` {#accuracy}
@@ -963,6 +962,9 @@ the same shape in order for this function to work.
 *  <b>`ValueError`</b>: If both predictions and targets are not 1-D vectors and do not
               have the same size.
 
+
+
+## Set `Ops`
 
 - - -
 

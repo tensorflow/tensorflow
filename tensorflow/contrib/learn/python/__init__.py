@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""tf.learn API."""
+"""High level API for learning with TensorFlow."""
 
 from __future__ import absolute_import
 from __future__ import division

@@ -3,9 +3,12 @@
 # Learn (contrib)
 [TOC]
 
+High level API for learning with TensorFlow.
 
+## Estimators
 
-## Other Functions and Classes
+Train and evaluate TensorFlow models.
+
 - - -
 
 ### `class tf.contrib.learn.BaseEstimator` {#BaseEstimator}
@@ -422,64 +425,6 @@ The following standard keys are defined:
 * `TRAIN`: training mode.
 * `EVAL`: evaluation mode.
 * `INFER`: inference mode.
-
-- - -
-
-### `class tf.contrib.learn.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
-
-
-
-- - -
-
-### `class tf.contrib.learn.RunConfig` {#RunConfig}
-
-This class specifies the specific configurations for the run.
-
-Parameters:
-  execution_mode: Runners use this flag to execute different tasks, like
-    training vs evaluation. 'all' (the default) executes both training and
-    eval.
-  master: TensorFlow master. Empty string (the default) for local.
-  task: Task id of the replica running the training (default: 0).
-  num_ps_replicas: Number of parameter server tasks to use (default: 0).
-  training_worker_session_startup_stagger_secs: Seconds to sleep between the
-    startup of each worker task session (default: 5).
-  training_worker_max_startup_secs: Max seconds to wait before starting any
-    worker (default: 60).
-  eval_delay_secs: Number of seconds between the beginning of each eval run.
-    If one run takes more than this amount of time, the next run will start
-    immediately once that run completes (default 60).
-  eval_steps: Number of steps to run in each eval (default: 100).
-  num_cores: Number of cores to be used (default: 4).
-  verbose: Controls the verbosity, possible values:
-    0: the algorithm and debug information is muted.
-    1: trainer prints the progress.
-    2: log device placement is printed.
-  gpu_memory_fraction: Fraction of GPU memory used by the process on
-    each GPU uniformly on the same machine.
-  tf_random_seed: Random seed for TensorFlow initializers.
-    Setting this value allows consistency between reruns.
-  keep_checkpoint_max: The maximum number of recent checkpoint files to keep.
-    As new files are created, older files are deleted.
-    If None or 0, all checkpoint files are kept.
-    Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-  keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-    to be saved. The default value of 10,000 hours effectively disables
-    the feature.
-
-Attributes:
-  tf_master: Tensorflow master.
-  tf_config: Tensorflow Session Config proto.
-  tf_random_seed: Tensorflow random seed.
-  keep_checkpoint_max: Maximum number of checkpoints to keep.
-  keep_checkpoint_every_n_hours: Number of hours between each checkpoint.
-- - -
-
-#### `tf.contrib.learn.RunConfig.__init__(execution_mode='all', master='', task=0, num_ps_replicas=0, training_worker_session_startup_stagger_secs=5, training_worker_max_startup_secs=60, eval_delay_secs=60, eval_steps=100, num_cores=4, verbose=1, gpu_memory_fraction=1, tf_random_seed=42, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
-
-
-
-
 
 - - -
 
@@ -3064,6 +3009,69 @@ Returns weights of the linear regression.
 
 
 
+
+## Graph actions
+
+Perform various training, evaluation, and inference actions on a graph.
+
+- - -
+
+### `class tf.contrib.learn.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
+
+
+
+- - -
+
+### `class tf.contrib.learn.RunConfig` {#RunConfig}
+
+This class specifies the specific configurations for the run.
+
+Parameters:
+  execution_mode: Runners use this flag to execute different tasks, like
+    training vs evaluation. 'all' (the default) executes both training and
+    eval.
+  master: TensorFlow master. Empty string (the default) for local.
+  task: Task id of the replica running the training (default: 0).
+  num_ps_replicas: Number of parameter server tasks to use (default: 0).
+  training_worker_session_startup_stagger_secs: Seconds to sleep between the
+    startup of each worker task session (default: 5).
+  training_worker_max_startup_secs: Max seconds to wait before starting any
+    worker (default: 60).
+  eval_delay_secs: Number of seconds between the beginning of each eval run.
+    If one run takes more than this amount of time, the next run will start
+    immediately once that run completes (default 60).
+  eval_steps: Number of steps to run in each eval (default: 100).
+  num_cores: Number of cores to be used (default: 4).
+  verbose: Controls the verbosity, possible values:
+    0: the algorithm and debug information is muted.
+    1: trainer prints the progress.
+    2: log device placement is printed.
+  gpu_memory_fraction: Fraction of GPU memory used by the process on
+    each GPU uniformly on the same machine.
+  tf_random_seed: Random seed for TensorFlow initializers.
+    Setting this value allows consistency between reruns.
+  keep_checkpoint_max: The maximum number of recent checkpoint files to keep.
+    As new files are created, older files are deleted.
+    If None or 0, all checkpoint files are kept.
+    Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
+  keep_checkpoint_every_n_hours: Number of hours between each checkpoint
+    to be saved. The default value of 10,000 hours effectively disables
+    the feature.
+
+Attributes:
+  tf_master: Tensorflow master.
+  tf_config: Tensorflow Session Config proto.
+  tf_random_seed: Tensorflow random seed.
+  keep_checkpoint_max: Maximum number of checkpoints to keep.
+  keep_checkpoint_every_n_hours: Number of hours between each checkpoint.
+- - -
+
+#### `tf.contrib.learn.RunConfig.__init__(execution_mode='all', master='', task=0, num_ps_replicas=0, training_worker_session_startup_stagger_secs=5, training_worker_max_startup_secs=60, eval_delay_secs=60, eval_steps=100, num_cores=4, verbose=1, gpu_memory_fraction=1, tf_random_seed=42, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
+
+
+
+
+
 - - -
 
 ### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, feed_fn=None, max_steps=None)` {#evaluate}
@@ -3113,6 +3121,132 @@ and written to `output_dir`.
 
 - - -
 
+### `tf.contrib.learn.infer(restore_checkpoint_path, output_dict, feed_dict=None)` {#infer}
+
+
+
+
+- - -
+
+### `tf.contrib.learn.run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None)` {#run_feeds}
+
+Run `output_dict` tensors with each input in `feed_dicts`.
+
+If `checkpoint_path` is supplied, restore from checkpoint. Otherwise, init all
+variables.
+
+##### Args:
+
+
+*  <b>`output_dict`</b>: A `dict` mapping string names to `Tensor` objects to run.
+    Tensors must all be from the same graph.
+*  <b>`feed_dicts`</b>: Iterable of `dict` objects of input values to feed.
+*  <b>`restore_checkpoint_path`</b>: A string containing the path to a checkpoint to
+    restore.
+
+##### Returns:
+
+  A list of dicts of values read from `output_dict` tensors, one item in the
+  list for each item in `feed_dicts`. Keys are the same as `output_dict`,
+  values are the results read from the corresponding `Tensor` in
+  `output_dict`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `output_dict` or `feed_dicts` is None or empty.
+
+
+- - -
+
+### `tf.contrib.learn.run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1)` {#run_n}
+
+Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
+
+##### Args:
+
+
+*  <b>`output_dict`</b>: A `dict` mapping string names to tensors to run. Must all be
+    from the same graph.
+*  <b>`feed_dict`</b>: `dict` of input values to feed each run.
+*  <b>`restore_checkpoint_path`</b>: A string containing the path to a checkpoint to
+    restore.
+*  <b>`n`</b>: Number of times to repeat.
+
+##### Returns:
+
+  A list of `n` `dict` objects, each containing values read from `output_dict`
+  tensors.
+
+
+- - -
+
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, feed_fn=None, max_steps=None, fail_on_nan_loss=True)` {#train}
+
+Train a model.
+
+Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
+run a training loop. The given `train_op` performs one step of training on the
+model. The `loss_op` represents the objective function of the training. It is
+expected to increment the `global_step_tensor`, a scalar integer tensor
+counting training steps. This function uses `Supervisor` to initialize the
+graph (from a checkpoint if one is available in `output_dir`), write summaries
+defined in the graph, and write regular checkpoints as defined by
+`supervisor_save_model_secs`.
+
+Training continues until `global_step_tensor` evaluates to `max_steps`, or, if
+`fail_on_nan_loss`, until `loss_op` evaluates to `NaN`. In that case the
+program is terminated with exit code 1.
+
+##### Args:
+
+
+*  <b>`graph`</b>: A graph to train. It is expected that this graph is not in use
+    elsewhere.
+*  <b>`output_dir`</b>: A directory to write outputs to.
+*  <b>`train_op`</b>: An op that performs one training step when run.
+*  <b>`loss_op`</b>: A scalar loss tensor.
+*  <b>`global_step_tensor`</b>: A tensor representing the global step. If none is given,
+    one is extracted from the graph using the same logic as in `Supervisor`.
+*  <b>`init_op`</b>: An op that initializes the graph. If `None`, use `Supervisor`'s
+    default.
+*  <b>`init_fn`</b>: Optional callable passed to Supervisor to initialize the model.
+*  <b>`log_every_steps`</b>: Output logs regularly. The logs contain timing data and the
+    current loss.
+*  <b>`supervisor_is_chief`</b>: Whether the current process is the chief supervisor in
+    charge of restoring the model and running standard services.
+*  <b>`supervisor_master`</b>: The master string to use when preparing the session.
+*  <b>`supervisor_save_model_secs`</b>: Save a checkpoint every
+    `supervisor_save_model_secs` seconds when training.
+*  <b>`supervisor_save_summaries_secs`</b>: Save summaries every
+    `supervisor_save_summaries_secs` seconds when training.
+*  <b>`feed_fn`</b>: A function that is called every iteration to produce a `feed_dict`
+    passed to `session.run` calls. Optional.
+*  <b>`max_steps`</b>: Train until `global_step_tensor` evaluates to this value.
+*  <b>`fail_on_nan_loss`</b>: If true, raise `NanLossDuringTrainingError` if `loss_op`
+    evaluates to `NaN`. If false, continue training as if nothing happened.
+
+##### Returns:
+
+  The final loss value.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `global_step_tensor` is not provided. See
+      `tf.contrib.framework.get_global_step` for how we look it up if not
+      provided explicitly.
+*  <b>`NanLossDuringTrainingError`</b>: If `fail_on_nan_loss` is `True`, and loss ever
+      evaluates to `NaN`.
+
+
+
+## Input processing
+
+Queue and read batched input data.
+
+- - -
+
 ### `tf.contrib.learn.extract_dask_data(data)` {#extract_dask_data}
 
 Extract data from dask.Series or dask.DataFrame for predictors
@@ -3144,13 +3278,6 @@ Extract data from pandas.DataFrame for labels
 ### `tf.contrib.learn.extract_pandas_matrix(data)` {#extract_pandas_matrix}
 
 Extracts numpy matrix from pandas DataFrame.
-
-
-- - -
-
-### `tf.contrib.learn.infer(restore_checkpoint_path, output_dict, feed_dict=None)` {#infer}
-
-
 
 
 - - -
@@ -3261,58 +3388,5 @@ See more detailed description in `read_examples`.
 
 
 *  <b>`ValueError`</b>: for invalid inputs.
-
-
-- - -
-
-### `tf.contrib.learn.run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None)` {#run_feeds}
-
-Run `output_dict` tensors with each input in `feed_dicts`.
-
-If `checkpoint_path` is supplied, restore from checkpoint. Otherwise, init all
-variables.
-
-##### Args:
-
-
-*  <b>`output_dict`</b>: A `dict` mapping string names to `Tensor` objects to run.
-    Tensors must all be from the same graph.
-*  <b>`feed_dicts`</b>: Iterable of `dict` objects of input values to feed.
-*  <b>`restore_checkpoint_path`</b>: A string containing the path to a checkpoint to
-    restore.
-
-##### Returns:
-
-  A list of dicts of values read from `output_dict` tensors, one item in the
-  list for each item in `feed_dicts`. Keys are the same as `output_dict`,
-  values are the results read from the corresponding `Tensor` in
-  `output_dict`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if `output_dict` or `feed_dicts` is None or empty.
-
-
-- - -
-
-### `tf.contrib.learn.run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1)` {#run_n}
-
-Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
-
-##### Args:
-
-
-*  <b>`output_dict`</b>: A `dict` mapping string names to tensors to run. Must all be
-    from the same graph.
-*  <b>`feed_dict`</b>: `dict` of input values to feed each run.
-*  <b>`restore_checkpoint_path`</b>: A string containing the path to a checkpoint to
-    restore.
-*  <b>`n`</b>: Number of times to repeat.
-
-##### Returns:
-
-  A list of `n` `dict` objects, each containing values read from `output_dict`
-  tensors.
 
 
