@@ -451,7 +451,7 @@ Status OpKernelContext::allocate_tensor(
     return errors::ResourceExhausted("OOM when allocating tensor with shape",
                                      shape.DebugString());
   }
-  if (LogMemory::IsEnabled()) {
+  if (params_->log_memory) {
     LogMemory::RecordTensorAllocation(params_->op_kernel->name(),
                                       params_->step_id, new_tensor);
   }
