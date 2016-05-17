@@ -80,6 +80,7 @@ filegroup(
         "//tensorflow/contrib/losses:all_files",
         "//tensorflow/contrib/metrics:all_files",
         "//tensorflow/contrib/metrics/kernels:all_files",
+        "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/quantization:all_files",
         "//tensorflow/contrib/quantization/kernels:all_files",
         "//tensorflow/contrib/quantization/tools:all_files",
