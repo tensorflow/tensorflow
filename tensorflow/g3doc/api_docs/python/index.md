@@ -516,9 +516,12 @@
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
+  * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
   * [`ContinuousDistribution`](../../api_docs/python/contrib.distributions.md#ContinuousDistribution)
   * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
   * [`DiscreteDistribution`](../../api_docs/python/contrib.distributions.md#DiscreteDistribution)
+  * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
+  * [`Gamma`](../../api_docs/python/contrib.distributions.md#Gamma)
   * [`Gaussian`](../../api_docs/python/contrib.distributions.md#Gaussian)
   * [`gaussian_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#gaussian_congugates_known_sigma_predictive)
   * [`gaussian_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#gaussian_conjugates_known_sigma_posterior)
