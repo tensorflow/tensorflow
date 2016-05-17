@@ -74,7 +74,7 @@ for ITEM in ${ITEMS_TO_DELETE}; do
       sleep 1
 
       ((COUNTER++))
-      if [[ $(echo "${COUNTER}>${MAX_STEPS}" | bc -l) == "1" ]]; then
+      if [[ "${COUNTER}" -gt "${MAX_STEPS}" ]]; then
         die "Reached maximum polling steps while trying to delete all tf ${ITEM}"
       fi
 

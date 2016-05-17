@@ -4,7 +4,6 @@ MAINTAINER Shanqing Cai <cais@google.com>
 
 RUN apt-get update
 RUN apt-get install -y \
-    bc \
     curl \
     python \
     python-numpy \
