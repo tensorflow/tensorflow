@@ -89,7 +89,7 @@ new_git_repository(
   name = "iron_behaviors",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-behaviors.git",
-  tag = "v1.0.13",
+  tag = "v1.0.16",
 )
 
 new_git_repository(
@@ -117,7 +117,7 @@ new_git_repository(
   name = "iron_fit_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-fit-behavior.git",
-  tag = "v1.2.0",
+  tag = "v1.2.1",
 )
 
 new_git_repository(
@@ -173,7 +173,7 @@ new_git_repository(
   name = "iron_menu_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-menu-behavior.git",
-  tag = "v1.1.6",
+  tag = "v1.1.7",
 )
 
 new_git_repository(
@@ -187,7 +187,7 @@ new_git_repository(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-overlay-behavior.git",
-  tag = "v1.7.3",
+  tag = "v1.7.6",
 )
 
 new_git_repository(

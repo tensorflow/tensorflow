@@ -189,16 +189,18 @@ var TF;
 </dom-module>
 
 
+
 <dom-module id="tf-multi-checkbox" assetpath="../tf-multi-checkbox/">
   <style include="scrollbar-style"></style>
   <style include="run-color-style"></style>
 
   <template>
     <div id="outer-container" class="scrollbar">
-      <template is="dom-repeat" items="[[names]]">
+      <paper-input id="runs-regex" no-label-float="" label="Write a regex to filter runs" bind-value="{{regexInput}}"></paper-input>
+      <template is="dom-repeat" items="[[namesMatchingRegex]]">
         <div class="run-row">
           <div class="checkbox-container vertical-align-container">
-            <paper-checkbox class="checkbox vertical-align-center" name="[[item]]" checked$="[[_isChecked(item,outSelected.*)]]" on-change="_checkboxChange"></paper-checkbox>
+            <paper-checkbox class="checkbox vertical-align-center" name="[[item]]" checked$="[[_isChecked(item, runToIsCheckedMapping.*)]]" on-change="_checkboxChange"></paper-checkbox>
           </div>
           <div class="item-label-container">
             <span>[[item]]</span>
@@ -207,6 +209,15 @@ var TF;
       </template>
     </div>
   <style>
+    paper-input {
+      --paper-input-container-focus-color: var(--tb-orange-strong);
+      --paper-input-container-input: {
+        font-size: 14px;
+      };
+      --paper-input-container-label: {
+        font-size: 14px;
+      };
+    }
     :host {
       display: flex;
       flex-direction: column;
@@ -265,26 +276,68 @@ var TF;
   Polymer({
     is: "tf-multi-checkbox",
     properties: {
-      names: Array,
+      names: Array, // All the runs in consideration
+      regexInput: {type: String, value: "",}, // Regex for filtering the runs
+      regex: {
+        type: Object,
+        computed: "makeRegex(regexInput)"
+      },
+      namesMatchingRegex: {
+        type: Array,
+        computed: "computeNamesMatchingRegex(names.*, regex)"
+      }, // Runs that match the regex
+      runToIsCheckedMapping: {
+        type: Object,
+        value: function() {return {};}
+      }, // run name -> Boolean (if its enabled)
+      // (Allows state to persist across regex filtering)
       outSelected: {
         type: Array,
         notify: true,
-        value: function() {
-          return [];
-        },
+        computed: 'computeOutSelected(namesMatchingRegex.*, runToIsCheckedMapping.*)'
       },
-      colorScale: Object, // map from run name to css class
+      colorScale: {
+        type: Object,
+        observer: "synchronizeColors",
+      }, // map from run name to css class
     },
     listeners: {
-      'dom-change': 'onDomChange',
+      'dom-change': 'synchronizeColors',
     },
     observers: [
-      "_initializeOutSelected(names.*)",
+      "_initializeRunToIsCheckedMapping(names.*)",
     ],
-    _initializeOutSelected: function(change) {
-      this.outSelected = change.base.slice();
+    makeRegex: function(regex) {
+      try {
+        return new RegExp(regex)
+      } catch (e) {
+        return null;
+      }
     },
-    onDomChange: function(e) {
+    _initializeRunToIsCheckedMapping: function(change) {
+      var runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
+
+      this.names.forEach(function(n) {
+        if (runToIsCheckedMapping[n] == null) {
+          // runs default to on
+          runToIsCheckedMapping[n] = true;
+        }
+      });
+      this.runToIsCheckedMapping = runToIsCheckedMapping;
+    },
+    computeNamesMatchingRegex: function(__, ___) {
+      var regex = this.regex;
+      return this.names.filter(function(n) {
+        return regex == null || regex.test(n);
+      });
+    },
+    computeOutSelected: function(__, ___) {
+      var runToIsCheckedMapping = this.runToIsCheckedMapping;
+      return this.namesMatchingRegex.filter(function(n) {
+        return runToIsCheckedMapping[n];
+      });
+    },
+    synchronizeColors: function(e) {
       var checkboxes = Array.prototype.slice.call(this.querySelectorAll("paper-checkbox"));
       var scale = this.colorScale;
       checkboxes.forEach(function(p) {
@@ -295,31 +348,31 @@ var TF;
         p.customStyle['--paper-checkbox-unchecked-ink-color'] = color;
       });
       this.updateStyles();
+      // The updateStyles call fails silently if the browser doesn't have focus,
+      // e.g. if TensorBoard was opened into a new tab that isn't visible.
+      // As a workaround... we know requestAnimationFrame won't fire until the
+      // page has focus, so updateStyles again on requestAnimationFrame.
+      window.requestAnimationFrame(() => this.updateStyles());
     },
     _checkboxChange: function(e) {
       var name = e.srcElement.name;
-      var idx = this.outSelected.indexOf(name);
       var checked = e.srcElement.checked;
-      if (checked && idx === -1) {
-          this.push("outSelected", name);
-      } else if (!checked && idx !== -1) {
-        this.splice("outSelected", idx, 1);
-      }
+      this.runToIsCheckedMapping[name] = checked;
+      this.notifyPath("runToIsCheckedMapping." + name, checked);
     },
     _isChecked: function(item, outSelectedChange) {
-      var outSelected = outSelectedChange.base;
-      return outSelected.indexOf(item) !== -1;
+      return this.runToIsCheckedMapping[item];
     },
     _initializeRuns: function(change) {
       this.outSelected = change.base.slice();
     },
-    _applyColorClass: function(item, classScale) {
-      // TODO: Update style just on the element that changes
-      // and apply at microtask timing
-      this.debounce("restyle", function (){
-        this.updateStyles();
-      }, 16);
-      return classScale(item);
+    toggleAll: function() {
+      var allOn = this.namesMatchingRegex
+                    .filter((n) => !this.runToIsCheckedMapping[n])
+                    .length === 0;
+
+      this.namesMatchingRegex.forEach((n) => this.runToIsCheckedMapping[n] = !allOn);
+      this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
     },
   });
   </script>
@@ -386,11 +439,7 @@ var TF;
       colorScale: Object, // TF.ColorScale
     },
     _toggleAll: function() {
-      if (this.outSelected.length > 0) {
-        this.outSelected = [];
-      } else {
-        this.outSelected = this.runs.slice();
-      }
+      this.$.multiCheckbox.toggleAll();
     },
   });
   </script>
@@ -500,7 +549,7 @@ var TF;
             '#ff7043',
             '#f4b400' // google yellow 700
         ],
-        googleColorBlind: [
+        googleColorBlindAssist: [
             '#c53929',
             '#ff7043',
             '#f7cb4d',
@@ -508,6 +557,26 @@ var TF;
             '#80deea',
             '#4285f4',
             '#5e35b1' // deep purple 600
+        ],
+        // These palettes try to be better for color differentiation.
+        // https://personal.sron.nl/~pault/
+        colorBlindAssist1: ['#4477aa', '#44aaaa', '#aaaa44', '#aa7744', '#aa4455', '#aa4488'],
+        colorBlindAssist2: [
+            '#88ccee', '#44aa99', '#117733', '#999933', '#ddcc77', '#cc6677',
+            '#882255', '#aa4499'
+        ],
+        colorBlindAssist3: [
+            '#332288', '#6699cc', '#88ccee', '#44aa99', '#117733', '#999933',
+            '#ddcc77', '#cc6677', '#aa4466', '#882255', '#661100', '#aa4499'
+        ],
+        // based on this palette: http://mkweb.bcgsc.ca/biovis2012/
+        colorBlindAssist4: [
+            '#FF6DB6', '#920000', '#924900', '#DBD100', '#24FF24', '#006DDB',
+            '#490092'
+        ],
+        mldash: [
+            '#E47EAD', '#F4640D', '#FAA300', '#F5E636', '#00A077', '#0077B8',
+            '#00B7ED'
         ],
         // This rainbow palette attempts to keep a constant brightness across hues.
         constantValue: [
@@ -563,22 +632,21 @@ var TF;
          * too many hash collisions, so you'd want to bump it up to the threshold
          * of human perception (probably around 14 or 18).
          *
-         * @param {number} [numColors=12] - The number of base colors you want
-         *                 in the palette. The more colors, the smaller the number
-         *                 the more hash collisions you will have, but the more
-         *                 differentiable the base colors will be.
-         *
          * @param {string[]} [palette=TF.palettes.googleColorBlind] - The color
          *                 palette you want as an Array of hex strings. Note, the
          *                 length of the array in this palette is independent of the
          *                 param numColors above. The scale will interpolate to
          *                 create the proper "numColors" given in the first param.
          *
+         * @param {number} [numColors] - The number of base colors you want
+         *                 in the palette. The more colors, the smaller the number
+         *                 the more hash collisions you will have, but the more
+         *                 differentiable the base colors will be.
          */
-        function ColorScale(numColors, palette) {
-            if (numColors === void 0) { numColors = 12; }
-            if (palette === void 0) { palette = TF.palettes.googleColorBlind; }
-            this.numColors = numColors;
+        function ColorScale(palette, numColors) {
+            if (palette === void 0) { palette = TF.palettes.googleColorBlindAssist; }
+            this.LIGHTNESS_NUDGE = 0.8;
+            this.numColors = numColors ? numColors : palette.length;
             this.domain([]);
             if (palette.length < 2) {
                 throw new Error('Not enough colors in palette. Must be more than one.');
@@ -629,10 +697,10 @@ var TF;
                 return color;
             }
             else if (amount === 1) {
-                return d3.hcl(color).brighter(0.6);
+                return d3.hcl(color).brighter(this.LIGHTNESS_NUDGE);
             }
             else {
-                return d3.hcl(color).darker((amount - 1) / 2);
+                return d3.hcl(color).darker((amount - 1) * this.LIGHTNESS_NUDGE);
             }
         };
         /**
@@ -662,21 +730,26 @@ var TF;
       Polymer({
         is: "tf-color-scale",
         properties: {
-          runs: Array,
+          runs: {
+            type: Array,
+          },
           outColorScale: {
             type: Object,
-            computed: "makeColorScale(runs.*)",
+            readOnly: true,
             notify: true,
+            value: function() {
+              return new TF.ColorScale();
+            },
           },
         },
-        makeColorScale: function(runs) {
-          return new TF.ColorScale().domain(this.runs);
+        observers: ['updateColorScale(runs.*)'],
+        updateColorScale: function(runsChange) {
+          this.outColorScale.domain(this.runs);
         },
       });
     })();
   </script>
 </dom-module>
-
 
 <dom-module id="tf-regex-group" assetpath="../tf-regex-group/">
   <template>
@@ -684,7 +757,7 @@ var TF;
       <template is="dom-repeat" items="{{rawRegexes}}">
         <div class="regex-line">
           <paper-checkbox class="active-button" checked="{{item.active}}" disabled="[[!item.valid]]"></paper-checkbox>
-          <paper-input id="text-input" class="regex-input" label="Regex filter" no-label-float="" bind-value="{{item.regex}}" invalid="[[!item.valid]]" on-keyup="moveFocus"></paper-input>
+          <paper-input id="text-input" class="regex-input" label="Write a regex to create a tag group" no-label-float="" bind-value="{{item.regex}}" invalid="[[!item.valid]]" on-keyup="moveFocus"></paper-input>
           <paper-icon-button icon="close" class="delete-button" aria-label="Delete Regex" tabindex="0" on-tap="deleteRegex"></paper-icon-button>
         </div>
         <style>
@@ -709,7 +782,7 @@ var TF;
           .regex-list {
             margin-bottom: 10px;
           }
-          
+
           paper-input {
             --paper-input-container-focus-color: var(--tb-orange-strong);
             --paper-input-container-input: {
@@ -975,16 +1048,20 @@ var Categorizer;
   <template>
     <svg id="chartsvg"></svg>
     <div id="tooltip">
-      <h4 id="headline"></h4>
-      <div class="tooltip-row">
-        Step: <span id="step"></span>
-      </div>
-      <div class="tooltip-row">
-        Time: <span id="time"></span>
-      </div>
-      <div class="tooltip-row">
-        Value: <span id="value"></span>
-      </div>
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Run</th>
+            <th>Value</th>
+            <th>Step</th>
+            <th>Time</th>
+            <th>Relative</th>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
     </div>
     <style>
       :host {
@@ -1002,8 +1079,11 @@ var Categorizer;
         flex-grow: 1;
         flex-shrink: 1;
       }
-      .tooltip-row{
-        white-space: nowrap;
+      td {
+        padding-left: 5px;
+        padding-right: 5px;
+        font-size: 13px;
+        opacity: 1;
       }
       #tooltip {
         pointer-events: none;
@@ -1019,20 +1099,29 @@ var Categorizer;
         z-index: 5;
         cursor: none;
       }
-      #tooltip #headline {
-        margin: 0 0 2px 0;
-        font-weight: bold;
+      .swatch {
+        border-radius: 50%;
+        width: 14px;
+        height: 14px;
+        display: block;
+        border: 2px solid rgba(0,0,0,0);
       }
-      #tooltip span {
-        font-weight: bold;
+      .closest .swatch {
+        border: 2px solid white;
       }
-      .plottable .crosshairs line.guide-line {
-        stroke: #777;
+      th {
+        padding-left: 5px;
+        padding-right: 5px;
+        text-align: left;
       }
-      text.tooltip {
-        font-size: 3;
+      .distant td {
+        opacity: 0.8;
+      }
 
+      .distant td.swatch {
+        opacity: 1;
       }
+
     </style>
   </template>
   <script>/* Copyright 2015 Google Inc. All Rights Reserved.
@@ -1236,12 +1325,11 @@ limitations under the License.
 var TF;
 (function (TF) {
     var Y_TOOLTIP_FORMATTER_PRECISION = 4;
-    var STEP_AXIS_FORMATTER_PRECISION = 4;
+    var STEP_FORMATTER_PRECISION = 4;
     var Y_AXIS_FORMATTER_PRECISION = 3;
-    var TOOLTIP_Y_PIXEL_OFFSET = 15;
-    var TOOLTIP_X_PIXEL_OFFSET = 0;
+    var TOOLTIP_Y_PIXEL_OFFSET = 20;
     var TOOLTIP_CIRCLE_SIZE = 4;
-    var TOOLTIP_CLOSEST_CIRCLE_SIZE = 6;
+    var NAN_SYMBOL_SIZE = 6;
     var BaseChart = (function () {
         function BaseChart(tag, dataFn, xType, colorScale, tooltip) {
             this.dataFn = dataFn;
@@ -1289,7 +1377,6 @@ var TF;
             this.xScale = xComponents.scale;
             this.xAxis = xComponents.axis;
             this.xAxis.margin(0).tickLabelPadding(3);
-            this.xTooltipFormatter = xComponents.tooltipFormatter;
             this.yScale = new Plottable.Scales.Linear();
             this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
             var yFormatter = multiscaleFormatter(Y_AXIS_FORMATTER_PRECISION);
@@ -1328,9 +1415,10 @@ var TF;
             // lastPointDataset is a dataset that contains just the last point of
             // every dataset we're currently drawing.
             this.lastPointsDataset = new Plottable.Dataset();
+            this.nanDataset = new Plottable.Dataset();
             // need to do a single bind, so we can deregister the callback from
             // old Plottable.Datasets. (Deregistration is done by identity checks.)
-            this.updateLastPointDataset = this._updateLastPointDataset.bind(this);
+            this.updateSpecialDatasets = this._updateSpecialDatasets.bind(this);
             _super.call(this, tag, dataFn, xType, colorScale, tooltip);
         }
         LineChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
@@ -1355,26 +1443,70 @@ var TF;
             scatterPlot.size(TOOLTIP_CIRCLE_SIZE * 2);
             scatterPlot.datasets([this.lastPointsDataset]);
             this.scatterPlot = scatterPlot;
-            return new Plottable.Components.Group([scatterPlot, group]);
+            var nanDisplay = new Plottable.Plots.Scatter();
+            nanDisplay.x(xAccessor, xScale);
+            nanDisplay.y(function (x) { return x.displayY; }, yScale);
+            nanDisplay.attr('fill', function (d) { return _this.colorScale.scale(d.run); });
+            nanDisplay.attr('opacity', 1);
+            nanDisplay.size(NAN_SYMBOL_SIZE * 2);
+            nanDisplay.datasets([this.nanDataset]);
+            nanDisplay.symbol(Plottable.SymbolFactories.triangleUp);
+            this.nanDisplay = nanDisplay;
+            return new Plottable.Components.Group([nanDisplay, scatterPlot, group]);
         };
-        /** Iterates over every dataset, takes the last point, and puts all these
-         * points in the lastPointsDataset.
+        /** Constructs special datasets. Each special dataset contains exceptional
+         * values from all of the regular datasetes, e.g. last points in series, or
+         * NaN values. Those points will have a `run` and `relative` property added
+         * (since usually those are context in the surrounding dataset).
          */
-        LineChart.prototype._updateLastPointDataset = function () {
-            var relativeAccessor = relativeX().accessor;
-            var data = this.datasets
+        LineChart.prototype._updateSpecialDatasets = function () {
+            var lastPointsData = this.datasets
                 .map(function (d) {
                 var datum = null;
-                if (d.data().length > 0) {
-                    var idx = d.data().length - 1;
-                    datum = d.data()[idx];
+                // filter out NaNs to ensure last point is a clean one
+                var nonNanData = d.data().filter(function (x) { return !isNaN(x.scalar); });
+                if (nonNanData.length > 0) {
+                    var idx = nonNanData.length - 1;
+                    datum = nonNanData[idx];
                     datum.run = d.metadata().run;
-                    datum.relative = relativeAccessor(datum, idx, d);
+                    datum.relative = relativeAccessor(datum, -1, d);
                 }
                 return datum;
             })
                 .filter(function (x) { return x != null; });
-            this.lastPointsDataset.data(data);
+            this.lastPointsDataset.data(lastPointsData);
+            // Take a dataset, return an array of NaN data points
+            // the NaN points will have a "displayY" property which is the
+            // y-value of a nearby point that was not NaN (0 if all points are NaN)
+            var datasetToNaNData = function (d) {
+                var displayY = null;
+                var data = d.data();
+                var i = 0;
+                while (i < data.length && displayY == null) {
+                    if (!isNaN(data[i].scalar)) {
+                        displayY = data[i].scalar;
+                    }
+                    i++;
+                }
+                if (displayY == null) {
+                    displayY = 0;
+                }
+                var nanData = [];
+                for (i = 0; i < data.length; i++) {
+                    if (!isNaN(data[i].scalar)) {
+                        displayY = data[i].scalar;
+                    }
+                    else {
+                        data[i].run = d.metadata().run;
+                        data[i].displayY = displayY;
+                        data[i].relative = relativeAccessor(data[i], -1, d);
+                        nanData.push(data[i]);
+                    }
+                }
+                return nanData;
+            };
+            var nanData = _.flatten(this.datasets.map(datasetToNaNData));
+            this.nanDataset.data(nanData);
         };
         LineChart.prototype.setupTooltips = function (plot) {
             var _this = this;
@@ -1402,32 +1534,24 @@ var TF;
                     return;
                 }
                 var target = {
-                    run: null,
                     x: p.x,
                     y: p.y,
                     datum: null,
+                    dataset: null,
                 };
                 var centerBBox = _this.gridlines.content().node().getBBox();
-                var points = plot.datasets()
-                    .map(function (dataset) { return _this.findClosestPoint(target, dataset); })
-                    .filter(function (p) {
-                    // Only choose Points that are within window (if we zoomed)
-                    return Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox);
-                });
-                points.reverse(); // if multiple points are equidistant, choose 1st run
-                var closestPoint = _.min(points, function (p) { return dist(p, target); });
-                points.reverse(); // draw 1st run last, to get the right occlusions
-                var pts = pointsComponent.content().selectAll('.point').data(points, function (p) { return p.run; });
+                var points = plot.datasets().map(function (dataset) { return _this.findClosestPoint(target, dataset); });
+                var pointsToCircle = points.filter(function (p) { return Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox); });
+                var pts = pointsComponent.content().selectAll('.point').data(pointsToCircle, function (p) { return p.dataset.metadata().run; });
                 if (points.length !== 0) {
                     pts.enter().append('circle').classed('point', true);
-                    pts.attr('r', function (p) { return p === closestPoint ? TOOLTIP_CLOSEST_CIRCLE_SIZE :
-                        TOOLTIP_CIRCLE_SIZE; })
+                    pts.attr('r', TOOLTIP_CIRCLE_SIZE)
                         .attr('cx', function (p) { return p.x; })
                         .attr('cy', function (p) { return p.y; })
                         .style('stroke', 'none')
-                        .attr('fill', function (p) { return _this.colorScale.scale(p.run); });
+                        .attr('fill', function (p) { return _this.colorScale.scale(p.dataset.metadata().run); });
                     pts.exit().remove();
-                    _this.drawTooltips(closestPoint);
+                    _this.drawTooltips(points, target);
                 }
                 else {
                     hideTooltips();
@@ -1436,31 +1560,76 @@ var TF;
             pi.onPointerExit(hideTooltips);
             return group;
         };
-        LineChart.prototype.drawTooltips = function (closestPoint) {
+        LineChart.prototype.drawTooltips = function (points, target) {
             var _this = this;
             // Formatters for value, step, and wall_time
             this.scatterPlot.attr('opacity', 0);
             var valueFormatter = multiscaleFormatter(Y_TOOLTIP_FORMATTER_PRECISION);
-            var stepFormatter = stepX().tooltipFormatter;
-            var wall_timeFormatter = wallX().tooltipFormatter;
-            var datum = closestPoint.datum;
-            this.tooltip.select('#headline')
-                .text(closestPoint.run)
-                .style('color', this.colorScale.scale(closestPoint.run));
-            var step = stepFormatter(datum.step);
-            var date = wall_timeFormatter(+datum.wall_time);
-            var value = valueFormatter(datum.scalar);
-            this.tooltip.select('#step').text(step);
-            this.tooltip.select('#time').text(date);
-            this.tooltip.select('#value').text(value);
-            this.tooltip.style('top', closestPoint.y + TOOLTIP_Y_PIXEL_OFFSET + 'px')
-                .style('left', function () { return _this.yAxis.width() + TOOLTIP_X_PIXEL_OFFSET +
-                closestPoint.x + 'px'; })
-                .style('opacity', 1);
+            var dist = function (p) {
+                return Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
+            };
+            var closestDist = _.min(points.map(dist));
+            points = _.sortBy(points, function (d) { return d.dataset.metadata().run; });
+            var rows = this.tooltip.select('tbody')
+                .html('')
+                .selectAll('tr')
+                .data(points)
+                .enter()
+                .append('tr');
+            // Grey out the point if any of the following are true:
+            // - The cursor is outside of the x-extent of the dataset
+            // - The point is rendered above or below the screen
+            // - The point's y value is NaN
+            rows.classed('distant', function (d) {
+                var firstPoint = d.dataset.data()[0];
+                var lastPoint = _.last(d.dataset.data());
+                var firstX = _this.xScale.scale(_this.xAccessor(firstPoint, 0, d.dataset));
+                var lastX = _this.xScale.scale(_this.xAccessor(lastPoint, 0, d.dataset));
+                var s = d.datum.scalar;
+                var yD = _this.yScale.domain();
+                return target.x < firstX || target.x > lastX || s < yD[0] ||
+                    s > yD[1] || isNaN(s);
+            });
+            rows.classed('closest', function (p) { return dist(p) === closestDist; });
+            // It is a bit hacky that we are manually applying the width to the swatch
+            // and the nowrap property to the text here. The reason is as follows:
+            // the style gets updated asynchronously by Polymer scopeSubtree observer.
+            // Which means we would get incorrect sizing information since the text
+            // would wrap by default. However, we need correct measurements so that
+            // we can stop the text from falling off the edge of the screen.
+            // therefore, we apply the size-critical styles directly.
+            rows.style('white-space', 'nowrap');
+            rows.append('td')
+                .append('span')
+                .classed('swatch', true)
+                .style('background-color', function (d) { return _this.colorScale.scale(d.dataset.metadata().run); });
+            rows.append('td').text(function (d) { return d.dataset.metadata().run; });
+            rows.append('td').text(function (d) {
+                return isNaN(d.datum.scalar) ? 'NaN' : valueFormatter(d.datum.scalar);
+            });
+            rows.append('td').text(function (d) { return stepFormatter(d.datum.step); });
+            rows.append('td').text(function (d) { return timeFormatter(d.datum.wall_time); });
+            rows.append('td').text(function (d) { return relativeFormatter(relativeAccessor(d.datum, -1, d.dataset)); });
+            // compute left position
+            var documentWidth = document.body.clientWidth;
+            var node = this.tooltip.node();
+            var parentRect = node.parentElement.getBoundingClientRect();
+            var nodeRect = node.getBoundingClientRect();
+            // prevent it from falling off the right side of the screen
+            var left = Math.min(0, documentWidth - parentRect.left - nodeRect.width - 60);
+            this.tooltip.style('left', left + 'px');
+            // compute top position
+            if (parentRect.bottom + nodeRect.height + TOOLTIP_Y_PIXEL_OFFSET <
+                document.body.clientHeight) {
+                this.tooltip.style('top', parentRect.bottom + TOOLTIP_Y_PIXEL_OFFSET);
+            }
+            else {
+                this.tooltip.style('bottom', parentRect.top - TOOLTIP_Y_PIXEL_OFFSET);
+            }
+            this.tooltip.style('opacity', 1);
         };
         LineChart.prototype.findClosestPoint = function (target, dataset) {
             var _this = this;
-            var run = dataset.metadata().run;
             var points = dataset.data().map(function (d, i) {
                 var x = _this.xAccessor(d, i, dataset);
                 var y = _this.yAccessor(d, i, dataset);
@@ -1468,7 +1637,7 @@ var TF;
                     x: _this.xScale.scale(x),
                     y: _this.yScale.scale(y),
                     datum: d,
-                    run: run,
+                    dataset: dataset,
                 };
             });
             var idx = _.sortedIndex(points, target, function (p) { return p.x; });
@@ -1490,9 +1659,9 @@ var TF;
             var _this = this;
             _super.prototype.changeRuns.call(this, runs);
             runs.reverse(); // draw first run on top
-            this.datasets.forEach(function (d) { return d.offUpdate(_this.updateLastPointDataset); });
+            this.datasets.forEach(function (d) { return d.offUpdate(_this.updateSpecialDatasets); });
             this.datasets = runs.map(function (r) { return _this.getDataset(r); });
-            this.datasets.forEach(function (d) { return d.onUpdate(_this.updateLastPointDataset); });
+            this.datasets.forEach(function (d) { return d.onUpdate(_this.updateSpecialDatasets); });
             this.linePlot.datasets(this.datasets);
         };
         return LineChart;
@@ -1572,64 +1741,74 @@ var TF;
     function accessorize(key) {
         return function (d, index, dataset) { return d[key]; };
     }
+    var stepFormatter = Plottable.Formatters.siSuffix(STEP_FORMATTER_PRECISION);
     function stepX() {
         var scale = new Plottable.Scales.Linear();
         var axis = new Plottable.Axes.Numeric(scale, 'bottom');
-        var formatter = Plottable.Formatters.siSuffix(STEP_AXIS_FORMATTER_PRECISION);
-        axis.formatter(formatter);
+        axis.formatter(stepFormatter);
         return {
             scale: scale,
             axis: axis,
             accessor: function (d) { return d.step; },
-            tooltipFormatter: formatter,
         };
     }
+    var timeFormatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
     function wallX() {
         var scale = new Plottable.Scales.Time();
-        var formatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
         return {
             scale: scale,
             axis: new Plottable.Axes.Time(scale, 'bottom'),
             accessor: function (d) { return d.wall_time; },
-            tooltipFormatter: function (d) { return formatter(new Date(d)); },
         };
     }
+    var relativeAccessor = function (d, index, dataset) {
+        // We may be rendering the final-point datum for scatterplot.
+        // If so, we will have already provided the 'relative' property
+        if (d.relative != null) {
+            return d.relative;
+        }
+        var data = dataset.data();
+        // I can't imagine how this function would be called when the data is
+        // empty (after all, it iterates over the data), but lets guard just
+        // to be safe.
+        var first = data.length > 0 ? +data[0].wall_time : 0;
+        return (+d.wall_time - first) / (60 * 60 * 1000); // ms to hours
+    };
+    var relativeFormatter = function (n) {
+        // we will always show 2 units of precision, e.g days and hours, or
+        // minutes and seconds, but not hours and minutes and seconds
+        var ret = '';
+        var days = Math.floor(n / 24);
+        n -= (days * 24);
+        if (days) {
+            ret += days + 'd ';
+        }
+        var hours = Math.floor(n);
+        n -= hours;
+        n *= 60;
+        if (hours || days) {
+            ret += hours + 'h ';
+        }
+        var minutes = Math.floor(n);
+        n -= minutes;
+        n *= 60;
+        if (minutes || hours || days) {
+            ret += minutes + 'm ';
+        }
+        var seconds = Math.floor(n);
+        return ret + seconds + 's';
+    };
     function relativeX() {
         var scale = new Plottable.Scales.Linear();
-        var formatter = function (n) {
-            var days = Math.floor(n / 24);
-            n -= (days * 24);
-            var hours = Math.floor(n);
-            n -= hours;
-            n *= 60;
-            var minutes = Math.floor(n);
-            n -= minutes;
-            n *= 60;
-            var seconds = Math.floor(n);
-            return days + 'd ' + hours + 'h ' + minutes + 'm ' + seconds + 's';
-        };
         return {
             scale: scale,
             axis: new Plottable.Axes.Numeric(scale, 'bottom'),
-            accessor: function (d, index, dataset) {
-                // We may be rendering the final-point datum for scatterplot.
-                // If so, we will have already provided the 'relative' property
-                if (d.relative != null) {
-                    return d.relative;
-                }
-                var data = dataset.data();
-                // I can't imagine how this function would be called when the data is
-                // empty (after all, it iterates over the data), but lets guard just
-                // to be safe.
-                var first = data.length > 0 ? +data[0].wall_time : 0;
-                return (+d.wall_time - first) / (60 * 60 * 1000); // ms to hours
-            },
-            tooltipFormatter: formatter,
+            accessor: relativeAccessor,
         };
     }
-    function dist(p1, p2) {
-        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-    }
+    // a very literal definition of NaN: true for NaN for a non-number type
+    // or null, etc. False for Infinity or -Infinity
+    var isNaN = function (x) { return +x !== x; };
     function getXComponents(xType) {
         switch (xType) {
             case 'step':
@@ -1690,6 +1869,7 @@ var TF;
         if (this._chart) this._chart.destroy();
         var cns = this._constructor(type);
         var tooltip = d3.select(this.$.tooltip);
+        this.scopeSubtree(this.$.tooltip, true);
         var chart = new cns(tag, dataProvider, xType, colorScale, tooltip);
         var svg = d3.select(this.$.chartsvg);
         this.async(function() {
@@ -4139,6 +4319,7 @@ var tf;
             };
             return MetaedgeImpl;
         }());
+        graph_1.MetaedgeImpl = MetaedgeImpl;
         function createSeriesNode(prefix, suffix, parent, clusterId, name) {
             return new SeriesNodeImpl(prefix, suffix, parent, clusterId, name);
         }
@@ -4225,7 +4406,8 @@ var tf;
          * @param inputs Array of unnormalized names of input nodes.
          */
         function normalizeInputs(inputs) {
-            return _.reduce(inputs, function (normalizedInputs, inputName) {
+            var normalizedInputs = [];
+            _.each(inputs, function (inputName) {
                 var start = inputName[0] === '^';
                 var colon = inputName.lastIndexOf(':');
                 var end = colon !== -1 &&
@@ -4237,14 +4419,14 @@ var tf;
                     name !== normalizedInputs[normalizedInputs.length - 1].name) {
                     normalizedInputs.push({
                         name: name,
-                        hasNumberPart: end !== inputName.length,
+                        outputTensorIndex: end === inputName.length ? 0 : Number(inputName.slice(colon + 1)),
                         isControlDependency: start
                     });
                 }
-                return normalizedInputs;
-            }, []);
+            });
+            return normalizedInputs;
         }
-        function addEdgeToGraph(graph, inputName, outputNode, isControlDependency, params, index) {
+        function addEdgeToGraph(graph, inputName, outputNode, input, params, index) {
             // Don't allow loops in the graph.
             if (inputName === outputNode.name) {
                 return;
@@ -4255,7 +4437,8 @@ var tf;
             graph.edges.push({
                 v: inputName,
                 w: outputNode.name,
-                isControlDependency: isControlDependency,
+                outputTensorIndex: input.outputTensorIndex,
+                isControlDependency: input.isControlDependency,
                 isReferenceEdge: isRefEdge
             });
         }
@@ -4359,7 +4542,7 @@ var tf;
                                 for (var _i = 0, _a = inEmbedNode.inputs; _i < _a.length; _i++) {
                                     var embedInput = _a[_i];
                                     addEdgeToGraph(graph, normalizedNameDict[embedInput.name] ||
-                                        embedInput.name, opNode, embedInput.isControlDependency, params, i);
+                                        embedInput.name, opNode, embedInput, params, i);
                                 }
                             }
                             else if (inputName in outEmbedding) {
@@ -4369,11 +4552,11 @@ var tf;
                                 for (var _b = 0, _c = outEmbedNode.inputs; _b < _c.length; _b++) {
                                     var embedInput = _c[_b];
                                     addEdgeToGraph(graph, normalizedNameDict[embedInput.name] ||
-                                        embedInput.name, opNode, input.isControlDependency, params, i);
+                                        embedInput.name, opNode, input, params, i);
                                 }
                             }
                             else {
-                                addEdgeToGraph(graph, normalizedNameDict[inputName] || inputName, opNode, input.isControlDependency, params, i);
+                                addEdgeToGraph(graph, normalizedNameDict[inputName] || inputName, opNode, input, params, i);
                             }
                         });
                     });
@@ -4712,33 +4895,9 @@ var tf;
                     throw Error('Could not find immediate child for descendant: ' + descendantName);
                 };
                 ;
-                /**
-                 * Given the name of a node, return the names of its predecessors.
-                 * For an OpNode, this will contain the targets from the underlying BaseEdges.
-                 * For a GroupNode, this will contain the targets truncated to siblings of
-                 * the shared ancestor.
-                 *
-                 * For example, consider an original non-control BaseEdge A/B/C->Z/Y/X. Their
-                 * shared ancestor is the ROOT node. A and Z are the highest siblings. Here
-                 * are the results of calling getPredecessors():
-                 *
-                 *  - getPredecessors('Z/Y/X') === {regular: ['A/B/C'], control: []};
-                 *  - getPredecessors('Z/Y') === {regular: ['A'], control: []};
-                 *  - getPredecessors('Z') === {regular: ['A'], control: []};
-                 *
-                 * The reason getPredecessors('Z/Y') returns ['A'] (and not ['A/B'] as you
-                 * might intuitively expect) is because it's not clear how far down the
-                 * other end of the hierarchy to traverse in the general case.
-                 *
-                 * Continuing this example, say there was another BaseEdge A/K->Z/Y/W. When
-                 * we look at Z/Y's predecessors, the best we can say is ['A'] without getting
-                 * into the details of which of Z/Y's descendant nodes have predecessors to
-                 * which of A's descendants.
-                 *
-                 * On the other hand, for an OpNode it's clear what the final predecessors
-                 * ought to be. There is no ambiguity.
-                 */
+                /** Given the name of a node, return its incoming metaedges. */
                 HierarchyImpl.prototype.getPredecessors = function (nodeName) {
+                    var _this = this;
                     var node = this.index[nodeName];
                     if (!node) {
                         throw Error('Could not find node with name: ' + nodeName);
@@ -4747,21 +4906,33 @@ var tf;
                     // Add embedded predecessors, such as constants.
                     if (!node.isGroupNode) {
                         _.each(node.inEmbeddings, function (embeddedNode) {
-                            predecessors.regular.push(embeddedNode.name);
+                            _.each(node.inputs, function (input) {
+                                if (input.name === embeddedNode.name) {
+                                    // Make a new metaedge holding the edge between the
+                                    // node and the in-embedding.
+                                    var metaedge = new graph_1.MetaedgeImpl(embeddedNode.name, nodeName);
+                                    metaedge.addBaseEdge({
+                                        isControlDependency: input.isControlDependency,
+                                        outputTensorIndex: input.outputTensorIndex,
+                                        isReferenceEdge: false,
+                                        v: embeddedNode.name,
+                                        w: nodeName
+                                    }, _this);
+                                    predecessors.regular.push(metaedge);
+                                }
+                            });
                         });
                     }
                     return predecessors;
                 };
                 /**
-                 * Given the name of a node, return an array of the names of its successors.
-                 * For an OpNode, this will contain the targets from the underlying BaseEdges.
-                 * For a GroupNode, this will contain the targets truncated to sibling of
-                 * the shared ancestor.
+                 * Given the name of a node, return its outgoing metaedges.
                  *
                  * This is the inverse of getPredecessors(). See that method's documentation
                  * for an in-depth example.
                  */
                 HierarchyImpl.prototype.getSuccessors = function (nodeName) {
+                    var _this = this;
                     var node = this.index[nodeName];
                     if (!node) {
                         throw Error('Could not find node with name: ' + nodeName);
@@ -4770,7 +4941,21 @@ var tf;
                     // Add embedded successors, such as summaries.
                     if (!node.isGroupNode) {
                         _.each(node.outEmbeddings, function (embeddedNode) {
-                            successors.regular.push(embeddedNode.name);
+                            _.each(embeddedNode.inputs, function (input) {
+                                if (input.name === nodeName) {
+                                    // Make a new metaedge holding the edge between the
+                                    // node and the out-embedding.
+                                    var metaedge = new graph_1.MetaedgeImpl(nodeName, embeddedNode.name);
+                                    metaedge.addBaseEdge({
+                                        isControlDependency: input.isControlDependency,
+                                        outputTensorIndex: input.outputTensorIndex,
+                                        isReferenceEdge: false,
+                                        v: nodeName,
+                                        w: embeddedNode.name
+                                    }, _this);
+                                    successors.regular.push(metaedge);
+                                }
+                            });
                         });
                     }
                     return successors;
@@ -4883,22 +5068,9 @@ var tf;
             function findEdgeTargetsInGraph(graph, node, inbound, targets) {
                 var edges = inbound ? graph.inEdges(node.name) : graph.outEdges(node.name);
                 _.each(edges, function (e) {
-                    var otherName = inbound ? e.v : e.w;
                     var metaedge = graph.edge(e);
-                    if (node.isGroupNode && metaedge.baseEdgeList.length > 1) {
-                        var targetList = metaedge.numRegularEdges
-                            ? targets.regular : targets.control;
-                        targetList.push(otherName);
-                    }
-                    else {
-                        // Enumerate all the base edges if the node is an OpNode, or the
-                        // metaedge has only 1 edge in it.
-                        _.each(metaedge.baseEdgeList, function (baseEdge) {
-                            var targetList = baseEdge.isControlDependency
-                                ? targets.control : targets.regular;
-                            targetList.push(inbound ? baseEdge.v : baseEdge.w);
-                        });
-                    }
+                    var targetList = metaedge.numRegularEdges ? targets.regular : targets.control;
+                    targetList.push(metaedge);
                 });
             }
             /**
@@ -6219,6 +6391,7 @@ var tf;
                     if (!line) {
                         return;
                     }
+                    line = line.trim();
                     switch (line[line.length - 1]) {
                         case '{':
                             var name_1 = line.substring(0, line.length - 2).trim();
@@ -7828,13 +8001,16 @@ var tf;
                 }
                 edge.buildGroup = buildGroup;
                 ;
-                function getShapeLabelFromNode(node, renderInfo) {
+                /**
+                 * Returns the label for the given base edge.
+                 * The label is the shape of the underlying tensor.
+                 */
+                function getLabelForBaseEdge(baseEdge, renderInfo) {
+                    var node = renderInfo.getNodeByName(baseEdge.v);
                     if (node.outputShapes == null || node.outputShapes.length === 0) {
                         return null;
                     }
-                    // TODO(smilkov): Figure out exactly which output tensor this
-                    // edge is from.
-                    var shape = node.outputShapes[0];
+                    var shape = node.outputShapes[baseEdge.outputTensorIndex];
                     if (shape == null) {
                         return null;
                     }
@@ -7844,7 +8020,7 @@ var tf;
                     return shape.map(function (size) { return size === -1 ? '?' : size; })
                         .join(TENSOR_SHAPE_DELIM);
                 }
-                edge.getShapeLabelFromNode = getShapeLabelFromNode;
+                edge.getLabelForBaseEdge = getLabelForBaseEdge;
                 /**
                  * Creates the label for the given metaedge. If the metaedge consists
                  * of only 1 tensor, and it's shape is known, the label will contain that
@@ -7852,13 +8028,9 @@ var tf;
                  */
                 function getLabelForEdge(metaedge, renderInfo) {
                     var isMultiEdge = metaedge.baseEdgeList.length > 1;
-                    if (isMultiEdge) {
-                        return metaedge.baseEdgeList.length + ' tensors';
-                    }
-                    else {
-                        var node_1 = renderInfo.getNodeByName(metaedge.baseEdgeList[0].v);
-                        return getShapeLabelFromNode(node_1, renderInfo);
-                    }
+                    return isMultiEdge ?
+                        metaedge.baseEdgeList.length + ' tensors' :
+                        getLabelForBaseEdge(metaedge.baseEdgeList[0], renderInfo);
                 }
                 edge.getLabelForEdge = getLabelForEdge;
                 /**
@@ -11489,8 +11661,12 @@ Polymer({
               </template>
               <template is="dom-if" if="{{_nodeStats.outputSize}}">
                 <div class="sub-list-table-row">
-                  <div class="sub-list-table-cell">Tensor Output Size</div>
-                  <div class="sub-list-table-cell">[[_nodeStatsFormattedOutputSize]]</div>
+                  <div class="sub-list-table-cell">Tensor Output Sizes</div>
+                  <div class="sub-list-table-cell">
+                    <template is="dom-repeat" items="{{_nodeStatsFormattedOutputSizes}}">
+                      [[item]] <br>
+                    </template>
+                  </div>
                 </div>
               </template>
             </div>
@@ -11550,9 +11726,9 @@ Polymer({
             type: String,
             computed: '_getNodeStatsFormattedComputeTime(_nodeStats)',
           },
-          _nodeStatsFormattedOutputSize: {
-            type: String,
-            computed: '_getNodeStatsFormattedOutputSize(_nodeStats)',
+          _nodeStatsFormattedOutputSizes: {
+            type: Array,
+            computed: '_getNodeStatsFormattedOutputSizes(_nodeStats)',
           },
           // The enum value of the include property of the selected node.
           nodeInclude: {
@@ -11643,47 +11819,22 @@ Polymer({
           return tf.graph.util.convertUnitsToHumanReadable(
               stats.totalMicros, tf.graph.util.TIME_UNITS);
         },
-        _getNodeStatsFormattedOutputSize(stats) {
+        _getNodeStatsFormattedOutputSizes(stats) {
           if (!stats || !stats.outputSize || !stats.outputSize.length) {
             return;
           }
 
-          // TODO(nsthorat): Display more than just the first tensor shape.
-          if (stats.outputSize[0].length === 0) {
-            return "scalar";
-          }
-
-          return "[" + stats.outputSize[0].join(", ") + "]";
+          return _.map(stats.outputSize, function(shape) {
+            if (shape.length === 0) {
+              return "scalar";
+            }
+            return "[" + shape.join(", ") + "]";
+          });
         },
         _getPrintableHTMLNodeName: function(nodeName) {
           // Insert an optional line break before each slash so that
           // long node names wrap cleanly at path boundaries.
           return (nodeName || '').replace(/\//g, '<wbr>/');
-        },
-        _getPredEdgeLabel: function(sourceName) {
-          return this._getEdgeLabel(sourceName, this.nodeName);
-        },
-        _getSuccEdgeLabel: function(destName) {
-          return this._getEdgeLabel(this.nodeName, destName);
-        },
-        _getEdgeLabel: function(sourceName, destName) {
-          if (!this._node) {
-            // The user clicked outside, thus no node is selected and
-            // the info card should be hidden.
-            return;
-          }
-          var parent = this._node.parentNode;
-          var sourceNode = this.graphHierarchy.node(sourceName);
-          if (!sourceNode.isGroupNode) {
-            // Show the tensor shape directly.
-            return tf.graph.scene.edge.getShapeLabelFromNode(sourceNode);
-          }
-          sourceName = this.renderHierarchy.getNearestVisibleAncestor(sourceName);
-          destName = this.renderHierarchy.getNearestVisibleAncestor(destName);
-          var metaedge = parent.metagraph.edge(sourceName, destName) ||
-              parent.bridgegraph.edge(sourceName, destName);
-          return tf.graph.scene.edge.getLabelForEdge(metaedge,
-              this.renderHierarchy);
         },
         _getRenderInfo: function(nodeName, renderHierarchy) {
           return this.renderHierarchy.getOrCreateRenderNodeByName(nodeName);
@@ -11719,7 +11870,7 @@ Polymer({
             return {regular: [], control: []}
           }
           return this._convertEdgeListToEdgeInfoList(
-            hierarchy.getSuccessors(node.name), false);
+            hierarchy.getSuccessors(node.name), false, node.isGroupNode);
         },
         _getPredecessors: function(node, hierarchy) {
           this.async(this._resizeList.bind(this, "#outputsList"));
@@ -11727,27 +11878,55 @@ Polymer({
             return {regular: [], control: []}
           }
           return this._convertEdgeListToEdgeInfoList(
-            hierarchy.getPredecessors(node.name), true);
+            hierarchy.getPredecessors(node.name), true, node.isGroupNode);
         },
-        _convertEdgeListToEdgeInfoList: function(list, isPredecessor) {
+        _convertEdgeListToEdgeInfoList: function(list, isPredecessor, isGroupNode) {
+
+          /**
+           * Unpacks the metaedge into a list of base edge information
+           * that can be rendered.
+           */
+          var unpackMetaedge = function(metaedge) {
+            return _.map(metaedge.baseEdgeList, function(baseEdge) {
+              name = isPredecessor ? baseEdge.v : baseEdge.w;
+              return {
+                name: name,
+                node: this._getNode(name, this.graphHierarchy),
+                edgeLabel: tf.graph.scene.edge.getLabelForBaseEdge(baseEdge,
+                    this.renderHierarchy),
+                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
+              };
+            }, this);
+          }.bind(this);
+
+          /**
+           * Converts a list of metaedges to a list of edge information
+           * that can be rendered.
+           */
+          var toEdgeInfoList = function(edges) {
+            var edgeInfoList = [];
+            _.each(edges, function(metaedge) {
+              var name = isPredecessor ? metaedge.v : metaedge.w;
+              // Enumerate all the base edges if the node is an OpNode, or the
+              // metaedge has only 1 edge in it.
+              if (!isGroupNode || metaedge.baseEdgeList.length == 1) {
+                edgeInfoList = edgeInfoList.concat(unpackMetaedge(metaedge));
+              } else {
+                edgeInfoList.push({
+                  name: name,
+                  node: this._getNode(name, this.graphHierarchy),
+                  edgeLabel: tf.graph.scene.edge.getLabelForEdge(metaedge,
+                      this.renderHierarchy),
+                  renderInfo: this._getRenderInfo(name, this.renderHierarchy)
+                });
+              }
+            }, this);
+            return edgeInfoList;
+          }.bind(this);
+
           return {
-            regular: list.regular.map(function(name) {
-              return {
-                name: name,
-                node: this._getNode(name, this.graphHierarchy),
-                edgeLabel: isPredecessor
-                  ? this._getPredEdgeLabel(name)
-                  : this._getSuccEdgeLabel(name),
-                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
-              }
-            }, this),
-            control: list.control.map(function(name) {
-              return {
-                name: name,
-                node: this._getNode(name, this.graphHierarchy),
-                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
-              }
-            }, this)
+            regular: toEdgeInfoList(list.regular),
+            control: toEdgeInfoList(list.control)
           };
         },
         _getSubnodes: function(node) {
