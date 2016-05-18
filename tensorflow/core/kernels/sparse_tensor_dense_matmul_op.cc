@@ -171,6 +171,7 @@ REGISTER_CPU(float);
 REGISTER_CPU(double);
 REGISTER_CPU(int32);
 REGISTER_CPU(complex64);
+REGISTER_CPU(complex128);
 
 #if GOOGLE_CUDA
 
