@@ -605,7 +605,7 @@ def resize_images(images,
     new_height: integer.
     new_width: integer.
     method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
-    align_corners: bool. If true, exactly align all 4 cornets of the input and
+    align_corners: bool. If true, exactly align all 4 corners of the input and
                    output. Defaults to `false`.
 
   Raises:
