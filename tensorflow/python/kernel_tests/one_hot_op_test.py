@@ -177,18 +177,18 @@ class OneHotTest(tf.test.TestCase):
 
     # axis == -1
     self._testBothOneHot(
-          indices=indices,
-          depth=depth,
-          dtype=dtype,
-          truth=truth)
+            indices=indices,
+            depth=depth,
+            dtype=dtype,
+            truth=truth)
 
     # axis == 1
     self._testBothOneHot(
-          indices=indices,
-          depth=depth,
-          axis=1,
-          dtype=dtype,
-          truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
+            indices=indices,
+            depth=depth,
+            axis=1,
+            dtype=dtype,
+            truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
 
   def _testValueTypeBatch(self, dtype):
     indices = np.asarray([[0, 2, -1, 1],
