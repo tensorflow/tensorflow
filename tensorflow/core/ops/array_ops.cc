@@ -1740,7 +1740,7 @@ REGISTER_OP("OneHot")
     .Attr("axis: int = -1")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("TI: {int32, int64}")
+    .Attr("TI: {int32, int64} = DT_INT32")
     .Doc(R"doc(
 Returns a one-hot tensor.
 
