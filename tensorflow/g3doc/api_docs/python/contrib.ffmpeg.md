@@ -5,7 +5,6 @@
 
 ## Encoding and decoding audio using FFmpeg
 
-
 TensorFlow provides Ops to decode and encode audio files using the
 [FFmpeg](https://www.ffmpeg.org/) library. FFmpeg must be
 locally [installed](https://ffmpeg.org/download.html) for these Ops to succeed.
