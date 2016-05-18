@@ -23,6 +23,7 @@ import os
 import threading
 
 from tensorflow.contrib.rnn.ops import gen_lstm_ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
@@ -55,23 +56,23 @@ def _LSTMCellBlockShape(op):
           tensor_shape.TensorShape([batch_size, cell_size]),
           tensor_shape.TensorShape([batch_size, cell_size]),
           tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size * 2]),
           tensor_shape.TensorShape([batch_size, cell_size]))
 
 
 @ops.RegisterGradient("LSTMCellBlock")
 def _LSTMCellBlockGrad(op, *grad):
-  (x, states_prev, w, b) = op.inputs
-  (i, cs, f, o, ci, co, _, h) = op.outputs
-  (_, _, _, _, _, _, states_grad, h_grad) = grad
+  (x, cs_prev, h_prev, w, b) = op.inputs
+  (i, cs, f, o, ci, co, _) = op.outputs
+  (_, cs_grad, _, _, _, _, h_grad) = grad
 
-  (x_grad, states_prev_grad, dicfo, xh) = gen_lstm_ops._lstm_cell_block_grad(
-      x, states_prev, w, b, i, cs, f, o, ci, co, h, states_grad, h_grad,
+  lstm_grad = gen_lstm_ops._lstm_cell_block_grad(
+      x, cs_prev, h_prev, w, b, i, cs, f, o, ci, co, cs_grad, h_grad,
       cell_size=op.get_attr("cell_size"))
+  (x_grad, cs_prev_grad, h_prev_grad, dicfo, xh) = lstm_grad
   w_grad = math_ops.matmul(xh, dicfo, transpose_a=True)
   b_grad = nn_ops.bias_add_grad(dicfo)
 
-  return (x_grad, states_prev_grad, w_grad, b_grad)
+  return (x_grad, cs_prev_grad, h_prev_grad, w_grad, b_grad)
 
 
 @ops.RegisterShape("LSTMCellBlockGrad")
@@ -81,7 +82,8 @@ def _LSTMCellBlockGradShape(op):
   cell_size = op.get_attr("cell_size")
 
   return [tensor_shape.TensorShape([batch_size, input_size]),
-          tensor_shape.TensorShape([batch_size, cell_size * 2]),
+          tensor_shape.TensorShape([batch_size, cell_size]),
+          tensor_shape.TensorShape([batch_size, cell_size]),
           tensor_shape.TensorShape([batch_size, cell_size * 4]),
           tensor_shape.TensorShape([batch_size, input_size + cell_size])]
 
@@ -565,7 +567,7 @@ class LSTMCellBlock(rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return self._num_units * 2
+    return [self._num_units] * 2
 
   @property
   def output_size(self):
@@ -577,16 +579,19 @@ class LSTMCellBlock(rnn_cell.RNNCell):
       x_shape = x.get_shape().with_rank(2)
       if not x_shape[1]:
         raise ValueError("Expecting x_shape[1] to be sets: %s" % str(x_shape))
+      if not len(states_prev) == 2:
+        raise ValueError("Expecting states_prev to be a tuple with length 2.")
       input_size = x_shape[1]
       w = vs.get_variable("W", [input_size + self._num_units,
                                 self._num_units * 4])
       b = vs.get_variable("b", [w.get_shape().with_rank(2)[1]],
                           initializer=init_ops.constant_initializer(0.0))
-      (_, _, _, _, _, _, states, h) = gen_lstm_ops.lstm_cell_block(
-          x, states_prev, w, b, cell_size=self._num_units,
+      (cs_prev, h_prev) = states_prev
+      (_, cs, _, _, _, _, h) = gen_lstm_ops.lstm_cell_block(
+          x, cs_prev, h_prev, w, b, cell_size=self._num_units,
           forget_bias=self._forget_bias)
 
-      return h, states
+      return (h, (cs, h))
 
 
 def Load(library_base_dir=''):

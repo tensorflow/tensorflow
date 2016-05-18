@@ -762,7 +762,7 @@ class LSTMTest(tf.test.TestCase):
     self.assertEqual(len(values_static), len(values_dynamic))
     for (value_static, value_dynamic) in zip(values_static, values_dynamic):
       self.assertAllEqual(value_static, value_dynamic)
-    self.assertAllEqual(state_value_static, state_value_dynamic)
+    self.assertAllEqual(np.squeeze(state_value_static), state_value_dynamic)
 
     self.assertAllEqual(static_grad_values, dynamic_grad_values)
 
@@ -1051,16 +1051,19 @@ def run_static_rnn(test, time_steps, batch_size, input_size, cell,
     with tf.variable_scope("dynamic_scope", initializer=initializer):
       outputs_static, state_static = tf.nn.rnn(
           cell, inputs, sequence_length=sequence_length, dtype=tf.float32)
-
-    feeds = {concat_inputs: input_values}
+    if isinstance(state_static, tuple):
+      state_static = list(state_static)
+    elif not isinstance(state_static, list):
+      state_static = [state_static]
 
     # Initialize
+    feeds = {concat_inputs: input_values}
     tf.initialize_all_variables().run(feed_dict=feeds)
 
     # Generate gradients of sum of outputs w.r.t. inputs
     if check_states:
       static_gradients = tf.gradients(
-          outputs_static + [state_static], [concat_inputs])
+          outputs_static + state_static, [concat_inputs])
     else:
       static_gradients = tf.gradients(
           outputs_static, [concat_inputs])
@@ -1069,9 +1072,7 @@ def run_static_rnn(test, time_steps, batch_size, input_size, cell,
     if check_states:
       static_individual_gradients = _flatten([
           tf.gradients(y, [concat_inputs])
-          for y in [outputs_static[0],
-                    outputs_static[-1],
-                    state_static]])
+          for y in [outputs_static[0], outputs_static[-1]] + state_static])
     else:
       static_individual_gradients = _flatten([
           tf.gradients(y, [concat_inputs])
@@ -1086,19 +1087,16 @@ def run_static_rnn(test, time_steps, batch_size, input_size, cell,
     if check_states:
       static_individual_variable_gradients = _flatten([
           tf.gradients(y, trainable_variables)
-          for y in [outputs_static[0],
-                    outputs_static[-1],
-                    state_static]])
+          for y in [outputs_static[0], outputs_static[-1]] + state_static])
     else:
       static_individual_variable_gradients = _flatten([
           tf.gradients(y, trainable_variables)
-          for y in [outputs_static[0],
-                    outputs_static[-1]]])
+          for y in [outputs_static[0], outputs_static[-1]] + state_static])
 
     # Test forward pass
     values_static = sess.run(outputs_static, feed_dict=feeds)
     if check_states:
-      (state_value_static,) = sess.run((state_static,), feed_dict=feeds)
+      state_value_static = sess.run(state_static, feed_dict=feeds)
     else:
       state_value_static = None
 

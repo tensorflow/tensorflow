@@ -88,14 +88,6 @@ struct LSTMCellBlock {
     return {0, cell_size_ * 3};
   }
 
-  inline Eigen::array<int, 2> states_cs_offsets() const {
-    return {0, 0};
-  }
-
-  inline Eigen::array<int, 2> states_h_offsets() const {
-    return {0, cell_size_};
-  }
-
   inline Eigen::array<int, 2> cell_extents() const {
     return {batch_size_, cell_size_};
   }
@@ -131,21 +123,13 @@ struct LSTMCellBlockFprop : public LSTMCellBlock {
   void operator()(
       OpKernelContext* ctx, perftools::gputools::Stream* stream,
       const Device& d, const T forget_bias, typename TTypes<T>::ConstMatrix x,
-      typename TTypes<T>::ConstMatrix states_prev,
-      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec b,
-      typename TTypes<T>::Matrix cs_prev, typename TTypes<T>::Matrix h_prev,
-      typename TTypes<T>::Matrix xh, typename TTypes<T>::Matrix i,
-      typename TTypes<T>::Matrix cs, typename TTypes<T>::Matrix f,
-      typename TTypes<T>::Matrix o, typename TTypes<T>::Matrix ci,
-      typename TTypes<T>::Matrix co, typename TTypes<T>::Matrix icfo,
-      typename TTypes<T>::Matrix states, typename TTypes<T>::Matrix h) {
-    // [cs, h] = states_prev
-    cs_prev.device(d) =
-        states_prev.slice(states_cs_offsets(), cell_extents());
-
-    h_prev.device(d) =
-        states_prev.slice(states_h_offsets(), cell_extents());
-
+      typename TTypes<T>::ConstMatrix cs_prev,
+      typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
+      typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,
+      typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,
+      typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,
+      typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,
+      typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h) {
     // Concat xh = [x, h].
     xh.slice(xh_x_offsets(), xh_x_extents()).device(d) = x;
     xh.slice(xh_h_offsets(), xh_h_extents()).device(d) = h_prev;
@@ -179,9 +163,6 @@ struct LSTMCellBlockFprop : public LSTMCellBlock {
 
     // h = o .* co
     h.device(d) = o * co;
-
-    states.slice(states_cs_offsets(), cell_extents()).device(d) = cs;
-    states.slice(states_h_offsets(), cell_extents()).device(d) = h;
   }
 };
 
@@ -193,45 +174,32 @@ struct LSTMCellBlockBprop : public LSTMCellBlock {
 
   void operator()(
       OpKernelContext* ctx, perftools::gputools::Stream* stream,
-      const Device& d, bool parallel_dw, typename TTypes<T>::ConstMatrix x,
-      typename TTypes<T>::ConstMatrix states_prev,
-      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec b,
-      typename TTypes<T>::ConstMatrix i, typename TTypes<T>::ConstMatrix cs,
-      typename TTypes<T>::ConstMatrix f, typename TTypes<T>::ConstMatrix o,
-      typename TTypes<T>::ConstMatrix ci, typename TTypes<T>::ConstMatrix co,
-      typename TTypes<T>::ConstMatrix h,
-      typename TTypes<T>::ConstMatrix states_grad,
+      const Device& d, bool compute_dw, typename TTypes<T>::ConstMatrix x,
+      typename TTypes<T>::ConstMatrix cs_prev,
+      typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
+      typename TTypes<T>::ConstVec b, typename TTypes<T>::ConstMatrix i,
+      typename TTypes<T>::ConstMatrix cs, typename TTypes<T>::ConstMatrix f,
+      typename TTypes<T>::ConstMatrix o, typename TTypes<T>::ConstMatrix ci,
+      typename TTypes<T>::ConstMatrix co, typename TTypes<T>::ConstMatrix cs_grad,
       typename TTypes<T>::ConstMatrix h_grad,
-      typename TTypes<T>::Matrix cs_prev,
-      typename TTypes<T>::Matrix states_c_grad,
-      typename TTypes<T>::Matrix states_h_grad,
       typename TTypes<T>::Matrix xh, typename TTypes<T>::Matrix xh_grad,
-      typename TTypes<T>::Matrix x_grad, typename TTypes<T>::Matrix dh,
+      typename TTypes<T>::Matrix x_grad,
       typename TTypes<T>::Matrix do_, typename TTypes<T>::Matrix dcs,
       typename TTypes<T>::Matrix dci, typename TTypes<T>::Matrix df,
       typename TTypes<T>::Matrix di, typename TTypes<T>::Matrix dicfo,
-      typename TTypes<T>::Matrix states_prev_grad,
+      typename TTypes<T>::Matrix cs_prev_grad,
+      typename TTypes<T>::Matrix h_prev_grad,
       typename TTypes<T>::Matrix w_grad, typename TTypes<T>::Vec b_grad) {
-    // [c_grad, h_grad] = states_grad.
-    states_c_grad.device(d) =
-        states_grad.slice(states_cs_offsets(), cell_extents());
-    states_h_grad.device(d) =
-        states_grad.slice(states_h_offsets(), cell_extents());
-
-    // dh.
-    dh.device(d) = h_grad + states_h_grad;
-
     // do[t] = sigm'(o[t]) .* dh[t] .* co[t]
-    do_.device(d) = o * (o.constant(T(1)) - o) * dh * co;
+    do_.device(d) = o * (o.constant(T(1)) - o) * h_grad * co;
 
     // dcs[t] += tanh'(cs[t]) .* dh[t] .* o[t] + dcs[t + 1] .* f[t + 1]
-    dcs.device(d) = (co.constant(T(1)) - co * co) * dh * o + states_c_grad;
+    dcs.device(d) = (co.constant(T(1)) - co * co) * h_grad * o + cs_grad;
 
     // dci[t] = tanh'(ci[t]) dcs[t] i[t]
     dci.device(d) = (ci.constant(T(1)) - ci * ci) * dcs * i;
 
     // df[t] = sigm'(f[t]) dcs[t] cs[t - 1]
-    cs_prev.device(d) = states_prev.slice(states_cs_offsets(), cell_extents());
     df.device(d) = f * (f.constant(T(1)) - f) * dcs * cs_prev;
 
     // di[t] = sigm'(i[t]) dcs[t] ci[t]
@@ -244,7 +212,7 @@ struct LSTMCellBlockBprop : public LSTMCellBlock {
 
     // We can parallelize the bprop GEMMs on the CPU (on GPU doesn't make any
     // difference).
-    BlockingCounter counter(parallel_dw ? 1 : 2);
+    BlockingCounter counter(compute_dw ? 2 : 1);
     auto workers_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
     auto workers = workers_threads.workers;
 
@@ -259,12 +227,11 @@ struct LSTMCellBlockBprop : public LSTMCellBlock {
     });
 
     // Concat xh = [x, h].
-    auto h_prev = states_prev.slice(states_h_offsets(), cell_extents());
     xh.slice(xh_x_offsets(), xh_x_extents()).device(d) = x;
     xh.slice(xh_h_offsets(), xh_h_extents()).device(d) = h_prev;
 
     // w_grad, b_grad.
-    if (!parallel_dw) {
+    if (compute_dw) {
       workers->Schedule(
           [ctx, stream, &d, &xh, &const_dicfo, &w_grad, &counter]() {
             typename TTypes<T>::ConstMatrix const_xh(
@@ -277,16 +244,17 @@ struct LSTMCellBlockBprop : public LSTMCellBlock {
       b_grad.device(d) += dicfo.sum(Eigen::array<int, 1>({0}));
     }
 
+    // cs_prev_grad.
+    cs_prev_grad.device(d) = dcs * f;
+
     // Need to make sure our GEMMs are done.
     counter.Wait();
 
     // x_grad.
     x_grad.device(d) = xh_grad.slice(xh_x_offsets(), xh_x_extents());
 
-    // states_prev_grad = [dcs, dh]
-    states_prev_grad.slice(states_cs_offsets(), cell_extents()).device(d) = dcs * f;
-    states_prev_grad.slice(states_h_offsets(), cell_extents()).device(d) =
-        xh_grad.slice(xh_h_offsets(), xh_h_extents());
+    // h_prev_grad.
+    h_prev_grad.device(d) = xh_grad.slice(xh_h_offsets(), xh_h_extents());
   }
 };
 
