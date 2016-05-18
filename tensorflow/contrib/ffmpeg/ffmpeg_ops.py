@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
-"""Public ops that allow FFmpeg encoding and decoding operations."""
+"""Encoding and decoding audio using FFmpeg."""
 
 from __future__ import absolute_import
 from __future__ import division

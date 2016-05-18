@@ -496,7 +496,7 @@ to reflect the cuDNN version you downloaded):
 tar xvzf cudnn-7.5-linux-x64-v4.tgz
 sudo cp cudnn-7.5-linux-x64-v4/cudnn.h /usr/local/cuda/include
 sudo cp cudnn-7.5-linux-x64-v4/libcudnn* /usr/local/cuda/lib64
-sudo chmod a+r /usr/local/cuda/lib64/libcudnn*
+sudo chmod a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
 ```
 
 ##### Configure TensorFlow's canonical view of Cuda libraries

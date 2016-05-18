@@ -36,6 +36,7 @@ module TF {
     public numColors: number;
     public internalColorScale: d3.scale.Linear<string, string>;
     private buckets: string[][];
+    private LIGHTNESS_NUDGE = 0.8;
 
     /**
      * The palette you provide defines your spectrum. The colorscale will
@@ -49,21 +50,21 @@ module TF {
      * too many hash collisions, so you'd want to bump it up to the threshold
      * of human perception (probably around 14 or 18).
      *
-     * @param {number} [numColors=12] - The number of base colors you want
-     *                 in the palette. The more colors, the smaller the number
-     *                 the more hash collisions you will have, but the more
-     *                 differentiable the base colors will be.
-     *
      * @param {string[]} [palette=TF.palettes.googleColorBlind] - The color
      *                 palette you want as an Array of hex strings. Note, the
      *                 length of the array in this palette is independent of the
      *                 param numColors above. The scale will interpolate to
      *                 create the proper "numColors" given in the first param.
      *
+     * @param {number} [numColors] - The number of base colors you want
+     *                 in the palette. The more colors, the smaller the number
+     *                 the more hash collisions you will have, but the more
+     *                 differentiable the base colors will be.
      */
     constructor(
-        numColors = 12, palette: string[] = TF.palettes.googleColorBlind) {
-      this.numColors = numColors;
+        palette: string[] = TF.palettes.googleColorBlindAssist,
+        numColors?: number) {
+      this.numColors = numColors ? numColors : palette.length;
       this.domain([]);
 
       if (palette.length < 2) {
@@ -121,12 +122,12 @@ module TF {
 
         // For first tick, nudge lighter...
       } else if (amount === 1) {
-        return d3.hcl(color).brighter(0.6);
+        return d3.hcl(color).brighter(this.LIGHTNESS_NUDGE);
 
         // ..otherwise nudge darker. Darker will approach black, which is
         // visible.
       } else {
-        return d3.hcl(color).darker((amount - 1) / 2);
+        return d3.hcl(color).darker((amount - 1) * this.LIGHTNESS_NUDGE);
       }
     }
 

@@ -27,8 +27,6 @@ limitations under the License.
 
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/build_config/protobuf.h"
-#elif defined(PLATFORM_GOOGLE_ANDROID)
-#include "tensorflow/core/platform/google/build_config/protobuf_android.h"
 #else
 #include "tensorflow/core/platform/default/protobuf.h"
 #endif

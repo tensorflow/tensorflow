@@ -35,6 +35,9 @@
 # ":direct_session" - An implementation of the Session interface that
 #      directly runs Graphs via the internal TensorFlow executor.
 #
+# ":example_parser_configuration" -- A library for extracting the
+#      tensorflow.Example proto configuration from a Graph.
+#
 # Public Android targets:
 #
 # filegroup ":android_proto_srcs" - Protos
@@ -506,6 +509,7 @@ tf_cuda_library(
         ":all_kernels",
         ":core",
         ":direct_session",
+        ":example_parser_configuration",
         ":gpu_runtime",
         ":lib",
     ],
@@ -821,6 +825,7 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
+            "example/example_parser_configuration.*",
             "util/tf_status_helper.*",
             "util/checkpoint_reader.*",
             "util/reporter.h",
@@ -1015,6 +1020,23 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":framework",
         ":gpu_tracer",
+        ":lib",
+        ":lib_internal",
+        ":proto_text",
+        ":protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "example_parser_configuration",
+    srcs = ["example/example_parser_configuration.cc"],
+    hdrs = ["example/example_parser_configuration.h"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [
+        ":core_cpu_internal",
+        ":framework",
         ":lib",
         ":lib_internal",
         ":proto_text",
@@ -1234,6 +1256,7 @@ tf_cc_tests(
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_bfc_allocator_test.cc",
             "common_runtime/gpu/gpu_region_allocator_test.cc",
+            "example/example_parser_configuration_test.cc",
             "framework/op_segment_test.cc",
             "ops/array_grad_test.cc",
             "ops/math_grad_test.cc",
@@ -1563,6 +1586,32 @@ tf_cc_test(
     ],
 )
 
+cc_test(
+    name = "example_example_parser_configuration_test",
+    size = "small",
+    srcs = ["example/example_parser_configuration_test.cc"],
+    data = [":example_parser_configuration_testdata"],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":example_parser_configuration",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:example_parsing_ops",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
 tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_tracer_test",
     size = "small",
@@ -1612,6 +1661,12 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "example_parser_configuration_testdata",
+    srcs = [
+        "example/testdata/parse_example_graph_def.pbtxt",
+    ],
+)
 # -----------------------------------------------------------------------------
 # Google-internal targets go here (must be at the end).
 

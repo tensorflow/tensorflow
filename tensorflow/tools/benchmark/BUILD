@@ -5,7 +5,11 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_copts",
+    "tf_cc_test",
+)
 
 exports_files(["LICENSE"])
 
@@ -13,6 +17,9 @@ cc_library(
     name = "benchmark_model_lib",
     srcs = [
         "benchmark_model.cc",
+    ],
+    hdrs = [
+        "benchmark_model.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -31,6 +38,21 @@ cc_library(
     }),
 )
 
+tf_cc_test(
+    name = "benchmark_model_test",
+    size = "medium",
+    deps = [
+        ":benchmark_model_lib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # This binary may be built for either desktop or Android.
 # A typical Android build command will look like the following:
 # bazel build -c opt tensorflow/core:android_tensorflow_lib \
@@ -44,6 +66,7 @@ cc_library(
 # uses.
 cc_binary(
     name = "benchmark_model",
+    srcs = ["benchmark_model_main.cc"],
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:android": [

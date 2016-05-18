@@ -490,6 +490,7 @@ class OpKernelContext {
     }
 
     bool track_allocations = false;
+    bool log_memory = false;
 
     // Array indexed by output number for this node
     const AllocatorAttributes* output_attr_array = nullptr;

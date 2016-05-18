@@ -24,7 +24,7 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 *  <b>`new_height`</b>: integer.
 *  <b>`new_width`</b>: integer.
 *  <b>`method`</b>: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
-*  <b>`align_corners`</b>: bool. If true, exactly align all 4 cornets of the input and
+*  <b>`align_corners`</b>: bool. If true, exactly align all 4 corners of the input and
                  output. Defaults to `false`.
 
 ##### Raises:

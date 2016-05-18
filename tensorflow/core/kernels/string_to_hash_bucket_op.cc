@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
+#include "tensorflow/core/kernels/string_to_hash_bucket_op.h"
 
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/fingerprint.h"
 
 namespace tensorflow {
 
-class StringToHashBucketOp : public OpKernel {
+// Deprecated class. It also uses `string_tensor` as Op argument instead of
+// `input`.
+class LegacyStringToHashBuckeOp : public OpKernel {
  public:
-  explicit StringToHashBucketOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit LegacyStringToHashBuckeOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_buckets", &num_buckets_));
   }
 
@@ -55,10 +54,14 @@ class StringToHashBucketOp : public OpKernel {
  private:
   int64 num_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StringToHashBucketOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(LegacyStringToHashBuckeOp);
 };
 
+// StringToHashBucket is deprecated in favor of StringToHashBucketStable.
 REGISTER_KERNEL_BUILDER(Name("StringToHashBucket").Device(DEVICE_CPU),
-                        StringToHashBucketOp);
+                        LegacyStringToHashBuckeOp);
+
+REGISTER_KERNEL_BUILDER(Name("StringToHashBucketFast").Device(DEVICE_CPU),
+                        StringToHashBucketOp<Fingerprint64>);
 
 }  // namespace tensorflow

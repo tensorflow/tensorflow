@@ -255,6 +255,7 @@
 * **[Strings](../../api_docs/python/string_ops.md)**:
   * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
   * [`string_to_hash_bucket`](../../api_docs/python/string_ops.md#string_to_hash_bucket)
+  * [`string_to_hash_bucket_fast`](../../api_docs/python/string_ops.md#string_to_hash_bucket_fast)
 
 * **[Histograms](../../api_docs/python/histogram_ops.md)**:
   * [`histogram_fixed_width`](../../api_docs/python/histogram_ops.md#histogram_fixed_width)
@@ -516,14 +517,21 @@
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
+  * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
   * [`ContinuousDistribution`](../../api_docs/python/contrib.distributions.md#ContinuousDistribution)
   * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
   * [`DiscreteDistribution`](../../api_docs/python/contrib.distributions.md#DiscreteDistribution)
+  * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
+  * [`Gamma`](../../api_docs/python/contrib.distributions.md#Gamma)
   * [`Gaussian`](../../api_docs/python/contrib.distributions.md#Gaussian)
   * [`gaussian_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#gaussian_congugates_known_sigma_predictive)
   * [`gaussian_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#gaussian_conjugates_known_sigma_posterior)
   * [`MultivariateNormal`](../../api_docs/python/contrib.distributions.md#MultivariateNormal)
   * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)
+
+* **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
+  * [`decode_audio`](../../api_docs/python/contrib.ffmpeg.md#decode_audio)
+  * [`encode_audio`](../../api_docs/python/contrib.ffmpeg.md#encode_audio)
 
 * **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
   * [`apply_regularization`](../../api_docs/python/contrib.layers.md#apply_regularization)
