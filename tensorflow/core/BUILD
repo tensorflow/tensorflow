@@ -600,6 +600,7 @@ filegroup(
     srcs = [
         ":proto_text_srcs_all",
         "//tensorflow/core/kernels:android_srcs",
+        "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "common_runtime/gpu/gpu_tracer.cc",
         "common_runtime/gpu/gpu_tracer.h",
@@ -657,9 +658,6 @@ filegroup(
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-#
-# Layering checks are explicitly disabled since hdrs are not used to
-# verify Android builds, which leads to incorrect and misleading header lists.
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs =
@@ -670,7 +668,6 @@ cc_library(
             "//conditions:default": [],
         }),
     copts = tf_copts() + ["-Os"],
-    features = ["-layering_check"],
     tags = [
         "manual",
         "notap",
@@ -694,7 +691,6 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = tf_copts(),
-    features = ["-layering_check"],
     tags = [
         "manual",
         "notap",
