@@ -210,7 +210,7 @@ class ExponentialMovingAverage(object):
   def __init__(self, decay, num_updates=None, name="ExponentialMovingAverage"):
     """Creates a new ExponentialMovingAverage object.
 
-    The `Apply()` method has to be called to create shadow variables and add
+    The `apply()` method has to be called to create shadow variables and add
     ops to maintain moving averages.
 
     The optional `num_updates` parameter allows one to tweak the decay rate
@@ -225,7 +225,7 @@ class ExponentialMovingAverage(object):
       decay: Float.  The decay to use.
       num_updates: Optional count of number of updates applied to variables.
       name: String. Optional prefix name to use for the name of ops added in
-        `Apply()`.
+        `apply()`.
     """
     self._decay = decay
     self._num_updates = num_updates
