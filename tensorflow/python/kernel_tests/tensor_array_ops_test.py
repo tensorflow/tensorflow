@@ -77,6 +77,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
     self._testTensorArrayWritePack(tf.int32)
     self._testTensorArrayWritePack(tf.int64)
     self._testTensorArrayWritePack(tf.complex64)
+    self._testTensorArrayWritePack(tf.complex128)
     self._testTensorArrayWritePack(tf.string)
 
   def _testTensorArrayWriteConcat(self, tf_dtype):
@@ -111,6 +112,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
     self._testTensorArrayWriteConcat(tf.int32)
     self._testTensorArrayWriteConcat(tf.int64)
     self._testTensorArrayWriteConcat(tf.complex64)
+    self._testTensorArrayWriteConcat(tf.complex128)
     self._testTensorArrayWriteConcat(tf.string)
 
   def testTensorArrayUnpackWrongMajorSizeFails(self):
@@ -173,6 +175,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
     self._testTensorArrayUnpackRead(tf.int32)
     self._testTensorArrayUnpackRead(tf.int64)
     self._testTensorArrayUnpackRead(tf.complex64)
+    self._testTensorArrayUnpackRead(tf.complex128)
     self._testTensorArrayUnpackRead(tf.string)
 
   def _testTensorArraySplitRead(self, tf_dtype):
@@ -231,6 +234,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
     self._testTensorArraySplitRead(tf.int32)
     self._testTensorArraySplitRead(tf.int64)
     self._testTensorArraySplitRead(tf.complex64)
+    self._testTensorArraySplitRead(tf.complex128)
     self._testTensorArraySplitRead(tf.string)
 
   def testTensorGradArrayWriteRead(self):
@@ -468,8 +472,9 @@ class TensorArrayCPUTest(tf.test.TestCase):
         wb1_grad.flow.eval()
 
   def testTensorArrayWriteGradientAddMultipleAdds(self):
-    for dtype in [tf.int32, tf.int64, tf.float32, tf.float64, tf.complex64]:
-      self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
+    for dtype in (tf.int32, tf.int64, tf.float32,
+                  tf.float64, tf.complex64, tf.complex128):
+        self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
 
   def testMultiTensorArray(self):
     with self.test_session(use_gpu=self._use_gpu):
@@ -540,7 +545,8 @@ class TensorArrayCPUTest(tf.test.TestCase):
       self.assertAllEqual(c(-2.0), grad_vals[1])
 
   def testTensorArrayGradientWriteRead(self):
-    for dtype in (np.float32, np.float64, np.int32, np.int64, np.complex64):
+    for dtype in (np.float32, np.float64, np.int32,
+                  np.int64, np.complex64, np.complex128):
       self._testTensorArrayGradientWriteReadType(dtype)
 
   def testTensorArrayGradientWritePackConcatAndRead(self):

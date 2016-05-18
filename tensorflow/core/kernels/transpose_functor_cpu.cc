@@ -99,6 +99,10 @@ Status DoTranspose<Device>(const Device& d, const Tensor& in,
       internal::Transpose<Device, uint64>(d, in, perm, out);
       break;
 
+    case DT_COMPLEX128:
+      internal::Transpose<Device, complex128>(d, in, perm, out);
+      break;
+
     case DT_STRING:
       internal::Transpose<Device, string>(d, in, perm, out);
       break;

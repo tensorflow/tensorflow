@@ -651,6 +651,7 @@ _TRUEDIV_TABLE = {
     dtypes.float32: None,
     dtypes.float64: None,
     dtypes.complex64: None,
+    dtypes.complex128: None,
 }
 
 

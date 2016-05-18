@@ -205,8 +205,9 @@ struct MatMulFunctor<CPUDevice, T> {
 REGISTER_CPU(float);
 REGISTER_CPU(double);
 REGISTER_CPU(int32);
-REGISTER_CPU(complex64);
 REGISTER_CPU(Eigen::half);
+REGISTER_CPU(complex64);
+REGISTER_CPU(complex128);
 #if GOOGLE_CUDA
 REGISTER_GPU(float);
 // REGISTER_GPU(double);
