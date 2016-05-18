@@ -3,6 +3,8 @@
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../tf-dashboard-common/scrollbar-style.html">
 <link rel="import" href="../tf-dashboard-common/run-color-style.html">
+<link rel="import" href="../paper-input/paper-input.html">
+
 <!--
 tf-multi-checkbox creates a list of checkboxes that can be used to toggle on or off
 a large number of values. Each checkbox displays a name, and may also have an
@@ -12,26 +14,6 @@ tf-multi-checkbox assumes that the names may be very long compared to the width
 of the checkbox, and the number of names may also be very large, and works to
 handle these situations gracefully.
 
-API:
-
-Properties in:
-names: The string names to associate with checkboxes.
-tooltips: An object mapping from name to tooltip value.
-tooltipOrderer: A function that is used to compute how to order the names based
-on tooltip values (when available). If tooltip values and a tooltip orderer are
-present, the tooltipOrderer computes a numeric value for each tooltip, tooltips
-with higher values are ordered first, tooltips with equal values are ordered
-lexicographically, and tooltips without a value are placed last. If the
-tooltipOrderer is set to a falsey value (eg null), then the names are not
-re-ordered based on tooltip value.
-classScale: A function that maps from name to class name, which is applied as
-the special property color-class. This is intended to be used to color the names.
-hideMissingTooltips: If set, then when tooltips are present, any names that do
-not have an associate non-empty tooltip value will be hidden.
-
-Properties out:
-outSelected: An array of names that the user has checked.
-If the user does not interact, everything will be checked.
 
 -->
 
@@ -41,9 +23,15 @@ If the user does not interact, everything will be checked.
 
   <template>
     <div id="outer-container" class="scrollbar">
+      <paper-input
+        id="runs-regex"
+        no-label-float
+        label="Write a regex to filter runs"
+        bind-value="{{regexInput}}"
+      ></paper-input>
       <template
         is="dom-repeat"
-        items="[[names]]"
+        items="[[namesMatchingRegex]]"
       >
         <div
           class="run-row"
@@ -52,7 +40,7 @@ If the user does not interact, everything will be checked.
             <paper-checkbox
               class="checkbox vertical-align-center"
               name="[[item]]"
-              checked$="[[_isChecked(item,outSelected.*)]]"
+              checked$="[[_isChecked(item, runToIsCheckedMapping.*)]]"
               on-change="_checkboxChange"
             ></paper-checkbox>
           </div>
@@ -63,6 +51,15 @@ If the user does not interact, everything will be checked.
       </template>
     </div>
   <style>
+    paper-input {
+      --paper-input-container-focus-color: var(--tb-orange-strong);
+      --paper-input-container-input: {
+        font-size: 14px;
+      };
+      --paper-input-container-label: {
+        font-size: 14px;
+      };
+    }
     :host {
       display: flex;
       flex-direction: column;
@@ -121,26 +118,68 @@ If the user does not interact, everything will be checked.
   Polymer({
     is: "tf-multi-checkbox",
     properties: {
-      names: Array,
+      names: Array, // All the runs in consideration
+      regexInput: {type: String, value: "",}, // Regex for filtering the runs
+      regex: {
+        type: Object,
+        computed: "makeRegex(regexInput)"
+      },
+      namesMatchingRegex: {
+        type: Array,
+        computed: "computeNamesMatchingRegex(names.*, regex)"
+      }, // Runs that match the regex
+      runToIsCheckedMapping: {
+        type: Object,
+        value: function() {return {};}
+      }, // run name -> Boolean (if its enabled)
+      // (Allows state to persist across regex filtering)
       outSelected: {
         type: Array,
         notify: true,
-        value: function() {
-          return [];
-        },
+        computed: 'computeOutSelected(namesMatchingRegex.*, runToIsCheckedMapping.*)'
       },
-      colorScale: Object, // map from run name to css class
+      colorScale: {
+        type: Object,
+        observer: "synchronizeColors",
+      }, // map from run name to css class
     },
     listeners: {
-      'dom-change': 'onDomChange',
+      'dom-change': 'synchronizeColors',
     },
     observers: [
-      "_initializeOutSelected(names.*)",
+      "_initializeRunToIsCheckedMapping(names.*)",
     ],
-    _initializeOutSelected: function(change) {
-      this.outSelected = change.base.slice();
+    makeRegex: function(regex) {
+      try {
+        return new RegExp(regex)
+      } catch (e) {
+        return null;
+      }
     },
-    onDomChange: function(e) {
+    _initializeRunToIsCheckedMapping: function(change) {
+      var runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
+
+      this.names.forEach(function(n) {
+        if (runToIsCheckedMapping[n] == null) {
+          // runs default to on
+          runToIsCheckedMapping[n] = true;
+        }
+      });
+      this.runToIsCheckedMapping = runToIsCheckedMapping;
+    },
+    computeNamesMatchingRegex: function(__, ___) {
+      var regex = this.regex;
+      return this.names.filter(function(n) {
+        return regex == null || regex.test(n);
+      });
+    },
+    computeOutSelected: function(__, ___) {
+      var runToIsCheckedMapping = this.runToIsCheckedMapping;
+      return this.namesMatchingRegex.filter(function(n) {
+        return runToIsCheckedMapping[n];
+      });
+    },
+    synchronizeColors: function(e) {
       var checkboxes = Array.prototype.slice.call(this.querySelectorAll("paper-checkbox"));
       var scale = this.colorScale;
       checkboxes.forEach(function(p) {
@@ -151,31 +190,31 @@ If the user does not interact, everything will be checked.
         p.customStyle['--paper-checkbox-unchecked-ink-color'] = color;
       });
       this.updateStyles();
+      // The updateStyles call fails silently if the browser doesn't have focus,
+      // e.g. if TensorBoard was opened into a new tab that isn't visible.
+      // As a workaround... we know requestAnimationFrame won't fire until the
+      // page has focus, so updateStyles again on requestAnimationFrame.
+      window.requestAnimationFrame(() => this.updateStyles());
     },
     _checkboxChange: function(e) {
       var name = e.srcElement.name;
-      var idx = this.outSelected.indexOf(name);
       var checked = e.srcElement.checked;
-      if (checked && idx === -1) {
-          this.push("outSelected", name);
-      } else if (!checked && idx !== -1) {
-        this.splice("outSelected", idx, 1);
-      }
+      this.runToIsCheckedMapping[name] = checked;
+      this.notifyPath("runToIsCheckedMapping." + name, checked);
     },
     _isChecked: function(item, outSelectedChange) {
-      var outSelected = outSelectedChange.base;
-      return outSelected.indexOf(item) !== -1;
+      return this.runToIsCheckedMapping[item];
     },
     _initializeRuns: function(change) {
       this.outSelected = change.base.slice();
     },
-    _applyColorClass: function(item, classScale) {
-      // TODO: Update style just on the element that changes
-      // and apply at microtask timing
-      this.debounce("restyle", function (){
-        this.updateStyles();
-      }, 16);
-      return classScale(item);
+    toggleAll: function() {
+      var allOn = this.namesMatchingRegex
+                    .filter((n) => !this.runToIsCheckedMapping[n])
+                    .length === 0;
+
+      this.namesMatchingRegex.forEach((n) => this.runToIsCheckedMapping[n] = !allOn);
+      this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
     },
   });
   </script>

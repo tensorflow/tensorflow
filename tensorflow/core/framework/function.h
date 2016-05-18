@@ -251,8 +251,12 @@ class FunctionCallFrame {
 // FunctionDefLibrary and function definitions.
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
+  explicit FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   explicit FunctionLibraryDefinition(const FunctionDefLibrary& lib_def);
   ~FunctionLibraryDefinition() override;
+
+  FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
+      delete;
 
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
@@ -282,8 +286,6 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
  private:
   std::unordered_map<string, FunctionDef> function_defs_;
   std::unordered_map<string, string> func_grad_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryDefinition);
 };
 
 // Forward declare. Defined in common_runtime/function.h

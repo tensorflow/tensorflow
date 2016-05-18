@@ -172,6 +172,12 @@ Run the following command to build `zero_out.so`.
 $ bazel build -c opt //tensorflow/core/user_ops:zero_out.so
 ```
 
+> Note:
+Although you can create a shared library (a `.so` file) with the standard
+`cc_library` rule, we strongly recommend that you use the `tf_custom_op_library`
+macro. It adds some required dependencies, and performs checks to ensure that
+the shared library is compatible with TensorFlow's plugin loading mechanism.
+
 ## Using the Op in Python
 
 TensorFlow Python API provides the
@@ -809,7 +815,7 @@ expressions:
   ```c++
   REGISTER_OP("BuiltInTypesExample")
       .Input("integers: int32")
-      .Input("complex_numbers: scomplex64");
+      .Input("complex_numbers: complex64");
   ```
 
 * `<attr-type>`, where `<attr-type>` is the name of an [Attr](#attrs) with type

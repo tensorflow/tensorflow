@@ -98,6 +98,21 @@ class SessionTest(test_util.TensorFlowTestCase):
       inp = constant_op.constant(10.0, name='W1')
       self.assertAllEqual(inp.eval(), 10.0)
 
+  def testSessionInterOpThreadPool(self):
+    config = config_pb2.ConfigProto()
+    pool = config.session_inter_op_thread_pool.add()
+    with session.Session(config=config) as s:
+      inp = constant_op.constant(10.0, name='W1')
+      results = s.run([inp])
+      self.assertAllEqual([10.0], results)
+
+    pool = config.session_inter_op_thread_pool.add()
+    pool.num_threads = 1
+    with session.Session(config=config) as s:
+      inp = constant_op.constant(20.0, name='W2')
+      results = s.run([inp])
+      self.assertAllEqual([20.0], results)
+
   def testErrorsReported(self):
     with session.Session() as s:
       constant_op.constant(10.0, name='W1')
@@ -706,6 +721,48 @@ class SessionTest(test_util.TensorFlowTestCase):
       e = math_ops.matmul(c, d)
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
+
+  def testInteractivePlacePrunedGraph(self):
+    sess = session.InteractiveSession()
+
+    # Build a graph that has a bad op in it (no kernel).
+    #
+    # This test currently does not link in any GPU kernels,
+    # which is why placing this is invalid.  If at some point
+    # GPU kernels are added to this test, some other different
+    # op / device combo should be chosen.
+    with ops.device('/gpu:0'):
+      a = constant_op.constant(1.0, shape=[1, 2])
+
+    b = constant_op.constant(1.0, shape=[1, 2])
+
+    # Only run the valid op, this should work.
+    b.eval()
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      a.eval()
+    sess.close()
+
+  def testDefaultSessionPlacePrunedGraph(self):
+    sess = session.Session()
+
+    # Build a graph that has a bad op in it (no kernel).
+    #
+    # This test currently does not link in any GPU kernels,
+    # which is why placing this is invalid.  If at some point
+    # GPU kernels are added to this test, some other different
+    # op / device combo should be chosen.
+    with ops.device('/gpu:0'):
+      _ = constant_op.constant(1.0, shape=[1, 2])
+
+    b = constant_op.constant(1.0, shape=[1, 2])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      # Even though we don't run the bad op, we place the entire
+      # graph, which should fail with a non-interactive session.
+      sess.run(b)
+
+    sess.close()
 
   def testSharedGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):

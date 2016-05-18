@@ -90,6 +90,7 @@ DEFINE_FOR_ALL_REDUCERS(double);
 #undef DEFINE_FOR_ALL_REDUCERS
 
 DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::SumReducer<complex64>);
+DEFINE_FOR_TYPE_AND_R(complex128, Eigen::internal::SumReducer<complex128>);
 DEFINE_FOR_TYPE_AND_R(bool, Eigen::internal::AndReducer);
 DEFINE_FOR_TYPE_AND_R(bool, Eigen::internal::OrReducer);
 #undef DEFINE_FOR_TYPE_AND_R

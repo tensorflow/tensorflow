@@ -40,14 +40,13 @@ class ScopedActivateContext;
 class ScopedActivateExecutorContext {
  public:
   // Form that takes a CUDA executor implementation.
-  explicit ScopedActivateExecutorContext(
-      CUDAExecutor* cuda_exec, MultiOpActivation moa = MultiOpActivation::kNo);
+  explicit ScopedActivateExecutorContext(CUDAExecutor* cuda_exec);
 
   // Form that takes a pImpl executor and extracts a CUDA implementation --
   // fatal failure if it is not CUDA inside.
   explicit ScopedActivateExecutorContext(
       StreamExecutor* stream_exec,
-      MultiOpActivation moa = MultiOpActivation::kNo);
+      MultiOpActivation unused = MultiOpActivation::kNo);
 
   ~ScopedActivateExecutorContext();
 

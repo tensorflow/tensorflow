@@ -51,6 +51,8 @@ const OUTPUT_SHAPES_KEY = '_output_shapes';
 export interface BaseEdge extends graphlib.EdgeObject {
   isControlDependency: boolean;
   isReferenceEdge: boolean;
+  /** The index of the output tensor of the source node. */
+  outputTensorIndex: number;
 }
 
 /**
@@ -69,7 +71,8 @@ export class SlimGraph {
 
 export interface NormalizedInput {
   name: string;
-  hasNumberPart: boolean;
+  /** The index of the output tensor of the source node. */
+  outputTensorIndex: number;
   isControlDependency: boolean;
 }
 
@@ -609,7 +612,7 @@ export function createMetaedge(v: string, w: string): Metaedge {
 /**
  * A label object for edges between metanodes of subgraphs in the render graph.
  */
-class MetaedgeImpl implements Metaedge {
+export class MetaedgeImpl implements Metaedge {
   v: string;
   w: string;
   baseEdgeList: BaseEdge[];
@@ -786,7 +789,8 @@ function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
  * @param inputs Array of unnormalized names of input nodes.
  */
 function normalizeInputs(inputs: string[]): NormalizedInput[] {
-  return _.reduce(inputs, function(normalizedInputs, inputName) {
+  let normalizedInputs: NormalizedInput[] = [];
+  _.each(inputs, inputName => {
     let start = inputName[0] === '^';
     let colon = inputName.lastIndexOf(':');
     let end = colon !== -1 &&
@@ -798,17 +802,18 @@ function normalizeInputs(inputs: string[]): NormalizedInput[] {
       name !== normalizedInputs[normalizedInputs.length - 1].name) {
       normalizedInputs.push({
         name: name,
-        hasNumberPart: end !== inputName.length,
+        outputTensorIndex:
+            end === inputName.length ? 0 : Number(inputName.slice(colon + 1)),
         isControlDependency: start
       });
     }
-    return normalizedInputs;
-  }, []);
+  });
+  return normalizedInputs;
 }
 
-function addEdgeToGraph(graph: SlimGraph, inputName: string,
-    outputNode: OpNode, isControlDependency: boolean, params: BuildParams,
-    index: number) {
+function addEdgeToGraph(
+    graph: SlimGraph, inputName: string, outputNode: OpNode,
+    input: NormalizedInput, params: BuildParams, index: number) {
   // Don't allow loops in the graph.
   if (inputName === outputNode.name) {
     return;
@@ -819,7 +824,8 @@ function addEdgeToGraph(graph: SlimGraph, inputName: string,
   graph.edges.push({
     v: inputName,
     w: outputNode.name,
-    isControlDependency: isControlDependency,
+    outputTensorIndex: input.outputTensorIndex,
+    isControlDependency: input.isControlDependency,
     isReferenceEdge: isRefEdge
   });
 }
@@ -937,7 +943,7 @@ export function build(
                       addEdgeToGraph(
                           graph, normalizedNameDict[embedInput.name] ||
                               embedInput.name,
-                          opNode, embedInput.isControlDependency, params, i);
+                          opNode, embedInput, params, i);
                     }
                   } else if (inputName in outEmbedding) {
                     // Move the inputs of the out-embedding node into inputs of
@@ -947,12 +953,12 @@ export function build(
                       addEdgeToGraph(
                           graph, normalizedNameDict[embedInput.name] ||
                               embedInput.name,
-                          opNode, input.isControlDependency, params, i);
+                          opNode, input, params, i);
                     }
                   } else {
                     addEdgeToGraph(
                         graph, normalizedNameDict[inputName] || inputName,
-                        opNode, input.isControlDependency, params, i);
+                        opNode, input, params, i);
                   }
                 });
               });

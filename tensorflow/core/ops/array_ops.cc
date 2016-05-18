@@ -167,7 +167,7 @@ y: a tensor of the same shape and type as x but filled with zeros.
 REGISTER_OP("Diag")
     .Input("diagonal: T")
     .Output("output: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {float, double, int32, int64, complex64}")
     .Doc(R"doc(
 Returns a diagonal tensor with a given diagonal values.
 
@@ -196,7 +196,7 @@ diagonal: Rank k tensor where k is at most 3.
 REGISTER_OP("DiagPart")
     .Input("input: T")
     .Output("diagonal: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {float, double, int32, int64, complex64}")
     .Doc(R"doc(
 Returns the diagonal part of the tensor.
 

@@ -25,7 +25,6 @@ from __future__ import print_function
 import inspect
 import os
 import re
-import sys
 
 
 _arg_re = re.compile(" *([*]{0,2}[a-zA-Z][a-zA-Z0-9_]*):")
@@ -88,8 +87,8 @@ class Index(Document):
     for filename, library in self._filename_to_library_map:
       sorted_names = sorted(library.mentioned, key=lambda x: (str.lower(x), x))
       member_names = [n for n in sorted_names if n in self._members]
-      # TODO: This is a hack that should be removed as soon as the website code
-      # allows it.
+      # TODO(wicke): This is a hack that should be removed as soon as the
+      # website code allows it.
       full_filename = self._path_prefix + filename
       links = ["[`%s`](%s#%s)" % (name, full_filename, anchor_f(name))
                for name in member_names]
@@ -109,6 +108,9 @@ def collect_members(module_to_name, exclude=()):
 
   Returns:
     Dictionary mapping name to (fullname, member) pairs.
+
+  Raises:
+    RuntimeError: if we can not resolve a name collision.
   """
   members = {}
   for module, module_name in module_to_name.items():
@@ -117,7 +119,7 @@ def collect_members(module_to_name, exclude=()):
       if ((inspect.isfunction(member) or inspect.isclass(member)) and
           not _always_drop_symbol_re.match(name) and
           (all_names is None or name in all_names)):
-        fullname = '%s.%s' % (module_name, name)
+        fullname = "%s.%s" % (module_name, name)
         if fullname in exclude:
           continue
         if name in members:
@@ -209,7 +211,7 @@ class Library(Document):
     """Set of excluded symbols."""
     return self._exclude_symbols
 
-  def _should_include_member(self, name, member):
+  def _should_include_member(self, name):
     """Returns True if this member should be included in the document."""
     # Always exclude symbols matching _always_drop_symbol_re.
     if _always_drop_symbol_re.match(name):
@@ -245,7 +247,7 @@ class Library(Document):
       if not (is_method or isinstance(member, property)):
         continue
       if ((is_method and member.__name__ == "__init__")
-          or self._should_include_member(name, member)):
+          or self._should_include_member(name)):
         yield name, ("%s.%s" % (cls_name, name), member)
 
   def set_functions_and_classes_dir(self, dirname):
@@ -430,7 +432,8 @@ class Library(Document):
         elif name in imports:
           self._write_module_markdown_to_file(f, imports[name])
         else:
-          raise ValueError("%s: unknown member `%s`" % (self._title, name))
+          raise ValueError("%s: unknown member `%s`, markdown=`%s`." % (
+              self._title, name, l))
       else:
         print(l, file=f)
 
@@ -439,9 +442,8 @@ class Library(Document):
 
     Args:
       f: File to write to.
-      prefix: Prefix for names.
-      cls: class object.
       name: name to use.
+      cls: class object.
     """
     # Build the list of class methods to document.
     methods = dict(self.get_class_members(name, cls))
@@ -527,7 +529,7 @@ class Library(Document):
   def assert_no_leftovers(self):
     """Generate an error if there are leftover members."""
     leftovers = []
-    for name in self._members.keys():
+    for name in self._members:
       if name in self._members and name not in self._documented:
         leftovers.append(name)
     if leftovers:
@@ -535,18 +537,18 @@ class Library(Document):
                          (self._title, ", ".join(leftovers)))
 
 
-def write_libraries(dir, libraries):
+def write_libraries(output_dir, libraries):
   """Write a list of libraries to disk.
 
   Args:
-    dir: Output directory.
+    output_dir: Output directory.
     libraries: List of (filename, library) pairs.
   """
-  files = [open(os.path.join(dir, k), "w") for k, _ in libraries]
+  files = [open(os.path.join(output_dir, k), "w") for k, _ in libraries]
 
   # Set the directory in which to save individual class and function md files,
   # creating it if it doesn't exist.
-  indiv_dir = os.path.join(dir, _indiv_dir)
+  indiv_dir = os.path.join(output_dir, _indiv_dir)
   if not os.path.exists(indiv_dir):
     os.makedirs(indiv_dir)
 

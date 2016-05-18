@@ -295,6 +295,26 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertEquals(tf.qint8.as_numpy_dtype, a.dtype)
     self.assertAllEqual(np.array(data, dtype=a.dtype), a)
 
+    t = tensor_util.make_tensor_proto(data, dtype=tf.quint16)
+    self.assertProtoEquals("""
+      dtype: DT_QUINT16
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "\025\000\026\000\027\000"
+      """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(tf.quint16.as_numpy_dtype, a.dtype)
+    self.assertAllEqual(np.array(data, dtype=a.dtype), a)
+
+    t = tensor_util.make_tensor_proto(data, dtype=tf.qint16)
+    self.assertProtoEquals("""
+      dtype: DT_QINT16
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "\025\000\026\000\027\000"
+      """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(tf.qint16.as_numpy_dtype, a.dtype)
+    self.assertAllEqual(np.array(data, dtype=a.dtype), a)
+
   def testString(self):
     t = tensor_util.make_tensor_proto("foo")
     self.assertProtoEquals("""

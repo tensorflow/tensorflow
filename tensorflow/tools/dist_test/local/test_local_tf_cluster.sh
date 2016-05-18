@@ -69,7 +69,7 @@ COUNTER=0
 while true; do
   sleep 1
   ((COUNTER++))
-  if [[ $(echo "${COUNTER}>${MAX_ATTEMPTS}" | bc -l) == "1" ]]; then
+  if [[ "${COUNTER}" -gt "${MAX_ATTEMPTS}" ]]; then
     die "Reached maximum polling attempts while waiting for all pods in "\
 "kube-system to be running in local k8s TensorFlow cluster"
   fi

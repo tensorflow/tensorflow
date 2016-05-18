@@ -114,12 +114,12 @@ static CUdeviceptr AsCudaDevicePtr(DeviceMemoryBase *gpu_mem) {
   return AsCudaDevicePtr(*gpu_mem);
 }
 
-static CUcontext GetCudaContext(Stream *stream) {
+static CudaContext* GetCudaContext(Stream *stream) {
   return static_cast<CUDAExecutor *>(stream->parent()->implementation())
       ->cuda_context();
 }
 
-CUcontext ExtractCudaContext(CUDAExecutor *cuda_exec) {
+CudaContext* ExtractCudaContext(CUDAExecutor *cuda_exec) {
   CHECK(cuda_exec != nullptr);
   return cuda_exec->cuda_context();
 }
@@ -878,7 +878,7 @@ CUDAExecutor::GetTimerImplementation() {
 
 void *CUDAExecutor::CudaContextHack() { return context_; }
 
-CUcontext CUDAExecutor::cuda_context() { return context_; }
+CudaContext* CUDAExecutor::cuda_context() { return context_; }
 
 // Attemps to read the NUMA node corresponding to the GPU device's PCI bus out
 // of SysFS. Returns -1 if it cannot.

@@ -32,9 +32,9 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 struct CudaLaunchConfig {
-  // Logical number of thread that works on the elements. If each logic thread
-  // works on exactly a single element, this is the same as the working element
-  // count.
+  // Logical number of thread that works on the elements. If each logical
+  // thread works on exactly a single element, this is the same as the working
+  // element count.
   int virtual_thread_count = -1;
   // Number of threads per block.
   int thread_per_block = -1;

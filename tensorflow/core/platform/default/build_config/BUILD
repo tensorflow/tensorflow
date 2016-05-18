@@ -33,20 +33,21 @@ tf_cuda_library(
         "//tensorflow/stream_executor",
     ] + select({
         "//third_party/gpus/cuda:darwin": ["IOKit"],
-        "//conditions:default": []
+        "//conditions:default": [],
     }),
 )
 
 # OSX framework for device driver access
 cc_library(
-  name = "IOKit",
-  linkopts = ["-framework IOKit"],
+    name = "IOKit",
+    linkopts = ["-framework IOKit"],
 )
 
 cc_library(
     name = "platformlib",
     copts = tf_copts(),
     deps = [
+        "@farmhash_archive//:farmhash",
         "@jpeg_archive//:jpeg",
         "@png_archive//:png",
         "@re2//:re2",
@@ -83,12 +84,12 @@ cc_library(
     linkopts = select({
         "//third_party/gpus/cuda:darwin": [
             "-Wl,-rpath,third_party/gpus/cuda/lib",
-            "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib"
+            "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib",
         ],
         "//conditions:default": [
             "-Wl,-rpath,third_party/gpus/cuda/lib64",
-            "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib64"
-        ]
+            "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib64",
+        ],
     }),
     deps = [
         "//third_party/gpus/cuda:cudart",

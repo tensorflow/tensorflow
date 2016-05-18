@@ -949,6 +949,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.device = device;
   // track allocations if and only if we are collecting statistics
   params.track_allocations = (stats_collector_ != nullptr);
+  params.log_memory = log_memory_;
   params.rendezvous = rendezvous_;
   params.session_state = session_state_;
   params.tensor_store = tensor_store_;
