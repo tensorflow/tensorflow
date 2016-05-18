@@ -400,6 +400,12 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                           "Expected list for 'a' "
                           "argument to 'TypeList' Op, not ")
 
+    with self.assertRaises(TypeError) as cm:
+      self._lib.apply_op("TypeList", a=[self.Tensor(dtypes.int32), None])
+    self.assertStartsWith(str(cm.exception),
+                          "Tensors in list passed to 'a' of 'TypeList' Op "
+                          "have types [int32, <NOT CONVERTIBLE TO TENSOR>]")
+
   def testTypeListTwice(self):
     self._add_op("name: 'TypeListTwice' "
                  "input_arg { name: 'a' type_list_attr: 'T' } "
@@ -957,6 +963,16 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       attr { key: 'N' value { i: 2 } }
       """, op.node_def)
 
+    op = self._lib.apply_op("NPolymorphicIn",
+                            a=[self.Tensor(dtypes.float32, name="y"),
+                               self.Tensor(dtypes.float32_ref, name="z")],
+                            name="r")
+    self.assertProtoEquals("""
+      name: 'r' op: 'NPolymorphicIn' input: 'y' input: 'z'
+      attr { key: 'T' value { type: DT_FLOAT } }
+      attr { key: 'N' value { i: 2 } }
+      """, op.node_def)
+
     with self.assertRaises(ValueError) as cm:
       self._lib.apply_op("NPolymorphicIn", a=[99])
     self.assertEqual(str(cm.exception),
@@ -966,8 +982,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("NPolymorphicIn", a=[38, "bar"])
     self.assertEqual(str(cm.exception),
-                     "All tensors passed to 'a' of 'NPolymorphicIn' "
-                     "Op must have the same type.")
+                     "Tensors in list passed to 'a' of 'NPolymorphicIn' Op "
+                     "have types [int32, string] that don't all match.")
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("NPolymorphicIn",
@@ -975,6 +991,13 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     self.assertEqual(str(cm.exception),
                      "Tensors in list passed to 'a' of 'NPolymorphicIn' Op "
                      "have types [int32, string] that don't all match.")
+
+    with self.assertRaises(TypeError) as cm:
+      self._lib.apply_op("NPolymorphicIn", a=[38, None])
+    self.assertEqual(str(cm.exception),
+                     "Tensors in list passed to 'a' of 'NPolymorphicIn' Op "
+                     "have types [int32, <NOT CONVERTIBLE TO TENSOR>] that "
+                     "don't all match.")
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("NPolymorphicIn",

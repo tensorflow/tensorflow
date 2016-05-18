@@ -408,25 +408,36 @@ class OpDefLibrary(object):
             values = ops.convert_n_to_tensor(
                 values, name=input_arg.name, dtype=dtype if dtype else None,
                 as_ref=input_arg.is_ref)
+            if input_arg.number_attr and len(
+                set(v.dtype.base_dtype for v in values)) > 1:
+              raise TypeError()  # All types should match.
           except (TypeError, ValueError):
-            assert dtype is not None, "Should not fail if dtype is None"
-            assert input_arg.number_attr, "Should be number_attr case"
             # What types does the conversion function think values have?
-            values = ops.convert_n_to_tensor(values, as_ref=input_arg.is_ref)
-            observed = ", ".join(v.dtype.base_dtype.name for v in values)
+            observed_types = []
+            for value in values:
+              try:
+                converted_value = ops.convert_to_tensor(
+                    value, as_ref=input_arg.is_ref)
+                observed_types.append(converted_value.dtype.base_dtype.name)
+              except (TypeError, ValueError):
+                observed_types.append("<NOT CONVERTIBLE TO TENSOR>")
+            observed = ", ".join(observed_types)
 
             prefix = (
                 "Tensors in list passed to '%s' of '%s' Op have types [%s]" %
                 (input_name, op_type_name, observed))
-            if input_arg.type != types_pb2.DT_INVALID:
-              raise TypeError("%s that do not match expected type %s." %
-                              (prefix, dtype.name))
-            elif input_arg.type_attr in attrs:
-              raise TypeError("%s that do not match type %s inferred from "
-                              "earlier arguments." %
-                              (prefix, dtype.name))
+            if input_arg.number_attr:
+              if input_arg.type != types_pb2.DT_INVALID:
+                raise TypeError("%s that do not match expected type %s." %
+                                (prefix, dtype.name))
+              elif input_arg.type_attr in attrs:
+                raise TypeError("%s that do not match type %s inferred from "
+                                "earlier arguments." %
+                                (prefix, dtype.name))
+              else:
+                raise TypeError("%s that don't all match." % prefix)
             else:
-              raise TypeError("%s that don't all match." % prefix)
+              raise TypeError("%s that are invalid." % prefix)
 
           types = [x.dtype for x in values]
           inputs.extend(values)
