@@ -39,7 +39,8 @@ Evaluates given model with provided evaluation data.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
     if input_fn is set.
 *  <b>`steps`</b>: Number of steps to evalute for.
-*  <b>`metrics`</b>: Dict of metric ops to run.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
 
 ##### Returns:
 
