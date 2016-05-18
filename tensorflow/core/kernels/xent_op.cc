@@ -108,6 +108,10 @@ REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T"),
                         SoftmaxXentWithLogitsOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<double>("T"),
+                        SoftmaxXentWithLogitsOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

@@ -130,10 +130,9 @@ class XentTest(tf.test.TestCase):
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float32))
 
   def testDouble(self):
-    self._testXent(
+    self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
-        np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64),
-        use_gpu=False)
+        np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64))
 
   def testGradient(self):
     with self.test_session():
