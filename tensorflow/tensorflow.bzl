@@ -154,7 +154,7 @@ def tf_gen_op_wrapper_cc(name, out_ops_file, pkg=""):
 #  tf_gen_op_wrappers_cc("tf_ops_lib", [ "array_ops", "math_ops" ])
 #
 #
-#This will ultimately generate ops/* files and a library like:
+# This will ultimately generate ops/* files and a library like:
 #
 # cc_library(name = "tf_ops_lib",
 #            srcs = [ "ops/array_ops.cc",
@@ -520,6 +520,56 @@ def tf_custom_op_library_additional_deps():
       "//tensorflow/core:framework_headers_lib",
   ]
 
+# Traverse the dependency graph along the "deps" attribute of the
+# target and return a struct with one field called 'tf_collected_deps'.
+# tf_collected_deps will be the union of the deps of the current target
+# and the tf_collected_deps of the dependencies of this target.
+def _collect_deps_aspect_impl(target, ctx):
+  alldeps = set()
+  if hasattr(ctx.rule.attr, "deps"):
+    for dep in ctx.rule.attr.deps:
+      alldeps = alldeps | set([dep.label])
+      if hasattr(dep, "tf_collected_deps"):
+        alldeps = alldeps | dep.tf_collected_deps
+  return struct(tf_collected_deps=alldeps)
+
+collect_deps_aspect = aspect(
+    implementation=_collect_deps_aspect_impl,
+    attr_aspects=["deps"])
+
+def _dep_label(dep):
+  label = dep.label
+  return label.package + ":" + label.name
+
+# This rule checks that the transitive dependencies of targets listed
+# in the 'deps' attribute don't depend on the targets listed in
+# the 'disallowed_deps' attribute.
+def _check_deps_impl(ctx):
+  disallowed_deps = ctx.attr.disallowed_deps
+  for input_dep in ctx.attr.deps:
+    if not hasattr(input_dep, "tf_collected_deps"):
+      continue
+    for dep in input_dep.tf_collected_deps:
+      for disallowed_dep in disallowed_deps:
+        if dep == disallowed_dep.label:
+          fail(_dep_label(input_dep) + " cannot depend on " +
+               _dep_label(disallowed_dep))
+  return struct()
+
+check_deps = rule(
+    _check_deps_impl,
+    attrs = {
+        "deps": attr.label_list(
+            aspects=[collect_deps_aspect],
+            mandatory = True,
+            allow_files = True
+        ),
+        "disallowed_deps": attr.label_list(
+            mandatory = True,
+            allow_files = True
+        )},
+)
+
 # Helper to build a dynamic library (.so) from the sources containing
 # implementations of custom ops and kernels.
 def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
@@ -537,9 +587,15 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
         deps = deps + if_cuda(cuda_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
 
+  check_deps(name=name+"_check_deps",
+             deps=deps + if_cuda(cuda_deps),
+             disallowed_deps=["//tensorflow/core:framework",
+                              "//tensorflow/core:lib"])
+
   native.cc_binary(name=name,
                    srcs=srcs,
                    deps=deps + if_cuda(cuda_deps),
+                   data=[name + "_check_deps"],
                    linkshared=1,
                    linkopts = select({
                        "//conditions:default": [
