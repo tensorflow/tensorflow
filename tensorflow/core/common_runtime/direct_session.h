@@ -45,7 +45,6 @@ namespace tensorflow {
 
 class CostModel;
 class Device;
-class ThreadPool;
 
 class DirectSession : public Session {
  public:
@@ -166,8 +165,8 @@ class DirectSession : public Session {
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(
-      gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
-      gtl::ArraySlice<string> target_nodes,
+      thread::ThreadPool* pool, gtl::ArraySlice<string> inputs,
+      gtl::ArraySlice<string> outputs, gtl::ArraySlice<string> target_nodes,
       ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args);
 
   // Creates several graphs given the existing graph_def_ and the
@@ -216,11 +215,12 @@ class DirectSession : public Session {
   mutex graph_def_lock_;
   GraphDef graph_def_ GUARDED_BY(graph_def_lock_);
 
-  // The thread-pool to use for running ops.
-  thread::ThreadPool* thread_pool_ = nullptr;
+  // The thread-pools to use for running ops.
+  std::vector<thread::ThreadPool*> thread_pools_;
+  bool owns_thread_pools_ = false;
 
-  // Schedules 'c' for execution.
-  void SchedClosure(std::function<void()> c);
+  // Schedules 'c' for execution on pool.
+  void SchedClosure(thread::ThreadPool* pool, std::function<void()> c);
 
   mutex executor_lock_;  // protects executors_
   // Holds mappings from signature to the executors that process

@@ -61,21 +61,36 @@ namespace tensorflow {
 
 namespace {
 
-thread::ThreadPool* NewThreadPool(const SessionOptions& options) {
-  int32 inter_op_parallelism_threads =
-      options.config.inter_op_parallelism_threads();
-  if (inter_op_parallelism_threads == 0) {
-    // Default to using the number of cores available in the process.
-    inter_op_parallelism_threads = port::NumSchedulableCPUs();
+int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
+  const int32 t = options.config.inter_op_parallelism_threads();
+  if (t != 0) return t;
+  // Default to using the number of cores available in the process.
+  return port::NumSchedulableCPUs();
+}
+
+thread::ThreadPool* NewThreadPoolFromSessionOptions(
+    const SessionOptions& options) {
+  const int32 num_threads = NumInterOpThreadsFromSessionOptions(options);
+  VLOG(1) << "Direct session inter op parallelism threads: " << num_threads;
+  return new thread::ThreadPool(options.env, "Compute", num_threads);
+}
+
+thread::ThreadPool* NewThreadPoolFromThreadPoolOptions(
+    const SessionOptions& options,
+    const ThreadPoolOptionProto& thread_pool_options, int pool_number) {
+  int32 num_threads = thread_pool_options.num_threads();
+  if (num_threads == 0) {
+    num_threads = NumInterOpThreadsFromSessionOptions(options);
   }
-  VLOG(1) << "Direct session inter op parallelism threads: "
-          << inter_op_parallelism_threads;
-  return new thread::ThreadPool(options.env, "Compute",
-                                inter_op_parallelism_threads);
+  VLOG(1) << "Direct session inter op parallelism threads for pool "
+          << pool_number << ": " << num_threads;
+  return new thread::ThreadPool(
+      options.env, strings::StrCat("Compute", pool_number), num_threads);
 }
 
 thread::ThreadPool* GlobalThreadPool(const SessionOptions& options) {
-  static thread::ThreadPool* const thread_pool = NewThreadPool(options);
+  static thread::ThreadPool* const thread_pool =
+      NewThreadPoolFromSessionOptions(options);
   return thread_pool;
 }
 
@@ -110,7 +125,8 @@ std::atomic_int_fast64_t DirectSession::step_id_counter_(1);
 // This may change down the road when we add support for multiple
 // devices that run concurrently, in which case we will need to
 // revisit this decision.
-void DirectSession::SchedClosure(std::function<void()> c) {
+void DirectSession::SchedClosure(thread::ThreadPool* pool,
+                                 std::function<void()> c) {
 // TODO(sanjay): Get rid of __ANDROID__ path
 #ifdef __ANDROID__
   // On Android, there is no implementation of ThreadPool that takes
@@ -120,7 +136,7 @@ void DirectSession::SchedClosure(std::function<void()> c) {
   // safe given the reasoning above.
   c();
 #else
-  thread_pool_->Schedule(c);
+  pool->Schedule(c);
 #endif  // __ANDROID__
 }
 
@@ -130,10 +146,19 @@ DirectSession::DirectSession(const SessionOptions& options,
       device_mgr_(device_mgr),
       cancellation_manager_(new CancellationManager()),
       operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()) {
-  if (options_.config.use_per_session_threads()) {
-    thread_pool_ = NewThreadPool(options_);
+  if (options_.config.session_inter_op_thread_pool_size() > 0) {
+    for (int i = 0; i < options_.config.session_inter_op_thread_pool_size();
+         ++i) {
+      thread_pools_.push_back(NewThreadPoolFromThreadPoolOptions(
+          options_, options_.config.session_inter_op_thread_pool(i), i));
+    }
+    owns_thread_pools_ = true;
+  } else if (options_.config.use_per_session_threads()) {
+    thread_pools_.push_back(NewThreadPoolFromSessionOptions(options_));
+    owns_thread_pools_ = true;
   } else {
-    thread_pool_ = GlobalThreadPool(options);
+    thread_pools_.push_back(GlobalThreadPool(options));
+    owns_thread_pools_ = false;
   }
   // NOTE(mrry): We do not need to use a unique string for the session
   // handle, because DirectSession owns its devices. This may change
@@ -174,8 +199,8 @@ DirectSession::~DirectSession() {
     d->op_segment()->RemoveHold(session_handle_);
   }
   delete cancellation_manager_;
-  if (options_.config.use_per_session_threads()) {
-    delete thread_pool_;
+  if (owns_thread_pools_) {
+    for (auto* p : thread_pools_) delete p;
   }
 
   execution_state_.reset(nullptr);
@@ -255,12 +280,19 @@ Status DirectSession::Run(const RunOptions& run_options,
     input_tensor_names.push_back(it.first);
   }
 
+  if (run_options.inter_op_thread_pool() < 0 ||
+      run_options.inter_op_thread_pool() >= thread_pools_.size()) {
+    return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
+                                   run_options.inter_op_thread_pool());
+  }
+  thread::ThreadPool* pool = thread_pools_[run_options.inter_op_thread_pool()];
+
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args;
-  TF_RETURN_IF_ERROR(GetOrCreateExecutors(input_tensor_names, output_names,
-                                          target_nodes, &executors_and_keys,
-                                          &run_state_args));
+  TF_RETURN_IF_ERROR(
+      GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,
+                           &executors_and_keys, &run_state_args));
 
   // Create a run state and start execution.
   RunState run_state(input_tensor_names, output_names);
@@ -284,7 +316,9 @@ Status DirectSession::Run(const RunOptions& run_options,
   args.step_id = step_id_counter_.fetch_add(1);
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = cancellation_manager_;
-  args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  args.runner = [this, pool](Executor::Args::Closure c) {
+    SchedClosure(pool, c);
+  };
   args.session_state = &session_state_;
   args.tensor_store = &run_state.tensor_store;
   if (LogMemory::IsEnabled()) {
@@ -343,11 +377,14 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
     }
   }
 
+  // RunOptions is not available in PRunSetup, so use thread pool 0.
+  thread::ThreadPool* pool = thread_pools_[0];
+
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args;
   run_state_args.is_partial_run = true;
-  Status s = GetOrCreateExecutors(input_names, output_names, target_nodes,
+  Status s = GetOrCreateExecutors(pool, input_names, output_names, target_nodes,
                                   &executors_and_keys, &run_state_args);
   TF_RETURN_IF_ERROR(s);
 
@@ -380,7 +417,9 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   args.step_id = step_id_counter_.fetch_add(1);
   args.rendezvous = run_state->rendez;
   args.cancellation_manager = cancellation_manager_;
-  args.runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  args.runner = [this, pool](Executor::Args::Closure c) {
+    SchedClosure(pool, c);
+  };
   args.session_state = &session_state_;
   args.tensor_store = &run_state->tensor_store;
   if (LogMemory::IsEnabled()) {
@@ -616,9 +655,9 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
 }
 
 Status DirectSession::GetOrCreateExecutors(
-    gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
-    gtl::ArraySlice<string> target_nodes, ExecutorsAndKeys** executors_and_keys,
-    RunStateArgs* run_state_args) {
+    thread::ThreadPool* pool, gtl::ArraySlice<string> inputs,
+    gtl::ArraySlice<string> outputs, gtl::ArraySlice<string> target_nodes,
+    ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args) {
   // Sort the inputs and outputs, so we don't create separate
   // executors when a user passes in the same inputs/outputs in
   // different orders.
@@ -685,7 +724,9 @@ Status DirectSession::GetOrCreateExecutors(
     }
   }
   ek->items.reserve(graphs.size());
-  auto runner = [this](Executor::Args::Closure c) { SchedClosure(c); };
+  auto runner = [this, pool](Executor::Args::Closure c) {
+    SchedClosure(pool, c);
+  };
   const auto& optimizer_opts =
       options_.config.graph_options().optimizer_options();
   GraphOptimizer optimizer(optimizer_opts);

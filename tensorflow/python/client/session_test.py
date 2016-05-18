@@ -98,6 +98,21 @@ class SessionTest(test_util.TensorFlowTestCase):
       inp = constant_op.constant(10.0, name='W1')
       self.assertAllEqual(inp.eval(), 10.0)
 
+  def testSessionInterOpThreadPool(self):
+    config = config_pb2.ConfigProto()
+    pool = config.session_inter_op_thread_pool.add()
+    with session.Session(config=config) as s:
+      inp = constant_op.constant(10.0, name='W1')
+      results = s.run([inp])
+      self.assertAllEqual([10.0], results)
+
+    pool = config.session_inter_op_thread_pool.add()
+    pool.num_threads = 1
+    with session.Session(config=config) as s:
+      inp = constant_op.constant(20.0, name='W2')
+      results = s.run([inp])
+      self.assertAllEqual([20.0], results)
+
   def testErrorsReported(self):
     with session.Session() as s:
       constant_op.constant(10.0, name='W1')
