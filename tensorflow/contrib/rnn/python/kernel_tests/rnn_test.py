@@ -35,11 +35,10 @@ class LSTMTest(tf.test.TestCase):
     input_values = np.random.randn(time_steps, batch_size, input_size)
 
     ########### Step 1: Run w/ Sequence Length.
-    sequence_length = np.empty([batch_size])
-    sequence_length.fill(time_steps)
+    sequence_length = np.tile([time_steps], batch_size)
 
     initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-    (values_dlen, state_value_dlen, dlen_grad_values,
+    (values_dlen, state_values_dlen, dlen_grad_values,
      dlen_individual_grad_values,
      dlen_individual_var_grad_values) = rnn_test.run_static_rnn(
          self, time_steps, batch_size, input_size, cell, sequence_length,
@@ -48,7 +47,7 @@ class LSTMTest(tf.test.TestCase):
     ########### Step 2: Run w/o Sequence Length.
     sequence_length = None
 
-    (values_slen, state_value_slen, slen_grad_values,
+    (values_slen, state_values_slen, slen_grad_values,
      slen_individual_grad_values,
      slen_individual_var_grad_values) = rnn_test.run_static_rnn(
          self, time_steps, batch_size, input_size, cell, sequence_length,
@@ -57,9 +56,14 @@ class LSTMTest(tf.test.TestCase):
     ######### Step 3: Comparisons
     self.assertEqual(len(values_dlen), len(values_slen))
     for (value_dlen, value_slen) in zip(values_dlen, values_slen):
-      self.assertAllClose(value_dlen, value_slen)
+      self.assertAllEqual(value_dlen, value_slen)
 
-    self.assertAllClose(dlen_grad_values, slen_grad_values)
+    self.assertEqual(len(state_values_dlen), len(state_values_slen))
+    for (state_value_dlen, state_value_slen) in zip(state_values_dlen,
+                                                    state_values_slen):
+      self.assertAllEqual(state_value_dlen, state_value_slen)
+
+    self.assertAllEqual(dlen_grad_values, slen_grad_values)
 
     self.assertEqual(len(dlen_individual_grad_values),
                      len(slen_individual_grad_values))
@@ -69,13 +73,13 @@ class LSTMTest(tf.test.TestCase):
     for i, (a, b) in enumerate(zip(dlen_individual_grad_values,
                                    slen_individual_grad_values)):
       tf.logging.info("Comparing individual gradients iteration %d" % i)
-      self.assertAllClose(a, b)
+      self.assertAllEqual(a, b)
 
     for i, (a, b) in enumerate(reversed(zip(dlen_individual_var_grad_values,
                                             slen_individual_var_grad_values))):
       tf.logging.info(
           "Comparing individual variable gradients iteraiton %d" % i)
-      self.assertAllClose(a, b)
+      self.assertAllEqual(a, b)
 
   def _testLSTMBasicToCellBlockRNN(self, use_gpu, use_sequence_length):
     time_steps = 8
@@ -97,7 +101,7 @@ class LSTMTest(tf.test.TestCase):
     initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
     basic_lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units, state_is_tuple=True)
 
-    (values_basic, state_value_basic, basic_grad_values,
+    (values_basic, state_values_basic, basic_grad_values,
      basic_individual_grad_values,
      basic_individual_var_grad_values) = rnn_test.run_static_rnn(
          self, time_steps, batch_size, input_size, basic_lstm_cell,
@@ -109,7 +113,7 @@ class LSTMTest(tf.test.TestCase):
     ########### Step 2: Run LSTMCellBlock
     lstm_cell_block_cell = tf.contrib.rnn.LSTMCellBlock(num_units)
 
-    (values_block, state_value_block, block_grad_values,
+    (values_block, state_values_block, block_grad_values,
      block_individual_grad_values,
      block_individual_var_grad_values) = rnn_test.run_static_rnn(
          self, time_steps, batch_size, input_size, lstm_cell_block_cell,
@@ -119,6 +123,11 @@ class LSTMTest(tf.test.TestCase):
     self.assertEqual(len(values_basic), len(values_block))
     for (value_basic, value_block) in zip(values_basic, values_block):
       self.assertAllClose(value_basic, value_block)
+
+    self.assertEqual(len(state_values_basic), len(state_values_block))
+    for (state_value_basic, state_value_block) in zip(state_values_basic,
+                                                      state_values_block):
+      self.assertAllClose(state_value_basic, state_value_block)
 
     self.assertAllClose(basic_grad_values, block_grad_values)
 
@@ -138,7 +147,7 @@ class LSTMTest(tf.test.TestCase):
           "Comparing individual variable gradients iteraiton %d" % i)
       self.assertAllClose(a, b)
 
-  def _testLSTMBasicToCellBlockRNN(self):
+  def testLSTMBasicToCellBlockRNN(self):
     for use_gpu in (True, False):
       for use_sequence_length in (True, False):
         self._testLSTMBasicToCellBlockRNN(
@@ -150,7 +159,7 @@ class LSTMTest(tf.test.TestCase):
     for use_gpu in (True, False):
       self._testRNNSequence(cell, use_gpu)
 
-  def _testLSTMBlockCellSequenceLength(self):
+  def testLSTMBlockCellSequenceLength(self):
     num_units = 3
     cell = tf.contrib.rnn.LSTMCellBlock(num_units)
     for use_gpu in (True, False):
