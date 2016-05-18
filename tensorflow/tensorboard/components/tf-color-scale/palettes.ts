@@ -29,7 +29,7 @@ module TF {
       '#ff7043',  // deep orange 400
       '#f4b400'   // google yellow 700
     ],
-    googleColorBlind: [
+    googleColorBlindAssist: [
       '#c53929',  // google red 700
       '#ff7043',  // deep orange 400
       '#f7cb4d',  // google yellow 300
@@ -37,6 +37,27 @@ module TF {
       '#80deea',  // cyan 200
       '#4285f4',  // google blue 500
       '#5e35b1'   // deep purple 600
+    ],
+    // These palettes try to be better for color differentiation.
+    // https://personal.sron.nl/~pault/
+    colorBlindAssist1:
+        ['#4477aa', '#44aaaa', '#aaaa44', '#aa7744', '#aa4455', '#aa4488'],
+    colorBlindAssist2: [
+      '#88ccee', '#44aa99', '#117733', '#999933', '#ddcc77', '#cc6677',
+      '#882255', '#aa4499'
+    ],
+    colorBlindAssist3: [
+      '#332288', '#6699cc', '#88ccee', '#44aa99', '#117733', '#999933',
+      '#ddcc77', '#cc6677', '#aa4466', '#882255', '#661100', '#aa4499'
+    ],
+    // based on this palette: http://mkweb.bcgsc.ca/biovis2012/
+    colorBlindAssist4: [
+      '#FF6DB6', '#920000', '#924900', '#DBD100', '#24FF24', '#006DDB',
+      '#490092'
+    ],
+    mldash: [
+      '#E47EAD', '#F4640D', '#FAA300', '#F5E636', '#00A077', '#0077B8',
+      '#00B7ED'
     ],
     // This rainbow palette attempts to keep a constant brightness across hues.
     constantValue: [

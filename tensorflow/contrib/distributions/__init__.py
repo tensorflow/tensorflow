@@ -27,6 +27,9 @@ initialized with parameters that define the distributions.
 
 ### Univariate (scalar) distributions
 
+@@Chi2
+@@Exponential
+@@Gamma
 @@Gaussian
 @@Uniform
 
@@ -50,8 +53,12 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long
+
+from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
+from tensorflow.contrib.distributions.python.ops.exponential import *
+from tensorflow.contrib.distributions.python.ops.gamma import *
 from tensorflow.contrib.distributions.python.ops.gaussian import *
 from tensorflow.contrib.distributions.python.ops.gaussian_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.mvn import *

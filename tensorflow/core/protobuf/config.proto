@@ -91,6 +91,14 @@ message GraphOptions {
   bool place_pruned_graph = 6;
 };
 
+message ThreadPoolOptionProto {
+  // The number of threads in the pool.
+  //
+  // 0 means the system picks a value based on where this option proto is used
+  // (see the declaration of the specific field for more info).
+  int32 num_threads = 1;
+};
+
 // Session configuration parameters.
 // The system picks an appropriate values for fields that are not set.
 message ConfigProto {
@@ -112,14 +120,25 @@ message ConfigProto {
   //
   // Note that the first Session created in the process sets the
   // number of threads for all future sessions unless use_per_session_threads is
-  // true.
+  // true or session_inter_op_thread_pool is configured.
   int32 inter_op_parallelism_threads = 5;
 
   // If true, use a new set of threads for this session rather than the global
   // pool of threads. Only supported by direct sessions.
   //
-  // If false, use the global threads created by the first session.
+  // If false, use the global threads created by the first session, or the
+  // per-session thread pools configured by session_inter_op_thread_pool.
+  //
+  // This option is deprecated. The same effect can be achieved by setting
+  // session_inter_op_thread_pool to have one element, whose num_threads equals
+  // inter_op_parallelism_threads.
   bool use_per_session_threads = 9;
+
+  // Configures session thread pools. If this is configured, then RunOptions for
+  // a Run call can select the thread pool to use.
+  //
+  // If a pool's num_threads is 0, then inter_op_parallelism_threads is used.
+  repeated ThreadPoolOptionProto session_inter_op_thread_pool = 12;
 
   // Assignment of Nodes to Devices is recomputed every placement_period
   // steps until the system warms up (at which point the recomputation
@@ -165,6 +184,9 @@ message RunOptions {
 
   // Time to wait for operation to complete in milliseconds.
   int64 timeout_in_ms = 2;
+
+  // The thread pool to use, if session_inter_op_thread_pool is configured.
+  int32 inter_op_thread_pool = 3;
 }
 
 // EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.

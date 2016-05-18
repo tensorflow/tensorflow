@@ -775,5 +775,158 @@ TEST(DirectSessionTest, TimeoutSession) {
   session->Close();
 }
 
+class BlockingOpState {
+ public:
+  void AwaitState(int awaiting_state) {
+    mutex_lock ml(mu_);
+    while (state_ != awaiting_state) {
+      cv_.wait(ml);
+    }
+  }
+  void MoveToState(int expected_current, int next) {
+    mutex_lock ml(mu_);
+    CHECK_EQ(expected_current, state_);
+    state_ = next;
+    cv_.notify_all();
+  }
+
+ private:
+  mutex mu_;
+  condition_variable cv_;
+  int state_ = 0;
+};
+static BlockingOpState* blocking_op_state = nullptr;
+
+// BlockingOp blocks on the global <blocking_op_state's> state,
+// and also updates it when it is unblocked and finishing computation.
+class BlockingOp : public OpKernel {
+ public:
+  explicit BlockingOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    blocking_op_state->MoveToState(0, 1);
+    blocking_op_state->AwaitState(2);
+
+    Tensor* out = nullptr;
+    const Tensor& in = ctx->input(0);
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in.shape(), &out));
+    out->flat<float>() = in.flat<float>();
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
+REGISTER_OP("BlockingOp").Input("x: float").Output("y: float").Doc("");
+
+TEST(DirectSessionTest, TestSessionInterOpThreads) {
+  Graph g(OpRegistry::Global());
+  Tensor t(DT_FLOAT, TensorShape({}));
+  t.scalar<float>()() = {1.2};
+  Node* x = test::graph::Constant(&g, t);
+  Node* y = test::graph::Unary(&g, "BlockingOp", x);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+
+  // Create session with two inter-op thread pools.
+  SessionOptions options;
+  // Turn off optimizations so that the blocking op doesn't get invoked during
+  // graph setup.
+  options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions_Level_L0);
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  auto* p = options.config.add_session_inter_op_thread_pool();
+  p->set_num_threads(1);  // This one has only one thread.
+  p = options.config.add_session_inter_op_thread_pool();
+  std::unique_ptr<Session> session(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  std::atomic<int32> num_done(0);
+  // Runs session to compute <node>:0 using inter_op thread pool <pool>.
+  auto add_session_run_call = [&session, &num_done](
+      thread::ThreadPool* tp, Node* node, int inter_op_pool) {
+    auto fn = [&session, inter_op_pool, node, &num_done]() {
+      RunOptions run_options;
+      run_options.set_inter_op_thread_pool(inter_op_pool);
+      std::vector<Tensor> outputs;
+      Status s = session->Run(run_options, {} /* inputs */,
+                              {node->name() + ":0"} /* output_names */, {},
+                              &outputs, nullptr /* run_metadata */);
+      TF_ASSERT_OK(s);
+      ASSERT_EQ(1, outputs.size());
+      auto flat = outputs[0].flat<float>();
+      EXPECT_FLOAT_EQ(1.2, flat(0));
+      num_done.fetch_add(1);
+    };
+    tp->Schedule(fn);
+  };
+
+  // For blocking states:
+  // - Starts at 0, BlockingOp::Compute will move to 1.
+  // - This main thread will wait for 1, then move to 2 when other ops are done.
+  //   Moving to 2 unblocks the blocking op.
+
+  // Launch 2 session run calls. Neither will finish until the blocking op is
+  // unblocked, because it is using all threads in inter_op pool #0.
+  thread::ThreadPool* tp1 = new thread::ThreadPool(Env::Default(), "tp1", 5);
+  blocking_op_state = new BlockingOpState();
+  add_session_run_call(tp1, y, 0 /* inter_op_pool */);
+  blocking_op_state->AwaitState(1);  // Wait for the blocking op to Compute.
+
+  // These will block on <BlockingOpState>.
+  const int kBlockedThreads = 3;
+  for (int i = 0; i < kBlockedThreads; ++i) {
+    add_session_run_call(tp1, x, 0 /* inter_op_pool */);
+  }
+
+  // Launch session calls using the other inter-op pool. These will finish
+  // as they are in inter_op pool #2.
+  thread::ThreadPool* tp2 = new thread::ThreadPool(Env::Default(), "tp2", 3);
+  const int kUnblockedThreads = 4;
+  for (int i = 0; i < kUnblockedThreads; ++i) {
+    add_session_run_call(tp2, x, 1 /* inter_op_pool */);
+  }
+  delete tp2;
+  EXPECT_EQ(kUnblockedThreads, num_done.load());
+
+  // Unblock the blocked op and wait for the blocked functions to finish.
+  blocking_op_state->MoveToState(1, 2);
+  delete tp1;
+  EXPECT_EQ(kUnblockedThreads + kBlockedThreads + 1, num_done.load());
+  delete blocking_op_state;
+  blocking_op_state = nullptr;
+}
+
+TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
+  Graph g(OpRegistry::Global());
+  Tensor t(DT_FLOAT, TensorShape({}));
+  t.scalar<float>()() = {1.2};
+  Node* x = test::graph::Constant(&g, t);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+
+  SessionOptions options;
+  options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions_Level_L0);
+  (*options.config.mutable_device_count())["CPU"] = 2;
+
+  options.config.add_session_inter_op_thread_pool();
+
+  // Wrong pool number on Run call.
+  std::unique_ptr<Session> session(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+  for (int pool_num = -1; pool_num <= 1; pool_num += 2) {
+    RunOptions run_options;
+    run_options.set_inter_op_thread_pool(pool_num);
+    std::vector<Tensor> outputs;
+    Status s = session->Run(run_options, {} /* inputs */,
+                            {x->name() + ":0"} /* output_names */, {}, &outputs,
+                            nullptr /* run_metadata */);
+    EXPECT_EQ(strings::StrCat(
+                  "Invalid argument: Invalid inter_op_thread_pool: ", pool_num),
+              s.ToString());
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow
