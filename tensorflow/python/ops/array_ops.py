@@ -2074,7 +2074,9 @@ def one_hot(indices, depth, on_value=None, off_value=None,
       raise TypeError("dtype {0} of on_value does not match " \
                       "dtype {1} of off_value".format(on_dtype, off_dtype))
 
-    depth = gen_math_ops.cast(depth, dtypes.int32, name="depth")
+    depth = gen_math_ops.cast(depth,
+                              ops.convert_to_tensor(indices).dtype.base_dtype,
+                              name="depth")
     return gen_array_ops._one_hot(indices, depth, on_value, 
                                   off_value, axis, name)
 

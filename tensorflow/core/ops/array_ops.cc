@@ -1734,7 +1734,7 @@ dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 
 REGISTER_OP("OneHot")
     .Input("indices: TI")
-    .Input("depth: int32")
+    .Input("depth: TI")
     .Input("on_value: T")
     .Input("off_value: T")
     .Attr("axis: int = -1")

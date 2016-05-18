@@ -34,8 +34,7 @@ class OneHotTest(tf.test.TestCase):
         ans = tf.one_hot(**inputs)
         if expected_err_re is None:
           tf_ans = ans.eval()
-          if inputs.get('dtype') is not tf.string:
-            self.assertAllClose(tf_ans, truth, atol=1e-10)
+          self.assertAllEqual(tf_ans, truth)
           self.assertEqual(tf_ans.shape, ans.get_shape())
         else:
           with self.assertRaisesOpError(expected_err_re):
@@ -178,18 +177,18 @@ class OneHotTest(tf.test.TestCase):
 
     # axis == -1
     self._testBothOneHot(
-        indices=indices,
-        depth=depth,
-        dtype=dtype,
-        truth=truth)
+          indices=indices,
+          depth=depth,
+          dtype=dtype,
+          truth=truth)
 
     # axis == 1
     self._testBothOneHot(
-        indices=indices,
-        depth=depth,
-        axis=1,
-        dtype=dtype,
-        truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
+          indices=indices,
+          depth=depth,
+          axis=1,
+          dtype=dtype,
+          truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
 
   def _testValueTypeBatch(self, dtype):
     indices = np.asarray([[0, 2, -1, 1],
@@ -213,22 +212,22 @@ class OneHotTest(tf.test.TestCase):
 
     # axis == -1
     self._testBothOneHot(
-        indices=indices,
-        on_value=on_value,
-        off_value=off_value,
-        depth=depth,
-        dtype=dtype,
-        truth=truth)
+            indices=indices,
+            on_value=on_value,
+            off_value=off_value,
+            depth=depth,
+            dtype=dtype,
+            truth=truth)
 
     # axis == 1
     self._testBothOneHot(
-        indices=indices,
-        on_value=on_value,
-        off_value=off_value,
-        depth=depth,
-        axis=1,
-        dtype=dtype,
-        truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
+            indices=indices,
+            on_value=on_value,
+            off_value=off_value,
+            depth=depth,
+            axis=1,
+            dtype=dtype,
+            truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
 
   def testFloatBatch(self):
     self._testBatch(np.float32)
@@ -360,20 +359,20 @@ class OneHotTest(tf.test.TestCase):
 
       # axis == -1
       self._testBothOneHot(
-          indices=indices,
-          on_value=on_value,
-          off_value=off_value,
-          depth=depth,
-          truth=truth)
+            indices=indices,
+            on_value=on_value,
+            off_value=off_value,
+            depth=depth,
+            truth=truth)
 
       # axis == 1
       self._testBothOneHot(
-          indices=indices,
-          on_value=on_value,
-          off_value=off_value,
-          depth=depth,
-          axis=1,
-          truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
+            indices=indices,
+            on_value=on_value,
+            off_value=off_value,
+            depth=depth,
+            axis=1,
+            truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
 
   def testOnOffMismatchTypeError(self):
     indices = [0, 1, 2]
@@ -382,12 +381,12 @@ class OneHotTest(tf.test.TestCase):
     off_value = np.asarray(0.0, np.float32)
 
     self._testBothOneHot(
-        indices=indices,
-        depth=depth,
-        on_value=on_value,
-        off_value=off_value,
-        truth=None,
-        raises=TypeError)
+            indices=indices,
+            depth=depth,
+            on_value=on_value,
+            off_value=off_value,
+            truth=None,
+            raises=TypeError)
 
   def testDtypeMismatchTypeError(self):
     indices = [0, 1, 2]
@@ -397,20 +396,20 @@ class OneHotTest(tf.test.TestCase):
     dtype = np.int32
 
     self._testBothOneHot(
-        indices=indices,
-        depth=depth,
-        on_value=on_value,
-        dtype=dtype,
-        truth=None,
-        raises=TypeError)
+          indices=indices,
+          depth=depth,
+          on_value=on_value,
+          dtype=dtype,
+          truth=None,
+          raises=TypeError)
 
     self._testBothOneHot(
-        indices=indices,
-        depth=depth,
-        on_value=off_value,
-        dtype=dtype,
-        truth=None,
-        raises=TypeError)
+          indices=indices,
+          depth=depth,
+          on_value=off_value,
+          dtype=dtype,
+          truth=None,
+          raises=TypeError)
 
 
 if __name__ == "__main__":
