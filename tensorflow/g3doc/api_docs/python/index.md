@@ -529,6 +529,10 @@
   * [`MultivariateNormal`](../../api_docs/python/contrib.distributions.md#MultivariateNormal)
   * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)
 
+* **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
+  * [`decode_audio`](../../api_docs/python/contrib.ffmpeg.md#decode_audio)
+  * [`encode_audio`](../../api_docs/python/contrib.ffmpeg.md#encode_audio)
+
 * **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
   * [`apply_regularization`](../../api_docs/python/contrib.layers.md#apply_regularization)
   * [`convolution2d`](../../api_docs/python/contrib.layers.md#convolution2d)

@@ -23,6 +23,7 @@ import sys
 
 import tensorflow as tf
 
+from tensorflow.contrib import ffmpeg
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import docs
 from tensorflow.python.framework import framework_lib
@@ -50,12 +51,13 @@ def get_module_to_name():
       tf.train: "tf.train",
       tf.python_io: "tf.python_io",
       tf.test: "tf.test",
+      tf.contrib.copy_graph: "tf.contrib.copy_graph",
       tf.contrib.distributions: "tf.contrib.distributions",
+      tf.contrib.ffmpeg: "tf.contrib.ffmpeg",
       tf.contrib.layers: "tf.contrib.layers",
       tf.contrib.learn: "tf.contrib.learn",
       tf.contrib.metrics: "tf.contrib.metrics",
       tf.contrib.util: "tf.contrib.util",
-      tf.contrib.copy_graph: "tf.contrib.copy_graph",
   }
 
 
@@ -137,6 +139,7 @@ def all_libraries(module_to_name, members, documented):
       library("test", "Testing", tf.test),
       library("contrib.distributions", "Statistical distributions (contrib)",
               tf.contrib.distributions),
+      library("contrib.ffmpeg", "FFmpeg (contrib)", ffmpeg),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
