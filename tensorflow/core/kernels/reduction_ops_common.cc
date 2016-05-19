@@ -61,12 +61,13 @@ Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
   gtl::InlinedVector<bool, 4> bitmap(data.dims(), false);
   auto axis_vec = axis.flat<int32>();
   for (int64 i = 0; i < axis.NumElements(); ++i) {
-    const int32 index = axis_vec(i);
-    if (index < 0 || index >= data.dims()) {
+    int32 index = axis_vec(i);
+    if (index < -data.dims() || index >= data.dims()) {
       return errors::InvalidArgument("Invalid reduction dimension (", index,
                                      " for input with ", data.dims(),
                                      " dimension(s)");
     }
+    index = (index + data.dims()) % data.dims();
     bitmap[index] = true;
   }
 
