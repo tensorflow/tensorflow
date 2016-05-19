@@ -31,6 +31,7 @@ initialized with parameters that define the distributions.
 @@Exponential
 @@Gamma
 @@Gaussian
+@@StudentT
 @@Uniform
 
 ### Multivariate distributions
@@ -62,4 +63,5 @@ from tensorflow.contrib.distributions.python.ops.gamma import *
 from tensorflow.contrib.distributions.python.ops.gaussian import *
 from tensorflow.contrib.distributions.python.ops.gaussian_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
+from tensorflow.contrib.distributions.python.ops.student_t import *
 from tensorflow.contrib.distributions.python.ops.uniform import *

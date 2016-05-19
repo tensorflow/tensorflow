@@ -16,101 +16,15 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include <fstream>
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/cloud/http_request_fake.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
-class FakeHttpRequest : public HttpRequest {
- public:
-  FakeHttpRequest(const string& request, const string& response)
-      : FakeHttpRequest(request, response, Status::OK()) {}
-
-  FakeHttpRequest(const string& request, const string& response,
-                  Status response_status)
-      : expected_request_(request),
-        response_(response),
-        response_status_(response_status) {}
-
-  Status Init() override { return Status::OK(); }
-  Status SetUri(const string& uri) override {
-    actual_request_ += "Uri: " + uri + "\n";
-    return Status::OK();
-  }
-  Status SetRange(uint64 start, uint64 end) override {
-    actual_request_ += strings::StrCat("Range: ", start, "-", end, "\n");
-    return Status::OK();
-  }
-  Status AddAuthBearerHeader(const string& auth_token) override {
-    actual_request_ += "Auth Token: " + auth_token + "\n";
-    return Status::OK();
-  }
-  Status SetDeleteRequest() override {
-    actual_request_ += "Delete: yes\n";
-    return Status::OK();
-  }
-  Status SetPostRequest(const string& body_filepath) override {
-    std::ifstream stream(body_filepath);
-    string content((std::istreambuf_iterator<char>(stream)),
-                   std::istreambuf_iterator<char>());
-    actual_request_ += "Post body: " + content + "\n";
-    return Status::OK();
-  }
-  Status SetPostRequest() override {
-    actual_request_ += "Post: yes\n";
-    return Status::OK();
-  }
-  Status SetResultBuffer(char* scratch, size_t size,
-                         StringPiece* result) override {
-    scratch_ = scratch;
-    size_ = size;
-    result_ = result;
-    return Status::OK();
-  }
-  Status Send() override {
-    EXPECT_EQ(expected_request_, actual_request_) << "Unexpected HTTP request.";
-    if (scratch_ && result_) {
-      auto actual_size = std::min(response_.size(), size_);
-      memcpy(scratch_, response_.c_str(), actual_size);
-      *result_ = StringPiece(scratch_, actual_size);
-    }
-    return response_status_;
-  }
-
- private:
-  char* scratch_ = nullptr;
-  size_t size_ = 0;
-  StringPiece* result_ = nullptr;
-  string expected_request_;
-  string actual_request_;
-  string response_;
-  Status response_status_;
-};
-
-class FakeHttpRequestFactory : public HttpRequest::Factory {
- public:
-  FakeHttpRequestFactory(const std::vector<HttpRequest*>* requests)
-      : requests_(requests) {}
-
-  ~FakeHttpRequestFactory() {
-    EXPECT_EQ(current_index_, requests_->size())
-        << "Not all expected requests were made.";
-  }
-
-  HttpRequest* Create() override {
-    EXPECT_LT(current_index_, requests_->size())
-        << "Too many calls of HttpRequest factory.";
-    return (*requests_)[current_index_++];
-  }
-
- private:
-  const std::vector<HttpRequest*>* requests_;
-  int current_index_ = 0;
-};
-
 class FakeAuthProvider : public AuthProvider {
  public:
-  Status GetToken(string* token) const override {
+  Status GetToken(string* token) override {
     *token = "fake_token";
     return Status::OK();
   }

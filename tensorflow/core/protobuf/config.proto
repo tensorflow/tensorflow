@@ -6,6 +6,7 @@ option java_outer_classname = "ConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 
 message GPUOptions {
@@ -73,9 +74,10 @@ message GraphOptions {
   // Options controlling how graph is optimized.
   OptimizerOptions optimizer_options = 3;
 
-  // Build a cost model detailing the memory usage and performance of
-  // each node of the graph.
-  bool build_cost_model = 4;
+  // The number of steps to run before returning a cost model detailing
+  // the memory usage and performance of each node of the graph. 0 means
+  // no cost model.
+  int64 build_cost_model = 4;
 
   // Annotate each Node with Op output shape data, to the extent it can
   // be statically inferred.
@@ -195,4 +197,7 @@ message RunMetadata {
   // "RunOptions" proto.
   // EXPERIMENTAL: The format and set of events may change in future versions.
   StepStats step_stats = 1;
+
+  // The cost graph for the computation defined by the run call.
+  CostGraphDef cost_graph = 2;
 }

@@ -34,13 +34,14 @@ class CostModelManager {
   typedef std::unordered_map<const Graph*, CostModel*> CostModelMap;
   typedef CostModelMap::iterator CostModelMapIter;
 
-  gtl::iterator_range<CostModelMapIter> CostModels() {
+  void ExportCostModels(CostModelMap* cost_models) {
     mutex_lock l(mu_);
-    return gtl::make_range(cost_models_.begin(), cost_models_.end());
+    *cost_models = cost_models_;
   }
 
   CostModel* FindOrCreateCostModel(const Graph* graph);
-  Status BuildCostGraphDef(const Graph* graph, CostGraphDef* cost_graph);
+
+  Status AddToCostGraphDef(const Graph* graph, CostGraphDef* cost_graph);
 
  private:
   mutex mu_;

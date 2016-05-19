@@ -326,12 +326,15 @@ Status DirectSession::Run(const RunOptions& run_options,
   }
 
   std::unique_ptr<GPUTracer> tracer;
-  if (run_options.trace_level() == RunOptions::FULL_TRACE ||
-      options_.config.graph_options().build_cost_model()) {
+  const bool full_trace = (run_options.trace_level() == RunOptions::FULL_TRACE);
+  const int64 build_cost_model =
+      options_.config.graph_options().build_cost_model();
+  if (full_trace || build_cost_model > 0) {
     args.stats_collector = new StepStatsCollector(
-        run_metadata->mutable_step_stats(), &cost_model_manager_);
+        run_metadata->mutable_step_stats(),
+        (build_cost_model > 0) ? &cost_model_manager_ : nullptr);
     run_state.collector = args.stats_collector;
-    if (tracer && run_options.trace_level() == RunOptions::FULL_TRACE) {
+    if (tracer && full_trace) {
       tracer.reset(CreateGPUTracer());
       tracer->Start();
     }
@@ -344,6 +347,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   WaitForNotification(&run_state, run_options.timeout_in_ms() > 0
                                       ? run_options.timeout_in_ms()
                                       : operation_timeout_in_ms_);
+
   if (tracer) {
     tracer->Stop();
     tracer->Collect(args.stats_collector);
@@ -362,6 +366,16 @@ Status DirectSession::Run(const RunOptions& run_options,
   TF_RETURN_IF_ERROR(
       run_state.tensor_store.SaveTensors(output_names, &session_state_));
 
+  // Build and return the cost model as instructed.
+  mutex_lock l(executor_lock_);
+  ++executors_and_keys->step_count;
+  if (executors_and_keys->step_count == build_cost_model) {
+    CostGraphDef* cost_graph = run_metadata->mutable_cost_graph();
+    for (const auto& item : executors_and_keys->items) {
+      TF_RETURN_IF_ERROR(
+          cost_model_manager_.AddToCostGraphDef(item.graph, cost_graph));
+    }
+  }
   return Status::OK();
 }
 
@@ -400,17 +414,14 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   // Start parallel Executors.
-  Notification& executors_done = run_state->executors_done;
-  Status* run_status = &run_state->status;
   const int num_executors = executors_and_keys->items.size();
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_executors, run_state->rendez,
-      [&executors_done, run_status, this](const Status& ret) {
+      num_executors, run_state->rendez, [run_state](const Status& ret) {
         if (!ret.ok()) {
-          mutex_lock l(executor_lock_);
-          *run_status = ret;
+          mutex_lock l(run_state->mu_);
+          run_state->status.Update(ret);
         }
-        executors_done.Notify();
+        run_state->executors_done.Notify();
       });
 
   Executor::Args args;
@@ -427,14 +438,13 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   if (options_.config.graph_options().build_cost_model()) {
-    run_state->collector =
+    args.stats_collector =
         new StepStatsCollector(nullptr, &cost_model_manager_);
-    args.stats_collector = run_state->collector;
+    run_state->collector = args.stats_collector;
   }
 
   for (auto& item : executors_and_keys->items) {
-    Executor* exec = item.executor;
-    exec->RunAsync(args, barrier->Get());
+    item.executor->RunAsync(args, barrier->Get());
   }
 
   *handle = run_state_args.handle;
@@ -780,6 +790,7 @@ Status DirectSession::GetOrCreateExecutors(
     }
     // NewLocalExecutor takes ownership of *partition_graph.
     iter->second = nullptr;
+    item->graph = partition_graph;
     item->executor = nullptr;
     s = NewLocalExecutor(params, partition_graph, &item->executor);
     if (!s.ok()) {
@@ -1012,6 +1023,10 @@ class DirectSessionFactory : public SessionFactory {
   }
 
   Session* NewSession(const SessionOptions& options) override {
+    // Must do this before the CPU allocator is created.
+    if (options.config.graph_options().build_cost_model() > 0) {
+      EnableCPUAllocatorFullStats(true);
+    }
     std::vector<Device*> devices;
     DeviceFactory::AddDevices(options, "/job:localhost/replica:0/task:0",
                               &devices);

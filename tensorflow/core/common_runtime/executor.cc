@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
@@ -1475,7 +1476,7 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
                              std::deque<TaggedNode>* inline_ready) {
   if (stats_collector_) {
     nodestats::SetAllEnd(stats);
-    stats_collector_->UpdateCostModel(stats, impl_->graph_, node);
+    stats_collector_->UpdateCostModelNode(stats, impl_->graph_, node);
     if (!SetTimelineLabel(node, stats)) {
       // Only record non-transfer nodes.
       stats_collector_->Save(impl_->params_.device->name(), stats);
