@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -200,8 +201,11 @@ HttpRequest::~HttpRequest() {
 }
 
 Status HttpRequest::Init() {
+  if (is_initialized_) {
+    return errors::FailedPrecondition("Already initialized.");
+  }
   if (!libcurl_) {
-    return errors::Internal("libcurl proxy cannot be nullptr.");
+    return errors::FailedPrecondition("libcurl proxy cannot be nullptr.");
   }
   TF_RETURN_IF_ERROR(libcurl_->MaybeLoadDll());
   curl_ = libcurl_->curl_easy_init();
@@ -211,6 +215,9 @@ Status HttpRequest::Init() {
 
   libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_CAPATH, kCertsPath);
+  libcurl_->curl_easy_setopt(
+      curl_, CURLOPT_USERAGENT,
+      strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
@@ -240,13 +247,19 @@ Status HttpRequest::SetRange(uint64 start, uint64 end) {
   return Status::OK();
 }
 
+Status HttpRequest::AddHeader(const string& name, const string& value) {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  curl_headers_ = libcurl_->curl_slist_append(
+      curl_headers_, strings::StrCat(name, ": ", value).c_str());
+  return Status::OK();
+}
+
 Status HttpRequest::AddAuthBearerHeader(const string& auth_token) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   if (!auth_token.empty()) {
-    curl_headers_ = libcurl_->curl_slist_append(
-        curl_headers_,
-        strings::StrCat("Authorization: Bearer ", auth_token).c_str());
+    return AddHeader("Authorization", strings::StrCat("Bearer ", auth_token));
   }
   return Status::OK();
 }
@@ -282,6 +295,22 @@ Status HttpRequest::SetPostRequest(const string& body_filepath) {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                              reinterpret_cast<void*>(post_body_));
+  return Status::OK();
+}
+
+Status HttpRequest::SetPostRequest(const char* buffer, size_t size) {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+  is_method_set_ = true;
+  curl_headers_ = libcurl_->curl_slist_append(
+      curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                             reinterpret_cast<void*>(this));
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                             &HttpRequest::ReadCallback);
+  post_body_buffer_ = StringPiece(buffer, size);
   return Status::OK();
 }
 
@@ -334,6 +363,19 @@ size_t HttpRequest::WriteCallback(const void* ptr, size_t size, size_t nmemb,
   memcpy(that->response_buffer_ + that->response_buffer_written_, ptr,
          bytes_to_copy);
   that->response_buffer_written_ += bytes_to_copy;
+  return bytes_to_copy;
+}
+
+size_t HttpRequest::ReadCallback(void* ptr, size_t size, size_t nmemb,
+                                 FILE* this_object) {
+  CHECK(ptr);
+  auto that = reinterpret_cast<HttpRequest*>(this_object);
+  CHECK(that->post_body_read_ <= that->post_body_buffer_.size());
+  const size_t bytes_to_copy = std::min(
+      size * nmemb, that->post_body_buffer_.size() - that->post_body_read_);
+  memcpy(ptr, that->post_body_buffer_.data() + that->post_body_read_,
+         bytes_to_copy);
+  that->post_body_read_ += bytes_to_copy;
   return bytes_to_copy;
 }
 

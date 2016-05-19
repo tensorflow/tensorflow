@@ -120,8 +120,8 @@ test_mnist_softmax() {
 
   # Check final accuracy
   FINAL_ACCURACY=$(tail -1 "${LOG_FILE}")
-  if [[ $(python -c "print ${FINAL_ACCURACY}>0.85") != "True" ]] ||
-     [[ $(python -c "print ${FINAL_ACCURACY}<=1.00") != "True" ]]; then
+  if [[ $(python -c "print(${FINAL_ACCURACY}>0.85)") != "True" ]] ||
+     [[ $(python -c "print(${FINAL_ACCURACY}<=1.00)") != "True" ]]; then
     echo "mnist_softmax accuracy check FAILED: "\
 "FINAL_ACCURACY = ${FINAL_ACCURACY}"
     return 1
@@ -150,8 +150,8 @@ test_mnist_with_summaries() {
 
   # Verify final accuracy
   FINAL_ACCURACY=$(tail -1 "${LOG_FILE}" | awk '{print $NF}')
-  if [[ $(python -c "print ${FINAL_ACCURACY}>0.85") != "True" ]] ||
-     [[ $(python -c "print ${FINAL_ACCURACY}<=1.00") != "True" ]]; then
+  if [[ $(python -c "print(${FINAL_ACCURACY}>0.85)") != "True" ]] ||
+     [[ $(python -c "print(${FINAL_ACCURACY}<=1.00)") != "True" ]]; then
     echo "mnist_with_summaries accuracy check FAILED: ${FINAL_ACCURACY}<0.90"
     return 1
   fi
@@ -188,9 +188,9 @@ test_cifar10_train() {
   FINAL_LOSS=$(grep -o "loss = [0-9\.]*" "${LOG_FILE}" | tail -1 | \
     awk '{print $NF}')
 
-  if [[ $(python -c "print ${FINAL_LOSS}<${INIT_LOSS}") != "True" ]] ||
-     [[ $(python -c "print ${INIT_LOSS}>=0") != "True" ]] ||
-     [[ $(python -c "print ${FINAL_LOSS}>=0") != "True" ]]; then
+  if [[ $(python -c "print(${FINAL_LOSS}<${INIT_LOSS})") != "True" ]] ||
+     [[ $(python -c "print(${INIT_LOSS}>=0)") != "True" ]] ||
+     [[ $(python -c "print(${FINAL_LOSS}>=0)") != "True" ]]; then
     echo "cifar10_train loss check FAILED: "\
 "FINAL_LOSS = ${FINAL_LOSS}; INIT_LOSS = ${INIT_LOSS}"
     return 1
@@ -269,9 +269,9 @@ test_ptb_word_lm() {
   echo "INIT_PERPL=${INIT_PERPL}"
   echo "FINAL_PERPL=${FINAL_PERPL}"
 
-  if [[ $(python -c "print ${FINAL_PERPL}<${INIT_PERPL}") != "True" ]] ||
-     [[ $(python -c "print ${INIT_PERPL}>=0") != "True" ]] ||
-     [[ $(python -c "print ${FINAL_PERPL}>=0") != "True" ]]; then
+  if [[ $(python -c "print(${FINAL_PERPL}<${INIT_PERPL})") != "True" ]] ||
+     [[ $(python -c "print(${INIT_PERPL}>=0)") != "True" ]] ||
+     [[ $(python -c "print(${FINAL_PERPL}>=0)") != "True" ]]; then
     echo "ptb_word_lm perplexity check FAILED: "\
 "FINAL_PERPL = ${FINAL_PERPL}; INIT_PERPL = ${INIT_PERPL}"
     return 1

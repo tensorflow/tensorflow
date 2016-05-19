@@ -1622,9 +1622,13 @@ def _ReductionShape(op):
   reduction_indices = np.ravel(reduction_indices)
 
   for reduction_index in reduction_indices:
-    if reduction_index < 0 or reduction_index >= input_shape.ndims:
+    if (reduction_index < -input_shape.ndims or
+        reduction_index >= input_shape.ndims):
       raise ValueError("Invalid reduction dimension %d for input with %d "
                        "dimensions" % (reduction_index, input_shape.ndims))
+
+  reduction_indices = set([(x + input_shape.ndims) % input_shape.ndims
+                           for x in reduction_indices])
 
   returned_dims = []
   if keep_dims:
@@ -1719,6 +1723,7 @@ def reduced_shape(input_shape, axes):
   axes = to_int32(axes)                     # [1, 2]
 
   input_rank = array_ops.size(input_shape)  # 4
+  axes = (axes + input_rank) % input_rank
   axes_shape = array_ops.shape(axes)        # [2]
   return gen_data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
       [range(input_rank),                   # [0, 1, 2, 3]

@@ -97,6 +97,12 @@ cc_library(
 )
 
 filegroup(
+    name = "android_srcs",
+    srcs = glob(["*.h"]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "all_files",
     srcs = glob(
         ["**/*"],

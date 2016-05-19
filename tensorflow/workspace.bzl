@@ -120,3 +120,10 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "jsoncpp",
     actual = "@jsoncpp_git//:jsoncpp",
   )
+
+  native.new_git_repository(
+    name = "boringssl_git",
+    commit = "e72df93461c6d9d2b5698f10e16d3ab82f5adde3",
+    remote = "https://boringssl.googlesource.com/boringssl",
+    build_file = path_prefix + "boringssl.BUILD",
+  )

@@ -83,9 +83,8 @@ class DirectSession : public Session {
 
   ::tensorflow::Status Close() override;
 
-  // This is mainly for testing/debugging.
-  gtl::iterator_range<CostModelManager::CostModelMapIter> CostModels() {
-    return cost_model_manager_.CostModels();
+  void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
+    cost_model_manager_.ExportCostModels(cost_models);
   }
 
  private:
@@ -94,19 +93,22 @@ class DirectSession : public Session {
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
+    Graph* graph = nullptr;
     Executor* executor = nullptr;
     FunctionLibraryRuntime* flib = nullptr;
   };
 
   // An ExecutorsAndKeys is created for a given set of feeds/fetches.
-  // 'func_defs' are the function definition used by all the
-  // underlying executors. 'graph' is the entire graph being
-  // executed. 'name_to_node' maps node name to node. We keep 'graph'
-  // and 'name_to_node' only in the case of partial runs. Each item in
-  // 'items' is the executor for a partition of the graph bundled with
-  // its dependent library runtime. 'input_keys' are the rendezvous keys
-  // for the feeds and 'output_keys' are rendezvous keys for the fetches.
+  // 'step_count' is the number of times this graph is executed.
+  // 'func_defs' are the function definition used by all the underlying
+  // executors. 'graph' is the entire graph being executed. 'name_to_node'
+  // maps node name to node. We keep 'graph' and 'name_to_node' only in
+  // the case of partial runs. Each item in 'items' is the executor for
+  // a partition of the graph bundled with its dependent library runtime.
+  // 'input_keys' are the rendezvous keys for the feeds and 'output_keys'
+  // are rendezvous keys for the fetches.
   struct ExecutorsAndKeys {
+    int64 step_count = 0;
     FunctionLibraryDefinition* func_defs = nullptr;
     Graph* graph = nullptr;
     NameNodeMap* name_to_node = nullptr;

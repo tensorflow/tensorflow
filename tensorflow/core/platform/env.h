@@ -162,6 +162,10 @@ class Env {
   /// time. Only useful for computing deltas of time.
   virtual uint64 NowMicros() = 0;
 
+  /// \brief Returns the number of seconds since some fixed point in
+  /// time. Only useful for computing deltas of time.
+  virtual uint64 NowSeconds() { return NowMicros() / 1000000L; }
+
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int micros) = 0;
 

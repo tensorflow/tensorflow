@@ -34,14 +34,14 @@ class StepStatsCollector {
   explicit StepStatsCollector(StepStats* ss,
                               CostModelManager* cost_model_manager = nullptr);
 
-  void UpdateCostModel(const NodeExecStats* nt, const Graph* graph,
-                       const Node* node);
+  void UpdateCostModelNode(const NodeExecStats* nt, const Graph* graph,
+                           const Node* node);
+
   void Save(const string& device, NodeExecStats* nt);
 
   void Swap(StepStats* ss);
 
  private:
-  friend class StepStatsMgr;
   mutex mu_;
   StepStats* step_stats_ GUARDED_BY(mu_);
   CostModelManager* cost_model_manager_ GUARDED_BY(mu_);

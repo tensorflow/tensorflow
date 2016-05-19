@@ -27,34 +27,40 @@ from tensorflow.python.ops import math_ops
 
 class ReducedShapeTest(tf.test.TestCase):
 
+  def _check(self, shape, axes, result):
+    output = math_ops.reduced_shape(shape, axes=axes)
+    self.assertAllEqual(output.eval(), result)
+
   def testSimple(self):
     with self.test_session():
-      def check(shape, axes, result):
-        output = math_ops.reduced_shape(shape, axes=axes)
-        self.assertAllEqual(output.eval(), result)
-      check([3], [], [3])
-      check([3], [0], [1])
-      check([5, 3], [], [5, 3])
-      check([5, 3], [0], [1, 3])
-      check([5, 3], [1], [5, 1])
-      check([5, 3], [0, 1], [1, 1])
+      self._check([3], [], [3])
+      self._check([3], [0], [1])
+      self._check([5, 3], [], [5, 3])
+      self._check([5, 3], [0], [1, 3])
+      self._check([5, 3], [1], [5, 1])
+      self._check([5, 3], [0, 1], [1, 1])
 
   def testZeros(self):
     """Check that reduced_shape does the right thing with zero dimensions."""
     with self.test_session():
-      def check(shape, axes, result):
-        output = math_ops.reduced_shape(shape, axes=axes)
-        self.assertAllEqual(output.eval(), result)
-      check([0], [], [0])
-      check([0], [0], [1])
-      check([0, 3], [], [0, 3])
-      check([0, 3], [0], [1, 3])
-      check([0, 3], [1], [0, 1])
-      check([0, 3], [0, 1], [1, 1])
-      check([3, 0], [], [3, 0])
-      check([3, 0], [0], [1, 0])
-      check([3, 0], [1], [3, 1])
-      check([3, 0], [0, 1], [1, 1])
+      self._check([0], [], [0])
+      self._check([0], [0], [1])
+      self._check([0, 3], [], [0, 3])
+      self._check([0, 3], [0], [1, 3])
+      self._check([0, 3], [1], [0, 1])
+      self._check([0, 3], [0, 1], [1, 1])
+      self._check([3, 0], [], [3, 0])
+      self._check([3, 0], [0], [1, 0])
+      self._check([3, 0], [1], [3, 1])
+      self._check([3, 0], [0, 1], [1, 1])
+
+  def testNegAxes(self):
+    with self.test_session():
+      self._check([10, 10, 10], [-1], [10, 10, 1])
+      self._check([10, 10, 10], [-1, 2], [10, 10, 1])
+      self._check([10, 10, 10], [-1, -1], [10, 10, 1])
+      self._check([10, 10, 10], [-1, 0], [1, 10, 1])
+      self._check([10, 10, 10], [-3], [1, 10, 10])
 
 
 class SumReductionTest(tf.test.TestCase):
@@ -110,6 +116,9 @@ class SumReductionTest(tf.test.TestCase):
     self._compareAll(np_arr, [1, 2])
     self._compareAll(np_arr, [0, 2])
     self._compareAll(np_arr, [0, 1, 2])
+    self._compareAll(np_arr, [-1])
+    self._compareAll(np_arr, [-1, -3])
+    self._compareAll(np_arr, [-1, 1])
 
   def testFloatReduce4D(self):
     # Create a 4D array of floats and reduce across some
@@ -167,7 +176,7 @@ class SumReductionTest(tf.test.TestCase):
     input_tensor = tf.convert_to_tensor(np_arr)
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Invalid reduction dimension" in str(e)):
-      tf.reduce_sum(input_tensor, [-1])
+      tf.reduce_sum(input_tensor, [-3])
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Invalid reduction dimension" in str(e)):
       tf.reduce_sum(input_tensor, [2])

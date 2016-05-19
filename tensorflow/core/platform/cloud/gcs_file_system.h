@@ -19,17 +19,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/cloud/auth_provider.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
-
-/// Interface for a provider of HTTP auth bearer tokens.
-class AuthProvider {
- public:
-  virtual ~AuthProvider() {}
-  virtual Status GetToken(string* t) const = 0;
-};
 
 /// Google Cloud Storage implementation of a file system.
 class GcsFileSystem : public FileSystem {

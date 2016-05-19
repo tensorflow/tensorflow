@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
@@ -54,22 +55,6 @@ Status GetTmpFilename(string* filename) {
   close(fd);
   *filename = buffer;
   return Status::OK();
-}
-
-/// No-op auth provider, which will only work for public objects.
-class EmptyAuthProvider : public AuthProvider {
- public:
-  Status GetToken(string* token) const override {
-    *token = "";
-    return Status::OK();
-  }
-};
-
-Status GetAuthToken(const AuthProvider* provider, string* token) {
-  if (!provider) {
-    return errors::Internal("Auth provider is required.");
-  }
-  return provider->GetToken(token);
 }
 
 /// \brief Splits a GCS path to a bucket and an object.
@@ -109,7 +94,7 @@ class GcsRandomAccessFile : public RandomAccessFile {
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     string auth_token;
-    TF_RETURN_IF_ERROR(GetAuthToken(auth_provider_, &auth_token));
+    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
 
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
@@ -198,7 +183,7 @@ class GcsWritableFile : public WritableFile {
     TF_RETURN_IF_ERROR(CheckWritable());
     outfile_.flush();
     string auth_token;
-    TF_RETURN_IF_ERROR(GetAuthToken(auth_provider_, &auth_token));
+    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
 
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
@@ -242,7 +227,7 @@ class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 }  // namespace
 
 GcsFileSystem::GcsFileSystem()
-    : auth_provider_(new EmptyAuthProvider()),
+    : auth_provider_(new GoogleAuthProvider()),
       http_request_factory_(new HttpRequest::Factory()) {}
 
 GcsFileSystem::GcsFileSystem(
@@ -334,7 +319,7 @@ bool GcsFileSystem::FileExists(const string& fname) {
   }
 
   string auth_token;
-  if (!GetAuthToken(auth_provider_.get(), &auth_token).ok()) {
+  if (!AuthProvider::GetToken(auth_provider_.get(), &auth_token).ok()) {
     LOG(ERROR) << "Could not get an auth token.";
     return false;
   }
@@ -363,7 +348,7 @@ Status GcsFileSystem::GetChildren(const string& dirname,
   TF_RETURN_IF_ERROR(ParseGcsPath(sanitized_dirname, &bucket, &object_prefix));
 
   string auth_token;
-  TF_RETURN_IF_ERROR(GetAuthToken(auth_provider_.get(), &auth_token));
+  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
   std::unique_ptr<char[]> scratch(new char[kBufferSize]);
   StringPiece response_piece;
@@ -417,7 +402,7 @@ Status GcsFileSystem::DeleteFile(const string& fname) {
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
 
   string auth_token;
-  TF_RETURN_IF_ERROR(GetAuthToken(auth_provider_.get(), &auth_token));
+  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
@@ -452,7 +437,7 @@ Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size) {
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object_prefix));
 
   string auth_token;
-  TF_RETURN_IF_ERROR(GetAuthToken(auth_provider_.get(), &auth_token));
+  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
   std::unique_ptr<char[]> scratch(new char[kBufferSize]);
   StringPiece response_piece;
@@ -496,7 +481,7 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
   TF_RETURN_IF_ERROR(ParseGcsPath(target, &target_bucket, &target_object));
 
   string auth_token;
-  TF_RETURN_IF_ERROR(GetAuthToken(auth_provider_.get(), &auth_token));
+  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());

@@ -527,6 +527,7 @@
   * [`gaussian_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#gaussian_congugates_known_sigma_predictive)
   * [`gaussian_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#gaussian_conjugates_known_sigma_posterior)
   * [`MultivariateNormal`](../../api_docs/python/contrib.distributions.md#MultivariateNormal)
+  * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)
 
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:

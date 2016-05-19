@@ -74,6 +74,14 @@ translator, entirely machine learned, end-to-end.
 [View Tutorial](../tutorials/seq2seq/index.md)
 
 
+## SyntaxNet: Neural Models of Syntax
+
+An introduction to SyntaxNet, a Natural Language Processing framework for
+TensorFlow.
+
+[View Tutorial](../tutorials/syntaxnet/index.md)
+
+
 ## Mandelbrot Set
 
 TensorFlow can be used for computation that has nothing to do with machine

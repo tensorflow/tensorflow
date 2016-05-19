@@ -288,7 +288,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       batch_size: minibatch size to use on the input, defaults to 32. Ignored
         if input_fn is set.
       steps: Number of steps to evalute for.
-      metrics: Dict of metric ops to run.
+      metrics: Dict of metric ops to run. If None, the default metric functions
+        are used; if {}, no metrics are used.
 
     Returns:
       Returns self.
@@ -398,7 +399,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       global_step = contrib_framework.create_global_step(g)
       features, targets = input_fn()
       self._check_inputs(features, targets)
-      eval_dict = self._get_eval_ops(features, targets, metrics or
+      eval_dict = self._get_eval_ops(features, targets,
+                                     metrics if metrics is not None else
                                      self._get_default_metric_functions())
       eval_results, _ = evaluate(
           graph=g,
