@@ -74,7 +74,7 @@ class OneHotOp : public OpKernel {
     const int axis = (axis_ == -1) ? indices_dims : axis_;
 
     // The one-hot dimension.
-    const TI depth_v = depth.scalar<TI>()();
+    const int32 depth_v = depth.scalar<int32>()();
 
     TensorShape output_shape = indices_shape;
     output_shape.InsertDim(axis, depth_v);
