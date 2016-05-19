@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_H_
 #define TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_H_
 
-#include <functional>
 #include <string>
 #include <vector>
 #include <curl/curl.h>
@@ -64,6 +63,9 @@ class HttpRequest {
   /// (note that the right border is included).
   virtual Status SetRange(uint64 start, uint64 end);
 
+  /// Sets a request header.
+  virtual Status AddHeader(const string& name, const string& value);
+
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
   virtual Status AddAuthBearerHeader(const string& auth_token);
 
@@ -74,6 +76,11 @@ class HttpRequest {
   ///
   /// The request body will be taken from the specified file.
   virtual Status SetPostRequest(const string& body_filepath);
+
+  /// \brief Makes the request a POST request.
+  ///
+  /// The request body will be taken from the specified buffer.
+  virtual Status SetPostRequest(const char* buffer, size_t size);
 
   /// Makes the request a POST request.
   virtual Status SetPostRequest();
@@ -91,15 +98,23 @@ class HttpRequest {
   virtual Status Send();
 
  private:
-  /// A callback in the form which can be accepted by libcurl.
+  /// A write callback in the form which can be accepted by libcurl.
   static size_t WriteCallback(const void* ptr, size_t size, size_t nmemb,
                               void* userdata);
+  /// A read callback in the form which can be accepted by libcurl.
+  static size_t ReadCallback(void* ptr, size_t size, size_t nmemb,
+                             FILE* userdata);
   Status CheckInitialized() const;
   Status CheckMethodNotSet() const;
   Status CheckNotSent() const;
 
   std::unique_ptr<LibCurl> libcurl_;
+
   FILE* post_body_ = nullptr;
+
+  StringPiece post_body_buffer_;
+  size_t post_body_read_ = 0;
+
   char* response_buffer_ = nullptr;
   size_t response_buffer_size_ = 0;
   size_t response_buffer_written_ = 0;
