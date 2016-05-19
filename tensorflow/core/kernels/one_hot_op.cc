@@ -151,6 +151,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
 }  // namespace functor
 
+// Registration of the GPU implementations.
 #define REGISTER_ONE_HOT_GPU_INDEX(type, index_type)              \
   REGISTER_KERNEL_BUILDER(Name("OneHot")                          \
                               .Device(DEVICE_GPU)                 \
