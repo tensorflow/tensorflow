@@ -14,7 +14,6 @@
 # ==============================================================================
 
 """Tensor utility functions."""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -27,14 +26,16 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
 __all__ = [
-    'assert_same_float_dtype', 'assert_scalar_int',
-    'convert_to_tensor_or_sparse_tensor', 'local_variable', 'reduce_sum_n',
-    'with_shape', 'with_same_shape',
-]
+    'assert_same_float_dtype',
+    'assert_scalar_int',
+    'convert_to_tensor_or_sparse_tensor',
+    'reduce_sum_n',
+    'with_shape',
+    'with_same_shape']
 
 
 def _assert_same_base_type(items, expected_type=None):
-  """Asserts all items are of the same base type.
+  r"""Asserts all items are of the same base type.
 
   Args:
     items: List of graph items (e.g., `Variable`, `Tensor`, `SparseTensor`,
@@ -108,23 +109,6 @@ def assert_scalar_int(tensor):
   if shape.ndims != 0:
     raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))
   return tensor
-
-
-# TODO(ptucker): Move to tf.variables?
-def local_variable(initial_value, validate_shape=True, name=None):
-  """Create variable and add it to `GraphKeys.LOCAL_VARIABLES` collection.
-
-  Args:
-    initial_value: See variables.Variable.__init__.
-    validate_shape: See variables.Variable.__init__.
-    name: See variables.Variable.__init__.
-  Returns:
-    New variable.
-  """
-  return variables.Variable(
-      initial_value, trainable=False,
-      collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      validate_shape=validate_shape, name=name)
 
 
 def reduce_sum_n(tensors, name=None):
