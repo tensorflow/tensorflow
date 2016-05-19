@@ -16,6 +16,7 @@ py_library(
         "python/immediate/op.py",
         "python/immediate/wrapping_util.py",
         "python/immediate/wrapping_manager.py",
+	"python/immediate/module_rewriter.py",
         "__init__.py",
         "python/__init__.py",
         "python/immediate/__init__.py",
@@ -42,6 +43,20 @@ py_test(
         "//tensorflow/python:platform_test",
     ],
 )
+
+py_test(
+    name = "module_rewriter_test",
+    size = "small",
+    srcs = ["python/immediate/module_rewriter_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":immediate_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 
 py_test(
     name = "wrapping_util_test",
