@@ -188,9 +188,9 @@ VAL_XENT=$(get_final_val_xent "${WKR_LOG_PREFIX}0.log")
 # Sanity check on the validation entropies
 # TODO(cais): In addition to this basic sanity check, we could run the training
 # with 1 and 2 workers, each for a few times and use scipy.stats to do a t-test
-# to verify tha tthe 2-worker training gives significantly lower final cross
+# to verify that the 2-worker training gives significantly lower final cross
 # entropy
 echo "Final validation cross entropy from worker0: ${VAL_XENT}"
-if [[ $(python -c "print ${VAL_XENT}>0") != "True" ]]; then
+if [[ $(python -c "print(${VAL_XENT}>0)") != "True" ]]; then
   die "Sanity checks on the final validation cross entropy values FAILED"
 fi
