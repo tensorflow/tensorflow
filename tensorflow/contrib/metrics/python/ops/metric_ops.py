@@ -406,9 +406,9 @@ def streaming_precision(predictions, labels, ignore_mask=None,
 
   Raises:
     ValueError: If the dimensions of `predictions` and `labels` don't match or
-      if `weight` is not `None` and its shape doesn't match `predictions` or
-      if either `metrics_collections` or `updates_collections` are not
-      a list or tuple.
+      if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+      or if either `metrics_collections` or `updates_collections` are not a list
+      or tuple.
   """
   with variable_scope.variable_op_scope(
       [predictions, labels], name, 'precision'):
@@ -485,9 +485,9 @@ def streaming_recall(predictions, labels, ignore_mask=None,
 
   Raises:
     ValueError: If the dimensions of `predictions` and `labels` don't match or
-      if `weight` is not `None` and its shape doesn't match `predictions` or
-      if either `metrics_collections` or `updates_collections` are not
-      a list or tuple.
+      if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+      or if either `metrics_collections` or `updates_collections` are not a list
+      or tuple.
   """
   with variable_scope.variable_op_scope([predictions, labels], name, 'recall'):
     predictions, labels = _remove_squeezable_dimensions(predictions, labels)
@@ -541,12 +541,12 @@ def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
 
   To faciliate the estimation of the AUC over a stream of data, the function
   creates an `update_op` operation whose behavior is dependent on the value of
-  `weights`. If `weights` is None, then `update_op` increments the
+  `ignore_mask`. If `ignore_mask` is None, then `update_op` increments the
   `true_positives`, `true_negatives`, `false_positives` and `false_negatives`
   counts with the number of each found in the current `predictions` and `labels`
-  `Tensors`. If `weights` is not `None`, then the increment is performed using
-  only the elements of `predictions` and `labels` whose corresponding value
-  in `ignore_mask` is `False`. In addition to performing the updates,
+  `Tensors`. If `ignore_mask` is not `None`, then the increment is performed
+  using only the elements of `predictions` and `labels` whose corresponding
+  value in `ignore_mask` is `False`. In addition to performing the updates,
   `update_op` also returns the `auc`.
 
   Args:
@@ -570,9 +570,9 @@ def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
 
   Raises:
     ValueError: If the shape of `predictions` and `labels` do not match or if
-      `weights` is not `None` and its shape doesn't match `values`
-      or if either `metrics_collections` or `updates_collections` are not a list
-      or tuple.
+      `ignore_mask` is not `None` and its shape doesn't match `values` or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
   """
   with variable_scope.variable_op_scope([predictions, labels], name, 'auc'):
     predictions, labels = _remove_squeezable_dimensions(predictions, labels)
@@ -741,9 +741,9 @@ def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
 
   Raises:
     ValueError: If the dimensions of `predictions` and `labels` don't match or
-      if `weight` is not `None` and its shape doesn't match `predictions` or if
-      either `metrics_collections` or `updates_collections` are not a list or
-      tuple.
+      if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+      or if either `metrics_collections` or `updates_collections` are not a list
+      or tuple.
   """
   in_top_k = math_ops.to_float(nn.in_top_k(predictions, labels, k))
   return streaming_mean(in_top_k, _mask_to_weights(ignore_mask),
