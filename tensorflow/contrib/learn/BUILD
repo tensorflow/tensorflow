@@ -109,6 +109,42 @@ py_test(
 )
 
 py_test(
+    name = "dnn_linear_combined_test",
+    size = "small",
+    srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "dnn_test",
+    size = "small",
+    srcs = ["python/learn/estimators/dnn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "linear_test",
+    size = "small",
+    srcs = ["python/learn/estimators/linear_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "test_grid_search",
     size = "small",
     srcs = ["python/learn/tests/test_grid_search.py"],

@@ -17,11 +17,17 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowEstimator
+from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNClassifier
+from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.dnn import TensorFlowDNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import TensorFlowDNNRegressor
+from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedClassifier
+from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedRegressor
 from tensorflow.contrib.learn.python.learn.estimators.estimator import BaseEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import ModeKeys
+from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassifier
+from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor
 from tensorflow.contrib.learn.python.learn.estimators.linear import TensorFlowClassifier
 from tensorflow.contrib.learn.python.learn.estimators.linear import TensorFlowLinearClassifier
 from tensorflow.contrib.learn.python.learn.estimators.linear import TensorFlowLinearRegressor
