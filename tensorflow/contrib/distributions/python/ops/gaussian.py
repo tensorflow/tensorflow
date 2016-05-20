@@ -229,3 +229,7 @@ class Gaussian(object):
       sampled.set_shape(final_shape)
 
       return sampled * self._sigma + self._mu
+
+  @property
+  def is_reparameterized(self):
+    return True

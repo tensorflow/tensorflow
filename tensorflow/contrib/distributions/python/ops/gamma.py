@@ -206,3 +206,7 @@ class Gamma(ContinuousDistribution):
         beta = self._beta
         return (alpha - math_ops.log(beta) + math_ops.lgamma(alpha) +
                 (1 - alpha) * math_ops.digamma(alpha))
+
+  @property
+  def is_reparameterized(self):
+    return False
