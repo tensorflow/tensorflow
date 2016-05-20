@@ -81,7 +81,7 @@ class FakeLibCurl : public LibCurl {
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             size_t (*param)(void*, size_t, size_t,
                                             FILE*)) override {
-    EXPECT_EQ(param, &fread) << "Expected the standard fread() function.";
+    read_callback = param;
     return CURLE_OK;
   }
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
@@ -98,11 +98,11 @@ class FakeLibCurl : public LibCurl {
   }
   CURLcode curl_easy_perform(CURL* curl) override {
     if (read_data) {
-      char buffer[100];
+      char buffer[3];
       int bytes_read;
       posted_content = "";
       do {
-        bytes_read = fread(buffer, 1, 100, read_data);
+        bytes_read = read_callback(buffer, 1, sizeof(buffer), read_data);
         posted_content =
             strings::StrCat(posted_content, StringPiece(buffer, bytes_read));
       } while (bytes_read > 0);
@@ -158,11 +158,13 @@ class FakeLibCurl : public LibCurl {
   bool is_initialized = false;
   bool is_cleaned_up = false;
   std::vector<string>* headers = nullptr;
-  FILE* read_data = nullptr;
   bool is_post = false;
   void* write_data = nullptr;
   size_t (*write_callback)(const void* ptr, size_t size, size_t nmemb,
                            void* userdata) = nullptr;
+  FILE* read_data = nullptr;
+  size_t (*read_callback)(void* ptr, size_t size, size_t nmemb,
+                          FILE* userdata) = &fread;
   // Outcome of performing the request.
   string posted_content;
 };
@@ -193,7 +195,7 @@ TEST(HttpRequestTest, GetRequest) {
   EXPECT_FALSE(libcurl->is_post);
 }
 
-TEST(HttpRequestTest, PostRequest_WithBody) {
+TEST(HttpRequestTest, PostRequest_WithBody_FromFile) {
   FakeLibCurl* libcurl = new FakeLibCurl("", 200);
   HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
   TF_EXPECT_OK(http_request.Init());
@@ -219,6 +221,29 @@ TEST(HttpRequestTest, PostRequest_WithBody) {
   EXPECT_EQ("post body content", libcurl->posted_content);
 
   std::remove(content_filename.c_str());
+}
+
+TEST(HttpRequestTest, PostRequest_WithBody_FromMemory) {
+  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
+  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  TF_EXPECT_OK(http_request.Init());
+
+  string content = "post body content";
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
+  TF_EXPECT_OK(http_request.SetPostRequest(content.c_str(), content.size()));
+  TF_EXPECT_OK(http_request.Send());
+
+  // Check interactions with libcurl.
+  EXPECT_TRUE(libcurl->is_initialized);
+  EXPECT_EQ("http://www.testuri.com", libcurl->url);
+  EXPECT_EQ("", libcurl->custom_request);
+  EXPECT_EQ(2, libcurl->headers->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl->headers)[0]);
+  EXPECT_EQ("Content-Length: 17", (*libcurl->headers)[1]);
+  EXPECT_TRUE(libcurl->is_post);
+  EXPECT_EQ("post body content", libcurl->posted_content);
 }
 
 TEST(HttpRequestTest, PostRequest_WithoutBody) {

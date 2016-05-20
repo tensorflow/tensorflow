@@ -116,16 +116,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-
-__all__ = [
-    "absolute_difference",
-    "cosine_distance",
-    "log",
-    "sigmoid_cross_entropy",
-    "softmax_cross_entropy",
-    "sum_of_pairwise_squares",
-    "sum_of_squares",
-]
+from tensorflow.python.util.all_util import make_all
 
 
 def _scale_losses(losses, weight):
@@ -565,3 +556,6 @@ def cosine_distance(predictions, targets, dim, weight=1.0, scope=None):
     radial_diffs = math_ops.mul(predictions, targets)
     losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
     return _compute_weighted_loss(losses, weight)
+
+
+__all__ = make_all(__name__)

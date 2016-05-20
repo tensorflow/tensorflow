@@ -284,7 +284,7 @@ REGISTER_OP_GRADIENT("Sub", SubGrad);
 Status MulGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType T;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
-  if (T == DT_COMPLEX64) {
+  if (T == DT_COMPLEX64 || T == DT_COMPLEX128) {
     return GradForBinaryCwise(
         g, {
                {{"cy"}, "Conj", {"y"}, {}, {"dz"}},
@@ -523,7 +523,7 @@ static Status MatMulGradHelper(FunctionDef* g, const string& opname,
       // Ret val defs
       {"dx: T", "dy: T"},
       // Attr defs
-      {{"T: {float, double}"}},
+      {{"T: {half, float, double}"}},
       // Nodes
       {
           {{"dx"},
@@ -543,7 +543,7 @@ Status MatMulGradCommon(const string& opname, const string& attr_adj_x,
                         FunctionDef* g) {
   DataType T;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
-  if (T == DT_COMPLEX64) {
+  if (T == DT_COMPLEX64 || T == DT_COMPLEX128) {
     return errors::Unimplemented(
         "MatMul gradient for complex is not supported yet.");
   }

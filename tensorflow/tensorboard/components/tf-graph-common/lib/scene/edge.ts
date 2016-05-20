@@ -123,14 +123,17 @@ export function buildGroup(sceneGroup,
   return edgeGroups;
 };
 
-export function getShapeLabelFromNode(node: OpNode,
-    renderInfo: render.RenderGraphInfo) {
+/**
+ * Returns the label for the given base edge.
+ * The label is the shape of the underlying tensor.
+ */
+export function getLabelForBaseEdge(
+    baseEdge: BaseEdge, renderInfo: render.RenderGraphInfo): string {
+  let node = <OpNode>renderInfo.getNodeByName(baseEdge.v);
   if (node.outputShapes == null || node.outputShapes.length === 0) {
     return null;
   }
-  // TODO(smilkov): Figure out exactly which output tensor this
-  // edge is from.
-  let shape = node.outputShapes[0];
+  let shape = node.outputShapes[baseEdge.outputTensorIndex];
   if (shape == null) {
     return null;
   }
@@ -149,12 +152,9 @@ export function getShapeLabelFromNode(node: OpNode,
 export function getLabelForEdge(metaedge: Metaedge,
     renderInfo: render.RenderGraphInfo): string {
   let isMultiEdge = metaedge.baseEdgeList.length > 1;
-  if (isMultiEdge) {
-    return metaedge.baseEdgeList.length + ' tensors';
-  } else {
-    let node = <OpNode> renderInfo.getNodeByName(metaedge.baseEdgeList[0].v);
-    return getShapeLabelFromNode(node, renderInfo);
-  }
+  return isMultiEdge ?
+      metaedge.baseEdgeList.length + ' tensors' :
+      getLabelForBaseEdge(metaedge.baseEdgeList[0], renderInfo);
 }
 
 /**

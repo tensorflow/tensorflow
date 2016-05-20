@@ -120,10 +120,11 @@ class RNNCell(object):
 class BasicRNNCell(RNNCell):
   """The most basic RNN cell."""
 
-  def __init__(self, num_units, input_size=None):
+  def __init__(self, num_units, input_size=None, activation=tanh):
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated." % self)
     self._num_units = num_units
+    self._activation = activation
 
   @property
   def state_size(self):
@@ -134,19 +135,20 @@ class BasicRNNCell(RNNCell):
     return self._num_units
 
   def __call__(self, inputs, state, scope=None):
-    """Most basic RNN: output = new_state = tanh(W * input + U * state + B)."""
+    """Most basic RNN: output = new_state = activation(W * input + U * state + B)."""
     with vs.variable_scope(scope or type(self).__name__):  # "BasicRNNCell"
-      output = tanh(_linear([inputs, state], self._num_units, True))
+      output = self._activation(_linear([inputs, state], self._num_units, True))
     return output, output
 
 
 class GRUCell(RNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
 
-  def __init__(self, num_units, input_size=None):
+  def __init__(self, num_units, input_size=None, activation=tanh):
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated." % self)
     self._num_units = num_units
+    self._activation = activation
 
   @property
   def state_size(self):
@@ -165,7 +167,8 @@ class GRUCell(RNNCell):
                                              2 * self._num_units, True, 1.0))
         r, u = sigmoid(r), sigmoid(u)
       with vs.variable_scope("Candidate"):
-        c = tanh(_linear([inputs, r * state], self._num_units, True))
+        c = self._activation(_linear([inputs, r * state],
+                                     self._num_units, True))
       new_h = u * state + (1 - u) * c
     return new_h, new_h
 
@@ -185,7 +188,7 @@ class BasicLSTMCell(RNNCell):
   """
 
   def __init__(self, num_units, forget_bias=1.0, input_size=None,
-               state_is_tuple=False):
+               state_is_tuple=False, activation=tanh):
     """Initialize the basic LSTM cell.
 
     Args:
@@ -195,6 +198,7 @@ class BasicLSTMCell(RNNCell):
       state_is_tuple: If True, accepted and returned states are 2-tuples of
         the `c_state` and `m_state`.  By default (False), they are concatenated
         along the column axis.  This default behavior will soon be deprecated.
+      activation: Activation function of the inner states.
     """
     if not state_is_tuple:
       logging.warn(
@@ -205,6 +209,7 @@ class BasicLSTMCell(RNNCell):
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
+    self._activation = activation
 
   @property
   def state_size(self):
@@ -228,8 +233,9 @@ class BasicLSTMCell(RNNCell):
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
       i, j, f, o = array_ops.split(1, 4, concat)
 
-      new_c = c * sigmoid(f + self._forget_bias) + sigmoid(i) * tanh(j)
-      new_h = tanh(new_c) * sigmoid(o)
+      new_c = (c * sigmoid(f + self._forget_bias) + sigmoid(i) *
+               self._activation(j))
+      new_h = self._activation(new_c) * sigmoid(o)
 
       if self._state_is_tuple:
         new_state = (new_c, new_h)
@@ -300,7 +306,8 @@ class LSTMCell(RNNCell):
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None,
                num_unit_shards=1, num_proj_shards=1,
-               forget_bias=1.0, state_is_tuple=False):
+               forget_bias=1.0, state_is_tuple=False,
+               activation=tanh):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -323,6 +330,7 @@ class LSTMCell(RNNCell):
       state_is_tuple: If True, accepted and returned states are 2-tuples of
         the `c_state` and `m_state`.  By default (False), they are concatenated
         along the column axis.  This default behavior will soon be deprecated.
+      activation: Activation function of the inner states.
     """
     if not state_is_tuple:
       logging.warn(
@@ -339,6 +347,7 @@ class LSTMCell(RNNCell):
     self._num_proj_shards = num_proj_shards
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
+    self._activation = activation
 
     if num_proj:
       self._state_size = (
@@ -420,9 +429,10 @@ class LSTMCell(RNNCell):
 
       if self._use_peepholes:
         c = (sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
-             sigmoid(i + w_i_diag * c_prev) * tanh(j))
+             sigmoid(i + w_i_diag * c_prev) * self._activation(j))
       else:
-        c = (sigmoid(f + self._forget_bias) * c_prev + sigmoid(i) * tanh(j))
+        c = (sigmoid(f + self._forget_bias) * c_prev + sigmoid(i) *
+             self._activation(j))
 
       if self._cell_clip is not None:
         # pylint: disable=invalid-unary-operand-type
@@ -430,9 +440,9 @@ class LSTMCell(RNNCell):
         # pylint: enable=invalid-unary-operand-type
 
       if self._use_peepholes:
-        m = sigmoid(o + w_o_diag * c) * tanh(c)
+        m = sigmoid(o + w_o_diag * c) * self._activation(c)
       else:
-        m = sigmoid(o) * tanh(c)
+        m = sigmoid(o) * self._activation(c)
 
       if self._num_proj is not None:
         concat_w_proj = _get_concat_variable(

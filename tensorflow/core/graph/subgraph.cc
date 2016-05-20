@@ -157,6 +157,9 @@ static Status PruneForTargets(Graph* g, const subgraph::NameIndex& name_index,
   }
   PruneForReverseReachability(g, targets);
 
+  // Reconnect nodes with no outgoing edges to the sink node
+  FixupSourceAndSinkEdges(g);
+
   return Status::OK();
 }
 

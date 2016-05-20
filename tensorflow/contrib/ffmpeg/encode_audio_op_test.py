@@ -34,7 +34,7 @@ class EncodeAudioOpTest(tf.test.TestCase):
     with self.test_session():
       path = os.path.join(
           resource_loader.get_data_files_path(), 'testdata/mono_10khz.wav')
-      with open(path, 'r') as f:
+      with open(path, 'rb') as f:
         original_contents = f.read()
 
       audio_op = ffmpeg.decode_audio(

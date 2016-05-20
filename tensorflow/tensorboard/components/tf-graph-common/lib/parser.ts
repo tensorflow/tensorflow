@@ -247,6 +247,8 @@ function parsePbtxtFile(input: Blob,
     if (!line) {
       return;
     }
+    line = line.trim();
+
     switch (line[line.length - 1]) {
       case '{':  // create new object
         let name = line.substring(0, line.length - 2).trim();

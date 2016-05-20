@@ -41,8 +41,8 @@ class XentTest(tf.test.TestCase):
       loss = tf.nn.softmax_cross_entropy_with_logits(np_features, np_labels)
       backprop = loss.op.outputs[1]
       tf_loss, tf_backprop = sess.run([loss, backprop])
-    self.assertAllClose(np_loss, tf_loss)
-    self.assertAllClose(np_backprop, tf_backprop)
+    self.assertAllCloseAccordingToType(np_loss, tf_loss)
+    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
   def _testAll(self, features, labels):
     self._testXent(features, labels, use_gpu=False)
@@ -130,10 +130,9 @@ class XentTest(tf.test.TestCase):
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float32))
 
   def testDouble(self):
-    self._testXent(
+    self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
-        np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64),
-        use_gpu=False)
+        np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64))
 
   def testGradient(self):
     with self.test_session():

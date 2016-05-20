@@ -255,6 +255,7 @@
 * **[Strings](../../api_docs/python/string_ops.md)**:
   * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
   * [`string_to_hash_bucket`](../../api_docs/python/string_ops.md#string_to_hash_bucket)
+  * [`string_to_hash_bucket_fast`](../../api_docs/python/string_ops.md#string_to_hash_bucket_fast)
 
 * **[Histograms](../../api_docs/python/histogram_ops.md)**:
   * [`histogram_fixed_width`](../../api_docs/python/histogram_ops.md#histogram_fixed_width)
@@ -515,11 +516,23 @@
   * [`main`](../../api_docs/python/test.md#main)
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
+  * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
+  * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
+  * [`ContinuousDistribution`](../../api_docs/python/contrib.distributions.md#ContinuousDistribution)
   * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
+  * [`DiscreteDistribution`](../../api_docs/python/contrib.distributions.md#DiscreteDistribution)
+  * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
+  * [`Gamma`](../../api_docs/python/contrib.distributions.md#Gamma)
   * [`Gaussian`](../../api_docs/python/contrib.distributions.md#Gaussian)
   * [`gaussian_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#gaussian_congugates_known_sigma_predictive)
   * [`gaussian_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#gaussian_conjugates_known_sigma_posterior)
   * [`MultivariateNormal`](../../api_docs/python/contrib.distributions.md#MultivariateNormal)
+  * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
+  * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)
+
+* **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
+  * [`decode_audio`](../../api_docs/python/contrib.ffmpeg.md#decode_audio)
+  * [`encode_audio`](../../api_docs/python/contrib.ffmpeg.md#encode_audio)
 
 * **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
   * [`apply_regularization`](../../api_docs/python/contrib.layers.md#apply_regularization)
@@ -527,9 +540,6 @@
   * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
   * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
   * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
-  * [`legacy_convolution2d`](../../api_docs/python/contrib.layers.md#legacy_convolution2d)
-  * [`legacy_fully_connected`](../../api_docs/python/contrib.layers.md#legacy_fully_connected)
-  * [`make_all`](../../api_docs/python/contrib.layers.md#make_all)
   * [`optimize_loss`](../../api_docs/python/contrib.layers.md#optimize_loss)
   * [`sum_regularizer`](../../api_docs/python/contrib.layers.md#sum_regularizer)
   * [`summarize_activation`](../../api_docs/python/contrib.layers.md#summarize_activation)
@@ -537,12 +547,13 @@
   * [`summarize_collection`](../../api_docs/python/contrib.layers.md#summarize_collection)
   * [`summarize_tensor`](../../api_docs/python/contrib.layers.md#summarize_tensor)
   * [`summarize_tensors`](../../api_docs/python/contrib.layers.md#summarize_tensors)
-  * [`train`](../../api_docs/python/contrib.layers.md#train)
   * [`variance_scaling_initializer`](../../api_docs/python/contrib.layers.md#variance_scaling_initializer)
   * [`xavier_initializer`](../../api_docs/python/contrib.layers.md#xavier_initializer)
   * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
 
 * **[Learn (contrib)](../../api_docs/python/contrib.learn.md)**:
+  * [`BaseEstimator`](../../api_docs/python/contrib.learn.md#BaseEstimator)
+  * [`Estimator`](../../api_docs/python/contrib.learn.md#Estimator)
   * [`evaluate`](../../api_docs/python/contrib.learn.md#evaluate)
   * [`extract_dask_data`](../../api_docs/python/contrib.learn.md#extract_dask_data)
   * [`extract_dask_labels`](../../api_docs/python/contrib.learn.md#extract_dask_labels)
@@ -550,11 +561,14 @@
   * [`extract_pandas_labels`](../../api_docs/python/contrib.learn.md#extract_pandas_labels)
   * [`extract_pandas_matrix`](../../api_docs/python/contrib.learn.md#extract_pandas_matrix)
   * [`infer`](../../api_docs/python/contrib.learn.md#infer)
+  * [`ModeKeys`](../../api_docs/python/contrib.learn.md#ModeKeys)
   * [`NanLossDuringTrainingError`](../../api_docs/python/contrib.learn.md#NanLossDuringTrainingError)
+  * [`read_batch_examples`](../../api_docs/python/contrib.learn.md#read_batch_examples)
+  * [`read_batch_features`](../../api_docs/python/contrib.learn.md#read_batch_features)
+  * [`read_batch_record_features`](../../api_docs/python/contrib.learn.md#read_batch_record_features)
   * [`run_feeds`](../../api_docs/python/contrib.learn.md#run_feeds)
   * [`run_n`](../../api_docs/python/contrib.learn.md#run_n)
   * [`RunConfig`](../../api_docs/python/contrib.learn.md#RunConfig)
-  * [`SupervisorParams`](../../api_docs/python/contrib.learn.md#SupervisorParams)
   * [`TensorFlowClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowClassifier)
   * [`TensorFlowDNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowDNNClassifier)
   * [`TensorFlowDNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowDNNRegressor)
@@ -564,11 +578,36 @@
   * [`TensorFlowRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRegressor)
   * [`TensorFlowRNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowRNNClassifier)
   * [`TensorFlowRNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRNNRegressor)
+  * [`train`](../../api_docs/python/contrib.learn.md#train)
+
+* **[Metrics (contrib)](../../api_docs/python/contrib.metrics.md)**:
+  * [`accuracy`](../../api_docs/python/contrib.metrics.md#accuracy)
+  * [`auc_using_histogram`](../../api_docs/python/contrib.metrics.md#auc_using_histogram)
+  * [`confusion_matrix`](../../api_docs/python/contrib.metrics.md#confusion_matrix)
+  * [`set_difference`](../../api_docs/python/contrib.metrics.md#set_difference)
+  * [`set_intersection`](../../api_docs/python/contrib.metrics.md#set_intersection)
+  * [`set_size`](../../api_docs/python/contrib.metrics.md#set_size)
+  * [`set_union`](../../api_docs/python/contrib.metrics.md#set_union)
+  * [`streaming_accuracy`](../../api_docs/python/contrib.metrics.md#streaming_accuracy)
+  * [`streaming_auc`](../../api_docs/python/contrib.metrics.md#streaming_auc)
+  * [`streaming_mean`](../../api_docs/python/contrib.metrics.md#streaming_mean)
+  * [`streaming_mean_absolute_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_absolute_error)
+  * [`streaming_mean_cosine_distance`](../../api_docs/python/contrib.metrics.md#streaming_mean_cosine_distance)
+  * [`streaming_mean_relative_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_relative_error)
+  * [`streaming_mean_squared_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_squared_error)
+  * [`streaming_percentage_less`](../../api_docs/python/contrib.metrics.md#streaming_percentage_less)
+  * [`streaming_precision`](../../api_docs/python/contrib.metrics.md#streaming_precision)
+  * [`streaming_recall`](../../api_docs/python/contrib.metrics.md#streaming_recall)
+  * [`streaming_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_recall_at_k)
+  * [`streaming_root_mean_squared_error`](../../api_docs/python/contrib.metrics.md#streaming_root_mean_squared_error)
+  * [`streaming_sparse_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_k)
+  * [`streaming_sparse_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_recall_at_k)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
   * [`make_ndarray`](../../api_docs/python/contrib.util.md#make_ndarray)
   * [`make_tensor_proto`](../../api_docs/python/contrib.util.md#make_tensor_proto)
+  * [`ops_used_by_graph_def`](../../api_docs/python/contrib.util.md#ops_used_by_graph_def)
   * [`stripped_op_list_for_graph`](../../api_docs/python/contrib.util.md#stripped_op_list_for_graph)
 
 * **[Copying Graph Elements (contrib)](../../api_docs/python/contrib.copy_graph.md)**:

@@ -13,8 +13,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/50812b426b7c.tar.gz",
-    sha256 = "fa95e425c379c2c7b8a49d9ef7bd0c5a8369171c987affd6dbae5de8a8911c1a",
+    url = "https://bitbucket.org/eigen/eigen/get/a5e9085a94e8.tar.gz",
+    sha256 = "967126237829c7c87abb6cd0e13a5a235b0377d51575522c390b9486aed13e71",
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -38,6 +38,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "gemmlowp",
     remote = "https://github.com/google/gemmlowp.git",
     commit = "96d3acab46fbb03855ca22c2ee2bb9831ac8c83c",
+  )
+
+  native.new_http_archive(
+    name = "farmhash_archive",
+    url = "https://github.com/google/farmhash/archive/34c13ddfab0e35422f4c3979f360635a8c050260.zip",
+    sha256 = "e3d37a59101f38fd58fb799ed404d630f0eee18bfc2a2433910977cc8fea9c28",
+    build_file = path_prefix + "farmhash.BUILD",
+  )
+
+  native.bind(
+    name = "farmhash",
+    actual = "@farmhash//:farmhash",
   )
 
   native.new_http_archive(
@@ -107,4 +119,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "jsoncpp",
     actual = "@jsoncpp_git//:jsoncpp",
+  )
+
+  native.new_git_repository(
+    name = "boringssl_git",
+    commit = "e72df93461c6d9d2b5698f10e16d3ab82f5adde3",
+    remote = "https://boringssl.googlesource.com/boringssl",
+    build_file = path_prefix + "boringssl.BUILD",
   )

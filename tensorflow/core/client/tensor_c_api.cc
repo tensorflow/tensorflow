@@ -408,37 +408,31 @@ void TF_Run_Helper(TF_Session* s, const char* handle,
   Status result;
 
   if (handle == nullptr) {
-    if (run_options == nullptr) {
-      result = s->session->Run(inputs, output_tensor_names, target_node_names,
-                               &outputs);
-    } else {
-      // Prepares (input) RunOptions and (output) RunMetadata params
-      RunOptions run_options_proto;
-      if (!run_options_proto.ParseFromArray(run_options->data,
-                                            run_options->length)) {
-        status->status =
-            tensorflow::errors::InvalidArgument("Unparseable RunOptions proto");
-        return;
-      }
-      if (run_metadata != nullptr && run_metadata->data != nullptr) {
-        status->status = tensorflow::errors::InvalidArgument(
-            "Passing non-empty run_metadata is invalid.");
-        return;
-      }
+    RunOptions run_options_proto;
+    if (run_options != nullptr &&
+        !run_options_proto.ParseFromArray(run_options->data,
+                                          run_options->length)) {
+      status->status =
+          tensorflow::errors::InvalidArgument("Unparseable RunOptions proto");
+      return;
+    }
+    if (run_metadata != nullptr && run_metadata->data != nullptr) {
+      status->status = tensorflow::errors::InvalidArgument(
+          "Passing non-empty run_metadata is invalid.");
+      return;
+    }
 
-      RunMetadata run_metadata_proto;
-      result =
-          s->session->Run(run_options_proto, inputs, output_tensor_names,
-                          target_node_names, &outputs, &run_metadata_proto);
+    RunMetadata run_metadata_proto;
+    result = s->session->Run(run_options_proto, inputs, output_tensor_names,
+                             target_node_names, &outputs, &run_metadata_proto);
 
-      // Serialize back to upstream client, who now owns the new buffer
-      if (run_metadata != nullptr) {
-        int proto_size = run_metadata_proto.ByteSize();
-        void* str_buf = reinterpret_cast<void*>(operator new(proto_size));
-        run_metadata_proto.SerializeToArray(str_buf, proto_size);
-        run_metadata->data = str_buf;
-        run_metadata->length = proto_size;
-      }
+    // Serialize back to upstream client, who now owns the new buffer
+    if (run_metadata != nullptr) {
+      int proto_size = run_metadata_proto.ByteSize();
+      void* str_buf = reinterpret_cast<void*>(operator new(proto_size));
+      run_metadata_proto.SerializeToArray(str_buf, proto_size);
+      run_metadata->data = str_buf;
+      run_metadata->length = proto_size;
     }
   } else {
     // NOTE(zongheng): PRun does not support RunOptions yet.

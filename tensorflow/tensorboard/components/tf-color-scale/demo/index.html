@@ -89,25 +89,38 @@ var runs = [
 ];
 
 var palettes = [
-  "googleColorBlind",
+  "googleColorBlindAssist",
   "googleStandard",
   "constantValue",
   "googleWarm",
-  "googleCool"
+  "googleCool",
+  "colorBlindAssist1",
+  "colorBlindAssist2",
+  "colorBlindAssist3",
+  "colorBlindAssist4",
+  "mldash"
 ];
 
 var stage = d3.select(".stage");
 
 var palettesStage = d3.select(".palettes");
 
+var paletteData = palettes.map(function(d) {
+  return {
+    name: d,
+    palette: new TF.ColorScale(TF.palettes[d])
+  };
+});
+
 var palette = palettesStage.selectAll(".palette")
-    .data(palettes)
+    .data(paletteData)
   .enter().append("div")
-    .attr("class", "palette");
+    .attr("class", "palette")
+    .on('click', setPalette);
 
 palette.each(function(d) {
-  d3.select(this).append("div").text(d);
-  var ccs = new TF.ColorScale(17, TF.palettes[d]);
+  d3.select(this).append("div").text(d.name);
+  var ccs = d.palette;
   var colorSwatches = d3.select(this).selectAll(".color-swatch")
     .data(d3.range(ccs.numColors))
   .enter().append("div")
@@ -116,13 +129,21 @@ palette.each(function(d) {
     .style("background-color", (d) => ccs.internalColorScale(d));
 });
 
+var currentPalette;
+
+function setPalette(d) {
+  d3.select(".palette-title").text("Palette: " + d.name)
+  currentPalette = d.palette;
+  ping();
+}
+
 var previousRuns = runs.slice(0, 10).concat(["train", "test", "eval"]);
 function ping() {
   d3.shuffle(previousRuns);
   previousRuns = previousRuns.slice(0, -Math.ceil(Math.random() * 3));
   previousRuns = previousRuns.concat(d3.shuffle(runs).slice(0, Math.floor(Math.random() * 6))).sort();
   previousRuns = d3.set(previousRuns).values().sort();
-  var ccs = new TF.ColorScale();
+  var ccs = currentPalette;
   ccs.domain(previousRuns);
 
   var color = stage.selectAll(".color")
@@ -169,7 +190,8 @@ function ping() {
       .style("height", previousRuns.length * 25 + "px")
 }
 
-ping();
+setPalette(paletteData[0]);
+
 setInterval(ping, 2000);
 
 

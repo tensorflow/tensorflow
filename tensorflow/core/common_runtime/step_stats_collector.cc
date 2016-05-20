@@ -24,24 +24,24 @@ StepStatsCollector::StepStatsCollector(StepStats* ss,
                                        CostModelManager* cost_model_manager)
     : step_stats_(ss), cost_model_manager_(cost_model_manager) {}
 
-void StepStatsCollector::UpdateCostModel(const NodeExecStats* nt,
-                                         const Graph* graph, const Node* node) {
+void StepStatsCollector::UpdateCostModelNode(const NodeExecStats* nt,
+                                             const Graph* graph,
+                                             const Node* node) {
   mutex_lock l(mu_);
-  if (cost_model_manager_ == nullptr) {
-    return;
-  }
-  CostModel* cm = cost_model_manager_->FindOrCreateCostModel(graph);
-  cm->RecordMaxExecutionTime(node, Microseconds(nt->op_end_rel_micros()));
+  if (cost_model_manager_ != nullptr) {
+    CostModel* cm = cost_model_manager_->FindOrCreateCostModel(graph);
+    cm->RecordMaxExecutionTime(node, Microseconds(nt->op_end_rel_micros()));
 
-  for (int i = 0; i < nt->output_size(); ++i) {
-    cm->RecordMaxMemSize(node, i, Bytes(nt->output(i)
-                                            .tensor_description()
-                                            .allocation_description()
-                                            .allocated_bytes()));
-    cm->RecordAliases(node, i, nt->output(i)
-                                   .tensor_description()
-                                   .allocation_description()
-                                   .allocation_id());
+    for (int i = 0; i < nt->output_size(); ++i) {
+      cm->RecordMaxMemorySize(node, i, Bytes(nt->output(i)
+                                                 .tensor_description()
+                                                 .allocation_description()
+                                                 .allocated_bytes()));
+      cm->RecordAllocationId(node, i, nt->output(i)
+                                          .tensor_description()
+                                          .allocation_description()
+                                          .allocation_id());
+    }
   }
 }
 

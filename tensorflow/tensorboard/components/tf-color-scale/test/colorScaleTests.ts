@@ -42,7 +42,7 @@ module TF {
 
     it('A 2-color scale returns the first and last colors of the palette',
        function() {
-         let twoColorScale = new ColorScale(2, TF.palettes.googleStandard);
+         let twoColorScale = new ColorScale(TF.palettes.googleStandard, 2);
          // No hash collisions with these.
          twoColorScale.domain(['red', 'blue']);
          assert.deepEqual(
@@ -58,16 +58,16 @@ module TF {
     // internal bins are reset etc. and we aren't finding collisions with
     // previous colors.
     it('Colors don\'t nudge away from colors from an old domain.', function() {
-      // at 12 breaks, 'orange' and 'blue' collide.
-      ccs.domain(['red', 'blue']);
+      // at default config 'blue' 'yellow' collide.
+      ccs.domain(['blue', 'yellow']);
       let firstBlue = ccs.scale('blue');
-      ccs.domain(['red', 'orange']);
-      let firstOrange = ccs.scale('orange');
-      assert.deepEqual(firstBlue, firstOrange);
+      ccs.domain(['red', 'yellow']);
+      let firstYellow = ccs.scale('yellow');
+      assert.deepEqual(firstBlue, firstYellow);
     });
 
     it('Nudges all colors, given only one base color', function() {
-      let ccsWithOneColor = new ColorScale(1);
+      let ccsWithOneColor = new ColorScale(TF.palettes.googleStandard, 1);
       ccsWithOneColor.domain(['one', 'two', 'three']);
       assert.notEqual(
           ccsWithOneColor.scale('one'), ccsWithOneColor.scale('two'));
@@ -78,17 +78,17 @@ module TF {
     });
 
     it('Nudges a color if it has a hash collision', function() {
-      // at 12 breaks, 'orange' and 'blue' collide.
+      // at default config, 'blue' and 'yellow' collide.
       ccs.domain(['red', 'blue']);
       let firstBlue = ccs.scale('blue');
-      ccs.domain(['red', 'orange']);
-      let firstOrange = ccs.scale('orange');
-      ccs.domain(['red', 'blue', 'orange']);
+      ccs.domain(['red', 'yellow']);
+      let firstYellow = ccs.scale('yellow');
+      ccs.domain(['red', 'blue', 'yellow']);
       let secondBlue = ccs.scale('blue');
-      let secondOrange = ccs.scale('orange');
+      let secondYellow = ccs.scale('yellow');
       assert.deepEqual(firstBlue, secondBlue);
-      assert.deepEqual(firstBlue, firstOrange);
-      assert.notEqual(secondBlue, secondOrange);
+      assert.deepEqual(firstBlue, firstYellow);
+      assert.notEqual(secondBlue, secondYellow);
     });
 
     it('Throws an error if string is not in the domain', function() {

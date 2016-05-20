@@ -11,13 +11,13 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 """High level operations on graphs."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as py_collections
 import itertools
 import sys
 import time
@@ -93,23 +93,6 @@ def _run_dict(session, run_dict, feed_dict=None):
   return dict(zip(keys, values))
 
 
-class SupervisorParams(py_collections.namedtuple(
-    'SupervisorParams',
-    ['is_chief', 'master', 'save_model_secs', 'save_summaries_secs'])):
-  """Parameters required to configure supervisor for training.
-
-  Fields:
-    is_chief: Whether the current process is the chief supervisor in charge of
-      restoring the model and running standard services.
-    master: The master string to use when preparing the session.
-    save_model_secs: Save a checkpoint every `save_model_secs` seconds when
-      training.
-    save_summaries_secs: Save summaries every `save_summaries_secs` seconds when
-      training.
-  """
-SupervisorParams.__new__.__defaults__ = (True, '', 600, 10)
-
-
 def _prepare_session(graph,
                      output_dir,
                      start_services,
@@ -153,6 +136,7 @@ def train(graph,
           supervisor_master='',
           supervisor_save_model_secs=600,
           supervisor_save_summaries_secs=10,
+          feed_fn=None,
           max_steps=None,
           fail_on_nan_loss=True):
   """Train a model.
@@ -190,6 +174,8 @@ def train(graph,
       `supervisor_save_model_secs` seconds when training.
     supervisor_save_summaries_secs: Save summaries every
       `supervisor_save_summaries_secs` seconds when training.
+    feed_fn: A function that is called every iteration to produce a `feed_dict`
+      passed to `session.run` calls. Optional.
     max_steps: Train until `global_step_tensor` evaluates to this value.
     fail_on_nan_loss: If true, raise `NanLossDuringTrainingError` if `loss_op`
       evaluates to `NaN`. If false, continue training as if nothing happened.
@@ -234,7 +220,8 @@ def train(graph,
       while not supervisor.ShouldStop() and (
           (max_steps is None) or (last_step < max_steps)):
         start_time = time.time()
-        _, loss_value = session.run([train_op, loss_op])
+        feed_dict = feed_fn() if feed_fn is not None else None
+        _, loss_value = session.run([train_op, loss_op], feed_dict=feed_dict)
         if np.isnan(loss_value):
           failure_message = 'Model diverged with loss = NaN.'
           if fail_on_nan_loss:
@@ -314,6 +301,7 @@ def evaluate(graph,
              init_op=None,
              supervisor_master='',
              log_every_steps=10,
+             feed_fn=None,
              max_steps=None):
   """Evaluate a model loaded from a checkpoint.
 
@@ -342,6 +330,8 @@ def evaluate(graph,
     supervisor_master: The master string to use when preparing the session.
     log_every_steps: Integer. Output logs every `log_every_steps` evaluation
       steps. The logs contain the `eval_dict` and timing information.
+    feed_fn: A function that is called every iteration to produce a `feed_dict`
+      passed to `session.run` calls. Optional.
     max_steps: Integer. Evaluate `eval_dict` this many times.
 
   Returns:
@@ -393,7 +383,8 @@ def evaluate(graph,
         while not supervisor.ShouldStop() and (
             (max_steps is None) or (step < max_steps)):
           start_time = time.time()
-          eval_results = _run_dict(session, eval_dict)
+          feed_dict = feed_fn() if feed_fn is not None else None
+          eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
           # TODO(wicke): We should assert that the global step hasn't changed.
           step += 1
           if step % log_every_steps == 0:

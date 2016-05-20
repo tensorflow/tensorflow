@@ -5,7 +5,7 @@ this class.
 
 - - -
 
-#### `tf.FIFOQueue.__init__(capacity, dtypes, shapes=None, shared_name=None, name='fifo_queue')` {#FIFOQueue.__init__}
+#### `tf.FIFOQueue.__init__(capacity, dtypes, shapes=None, names=None, shared_name=None, name='fifo_queue')` {#FIFOQueue.__init__}
 
 Creates a queue that dequeues elements in a first-in first-out order.
 
@@ -29,8 +29,11 @@ but the use of `dequeue_many` is disallowed.
     that may be stored in this queue.
 *  <b>`dtypes`</b>: A list of `DType` objects. The length of `dtypes` must equal
     the number of tensors in each queue element.
-*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects,
-    with the same length as `dtypes` or `None`.
+*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects
+    with the same length as `dtypes`, or `None`.
+*  <b>`names`</b>: (Optional.) A list of string naming the components in the queue
+    with the same length as `dtypes`, or `None`.  If specified the dequeue
+    methods return a dictionary with the names as keys.
 *  <b>`shared_name`</b>: (Optional.) If non-empty, this queue will be shared under
     the given name across multiple sessions.
 *  <b>`name`</b>: Optional name for the queue operation.

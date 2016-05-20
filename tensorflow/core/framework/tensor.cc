@@ -671,15 +671,19 @@ string Tensor::SummarizeValue(int64 max_entries) const {
       return SummarizeArray<int32>(limit, num_elts, data);
       break;
     case DT_UINT8:
+    case DT_QUINT8:
       return SummarizeArray<uint8>(limit, num_elts, data);
       break;
     case DT_UINT16:
+    case DT_QUINT16:
       return SummarizeArray<uint16>(limit, num_elts, data);
       break;
     case DT_INT16:
+    case DT_QINT16:
       return SummarizeArray<int16>(limit, num_elts, data);
       break;
     case DT_INT8:
+    case DT_QINT8:
       return SummarizeArray<int8>(limit, num_elts, data);
       break;
     case DT_INT64:
@@ -703,7 +707,7 @@ string Tensor::SummarizeValue(int64 max_entries) const {
             break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
-            // complex64, quantized, bfloat16).
+            // complex64, quantized).
             strings::StrAppend(&ret, "?");
         }
       }

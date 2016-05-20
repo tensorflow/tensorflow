@@ -32,7 +32,7 @@ template <typename Device, typename T>
 class SoftmaxOp : public OpKernel {
  public:
   explicit SoftmaxOp(OpKernelConstruction* context) : OpKernel(context) {
-    log_ = StringPiece(name()).starts_with("Log");
+    log_ = StringPiece(type_string()).starts_with("Log");
   }
 
   void Compute(OpKernelContext* context) override {

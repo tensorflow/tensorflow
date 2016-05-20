@@ -35,6 +35,9 @@
 # ":direct_session" - An implementation of the Session interface that
 #      directly runs Graphs via the internal TensorFlow executor.
 #
+# ":example_parser_configuration" -- A library for extracting the
+#      tensorflow.Example proto configuration from a Graph.
+#
 # Public Android targets:
 #
 # filegroup ":android_proto_srcs" - Protos
@@ -199,6 +202,7 @@ cc_library(
         "lib/strings/stringprintf.h",
         "platform/env.h",
         "platform/file_system.h",
+        "platform/fingerprint.h",
         "platform/host_info.h",  # TODO(josh11b): make internal
         "platform/init_main.h",
         "platform/logging.h",
@@ -505,6 +509,7 @@ tf_cuda_library(
         ":all_kernels",
         ":core",
         ":direct_session",
+        ":example_parser_configuration",
         ":gpu_runtime",
         ":lib",
     ],
@@ -595,6 +600,7 @@ filegroup(
     srcs = [
         ":proto_text_srcs_all",
         "//tensorflow/core/kernels:android_srcs",
+        "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "common_runtime/gpu/gpu_tracer.cc",
         "common_runtime/gpu/gpu_tracer.h",
@@ -616,19 +622,22 @@ filegroup(
             "util/**/*.cc",
         ],
         exclude = [
-            "**/*test.cc",
+            "**/*test.*",
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
+            "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "util/events_writer.*",
             "util/tf_status_helper.*",
             "util/checkpoint_reader.*",
             "platform/default/stream_executor.*",
+            "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/google/**/*",
             "platform/jpeg.*",
+            "platform/png.*",
             "platform/stream_executor.*",
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/**/*",
@@ -649,9 +658,6 @@ filegroup(
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-#
-# Layering checks are explicitly disabled since hdrs are not used to
-# verify Android builds, which leads to incorrect and misleading header lists.
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs =
@@ -662,14 +668,12 @@ cc_library(
             "//conditions:default": [],
         }),
     copts = tf_copts() + ["-Os"],
-    features = ["-layering_check"],
     tags = [
         "manual",
         "notap",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@re2//:re2",
         ":protos_cc",
         "//third_party/eigen3",
     ],
@@ -687,14 +691,12 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = tf_copts(),
-    features = ["-layering_check"],
     tags = [
         "manual",
         "notap",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@re2//:re2",
         ":android_tensorflow_lib_lite",
         ":protos_cc",
         "//tensorflow/core/kernels:android_tensorflow_kernels",
@@ -819,6 +821,7 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
+            "example/example_parser_configuration.*",
             "util/tf_status_helper.*",
             "util/checkpoint_reader.*",
             "util/reporter.h",
@@ -885,6 +888,7 @@ filegroup(
         "framework/op_def_util.h",
         "framework/op_kernel.h",
         "framework/partial_tensor_shape.h",
+        "framework/register_types.h",
         "framework/rendezvous.h",
         "framework/selective_registration.h",
         "framework/session_state.h",
@@ -1012,6 +1016,23 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":framework",
         ":gpu_tracer",
+        ":lib",
+        ":lib_internal",
+        ":proto_text",
+        ":protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "example_parser_configuration",
+    srcs = ["example/example_parser_configuration.cc"],
+    hdrs = ["example/example_parser_configuration.h"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [
+        ":core_cpu_internal",
+        ":framework",
         ":lib",
         ":lib_internal",
         ":proto_text",
@@ -1231,6 +1252,7 @@ tf_cc_tests(
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_bfc_allocator_test.cc",
             "common_runtime/gpu/gpu_region_allocator_test.cc",
+            "example/example_parser_configuration_test.cc",
             "framework/op_segment_test.cc",
             "ops/array_grad_test.cc",
             "ops/math_grad_test.cc",
@@ -1259,6 +1281,7 @@ tf_cc_tests(
 # GPU-related tests
 tf_cc_tests_gpu(
     size = "small",
+    args = ["--gtest_death_test_style=threadsafe"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     tests = glob(
@@ -1365,6 +1388,7 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:dense_update_ops",
         "//tensorflow/core/kernels:fifo_queue_op",
@@ -1558,6 +1582,32 @@ tf_cc_test(
     ],
 )
 
+cc_test(
+    name = "example_example_parser_configuration_test",
+    size = "small",
+    srcs = ["example/example_parser_configuration_test.cc"],
+    data = [":example_parser_configuration_testdata"],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":example_parser_configuration",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:example_parsing_ops",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
 tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_tracer_test",
     size = "small",
@@ -1607,6 +1657,12 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "example_parser_configuration_testdata",
+    srcs = [
+        "example/testdata/parse_example_graph_def.pbtxt",
+    ],
+)
 # -----------------------------------------------------------------------------
 # Google-internal targets go here (must be at the end).
 

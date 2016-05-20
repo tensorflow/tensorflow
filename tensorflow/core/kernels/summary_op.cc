@@ -87,9 +87,13 @@ class SummaryHistoOp : public OpKernel {
     histogram::Histogram histo;
     for (int64 i = 0; i < flat.size(); i++) {
       T v = flat(i);
-      if (!Eigen::numext::isfinite(v)) {
+      if (Eigen::numext::isnan(v)) {
         c->SetStatus(
             errors::InvalidArgument("Nan in summary histogram for: ", name()));
+        break;
+      } else if (Eigen::numext::isinf(v)) {
+        c->SetStatus(errors::InvalidArgument(
+            "Infinity in summary histogram for: ", name()));
         break;
       }
       histo.Add(static_cast<double>(v));

@@ -76,7 +76,7 @@ tf_py_test(
     srcs = ["decode_audio_op_test.py"],
     additional_deps = [
         ":ffmpeg_ops_py",
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
     ],
     data = [
@@ -94,7 +94,7 @@ tf_py_test(
     srcs = ["encode_audio_op_test.py"],
     additional_deps = [
         ":ffmpeg_ops_py",
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
     ],
     data = [

@@ -162,6 +162,9 @@ class MasterSession : public MasterSessionInterface {
   // nodes) are unique across all sub-graphs within this session.
   int64 next_node_id_ GUARDED_BY(mu_) = 0;
 
+  // Used to cancel running steps on Close().
+  CancellationManager* cancellation_manager_;
+
   // Private dtor. The client must call Close().
   virtual ~MasterSession();
 
@@ -219,7 +222,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                        int64 execution_count,
                        SimpleGraphExecutionState* execution_state,
                        PerStepState* pss, CallOptions* opts,
-                       const RunStepRequest& req, RunStepResponse* resp);
+                       const RunStepRequest& req, RunStepResponse* resp,
+                       CancellationManager* cm);
 
   // Calls workers to cleanup states for the step "step_id".  Waits
   // till all cleanup rpcs complete.
@@ -260,7 +264,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   // partitions_ is immutable after RegisterPartitions() call
   // finishes.  RunPartitions() can access partitions_ safely without
-  // acquring locks.
+  // acquiring locks.
   std::vector<Part> partitions_;
 
   mutable mutex mu_;
@@ -504,7 +508,8 @@ class RunManyGraphs {
 Status MasterSession::ReffedClientGraph::RunPartitions(
     const MasterEnv* env, int64 step_id, int64 execution_count,
     SimpleGraphExecutionState* execution_state, PerStepState* pss,
-    CallOptions* call_opts, const RunStepRequest& req, RunStepResponse* resp) {
+    CallOptions* call_opts, const RunStepRequest& req, RunStepResponse* resp,
+    CancellationManager* cm) {
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
   // Builds an index for feeds provided by the client.
@@ -560,7 +565,14 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
 
   // Waits for the RunGraph calls.
   call_opts->SetCancelCallback([&calls]() { calls.StartCancel(); });
+  auto token = cm->get_cancellation_token();
+  bool success =
+      cm->RegisterCallback(token, [&calls]() { calls.StartCancel(); });
+  if (!success) {
+    return errors::Cancelled("Step was cancelled");
+  }
   calls.Wait();
+  cm->DeregisterCallback(token);
   call_opts->ClearCancelCallback();
 
   // Collects fetches.
@@ -696,7 +708,8 @@ MasterSession::MasterSession(const SessionOptions& opt, const MasterEnv* env,
       env_(env),
       handle_(strings::FpToString(random::New64())),
       graph_version_(0),
-      runs_(5) {
+      runs_(5),
+      cancellation_manager_(new CancellationManager) {
   UpdateLastAccessTime();
 
   swap(remote_devs_, *remote_devs);
@@ -717,6 +730,7 @@ MasterSession::MasterSession(const SessionOptions& opt, const MasterEnv* env,
 }
 
 MasterSession::~MasterSession() {
+  delete cancellation_manager_;
   for (const auto& iter : runs_) iter.second->Unref();
   for (const auto& iter : obsolete_) iter.second->Unref();
   delete flib_def_;
@@ -892,8 +906,9 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
   const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
   TRACEPRINTF("stepid %llu", step_id);
 
-  TF_RETURN_IF_ERROR(rcg->RunPartitions(
-      env_, step_id, count, execution_state_.get(), &pss, opts, *req, resp));
+  TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
+                                        execution_state_.get(), &pss, opts,
+                                        *req, resp, cancellation_manager_));
 
   pss.end_micros = Env::Default()->NowMicros();
 
@@ -914,6 +929,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
 }
 
 Status MasterSession::Close() {
+  cancellation_manager_->StartCancel();
   std::vector<ReffedClientGraph*> to_unref;
   {
     mutex_lock l(mu_);

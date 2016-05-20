@@ -76,6 +76,17 @@ def _as_shape_list(shapes, dtypes, unknown_dim_allowed=False,
   return shapes
 
 
+def _as_name_list(names, dtypes):
+  if names is None:
+    return None
+  if not isinstance(names, (list, tuple)):
+    names = [names]
+  if len(names) != len(dtypes):
+    raise ValueError("List of names must have the same length as the list "
+                     "of dtypes")
+  return list(names)
+
+
 # pylint: disable=protected-access
 class QueueBase(object):
   """Base class for queue implementations.
@@ -107,8 +118,12 @@ class QueueBase(object):
 
   """
 
-  def __init__(self, dtypes, shapes, queue_ref):
+  def __init__(self, dtypes, shapes, names, queue_ref):
     """Constructs a queue object from a queue reference.
+
+    The two optional lists, `shapes` and `names`, must be of the same length
+    as `dtypes` if provided.  The values at a given index `i` indicate the
+    shape and name to use for the corresponding queue component in `dtypes`.
 
     Args:
       dtypes:  A list of types.  The length of dtypes must equal the number
@@ -117,13 +132,27 @@ class QueueBase(object):
         A list of shape tuples or None. This list is the same length
         as dtypes.  If the shape of any tensors in the element are constrained,
         all must be; shapes can be None if the shapes should not be constrained.
+      names: Optional list of names.  If provided, the `enqueue()` and
+        `dequeue()` methods will use dictionaries with these names as keys.
+        Must be None or a list or tuple of the same length as `dtypes`.
       queue_ref: The queue reference, i.e. the output of the queue op.
+
+    Raises:
+      ValueError: If one of the arguments is invalid.
     """
     self._dtypes = dtypes
     if shapes is not None:
+      if len(shapes) != len(dtypes):
+        raise ValueError("Queue shapes must have the same length as dtypes")
       self._shapes = [tensor_shape.TensorShape(s) for s in shapes]
     else:
       self._shapes = [tensor_shape.unknown_shape() for _ in self._dtypes]
+    if names is not None:
+      if len(names) != len(dtypes):
+        raise ValueError("Queue names must have the same length as dtypes")
+      self._names = names
+    else:
+      self._names = None
     self._queue_ref = queue_ref
     self._name = self._queue_ref.op.name.split("/")[-1]
 
@@ -152,10 +181,15 @@ class QueueBase(object):
     if not all([dtypes == q.dtypes for q in queues[1:]]):
       raise TypeError("Queues do not have matching component dtypes.")
 
+    names = queues[0].names
+    if not all([names == q.names for q in queues[1:]]):
+      raise TypeError("Queues do not have matching component names.")
+
     queue_refs = [x.queue_ref for x in queues]
     selected_queue = control_flow_ops.ref_select(index, queue_refs)
     # TODO(josh11b): Unify the shapes of the queues too?
-    return QueueBase(dtypes=dtypes, shapes=None, queue_ref=selected_queue)
+    return QueueBase(dtypes=dtypes, shapes=None, names=names,
+                     queue_ref=selected_queue)
 
   @property
   def queue_ref(self):
@@ -172,18 +206,46 @@ class QueueBase(object):
     """The list of dtypes for each component of a queue element."""
     return self._dtypes
 
+  @property
+  def names(self):
+    """The list of names for each component of a queue element."""
+    return self._names
+
   def _check_enqueue_dtypes(self, vals):
-    """Returns `vals` as a list of `Tensor`s, having checked their dtypes.
+    """Validate and convert `vals` to a list of `Tensor`s.
+
+    The `vals` argument can be a Tensor, a list or tuple of tensors, or a
+    dictionary with tensor values.
+
+    If it is a dictionary, the queue must have been constructed with a
+    `names` attribute and the dictionary keys must math the queue names.
+    If the queue was constructed with a `names` attribute, `vals` must
+    be a dictionary.
 
     Args:
-      vals: A tensor or a list of tensors, corresponding to an
-      enqueue(_many) tuple.
+      vals: A tensor, a list or tuple of tensors, or a dictionary..
 
     Returns:
       A list of `Tensor` objects.
+
+    Raises:
+      ValueError: If `vals` is invalid.
     """
-    if not isinstance(vals, (list, tuple)):
-      vals = [vals]
+    if isinstance(vals, dict):
+      if not self._names:
+        raise ValueError("Queue must have names to enqueue a dictionary")
+      if sorted(self._names) != sorted(vals.keys()):
+        raise ValueError("Keys in dictionary to enqueue do not match "
+                         "names of Queue.  Dictionary: (%s), Queue: (%s)" %
+                         (sorted(vals.keys()), sorted(self._names)))
+      # The order of values in `self._names` indicates the order in which the
+      # tensors in the dictionary `vals` must be listed.
+      vals = [vals[k] for k in self._names]
+    else:
+      if self._names:
+        raise ValueError("You must enqueue a dictionary in a Queue with names")
+      if not isinstance(vals, (list, tuple)):
+        vals = [vals]
 
     tensors = []
     for i, (val, dtype) in enumerate(zip(vals, self._dtypes)):
@@ -192,6 +254,22 @@ class QueueBase(object):
 
     return tensors
 
+  def _scope_vals(self, vals):
+    """Return a list of values to pass to `op_scope()`.
+
+    Args:
+      vals: A tensor, a list or tuple of tensors, or a dictionary.
+
+    Returns:
+      The values in vals as a list.
+    """
+    if isinstance(vals, (list, tuple)):
+      return vals
+    elif isinstance(vals, dict):
+      return vals.values()
+    else:
+      return [vals]
+
   def enqueue(self, vals, name=None):
     """Enqueues one element to this queue.
 
@@ -199,16 +277,15 @@ class QueueBase(object):
     until the element has been enqueued.
 
     Args:
-      vals: The tuple of `Tensor` objects to be enqueued.
+      vals: A tensor, a list or tuple of tensors, or a dictionary containing
+        the values to enqueue.
       name: A name for the operation (optional).
 
     Returns:
       The operation that enqueues a new tuple of tensors to the queue.
     """
-    if not isinstance(vals, (list, tuple)):
-      vals = [vals]
-
-    with ops.op_scope(vals, name, "%s_enqueue" % self._name) as scope:
+    with ops.op_scope(self._scope_vals(vals), name,
+                      "%s_enqueue" % self._name) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to
@@ -229,17 +306,15 @@ class QueueBase(object):
     until all of the elements have been enqueued.
 
     Args:
-      vals: The tensor or tuple of tensors from which the queue elements
-        are taken.
+      vals: A tensor, a list or tuple of tensors, or a dictionary
+        from which the queue elements are taken.
       name: A name for the operation (optional).
 
     Returns:
       The operation that enqueues a batch of tuples of tensors to the queue.
     """
-    if not isinstance(vals, (list, tuple)):
-      vals = [vals]
-
-    with ops.op_scope(vals, name, "%s_EnqueueMany" % self._name) as scope:
+    with ops.op_scope(self._scope_vals(vals), name,
+                      "%s_EnqueueMany" % self._name) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to
@@ -252,6 +327,29 @@ class QueueBase(object):
 
       return gen_data_flow_ops._queue_enqueue_many(
           self._queue_ref, vals, name=scope)
+
+  def _dequeue_return_value(self, tensors):
+    """Return the value to return from a dequeue op.
+
+    If the queue has names, return a dictionary with the
+    names as keys.  Otherwise return either a single tensor
+    or a list of tensors depending on the length of `tensors`.
+
+    Args:
+      tensors: List of tensors from the dequeue op.
+
+    Returns:
+      A single tensor, a list of tensors, or a dictionary
+      of tensors.
+    """
+    if self._names:
+      # The returned values in `tensors` are in the same order as
+      # the names in `self._names`.
+      return {n: tensors[i] for i, n in enumerate(self._names)}
+    elif len(tensors) == 1:
+      return tensors[0]
+    else:
+      return tensors
 
   def dequeue(self, name=None):
     """Dequeues one element from this queue.
@@ -276,7 +374,7 @@ class QueueBase(object):
     for output, shape in zip(op.values(), self._shapes):
       output.set_shape(shape)
 
-    return ret if len(ret) != 1 else ret[0]
+    return self._dequeue_return_value(ret)
 
   def dequeue_many(self, n, name=None):
     """Dequeues and concatenates `n` elements from this queue.
@@ -308,7 +406,7 @@ class QueueBase(object):
     for output, shape in zip(op.values(), self._shapes):
       output.set_shape(tensor_shape.TensorShape([batch_dim]).concatenate(shape))
 
-    return ret if len(ret) != 1 else ret[0]
+    return self._dequeue_return_value(ret)
 
   def dequeue_up_to(self, n, name=None):
     """Dequeues and concatenates `n` elements from this queue.
@@ -346,7 +444,7 @@ class QueueBase(object):
     for output, shape in zip(op.values(), self._shapes):
       output.set_shape(tensor_shape.TensorShape([None]).concatenate(shape))
 
-    return ret if len(ret) != 1 else ret[0]
+    return self._dequeue_return_value(ret)
 
   def close(self, cancel_pending_enqueues=False, name=None):
     """Closes this queue.
@@ -399,7 +497,8 @@ class RandomShuffleQueue(QueueBase):
   """
 
   def __init__(self, capacity, min_after_dequeue, dtypes, shapes=None,
-               seed=None, shared_name=None, name="random_shuffle_queue"):
+               names=None, seed=None, shared_name=None,
+               name="random_shuffle_queue"):
     """Create a queue that dequeues elements in a random order.
 
     A `RandomShuffleQueue` has bounded capacity; supports multiple
@@ -430,8 +529,11 @@ class RandomShuffleQueue(QueueBase):
       min_after_dequeue: An integer (described above).
       dtypes:  A list of `DType` objects. The length of `dtypes` must equal
         the number of tensors in each queue element.
-      shapes: (Optional.) A list of fully-defined `TensorShape` objects,
-        with the same length as `dtypes` or `None`.
+      shapes: (Optional.) A list of fully-defined `TensorShape` objects
+        with the same length as `dtypes`, or `None`.
+      names: (Optional.) A list of string naming the components in the queue
+        with the same length as `dtypes`, or `None`.  If specified the dequeue
+        methods return a dictionary with the names as keys.
       seed: A Python integer. Used to create a random seed. See
         [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
         for behavior.
@@ -441,13 +543,14 @@ class RandomShuffleQueue(QueueBase):
     """
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
+    names = _as_name_list(names, dtypes)
     seed1, seed2 = random_seed.get_seed(seed)
     queue_ref = gen_data_flow_ops._random_shuffle_queue(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         min_after_dequeue=min_after_dequeue, seed=seed1, seed2=seed2,
         shared_name=shared_name, name=name)
 
-    super(RandomShuffleQueue, self).__init__(dtypes, shapes, queue_ref)
+    super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
 class FIFOQueue(QueueBase):
@@ -459,8 +562,8 @@ class FIFOQueue(QueueBase):
   @@__init__
   """
 
-  def __init__(self, capacity, dtypes, shapes=None, shared_name=None,
-               name="fifo_queue"):
+  def __init__(self, capacity, dtypes, shapes=None, names=None,
+               shared_name=None, name="fifo_queue"):
     """Creates a queue that dequeues elements in a first-in first-out order.
 
     A `FIFOQueue` has bounded capacity; supports multiple concurrent
@@ -481,23 +584,27 @@ class FIFOQueue(QueueBase):
         that may be stored in this queue.
       dtypes:  A list of `DType` objects. The length of `dtypes` must equal
         the number of tensors in each queue element.
-      shapes: (Optional.) A list of fully-defined `TensorShape` objects,
-        with the same length as `dtypes` or `None`.
+      shapes: (Optional.) A list of fully-defined `TensorShape` objects
+        with the same length as `dtypes`, or `None`.
+      names: (Optional.) A list of string naming the components in the queue
+        with the same length as `dtypes`, or `None`.  If specified the dequeue
+        methods return a dictionary with the names as keys.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
       name: Optional name for the queue operation.
     """
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
+    names = _as_name_list(names, dtypes)
     queue_ref = gen_data_flow_ops._fifo_queue(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
-    super(FIFOQueue, self).__init__(dtypes, shapes, queue_ref)
+    super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
 class PaddingFIFOQueue(QueueBase):
-  """"A FIFOQueue that supports batching variable-sized tensors by padding.
+  """A FIFOQueue that supports batching variable-sized tensors by padding.
 
   A `PaddingFIFOQueue` may contain components with dynamic shape, while also
   supporting `dequeue_many`.  See the constructor for more details.
@@ -508,7 +615,7 @@ class PaddingFIFOQueue(QueueBase):
   @@__init__
   """
 
-  def __init__(self, capacity, dtypes, shapes, shared_name=None,
+  def __init__(self, capacity, dtypes, shapes, names=None, shared_name=None,
                name="padding_fifo_queue"):
     """Creates a queue that dequeues elements in a first-in first-out order.
 
@@ -536,6 +643,9 @@ class PaddingFIFOQueue(QueueBase):
         `dtypes`.  Any dimension in the `TensorShape` containing value
         `None` is dynamic and allows values to be enqueued with
          variable size in that dimension.
+      names: (Optional.) A list of string naming the components in the queue
+        with the same length as `dtypes`, or `None`.  If specified the dequeue
+        methods return a dictionary with the names as keys.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
       name: Optional name for the queue operation.
@@ -546,6 +656,7 @@ class PaddingFIFOQueue(QueueBase):
     """
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes, unknown_dim_allowed=True)
+    names = _as_name_list(names, dtypes)
     if len(dtypes) != len(shapes):
       raise ValueError("Shapes must be provided for all components, "
                        "but received %d dtypes and %d shapes."
@@ -555,7 +666,7 @@ class PaddingFIFOQueue(QueueBase):
         component_types=dtypes, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
-    super(PaddingFIFOQueue, self).__init__(dtypes, shapes, queue_ref)
+    super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
 # TODO(josh11b): class BatchQueue(QueueBase):

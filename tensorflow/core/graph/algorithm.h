@@ -49,9 +49,10 @@ void GetPostOrder(const Graph& g, std::vector<Node*>* order);
 void GetReversePostOrder(const Graph& g, std::vector<Node*>* order);
 
 // Prune nodes in "g" that are not in some path from the source node
-// to any node in 'nodes'.
-void PruneForReverseReachability(Graph* g,
-                                 const std::unordered_set<const Node*>& nodes);
+// to any node in 'nodes'. Returns true if changes were made to the graph.
+// Does not fix up source and sink edges.
+bool PruneForReverseReachability(Graph* g,
+                                 std::unordered_set<const Node*> nodes);
 
 // Connect all nodes with no incoming edges to source.
 // Connect all nodes with no outgoing edges to sink.

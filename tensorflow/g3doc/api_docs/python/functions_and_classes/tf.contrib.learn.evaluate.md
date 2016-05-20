@@ -1,4 +1,4 @@
-### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, max_steps=None)` {#evaluate}
+### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, feed_fn=None, max_steps=None)` {#evaluate}
 
 Evaluate a model loaded from a checkpoint.
 
@@ -29,6 +29,8 @@ and written to `output_dir`.
 *  <b>`supervisor_master`</b>: The master string to use when preparing the session.
 *  <b>`log_every_steps`</b>: Integer. Output logs every `log_every_steps` evaluation
     steps. The logs contain the `eval_dict` and timing information.
+*  <b>`feed_fn`</b>: A function that is called every iteration to produce a `feed_dict`
+    passed to `session.run` calls. Optional.
 *  <b>`max_steps`</b>: Integer. Evaluate `eval_dict` this many times.
 
 ##### Returns:
