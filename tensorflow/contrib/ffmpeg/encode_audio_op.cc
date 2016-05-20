@@ -15,7 +15,7 @@
 
 #include <limits>
 
-#include "tensorflow/contrib/ffmpeg/kernels/ffmpeg_lib.h"
+#include "tensorflow/contrib/ffmpeg/default/ffmpeg_lib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 

@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_KERNELS_FFMPEG_LIB_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_KERNELS_FFMPEG_LIB_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_DEFAULT_FFMPEG_LIB_H_
+#define THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_DEFAULT_FFMPEG_LIB_H_
 
 #include <string>
 
@@ -47,4 +47,4 @@ Status CreateAudioFile(const string& audio_format_id, int32 samples_per_second,
 }  // namespace ffmpeg
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_KERNELS_FFMPEG_LIB_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_DEFAULT_FFMPEG_LIB_H_
