@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 
 // Include appropriate platform-dependent implementations
-#if defined(PLATFORM_GOOGLE)
+#if defined(PLATFORM_GOOGLE) || defined(GOOGLE_INTEGRAL_TYPES)
 #include "tensorflow/core/platform/google/integral_types.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
     defined(PLATFORM_GOOGLE_ANDROID)
