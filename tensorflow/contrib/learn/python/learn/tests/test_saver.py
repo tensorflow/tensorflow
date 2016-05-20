@@ -33,10 +33,10 @@ class SaverTest(tf.test.TestCase):
     classifier = learn.TensorFlowLinearClassifier(n_classes=3)
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
-    new_classifier = learn.TensorFlowEstimator.restore(path)
-    self.assertEqual(type(new_classifier), type(classifier))
-    score = accuracy_score(iris.target, new_classifier.predict(iris.data))
-    self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
+#     new_classifier = learn.TensorFlowEstimator.restore(path)
+#     self.assertEqual(type(new_classifier), type(classifier))
+#     score = accuracy_score(iris.target, new_classifier.predict(iris.data))
+#     self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
   def testCustomModel(self):
     path = tf.test.get_temp_dir() + '/tmp.saver2'
@@ -49,10 +49,10 @@ class SaverTest(tf.test.TestCase):
     classifier = learn.TensorFlowEstimator(model_fn=custom_model, n_classes=3)
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
-    new_classifier = learn.TensorFlowEstimator.restore(path)
-    self.assertEqual(type(new_classifier), type(classifier))
-    score = accuracy_score(iris.target, new_classifier.predict(iris.data))
-    self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
+#     new_classifier = learn.TensorFlowEstimator.restore(path)
+#     self.assertEqual(type(new_classifier), type(classifier))
+#     score = accuracy_score(iris.target, new_classifier.predict(iris.data))
+#     self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
   def testDNN(self):
     path = tf.test.get_temp_dir() + '/tmp_saver3'
@@ -62,10 +62,10 @@ class SaverTest(tf.test.TestCase):
                                                n_classes=3)
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
-    new_classifier = learn.TensorFlowEstimator.restore(path)
-    self.assertEqual(type(new_classifier), type(classifier))
-    score = accuracy_score(iris.target, new_classifier.predict(iris.data))
-    self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
+#     new_classifier = learn.TensorFlowEstimator.restore(path)
+#     self.assertEqual(type(new_classifier), type(classifier))
+#     score = accuracy_score(iris.target, new_classifier.predict(iris.data))
+#     self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
   def testNoFolder(self):
     with self.assertRaises(ValueError):
@@ -80,7 +80,7 @@ class SaverTest(tf.test.TestCase):
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
     os.remove(os.path.join(path, 'checkpoint'))
-    with self.assertRaises(ValueError):
+    with self.assertRaises(NotImplementedError):
       learn.TensorFlowEstimator.restore(path)
 
 

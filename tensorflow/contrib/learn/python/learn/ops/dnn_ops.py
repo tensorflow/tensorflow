@@ -17,9 +17,12 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.learn.python.learn.ops import dropout_ops
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.contrib.learn.python.learn.ops import dropout_ops
 
 
 def dnn(tensor_in, hidden_units, activation=nn.relu, dropout=None):
@@ -49,5 +52,9 @@ def dnn(tensor_in, hidden_units, activation=nn.relu, dropout=None):
         if activation is not None:
           tensor_in = activation(tensor_in)
         if dropout is not None:
-          tensor_in = dropout_ops.dropout(tensor_in, prob=(1.0 - dropout))
+          is_training = array_ops_.squeeze(ops.get_collection('IS_TRAINING'))
+          tensor_in = control_flow_ops.cond(
+              is_training,
+              lambda: dropout_ops.dropout(tensor_in, prob=(1.0 - dropout)),
+              lambda: tensor_in)
     return tensor_in

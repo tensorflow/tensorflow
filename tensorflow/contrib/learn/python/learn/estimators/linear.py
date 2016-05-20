@@ -50,12 +50,12 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
   @property
   def weights_(self):
     """Returns weights of the linear regression."""
-    return self.get_tensor_value('linear_regression/weights:0')
+    return self.get_tensor_value('linear_regression/weights')
 
   @property
   def bias_(self):
     """Returns bias of the linear regression."""
-    return self.get_tensor_value('linear_regression/bias:0')
+    return self.get_tensor_value('linear_regression/bias')
 
 
 class TensorFlowLinearClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
@@ -89,12 +89,12 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
   @property
   def weights_(self):
     """Returns weights of the linear classifier."""
-    return self.get_tensor_value('logistic_regression/weights:0')
+    return self.get_tensor_value('logistic_regression/weights')
 
   @property
   def bias_(self):
     """Returns weights of the linear classifier."""
-    return self.get_tensor_value('logistic_regression/bias:0')
+    return self.get_tensor_value('logistic_regression/bias')
 
 
 TensorFlowRegressor = TensorFlowLinearRegressor

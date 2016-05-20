@@ -28,12 +28,14 @@ from six import reraise
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import summaries
+from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -98,28 +100,46 @@ def _prepare_session(graph,
                      start_services,
                      global_step_tensor,
                      init_op=None,
+                     init_feed_dict=None,
                      init_fn=None,
                      supervisor_is_chief=True,
                      supervisor_master='',
-                     supervisor_save_model_secs=600,
-                     supervisor_save_summaries_secs=10):
+                     supervisor_save_model_secs=600):
   """Starts a session using the supervisor."""
   if global_step_tensor is None:
     global_step_tensor = Supervisor.USE_DEFAULT
   supervisor = Supervisor(
       graph,
       init_op=init_op or Supervisor.USE_DEFAULT,
+      init_feed_dict=init_feed_dict,
       is_chief=supervisor_is_chief,
       logdir=output_dir,
       saver=_make_saver(graph),
       global_step=global_step_tensor,
+      summary_op=None,
       save_model_secs=supervisor_save_model_secs,
-      save_summaries_secs=supervisor_save_summaries_secs,
       init_fn=init_fn)
   session = supervisor.PrepareSession(master=supervisor_master,
                                       start_standard_services=start_services)
   supervisor.StartQueueRunners(session)
   return supervisor, session
+
+
+def _run_with_monitors(session, step, tensors, feed_dict, monitors):
+  """Runs session for given tensors with monitor callbacks."""
+  for monitor in monitors:
+    tensors = monitor.step_begin(step, tensors)
+
+  outputs = session.run(tensors, feed_dict=feed_dict)
+  outputs = dict(zip(
+      [t.name if isinstance(t, ops.Tensor) else t for t in tensors],
+      outputs))
+
+  should_stop = False
+  for monitor in monitors:
+    induce_stop = monitor.step_end(step, outputs)
+    should_stop = should_stop or induce_stop
+  return outputs, should_stop
 
 
 # TODO(ptucker): Add unit test.
@@ -130,15 +150,17 @@ def train(graph,
           loss_op,
           global_step_tensor=None,
           init_op=None,
+          init_feed_dict=None,
           init_fn=None,
           log_every_steps=10,
           supervisor_is_chief=True,
           supervisor_master='',
           supervisor_save_model_secs=600,
-          supervisor_save_summaries_secs=10,
+          supervisor_save_summaries_steps=100,
           feed_fn=None,
           max_steps=None,
-          fail_on_nan_loss=True):
+          fail_on_nan_loss=True,
+          monitors=None):
   """Train a model.
 
   Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
@@ -164,6 +186,8 @@ def train(graph,
       one is extracted from the graph using the same logic as in `Supervisor`.
     init_op: An op that initializes the graph. If `None`, use `Supervisor`'s
       default.
+    init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
+      This feed dictionary will be used when `init_op` is evaluated.
     init_fn: Optional callable passed to Supervisor to initialize the model.
     log_every_steps: Output logs regularly. The logs contain timing data and the
       current loss.
@@ -172,13 +196,15 @@ def train(graph,
     supervisor_master: The master string to use when preparing the session.
     supervisor_save_model_secs: Save a checkpoint every
       `supervisor_save_model_secs` seconds when training.
-    supervisor_save_summaries_secs: Save summaries every
-      `supervisor_save_summaries_secs` seconds when training.
+    supervisor_save_summaries_steps: Save summaries every
+      `supervisor_save_summaries_steps` seconds when training.
     feed_fn: A function that is called every iteration to produce a `feed_dict`
       passed to `session.run` calls. Optional.
     max_steps: Train until `global_step_tensor` evaluates to this value.
     fail_on_nan_loss: If true, raise `NanLossDuringTrainingError` if `loss_op`
       evaluates to `NaN`. If false, continue training as if nothing happened.
+    monitors: List of `BaseMonitor` subclass instances. Used for callbacks
+      inside the training loop.
 
   Returns:
     The final loss value.
@@ -194,17 +220,30 @@ def train(graph,
       graph, global_step_tensor)
   if global_step_tensor is None:
     raise ValueError('No "global_step" was provided or found in the graph.')
+
+  # TODO(ipolosukhin): Replace all functionality of Supervisor with Monitors.
+  if not monitors:
+    monitors = monitors_lib.get_default_monitors(
+        loss_op=loss_op,
+        summary_op=logging_ops.get_summary_op(),
+        save_summary_steps=supervisor_save_summaries_steps,
+        output_dir=output_dir)
+
+  # Start monitors, can create graph parts.
+  for monitor in monitors:
+    monitor.begin(max_steps=max_steps)
+
   supervisor, session = _prepare_session(
       graph=graph,
       output_dir=output_dir,
       start_services=True,
       global_step_tensor=global_step_tensor,
       init_op=init_op,
+      init_feed_dict=init_feed_dict,
       init_fn=init_fn,
       supervisor_is_chief=supervisor_is_chief,
       supervisor_master=supervisor_master,
-      supervisor_save_model_secs=supervisor_save_model_secs,
-      supervisor_save_summaries_secs=supervisor_save_summaries_secs)
+      supervisor_save_model_secs=supervisor_save_model_secs)
 
   with session:
     get_current_step = lambda: session.run(global_step_tensor)
@@ -215,13 +254,18 @@ def train(graph,
     loss_value = None
     logging.info('Training steps [%d,%s)', last_step, 'inf'
                  if max_steps is None else str(max_steps))
+
     excinfo = None
     try:
       while not supervisor.ShouldStop() and (
           (max_steps is None) or (last_step < max_steps)):
         start_time = time.time()
         feed_dict = feed_fn() if feed_fn is not None else None
-        _, loss_value = session.run([train_op, loss_op], feed_dict=feed_dict)
+
+        outputs, should_stop = _run_with_monitors(
+            session, last_step + 1, [train_op, loss_op], feed_dict, monitors)
+
+        loss_value = outputs[loss_op.name]
         if np.isnan(loss_value):
           failure_message = 'Model diverged with loss = NaN.'
           if fail_on_nan_loss:
@@ -229,6 +273,9 @@ def train(graph,
             raise NanLossDuringTrainingError()
           else:
             logging.warning(failure_message)
+
+        if should_stop:
+          break
 
         this_step = get_current_step()
 
@@ -268,12 +315,11 @@ def train(graph,
           logging.info('Saving checkpoint for step %d to checkpoint: %s.' % (
               last_step, ckpt_path))
           supervisor.saver.save(session, ckpt_path, global_step=last_step)
-          if supervisor.summary_op is not None:
-            summary_strs = session.run(supervisor.summary_op)
-            supervisor.summary_writer.add_summary(summary_strs, last_step)
-            supervisor.summary_writer.add_session_log(
-                SessionLog(status=SessionLog.STOP), last_step)
-            supervisor.summary_writer.close()
+
+          # Finish monitors.
+          for monitor in monitors:
+            monitor.end()
+
       # catch OutOfRangeError which is thrown when queue is out of data (and for
       # other reasons as well).
       except errors.OutOfRangeError as e:
@@ -354,6 +400,9 @@ def evaluate(graph,
     if isinstance(value, ops.Tensor):
       summaries.summarize_tensor(value, tag=key)
 
+  # Create or get summary op.
+  summary_op = logging_ops.get_summary_op()
+
   # TODO(wicke): Don't use supervisor here, or switch to output_dir=eval_dir.
   supervisor, session = _prepare_session(
       graph=graph,
@@ -363,8 +412,7 @@ def evaluate(graph,
       init_op=init_op,
       supervisor_is_chief=True,
       supervisor_master=supervisor_master,
-      supervisor_save_model_secs=None,
-      supervisor_save_summaries_secs=None)
+      supervisor_save_model_secs=None)
   global_step_tensor = supervisor.global_step
 
   with session:
@@ -394,14 +442,17 @@ def evaluate(graph,
                          ', '.join('%s = %s' % (k, v)
                                    for k, v in eval_results.items()))
       finally:
-        # Make our own summary writer and write a summary to the eval dir
-        if supervisor.summary_op is not None:
+        # Make our own summary writer and write a summary to the eval dir.
+        # Only is feed_fn is not provided.
+        # TODO(ipolosukhin): Convert evaluation to use streaming_metrics,
+        # then we can save for non feed_fn as well.
+        if summary_op is not None and feed_fn is None:
           summary_writer = None
           try:
             summary_writer = SummaryWriter(output_dir,
                                            graph_def=session.graph_def)
 
-            summary_str = session.run(supervisor.summary_op)
+            summary_str = session.run(summary_op)
             if summary_str:
               summary_writer.add_summary(summary_str, current_global_step)
           finally:
@@ -414,7 +465,10 @@ def evaluate(graph,
     # catch OutOfRangeError which is thrown when queue is out of data (and for
     # other reasons as well).
     except errors.OutOfRangeError as e:
-      logging.warn('Input queue exhausted: %s.', e)
+      logging.warn('Input queue is exhausted: %s.', e)
+    # catch StopIteration which is thrown is DataReader is out of data.
+    except StopIteration as e:
+      logging.info('Input iterator is exhausted: %s.', e)
 
   return eval_results, current_global_step
 

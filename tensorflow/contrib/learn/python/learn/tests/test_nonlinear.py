@@ -17,6 +17,7 @@ from __future__ import print_function
 
 import random
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import datasets
@@ -48,7 +49,7 @@ class NonLinearTest(tf.test.TestCase):
     regressor = learn.TensorFlowDNNRegressor(hidden_units=[10, 20, 10],
                                              n_classes=0,
                                              batch_size=boston.data.shape[0],
-                                             steps=200,
+                                             steps=300,
                                              learning_rate=0.001)
     regressor.fit(boston.data, boston.target)
     score = mean_squared_error(boston.target, regressor.predict(boston.data))
@@ -79,6 +80,7 @@ class NonLinearTest(tf.test.TestCase):
                                                dropout=0.1)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
+    # If the quality is lower - dropout is not working.
     self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
 
   def testDNNDropout0_9(self):
@@ -94,7 +96,6 @@ class NonLinearTest(tf.test.TestCase):
 
   def testRNN(self):
     random.seed(42)
-    import numpy as np
     data = np.array(
         list([[2, 1, 2, 2, 3], [2, 2, 3, 4, 5], [3, 3, 1, 2, 1], [2, 4, 5, 4, 1]
              ]),
@@ -103,7 +104,8 @@ class NonLinearTest(tf.test.TestCase):
     labels = np.array(list([1, 0, 1, 0]), dtype=np.float32)
     # targets for regression
     targets = np.array(list([10, 16, 10, 16]), dtype=np.float32)
-    test_data = np.array(list([[1, 3, 3, 2, 1], [2, 3, 4, 5, 6]]))
+    test_data = np.array(list([[1, 3, 3, 2, 1], [2, 3, 4, 5, 6]]),
+                         dtype=np.float32)
 
     def input_fn(X):
       return tf.split(1, 5, X)
@@ -144,7 +146,6 @@ class NonLinearTest(tf.test.TestCase):
 
   def testBidirectionalRNN(self):
     random.seed(42)
-    import numpy as np
     data = np.array(
         list([[2, 1, 2, 2, 3], [2, 2, 3, 4, 5], [3, 3, 1, 2, 1], [2, 4, 5, 4, 1]
              ]),
@@ -161,8 +162,9 @@ class NonLinearTest(tf.test.TestCase):
                                                input_op_fn=input_fn,
                                                bidirectional=True)
     classifier.fit(data, labels)
-    predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1], [2, 3, 4,
-                                                                      5, 6]])))
+    test_data = np.array(list([[1, 3, 3, 2, 1], [2, 3, 4,
+                                                 5, 6]]), dtype=np.float32)
+    predictions = classifier.predict(test_data)
     self.assertAllClose(predictions, np.array([1, 0]))
 
 

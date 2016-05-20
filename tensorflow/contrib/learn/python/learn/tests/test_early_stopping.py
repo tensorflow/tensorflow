@@ -38,7 +38,8 @@ class EarlyStoppingTest(tf.test.TestCase):
 
     X_train, X_val, y_train, y_val = train_test_split(
         X_train, y_train, test_size=0.2)
-    val_monitor = learn.monitors.ValidationMonitor(X_val, y_val, n_classes=3)
+    val_monitor = learn.monitors.ValidationMonitor(X_val, y_val,
+                                                   early_stopping_rounds=100)
 
     # classifier without early stopping - overfitting
     classifier1 = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
@@ -52,7 +53,7 @@ class EarlyStoppingTest(tf.test.TestCase):
                                                 n_classes=3,
                                                 steps=1000)
 
-    classifier2.fit(X_train, y_train, val_monitor)
+    classifier2.fit(X_train, y_train, monitors=[val_monitor])
     score2 = accuracy_score(y_test, classifier2.predict(X_test))
 
     # self.assertGreater(score2, score1, "No improvement using early stopping.")
