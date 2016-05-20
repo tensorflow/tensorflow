@@ -3078,7 +3078,7 @@ Merges all summaries collected in the default graph.
 ##### Returns:
 
   If no summaries were collected, returns None.  Otherwise returns a scalar
-  `Tensor` of type`string` containing the serialized `Summary` protocol
+  `Tensor` of type `string` containing the serialized `Summary` protocol
   buffer resulting from the merging.
 
 
