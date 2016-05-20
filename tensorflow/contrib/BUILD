@@ -37,43 +37,6 @@ py_library(
 )
 
 cc_library(
-    name = "bucketization_op",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/contrib/layers:bucketization_op_kernel",
-        "//tensorflow/contrib/layers:bucketization_op_op_lib",
-    ],
-)
-
-cc_library(
-    name = "sparse_feature_cross_op",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
-        "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
-    ],
-)
-
-cc_library(
-    name = "sdca_op",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",
-        "//tensorflow/contrib/linear_optimizer:sdca_ops_op_lib",
-    ],
-)
-
-cc_library(
-    name = "set_ops",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/contrib/metrics:set_ops_kernels",
-        "//tensorflow/contrib/metrics:set_ops_op_lib",
-    ],
-)
-
-# TODO(ispir): Remove following two target in next cl.
-cc_library(
     name = "contrib_kernels",
     visibility = ["//visibility:public"],
     deps = [
