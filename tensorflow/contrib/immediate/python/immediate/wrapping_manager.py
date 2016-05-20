@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+print('loading wrapping manager')
+
 __all__ = ["ModuleRewriter"]
 
 import imp  # for creating modules
@@ -127,32 +129,32 @@ class SubstituteRule(Rule):
 # __all__ = ["WrappedModule", "WrappedFunction", "WrappingManager"]
 
 
-# canonical_name_re = re.compile(".*/(tensorflow/python/.*py)[c]?")
-# def get_canonical_name(fname_or_symbol):
-#   """Gets canonical name used to refer to TensorFlow modules.
-#   The reflects location in tf directory hierarchy, starting with
-#   tensorflow/python/...
+canonical_name_re = re.compile(".*/(tensorflow/python/.*py)[c]?")
+def get_canonical_name(fname_or_symbol):
+  """Gets canonical name used to refer to TensorFlow modules.
+  The reflects location in tf directory hierarchy, starting with
+  tensorflow/python/...
 
-#   Ie, tensorflow/_python_build/tensorflow/python/ops/gen_math_ops.py becomes
-#   tensorflow/python/ops/gen_math_ops.py after canonicalizing.
+  Ie, tensorflow/_python_build/tensorflow/python/ops/gen_math_ops.py becomes
+  tensorflow/python/ops/gen_math_ops.py after canonicalizing.
 
-#   Args:
-#     fname_or_symbol: either filename or symbol whose filename is available
-#       from inspect
-#   """
+  Args:
+    fname_or_symbol: either filename or symbol whose filename is available
+      from inspect
+  """
 
-#   def get_canonical_name_string(fname):
-#     groups = canonical_name_re.findall(fname)
-#     if groups and len(groups)==1:
-#       return groups[0]
-#     else:
-#       raise ValueError("Couldn't extract canonical name from %s, match groups "
-#                      "were %s" % (fname, groups))
+  def get_canonical_name_string(fname):
+    groups = canonical_name_re.findall(fname)
+    if groups and len(groups)==1:
+      return groups[0]
+    else:
+      raise ValueError("Couldn't extract canonical name from %s, match groups "
+                     "were %s" % (fname, groups))
 
-#   if isinstance(fname_or_symbol, str):
-#     return get_canonical_name_string(fname_or_symbol)
-#   else:
-#     return get_canonical_name_string(inspect.getsourcefile(fname_or_symbol))
+  if isinstance(fname_or_symbol, str):
+    return get_canonical_name_string(fname_or_symbol)
+  else:
+    return get_canonical_name_string(inspect.getsourcefile(fname_or_symbol))
   
 
 # class WrappedModule(object):
