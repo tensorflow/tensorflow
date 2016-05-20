@@ -219,10 +219,17 @@ Generate `n` samples.
 Base class for continuous probability distributions.
 
 `ContinuousDistribution` defines the API for the likelihood functions `pdf`
-and `log_pdf` of continuous probability distributions.
+and `log_pdf` of continuous probability distributions, and a property
+`is_reparameterized` (returning `True` or `False`) which describes
+whether the samples of this distribution are calculated in a differentiable
+way from a non-parameterized distribution.  For example, the `Normal`
+distribution with parameters `mu` and `sigma` is reparameterized as
 
-Subclasses must override both `pdf` and `log_pdf` but one can call this base
-class's implementation.
+```Normal(mu, sigma) = sigma * Normal(0, 1) + mu```
+
+Subclasses must override `pdf` and `log_pdf` but one can call this base
+class's implementation.  They must also override the `is_reparameterized`
+property.
 
 See `BaseDistribution` for more information on the API for probability
 distributions.
@@ -298,6 +305,13 @@ Same meaning as `batch_shape`. May be only partially defined.
 `TensorShape` available at graph construction time.
 
 Same meaning as `event_shape`. May be only partially defined.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousDistribution.is_reparameterized` {#ContinuousDistribution.is_reparameterized}
+
+
 
 
 - - -
@@ -611,6 +625,13 @@ where digamma(alpha) is the digamma function.
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.is_reparameterized` {#Chi2.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.log_cdf(x, name='log_cdf')` {#Chi2.log_cdf}
 
 Log CDF of observations `x` under these Gamma distribution(s).
@@ -800,6 +821,13 @@ where digamma(alpha) is the digamma function.
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.is_reparameterized` {#Exponential.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.lam` {#Exponential.lam}
 
 
@@ -871,20 +899,20 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Exponential.sample(n, seed=None, name=None)` {#Exponential.sample}
 
-Generate `n` samples.
+Sample `n` observations from the Exponential Distributions.
 
 ##### Args:
 
 
-*  <b>`n`</b>: scalar. Number of samples to draw from each distribution.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-      with values of type `self.dtype`.
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by the hyperparameters.
 
 
 - - -
@@ -1021,6 +1049,13 @@ where digamma(alpha) is the digamma function.
 - - -
 
 #### `tf.contrib.distributions.Gamma.get_event_shape()` {#Gamma.get_event_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.is_reparameterized` {#Gamma.is_reparameterized}
 
 
 
@@ -1224,6 +1259,13 @@ The entropy of Gaussian distribution(s).
 
 
 *  <b>`entropy`</b>: tensor of dtype `dtype`, the entropy.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gaussian.is_reparameterized` {#Gaussian.is_reparameterized}
+
+
 
 
 - - -
@@ -1467,6 +1509,13 @@ The entropy of Student t distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.is_reparameterized` {#StudentT.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.log_cdf(value, name='log_cdf')` {#StudentT.log_cdf}
 
 Log CDF.
@@ -1699,6 +1748,13 @@ The entropy of Uniform distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.is_reparameterized` {#Uniform.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.log_cdf(x, name='log_cdf')` {#Uniform.log_cdf}
 
 
@@ -1911,6 +1967,13 @@ The entropies of these Multivariate Normals.
 
 
 *  <b>`entropy`</b>: tensor of dtype `dtype`, the entropies.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormal.is_reparameterized` {#MultivariateNormal.is_reparameterized}
+
+
 
 
 - - -
