@@ -46,7 +46,7 @@ recall value.
 
 
 *  <b>`ValueError`</b>: If the dimensions of `predictions` and `labels` don't match or
-    if `weight` is not `None` and its shape doesn't match `predictions` or if
-    either `metrics_collections` or `updates_collections` are not a list or
-    tuple.
+    if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 

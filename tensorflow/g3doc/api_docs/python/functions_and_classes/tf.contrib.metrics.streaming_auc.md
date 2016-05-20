@@ -17,12 +17,12 @@ numbers of thresholds more closely approximating the true AUC.
 
 To faciliate the estimation of the AUC over a stream of data, the function
 creates an `update_op` operation whose behavior is dependent on the value of
-`weights`. If `weights` is None, then `update_op` increments the
+`ignore_mask`. If `ignore_mask` is None, then `update_op` increments the
 `true_positives`, `true_negatives`, `false_positives` and `false_negatives`
 counts with the number of each found in the current `predictions` and `labels`
-`Tensors`. If `weights` is not `None`, then the increment is performed using
-only the elements of `predictions` and `labels` whose corresponding value
-in `ignore_mask` is `False`. In addition to performing the updates,
+`Tensors`. If `ignore_mask` is not `None`, then the increment is performed
+using only the elements of `predictions` and `labels` whose corresponding
+value in `ignore_mask` is `False`. In addition to performing the updates,
 `update_op` also returns the `auc`.
 
 ##### Args:
@@ -52,7 +52,7 @@ in `ignore_mask` is `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the shape of `predictions` and `labels` do not match or if
-    `weights` is not `None` and its shape doesn't match `values`
-    or if either `metrics_collections` or `updates_collections` are not a list
-    or tuple.
+    `ignore_mask` is not `None` and its shape doesn't match `values` or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
 
