@@ -66,14 +66,14 @@ def _write_with_backup(filename, content):
 
 def _copy_dir(dir_in, dir_out):
   gfile.MakeDirs(dir_out)
-  for name in gfile.ListDir(dir_in):
+  for name in gfile.ListDirectory(dir_in):
     name_in = os.path.join(dir_in, name)
     name_out = os.path.join(dir_out, name)
     if gfile.IsDirectory(name_in):
       gfile.MakeDirs(name_out)
       _copy_dir(name_in, name_out)
     else:
-      gfile.Copy(name_in, name_out)
+      gfile.Copy(name_in, name_out, overwrite=True)
 
 
 def _new_tf_model_fn(model_fn, class_weight):
