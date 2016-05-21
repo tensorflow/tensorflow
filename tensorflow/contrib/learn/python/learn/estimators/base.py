@@ -403,7 +403,7 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
 
     def fit(self, X, y=None, monitor=None, logdir=None):
         """Fit a transformer."""
-        return(super(TensorFlowBaseTransformer, self).fit(X, y, monitor=None, logdir=None))
+        return(super(TensorFlowBaseTransformer, self).fit(X, y, monitors=None, logdir=None))
 
     def fit_transform(self, X, y=None, monitor=None, logdir=None):
         """Fit transformer and transform X using trained transformer."""
