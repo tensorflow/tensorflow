@@ -304,6 +304,7 @@ int DataTypeSize(DataType dt) {
     return sizeof(T);
   switch (dt) {
     TF_CALL_POD_TYPES(CASE);
+    TF_CALL_QUANTIZED_TYPES(CASE);
     default:
       return 0;
   }
