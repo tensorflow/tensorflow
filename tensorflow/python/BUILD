@@ -15,6 +15,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
 
 py_library(
     name = "python",
@@ -983,6 +984,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_writer.i",
         "platform/base.i",
         "platform/numpy.i",
+        "training/saver_io.i",
         "training/server_lib.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
@@ -994,12 +996,12 @@ tf_py_wrap_cc(
         ":py_record_writer_lib",
         ":python_op_gen",
         ":tf_session_helper",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime:server_lib",
         "//util/python:python_headers",
-    ],
+    ] + tf_additional_lib_deps(),
 )
 
 py_library(

@@ -46,6 +46,10 @@
     display: table-row;
   }
 
+  .sub-list-table-row .sub-list-table-cell:last-child {
+    text-align: right;
+  }
+
   .sub-list-table-cell {
     color: #565656;
     display: table-cell;
@@ -436,13 +440,7 @@
           return null;
         },
         _getHasDisplayableNodeStats: function(stats) {
-          if (stats &&
-              (stats.totalBytes > 0 ||
-                  stats.totalBytes > 0 ||
-                  stats.outputSize)) {
-            return true;
-          }
-          return false;
+          return tf.graph.util.hasDisplayableNodeStats(stats);
         },
         _getNodeStatsFormattedBytes(stats) {
           if (!stats || !stats.totalBytes) {

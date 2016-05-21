@@ -21,12 +21,16 @@ import abc
 import os
 import tempfile
 import time
+import types
 
+import numpy as np
 import six
 
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import losses
+from tensorflow.contrib.learn.python.learn import graph_actions
+from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
@@ -37,6 +41,8 @@ from tensorflow.contrib.learn.python.learn.io import data_feeder
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
@@ -89,7 +95,7 @@ def _get_predict_input_fn(x, batch_size):
 
   df = data_feeder.setup_train_data_feeder(x, None,
                                            n_classes=None,
-                                           batch_size=batch_size)
+                                           batch_size=batch_size, epochs=1)
   return df.input_builder, df.get_feed_dict_fn()
 
 
@@ -112,7 +118,7 @@ class BaseEstimator(sklearn.BaseEstimator):
   # TODO(wicke): Remove this once launcher takes over config functionality
   _Config = run_config.RunConfig  # pylint: disable=invalid-name
 
-  def __init__(self, model_dir=None):
+  def __init__(self, model_dir=None, config=None):
     # Model directory.
     self._model_dir = model_dir
     if self._model_dir is None:
@@ -121,7 +127,10 @@ class BaseEstimator(sklearn.BaseEstimator):
                    self._model_dir)
 
     # Create a run configuration
-    self._config = BaseEstimator._Config()
+    if config is None:
+      self._config = BaseEstimator._Config()
+    else:
+      self._config = config
 
     # Set device function depending if there are replicas or not.
     if self._config.num_ps_replicas > 0:
@@ -135,6 +144,12 @@ class BaseEstimator(sklearn.BaseEstimator):
     # Features and targets TensorSingature objects.
     self._features_info = None
     self._targets_info = None
+
+    self._graph = None
+
+  @property
+  def model_dir(self):
+    return self._model_dir
 
   @abc.abstractproperty
   def _get_train_ops(self, features, targets):
@@ -204,7 +219,7 @@ class BaseEstimator(sklearn.BaseEstimator):
     """
     return {}
 
-  def fit(self, x, y, steps, batch_size=32, monitor=None):
+  def fit(self, x, y, steps, batch_size=32, monitors=None):
     """Trains a model given training data X and y.
 
     Args:
@@ -216,8 +231,8 @@ class BaseEstimator(sklearn.BaseEstimator):
          (class labels in classification, real numbers in regression).
       steps: number of steps to train model for.
       batch_size: minibatch size to use on the input, defaults to 32.
-      monitor: monitor object to print training progress and invoke
-               early stopping.
+      monitors: List of `BaseMonitor` subclass instances. Used for callbacks
+                inside the training loop.
 
     Returns:
       Returns self.
@@ -226,24 +241,24 @@ class BaseEstimator(sklearn.BaseEstimator):
     return self._train_model(input_fn=input_fn,
                              feed_fn=feed_fn,
                              steps=steps,
-                             monitor=monitor)
+                             monitors=monitors)
 
-  def train(self, input_fn, steps, monitor=None):
+  def train(self, input_fn, steps, monitors=None):
     """Trains a model given input builder function.
 
     Args:
       input_fn: Input builder function, returns tuple of dicts or
                 dict and Tensor.
       steps: number of steps to train model for.
-      monitor: monitor object to print training progress and invoke
-               early stopping.
+      monitors: List of `BaseMonitor` subclass instances. Used for callbacks
+                inside the training loop.
 
     Returns:
       Returns self.
     """
-    return self._train_model(input_fn=input_fn, steps=steps, monitor=monitor)
+    return self._train_model(input_fn=input_fn, steps=steps, monitors=monitors)
 
-  def partial_fit(self, x, y, steps=1, batch_size=32, monitor=None):
+  def partial_fit(self, x, y, steps=1, batch_size=32, monitors=None):
     """Incremental fit on a batch of samples.
 
     This method is expected to be called several times consecutively
@@ -263,8 +278,8 @@ class BaseEstimator(sklearn.BaseEstimator):
         (class label in classification, real numbers in regression).
       steps: number of steps to train model for.
       batch_size: minibatch size to use on the input, defaults to 32.
-      monitor: Monitor object to print training progress and invoke
-               early stopping.
+      monitors: List of `BaseMonitor` subclass instances. Used for callbacks
+                inside the training loop.
 
     Returns:
       Returns self.
@@ -273,7 +288,7 @@ class BaseEstimator(sklearn.BaseEstimator):
     return self._train_model(input_fn=input_fn,
                              feed_fn=feed_fn,
                              steps=steps,
-                             monitor=monitor)
+                             monitors=monitors)
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
                batch_size=32, steps=100, metrics=None):
@@ -323,7 +338,7 @@ class BaseEstimator(sklearn.BaseEstimator):
 
     Args:
       x: features.
-      batch_size: OVerride default batch size.
+      batch_size: Override default batch size.
 
     Returns:
       Numpy array of predicted probabilities.
@@ -338,20 +353,24 @@ class BaseEstimator(sklearn.BaseEstimator):
                          (str(features), str(self._features_info)))
     else:
       self._features_info = tensor_signature.create_signatures(features)
-    if self._targets_info is not None:
-      if not tensor_signature.tensors_compatible(targets, self._targets_info):
-        raise ValueError('Targets are incompatible with given information. '
-                         'Given targets: %s, required signatures: %s.' %
-                         (str(targets), str(self._targets_info)))
-    else:
-      self._targets_info = tensor_signature.create_signatures(targets)
+    if targets is not None:
+      if self._targets_info is not None:
+        if not tensor_signature.tensors_compatible(targets, self._targets_info):
+          raise ValueError('Targets are incompatible with given information. '
+                           'Given targets: %s, required signatures: %s.' %
+                           (str(targets), str(self._targets_info)))
+      else:
+        self._targets_info = tensor_signature.create_signatures(targets)
 
   def _train_model(self,
                    input_fn,
                    steps,
                    feed_fn=None,
+                   init_op=None,
+                   init_feed_fn=None,
+                   init_fn=None,
                    device_fn=None,
-                   monitor=None,
+                   monitors=None,
                    log_every_steps=100,
                    fail_on_nan_loss=True):
     if self._config.execution_mode not in ('all', 'train'):
@@ -369,24 +388,42 @@ class BaseEstimator(sklearn.BaseEstimator):
     # Device allocation
     device_fn = device_fn or self._device_fn
 
-    with ops.Graph().as_default() as g, g.device(device_fn):
+    self._graph = ops.Graph()
+    with self._graph.as_default() as g, g.device(device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, targets = input_fn()
       self._check_inputs(features, targets)
       train_op, loss_op = self._get_train_ops(features, targets)
+
+      # Add default monitors.
+      if monitors is None:
+        monitors = []
+      monitors += monitors_lib.get_default_monitors(
+          loss_op=loss_op,
+          summary_op=logging_ops.get_summary_op(),
+          save_summary_steps=100)
+
+      # Setup monitors.
+      for monitor in monitors:
+        monitor.set_estimator(self)
+
       return train(
           graph=g,
           output_dir=self._model_dir,
           train_op=train_op,
           loss_op=loss_op,
           global_step_tensor=global_step,
+          init_op=init_op,
+          init_feed_dict=init_feed_fn() if init_feed_fn is not None else None,
+          init_fn=init_fn,
           log_every_steps=log_every_steps,
           supervisor_is_chief=(self._config.task == 0),
           supervisor_master=self._config.master,
           feed_fn=feed_fn,
           max_steps=steps,
-          fail_on_nan_loss=fail_on_nan_loss)
+          fail_on_nan_loss=fail_on_nan_loss,
+          monitors=monitors)
 
   def _evaluate_model(self, input_fn, steps, feed_fn=None, metrics=None):
     if self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset'):
@@ -413,22 +450,41 @@ class BaseEstimator(sklearn.BaseEstimator):
           max_steps=steps)
       return eval_results
 
-  def _infer_model(self, x, batch_size=None, axis=None, proba=False):
+  def _infer_model(self,
+                   x=None, input_fn=None, feed_fn=None,
+                   batch_size=None, axis=None, proba=False):
     # Converts inputs into tf.DataFrame / tf.Series.
     batch_size = -1 if batch_size is None else batch_size
-    input_fn, feed_fn = _get_predict_input_fn(x, batch_size)
+    if x is not None:
+      input_fn, feed_fn = _get_predict_input_fn(x, batch_size)
 
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
       features, _ = input_fn()
-      feed_dict = feed_fn() if feed_fn is not None else None
       predictions = self._get_predict_ops(features)
       if not isinstance(predictions, dict):
         predictions = {'predictions': predictions}
       # TODO(ipolosukhin): Support batching
-      return infer(checkpoint_path, predictions, feed_dict=feed_dict)
+      if feed_fn is None:
+        return infer(checkpoint_path, predictions)
+      preds = {}
+      while True:
+        try:
+          feed_dict = feed_fn()
+        except StopIteration:
+          break
+        if feed_dict is None:
+          break
+        outputs = infer(checkpoint_path, predictions, feed_dict=feed_dict)
+        for key in outputs:
+          if key not in preds:
+            preds[key] = []
+          preds[key].append(outputs[key])
+      for key in preds:
+        preds[key] = np.concatenate(preds[key], axis=0)
+      return preds
 
 
 class Estimator(BaseEstimator):
@@ -449,16 +505,18 @@ class Estimator(BaseEstimator):
                  (like tf.train.GradientDescentOptimizer).
     clip_gradients: clip_norm value for call to `clip_by_global_norm`. None
                     denotes no gradient clipping.
+    config: Configuration object.
   """
 
   def __init__(self,
                model_fn=None,
                model_dir=None,
                classification=True,
-               learning_rate=0.01,
-               optimizer='SGD',
-               clip_gradients=None):
-    super(Estimator, self).__init__(model_dir=model_dir)
+               learning_rate=0.1,
+               optimizer='Adagrad',
+               clip_gradients=None,
+               config=None):
+    super(Estimator, self).__init__(model_dir=model_dir, config=config)
 
     self._model_fn = model_fn
     self._classification = classification
@@ -486,12 +544,25 @@ class Estimator(BaseEstimator):
       Tuple of train `Operation` and loss `Tensor`.
     """
     _, loss = self._model_fn(features, targets, ModeKeys.TRAIN)
+    # TODO(ipolosukhin): Move this to TensorFlowEstimator when
+    # moving out training.
+    if isinstance(self.learning_rate, types.FunctionType):
+      learning_rate = self.learning_rate(contrib_framework.get_global_step())
+    else:
+      learning_rate = self.learning_rate
+    if isinstance(self.optimizer, types.FunctionType):
+      optimizer = self.optimizer(learning_rate)
+    else:
+      optimizer = self.optimizer
     train_op = layers.optimize_loss(
         loss,
         contrib_framework.get_global_step(),
-        learning_rate=self.learning_rate,
-        optimizer=self.optimizer,
+        learning_rate=learning_rate,
+        optimizer=optimizer,
         clip_gradients=self.clip_gradients)
+    # Add update ops.
+    train_op = control_flow_ops.group(
+        train_op, *ops.get_collection('update_ops'))
     return train_op, loss
 
   def _get_eval_ops(self, features, targets, metrics):

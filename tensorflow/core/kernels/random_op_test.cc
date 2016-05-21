@@ -25,12 +25,12 @@ namespace tensorflow {
 
 Tensor VecShape(int64 v) {
   if (v >= std::numeric_limits<int32>::max()) {
-    Tensor shape(DT_INT32, TensorShape({1}));
+    Tensor shape(DT_INT64, TensorShape({1}));
     shape.vec<int64>()(0) = v;
     return shape;
   } else {
-    Tensor shape(DT_INT64, TensorShape({1}));
-    shape.vec<int64>()(0) = v;
+    Tensor shape(DT_INT32, TensorShape({1}));
+    shape.vec<int32>()(0) = v;
     return shape;
   }
 }

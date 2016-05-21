@@ -37,6 +37,24 @@ def linear_model_fn(features, target, unused_mode):
   return tf.contrib.learn.models.linear_regression_zero_init(features, target)
 
 
+class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
+
+  def __init__(self):
+    self.calls = None
+    self.expect_calls = None
+
+  def begin(self, max_steps):
+    self.calls = 0
+    self.expect_calls = max_steps
+
+  def step_end(self, step, outputs):
+    self.calls += 1
+    return False
+
+  def end(self):
+    assert self.calls == self.expect_calls
+
+
 class EstimatorTest(tf.test.TestCase):
 
   def testTrain(self):
@@ -63,6 +81,12 @@ class EstimatorTest(tf.test.TestCase):
     est.train(input_fn=boston_input_fn, steps=1)
     with self.assertRaises(ValueError):
       est.train(input_fn=other_input_fn, steps=1)
+
+  def testMonitors(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
+                                     classification=False)
+    est.train(input_fn=boston_input_fn, steps=21,
+              monitors=[CheckCallsMonitor()])
 
 
 if __name__ == '__main__':

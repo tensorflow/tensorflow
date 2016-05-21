@@ -1395,7 +1395,7 @@ Returns the current variable scope.
 
 - - -
 
-### `tf.make_template(name_, func_, **kwargs)` {#make_template}
+### `tf.make_template(name_, func_, create_scope_now_=False, **kwargs)` {#make_template}
 
 Given an arbitrary function, wrap it so that it does variable sharing.
 
@@ -1465,10 +1465,14 @@ with tf.variable_scope(vs, reuse=True):
   w2 = scale_by_y2(input2)
 ```
 
-Note: The full variable scope is captured at the time of the first call.
+Depending on the value of `create_scope_now_`, the full variable scope may be
+captured either at the time of first call or at the time of construction. If
+this option is set to True, then all Tensors created by repeated calls to the
+template will have an extra trailing _N+1 to their name, as the first time the
+scope is entered in the Template constructor no Tensors are created.
 
-Note: `name_` and `func_` have a following underscore to reduce the likelihood
-of collisions with kwargs.
+Note: `name_`, `func_` and `create_scope_now_` have a trailing underscore to
+reduce the likelihood of collisions with kwargs.
 
 ##### Args:
 
@@ -1476,14 +1480,20 @@ of collisions with kwargs.
 *  <b>`name_`</b>: A name for the scope created by this template. If necessary, the name
     will be made unique by appending `_N` to the name.
 *  <b>`func_`</b>: The function to wrap.
+*  <b>`create_scope_now_`</b>: Boolean controlling whether the scope should be created
+    when the template is constructed or when the template is called. Default
+    is False, meaning the scope is created when the template is called.
 *  <b>`**kwargs`</b>: Keyword arguments to apply to `func_`.
 
 ##### Returns:
 
-  A function that will enter a `variable_scope` before calling `func_`. The
-  first time it is called, it will create a non-reusing scope so that the
-  variables will be unique.  On each subsequent call, it will reuse those
-  variables.
+  A function to encapsulate a set of variables which should be created once
+  and reused. An enclosing scope will created, either where `make_template`
+  is called, or wherever the result is called, depending on the value of
+  `create_scope_now_`. Regardless of the value, the first time the template
+  is called it will enter the scope with no reuse, and call `func_` to create
+  variables, which are guaranteed to be unique. All subsequent calls will
+  re-enter the scope and reuse those variables.
 
 ##### Raises:
 

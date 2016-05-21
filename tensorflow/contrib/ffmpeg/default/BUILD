@@ -25,7 +25,6 @@ cc_test(
         "--should_ffmpeg_be_installed=true",
     ],
     data = [
-        ":testdata/test_sound1.mp3",
         "//tensorflow/contrib/ffmpeg:test_data",
     ],
     tags = [
@@ -45,9 +44,6 @@ cc_test(
     srcs = ["ffmpeg_lib_test.cc"],
     args = [
         "--should_ffmpeg_be_installed=false",
-    ],
-    data = [
-        ":testdata/test_sound1.mp3",
     ],
     tags = [
         "local",

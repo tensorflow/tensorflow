@@ -1,10 +1,17 @@
 Base class for continuous probability distributions.
 
 `ContinuousDistribution` defines the API for the likelihood functions `pdf`
-and `log_pdf` of continuous probability distributions.
+and `log_pdf` of continuous probability distributions, and a property
+`is_reparameterized` (returning `True` or `False`) which describes
+whether the samples of this distribution are calculated in a differentiable
+way from a non-parameterized distribution.  For example, the `Normal`
+distribution with parameters `mu` and `sigma` is reparameterized as
 
-Subclasses must override both `pdf` and `log_pdf` but one can call this base
-class's implementation.
+```Normal(mu, sigma) = sigma * Normal(0, 1) + mu```
+
+Subclasses must override `pdf` and `log_pdf` but one can call this base
+class's implementation.  They must also override the `is_reparameterized`
+property.
 
 See `BaseDistribution` for more information on the API for probability
 distributions.
@@ -80,6 +87,13 @@ Same meaning as `batch_shape`. May be only partially defined.
 `TensorShape` available at graph construction time.
 
 Same meaning as `event_shape`. May be only partially defined.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousDistribution.is_reparameterized` {#ContinuousDistribution.is_reparameterized}
+
+
 
 
 - - -

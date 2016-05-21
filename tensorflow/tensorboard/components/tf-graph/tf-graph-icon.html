@@ -1,6 +1,20 @@
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 
 <dom-module id="tf-graph-icon">
+  <style>
+    .faded-rect {
+      fill: url(#rectHatch);
+    }
+
+    .faded-ellipse {
+      fill: url(#ellipseHatch);
+    }
+
+    .faded-rect, .faded-ellipse, .faded-series {
+      stroke:   var(--tb-graph-faded) !important;
+    }
+  </style>
   <template>
     <template is="dom-if" if="[[_isType(node, type, 'OP')]]">
       <template is="dom-if" if="[[_isConst(node, const)]]">
@@ -23,6 +37,7 @@
               xlink:href="#op-node-stamp"
               fill$="[[_getFill(_computedFill, 'OP')]]"
               stroke$="[[_getStroke(_computedFill, 'OP')]]"
+              class$="{{_fadedClass(renderInfo, 'ellipse')}}"
               x="8" y="4" />
         </svg>
       </template>
@@ -33,9 +48,10 @@
         <rect x="1" y="1"
             fill$="[[_getFill(_computedFill, 'META')]]"
             stroke$="[[_getStroke(_computedFill, 'META')]]"
+            class$="{{_fadedClass(renderInfo, 'rect')}}"
             stroke-width="2px"
             height="14" width="35"
-            rx="5" ry="5" />
+            rx="5" ry="5"/>
       </svg>
     </template>
     <template is="dom-if" if="[[_isType(node, type, 'SERIES')]]">
@@ -46,6 +62,7 @@
               xlink:href="#op-series-vertical-stamp"
               fill$="[[_getFill(_computedFill, 'SERIES')]]"
               stroke$="[[_getStroke(_computedFill, 'SERIES')]]"
+              class$="{{_fadedClass(renderInfo, 'series')}}"
               x="0" y="2" />
         </svg>
       </template>
@@ -56,6 +73,7 @@
               xlink:href="#op-series-horizontal-stamp"
               fill$="[[_getFill(_computedFill, 'SERIES')]]"
               stroke$="[[_getStroke(_computedFill, 'SERIES')]]"
+              class$="{{_fadedClass(renderInfo, 'series')}}"
               x="0" y="1" />
         </svg>
       </template>
@@ -250,6 +268,10 @@
         _isRegularOp: function(inputNode, inputConst, inputSummary) {
           return !this._isConst(inputNode, inputConst) &&
               !this._isSummary(inputNode, inputSummary);
+        },
+
+        _fadedClass: function(itemRenderInfo, shape) {
+          return itemRenderInfo && itemRenderInfo.isFadedOut ? 'faded-' + shape : '';
         }
       });
     })();

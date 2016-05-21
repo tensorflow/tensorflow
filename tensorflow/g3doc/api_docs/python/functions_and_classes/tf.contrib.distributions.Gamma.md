@@ -126,6 +126,13 @@ where digamma(alpha) is the digamma function.
 
 - - -
 
+#### `tf.contrib.distributions.Gamma.is_reparameterized` {#Gamma.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Gamma.log_cdf(x, name='log_cdf')` {#Gamma.log_cdf}
 
 Log CDF of observations `x` under these Gamma distribution(s).

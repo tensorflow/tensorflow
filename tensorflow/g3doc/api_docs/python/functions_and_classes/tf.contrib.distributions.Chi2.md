@@ -102,6 +102,13 @@ where digamma(alpha) is the digamma function.
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.is_reparameterized` {#Chi2.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.log_cdf(x, name='log_cdf')` {#Chi2.log_cdf}
 
 Log CDF of observations `x` under these Gamma distribution(s).

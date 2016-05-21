@@ -127,6 +127,13 @@ The entropies of these Multivariate Normals.
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormal.is_reparameterized` {#MultivariateNormal.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormal.log_pdf(x, name=None)` {#MultivariateNormal.log_pdf}
 
 Log pdf of observations `x` given these Multivariate Normals.

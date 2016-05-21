@@ -20,6 +20,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn import datasets
+from tensorflow.contrib.learn.python.learn import estimators
+from tensorflow.contrib.learn.python.learn import graph_actions
+from tensorflow.contrib.learn.python.learn import io
 from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import ops

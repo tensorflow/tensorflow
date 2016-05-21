@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/kernels/tensor_array.h"
-#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -235,7 +234,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     }
 
     auto creator = [this, tensor_array, array_size,
-                    tensor_array_output_handle](TensorArray** ret) {
+                    tensor_array_output_handle](TensorArray** ret) -> Status {
       *ret = new TensorArray(
           tensor_array->ElemType(), *tensor_array_output_handle, array_size,
           false /* dynamic_size */, true /* multiple_writes_aggregate */,

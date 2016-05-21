@@ -454,3 +454,7 @@ class MultivariateNormal(object):
       samples.set_shape(final_shape)
 
       return samples
+
+  @property
+  def is_reparameterized(self):
+    return True

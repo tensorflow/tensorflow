@@ -824,7 +824,7 @@ convolutional neural networks (NIPS 2012)]
 
 - - -
 
-### `tf.nn.sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None)` {#sufficient_statistics}
+### `tf.nn.sufficient_statistics(x, axes, shift=False, keep_dims=False, name=None)` {#sufficient_statistics}
 
 Calculate the sufficient statistics for the mean and variance of `x`.
 
@@ -832,6 +832,9 @@ These sufficient statistics are computed using the one pass algorithm on
 an input that's optionally shifted using the value of the 1st element in `x`.
 See:
 https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
+Unfortunately, in some cases using a random individual sample as the shift
+value leads experimentally to very poor numerical stability, so it is disabled
+by default. The one-pass approach might have to be revised accordingly.
 
 ##### Args:
 

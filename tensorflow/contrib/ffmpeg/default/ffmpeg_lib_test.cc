@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "tensorflow/contrib/ffmpeg/kernels/ffmpeg_lib.h"
+#include "tensorflow/contrib/ffmpeg/default/ffmpeg_lib.h"
 
 #include <stdlib.h>
 #include <vector>
@@ -35,7 +35,7 @@ namespace {
 const char kTestWavFilename[] =
     "contrib/ffmpeg/testdata/mono_10khz.wav";
 const char kTestMp3Filename[] =
-    "contrib/ffmpeg/kernels/testdata/test_sound1.mp3";
+    "contrib/ffmpeg/testdata/test_sound1.mp3";
 
 // Set to true via a command line flag iff the test is expected to have FFmpeg
 // installed.

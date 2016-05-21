@@ -185,4 +185,12 @@ module tf.graph.util {
     // notation and (number - 0) brings it back to normal notation.
     return (value.toPrecision(3) - 0) + ' ' + units[unitIndex].symbol;
   }
+
+  export function hasDisplayableNodeStats(stats: NodeStats) {
+    if (stats &&
+        (stats.totalBytes > 0 || stats.totalMicros > 0 || stats.outputSize)) {
+      return true;
+    }
+    return false;
+  }
 }

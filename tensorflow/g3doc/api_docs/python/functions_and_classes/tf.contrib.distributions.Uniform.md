@@ -128,6 +128,13 @@ The entropy of Uniform distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.is_reparameterized` {#Uniform.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.log_cdf(x, name='log_cdf')` {#Uniform.log_cdf}
 
 

@@ -107,6 +107,13 @@ The entropy of Gaussian distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Gaussian.is_reparameterized` {#Gaussian.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Gaussian.log_cdf(x, name=None)` {#Gaussian.log_cdf}
 
 Log CDF of observations `x` under these Gaussian distribution(s).
