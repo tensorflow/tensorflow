@@ -82,11 +82,12 @@ PROTO_TEXT_OBJS = $(PROTO_TEXT_CC_OBJS) $(PROTO_TEXT_PB_OBJS)
 TARGET = $(HOST_OS)
 
 # Where compiled objects are stored.
-OBJDIR = $(MAKEFILE_DIR)/gen/obj/
-LIBDIR = $(MAKEFILE_DIR)/gen/lib/
-BINDIR = $(MAKEFILE_DIR)/gen/bin/
-PBTGENDIR = $(MAKEFILE_DIR)/gen/proto_text/
-PROTOGENDIR = $(MAKEFILE_DIR)/gen/proto/
+GENDIR = $(MAKEFILE_DIR)/gen/
+OBJDIR = $(GENDIR)obj/
+LIBDIR = $(GENDIR)lib/
+BINDIR = $(GENDIR)bin/
+PBTGENDIR = $(GENDIR)proto_text/
+PROTOGENDIR = $(GENDIR)proto/
 
 # Settings for the target compiler.
 CXX = gcc
@@ -121,6 +122,20 @@ endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
 	LIBS += -ldl
+endif
+# Set up Android building
+ifeq ($(TARGET),ANDROID)
+# Override ANDROID_NDK_DIR on the command line with your own NDK location, e.g.
+# make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID \
+# ANDROID_NDK_DIR=/path/to/your/ndk
+	ANDROID_NDK_DIR = $(HOME)/toolchains/clang-21-stl-gnu
+	CXX = $(ANDROID_NDK_DIR)/bin/arm-linux-androideabi-g++
+	CXXFLAGS += --sysroot=$(ANDROID_NDK_DIR)/sysroot
+	INCLUDES += -I$(ANDROID_NDK_DIR)/sysroot/usr/include
+	LIBS += -llog
+# You need to have an Android version of the protobuf libraries compiled to link
+# in. The compile_android_protobuf.sh script may help.
+	LDFLAGS += -L$(GENDIR)protobuf/lib/
 endif
 
 # This library is the main target for this makefile. It will contain a minimal

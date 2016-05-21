@@ -11,6 +11,7 @@ tar xzf /tmp/eigen-${EIGEN_HASH}.tar.gz -C ${DOWNLOADS_DIR}
 
 git clone https://github.com/google/re2.git ${DOWNLOADS_DIR}/re2
 git clone https://github.com/google/gemmlowp.git ${DOWNLOADS_DIR}/gemmlowp
+git clone https://github.com/google/protobuf.git ${DOWNLOADS_DIR}/protobuf
 
 # JPEG_VERSION=v9a
 # curl "http://www.ijg.org/files/jpegsrc.${JPEG_VERSION}.tar.gz" \
