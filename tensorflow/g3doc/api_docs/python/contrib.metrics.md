@@ -347,7 +347,7 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
 ##### Returns:
 
 
-*  <b>`auc`</b>: A tensor representing the current area-under-curve.
+*  <b>`auc`</b>: A scalar tensor representing the current area-under-curve.
 *  <b>`update_op`</b>: An operation that increments the `true_positives`,
     `true_negatives`, `false_positives` and `false_negatives` variables
     appropriately and whose value matches `auc`.
@@ -356,8 +356,8 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the shape of `predictions` and `labels` do not match or if
-    `ignore_mask` is not `None` and its shape doesn't match `values` or if
-    either `metrics_collections` or `updates_collections` are not a list or
+    `ignore_mask` is not `None` and its shape doesn't match `predictions` or
+    if either `metrics_collections` or `updates_collections` are not a list or
     tuple.
 
 
