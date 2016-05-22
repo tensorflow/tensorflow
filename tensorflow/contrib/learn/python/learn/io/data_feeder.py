@@ -13,6 +13,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+# TODO(ipolosukhin): Replace this module with feed-dict queue runners & queues.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -33,6 +36,8 @@ from .dask_io import HAS_DASK, extract_dask_data, extract_dask_labels
 
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
   """Returns shape for input and output of the data feeder."""
+  if batch_size < 0:
+    batch_size = x_shape[0]
   x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
   input_shape = [batch_size] + x_shape
   if y_shape is None:
@@ -65,7 +70,8 @@ def _is_iterable(X):
   return hasattr(X, 'next') or hasattr(X, '__next__')
 
 
-def setup_train_data_feeder(X, y, n_classes, batch_size):
+def setup_train_data_feeder(
+    X, y, n_classes, batch_size, shuffle=True, epochs=None):
   """Create data feeder, to sample inputs from dataset.
 
   If X and y are iterators, use StreamingDataFeeder.
@@ -95,7 +101,8 @@ def setup_train_data_feeder(X, y, n_classes, batch_size):
       raise ValueError('Both X and y should be iterators for '
                        'streaming learning to work.')
     data_feeder_cls = StreamingDataFeeder
-  return data_feeder_cls(X, y, n_classes, batch_size)
+  return data_feeder_cls(
+      X, y, n_classes, batch_size, shuffle=shuffle, epochs=epochs)
 
 
 def _batch_data(X, batch_size):
@@ -189,7 +196,7 @@ class DataFeeder(object):
     output_dtype: dtype of output.
   """
 
-  def __init__(self, X, y, n_classes, batch_size, random_state=None):
+  def __init__(self, X, y, n_classes, batch_size, shuffle=True, random_state=None, epochs=None):
     x_dtype = np.int64 if X.dtype == np.int64 else np.float32
     y_dtype = (
         np.int64 if n_classes is not None and n_classes > 1 else np.float32)
@@ -201,6 +208,7 @@ class DataFeeder(object):
       self.y = y
     self.n_classes = n_classes
     self.batch_size = batch_size
+    self.max_epochs = epochs
     self.input_shape, self.output_shape = _get_in_out_shape(self.X.shape, None
                                                             if self.y is None
                                                             else self.y.shape,
@@ -213,9 +221,13 @@ class DataFeeder(object):
       self.output_dtype = np.float32
     else:
       self.output_dtype = y.dtype
+    self.shuffle = shuffle
     self.random_state = np.random.RandomState(
         42) if random_state is None else random_state
-    self.indices = self.random_state.permutation(self.X.shape[0])
+    if self.shuffle:
+      self.indices = self.random_state.permutation(self.X.shape[0])
+    else:
+      self.indices = np.array(range(self.X.shape[0]))
     self.offset = 0
     self.epoch = 0
     self._epoch_placeholder = None
@@ -283,16 +295,19 @@ class DataFeeder(object):
       from X and y.
     """
     def _feed_dict_fn():
+      if self.max_epochs is not None and self.epoch + 1 > self.max_epochs:
+        raise StopIteration
       assert self._input_placeholder != None
       feed_dict = {}
       if self._epoch_placeholder is not None:
         feed_dict[self._epoch_placeholder.name] = [self.epoch]
 
-      # take random indices
+      # take next batch of indices
       if self.batch_size < 0:
         batch_indices = self.indices
       else:
-        batch_indices = self.indices[self.offset:self.offset + self.batch_size]
+        end = min(self.X.shape[0], self.offset + self.batch_size)
+        batch_indices = self.indices[self.offset:end]
 
       # assign input features from random indices
       inp = np.array(self.X[batch_indices]).reshape((batch_indices.shape[0], 1)) \
@@ -300,10 +315,13 @@ class DataFeeder(object):
       feed_dict[self._input_placeholder.name] = inp
 
       # move offset and reset it if necessary
-      self.offset += self.batch_size
-      if self.offset >= self.X.shape[0]:
-        self.indices = self.random_state.permutation(self.X.shape[0])
-        self.offset = 0
+      if self.batch_size > 0:
+        self.offset += self.batch_size
+        if self.offset >= self.X.shape[0]:
+          self.indices = self.random_state.permutation(self.X.shape[0])
+          self.offset = 0
+          self.epoch += 1
+      else:
         self.epoch += 1
 
       # return early if there are no labels
@@ -359,15 +377,21 @@ class StreamingDataFeeder(DataFeeder):
     output_dtype: dtype of output.
   """
 
-  def __init__(self, X, y, n_classes, batch_size):
+  def __init__(self, X, y, n_classes, batch_size, shuffle=False, epochs=None):
     X_first_el = six.next(X)
-    y_first_el = six.next(y)
     self.X = itertools.chain([X_first_el], X)
-    self.y = itertools.chain([y_first_el], y)
+    if y is not None:
+      y_first_el = six.next(y)
+      self.y = itertools.chain([y_first_el], y)
+    else:
+      y_first_el = None
+      self.y = None
     self.n_classes = n_classes
     self.batch_size = batch_size
     self.input_shape, self.output_shape = _get_in_out_shape(
-        [1] + list(X_first_el.shape), [1] + list(y_first_el.shape), n_classes,
+        [1] + list(X_first_el.shape),
+        [1] + list(y_first_el.shape) if y is not None else None,
+        n_classes,
         batch_size)
     self.input_dtype = X_first_el.dtype
     # Convert float64 to float32, as all the parameters in the model are
@@ -396,21 +420,37 @@ class StreamingDataFeeder(DataFeeder):
       A function that when called samples a random subset of batch size
       from X and y.
     """
+    self.stopped = False
 
     def _feed_dict_fn():
+      if self.stopped:
+        raise StopIteration
       inp = np.zeros(self.input_shape, dtype=self.input_dtype)
-      out = np.zeros(self.output_shape, dtype=self.output_dtype)
+      if self.y is not None:
+        out = np.zeros(self.output_shape, dtype=self.output_dtype)
       for i in xrange(self.batch_size):
-        inp[i, :] = six.next(self.X)
-        y = six.next(self.y)
-        if self.n_classes > 1:
-          if len(self.output_shape) == 2:
-            out.itemset((i, y), 1.0)
+        # Add handling when queue ends.
+        try:
+          inp[i, :] = six.next(self.X)
+        except StopIteration:
+          self.stopped = True
+          inp = inp[:i, :]
+          if self.y is not None:
+            out = out[:i]
+          break
+
+        if self.y is not None:
+          y = six.next(self.y)
+          if self.n_classes > 1:
+            if len(self.output_shape) == 2:
+              out.itemset((i, y), 1.0)
+            else:
+              for idx, value in enumerate(y):
+                out.itemset(tuple([i, idx, value]), 1.0)
           else:
-            for idx, value in enumerate(y):
-              out.itemset(tuple([i, idx, value]), 1.0)
-        else:
-          out[i] = y
+            out[i] = y
+      if self.y is None:
+        return {self._input_placeholder.name: inp}
       return {self._input_placeholder.name: inp,
               self._output_placeholder.name: out}
 
@@ -443,7 +483,7 @@ class DaskDataFeeder(object):
     input_dtype: dtype of input.
     output_dtype: dtype of output.
   """
-  def __init__(self, X, y, n_classes, batch_size, random_state=None):
+  def __init__(self, X, y, n_classes, batch_size, shuffle=True, random_state=None):
     import dask.dataframe as dd
     # TODO(terrytangyuan): check X and y dtypes in dask_io like pandas
     self.X = X

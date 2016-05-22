@@ -343,6 +343,7 @@ function position(d) {
  * d's label property will be a RenderMetaedgeInfo object.
  */
 function stylize(edgeGroup, d: EdgeData, stylize) {
+  edgeGroup.classed('faded', d.label.isFadedOut);
   let metaedge = d.label.metaedge;
   edgeGroup.select('path.' + Class.Edge.LINE)
       .classed('control-dep', metaedge && !metaedge.numRegularEdges);

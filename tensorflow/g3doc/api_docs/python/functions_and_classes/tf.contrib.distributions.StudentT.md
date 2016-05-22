@@ -139,6 +139,13 @@ The entropy of Student t distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.is_reparameterized` {#StudentT.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.log_cdf(value, name='log_cdf')` {#StudentT.log_cdf}
 
 Log CDF.

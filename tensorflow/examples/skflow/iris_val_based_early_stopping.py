@@ -30,8 +30,7 @@ X_train, X_test, y_train, y_test = train_test_split(iris.data,
 X_train, X_val, y_train, y_val = train_test_split(X_train, y_train,
                                                   test_size=0.2, random_state=42)
 val_monitor = learn.monitors.ValidationMonitor(X_val, y_val,
-                                                early_stopping_rounds=200,
-                                                n_classes=3)
+                                               early_stopping_rounds=200)
 
 # classifier with early stopping on training data
 classifier1 = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],

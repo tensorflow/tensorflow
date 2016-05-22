@@ -277,6 +277,10 @@ class StudentT(ContinuousDistribution):
 
         return samples * self._sigma + self._mu
 
+  @property
+  def is_reparameterized(self):
+    return True
+
   def _ones(self):
     return array_ops.ones_like(self._df + self._mu + self._sigma)
 

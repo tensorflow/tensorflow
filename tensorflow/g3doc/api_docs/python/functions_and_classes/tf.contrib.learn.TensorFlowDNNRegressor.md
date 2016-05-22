@@ -38,7 +38,14 @@ Returns bias of the DNN's bias layers.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.fit(X, y, monitor=None, logdir=None)` {#TensorFlowDNNRegressor.fit}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.evaluate(x=None, y=None, input_fn=None, steps=None)` {#TensorFlowDNNRegressor.evaluate}
+
+See base class.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowDNNRegressor.fit}
 
 Builds a neural network model given provided `model_fn` and training
 data X and y.
@@ -52,7 +59,7 @@ To restart learning, create new estimator.
 ##### Args:
 
 
-*  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
   iterator that returns arrays of features. The training input
   samples for fitting the model.
 
@@ -60,8 +67,10 @@ To restart learning, create new estimator.
   iterator that returns array of targets. The training target values
   (class labels in classification, real numbers in regression).
 
-*  <b>`monitor`</b>: Monitor object to print training progress and invoke early
-    stopping
+*  <b>`steps`</b>: int, number of steps to train.
+         If None or 0, train for `self.steps`.
+*  <b>`monitors`</b>: List of `BaseMonitor` objects to print training progress and
+    invoke early stopping.
 *  <b>`logdir`</b>: the directory to save the log file that can be used for
   optional visualization.
 
@@ -133,7 +142,14 @@ Returns list of all variable names in this model.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.partial_fit(X, y)` {#TensorFlowDNNRegressor.partial_fit}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.model_dir` {#TensorFlowDNNRegressor.model_dir}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.partial_fit(x, y)` {#TensorFlowDNNRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -148,7 +164,7 @@ to converge, and you want to split up training into subparts.
 ##### Args:
 
 
-*  <b>`X`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
   iterator that returns arrays of features. The training input
   samples for fitting the model.
 
@@ -163,7 +179,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.predict(X, axis=1, batch_size=None)` {#TensorFlowDNNRegressor.predict}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.predict(x, axis=1, batch_size=None)` {#TensorFlowDNNRegressor.predict}
 
 Predict class or regression for X.
 
@@ -174,7 +190,7 @@ returned.
 ##### Args:
 
 
-*  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
+*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`axis`</b>: Which axis to argmax for classification.
     By default axis 1 (next after batch) is used.
     Use 2 for sequence predictions.
@@ -191,14 +207,14 @@ returned.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.predict_proba(X, batch_size=None)` {#TensorFlowDNNRegressor.predict_proba}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.predict_proba(x, batch_size=None)` {#TensorFlowDNNRegressor.predict_proba}
 
 Predict class probability of the input samples X.
 
 ##### Args:
 
 
-*  <b>`X`</b>: array-like matrix, [n_samples, n_features...] or iterator.
+*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
 *  <b>`batch_size`</b>: If test set is too big, use batch size to split
     it into mini batches. By default the batch_size member variable is used.
 
@@ -285,6 +301,26 @@ component of a nested object.
 Returns
 -------
 self
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.train(input_fn, steps, monitors=None)` {#TensorFlowDNNRegressor.train}
+
+Trains a model given input builder function.
+
+##### Args:
+
+
+*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
+            dict and Tensor.
+*  <b>`steps`</b>: number of steps to train model for.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
+
+##### Returns:
+
+  Returns self.
 
 
 - - -

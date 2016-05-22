@@ -343,6 +343,10 @@ def _as_tensor_list_list(tensors_list):
 
 def _as_original_type(original_tensors, tensor_list):
   if isinstance(original_tensors, dict):
+    if len(original_tensors) == 1:
+      # tensor_list is bogusly returned as a single tensor if only one tensor
+      # was enqueued.  Make it a list again.  See b/28117485.
+      tensor_list = [tensor_list]
     return {k: tensor_list[i]
             for i, k in enumerate(sorted(original_tensors))}
   else:

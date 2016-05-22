@@ -117,8 +117,9 @@ def summarize_tensor(tensor, tag=None):
   Returns:
     The summary op created or None for string tensors.
   """
-  # Skips string tensors.
-  if tensor.dtype.is_compatible_with(dtypes.string):
+  # Skips string tensors and boolean tensors (not handled by the summaries).
+  if (tensor.dtype.is_compatible_with(dtypes.string) or
+      tensor.dtype.base_dtype == dtypes.bool):
     return None
 
   if tensor.get_shape().ndims == 0:

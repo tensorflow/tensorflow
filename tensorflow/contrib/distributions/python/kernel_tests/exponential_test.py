@@ -80,6 +80,49 @@ class ExponentialTest(tf.test.TestCase):
       self.assertEqual(exponential.entropy().get_shape(), (3,))
       self.assertAllClose(exponential.entropy().eval(), expected_entropy)
 
+  def testExponentialSample(self):
+    with self.test_session():
+      lam = tf.constant([3.0, 4.0])
+      lam_v = [3.0, 4.0]
+      n = tf.constant(100000)
+      exponential = tf.contrib.distributions.Exponential(lam=lam)
+
+      samples = exponential.sample(n, seed=137)
+      sample_values = samples.eval()
+      self.assertEqual(sample_values.shape, (100000, 2))
+      self.assertFalse(np.any(sample_values < 0.0))
+      for i in range(2):
+        self.assertLess(
+            stats.kstest(
+                sample_values[:, i], stats.expon(scale=1.0/lam_v[i]).cdf)[0],
+            0.01)
+
+  def testExponentialSampleMultiDimensional(self):
+    with self.test_session():
+      batch_size = 2
+      lam_v = [3.0, 22.0]
+      lam = tf.constant([lam_v] * batch_size)
+
+      exponential = tf.contrib.distributions.Exponential(lam=lam)
+
+      n_v = 100000
+      n = tf.constant(n_v)
+      samples = exponential.sample(n, seed=138)
+      self.assertEqual(samples.get_shape(), (n_v, batch_size, 2))
+
+      sample_values = samples.eval()
+
+      self.assertFalse(np.any(sample_values < 0.0))
+      for i in range(2):
+        self.assertLess(
+            stats.kstest(
+                sample_values[:, 0, i], stats.expon(scale=1.0/lam_v[i]).cdf)[0],
+            0.01)
+        self.assertLess(
+            stats.kstest(
+                sample_values[:, 1, i], stats.expon(scale=1.0/lam_v[i]).cdf)[0],
+            0.01)
+
 
 if __name__ == '__main__':
   tf.test.main()

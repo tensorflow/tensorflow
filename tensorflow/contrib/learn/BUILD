@@ -62,6 +62,20 @@ py_test(
 )
 
 py_test(
+    name = "test_feeding_queue_runner",
+    size = "small",
+    srcs = [
+        "python/learn/tests/dataframe/test_feeding_queue_runner.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "test_early_stopping",
     size = "medium",
     srcs = ["python/learn/tests/test_early_stopping.py"],
@@ -100,6 +114,42 @@ py_test(
     name = "estimator_test",
     size = "small",
     srcs = ["python/learn/estimators/estimator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "dnn_linear_combined_test",
+    size = "small",
+    srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "dnn_test",
+    size = "small",
+    srcs = ["python/learn/estimators/dnn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "linear_test",
+    size = "small",
+    srcs = ["python/learn/estimators/linear_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",

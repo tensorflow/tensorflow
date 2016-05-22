@@ -95,6 +95,13 @@ where digamma(alpha) is the digamma function.
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.is_reparameterized` {#Exponential.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.lam` {#Exponential.lam}
 
 
@@ -166,20 +173,20 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Exponential.sample(n, seed=None, name=None)` {#Exponential.sample}
 
-Generate `n` samples.
+Sample `n` observations from the Exponential Distributions.
 
 ##### Args:
 
 
-*  <b>`n`</b>: scalar. Number of samples to draw from each distribution.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-      with values of type `self.dtype`.
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by the hyperparameters.
 
 
 - - -

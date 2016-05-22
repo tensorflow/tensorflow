@@ -57,9 +57,9 @@ def add_check_numerics_ops():
   """
   check_op = []
   # This code relies on the ordering of ops in get_operations().
-  # The consumer of a tensor always comes before that tensor's producer in
+  # The producer of a tensor always comes before that tensor's consumer in
   # this list. This is true because get_operations() returns ops in the order
-  # added, and ops can only be added once its inputs are added.
+  # added, and an op can only be added after its inputs are added.
   for op in ops.get_default_graph().get_operations():
     for output in op.outputs:
       if output.dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:

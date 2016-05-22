@@ -29,6 +29,7 @@ limitations under the License.
 %include "tensorflow/python/client/tf_session.i"
 %include "tensorflow/python/client/device_lib.i"
 
+%include "tensorflow/python/training/saver_io.i"
 %include "tensorflow/python/training/server_lib.i"
 
 %include "tensorflow/python/framework/python_op_gen.i"

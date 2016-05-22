@@ -24,7 +24,7 @@ cc_library(
     linkstatic = 1,
     visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/contrib/ffmpeg/kernels:ffmpeg_lib",
+        "//tensorflow/contrib/ffmpeg/default:ffmpeg_lib",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
@@ -38,7 +38,7 @@ cc_library(
     linkstatic = 1,
     visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/contrib/ffmpeg/kernels:ffmpeg_lib",
+        "//tensorflow/contrib/ffmpeg/default:ffmpeg_lib",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests for tensorflow.ops.io_ops."""
+"""Tests for tensorflow.python.training.saver.py."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -1226,6 +1226,15 @@ class CheckpointReaderTest(tf.test.TestCase):
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  "Unsuccessful TensorSliceReader"):
       tf.train.NewCheckpointReader("non-existent")
+
+
+class WriteGraphTest(tf.test.TestCase):
+
+  def testRecursiveCreate(self):
+    test_dir = _TestDir("deep_dir")
+    tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")
+    tf.train.write_graph(tf.get_default_graph().as_graph_def(),
+                         "/".join([test_dir, "l1/l2/l3"]), "graph.pbtxt")
 
 
 if __name__ == "__main__":

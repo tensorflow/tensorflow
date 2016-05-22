@@ -45,12 +45,13 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import training as train
 
 from tensorflow.contrib.layers import optimizers
-from tensorflow.contrib.learn.python.learn import trainer
 from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_data_feeder
 from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_predict_data_feeder
 from tensorflow.contrib.learn.python.learn.ops.dropout_ops import DROPOUTS
-from tensorflow.contrib.learn.python.learn import monitors
+from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
+from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
+from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig
@@ -63,7 +64,35 @@ def _write_with_backup(filename, content):
     f.write(content)
 
 
-class TensorFlowEstimator(_sklearn.BaseEstimator):
+def _copy_dir(dir_in, dir_out):
+  gfile.MakeDirs(dir_out)
+  for name in gfile.ListDirectory(dir_in):
+    name_in = os.path.join(dir_in, name)
+    name_out = os.path.join(dir_out, name)
+    if gfile.IsDirectory(name_in):
+      gfile.MakeDirs(name_out)
+      _copy_dir(name_in, name_out)
+    else:
+      gfile.Copy(name_in, name_out, overwrite=True)
+
+
+def _new_tf_model_fn(model_fn, class_weight):
+  """Backward compatibility way of adding class weight and IS_TRAINING.
+
+  TODO(ipolosukhin): Remove this function after new layers are available.
+  Specifically:
+   * dropout and batch norm should work via update ops.
+   * class weights should be retrieved from weights column or hparams.
+  """
+  def _model_fn(features, targets, mode):
+    ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
+    if class_weight is not None:
+      constant_op.constant(class_weight, name='class_weight')
+    return model_fn(features, targets)
+  return _model_fn
+
+
+class TensorFlowEstimator(estimator.Estimator):
   """Base class for all TensorFlow estimators.
 
   Parameters:
@@ -109,101 +138,21 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
                continue_training=False,
                config=None,
                verbose=1):
-    self.model_fn = model_fn
+    super(TensorFlowEstimator, self).__init__(
+        model_fn=_new_tf_model_fn(model_fn, class_weight),
+        classification=n_classes > 1,
+        learning_rate=learning_rate,
+        optimizer=optimizer,
+        clip_gradients=clip_gradients,
+        config=config)
     self.n_classes = n_classes
     self.batch_size = batch_size
     self.steps = steps
     self.verbose = verbose
-    self.optimizer = optimizer
-    self.learning_rate = learning_rate
-    self.clip_gradients = clip_gradients
     self.continue_training = continue_training
-    self._initialized = False
-    self.class_weight = class_weight
-    self._config = config
+    self._data_feeder = None
 
-  def _setup_training(self):
-    """Sets up graph, model and trainer."""
-    # Create config if not given.
-    if self._config is None:
-      self._config = RunConfig(verbose=self.verbose)
-    # Create new graph.
-    self._graph = ops.Graph()
-    self._graph.add_to_collection('IS_TRAINING', True)
-    with self._graph.as_default():
-      random_seed.set_random_seed(self._config.tf_random_seed)
-      self._global_step = variables.Variable(0,
-                                             name='global_step',
-                                             trainable=False)
-
-      # Setting up inputs and outputs.
-      self._inp, self._out = self._data_feeder.input_builder()
-
-      # If class weights are provided, add them to the graph.
-      # Different loss functions can use this tensor by name.
-      if self.class_weight:
-        self._class_weight_node = constant_op.constant(self.class_weight,
-                                                       name='class_weight')
-
-      # Add histograms for X and y if they are floats.
-      if self._data_feeder.input_dtype in (np.float32, np.float64):
-        logging_ops.histogram_summary('X', self._inp)
-      if self._data_feeder.output_dtype in (np.float32, np.float64)\
-        and self._out is not None:
-        logging_ops.histogram_summary('y', self._out)
-
-      # Create model's graph.
-      self._model_predictions, self._model_loss = self.model_fn(self._inp,
-                                                                self._out)
-
-      # Set up a single operator to merge all the summaries
-      self._summaries = logging_ops.merge_all_summaries()
-
-      # Create trainer and augment graph with gradients and optimizer.
-      # Additionally creates initialization ops.
-      learning_rate = self.learning_rate
-      optimizer = self.optimizer
-      if callable(learning_rate):
-        learning_rate = learning_rate(self._global_step)
-      if callable(optimizer):
-        optimizer = optimizer(learning_rate)
-      self._train = optimizers.optimize_loss(self._model_loss,
-                                             self._global_step,
-                                             learning_rate=learning_rate,
-                                             optimizer=optimizer,
-                                             clip_gradients=self.clip_gradients)
-
-      # Update ops during training, e.g. batch_norm_ops
-      self._train = control_flow_ops.group(self._train, *
-                                           ops.get_collection('update_ops'))
-
-      # Get all initializers for all trainable variables.
-      self._initializers = variables.initialize_all_variables()
-
-      # Create model's saver capturing all the nodes created up until now.
-      self._saver = train.Saver(max_to_keep=self._config.keep_checkpoint_max,
-                                keep_checkpoint_every_n_hours=
-                                self._config.keep_checkpoint_every_n_hours)
-
-      # Enable monitor to create validation data dict with appropriate
-      # tf placeholders
-      self._monitor.create_val_feed_dict(self._inp, self._out)
-
-      # Create session to run model with.
-      self._session = session.Session(self._config.master,
-                                      config=self._config.tf_config)
-
-      # Run parameter initializers.
-      self._session.run(self._initializers)
-
-  def _setup_summary_writer(self, logdir):
-    """Sets up summary writer to prepare for later optional visualization."""
-    self._summary_writer = train.SummaryWriter(
-        os.path.join(logdir,
-                     datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')),
-        graph=self._session.graph)
-
-  def fit(self, X, y, monitor=None, logdir=None):
+  def fit(self, x, y, steps=None, monitors=None, logdir=None):
     """Builds a neural network model given provided `model_fn` and training
     data X and y.
 
@@ -214,63 +163,44 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     To restart learning, create new estimator.
 
     Args:
-      X: matrix or tensor of shape [n_samples, n_features...]. Can be
+      x: matrix or tensor of shape [n_samples, n_features...]. Can be
       iterator that returns arrays of features. The training input
       samples for fitting the model.
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
       iterator that returns array of targets. The training target values
       (class labels in classification, real numbers in regression).
-      monitor: Monitor object to print training progress and invoke early
-        stopping
+      steps: int, number of steps to train.
+             If None or 0, train for `self.steps`.
+      monitors: List of `BaseMonitor` objects to print training progress and
+        invoke early stopping.
       logdir: the directory to save the log file that can be used for
       optional visualization.
 
     Returns:
       Returns self.
     """
-    # Sets up data feeder.
-    self._data_feeder = setup_train_data_feeder(X, y, self.n_classes,
-                                                self.batch_size)
-
-    if monitor is None:
-      self._monitor = monitors.default_monitor(verbose=self.verbose)
-    else:
-      self._monitor = monitor
-
-    if not self.continue_training or not self._initialized:
-      # Sets up model and trainer.
-      self._setup_training()
-      self._initialized = True
-    else:
-      self._data_feeder.set_placeholders(self._inp, self._out)
-
-    # Sets up summary writer for later optional visualization.
-    # Due to not able to setup _summary_writer in __init__ as it's not a
-    # parameter of the model, here we need to check if such variable exists
-    # and if it's None or not (in case it was setup in a previous run).
-    # It is initialized only in the case where it wasn't before and log dir
-    # is provided.
-    if logdir:
-      if (not hasattr(self, '_summary_writer') or
-          (hasattr(self, '_summary_writer') and self._summary_writer is None)):
-        self._setup_summary_writer(logdir)
-    else:
-      self._summary_writer = None
-
-    # Train model for given number of steps.
-    trainer.train(self._session,
-                  self._train,
-                  self._model_loss,
-                  self._global_step,
-                  self._data_feeder.get_feed_dict_fn(),
-                  steps=self.steps,
-                  monitor=self._monitor,
-                  summary_writer=self._summary_writer,
-                  summaries=self._summaries,
-                  feed_params_fn=self._data_feeder.get_feed_params)
+    if logdir is not None:
+      self._model_dir = logdir
+    self._data_feeder = setup_train_data_feeder(
+        x, y, n_classes=self.n_classes, batch_size=self.batch_size)
+    self._train_model(input_fn=self._data_feeder.input_builder,
+                      feed_fn=self._data_feeder.get_feed_dict_fn(),
+                      steps=steps or self.steps,
+                      monitors=monitors)
     return self
 
-  def partial_fit(self, X, y):
+  def evaluate(self, x=None, y=None, input_fn=None, steps=None):
+    """See base class."""
+    feed_fn = None
+    if x is not None:
+      eval_data_feeder = setup_train_data_feeder(
+          x, y, n_classes=self.n_classes, batch_size=self.batch_size, epochs=1)
+      input_fn, feed_fn = (eval_data_feeder.input_builder,
+                           eval_data_feeder.get_feed_dict_fn())
+    return self._evaluate_model(
+        input_fn=input_fn, feed_fn=feed_fn, steps=steps or self.steps)
+
+  def partial_fit(self, x, y):
     """Incremental fit on a batch of samples.
 
     This method is expected to be called several times consecutively
@@ -282,7 +212,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     to converge, and you want to split up training into subparts.
 
     Args:
-      X: matrix or tensor of shape [n_samples, n_features...]. Can be
+      x: matrix or tensor of shape [n_samples, n_features...]. Can be
       iterator that returns arrays of features. The training input
       samples for fitting the model.
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
@@ -292,33 +222,30 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     Returns:
       Returns self.
     """
-    return self.fit(X, y)
+    return self.fit(x, y)
 
-  def _predict(self, X, axis=-1, batch_size=None):
-    if not self._initialized:
-      raise _sklearn.NotFittedError()
-
+  def _predict(self, x, axis=-1, batch_size=None):
+    if self._graph is None:
+      raise NotFittedError()
     # Use the batch size for fitting if the user did not specify one.
     if batch_size is None:
       batch_size = self.batch_size
 
-    self._graph.add_to_collection('IS_TRAINING', False)
-    predict_data_feeder = setup_predict_data_feeder(X, batch_size=batch_size)
-    preds = []
-    dropouts = self._graph.get_collection(DROPOUTS)
-    feed_dict = {prob: 1.0 for prob in dropouts}
-    for data in predict_data_feeder:
-      feed_dict[self._inp] = data
-      predictions_for_batch = self._session.run(self._model_predictions,
-                                                feed_dict)
-      if self.n_classes > 1 and axis != -1:
-        preds.append(predictions_for_batch.argmax(axis=axis))
-      else:
-        preds.append(predictions_for_batch)
+    predict_data_feeder = setup_train_data_feeder(
+        x, None, n_classes=None,
+        batch_size=batch_size,
+        shuffle=False, epochs=1)
 
-    return np.concatenate(preds, axis=0)
+    preds = self._infer_model(
+        input_fn=predict_data_feeder.input_builder,
+        feed_fn=predict_data_feeder.get_feed_dict_fn())
+    if self.n_classes > 1 and axis != -1:
+      preds = preds['predictions'].argmax(axis=axis)
+    else:
+      preds = preds['predictions']
+    return preds
 
-  def predict(self, X, axis=1, batch_size=None):
+  def predict(self, x, axis=1, batch_size=None):
     """Predict class or regression for X.
 
     For a classification model, the predicted class for each sample in X is
@@ -326,7 +253,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     returned.
 
     Args:
-      X: array-like matrix, [n_samples, n_features...] or iterator.
+      x: array-like matrix, [n_samples, n_features...] or iterator.
       axis: Which axis to argmax for classification.
         By default axis 1 (next after batch) is used.
         Use 2 for sequence predictions.
@@ -338,13 +265,13 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
       y: array of shape [n_samples]. The predicted classes or predicted
       value.
     """
-    return self._predict(X, axis=axis, batch_size=batch_size)
+    return self._predict(x, axis=axis, batch_size=batch_size)
 
-  def predict_proba(self, X, batch_size=None):
+  def predict_proba(self, x, batch_size=None):
     """Predict class probability of the input samples X.
 
     Args:
-      X: array-like matrix, [n_samples, n_features...] or iterator.
+      x: array-like matrix, [n_samples, n_features...] or iterator.
       batch_size: If test set is too big, use batch size to split
         it into mini batches. By default the batch_size member variable is used.
 
@@ -352,7 +279,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
       y: array of shape [n_samples, n_classes]. The predicted
       probabilities for each class.
     """
-    return self._predict(X, batch_size=batch_size)
+    return self._predict(x, batch_size=batch_size)
 
   def get_tensor(self, name):
     """Returns tensor by name.
@@ -374,7 +301,9 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     Returns:
       Numpy array - value of the tensor.
     """
-    return self._session.run(self.get_tensor(name))
+    if name.endswith(':0'):
+      name = name[:-2]
+    return checkpoints.load_variable(self.model_dir, name)
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
@@ -382,8 +311,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     Returns:
       List of names.
     """
-    with self._graph.as_default():
-      return [v.name for v in variables.all_variables()]
+    return [name for name, _ in checkpoints.list_variables(self.model_dir)]
 
   def save(self, path):
     """Saves checkpoints and graph to given path.
@@ -391,17 +319,12 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     Args:
       path: Folder to save model to.
     """
-    if not self._initialized:
-      raise _sklearn.NotFittedError()
+    if self._graph is None:
+      raise NotFittedError
 
-    # Currently Saver requires absolute path to work correctly.
-    path = os.path.abspath(path)
+    # Copy model dir into new path.
+    _copy_dir(self.model_dir, path)
 
-    if not os.path.exists(path):
-      os.makedirs(path)
-    if not os.path.isdir(path):
-      raise ValueError('Path %s should be a directory to save'
-                       'checkpoints and graph.' % path)
     # Save model definition.
     all_params = self.get_params()
     params = {}
@@ -414,25 +337,6 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
         default=lambda o: o.__dict__ if hasattr(o, '__dict__') else None)
     _write_with_backup(os.path.join(path, 'model.def'), model_def)
 
-    # Save checkpoints.
-    endpoints = '%s\n%s\n%s\n%s' % (self._inp.name, self._out.name,
-                                    self._model_predictions.name,
-                                    self._model_loss.name)
-    _write_with_backup(os.path.join(path, 'endpoints'), endpoints)
-
-    # Save graph definition.
-    _write_with_backup(
-        os.path.join(path, 'graph.pbtxt'), str(self._graph.as_graph_def()))
-
-    # Save saver definition.
-    _write_with_backup(
-        os.path.join(path, 'saver.pbtxt'), str(self._saver.as_saver_def()))
-
-    # Save checkpoints.
-    self._saver.save(self._session,
-                     os.path.join(path, 'model'),
-                     global_step=self._global_step)
-
   def _restore(self, path):
     """Restores this estimator from given path.
 
@@ -442,57 +346,7 @@ class TensorFlowEstimator(_sklearn.BaseEstimator):
     Args:
       path: Path to checkpoints and other information.
     """
-    # Currently Saver requires absolute path to work correctly.
-    path = os.path.abspath(path)
-
-    self._graph = ops.Graph()
-    with self._graph.as_default():
-      endpoints_filename = os.path.join(path, 'endpoints')
-      if not os.path.exists(endpoints_filename):
-        raise ValueError("Restore folder doesn't contain endpoints.")
-      with gfile.Open(endpoints_filename) as foutputs:
-        endpoints = foutputs.read().split('\n')
-      graph_filename = os.path.join(path, 'graph.pbtxt')
-      if not os.path.exists(graph_filename):
-        raise ValueError("Restore folder doesn't contain graph definition.")
-      with gfile.Open(graph_filename) as fgraph:
-        graph_def = graph_pb2.GraphDef()
-        text_format.Merge(fgraph.read(), graph_def)
-        (self._inp, self._out, self._model_predictions,
-         self._model_loss) = importer.import_graph_def(
-             graph_def, name='', return_elements=endpoints)
-      saver_filename = os.path.join(path, 'saver.pbtxt')
-      if not os.path.exists(saver_filename):
-        raise ValueError("Restore folder doesn't contain saver definition.")
-      with gfile.Open(saver_filename) as fsaver:
-        saver_def = train.SaverDef()
-        text_format.Merge(fsaver.read(), saver_def)
-        self._saver = train.Saver(saver_def=saver_def)
-
-      # Restore trainer
-      self._global_step = self._graph.get_tensor_by_name('global_step:0')
-      self._train = self._graph.get_operation_by_name('OptimizeLoss/train')
-
-      # Restore summaries.
-      self._summaries = self._graph.get_operation_by_name(
-          'MergeSummary/MergeSummary')
-
-      # Restore session.
-      if not isinstance(self._config, RunConfig):
-        self._config = RunConfig(verbose=self.verbose)
-      self._session = session.Session(self._config.master,
-                                      config=self._config.tf_config)
-      checkpoint_path = train.latest_checkpoint(path)
-      if checkpoint_path is None:
-        raise ValueError(
-            'Missing checkpoint files in the %s. Please '
-            'make sure you are you have checkpoint file that describes '
-            'latest checkpoints and appropriate checkpoints are there. '
-            'If you have moved the folder, you at this point need to '
-            'update manually update the paths in the checkpoint file.' % path)
-      self._saver.restore(self._session, checkpoint_path)
-    # Set to be initialized.
-    self._initialized = True
+    raise NotImplementedError
 
   # pylint: disable=unused-argument
   @classmethod
@@ -549,7 +403,7 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
 
     def fit(self, X, y=None, monitor=None, logdir=None):
         """Fit a transformer."""
-        return(super(TensorFlowBaseTransformer, self).fit(X, y, monitor=None, logdir=None))
+        return(super(TensorFlowBaseTransformer, self).fit(X, y, monitors=None, logdir=None))
 
     def fit_transform(self, X, y=None, monitor=None, logdir=None):
         """Fit transformer and transform X using trained transformer."""
