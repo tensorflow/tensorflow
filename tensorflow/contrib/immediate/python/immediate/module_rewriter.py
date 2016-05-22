@@ -1,5 +1,6 @@
 """Contains ModuleRewriter class + helper methods useful for writing custom
-symbol_rewriter functions to be used with ModuleRewriter."""
+symbol_rewriter functions to be used with ModuleRewriter.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -50,6 +51,17 @@ class ModuleRewriter(object):
   def __init__(self, symbol_rewriter, module_prefix="newmodule."):
     """Initialize ModuleRewriter.
 
+    Rewriting is done by taking a custom "symbol-rewriter" and applying it to
+    all symbols referenced from module provided to later __call__, directly or
+    indirectly. If symbol-rewriter returns non-None value, the entire module
+    is copied, the affected symbol is replaced with output of symbol rewriter
+    and all references to old module are updated to point to new module. If
+    module is not affected by symbol-rewriter, original reference is returned.
+
+    Only function/module references are followed. This means that while objects
+    and types are copied to new modules, their references are not updated and
+    they will continue point to the old module.
+
     Args:
       symbol_rewriter: callable object that implements symbol rewriting. It
           should accepts a symbol (ie, a function) and return new symbol that
@@ -95,9 +107,10 @@ class ModuleRewriter(object):
       return self._done_modules[original_module]
 
     self._module_stack.append(original_module.__file__)
-
     updated_symbols = {}  # symbols that got touched
 
+
+    # Go over all symbols in a module to determine if module needs to be copied
     for symbol_name, symbol in original_module.__dict__.items():
 
       # Case 1: symbol is directly replaced by symbol_rewriter
@@ -137,7 +150,7 @@ class ModuleRewriter(object):
       self._module_stack.pop()
       return original_module
 
-
+    # module was modified, hence make a new copy
     new_module_name = self.module_prefix + original_module.__name__
     new_module = imp.new_module(new_module_name)
     new_module.__package__ = ""
