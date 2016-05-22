@@ -425,6 +425,29 @@ class BaseEstimator(sklearn.BaseEstimator):
           fail_on_nan_loss=fail_on_nan_loss,
           monitors=monitors)
 
+  def _extract_metric_update_ops(self, eval_dict):
+    """Separate update operations from metric value operations."""
+    update_ops = []
+    value_ops = {}
+    for name, metric_ops in eval_dict.items():
+      if isinstance(metric_ops, (list, tuple)):
+        if len(metric_ops) == 2:
+          value_ops[name] = metric_ops[0]
+          update_ops.append(metric_ops[1])
+        else:
+          logging.warning(
+              'Ignoring metric {}. It returned a list|tuple with len {}, '
+              'expected 2'.format(name, len(metric_ops)))
+      else:
+        value_ops[name] = metric_ops
+
+    if update_ops:
+      update_ops = control_flow_ops.group(*update_ops)
+    else:
+      update_ops = None
+
+    return update_ops, value_ops
+
   def _evaluate_model(self, input_fn, steps, feed_fn=None, metrics=None):
     if self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset'):
       return
@@ -439,15 +462,16 @@ class BaseEstimator(sklearn.BaseEstimator):
       eval_dict = self._get_eval_ops(features, targets,
                                      metrics if metrics is not None else
                                      self._get_default_metric_functions())
-      eval_results, _ = evaluate(
-          graph=g,
-          output_dir=eval_dir,
-          checkpoint_path=checkpoint_path,
-          eval_dict=eval_dict,
-          global_step_tensor=global_step,
-          supervisor_master=self._config.master,
-          feed_fn=feed_fn,
-          max_steps=steps)
+      update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
+      eval_results, _ = evaluate(graph=g,
+                                 output_dir=eval_dir,
+                                 checkpoint_path=checkpoint_path,
+                                 eval_dict=eval_dict,
+                                 update_op=update_op,
+                                 global_step_tensor=global_step,
+                                 supervisor_master=self._config.master,
+                                 feed_fn=feed_fn,
+                                 max_steps=steps)
       return eval_results
 
   def _infer_model(self,
