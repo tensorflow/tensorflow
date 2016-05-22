@@ -3415,7 +3415,7 @@ Attributes:
 
 - - -
 
-### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, feed_fn=None, max_steps=None)` {#evaluate}
+### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, update_op=None, global_step_tensor=None, init_op=None, supervisor_master='', log_every_steps=10, feed_fn=None, max_steps=None)` {#evaluate}
 
 Evaluate a model loaded from a checkpoint.
 
@@ -3438,6 +3438,7 @@ and written to `output_dir`.
     Can be `None` if the graph doesn't require loading any variables.
 *  <b>`eval_dict`</b>: A `dict` mapping string names to tensors to evaluate for in every
     eval step.
+*  <b>`update_op`</b>: A 'Tensor' which is run before evaluating 'eval_dict'.
 *  <b>`global_step_tensor`</b>: A `Variable` containing the global step. If `None`,
     one is extracted from the graph using the same logic as in `Supervisor`.
     Used to place eval summaries on training curves.
