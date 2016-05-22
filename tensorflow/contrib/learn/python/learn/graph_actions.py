@@ -11,24 +11,28 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 """High level operations on graphs."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as py_collections
 import itertools
+import sys
 import time
 
 import numpy as np
 
+from six import reraise
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import summaries
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -89,28 +93,12 @@ def _run_dict(session, run_dict, feed_dict=None):
   return dict(zip(keys, values))
 
 
-class SupervisorParams(py_collections.namedtuple(
-    'SupervisorParams',
-    ['is_chief', 'master', 'save_model_secs', 'save_summaries_secs'])):
-  """Parameters required to configure supervisor for training.
-
-  Fields:
-    is_chief: Whether the current process is the chief supervisor in charge of
-      restoring the model and running standard services.
-    master: The master string to use when preparing the session.
-    save_model_secs: Save a checkpoint every `save_model_secs` seconds when
-      training.
-    save_summaries_secs: Save summaries every `save_summaries_secs` seconds when
-      training.
-  """
-SupervisorParams.__new__.__defaults__ = (True, '', 600, 10)
-
-
 def _prepare_session(graph,
                      output_dir,
                      start_services,
                      global_step_tensor,
                      init_op=None,
+                     init_fn=None,
                      supervisor_is_chief=True,
                      supervisor_master='',
                      supervisor_save_model_secs=600,
@@ -126,7 +114,8 @@ def _prepare_session(graph,
       saver=_make_saver(graph),
       global_step=global_step_tensor,
       save_model_secs=supervisor_save_model_secs,
-      save_summaries_secs=supervisor_save_summaries_secs)
+      save_summaries_secs=supervisor_save_summaries_secs,
+      init_fn=init_fn)
   session = supervisor.PrepareSession(master=supervisor_master,
                                       start_standard_services=start_services)
   supervisor.StartQueueRunners(session)
@@ -141,11 +130,13 @@ def train(graph,
           loss_op,
           global_step_tensor=None,
           init_op=None,
+          init_fn=None,
           log_every_steps=10,
           supervisor_is_chief=True,
           supervisor_master='',
           supervisor_save_model_secs=600,
           supervisor_save_summaries_secs=10,
+          feed_fn=None,
           max_steps=None,
           fail_on_nan_loss=True):
   """Train a model.
@@ -173,6 +164,7 @@ def train(graph,
       one is extracted from the graph using the same logic as in `Supervisor`.
     init_op: An op that initializes the graph. If `None`, use `Supervisor`'s
       default.
+    init_fn: Optional callable passed to Supervisor to initialize the model.
     log_every_steps: Output logs regularly. The logs contain timing data and the
       current loss.
     supervisor_is_chief: Whether the current process is the chief supervisor in
@@ -182,6 +174,8 @@ def train(graph,
       `supervisor_save_model_secs` seconds when training.
     supervisor_save_summaries_secs: Save summaries every
       `supervisor_save_summaries_secs` seconds when training.
+    feed_fn: A function that is called every iteration to produce a `feed_dict`
+      passed to `session.run` calls. Optional.
     max_steps: Train until `global_step_tensor` evaluates to this value.
     fail_on_nan_loss: If true, raise `NanLossDuringTrainingError` if `loss_op`
       evaluates to `NaN`. If false, continue training as if nothing happened.
@@ -206,6 +200,7 @@ def train(graph,
       start_services=True,
       global_step_tensor=global_step_tensor,
       init_op=init_op,
+      init_fn=init_fn,
       supervisor_is_chief=supervisor_is_chief,
       supervisor_master=supervisor_master,
       supervisor_save_model_secs=supervisor_save_model_secs,
@@ -220,35 +215,44 @@ def train(graph,
     loss_value = None
     logging.info('Training steps [%d,%s)', last_step, 'inf'
                  if max_steps is None else str(max_steps))
+    excinfo = None
     try:
+      while not supervisor.ShouldStop() and (
+          (max_steps is None) or (last_step < max_steps)):
+        start_time = time.time()
+        feed_dict = feed_fn() if feed_fn is not None else None
+        _, loss_value = session.run([train_op, loss_op], feed_dict=feed_dict)
+        if np.isnan(loss_value):
+          failure_message = 'Model diverged with loss = NaN.'
+          if fail_on_nan_loss:
+            logging.error(failure_message)
+            raise NanLossDuringTrainingError()
+          else:
+            logging.warning(failure_message)
+
+        this_step = get_current_step()
+
+        if this_step <= last_step:
+          logging.error(
+              'Global step was not incremented by train op at step %s'
+              ': new step %d' % (last_step, this_step))
+
+        last_step = this_step
+        is_last_step = (max_steps is not None) and (last_step >= max_steps)
+        if is_last_step or (last_step - last_log_step >= log_every_steps):
+          logging.info(
+              'training step %d, loss = %.5f (%.3f sec/batch).',
+              last_step, loss_value, float(time.time() - start_time))
+          last_log_step = last_step
+    except errors.OutOfRangeError as e:
+      logging.warn('Got exception during tf.learn training loop possibly '
+                   'due to exhausted input queue %s.', e)
+    except BaseException as e:  # pylint: disable=broad-except
+      # Hold on to any other exceptions while we try recording a final
+      # checkpoint and summary.
+      excinfo = sys.exc_info()
+    finally:
       try:
-        while not supervisor.ShouldStop() and (
-            (max_steps is None) or (last_step < max_steps)):
-          start_time = time.time()
-          _, loss_value = session.run([train_op, loss_op])
-          if np.isnan(loss_value):
-            failure_message = 'Model diverged with loss = NaN.'
-            if fail_on_nan_loss:
-              logging.error(failure_message)
-              raise NanLossDuringTrainingError()
-            else:
-              logging.warning(failure_message)
-
-          this_step = get_current_step()
-
-          if this_step <= last_step:
-            logging.error(
-                'Global step was not incremented by train op at step %s'
-                ': new step %d' % (last_step, this_step))
-
-          last_step = this_step
-          is_last_step = (max_steps is not None) and (last_step >= max_steps)
-          if is_last_step or (last_step - last_log_step >= log_every_steps):
-            logging.info(
-                'training step %d, loss = %.5f (%.3f sec/batch).',
-                last_step, loss_value, float(time.time() - start_time))
-            last_log_step = last_step
-      finally:
         # Call supervisor.Stop() from within a try block because it re-raises
         # exceptions thrown by the supervised threads.
         supervisor.Stop(close_summary_writer=False)
@@ -270,11 +274,21 @@ def train(graph,
             supervisor.summary_writer.add_session_log(
                 SessionLog(status=SessionLog.STOP), last_step)
             supervisor.summary_writer.close()
-    # catch OutOfRangeError which is thrown when queue is out of data (and for
-    # other reasons as well).
-    except errors.OutOfRangeError as e:
-      logging.warn('Got exception during tf.learn training loop possibly '
-                   'due to exhausted input queue %s.', e)
+      # catch OutOfRangeError which is thrown when queue is out of data (and for
+      # other reasons as well).
+      except errors.OutOfRangeError as e:
+        logging.warn('OutOfRangeError in tf.learn final checkpoint possibly '
+                     'due to exhausted input queue. Note: summary_op is not '
+                     'expected to trigger dequeues. %s.', e)
+      except BaseException as e:  # pylint: disable=broad-except
+        # If we don't already have an exception to re-raise, raise this one.
+        if not excinfo:
+          raise
+        # Otherwise, log this one and raise the other in the finally block.
+        logging.error('Got exception during tf.learn final checkpoint %s.', e)
+      finally:
+        if excinfo:
+          reraise(*excinfo)
     return loss_value
 
 
@@ -287,6 +301,7 @@ def evaluate(graph,
              init_op=None,
              supervisor_master='',
              log_every_steps=10,
+             feed_fn=None,
              max_steps=None):
   """Evaluate a model loaded from a checkpoint.
 
@@ -315,6 +330,8 @@ def evaluate(graph,
     supervisor_master: The master string to use when preparing the session.
     log_every_steps: Integer. Output logs every `log_every_steps` evaluation
       steps. The logs contain the `eval_dict` and timing information.
+    feed_fn: A function that is called every iteration to produce a `feed_dict`
+      passed to `session.run` calls. Optional.
     max_steps: Integer. Evaluate `eval_dict` this many times.
 
   Returns:
@@ -326,6 +343,16 @@ def evaluate(graph,
   """
   global_step_tensor = contrib_variables.assert_or_get_global_step(
       graph, global_step_tensor)
+
+  # Add scalar summaries for every tensor in evaluation dict if there is not
+  # one existing already or it's a string.
+  existing_tags = [tensor_util.constant_value(summary.op.inputs[0])
+                   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES)]
+  for key, value in eval_dict.items():
+    if key in existing_tags:
+      continue
+    if isinstance(value, ops.Tensor):
+      summaries.summarize_tensor(value, tag=key)
 
   # TODO(wicke): Don't use supervisor here, or switch to output_dir=eval_dir.
   supervisor, session = _prepare_session(
@@ -356,7 +383,8 @@ def evaluate(graph,
         while not supervisor.ShouldStop() and (
             (max_steps is None) or (step < max_steps)):
           start_time = time.time()
-          eval_results = _run_dict(session, eval_dict)
+          feed_dict = feed_fn() if feed_fn is not None else None
+          eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
           # TODO(wicke): We should assert that the global step hasn't changed.
           step += 1
           if step % log_every_steps == 0:
@@ -368,6 +396,7 @@ def evaluate(graph,
       finally:
         # Make our own summary writer and write a summary to the eval dir
         if supervisor.summary_op is not None:
+          summary_writer = None
           try:
             summary_writer = SummaryWriter(output_dir,
                                            graph_def=session.graph_def)
@@ -376,7 +405,8 @@ def evaluate(graph,
             if summary_str:
               summary_writer.add_summary(summary_str, current_global_step)
           finally:
-            summary_writer.close()
+            if summary_writer:
+              summary_writer.close()
 
         # Call supervisor.Stop() from within a try block because it re-raises
         # exceptions thrown by the supervised threads.

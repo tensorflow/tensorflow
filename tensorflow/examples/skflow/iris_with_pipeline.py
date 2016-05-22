@@ -20,7 +20,7 @@ from sklearn.datasets import load_iris
 from sklearn import cross_validation
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 iris = load_iris()
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
@@ -30,7 +30,7 @@ X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, 
 scaler = StandardScaler()
 
 # DNN classifier
-DNNclassifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3, steps=200)
+DNNclassifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3, steps=200)
 
 pipeline = Pipeline([('scaler', scaler), ('DNNclassifier', DNNclassifier)])
 

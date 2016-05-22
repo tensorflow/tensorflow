@@ -1,4 +1,4 @@
-"""Module inclues reference datasets and utilities to load datasets."""
+"""Module includes reference datasets and utilities to load datasets."""
 #  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
-import collections
 from os import path
 
 import numpy as np
@@ -51,6 +50,9 @@ def load_dataset(name):
 
   Returns:
     Features and targets for given dataset. Can be numpy or iterator.
+
+  Raises:
+    ValueError: if `name` is not found.
   """
   if name not in DATASETS:
     raise ValueError('Name of dataset is not found: %s' % name)

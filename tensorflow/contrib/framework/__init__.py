@@ -12,25 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Framework utilities.
 
-@@assert_negative
-@@assert_positive
-@@assert_non_negative
-@@assert_non_positive
-@@assert_less
-@@assert_less_equal
 @@assert_same_float_dtype
 @@assert_scalar_int
+@@convert_to_tensor_or_sparse_tensor
+@@get_graph_from_inputs
 @@is_numeric_tensor
 @@is_non_decreasing
 @@is_strictly_increasing
-@@local_variable
 @@reduce_sum_n
+@@safe_embedding_lookup_sparse
 @@with_shape
 @@with_same_shape
 
-@@get_graph_from_inputs
+
+## Arg_Scope
+@@arg_scope
+@@add_arg_scope
+@@has_arg_scope
+@@arg_scoped_arguments
+
+## Variables
+@@add_model_variable
+@@assert_global_step
+@@assert_or_get_global_step
+@@create_global_step
+@@get_global_step
+@@get_or_create_global_step
+@@get_local_variables
+@@get_model_variables
+@@get_unique_variable
+@@get_variables_by_name
+@@get_variables_by_suffix
+@@get_variables_to_restore
+@@get_variables
+@@local_variable
+@@model_variable
+@@variable
+@@VariableDeviceChooser
 """
 
 from __future__ import absolute_import
@@ -43,3 +64,5 @@ import sys
 from tensorflow.contrib.framework.python.framework import *
 from tensorflow.contrib.framework.python.ops import *
 from tensorflow.python.util.all_util import make_all
+
+__all__ = make_all(__name__)

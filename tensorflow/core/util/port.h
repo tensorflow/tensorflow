@@ -21,6 +21,10 @@ namespace tensorflow {
 // Returns true if GOOGLE_CUDA is defined.
 bool IsGoogleCudaEnabled();
 
+// Returns true if GOOGLE_CUDA is defined, and the given CUDA version supports
+// half-precision matrix multiplications and convolution operations.
+bool CudaSupportsHalfMatMulAndConv();
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_UTIL_PORT_H_

@@ -32,6 +32,7 @@ apt-get install -y \
     gfortran \
     libatlas-base-dev \
     libblas-dev \
+    libcurl4-openssl-dev \
     liblapack-dev \
     libtool \
     openjdk-8-jdk \

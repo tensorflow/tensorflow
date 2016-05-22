@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_SPARSE_EXAMPLE_PROTO_HELPER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_SPARSE_EXAMPLE_PROTO_HELPER_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
 
 #include <string>
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,12 +38,16 @@ struct FixedLenFeature {
   DataType dtype;
   TensorShape shape;
   Tensor default_value;
+  string values_output_tensor_name;
 };
 
 // "Sparse" feature configuration.
 struct VarLenFeature {
   string key;
   DataType dtype;
+  string values_output_tensor_name;
+  string indices_output_tensor_name;
+  string shapes_output_tensor_name;
 };
 
 // Given a single tensorflow::Example, with an optional example name
@@ -142,4 +147,4 @@ int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_SPARSE_EXAMPLE_PROTO_HELPER_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_

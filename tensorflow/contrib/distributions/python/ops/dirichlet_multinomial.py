@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The Dirichlet Multinomial distribution class.
-
-@@DirichletMultinomial
-"""
+"""The Dirichlet Multinomial distribution class."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -61,6 +58,11 @@ def _log_combinations(counts, name='log_combinations'):
 class DirichletMultinomial(object):
   """DirichletMultinomial mixture distribution.
 
+  This distribution is parameterized by a vector `alpha` of concentration
+  parameters for `k` classes.
+
+  #### Mathematical details
+
   The Dirichlet Multinomial is a distribution over k-class count data, meaning
   for each k-tuple of non-negative integer `counts = [c_1,...,c_k]`, we have a
   probability of these draws being made from the distribution.  The distribution
@@ -85,7 +87,7 @@ class DirichletMultinomial(object):
   same shape (if possible).  In all cases, the last dimension of alpha/counts
   represents single Dirichlet Multinomial distributions.
 
-  Examples:
+  #### Examples
 
   ```python
   alpha = [1, 2, 3]

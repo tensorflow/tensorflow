@@ -44,16 +44,16 @@ struct SimpleGraphExecutionStateOptions {
   const SessionOptions* session_options = nullptr;
 };
 
-// A ClientGraph is simply a sub-graph of the full graph as induced by
+// A SimpleClientGraph is simply a sub-graph of the full graph as induced by
 // BuildGraphOptions.
-struct ClientGraph {
+struct SimpleClientGraph {
   Graph graph;
-  explicit ClientGraph(const OpRegistryInterface* ops) : graph(ops) {}
+  explicit SimpleClientGraph(const OpRegistryInterface* ops) : graph(ops) {}
   int32 placement_version;
 };
 
 // SimpleGraphExecutionState is responsible for generating an
-// executable ClientGraph from the original GraphDef that specifies
+// executable SimpleClientGraph from the original GraphDef that specifies
 // the complete graph and from BuildGraphOptions which specifies
 // input/output nodes.
 //
@@ -69,9 +69,9 @@ struct ClientGraph {
 // Nodes get sensible initial device assignments in the graph
 // definition.
 //
-// Subsequently, SimpleGraphExecutionState generates a ClientGraph on
+// Subsequently, SimpleGraphExecutionState generates a SimpleClientGraph on
 // demand, which is a sub-graph of the latest placement of the full
-// Graph.  MasterSession uses such a ClientGraph to execute one or
+// Graph.  MasterSession uses such a SimpleClientGraph to execute one or
 // more similar client requests.
 //
 // SimpleGraphExecutionState is thread-safe.
@@ -102,11 +102,11 @@ class SimpleGraphExecutionState {
   Status Extend(const GraphDef& extension_def,
                 SimpleGraphExecutionState** out) const;
 
-  // Builds a ClientGraph (a sub-graph of the full graph as induced by
+  // Builds a SimpleClientGraph (a sub-graph of the full graph as induced by
   // the Node set specified in "options").  If successful, returns OK
   // and the caller takes the ownership of "*out". Otherwise, returns
   // an error.
-  Status BuildGraph(const BuildGraphOptions& options, ClientGraph** out);
+  Status BuildGraph(const BuildGraphOptions& options, SimpleClientGraph** out);
 
   // Returns OK if the named node is found in the placed full graph owned
   // by this execution_state, and sets *out to the NodeDef for that node.
@@ -114,10 +114,44 @@ class SimpleGraphExecutionState {
   // execution, e.g. a send, recv or feed node.
   Status GlobalNodeDefByName(const string& name, NodeDef* out);
 
+  // The graph returned by BuildGraph may contain only the pruned
+  // graph, whereas some clients may want access to the full graph.
+  const Graph* full_graph() {
+    mutex_lock l(mu_);
+    return graph_;
+  }
+
+  // Returns a reference to the current graph_def.  Use must
+  // not extend beyond lifetime of SimpleGrahExecutionState object.
+  const GraphDef& original_graph_def() { return original_graph_def_; }
+
+  // Returns the map of stateful placements as a map of
+  // node name to placement string.
+  std::unordered_map<string, string> GetStatefulPlacements() const {
+    mutex_lock l(mu_);
+    return stateful_placements_;
+  }
+
+  // Restores the map of stateful placements as a map of
+  // node name to placement string.
+  void SetStatefulPlacements(const std::unordered_map<string, string>& sp) {
+    mutex_lock l(mu_);
+    stateful_placements_ = sp;
+  }
+
  private:
   mutable mutex mu_;
 
-  Status InitBaseGraph() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status InitBaseGraph(const BuildGraphOptions& options)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Map of placed stateful nodes, i.e. nodes for which is_stateful()
+  // is true, such as "params" and "queue" nodes.  Once placed these
+  // nodes can not be moved to a different device.  Maps node names to
+  // device names.
+  std::unordered_map<string, string> stateful_placements_ GUARDED_BY(mu_);
+  void SaveStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void RestoreStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const OpRegistryInterface* const ops_;   // Not owned
   GraphDef original_graph_def_;            // Immutable after ctor.

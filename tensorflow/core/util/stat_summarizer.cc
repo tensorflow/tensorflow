@@ -33,91 +33,190 @@ StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph) {
   LOG(INFO) << "StatSummarizer found " << tensorflow_graph.node_size()
             << " nodes";
   for (const auto& node : tensorflow_graph.node()) {
-    nodes_.push_back(node.name());
+    nodes_in_def_order_.push_back(node.name());
     node_types_[node.name()] = node.op();
   }
 }
 
 void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
-  ++num_runs_;
   int64 curr_total = 0;
+  if (timing_details_.empty() && !step_stats.dev_stats().empty() &&
+      !step_stats.dev_stats(0).node_stats().empty()) {
+    first_node_start_micros_ =
+        step_stats.dev_stats(0).node_stats(0).all_start_micros();
+  }
+
   for (const auto& ds : step_stats.dev_stats()) {
     for (const auto& ns : ds.node_stats()) {
-      const string name = ns.node_name();
       const int64 curr_time = ns.all_end_rel_micros();
       curr_total += curr_time;
-      int64 accum_time = timing_totals_[name];
-      timing_totals_[name] = accum_time + curr_time;
+      auto result = timing_details_.emplace(ns.node_name(), Detail());
+      if (result.second) {
+        result.first->second.first_rel_end_micros = curr_time;
+        result.first->second.first_start_micros =
+            ns.all_start_micros() - first_node_start_micros_;
+        result.first->second.total_micros = curr_time;
+      } else {
+        result.first->second.total_micros += curr_time;
+      }
     }
   }
-  run_total_us_.UpdateStat(curr_total);
-
-  timing_total_us_ += curr_total;
+  run_total_micros_.UpdateStat(curr_total);
 }
 
-void StatSummarizer::PrintHeaders() {
+std::string StatSummarizer::ShortSummary() const {
   std::stringstream stream;
-  stream << std::setw(40) << "[Name]"
-         << "\t" << std::setw(10) << "[Op]"
-         << "\t" << std::fixed << std::setprecision(3) << std::setw(9) << "[ms]"
-         << "\t" << std::fixed << std::setprecision(3) << std::setw(7) << "[%]"
-         << "\t";
-  LOG(INFO) << stream.str();
+  stream << run_total_micros_.count() << " runs, avg " << std::setprecision(4)
+         << run_total_micros_.avg() / 1000.0 << " ms, " << node_types_.size()
+         << " nodes defined " << timing_details_.size() << " nodes observed";
+  return stream.str();
 }
 
-void StatSummarizer::PrintColumns(const char* name, const char* op,
-                                  const double time_ms,
-                                  const double percentage) {
+std::string StatSummarizer::HeaderString() const {
   std::stringstream stream;
-  stream << std::setw(40) << name << "\t" << std::setw(10) << op << "\t"
-         << std::fixed << std::setprecision(3) << std::setw(9) << time_ms
-         << "\t" << std::fixed << std::setprecision(3) << std::setw(7)
-         << percentage << "\t";
-  LOG(INFO) << stream.str();
+  stream << std::setw(9) << "[start]" << std::setw(9) << "[first]"
+         << std::setw(9) << "[avg]";
+  stream << "\t" << std::setw(8) << "[%]"
+         << " ";
+  stream << "\t" << std::setw(8) << "[cdf%]"
+         << " ";
+  stream << "\t" << std::setw(10) << "[Op]";
+  stream << "\t"
+         << "[Name]";
+  return stream.str();
 }
 
-void StatSummarizer::PrintStepStats() {
-  const double avg_total_ms =
-      timing_total_us_ / static_cast<double>(num_runs_) / 1000.0;
+std::string StatSummarizer::ColumnString(
+    const std::string& name, const Detail& detail,
+    int64 cumulative_time_us_on_node) const {
+  std::stringstream stream;
+  stream << std::fixed << std::setprecision(3) << std::setw(9)
+         << detail.first_start_micros / 1000.0;
+  stream << std::fixed << std::setprecision(3) << std::setw(9)
+         << detail.first_rel_end_micros / 1000.0;
 
-  LOG(INFO) << "Total time (us): " << run_total_us_;
+  double avg_time_ms = detail.total_micros / 1000.0 / num_runs();
+  stream << std::fixed << std::setprecision(3) << std::setw(9) << avg_time_ms;
 
-  std::priority_queue<std::pair<double, string> > timings;
+  double percentage = detail.total_micros * 100.0 / run_total_micros_.sum();
+  stream << "\t" << std::fixed << std::setprecision(3) << std::setw(7)
+         << percentage << "%";
 
-  LOG(INFO) << timing_totals_.size() << " entries";
+  double cdf_percentage =
+      cumulative_time_us_on_node * 100.0 / run_total_micros_.sum();
+  stream << "\t" << std::fixed << std::setprecision(3) << std::setw(7)
+         << cdf_percentage << "%";
 
-  LOG(INFO) << "========== Sorted by run order (ms) ==========";
-  PrintHeaders();
-  for (auto node_name : nodes_) {
-    if (timing_totals_.find(node_name) == timing_totals_.end()) {
+  stream << "\t" << std::setw(10);
+  auto op_it = node_types_.find(name);
+  if (op_it != node_types_.end()) {
+    stream << op_it->second;
+  } else {
+    stream << " ";
+  }
+
+  stream << "\t" << name;
+
+  return stream.str();
+}
+
+std::string StatSummarizer::GetStatsBySorting(
+    SortingMetric sorting_metric, double cdf_cutoff_ratio,
+    int num_max_nodes_to_print) const {
+  num_max_nodes_to_print =
+      std::min<int>(num_max_nodes_to_print, timing_details_.size());
+
+  std::stringstream stream;
+  stream << ShortSummary() << std::endl;
+  if (sorting_metric == SortingMetric::BY_TOTAL_DURATION) {
+    stream << "============ Top by duration =================" << std::endl;
+  } else {
+    CHECK(sorting_metric == SortingMetric::BY_RUN_ORDER);
+    stream << "============ By run order =================" << std::endl;
+  }
+  stream << HeaderString() << std::endl;
+
+  std::priority_queue<
+      std::pair<int64, const std::pair<const std::string, Detail>*> >
+      timings;
+  for (const auto& entry : timing_details_) {
+    timings.emplace(sorting_metric == SortingMetric::BY_TOTAL_DURATION
+                        ? entry.second.total_micros
+                        : -entry.second.first_start_micros,
+                    &entry);
+  }
+
+  const int64 cutoff_point = run_total_micros_.sum() * cdf_cutoff_ratio;
+  int64 accumulated_us = 0;
+
+  for (int i = 0; !timings.empty() && i < num_max_nodes_to_print &&
+                  accumulated_us <= cutoff_point;
+       ++i) {
+    accumulated_us += timings.top().second->second.total_micros;
+    stream << ColumnString(timings.top().second->first,
+                           timings.top().second->second, accumulated_us)
+           << std::endl;
+    timings.pop();
+  }
+
+  return stream.str();
+}
+
+std::string StatSummarizer::GetStatsByTopDurations(
+    double cdf_cutoff, int num_max_nodes_to_print) const {
+  return GetStatsBySorting(SortingMetric::BY_TOTAL_DURATION, cdf_cutoff,
+                           num_max_nodes_to_print);
+}
+
+std::string StatSummarizer::GetStatsByRunOrder() const {
+  return GetStatsBySorting(SortingMetric::BY_RUN_ORDER,
+                           std::numeric_limits<int>::max(),
+                           std::numeric_limits<int>::max());
+}
+
+std::string StatSummarizer::GetStatsByOrderOfNodeDefinitions() const {
+  std::stringstream stream;
+  stream << ShortSummary() << std::endl;
+  stream << "============ By order of graph definition ================="
+         << std::endl;
+  stream << HeaderString() << std::endl;
+
+  int64 accumulated_us = 0;
+
+  auto timing_details_us_copy = timing_details_;
+
+  for (const auto& node_name_op : nodes_in_def_order_) {
+    auto detail_it = timing_details_us_copy.find(node_name_op);
+    if (detail_it == timing_details_us_copy.end()) {
       continue;
     }
-
-    int64 total_time = timing_totals_[node_name];
-
-    const double avg_time_ms =
-        total_time / static_cast<double>(num_runs_) / 1000.0;
-
-    const double overall_percentage = 100.0 * avg_time_ms / avg_total_ms;
-
-    PrintColumns(node_name.c_str(), node_types_[node_name].c_str(), avg_time_ms,
-                 overall_percentage);
-    timings.push(std::pair<double, string>(avg_time_ms, node_name));
+    accumulated_us += detail_it->second.total_micros;
+    stream << ColumnString(detail_it->first, detail_it->second, accumulated_us)
+           << std::endl;
+    timing_details_us_copy.erase(detail_it);
   }
-  LOG(INFO);
 
-  LOG(INFO) << "============ Top by duration =================";
-  PrintHeaders();
-  int num_printed = 0;
-  while (!timings.empty() && num_printed < 10) {
-    auto entry = timings.top();
-    timings.pop();
+  if (!timing_details_us_copy.empty()) {
+    stream << "============ "
+           << "The rest have different names between NodeExecStats and GraphDef"
+           << "============ " << std::endl;
 
-    const double overall_percentage = 100.0 * entry.first / avg_total_ms;
-    PrintColumns(entry.second.c_str(), node_types_[entry.second].c_str(),
-                 entry.first, overall_percentage);
-    ++num_printed;
+    for (const auto& entry : timing_details_us_copy) {
+      // Prints the remaining nodes whose names are different from the name in
+      // graph definition.
+      accumulated_us += entry.second.total_micros;
+      stream << ColumnString(entry.first, entry.second, accumulated_us)
+             << std::endl;
+    }
   }
+
+  return stream.str();
+}
+
+void StatSummarizer::PrintStepStats() const {
+  LOG(INFO) << "Total time (us): " << run_total_micros_;
+  LOG(INFO) << GetStatsByRunOrder();
+  LOG(INFO) << GetStatsByTopDurations();
   LOG(INFO);
 }
 

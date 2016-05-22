@@ -167,6 +167,36 @@ Regularization can help prevent overfitting. These have the signature
 
 - - -
 
+### `tf.contrib.layers.apply_regularization(regularizer, weights_list=None)` {#apply_regularization}
+
+Returns the summed penalty by applying `regularizer` to the `weights_list`.
+
+Adding a regularization penalty over the layer weights and embedding weights
+can help prevent overfitting the training data. Regularization over layer
+biases is less common/useful, but assuming proper data preprocessing/mean
+subtraction, it usually shouldn't hurt much either.
+
+##### Args:
+
+
+*  <b>`regularizer`</b>: A function that takes a single `Tensor` argument and returns
+    a scalar `Tensor` output.
+*  <b>`weights_list`</b>: List of weights `Tensors` or `Variables` to apply
+    `regularizer` over. Defaults to the `GraphKeys.WEIGHTS` collection if
+    `None`.
+
+##### Returns:
+
+  A scalar representing the overall regularization penalty.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `regularizer` does not return a scalar output.
+
+
+- - -
+
 ### `tf.contrib.layers.l1_regularizer(scale)` {#l1_regularizer}
 
 Returns a function that can be used to apply L1 regularization to weights.
@@ -353,276 +383,9 @@ To get xavier_initializer use either:
 
 
 
-## Summaries
+## Optimization
 
-Helper functions to summarize specific variables or ops.
-
-- - -
-
-### `tf.contrib.layers.summarize_activation(op)` {#summarize_activation}
-
-Summarize an activation.
-
-This applies the given activation and adds useful summaries specific to the
-activation.
-
-##### Args:
-
-
-*  <b>`op`</b>: The tensor to summarize (assumed to be a layer activation).
-
-##### Returns:
-
-  The summary op created to summarize `op`.
-
-
-- - -
-
-### `tf.contrib.layers.summarize_tensor(tensor, tag=None)` {#summarize_tensor}
-
-Summarize a tensor using a suitable summary type.
-
-This function adds a summary op for `tensor`. The type of summary depends on
-the shape of `tensor`. For scalars, a `scalar_summary` is created, for all
-other tensors, `histogram_summary` is used.
-
-##### Args:
-
-
-*  <b>`tensor`</b>: The tensor to summarize
-*  <b>`tag`</b>: The tag to use, if None then use tensor's op's name.
-
-##### Returns:
-
-  The summary op created.
-
-
-- - -
-
-### `tf.contrib.layers.summarize_tensors(tensors, summarizer=summarize_tensor)` {#summarize_tensors}
-
-Summarize a set of tensors.
-
-
-- - -
-
-### `tf.contrib.layers.summarize_collection(collection, name_filter=None, summarizer=summarize_tensor)` {#summarize_collection}
-
-Summarize a graph collection of tensors, possibly filtered by name.
-
-
-
-The layers module defines convenience functions `summarize_variables`,
-`summarize_weights` and `summarize_biases`, which set the `collection` argument
-of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
-
-- - -
-
-### `tf.contrib.layers.summarize_activations(name_filter=None, summarizer=summarize_activation)` {#summarize_activations}
-
-Summarize activations, using `summarize_activation` to summarize.
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.contrib.layers.apply_regularization(regularizer, weights_list=None)` {#apply_regularization}
-
-Returns the summed penalty by applying `regularizer` to the `weights_list`.
-
-Adding a regularization penalty over the layer weights and embedding weights
-can help prevent overfitting the training data. Regularization over layer
-biases is less common/useful, but assuming proper data preprocessing/mean
-subtraction, it usually shouldn't hurt much either.
-
-##### Args:
-
-
-*  <b>`regularizer`</b>: A function that takes a single `Tensor` argument and returns
-    a scalar `Tensor` output.
-*  <b>`weights_list`</b>: List of weights `Tensors` or `Variables` to apply
-    `regularizer` over. Defaults to the `GraphKeys.WEIGHTS` collection if
-    `None`.
-
-##### Returns:
-
-  A scalar representing the overall regularization penalty.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `regularizer` does not return a scalar output.
-
-
-- - -
-
-### `tf.contrib.layers.legacy_convolution2d(x, num_output_channels, kernel_size, activation_fn=None, stride=(1, 1), padding='SAME', weight_init=_initializer, bias_init=_initializer, name=None, weight_collections=None, bias_collections=None, output_collections=None, trainable=True, weight_regularizer=None, bias_regularizer=None)` {#legacy_convolution2d}
-
-Adds the parameters for a conv2d layer and returns the output.
-
-A neural network convolution layer is generally defined as:
-\\(y = f(conv2d(w, x) + b)\\) where **f** is given by `activation_fn`,
-**conv2d** is `tf.nn.conv2d` and `x` has shape
-`[batch, height, width, channels]`. The output of this op is of shape
-`[batch, out_height, out_width, num_output_channels]`, where `out_width` and
-`out_height` are determined by the `padding` argument. See `conv2D` for
-details.
-
-This op creates `w` and optionally `b` and adds various summaries that can be
-useful for visualizing learning or diagnosing training problems. Bias can be
-disabled by setting `bias_init` to `None`.
-
-The variable creation is compatible with `tf.variable_scope` and so can be
-reused with `tf.variable_scope` or `tf.make_template`.
-
-Most of the details of variable creation can be controlled by specifying the
-initializers (`weight_init` and `bias_init`) and which collections to place
-the created variables in (`weight_collections` and `bias_collections`).
-
-A per layer regularization can be specified by setting `weight_regularizer`.
-This is only applied to weights and not the bias.
-
-##### Args:
-
-
-*  <b>`x`</b>: A 4-D input `Tensor`.
-*  <b>`num_output_channels`</b>: The number of output channels (i.e. the size of the
-    last dimension of the output).
-*  <b>`kernel_size`</b>: A length 2 `list` or `tuple` containing the kernel size.
-*  <b>`activation_fn`</b>: A function that requires a single Tensor that is applied as a
-    non-linearity.
-*  <b>`stride`</b>: A length 2 `list` or `tuple` specifying the stride of the sliding
-    window across the image.
-*  <b>`padding`</b>: A `string` from: "SAME", "VALID". The type of padding algorithm to
-    use.
-*  <b>`weight_init`</b>: An optional initialization. If not specified, uses Xavier
-    initialization (see `tf.learn.xavier_initializer`).
-*  <b>`bias_init`</b>: An initializer for the bias, defaults to 0. Set to`None` in order
-    to disable bias.
-*  <b>`name`</b>: The name for this operation is used to name operations and to find
-    variables. If specified it must be unique for this scope, otherwise a
-    unique name starting with "convolution2d" will be created.  See
-    `tf.variable_op_scope` for details.
-*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
-*  <b>`bias_collections`</b>: List of graph collections to which biases are added.
-*  <b>`output_collections`</b>: List of graph collections to which outputs are added.
-*  <b>`trainable`</b>: If `True` also add variables to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`weight_regularizer`</b>: A regularizer like the result of
-    `l1_regularizer` or `l2_regularizer`. Used for weights.
-*  <b>`bias_regularizer`</b>: A regularizer like the result of
-    `l1_regularizer` or `l2_regularizer`. Used for biases.
-
-##### Returns:
-
-  The result of applying a 2-D convolutional layer.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `kernel_size` or `stride` are not length 2.
-
-
-- - -
-
-### `tf.contrib.layers.legacy_fully_connected(x, num_output_units, activation_fn=None, weight_init=_initializer, bias_init=_initializer, name=None, weight_collections=('weights',), bias_collections=('biases',), output_collections=('activations',), trainable=True, weight_regularizer=None, bias_regularizer=None)` {#legacy_fully_connected}
-
-Adds the parameters for a fully connected layer and returns the output.
-
-A fully connected layer is generally defined as a matrix multiply:
-`y = f(w * x + b)` where `f` is given by `activation_fn`. If
-`activation_fn` is `None`, the result of `y = w * x + b` is
-returned.
-
-If `x` has shape [\\\(\\text{dim}_0, \\text{dim}_1, ..., \\text{dim}_n\\\)]
-with more than 2 dimensions (\\\(n > 1\\\)), then we repeat the matrix
-multiply along the first dimensions. The result r is a tensor of shape
-[\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`],
-where \\\( r_{i_0, ..., i_{n-1}, k} =
-\\sum_{0 \\leq j < \\text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\\).
-This is accomplished by reshaping `x` to 2-D
-[\\\(\\text{dim}_0 \\cdot ... \\cdot \\text{dim}_{n-1}, \\text{dim}_n\\\)]
-before the matrix multiply and afterwards reshaping it to
-[\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`].
-
-This op creates `w` and optionally `b`. Bias (`b`) can be disabled by setting
-`bias_init` to `None`.
-
-The variable creation is compatible with `tf.variable_scope` and so can be
-reused with `tf.variable_scope` or `tf.make_template`.
-
-Most of the details of variable creation can be controlled by specifying the
-initializers (`weight_init` and `bias_init`) and in which collections to place
-the created variables (`weight_collections` and `bias_collections`; note that
-the variables are always added to the `VARIABLES` collection). The output of
-the layer can be placed in custom collections using `output_collections`.
-The collections arguments default to `WEIGHTS`, `BIASES` and `ACTIVATIONS`,
-respectively.
-
-A per layer regularization can be specified by setting `weight_regularizer`
-and `bias_regularizer`, which are applied to the weights and biases
-respectively, and whose output is added to the `REGULARIZATION_LOSSES`
-collection.
-
-##### Args:
-
-
-*  <b>`x`</b>: The input `Tensor`.
-*  <b>`num_output_units`</b>: The size of the output.
-*  <b>`activation_fn`</b>: A function that requires a single Tensor that is applied as a
-    non-linearity. If None is used, do not apply any activation.
-*  <b>`weight_init`</b>: An optional weight initialization, defaults to
-    `xavier_initializer`.
-*  <b>`bias_init`</b>: An initializer for the bias, defaults to 0. Set to `None` in
-    order to disable bias.
-*  <b>`name`</b>: The name for this operation is used to name operations and to find
-    variables. If specified it must be unique for this scope, otherwise a
-    unique name starting with "fully_connected" will be created.  See
-    `tf.variable_op_scope` for details.
-*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
-*  <b>`bias_collections`</b>: List of graph collections to which biases are added.
-*  <b>`output_collections`</b>: List of graph collections to which outputs are added.
-*  <b>`trainable`</b>: If `True` also add variables to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`weight_regularizer`</b>: A regularizer like the result of
-    `l1_regularizer` or `l2_regularizer`. Used for weights.
-*  <b>`bias_regularizer`</b>: A regularizer like the result of
-    `l1_regularizer` or `l2_regularizer`. Used for biases.
-
-##### Returns:
-
-  The output of the fully connected layer.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if x has rank less than 2 or if its last dimension is not set.
-
-
-- - -
-
-### `tf.contrib.layers.make_all(module_name, doc_string_modules=None)` {#make_all}
-
-Generate `__all__` from the docstring of one or more modules.
-
-Usage: `make_all(__name__)` or
-`make_all(__name__, [sys.modules(__name__), other_module])`. The doc string
-modules must each a docstring, and `__all__` will contain all symbols with
-`@@` references, where that symbol currently exists in the module named
-`module_name`.
-
-##### Args:
-
-
-*  <b>`module_name`</b>: The name of the module (usually `__name__`).
-*  <b>`doc_string_modules`</b>: a list of modules from which to take docstring.
-  If None, then a list containing only the module named `module_name` is used.
-
-##### Returns:
-
-  A list suitable for use as `__all__`.
-
+Optimize weights given a loss.
 
 - - -
 
@@ -670,61 +433,74 @@ Given loss and parameters for optimizer, returns a training op.
 *  <b>`ValueError`</b>: if optimizer is wrong type.
 
 
+
+## Summaries
+
+Helper functions to summarize specific variables or ops.
+
 - - -
 
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_secs=10, max_steps=None, fail_on_nan_loss=True)` {#train}
+### `tf.contrib.layers.summarize_activation(op)` {#summarize_activation}
 
-Train a model.
+Summarize an activation.
 
-Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
-run a training loop. The given `train_op` performs one step of training on the
-model. The `loss_op` represents the objective function of the training. It is
-expected to increment the `global_step_tensor`, a scalar integer tensor
-counting training steps. This function uses `Supervisor` to initialize the
-graph (from a checkpoint if one is available in `output_dir`), write summaries
-defined in the graph, and write regular checkpoints as defined by
-`supervisor_save_model_secs`.
-
-Training continues until `global_step_tensor` evaluates to `max_steps`, or, if
-`fail_on_nan_loss`, until `loss_op` evaluates to `NaN`. In that case the
-program is terminated with exit code 1.
+This applies the given activation and adds useful summaries specific to the
+activation.
 
 ##### Args:
 
 
-*  <b>`graph`</b>: A graph to train. It is expected that this graph is not in use
-    elsewhere.
-*  <b>`output_dir`</b>: A directory to write outputs to.
-*  <b>`train_op`</b>: An op that performs one training step when run.
-*  <b>`loss_op`</b>: A scalar loss tensor.
-*  <b>`global_step_tensor`</b>: A tensor representing the global step. If none is given,
-    one is extracted from the graph using the same logic as in `Supervisor`.
-*  <b>`init_op`</b>: An op that initializes the graph. If `None`, use `Supervisor`'s
-    default.
-*  <b>`log_every_steps`</b>: Output logs regularly. The logs contain timing data and the
-    current loss.
-*  <b>`supervisor_is_chief`</b>: Whether the current process is the chief supervisor in
-    charge of restoring the model and running standard services.
-*  <b>`supervisor_master`</b>: The master string to use when preparing the session.
-*  <b>`supervisor_save_model_secs`</b>: Save a checkpoint every
-    `supervisor_save_model_secs` seconds when training.
-*  <b>`supervisor_save_summaries_secs`</b>: Save summaries every
-    `supervisor_save_summaries_secs` seconds when training.
-*  <b>`max_steps`</b>: Train until `global_step_tensor` evaluates to this value.
-*  <b>`fail_on_nan_loss`</b>: If true, raise `NanLossDuringTrainingError` if `loss_op`
-    evaluates to `NaN`. If false, continue training as if nothing happened.
+*  <b>`op`</b>: The tensor to summarize (assumed to be a layer activation).
 
 ##### Returns:
 
-  The final loss value.
-
-##### Raises:
+  The summary op created to summarize `op`.
 
 
-*  <b>`ValueError`</b>: If `global_step_tensor` is not provided. See
-      `tf.contrib.framework.get_global_step` for how we look it up if not
-      provided explicitly.
-*  <b>`NanLossDuringTrainingError`</b>: If `fail_on_nan_loss` is `True`, and loss ever
-      evaluates to `NaN`.
+- - -
+
+### `tf.contrib.layers.summarize_tensor(tensor, tag=None)` {#summarize_tensor}
+
+Summarize a tensor using a suitable summary type.
+
+This function adds a summary op for `tensor`. The type of summary depends on
+the shape of `tensor`. For scalars, a `scalar_summary` is created, for all
+other tensors, `histogram_summary` is used.
+
+##### Args:
+
+
+*  <b>`tensor`</b>: The tensor to summarize
+*  <b>`tag`</b>: The tag to use, if None then use tensor's op's name.
+
+##### Returns:
+
+  The summary op created or None for string tensors.
+
+
+- - -
+
+### `tf.contrib.layers.summarize_tensors(tensors, summarizer=summarize_tensor)` {#summarize_tensors}
+
+Summarize a set of tensors.
+
+
+- - -
+
+### `tf.contrib.layers.summarize_collection(collection, name_filter=None, summarizer=summarize_tensor)` {#summarize_collection}
+
+Summarize a graph collection of tensors, possibly filtered by name.
+
+
+
+The layers module defines convenience functions `summarize_variables`,
+`summarize_weights` and `summarize_biases`, which set the `collection` argument
+of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
+
+- - -
+
+### `tf.contrib.layers.summarize_activations(name_filter=None, summarizer=summarize_activation)` {#summarize_activations}
+
+Summarize activations, using `summarize_activation` to summarize.
 
 

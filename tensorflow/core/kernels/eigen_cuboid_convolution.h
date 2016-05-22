@@ -174,6 +174,9 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
       out_width = Eigen::divup(inputCols, static_cast<TensorIndex>(strideCols));
       break;
     default:
+      out_depth = 0;
+      out_height = 0;
+      out_width = 0;
       eigen_assert(false && "unexpected padding");
   }
 

@@ -107,6 +107,83 @@ class SupervisorTest(tf.test.TestCase):
       self.assertTrue(sv.should_stop())
       self.assertEqual(3, last_step)
 
+  def testManagedSessionDoNotKeepSummaryWriter(self):
+    logdir = self._TestDir("managed_not_keep_summary_writer")
+    with tf.Graph().as_default():
+      summ = tf.scalar_summary(["c1", "c2", "c3"], tf.constant([1.0, 2.0, 3.0]))
+      sv = tf.train.Supervisor(logdir=logdir, summary_op=None)
+      with sv.managed_session("", close_summary_writer=True) as sess:
+        sv.summary_computed(sess, sess.run(summ))
+      with sv.managed_session("", close_summary_writer=True) as sess:
+        sv.summary_computed(sess, sess.run(summ))
+    # The summary iterator should report the summary once as we closed
+    # the summary writer across the 2 sessions.
+    rr = _summary_iterator(logdir)
+    # The first event should list the file_version.
+    ev = next(rr)
+    self.assertEquals("brain.Event:2", ev.file_version)
+
+    # The next one has the graph.
+    ev = next(rr)
+
+    # The next one should have the values from the summary.
+    # But only once.
+    ev = next(rr)
+    self.assertProtoEquals("""
+      value { tag: 'c1' simple_value: 1.0 }
+      value { tag: 'c2' simple_value: 2.0 }
+      value { tag: 'c3' simple_value: 3.0 }
+      """, ev.summary)
+
+    # The next one should be a stop message if we closed cleanly.
+    ev = next(rr)
+    self.assertEquals(tf.SessionLog.STOP, ev.session_log.status)
+
+    # We should be done.
+    self.assertRaises(StopIteration, lambda: next(rr))
+
+  def testManagedSessionKeepSummaryWriter(self):
+    logdir = self._TestDir("managed_keep_summary_writer")
+    with tf.Graph().as_default():
+      summ = tf.scalar_summary(["c1", "c2", "c3"], tf.constant([1.0, 2.0, 3.0]))
+      sv = tf.train.Supervisor(logdir=logdir)
+      with sv.managed_session("", close_summary_writer=False) as sess:
+        sv.summary_computed(sess, sess.run(summ))
+      with sv.managed_session("", close_summary_writer=False) as sess:
+        sv.summary_computed(sess, sess.run(summ))
+    # The summary iterator should report the summary twice as we reused
+    # the same summary writer across the 2 sessions.
+    rr = _summary_iterator(logdir)
+    # The first event should list the file_version.
+    ev = next(rr)
+    self.assertEquals("brain.Event:2", ev.file_version)
+
+    # The next one has the graph.
+    ev = next(rr)
+
+    # The next one should have the values from the summary.
+    ev = next(rr)
+    self.assertProtoEquals("""
+      value { tag: 'c1' simple_value: 1.0 }
+      value { tag: 'c2' simple_value: 2.0 }
+      value { tag: 'c3' simple_value: 3.0 }
+      """, ev.summary)
+
+    # The next one should also have the values from the summary.
+    ev = next(rr)
+    self.assertProtoEquals("""
+      value { tag: 'c1' simple_value: 1.0 }
+      value { tag: 'c2' simple_value: 2.0 }
+      value { tag: 'c3' simple_value: 3.0 }
+      """, ev.summary)
+
+    # The next one should be a stop message if we closed cleanly.
+    ev = next(rr)
+    self.assertEquals(tf.SessionLog.STOP, ev.session_log.status)
+
+    # We should be done.
+    self.assertRaises(StopIteration, lambda: next(rr))
+
   def _csv_data(self, logdir):
     # Create a small data file with 3 CSV records.
     data_path = os.path.join(logdir, "data.csv")

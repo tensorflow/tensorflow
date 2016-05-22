@@ -44,7 +44,7 @@ namespace tensorflow {
 namespace {
 
 TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
-  EnableCPUAllocatorDetailedStats(true);
+  EnableCPUAllocatorFullStats(true);
 
   Graph graph(OpRegistry::Global());
 
@@ -84,16 +84,18 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
 
   DirectSession* ds = static_cast<DirectSession*>(session.get());
   int graph_cnt = 0;
-  for (auto& it : ds->CostModels()) {
+  CostModelManager::CostModelMap cost_models;
+  ds->ExportCostModels(&cost_models);
+  for (auto& it : cost_models) {
     const Graph* g = (it).first;
     const CostModel* cm = (it).second;
     for (Node* node : g->nodes()) {
       if (node->name() == y->name()) {
-        EXPECT_LE(8, cm->MaxMemSize(node, 0));
-        EXPECT_EQ(5, cm->Aliases(node, 0));
+        EXPECT_LE(8, cm->MaxMemorySize(node, 0));
+        EXPECT_EQ(5, cm->AllocationId(node, 0));
       } else if (node->name() == y_neg->name()) {
-        EXPECT_LE(8, cm->MaxMemSize(node, 0));
-        EXPECT_EQ(6, cm->Aliases(node, 0));
+        EXPECT_LE(8, cm->MaxMemorySize(node, 0));
+        EXPECT_EQ(6, cm->AllocationId(node, 0));
       }
       // Check the execution time. Since it's highly variable, we'll
       // use a large window: anything between 1 and 10000 microseconds is

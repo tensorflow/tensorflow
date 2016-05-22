@@ -7,7 +7,7 @@ part of the input will be used for this operation. The upper-triangular part
 will not be read.
 
 The result is the lower-triangular matrix of the Cholesky decomposition of the
-input.
+input, `L`, so that `input = L L^*`.
 
 ##### Args:
 

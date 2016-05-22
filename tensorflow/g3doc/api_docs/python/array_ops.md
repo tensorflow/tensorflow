@@ -1399,9 +1399,8 @@ where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 ##### Args:
 
 
-*  <b>`tensor`</b>: N-D tensor.  First K dimensions can be None, which allows e.g.
-    undefined batch size.  Trailing dimensions must be specified.
-*  <b>`mask`</b>: K-D boolean tensor, K <= N.
+*  <b>`tensor`</b>: N-D tensor.
+*  <b>`mask`</b>: K-D boolean tensor, K <= N and K must be known statically.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:

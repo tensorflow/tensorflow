@@ -590,6 +590,19 @@ class ControlFlowTest(tf.test.TestCase):
     self._testWhile_Gpu_1(use_gpu=False)
     self._testWhile_Gpu_1(use_gpu=True)
 
+  def testWhileShape(self):
+    with self.test_session():
+      i = tf.constant(0)
+      m = tf.ones([2, 2])
+      c = lambda i, j: tf.less(i, 2)
+      def _b(i, j):
+        new_i = tf.add(i, 1)
+        new_j = tf.tile(j, [2, 2])
+        return [new_i, new_j]
+      r = tf.while_loop(c, _b, [i, m])
+      r = r[1] * tf.ones([8, 8])
+      self.assertAllEqual(np.ones((8, 8)), r.eval())
+
   def _testNestedWhile_1(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       n = tf.constant(0)
@@ -639,6 +652,14 @@ class ControlFlowTest(tf.test.TestCase):
 
       res = tf.while_loop(condition, body, [r], parallel_iterations=1)
       self.assertAllEqual(12, res.eval())
+
+  def testWhileWithControl_3(self):
+    with self.test_session() as sess:
+      b = tf.placeholder(tf.bool)
+      c = tf.constant(0)
+      with tf.control_dependencies([b]):
+        c = tf.while_loop(lambda x: x < 10, lambda x: x + 1, [c])
+      self.assertEqual(10, sess.run(c, {b: True}))
 
   def testCondWhile_1(self):
     with self.test_session():

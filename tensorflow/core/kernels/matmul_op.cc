@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -204,10 +205,15 @@ struct MatMulFunctor<CPUDevice, T> {
 REGISTER_CPU(float);
 REGISTER_CPU(double);
 REGISTER_CPU(int32);
+REGISTER_CPU(Eigen::half);
 REGISTER_CPU(complex64);
+REGISTER_CPU(complex128);
 #if GOOGLE_CUDA
 REGISTER_GPU(float);
 // REGISTER_GPU(double);
+#if CUDA_VERSION >= 7050
+REGISTER_GPU(Eigen::half);
+#endif
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

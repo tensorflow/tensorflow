@@ -21,16 +21,20 @@ The wall_time is serialized as seconds since epoch.
   <template>
     <svg id="chartsvg"></svg>
     <div id="tooltip">
-      <h4 id="headline"></h4>
-      <div class="tooltip-row">
-        Step: <span id="step"></span>
-      </div>
-      <div class="tooltip-row">
-        Time: <span id="time"></span>
-      </div>
-      <div class="tooltip-row">
-        Value: <span id="value"></span>
-      </div>
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Run</th>
+            <th>Value</th>
+            <th>Step</th>
+            <th>Time</th>
+            <th>Relative</th>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
     </div>
     <style>
       :host {
@@ -48,8 +52,11 @@ The wall_time is serialized as seconds since epoch.
         flex-grow: 1;
         flex-shrink: 1;
       }
-      .tooltip-row{
-        white-space: nowrap;
+      td {
+        padding-left: 5px;
+        padding-right: 5px;
+        font-size: 13px;
+        opacity: 1;
       }
       #tooltip {
         pointer-events: none;
@@ -65,20 +72,29 @@ The wall_time is serialized as seconds since epoch.
         z-index: 5;
         cursor: none;
       }
-      #tooltip #headline {
-        margin: 0 0 2px 0;
-        font-weight: bold;
+      .swatch {
+        border-radius: 50%;
+        width: 14px;
+        height: 14px;
+        display: block;
+        border: 2px solid rgba(0,0,0,0);
       }
-      #tooltip span {
-        font-weight: bold;
+      .closest .swatch {
+        border: 2px solid white;
       }
-      .plottable .crosshairs line.guide-line {
-        stroke: #777;
+      th {
+        padding-left: 5px;
+        padding-right: 5px;
+        text-align: left;
       }
-      text.tooltip {
-        font-size: 3;
+      .distant td {
+        opacity: 0.8;
+      }
 
+      .distant td.swatch {
+        opacity: 1;
       }
+
     </style>
   </template>
   <script src="dragZoomInteraction.js"></script>
@@ -129,6 +145,7 @@ The wall_time is serialized as seconds since epoch.
         if (this._chart) this._chart.destroy();
         var cns = this._constructor(type);
         var tooltip = d3.select(this.$.tooltip);
+        this.scopeSubtree(this.$.tooltip, true);
         var chart = new cns(tag, dataProvider, xType, colorScale, tooltip);
         var svg = d3.select(this.$.chartsvg);
         this.async(function() {

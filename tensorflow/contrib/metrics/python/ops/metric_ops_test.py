@@ -21,7 +21,11 @@ from __future__ import print_function
 import math
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+
+
+NAN = float('nan')
 
 
 def _enqueue_vector(sess, queue, values, shape=None):
@@ -29,6 +33,107 @@ def _enqueue_vector(sess, queue, values, shape=None):
     shape = (1, len(values))
   dtype = queue.dtypes[0]
   sess.run(queue.enqueue(tf.constant(values, dtype=dtype, shape=shape)))
+
+
+def _binary_2d_label_to_sparse_value(labels):
+  """Convert dense 2D binary indicator tensor to sparse tensor.
+
+  Only 1 values in `labels` are included in result.
+
+  Args:
+    labels: Dense 2D binary indicator tensor.
+
+  Returns:
+    `SparseTensorValue` whose values are indices along the last dimension of
+    `labels`.
+  """
+  indices = []
+  values = []
+  batch = 0
+  for row in labels:
+    label = 0
+    xi = 0
+    for x in row:
+      if x == 1:
+        indices.append([batch, xi])
+        values.append(label)
+        xi += 1
+      else:
+        assert x == 0
+      label += 1
+    batch += 1
+  shape = [len(labels), len(labels[0])]
+  return tf.SparseTensorValue(
+      np.array(indices, np.int64),
+      np.array(values, np.int64),
+      np.array(shape, np.int64))
+
+
+def _binary_2d_label_to_sparse(labels):
+  """Convert dense 2D binary indicator tensor to sparse tensor.
+
+  Only 1 values in `labels` are included in result.
+
+  Args:
+    labels: Dense 2D binary indicator tensor.
+
+  Returns:
+    `SparseTensor` whose values are indices along the last dimension of
+    `labels`.
+  """
+  v = _binary_2d_label_to_sparse_value(labels)
+  return tf.SparseTensor(tf.constant(v.indices, tf.int64),
+                         tf.constant(v.values, tf.int64),
+                         tf.constant(v.shape, tf.int64))
+
+
+def _binary_3d_label_to_sparse_value(labels):
+  """Convert dense 3D binary indicator tensor to sparse tensor.
+
+  Only 1 values in `labels` are included in result.
+
+  Args:
+    labels: Dense 2D binary indicator tensor.
+
+  Returns:
+    `SparseTensorValue` whose values are indices along the last dimension of
+    `labels`.
+  """
+  indices = []
+  values = []
+  for d0, labels_d0 in enumerate(labels):
+    for d1, labels_d1 in enumerate(labels_d0):
+      d2 = 0
+      for class_id, label in enumerate(labels_d1):
+        if label == 1:
+          values.append(class_id)
+          indices.append([d0, d1, d2])
+          d2 += 1
+        else:
+          assert label == 0
+  shape = [len(labels), len(labels[0]), len(labels[0][0])]
+  return tf.SparseTensorValue(
+      np.array(indices, np.int64),
+      np.array(values, np.int64),
+      np.array(shape, np.int64))
+
+
+def _binary_3d_label_to_sparse(labels):
+  """Convert dense 3D binary indicator tensor to sparse tensor.
+
+  Only 1 values in `labels` are included in result.
+
+  Args:
+    labels: Dense 2D binary indicator tensor.
+
+  Returns:
+    `SparseTensor` whose values are indices along the last dimension of
+    `labels`.
+  """
+  v = _binary_3d_label_to_sparse_value(labels)
+  return tf.SparseTensor(tf.constant(v.indices, tf.int64),
+                         tf.constant(v.values, tf.int64),
+                         tf.constant(v.shape, tf.int64))
 
 
 class StreamingMeanTest(tf.test.TestCase):
@@ -562,7 +667,7 @@ class StreamingAUCTest(tf.test.TestCase):
   def testWithMultipleUpdates(self):
     num_samples = 5000
     batch_size = 10
-    num_batches = num_samples / batch_size
+    num_batches = int(num_samples / batch_size)
 
     # Create the labels and data.
     labels = np.random.randint(0, 2, size=(num_samples, 1))
@@ -693,6 +798,626 @@ class StreamingRecallAtKTest(tf.test.TestCase):
       sess.run(tf.initialize_local_variables())
       sess.run(update_op)
       self.assertEqual(1.0, recall.eval())
+
+
+class StreamingSparsePrecisionTest(tf.test.TestCase):
+
+  def _assert_precision_at_k(self,
+                             predictions,
+                             labels,
+                             k,
+                             expected,
+                             class_id=None,
+                             ignore_mask=None):
+    loss, loss_update = tf.contrib.metrics.streaming_sparse_precision_at_k(
+        predictions=tf.constant(predictions, tf.float32), labels=labels,
+        k=k, class_id=class_id, ignore_mask=ignore_mask)
+
+    # Fails without initialized vars.
+    self.assertRaises(tf.OpError, loss.eval)
+    self.assertRaises(tf.OpError, loss_update.eval)
+    tf.initialize_variables(tf.local_variables()).run()
+
+    # Run per-step op and assert expected values.
+    if math.isnan(expected):
+      self.assertTrue(math.isnan(loss_update.eval()))
+      self.assertTrue(math.isnan(loss.eval()))
+    else:
+      self.assertEqual(expected, loss_update.eval())
+      self.assertEqual(expected, loss.eval())
+
+  def test_one_label_at_k1_no_predictions(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+
+    # Classes 0,1,2 have 0 predictions, class 4 is out of range.
+    for class_id in [0, 1, 2, 4]:
+      with self.test_session():
+        self._assert_precision_at_k(
+            predictions, _binary_2d_label_to_sparse(labels), k=1, expected=NAN,
+            class_id=class_id)
+
+  def test_one_label_at_k1(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+
+    # Class 3: 1 label, 2 predictions, 1 correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_2d_label_to_sparse(labels), k=1,
+          expected=1.0 / 2.0, class_id=3)
+
+    # All classes: 2 labels, 2 predictions, 1 correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_2d_label_to_sparse(labels), k=1,
+          expected=1.0 / 2.0)
+
+  def test_three_labels_at_k5_no_predictions(self):
+    predictions = [
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ]
+    labels = [
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ]
+
+    # Classes 1,3,8 have 0 predictions, class 10 is out of range.
+    for class_id in [1, 3, 8, 10]:
+      with self.test_session():
+        self._assert_precision_at_k(
+            predictions, _binary_2d_label_to_sparse(labels), k=5, expected=NAN,
+            class_id=class_id)
+
+  def test_three_labels_at_k5_no_labels(self):
+    predictions = [
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ]
+    labels = [
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ]
+
+    # Classes 0,4,6,9: 0 labels, >=1 prediction.
+    for class_id in [0, 4, 6, 9]:
+      with self.test_session():
+        self._assert_precision_at_k(
+            predictions, _binary_2d_label_to_sparse(labels), k=5, expected=0.0,
+            class_id=class_id)
+
+  def test_three_labels_at_k5(self):
+    predictions = [
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ]
+    labels = [
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ]
+
+    # Class 2: 2 labels, 2 correct predictions.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_2d_label_to_sparse(labels), k=5,
+          expected=2.0 / 2.0, class_id=2)
+
+    # Class 5: 1 label, 1 correct prediction.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_2d_label_to_sparse(labels), k=5,
+          expected=1.0 / 1.0, class_id=5)
+
+    # Class 7: 1 label, 1 incorrect prediction.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_2d_label_to_sparse(labels), k=5,
+          expected=0.0 / 1.0, class_id=7)
+
+    # All classes: 10 predictions, 3 correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_2d_label_to_sparse(labels), k=5,
+          expected=3.0 / 10.0)
+
+  def test_3d_no_predictions(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+    ]]
+
+    # Classes 1,3,8 have 0 predictions, class 10 is out of range.
+    for class_id in [1, 3, 8, 10]:
+      with self.test_session():
+        self._assert_precision_at_k(
+            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+            class_id=class_id)
+
+  def test_3d_no_labels(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+    ]]
+
+    # Classes 0,4,6,9: 0 labels, >=1 prediction.
+    for class_id in [0, 4, 6, 9]:
+      with self.test_session():
+        self._assert_precision_at_k(
+            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=0.0,
+            class_id=class_id)
+
+  def test_3d(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+    ]]
+
+    # Class 2: 4 predictions, all correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=4.0 / 4.0, class_id=2)
+
+    # Class 5: 2 predictions, both correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=2.0 / 2.0, class_id=5)
+
+    # Class 7: 2 predictions, 1 correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=1.0 / 2.0, class_id=7)
+
+    # All classes: 20 predictions, 7 correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=7.0 / 20.0)
+
+  def test_3d_ignore_all(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+    ]]
+
+    for class_id in xrange(10):
+      with self.test_session():
+        self._assert_precision_at_k(
+            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+            class_id=class_id, ignore_mask=[True, True])
+      with self.test_session():
+        self._assert_precision_at_k(
+            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+            class_id=class_id, ignore_mask=[[True, True], [True, True]])
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+          ignore_mask=[True, True])
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+          ignore_mask=[[True, True], [True, True]])
+
+  def test_3d_ignore_some(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+    ]]
+
+    # Class 2: 2 predictions, both correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=2.0 / 2.0, class_id=2, ignore_mask=[False, True])
+
+    # Class 2: 2 predictions, both correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=2.0 / 2.0, class_id=2, ignore_mask=[True, False])
+
+    # Class 7: 1 incorrect prediction.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=0.0 / 1.0, class_id=7, ignore_mask=[False, True])
+
+    # Class 7: 1 correct prediction.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=1.0 / 1.0, class_id=7, ignore_mask=[True, False])
+
+    # Class 7: no predictions.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=NAN, class_id=7, ignore_mask=[[False, True], [True, False]])
+
+    # Class 7: 2 predictions, 1 correct.
+    with self.test_session():
+      self._assert_precision_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=1.0 / 2.0, class_id=7,
+          ignore_mask=[[True, False], [False, True]])
+
+  def test_sparse_tensor_value(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+    expected_precision = 0.5
+    with self.test_session():
+      _, precision = tf.contrib.metrics.streaming_sparse_precision_at_k(
+          predictions=tf.constant(predictions, tf.float32),
+          labels=_binary_2d_label_to_sparse_value(labels), k=1)
+
+      tf.initialize_variables(tf.local_variables()).run()
+
+      self.assertEqual(expected_precision, precision.eval())
+
+
+class StreamingSparseRecallTest(tf.test.TestCase):
+
+  def _assert_recall_at_k(self,
+                          predictions,
+                          labels,
+                          k,
+                          expected,
+                          class_id=None,
+                          ignore_mask=None):
+    loss, loss_update = tf.contrib.metrics.streaming_sparse_recall_at_k(
+        predictions=tf.constant(predictions, tf.float32),
+        labels=labels, k=k, class_id=class_id, ignore_mask=ignore_mask)
+
+    # Fails without initialized vars.
+    self.assertRaises(tf.OpError, loss.eval)
+    self.assertRaises(tf.OpError, loss_update.eval)
+    tf.initialize_variables(tf.local_variables()).run()
+
+    # Run per-step op and assert expected values.
+    if math.isnan(expected):
+      self.assertTrue(math.isnan(loss_update.eval()))
+      self.assertTrue(math.isnan(loss.eval()))
+    else:
+      self.assertEqual(expected, loss_update.eval())
+      self.assertEqual(expected, loss.eval())
+
+  def test_one_label_at_k1_empty_classes(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+
+    # Classes 0,1 have 0 labels, 0 predictions, class 4 is out of range.
+    for class_id in [0, 1, 4]:
+      with self.test_session():
+        self._assert_recall_at_k(
+            predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+            k=1, expected=NAN, class_id=class_id)
+
+  def test_one_label_at_k1_no_predictions(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+
+    # Class 2: 0 predictions.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+          k=1, expected=0.0, class_id=2)
+
+  def test_one_label_at_k1(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+
+    # Class 3: 1 label, 2 predictions, 1 correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+          k=1, expected=1.0 / 1.0, class_id=3)
+
+    # All classes: 2 labels, 2 predictions, 1 correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+          k=1, expected=1.0 / 2.0)
+
+  def test_three_labels_at_k5_no_labels(self):
+    predictions = [
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]]
+    labels = [
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]]
+
+    # Classes 0,3,4,6,9 have 0 labels, class 10 is out of range.
+    for class_id in [0, 3, 4, 6, 9, 10]:
+      with self.test_session():
+        self._assert_recall_at_k(
+            predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+            k=5, expected=NAN, class_id=class_id)
+
+  def test_three_labels_at_k5_no_predictions(self):
+    predictions = [
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]]
+    labels = [
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]]
+
+    # Class 8: 1 label, no predictions.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+          k=5, expected=0.0 / 1.0, class_id=8)
+
+  def test_three_labels_at_k5(self):
+    predictions = [
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]]
+    labels = [
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]]
+
+    # Class 2: 2 labels, both correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+          k=5, expected=2.0 / 2.0, class_id=2)
+
+    # Class 5: 1 label, incorrect.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+          k=5, expected=1.0 / 1.0, class_id=5)
+
+    # Class 7: 1 label, incorrect.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+          k=5, expected=0.0 / 1.0, class_id=7)
+
+    # All classes: 6 labels, 3 correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
+          k=5, expected=3.0 / 6.0)
+
+  def test_3d_no_labels(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0]
+    ]]
+
+    # Classes 0,3,4,6,9 have 0 labels, class 10 is out of range.
+    for class_id in [0, 3, 4, 6, 9, 10]:
+      with self.test_session():
+        self._assert_recall_at_k(
+            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+            class_id=class_id)
+
+  def test_3d_no_predictions(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0]
+    ]]
+
+    # Classes 1,8 have 0 predictions, >=1 label.
+    for class_id in [1, 8]:
+      with self.test_session():
+        self._assert_recall_at_k(
+            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=0.0,
+            class_id=class_id)
+
+  def test_3d(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+    ]]
+
+    # Class 2: 4 labels, all correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=4.0 / 4.0, class_id=2)
+
+    # Class 5: 2 labels, both correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=2.0 / 2.0, class_id=5)
+
+    # Class 7: 2 labels, 1 incorrect.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=1.0 / 2.0, class_id=7)
+
+    # All classes: 12 labels, 7 correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=7.0 / 12.0)
+
+  def test_3d_ignore_all(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+    ]]
+
+    for class_id in xrange(10):
+      with self.test_session():
+        self._assert_recall_at_k(
+            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+            class_id=class_id, ignore_mask=[True, True])
+      with self.test_session():
+        self._assert_recall_at_k(
+            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+            class_id=class_id, ignore_mask=[[True, True], [True, True]])
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+          ignore_mask=[True, True])
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+          ignore_mask=[[True, True], [True, True]])
+
+  def test_3d_ignore_some(self):
+    predictions = [[
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
+    ], [
+        [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6],
+        [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9]
+    ]]
+    labels = [[
+        [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+        [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+    ], [
+        [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
+    ]]
+
+    # Class 2: 2 labels, both correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=2.0 / 2.0, class_id=2, ignore_mask=[False, True])
+
+    # Class 2: 2 labels, both correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=2.0 / 2.0, class_id=2, ignore_mask=[True, False])
+
+    # Class 7: 1 label, correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=1.0 / 1.0, class_id=7, ignore_mask=[True, False])
+
+    # Class 7: 1 label, incorrect.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=0.0 / 1.0, class_id=7, ignore_mask=[False, True])
+
+    # Class 7: 2 labels, 1 correct.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=1.0 / 2.0, class_id=7,
+          ignore_mask=[[False, True], [False, True]])
+
+    # Class 7: No labels.
+    with self.test_session():
+      self._assert_recall_at_k(
+          predictions, _binary_3d_label_to_sparse(labels), k=5,
+          expected=NAN, class_id=7,
+          ignore_mask=[[True, False], [True, False]])
+
+  def test_sparse_tensor_value(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    labels = [[0, 0, 1, 0], [0, 0, 0, 1]]
+    expected_recall = 0.5
+    with self.test_session():
+      _, recall = tf.contrib.metrics.streaming_sparse_recall_at_k(
+          predictions=tf.constant(predictions, tf.float32),
+          labels=_binary_2d_label_to_sparse_value(labels), k=1)
+
+      tf.initialize_variables(tf.local_variables()).run()
+
+      self.assertEqual(expected_recall, recall.eval())
 
 
 class StreamingMeanAbsoluteErrorTest(tf.test.TestCase):

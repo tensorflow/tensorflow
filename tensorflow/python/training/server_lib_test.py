@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 import numpy as np
 import tensorflow as tf
 
@@ -78,6 +80,27 @@ class GrpcServerTest(tf.test.TestCase):
       min_val, max_val = sess.run([min_t, max_t], feed_dict={p: feed_val})
       self.assertEqual(0.5, min_val)
       self.assertEqual(0.5, max_val)
+
+  def testCloseCancelsBlockingOperation(self):
+    server = tf.train.Server.create_local_server()
+    sess = tf.Session(server.target)
+
+    q = tf.FIFOQueue(10, [tf.float32])
+    enqueue_op = q.enqueue(37.0)
+    dequeue_t = q.dequeue()
+
+    sess.run(enqueue_op)
+    sess.run(dequeue_t)
+
+    def blocking_dequeue():
+      with self.assertRaises(tf.errors.CancelledError):
+        sess.run(dequeue_t)
+
+    blocking_thread = self.checkedThread(blocking_dequeue)
+    blocking_thread.start()
+    time.sleep(0.5)
+    sess.close()
+    blocking_thread.join()
 
   def testInvalidHostname(self):
     with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, "port"):

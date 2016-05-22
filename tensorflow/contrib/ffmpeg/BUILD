@@ -24,9 +24,9 @@ cc_library(
     linkstatic = 1,
     visibility = ["//visibility:private"],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/contrib/ffmpeg/kernels:ffmpeg_lib",
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
@@ -38,9 +38,9 @@ cc_library(
     linkstatic = 1,
     visibility = ["//visibility:private"],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/contrib/ffmpeg/kernels:ffmpeg_lib",
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
@@ -76,7 +76,7 @@ tf_py_test(
     srcs = ["decode_audio_op_test.py"],
     additional_deps = [
         ":ffmpeg_ops_py",
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
     ],
     data = [
@@ -94,7 +94,7 @@ tf_py_test(
     srcs = ["encode_audio_op_test.py"],
     additional_deps = [
         ":ffmpeg_ops_py",
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
     ],
     data = [

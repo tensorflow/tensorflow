@@ -41,7 +41,7 @@ def TreePredictions(op):
   num_classes = op.inputs[3].get_shape()[1].value
   # The output of TreePredictions is
   # [node_pcw(evaluate_tree(x), c) for c in classes for x in input_data].
-  return [tensor_shape.TensorShape([num_points, num_classes])]
+  return [tensor_shape.TensorShape([num_points, num_classes - 1])]
 
 
 # Workaround for the fact that importing tensorflow imports contrib

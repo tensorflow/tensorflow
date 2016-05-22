@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Confusion matrix related metrics."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -55,6 +56,7 @@ def confusion_matrix(predictions, labels, num_classes=None, name=None):
     num_classes: The possible number of labels the classification task can
                  have. If this value is not provided, it will be calculated
                  using both predictions and labels array.
+    name: Scope name.
 
   Returns:
     A l X l matrix represeting the confusion matrix, where l in the number of
@@ -67,20 +69,18 @@ def confusion_matrix(predictions, labels, num_classes=None, name=None):
   with ops.op_scope([predictions, labels, num_classes], name,
                     'confusion_matrix') as name:
     predictions = ops.convert_to_tensor(
-      predictions, name="predictions", dtype=dtypes.int64)
-    labels = ops.convert_to_tensor(
-      labels, name="labels", dtype=dtypes.int64)
+        predictions, name='predictions', dtype=dtypes.int64)
+    labels = ops.convert_to_tensor(labels, name='labels', dtype=dtypes.int64)
 
     if num_classes is None:
       num_classes = math_ops.maximum(math_ops.reduce_max(predictions),
                                      math_ops.reduce_max(labels)) + 1
 
     shape = array_ops.pack([num_classes, num_classes])
-    indices = array_ops.transpose(
-      array_ops.pack([predictions, labels]))
+    indices = array_ops.transpose(array_ops.pack([predictions, labels]))
     values = array_ops.ones_like(predictions, dtype=dtypes.int32)
     cm_sparse = ops.SparseTensor(
-      indices=indices, values=values, shape=shape)
+        indices=indices, values=values, shape=shape)
     zero_matrix = array_ops.zeros(math_ops.to_int32(shape), dtypes.int32)
 
     return sparse_ops.sparse_add(zero_matrix, cm_sparse)

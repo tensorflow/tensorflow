@@ -68,15 +68,15 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   the amount of computation.
 
   For a description of atrous convolution and how it can be used for dense
-  feature extraction, please see: (Semantic Image Segmentation with Deep
-  Convolutional Nets and Fully Connected CRFs)[http://arxiv.org/abs/1412.7062].
-  The same operation is investigated further in (Multi-Scale Context Aggregation
-  by Dilated Convolutions)[http://arxiv.org/abs/1511.07122]. Previous works
+  feature extraction, please see: [Semantic Image Segmentation with Deep
+  Convolutional Nets and Fully Connected CRFs](http://arxiv.org/abs/1412.7062).
+  The same operation is investigated further in [Multi-Scale Context Aggregation
+  by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
   that effectively use atrous convolution in different ways are, among others,
-  (OverFeat: Integrated Recognition, Localization and Detection using
-  Convolutional Networks) [http://arxiv.org/abs/1312.6229] and (Fast Image
-  Scanning with Deep Max-Pooling Convolutional Neural Networks)
-  [http://arxiv.org/abs/1302.1700]. Atrous convolution is also closely related
+  [OverFeat: Integrated Recognition, Localization and Detection using
+  Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
+  Scanning with Deep Max-Pooling Convolutional Neural Networks]
+  (http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
   to the so-called noble identities in multi-rate signal processing.
 
   There are many different ways to implement atrous convolution (see the refs
@@ -227,8 +227,8 @@ def conv2d_transpose(value,
                      name=None):
   """The transpose of `conv2d`.
 
-  This operation is sometimes called "deconvolution" after (Deconvolutional
-  Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+  This operation is sometimes called "deconvolution" after [Deconvolutional
+  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
   actually the transpose (gradient) of `conv2d` rather than an actual
   deconvolution.
 
@@ -986,5 +986,51 @@ def top_k(input, k=1, sorted=True, name=None):
     indices: The indices of `values` within the last dimension of `input`.
   """
   return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
+
+
+def conv1d(value, filters, stride, padding,
+           use_cudnn_on_gpu=None, data_format=None,
+           name=None):
+  """Computes a 1-D convolution given 3-D input and filter tensors.
+
+  Given an input tensor of shape [batch, in_width, in_channels]
+  and a filter / kernel tensor of shape
+  [filter_width, in_channels, out_channels], this op reshapes
+  the arguments to pass them to conv2d to perform the equivalent
+  convolution operation.
+
+  Internally, this op reshapes the input tensors and invokes
+  `tf.nn.conv2d`.  A tensor of shape [batch, in_width, in_channels]
+  is reshaped to [batch, 1, in_width, in_channels], and the filter
+  is reshaped to [1, filter_width, in_channels, out_channels].
+  The result is then reshaped back to [batch, out_width, out_channels]
+  (where out_width is a function of the stride and padding as in
+  conv2d) and returned to the caller.
+
+  Args:
+    value: A 3D `Tensor`.  Must be of type `float32` or `float64`.
+    filters: A 3D `Tensor`.  Must have the same type as `input`.
+    stride: An `integer`.  The number of entries by which
+      the filter is moved right at each step.
+    padding: 'SAME' or 'VALID'
+    use_cudnn_on_gpu: An optional `bool`.  Defaults to `True`.
+    data_format: An optional `string` from `"NHWC", "NCHW"`.  Defaults
+      to `"NHWC"`, the data is stored in the order of
+      [batch, in_width, in_channels].  The `"NCHW"` format stores
+      data as [batch, in_channels, in_width].
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`.  Has the same type as input.
+  """
+  with ops.op_scope([value, filters], name, "conv1d") as name:
+    # Reshape the input tensor to [batch, 1, in_width, in_channels]
+    value = array_ops.expand_dims(value, 1)
+    # And reshape the filter to [1, filter_width, in_channels, out_channels]
+    filters = array_ops.expand_dims(filters, 0)
+    result = gen_nn_ops.conv2d(value, filters, [1, 1, stride, 1], padding,
+                               use_cudnn_on_gpu=use_cudnn_on_gpu,
+                               data_format=data_format)
+    return array_ops.squeeze(result, [1])
 
 # pylint: enable=invalid-name

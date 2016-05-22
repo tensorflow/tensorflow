@@ -346,7 +346,7 @@ Status BatchExampleProtoToTensors(
   }
 
   // Temporary vector to hold sparse values.
-  std::vector<std::vector<Tensor>> sparse_values_tmp(batch_size);
+  std::vector<std::vector<Tensor>> sparse_values_tmp(var_len_features.size());
 
   for (int d = 0; d < var_len_features.size(); ++d) {
     sparse_values_tmp[d] = std::vector<Tensor>(batch_size);

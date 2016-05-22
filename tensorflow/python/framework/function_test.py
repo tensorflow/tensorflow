@@ -120,15 +120,20 @@ class FunctionTest(tf.test.TestCase):
       return x * x + 1.0
 
     def XSquarePlusOneGrad(x, dy):
-      dx = functional_ops._symbolic_gradient(input=[x, dy],
-                                             Tout=[tf.float32],
-                                             f="XSquarePlusOne",
-                                             name="dx")
+      dx = functional_ops._symbolic_gradient(
+          input=[x, dy],
+          Tout=[tf.float32],
+          # This line on define_function to register the above
+          # function with name "XSquarePlusOneFn"
+          f="XSquarePlusOneFn",
+          name="dx")
       return dx
 
     g = tf.Graph()
     with g.as_default():
-      f = function.define_function(XSquarePlusOne, {"x": tf.float32})
+      # This line registers the Function "XSquarePlusOneFn"
+      f = function.define_function(
+          XSquarePlusOne, {"x": tf.float32}, func_name="XSquarePlusOneFn")
       g = function.define_function(XSquarePlusOneGrad, {"x": tf.float32,
                                                         "dy": tf.float32})
       epsilon = tf.constant([0.1])
@@ -173,7 +178,7 @@ class FunctionTest(tf.test.TestCase):
         # Takes exp(dlogits) to differentiate it from the "correct" gradient.
         return tf.exp(dlogits), dlabels
 
-      @function.Defun(dtype, dtype, grad_func="XentLossGrad")
+      @function.Defun(dtype, dtype, grad_func=XentLossGrad)
       def XentLoss(logits, labels):
         return tf.reduce_sum(labels * tf.log(tf.nn.softmax(logits)), 1)
 
@@ -201,7 +206,7 @@ class FunctionTest(tf.test.TestCase):
         # Should have returned 1 result.
         return x, dy + dz
 
-      @function.Defun(dtype, grad_func="Grad")
+      @function.Defun(dtype, grad_func=Grad)
       def Forward(x):
         return x, x
 
@@ -361,7 +366,8 @@ class FunctionTest(tf.test.TestCase):
 
       two = tf.constant([2.])
       call1 = Minus1(two)
-      self.assertEquals("Minus1", call1.op.name)
+      self.assertTrue(isinstance(Minus1, function._DefinedFunction))
+      self.assertEqual(Minus1.name, "Minus1")
       # pylint: disable=unexpected-keyword-arg
       call2 = Minus1(call1, name="next")
       # pylint:enable=unexpected-keyword-arg

@@ -23,7 +23,27 @@ import tensorflow as tf
 
 class StringToHashBucketOpTest(tf.test.TestCase):
 
-  def testStringToOneHashBucket(self):
+  def testStringToOneHashBucketFast(self):
+    with self.test_session():
+      input_string = tf.placeholder(tf.string)
+      output = tf.string_to_hash_bucket_fast(input_string, 1)
+      result = output.eval(feed_dict={input_string: ['a', 'b', 'c']})
+
+      self.assertAllEqual([0, 0, 0], result)
+
+  def testStringToHashBucketsFast(self):
+    with self.test_session():
+      input_string = tf.placeholder(tf.string)
+      output = tf.string_to_hash_bucket_fast(input_string, 10)
+      result = output.eval(feed_dict={input_string: ['a', 'b', 'c', 'd']})
+
+      # Fingerprint64('a') -> 12917804110809363939 -> mod 10 -> 9
+      # Fingerprint64('b') -> 11795596070477164822 -> mod 10 -> 2
+      # Fingerprint64('c') -> 11430444447143000872 -> mod 10 -> 2
+      # Fingerprint64('d') -> 4470636696479570465 -> mod 10 -> 5
+      self.assertAllEqual([9, 2, 2, 5], result)
+
+  def testStringToOneHashBucketLegacyHash(self):
     with self.test_session():
       input_string = tf.placeholder(tf.string)
       output = tf.string_to_hash_bucket(input_string, 1)
@@ -33,7 +53,7 @@ class StringToHashBucketOpTest(tf.test.TestCase):
 
       self.assertAllEqual([0, 0, 0], result)
 
-  def testStringToHashBuckets(self):
+  def testStringToHashBucketsLegacyHash(self):
     with self.test_session():
       input_string = tf.placeholder(tf.string)
       output = tf.string_to_hash_bucket(input_string, 10)

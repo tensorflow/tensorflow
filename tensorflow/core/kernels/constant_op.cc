@@ -61,6 +61,7 @@ REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
+REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, complex64);
@@ -117,7 +118,15 @@ struct FillFunctor<CPUDevice, T> {
 template <typename T>
 struct SetZeroFunctor<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat out) {
-    out.device(d) = out.constant(T());
+    out.device(d) = out.constant(T(0));
+  }
+};
+
+// Specialization of SetZeroFunctor<Device=CPUDevice, T=string>.
+template <>
+struct SetZeroFunctor<CPUDevice, string> {
+  void operator()(const CPUDevice& d, typename TTypes<string>::Flat out) {
+    out.device(d) = out.constant(string());
   }
 };
 
@@ -127,11 +136,13 @@ DEFINE_SETZERO_CPU(float);
 DEFINE_SETZERO_CPU(double);
 DEFINE_SETZERO_CPU(uint8);
 DEFINE_SETZERO_CPU(int8);
+DEFINE_SETZERO_CPU(uint16);
 DEFINE_SETZERO_CPU(int16);
 DEFINE_SETZERO_CPU(int32);
 DEFINE_SETZERO_CPU(int64);
 DEFINE_SETZERO_CPU(complex64);
 DEFINE_SETZERO_CPU(complex128);
+DEFINE_SETZERO_CPU(string);
 #undef DEFINE_SETZERO_CPU
 
 }  // end namespace functor
@@ -181,6 +192,7 @@ REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
+REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 // Currently we do not support filling strings and complex64 on GPU

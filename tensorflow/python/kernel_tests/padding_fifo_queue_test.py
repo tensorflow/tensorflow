@@ -1259,7 +1259,7 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
   def testDtypes(self):
     with self.test_session() as sess:
       dtypes = [tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8,
-                tf.int64, tf.bool, tf.complex64]
+                tf.int64, tf.bool, tf.complex64, tf.complex128]
       shape = (32, 4, 128)
       q = tf.PaddingFIFOQueue(32, dtypes, [shape[1:]] * len(dtypes))
 

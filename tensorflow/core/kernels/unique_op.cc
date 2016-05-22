@@ -88,5 +88,6 @@ class UniqueOp : public OpKernel {
       Name("UniqueWithCounts").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       UniqueOp<type>)
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
+REGISTER_UNIQUE(string)
 #undef REGISTER_UNIQUE
 }  // namespace tensorflow

@@ -42,21 +42,23 @@ CompressedHistogramValue = namedtuple('CompressedHistogramValue',
 HistogramEvent = namedtuple('HistogramEvent',
                             ['wall_time', 'step', 'histogram_value'])
 
-HistogramValue = namedtuple('HistogramValue',
-                            ['min', 'max', 'num', 'sum', 'sum_squares',
-                             'bucket_limit', 'bucket'])
+HistogramValue = namedtuple('HistogramValue', ['min', 'max', 'num', 'sum',
+                                               'sum_squares', 'bucket_limit',
+                                               'bucket'])
 
-ImageEvent = namedtuple('ImageEvent',
-                        ['wall_time', 'step', 'encoded_image_string', 'width',
-                         'height'])
+ImageEvent = namedtuple('ImageEvent', ['wall_time', 'step',
+                                       'encoded_image_string', 'width',
+                                       'height'])
 
 AudioEvent = namedtuple('AudioEvent', ['wall_time', 'step',
                                        'encoded_audio_string', 'content_type',
                                        'sample_rate', 'length_frames'])
 
 ## Different types of summary events handled by the event_accumulator
-SUMMARY_TYPES = ('_scalars', '_histograms', '_compressed_histograms', '_images',
-                 '_audio')
+SUMMARY_TYPES = {'simple_value': '_ProcessScalar',
+                 'histo': '_ProcessHistogram',
+                 'image': '_ProcessImage',
+                 'audio': '_ProcessAudio'}
 
 ## The tagTypes below are just arbitrary strings chosen to pass the type
 ## information of the tag from the backend to the frontend
@@ -178,6 +180,10 @@ class EventAccumulator(object):
     self.most_recent_wall_time = -1
     self.file_version = None
 
+    # The attributes that get built up by the accumulator
+    self.accumulated_attrs = ('_scalars', '_histograms',
+                              '_compressed_histograms', '_images', '_audio')
+
   def Reload(self):
     """Loads all events added since the last call to `Reload`.
 
@@ -216,20 +222,11 @@ class EventAccumulator(object):
           self._tagged_metadata[tag] = event.tagged_run_metadata.run_metadata
         elif event.HasField('summary'):
           for value in event.summary.value:
-            if value.HasField('simple_value'):
-              self._ProcessScalar(value.tag, event.wall_time, event.step,
-                                  value.simple_value)
-            elif value.HasField('histo'):
-              self._ProcessHistogram(value.tag, event.wall_time, event.step,
-                                     value.histo)
-              self._ProcessCompressedHistogram(value.tag, event.wall_time,
-                                               event.step, value.histo)
-            elif value.HasField('image'):
-              self._ProcessImage(value.tag, event.wall_time, event.step,
-                                 value.image)
-            elif value.HasField('audio'):
-              self._ProcessAudio(value.tag, event.wall_time, event.step,
-                                 value.audio)
+            for summary_type, summary_func in SUMMARY_TYPES.items():
+              if value.HasField(summary_type):
+                datum = getattr(value, summary_type)
+                getattr(self, summary_func)(value.tag, event.wall_time,
+                                            event.step, datum)
     return self
 
   def Tags(self):
@@ -517,6 +514,10 @@ class EventAccumulator(object):
 
   def _ProcessHistogram(self, tag, wall_time, step, histo):
     """Processes a histogram by adding it to accumulated state."""
+
+    # Also process the compressed histogram
+    self._ProcessCompressedHistogram(tag, wall_time, step, histo)
+
     histogram_value = HistogramValue(min=histo.min,
                                      max=histo.max,
                                      num=histo.num,
@@ -583,14 +584,14 @@ class EventAccumulator(object):
 
       def _ExpiredPerTag(value):
         return [getattr(self, x).FilterItems(_NotExpired, value.tag)
-                for x in SUMMARY_TYPES]
+                for x in self.accumulated_attrs]
 
       expired_per_tags = [_ExpiredPerTag(value)
                           for value in event.summary.value]
       expired_per_type = [sum(x) for x in zip(*expired_per_tags)]
     else:
       expired_per_type = [getattr(self, x).FilterItems(_NotExpired)
-                          for x in SUMMARY_TYPES]
+                          for x in self.accumulated_attrs]
 
     if sum(expired_per_type) > 0:
       purge_msg = _GetPurgeMessage(self.most_recent_step,

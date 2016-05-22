@@ -38,18 +38,18 @@ of the non-zero elements and the corresponding values:
 
 The result of calling parse_example on these examples will produce a
 dictionary with entries for "ids" and "values". Passing those two objects
-to this function will produce a `SparseTensor` that sparsely represents
-all three instances. Namely, the `indices` property will contain
-the coordinates of the non-zero entries in the feature matrix (the first
-dimension is the row number in the matrix, i.e., the index within the batch,
-and the second dimension is the column number, i.e., the feature id);
+to this function along with vocab_size=6, will produce a `SparseTensor` that
+sparsely represents all three instances. Namely, the `indices` property will
+contain the coordinates of the non-zero entries in the feature matrix (the
+first dimension is the row number in the matrix, i.e., the index within the
+batch, and the second dimension is the column number, i.e., the feature id);
 `values` will contain the actual values. `shape` will be the shape of the
-original matrix, i.e., (3, 7). For our example above, the output will be
+original matrix, i.e., (3, 6). For our example above, the output will be
 equal to:
 
   SparseTensor(indices=[[0, 0], [1, 1], [1, 3], [1, 4], [2, 0], [2, 3]],
                values=[-3, 1, 4, 1, 5, 9],
-               shape=[3, 7])
+               shape=[3, 6])
 
 ##### Args:
 

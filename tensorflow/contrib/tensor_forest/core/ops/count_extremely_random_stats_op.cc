@@ -25,7 +25,7 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -42,6 +42,7 @@ using tensorforest::FEATURE_INDEX;
 using tensorforest::LEAF_NODE;
 using tensorforest::FREE_NODE;
 
+using tensorforest::CheckTensorBounds;
 using tensorforest::DecideNode;
 using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
@@ -65,24 +66,31 @@ void Evaluate(const Tensor& input_data, const Tensor& input_labels,
               const Tensor& node_to_accumulator,
               const Tensor& candidate_split_features,
               const Tensor& candidate_split_thresholds,
-              InputDataResult* results, int64 start, int64 end) {
+              InputDataResult* results, int32 start, int32 end) {
   const auto tree = tree_tensor.tensor<int32, 2>();
   const auto thresholds = tree_thresholds.unaligned_flat<float>();
   const auto node_map = node_to_accumulator.unaligned_flat<int32>();
   const auto split_features = candidate_split_features.tensor<int32, 2>();
   const auto split_thresholds = candidate_split_thresholds.tensor<float, 2>();
 
-  const int32 num_splits = candidate_split_features.shape().dim_size(1);
+  const int32 num_splits = static_cast<int32>(
+      candidate_split_features.shape().dim_size(1));
+  const int32 num_nodes = static_cast<int32>(tree_tensor.shape().dim_size(0));
+  const int32 num_accumulators = static_cast<int32>(
+      candidate_split_features.shape().dim_size(0));
 
-  for (int i = start; i < end; ++i) {
+  for (int32 i = start; i < end; ++i) {
     const Tensor point = input_data.Slice(i, i + 1);
     int node_index = 0;
     results[i].splits_initialized = false;
     while (true) {
       results[i].node_indices.push_back(node_index);
-      int32 left_child = tree(node_index, CHILDREN_INDEX);
+      CHECK_LT(node_index, num_nodes);
+      int32 left_child = internal::SubtleMustCopy(
+          tree(node_index, CHILDREN_INDEX));
       if (left_child == LEAF_NODE) {
-        const int32 accumulator = node_map(node_index);
+        const int32 accumulator = internal::SubtleMustCopy(
+            node_map(node_index));
         results[i].leaf_accumulator = accumulator;
         // If the leaf is not fertile or is not yet initialized, we don't
         // count it in the candidate/total split per-class-weights because
@@ -90,6 +98,7 @@ void Evaluate(const Tensor& input_data, const Tensor& input_labels,
         if (accumulator >= 0 &&
             IsAllInitialized(candidate_split_features.Slice(
                 accumulator, accumulator + 1))) {
+          CHECK_LT(accumulator, num_accumulators);
           results[i].splits_initialized = true;
           for (int split = 0; split < num_splits; split++) {
             if (!DecideNode(point, split_features(accumulator, split),
@@ -278,8 +287,17 @@ class CountExtremelyRandomStats : public OpKernel {
             "candidate_split_features and candidate_split_thresholds should be "
             "the same shape."));
 
+    // Check tensor bounds.
+    if (!CheckTensorBounds(context, input_data)) return;
+    if (!CheckTensorBounds(context, input_labels)) return;
+    if (!CheckTensorBounds(context, tree_tensor)) return;
+    if (!CheckTensorBounds(context, tree_thresholds)) return;
+    if (!CheckTensorBounds(context, node_to_accumulator)) return;
+    if (!CheckTensorBounds(context, candidate_split_features)) return;
+    if (!CheckTensorBounds(context, candidate_split_thresholds)) return;
+
     // Evaluate input data in parallel.
-    const int64 num_data = input_data.shape().dim_size(0);
+    const int32 num_data = static_cast<int32>(input_data.shape().dim_size(0));
     std::unique_ptr<InputDataResult[]> results(new InputDataResult[num_data]);
     auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
     int num_threads = worker_threads->num_threads;
@@ -296,17 +314,19 @@ class CountExtremelyRandomStats : public OpKernel {
         CHECK(end <= num_data);
         Evaluate(input_data, input_labels, tree_tensor, tree_thresholds,
                  node_to_accumulator, candidate_split_features,
-                 candidate_split_thresholds, results.get(), start, end);
+                 candidate_split_thresholds, results.get(),
+                 static_cast<int32>(start), static_cast<int32>(end));
       };
       Shard(num_threads, worker_threads->workers, num_data, 100, work);
     }
 
+    const int32 num_nodes = static_cast<int32>(tree_tensor.shape().dim_size(0));
     if (regression_) {
       ProcessResultsRegression(context, input_labels, std::move(results),
-                               tree_tensor.shape().dim_size(0));
+                               num_nodes);
     } else {
       ProcessResultsClassification(context, input_labels, std::move(results),
-                                   tree_tensor.shape().dim_size(0));
+                                   num_nodes);
     }
   }
 
@@ -316,7 +336,7 @@ class CountExtremelyRandomStats : public OpKernel {
       const Tensor &input_labels,
       std::unique_ptr<InputDataResult[]> results,
       int32 num_nodes) {
-    const int32 num_data = input_labels.shape().dim_size(0);
+    const int32 num_data = static_cast<int32>(input_labels.shape().dim_size(0));
     const auto labels = input_labels.unaligned_flat<float>();
 
     // Unused outputs for classification.  Still have to specify them or
@@ -356,8 +376,10 @@ class CountExtremelyRandomStats : public OpKernel {
     TupleMapType<int32> split_delta;
 
     for (int32 i = 0; i < num_data; ++i) {
-      const int32 label = labels(i);
+      const int32 label = internal::SubtleMustCopy(
+          static_cast<int32>(labels(i)));
       const int32 column = label + 1;
+      CHECK_LT(column, num_classes_);
       const int32 accumulator = results[i].leaf_accumulator;
       for (const int32 node : results[i].node_indices) {
         ++out_node_sums(node, column);
@@ -438,7 +460,7 @@ class CountExtremelyRandomStats : public OpKernel {
       const Tensor &input_labels,
       std::unique_ptr<InputDataResult[]> results,
       int32 num_nodes) {
-    const int32 num_data = input_labels.shape().dim_size(0);
+    const int32 num_data = static_cast<int32>(input_labels.shape().dim_size(0));
     int32 num_outputs = 1;
     if (input_labels.shape().dims() > 1) {
         num_outputs = static_cast<int32>(input_labels.shape().dim_size(1));
@@ -602,8 +624,11 @@ class CountExtremelyRandomStats : public OpKernel {
 
   struct PairIntHash {
    public:
-    std::size_t operator()(const std::pair<int, int>& x) const {
-      return std::hash<int>()(x.first) ^ std::hash<int>()(x.second);
+    std::size_t operator()(const std::pair<int32, int32>& x) const {
+      // Bit-rotate x.first by 16 bits before xor-ing to minimize hash
+      // collisions in the frequent case when both elements of the pair are
+      // small.
+      return (x.first << 16 | x.first >> 16) ^ x.second;
     }
   };
   template <typename V>
@@ -612,8 +637,12 @@ class CountExtremelyRandomStats : public OpKernel {
   struct TupleIntHash {
    public:
     std::size_t operator()(const std::tuple<int32, int32, int32>& x) const {
-      return std::hash<int32>()(get<0>(x)) ^ std::hash<int32>()(get<1>(x)) ^
-          std::hash<int32>()(get<2>(x));
+      const int32 first = get<0>(x);
+      const int32 second = get<1>(x);
+      // Again, we bit-rotate (once by 16 bits, and once by 8 bits) to minimize
+      // hash collisions among small values.
+      return (first << 16 | first >> 16) ^ (second << 8 | second >> 24) ^
+          get<2>(x);
     }
   };
   template <typename V>

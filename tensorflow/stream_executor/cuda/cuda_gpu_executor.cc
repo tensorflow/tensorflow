@@ -114,12 +114,12 @@ static CUdeviceptr AsCudaDevicePtr(DeviceMemoryBase *gpu_mem) {
   return AsCudaDevicePtr(*gpu_mem);
 }
 
-static CUcontext GetCudaContext(Stream *stream) {
+static CudaContext* GetCudaContext(Stream *stream) {
   return static_cast<CUDAExecutor *>(stream->parent()->implementation())
       ->cuda_context();
 }
 
-CUcontext ExtractCudaContext(CUDAExecutor *cuda_exec) {
+CudaContext* ExtractCudaContext(CUDAExecutor *cuda_exec) {
   CHECK(cuda_exec != nullptr);
   return cuda_exec->cuda_context();
 }
@@ -533,7 +533,22 @@ bool CUDAExecutor::SynchronousMemcpyDeviceToDevice(
 
 bool CUDAExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
                            uint64 size) {
-  return Memset32(stream, location, 0x0, size);
+  if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
+      size % 4 == 0) {
+    return Memset32(stream, location, 0x0, size);
+  } else {
+    return Memset(stream, location, 0x0, size);
+  }
+}
+
+bool CUDAExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
+                           uint8 pattern, uint64 size) {
+  VLOG(2) << "enqueueing memset8 operation onto stream " << stream
+          << " at location " << location << " with size " << size
+          << " and pattern " << std::hex << pattern;
+  return CUDADriver::AsynchronousMemsetUint8(
+      context_, AsCudaDevicePtr(location), pattern, size,
+      AsCUDAStreamValue(stream));
 }
 
 bool CUDAExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
@@ -863,7 +878,7 @@ CUDAExecutor::GetTimerImplementation() {
 
 void *CUDAExecutor::CudaContextHack() { return context_; }
 
-CUcontext CUDAExecutor::cuda_context() { return context_; }
+CudaContext* CUDAExecutor::cuda_context() { return context_; }
 
 // Attemps to read the NUMA node corresponding to the GPU device's PCI bus out
 // of SysFS. Returns -1 if it cannot.
