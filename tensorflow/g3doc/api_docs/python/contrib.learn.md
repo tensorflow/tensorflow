@@ -34,7 +34,7 @@ Parameters:
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=100, metrics=None)` {#BaseEstimator.evaluate}
+#### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=100, metrics=None, name=None)` {#BaseEstimator.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -51,6 +51,8 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps to evalute for.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
 
 ##### Returns:
 
@@ -248,7 +250,7 @@ Parameters:
 
 - - -
 
-#### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=100, metrics=None)` {#Estimator.evaluate}
+#### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=100, metrics=None, name=None)` {#Estimator.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -265,6 +267,8 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps to evalute for.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
 
 ##### Returns:
 

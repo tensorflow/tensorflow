@@ -2304,6 +2304,11 @@ Creates a new TensorShape with the given dimensions.
 *  <b>`dims`</b>: A list of Dimensions, or None if the shape is unspecified.
 *  <b>`DEPRECATED`</b>: A single integer is treated as a singleton list.
 
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If dims cannot be converted to a list of dimensions.
+
 
 - - -
 
