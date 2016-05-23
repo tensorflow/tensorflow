@@ -360,7 +360,7 @@ class TensorFlowEstimator(estimator.Estimator):
           reconfigured.
 
     Returns:
-      Estiamator, object of the subclass of TensorFlowEstimator.
+      Estimator, object of the subclass of TensorFlowEstimator.
     """
     model_def_filename = os.path.join(path, 'model.def')
     if not os.path.exists(model_def_filename):
@@ -379,6 +379,7 @@ class TensorFlowEstimator(estimator.Estimator):
           new_value = locals()[key]
           if new_value is not None:
             model_def[key] = new_value
+
     class_name = model_def.pop('class_name')
     if class_name == 'TensorFlowEstimator':
       custom_estimator = TensorFlowEstimator(model_fn=None, **model_def)
@@ -392,3 +393,18 @@ class TensorFlowEstimator(estimator.Estimator):
     estimator = getattr(estimators, class_name)(**model_def)
     estimator._restore(path)
     return estimator
+
+
+class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
+    """TensorFlow Base Transformer class."""
+    def transform(self, X):
+        """Transform X using trained transformer."""
+        return(super(TensorFlowBaseTransformer, self).predict(X, axis=1, batch_size=None))
+
+    def fit(self, X, y=None, monitor=None, logdir=None):
+        """Fit a transformer."""
+        return(super(TensorFlowBaseTransformer, self).fit(X, y, monitors=None, logdir=None))
+
+    def fit_transform(self, X, y=None, monitor=None, logdir=None):
+        """Fit transformer and transform X using trained transformer."""
+        return(self.fit(X, y, monitor=None, logdir=None).transform(X))

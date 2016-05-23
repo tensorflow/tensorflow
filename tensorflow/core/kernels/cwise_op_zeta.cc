@@ -13,15 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
-
-#include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
+#include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-namespace functor {
-DEFINE_BINARY10(equal_to, float, Eigen::half, double, uint8, int8, int16, int64,
-               complex64, complex128, bool);
-}  // namespace functor
+REGISTER2(BinaryOp, CPU, "Zeta", functor::zeta, float, double);
+REGISTER2(BinaryOp, CPU, "Polygamma", functor::polygamma, float, double);
 }  // namespace tensorflow
-
-#endif  // GOOGLE_CUDA

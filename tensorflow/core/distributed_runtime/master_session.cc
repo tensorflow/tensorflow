@@ -264,7 +264,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   // partitions_ is immutable after RegisterPartitions() call
   // finishes.  RunPartitions() can access partitions_ safely without
-  // acquring locks.
+  // acquiring locks.
   std::vector<Part> partitions_;
 
   mutable mutex mu_;

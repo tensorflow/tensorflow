@@ -68,10 +68,14 @@ class MatMulTest(tf.test.TestCase):
     self.assertAllEqual(np_ans.shape, tf_ans.shape)
 
   def _randMatrix(self, rows, cols, dtype):
-    if dtype is np.complex64:
-      real = self._randMatrix(rows, cols, np.float32)
-      imag = self._randMatrix(rows, cols, np.float32)
-      return real + np.complex(0, 1) * imag
+    if dtype in (np.complex64, np.complex128):
+      if dtype == np.complex64:
+          float_dtype = np.float32
+      else:
+          float_dtype = np.float64
+      real = self._randMatrix(rows, cols, float_dtype)
+      imag = self._randMatrix(rows, cols, float_dtype)
+      return real + 1j * imag
     else:
       return np.random.uniform(low=1.0, high=100.0, size=rows * cols).reshape(
           [rows, cols]).astype(dtype)
@@ -106,9 +110,14 @@ class MatMulTest(tf.test.TestCase):
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.int32)
     self._testCpuMatmul(x, y)
 
-  def testSComplexBasic(self):
+  def testComplex64Basic(self):
     x = np.arange(1., 5.).reshape([4, 1]).astype(np.complex64)
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex64)
+    self._testCpuMatmul(x, y)
+
+  def testComplex128Basic(self):
+    x = np.arange(1., 5.).reshape([4, 1]).astype(np.complex128)
+    y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex128)
     self._testCpuMatmul(x, y)
 
   # Tests testing random sized matrices.
@@ -145,11 +154,18 @@ class MatMulTest(tf.test.TestCase):
       y = self._randMatrix(k, m, np.int32)
       self._testCpuMatmul(x, y)
 
-  def testSComplexRandom(self):
+  def testComplex64Random(self):
     for _ in range(10):
       n, k, m = np.random.randint(1, 100, size=3)
       x = self._randMatrix(n, k, np.complex64)
       y = self._randMatrix(k, m, np.complex64)
+      self._testCpuMatmul(x, y)
+
+  def testComplex128Random(self):
+    for _ in range(10):
+      n, k, m = np.random.randint(1, 100, size=3)
+      x = self._randMatrix(n, k, np.complex128)
+      y = self._randMatrix(k, m, np.complex128)
       self._testCpuMatmul(x, y)
 
   # Test the cases that transpose the matrices before multiplying.

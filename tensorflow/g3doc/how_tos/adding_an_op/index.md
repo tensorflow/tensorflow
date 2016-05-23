@@ -815,7 +815,7 @@ expressions:
   ```c++
   REGISTER_OP("BuiltInTypesExample")
       .Input("integers: int32")
-      .Input("complex_numbers: scomplex64");
+      .Input("complex_numbers: complex64");
   ```
 
 * `<attr-type>`, where `<attr-type>` is the name of an [Attr](#attrs) with type

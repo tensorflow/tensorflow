@@ -58,6 +58,8 @@ mathematical functions to your graph.
 @@squared_difference
 @@igamma
 @@igammac
+@@zeta
+@@polygamma
 
 ## Matrix Math Functions
 
@@ -240,9 +242,34 @@ def abs(x, name=None):
   """
   with ops.op_scope([x], name, "Abs") as name:
     x = ops.convert_to_tensor(x, name="x")
-    if x.dtype == dtypes.complex64:
-      return gen_math_ops.complex_abs(x, name=name)
+    if x.dtype in (dtypes.complex64, dtypes.complex128):
+      return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
     return gen_math_ops._abs(x, name=name)
+
+
+def complex_abs(x, name=None):
+  r"""Computes the complex absolute value of a tensor.
+
+  Given a tensor `x` of complex numbers, this operation returns a tensor of type
+  `float` or `double` that is the absolute value of each element in `x`. All
+  elements in `x` must be complex numbers of the form \\(a + bj\\). The
+  absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
+
+  For example:
+
+  ```
+  # tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
+  tf.complex_abs(x) ==> [5.25594902, 6.60492229]
+  ```
+
+  Args:
+    x: A `Tensor` of type `complex64` or `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32` or `float64`.
+  """
+  return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
 
 
 def scalar_mul(scalar, x):
@@ -302,29 +329,94 @@ def complex(real, imag, name=None):
 
   Given a tensor `real` representing the real part of a complex number, and a
   tensor `imag` representing the imaginary part of a complex number, this
-  operation computes complex numbers elementwise of the form \\\\(a + bj\\\\),
-  where *a* represents the `real` part and *b* represents the `imag` part.
+  operation returns complex numbers elementwise of the form \\(a + bj\\), where
+  *a* represents the `real` part and *b* represents the `imag` part.
 
-  The input tensors `real` and `imag` must be the same shape.
+  The input tensors `real` and `imag` must have the same shape.
 
   For example:
 
   ```
   # tensor 'real' is [2.25, 3.25]
   # tensor `imag` is [4.75, 5.75]
-  tf.complex(real, imag) ==> [[2.25 + 4.74j], [3.25 + 5.75j]]
+  tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
   ```
 
   Args:
-    real: A `Tensor` of type `float`.
-    imag: A `Tensor` of type `float`.
+    real: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    imag: A `Tensor`. Must have the same type as `real`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `complex64`.
+    A `Tensor` of type `complex64` or `complex128`.
   """
+  real = ops.convert_to_tensor(real, name="real")
+  imag = ops.convert_to_tensor(imag, name="imag")
   with ops.op_scope([real, imag], name, "Complex") as name:
-    return gen_math_ops._complex(real, imag, name=name)
+    input_types = (real.dtype, imag.dtype)
+    if input_types == (dtypes.float64, dtypes.float64):
+      Tout = dtypes.complex128
+    elif input_types == (dtypes.float32, dtypes.float32):
+      Tout = dtypes.complex64
+    else:
+      raise TypeError("Types of real and imag don't match: "
+                      "{} {}".format(real.dtype.name, imag.dtype.name))
+    return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
+
+
+def real(input, name=None):
+  """Returns the real part of a complex number.
+
+  Given a tensor `input` of complex numbers, this operation returns a tensor of
+  type `float` or `double` that is the real part of each element in `input`.
+  All elements in `input` must be complex numbers of the form \\(a + bj\\),
+  where *a* is the real part returned by this operation and *b* is the
+  imaginary part.
+
+  For example:
+
+  ```
+  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+  tf.real(input) ==> [-2.25, 3.25]
+  ```
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `complex64`,
+         `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float` or `double`.
+  """
+  with ops.op_scope([input], name, "Real") as name:
+    return gen_math_ops.real(input, Tout=input.dtype.real_dtype, name=name)
+
+
+def imag(input, name=None):
+  """Returns the imaginary part of a complex number.
+
+  Given a tensor `input` of complex numbers, this operation returns a tensor of
+  type `float` or `double` that is the imaginary part of each element in
+  `input`. All elements in `input` must be complex numbers of the form \\(a +
+  bj\\), where *a* is the real part and *b* is the imaginary part returned by
+  this operation.
+
+  For example:
+
+  ```
+  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+  tf.imag(input) ==> [4.75, 5.75]
+  ```
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float` or `double`.
+  """
+  with ops.op_scope([input], name, "Imag") as name:
+    return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
 
 
 def round(x, name=None):
@@ -559,6 +651,7 @@ _TRUEDIV_TABLE = {
     dtypes.float32: None,
     dtypes.float64: None,
     dtypes.complex64: None,
+    dtypes.complex128: None,
 }
 
 
@@ -1379,6 +1472,8 @@ ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
 @ops.RegisterShape("GreaterEqual")
 @ops.RegisterShape("Igamma")
 @ops.RegisterShape("Igammac")
+@ops.RegisterShape("Zeta")
+@ops.RegisterShape("Polygamma")
 @ops.RegisterShape("Less")
 @ops.RegisterShape("LessEqual")
 @ops.RegisterShape("LogicalAnd")

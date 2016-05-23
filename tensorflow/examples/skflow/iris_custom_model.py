@@ -16,7 +16,7 @@ from __future__ import division
 from __future__ import print_function
 
 from sklearn import datasets, metrics, cross_validation
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
@@ -24,10 +24,10 @@ X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, 
 
 def my_model(X, y):
     """This is DNN with 10, 20, 10 hidden layers, and dropout of 0.1 probability."""
-    layers = skflow.ops.dnn(X, [10, 20, 10], dropout=0.1)
-    return skflow.models.logistic_regression(layers, y)
+    layers = learn.ops.dnn(X, [10, 20, 10], dropout=0.1)
+    return learn.models.logistic_regression(layers, y)
 
-classifier = skflow.TensorFlowEstimator(model_fn=my_model, n_classes=3,
+classifier = learn.TensorFlowEstimator(model_fn=my_model, n_classes=3,
     steps=1000)
 classifier.fit(X_train, y_train)
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))

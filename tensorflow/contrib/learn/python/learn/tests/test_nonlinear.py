@@ -167,6 +167,16 @@ class NonLinearTest(tf.test.TestCase):
     predictions = classifier.predict(test_data)
     self.assertAllClose(predictions, np.array([1, 0]))
 
+  # def testDNNAutoencoder(self):
+  #   import numpy as np
+  #   iris = datasets.load_iris()
+  #   autoencoder = learn.TensorFlowDNNAutoencoder(hidden_units=[10, 20])
+  #   transformed = autoencoder.fit_transform(iris.data[1:2])
+  #   expected = np.array([[ -3.57627869e-07, 1.17000043e+00, 1.01902664e+00, 1.19209290e-07,
+  #                           0.00000000e+00, 1.19209290e-07, -5.96046448e-08, -2.38418579e-07,
+  #                           9.74681854e-01, 1.19209290e-07]])
+  #   self.assertAllClose(transformed, expected)
+
 
 if __name__ == "__main__":
   tf.test.main()

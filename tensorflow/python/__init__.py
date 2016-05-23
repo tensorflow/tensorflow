@@ -39,6 +39,10 @@ import traceback
 # the mode to RTLD_GLOBAL to make the symbols visible, so libraries such
 # as the ones implementing custom ops can have access to tensorflow
 # framework's symbols.
+# one catch is that numpy *must* be imported before the call to
+# setdlopenflags(), or there is a risk that later c modules will segfault
+# when importing numpy (gh-2034).
+import numpy as np
 _default_dlopen_flags = sys.getdlopenflags()
 sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
 from tensorflow.python import pywrap_tensorflow

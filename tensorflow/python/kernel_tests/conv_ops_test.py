@@ -465,6 +465,21 @@ class Conv2DTest(tf.test.TestCase):
                                       data_format=data_format,
                                       use_gpu=use_gpu)
 
+  def testConv2DStrideTwoFilterOneSameBackpropInput(self):
+    expected_output = [1.0, 0.0, 2.0, 0.0,
+                       0.0, 0.0, 0.0, 0.0,
+                       3.0, 0.0, 4.0, 0.0,
+                       0.0, 0.0, 0.0, 0.0]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropInput(input_sizes=[1, 4, 4, 1],
+                                      filter_sizes=[1, 1, 1, 1],
+                                      output_sizes=[1, 2, 2, 1],
+                                      strides=[2, 2],
+                                      padding="SAME",
+                                      expected=expected_output,
+                                      data_format=data_format,
+                                      use_gpu=use_gpu)
+
   # Testing for backprops
   def _RunAndVerifyBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
                                   strides, padding, expected, data_format,
@@ -567,6 +582,18 @@ class Conv2DTest(tf.test.TestCase):
                                        expected=expected,
                                        data_format=data_format,
                                        use_gpu=use_gpu)
+
+  def testConv2DStrideTwoFilterOneSameBackpropFilter(self):
+    expected_output = [78.]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropFilter(input_sizes=[1, 4, 4, 1],
+                                      filter_sizes=[1, 1, 1, 1],
+                                      output_sizes=[1, 2, 2, 1],
+                                      strides=[2, 2],
+                                      padding="SAME",
+                                      expected=expected_output,
+                                      data_format=data_format,
+                                      use_gpu=use_gpu)
 
   # Gradient checkers
   def ConstructAndTestGradient(self, batch, input_rows, input_cols, filter_rows,

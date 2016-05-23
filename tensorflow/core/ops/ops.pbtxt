@@ -3594,6 +3594,7 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+				type: DT_COMPLEX64
       }
     }
   }
@@ -3621,6 +3622,7 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+				type: DT_COMPLEX64
       }
     }
   }

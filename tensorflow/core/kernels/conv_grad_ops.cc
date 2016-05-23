@@ -18,6 +18,7 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include <algorithm>
 #include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -839,13 +840,13 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                    context->allocate_output(0, input_shape, &in_backprop));
 
     const int padding_rows =
-        (padding_ == VALID)
-            ? 0
-            : (output_rows - 1) * stride_rows + filter_rows - input_rows;
+        (padding_ == VALID) ? 0
+                            : std::max<int>(0, (output_rows - 1) * stride_rows +
+                                                   filter_rows - input_rows);
     const int padding_cols =
-        (padding_ == VALID)
-            ? 0
-            : (output_cols - 1) * stride_cols + filter_cols - input_cols;
+        (padding_ == VALID) ? 0
+                            : std::max<int>(0, (output_cols - 1) * stride_cols +
+                                                   filter_cols - input_cols);
 
     // TODO(keveman): cuDNN only supports equal padding on both sides, so only
     // calling it when that is true. Remove this check when (if?) cuDNN starts
@@ -889,6 +890,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
                                             ", n=", n, ", k=", k));
       }
+
       return;
     }
 
@@ -1058,6 +1060,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
           "cuDNN Backward Data function launch failure : input shape(",
           input_shape.DebugString(), ") filter shape(",
           filter_shape.DebugString(), ")"));
+      return;
     }
 
     if (rows_odd || cols_odd) {
@@ -1148,13 +1151,13 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
     const int padding_rows =
-        (padding_ == VALID)
-            ? 0
-            : (output_rows - 1) * stride_rows + filter_rows - input_rows;
+        (padding_ == VALID) ? 0
+                            : std::max<int>(0, (output_rows - 1) * stride_rows +
+                                                   filter_rows - input_rows);
     const int padding_cols =
-        (padding_ == VALID)
-            ? 0
-            : (output_cols - 1) * stride_cols + filter_cols - input_cols;
+        (padding_ == VALID) ? 0
+                            : std::max<int>(0, (output_cols - 1) * stride_cols +
+                                                   filter_cols - input_cols);
 
     // TODO(zhengxq): cuDNN only supports equal padding on both sides, so only
     // calling it when that is true. Remove this check when (if?) cuDNN starts
@@ -1387,6 +1390,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
           "cuDNN Backward Filter function launch failure : input shape(",
           input_shape.DebugString(), ") filter shape(",
           filter_shape.DebugString(), ")"));
+      return;
     }
 
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };

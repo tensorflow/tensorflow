@@ -167,7 +167,7 @@ y: a tensor of the same shape and type as x but filled with zeros.
 REGISTER_OP("Diag")
     .Input("diagonal: T")
     .Output("output: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {float, double, int32, int64, complex64}")
     .Doc(R"doc(
 Returns a diagonal tensor with a given diagonal values.
 
@@ -196,7 +196,7 @@ diagonal: Rank k tensor where k is at most 3.
 REGISTER_OP("DiagPart")
     .Input("input: T")
     .Output("diagonal: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {float, double, int32, int64, complex64}")
     .Doc(R"doc(
 Returns the diagonal part of the tensor.
 
@@ -660,14 +660,14 @@ For example:
 ```prettyprint
 # tensor 't' is [1, 2, 3, 4, 5, 6, 7, 8, 9]
 # tensor 't' has shape [9]
-reshape(t, [3, 3]) ==> [[1, 2, 3]
-                        [4, 5, 6]
+reshape(t, [3, 3]) ==> [[1, 2, 3],
+                        [4, 5, 6],
                         [7, 8, 9]]
 
-# tensor 't' is [[[1, 1], [2, 2]]
+# tensor 't' is [[[1, 1], [2, 2]],
 #                [[3, 3], [4, 4]]]
 # tensor 't' has shape [2, 2, 2]
-reshape(t, [2, 4]) ==> [[1, 1, 2, 2]
+reshape(t, [2, 4]) ==> [[1, 1, 2, 2],
                         [3, 3, 4, 4]]
 
 # tensor 't' is [[[1, 1, 1],
@@ -679,9 +679,22 @@ reshape(t, [2, 4]) ==> [[1, 1, 2, 2]
 # tensor 't' has shape [3, 2, 3]
 # pass '[-1]' to flatten 't'
 reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
-# -1 can also be used with higher dimensional shapes
+
+# -1 can also be used to infer the shape
+
+# -1 is inferred to be 9:
 reshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
                          [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+# -1 is inferred to be 2:
+reshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
+                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+# -1 is inferred to be 3:
+reshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],
+                              [2, 2, 2],
+                              [3, 3, 3]],
+                             [[4, 4, 4],
+                              [5, 5, 5],
+                              [6, 6, 6]]]
 
 # tensor 't' is [7]
 # shape `[]` reshapes to a scalar
@@ -1394,10 +1407,10 @@ The output tensor has shape `[4, 1, 1, 3]` and value:
 (3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:
 
 ```prettyprint
-x = [[[1],   [2],  [3],  [4]],
-     [[5],   [6],  [7],  [8]],
-     [[9],  [10], [11],  [12]],
-     [[13], [14], [15],  [16]]]
+x = [[[[1],   [2],  [3],  [4]],
+      [[5],   [6],  [7],  [8]],
+      [[9],  [10], [11],  [12]],
+      [[13], [14], [15],  [16]]]]
 ```
 
 The output tensor has shape `[4, 2, 2, 1]` and value:
@@ -1591,10 +1604,10 @@ This operation, for block_size of 2, will return the following tensor of shape
 Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
 
 ```prettyprint
-x = [[ [1],   [2],  [5],  [6]],
-     [ [3],   [4],  [7],  [8]],
-     [ [9],  [10], [13],  [14]],
-     [ [11], [12], [15],  [16]]]
+x = [[[[1],   [2],  [5],  [6]],
+      [[3],   [4],  [7],  [8]],
+      [[9],  [10], [13],  [14]],
+      [[11], [12], [15],  [16]]]]
 ```
 
 the operator will return the following tensor of shape `[1 2 2 4]`:

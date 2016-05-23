@@ -40,9 +40,13 @@ accomplished via
 
     $ export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
     $ export DEVICES=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
-    $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES gcr.io/tensorflow/tensorflow-devel-gpu
+    $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES gcr.io/tensorflow/tensorflow-gpu
 
 Alternately, you can use the `docker_run_gpu.sh` script in this directory.
+
+In order to set Jupyter Notebook to require a password, the `-e PASSWORD=pass` option must be provided
+
+    $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES -e PASSWORD=pass gcr.io/tensorflow/tensorflow-gpu
 
 ## Rebuilding the containers
 

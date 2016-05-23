@@ -126,6 +126,26 @@ class DataFeederTest(tf.test.TestCase):
                                                 [0.60000002, 0.2]])
       self.assertAllClose(feed_dict[out.name], [[0., 0., 1.], [0., 1., 0.]])
 
+  def test_hdf5_data_feeder(self):
+    try:
+      import h5py
+      X = np.matrix([[1, 2], [3, 4]])
+      y = np.array([1, 2])
+      h5f = h5py.File('test_hdf5.h5', 'w')
+      h5f.create_dataset('X', data=X)
+      h5f.create_dataset('y', data=y)
+      h5f.close()
+      h5f = h5py.File('test_hdf5.h5', 'r')
+      X = h5f['X']
+      y = h5f['y']
+      df = data_feeder.DataFeeder(X, y, n_classes=0, batch_size=3)
+      inp, out = df.input_builder()
+      feed_dict_fn = df.get_feed_dict_fn()
+      feed_dict = feed_dict_fn()
+      self.assertAllClose(feed_dict[inp.name], [[3, 4], [1, 2]])
+      self.assertAllClose(feed_dict[out.name], [2, 1])
+    except ImportError:
+      print("Skipped test for hdf5 since it's not installed.")
 
 class SetupPredictDataFeederTest(tf.test.TestCase):
 

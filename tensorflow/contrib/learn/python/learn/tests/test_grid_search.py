@@ -15,15 +15,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import random
 
-try:
-  from sklearn import datasets
-  from sklearn.grid_search import GridSearchCV
-  from sklearn.metrics import accuracy_score, mean_squared_error
-  HAS_SKLEARN = True
-except ImportError:
-  HAS_SKLEARN = False
+HAS_SKLEARN = os.environ.get('TENSORFLOW_SKLEARN', False)
+if HAS_SKLEARN: 
+  try:
+    from sklearn import datasets
+    from sklearn.grid_search import GridSearchCV
+    from sklearn.metrics import accuracy_score, mean_squared_error
+  except ImportError:
+    HAS_SKLEARN = False
 
 import tensorflow as tf
 

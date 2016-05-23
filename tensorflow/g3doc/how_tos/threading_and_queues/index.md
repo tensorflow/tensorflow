@@ -167,10 +167,10 @@ try:
             break
         sess.run(train_op)
 except Exception, e:
-   # Report exceptions to the coordinator.
-   coord.request_stop(e)
-
-# Terminate as usual.  It is innocuous to request stop twice.
-coord.request_stop()
-coord.join(threads)
+    # Report exceptions to the coordinator.
+    coord.request_stop(e)
+finally:
+    # Terminate as usual.  It is innocuous to request stop twice.
+    coord.request_stop()
+    coord.join(threads)
 ```

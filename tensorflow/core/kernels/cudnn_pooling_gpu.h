@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_CUDNN_POOLING_GPU_H_
 #define TENSORFLOW_KERNELS_CUDNN_POOLING_GPU_H_
 
+#include <array>
+
 #include "tensorflow/core/framework/op_kernel.h"
 
 #if GOOGLE_CUDA

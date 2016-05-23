@@ -312,6 +312,7 @@ struct LaunchConvOp<GPUDevice, T> {
         ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
                                         ", n=", n, ", k=", k));
       }
+
       return;
     }
     int padding_rows = 0;

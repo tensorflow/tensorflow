@@ -22,8 +22,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <string>
-#include <tuple>
 #include <vector>
 
 #include "tensorflow/core/lib/io/path.h"
@@ -39,6 +37,7 @@ namespace {
 
 const char kFfmpegExecutable[] = "ffmpeg";
 const int32 kDefaultProbeSize = 5000000;  // 5MB
+
 
 std::vector<string> FfmpegCommandLine(const string& input_filename,
                                       const string& output_filename,
