@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 
@@ -329,6 +330,36 @@ class AssertRankTest(tf.test.TestCase):
       with tf.control_dependencies([tf.assert_rank(tensor, desired_rank)]):
         with self.assertRaisesOpError("my_tensor.*rank"):
           tf.identity(tensor).eval(feed_dict={tensor: [1, 2]})
+
+  def test_raises_if_rank_is_not_scalar_static(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      with self.assertRaisesRegexp(ValueError, "Rank must be a scalar"):
+        tf.assert_rank(tensor, np.array([], dtype=np.int32))
+
+  def test_raises_if_rank_is_not_scalar_dynamic(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], dtype=tf.float32, name="my_tensor")
+      rank_tensor = tf.placeholder(tf.int32, name="rank_tensor")
+      with self.assertRaisesOpError("Rank must be a scalar"):
+        with tf.control_dependencies([tf.assert_rank(tensor, rank_tensor)]):
+          tf.identity(tensor).eval(feed_dict={rank_tensor: [1, 2]})
+
+  def test_raises_if_rank_is_not_integer_static(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      with self.assertRaisesRegexp(ValueError,
+                                   "must be of type <dtype: 'int32'>"):
+        tf.assert_rank(tensor, .5)
+
+  def test_raises_if_rank_is_not_integer_dynamic(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], dtype=tf.float32, name="my_tensor")
+      rank_tensor = tf.placeholder(tf.float32, name="rank_tensor")
+      with self.assertRaisesRegexp(ValueError,
+                                   "must be of type <dtype: 'int32'>"):
+        with tf.control_dependencies([tf.assert_rank(tensor, rank_tensor)]):
+          tf.identity(tensor).eval(feed_dict={rank_tensor: .5})
 
 
 class AssertRankAtLeastTest(tf.test.TestCase):
