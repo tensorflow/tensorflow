@@ -128,6 +128,8 @@ class Node {
            (IsSwitch() || IsMerge() || IsEnter() || IsExit() ||
             IsNextIteration());
   }
+  bool IsHostSend() const { return is_host_send_; }
+  bool IsHostRecv() const { return is_host_recv_; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -198,6 +200,8 @@ class Node {
   int id_;       // -1 until Initialize() is called
   int cost_id_;  // -1 if there is no corresponding cost accounting node
   NodeClass class_;
+  bool is_host_send_;
+  bool is_host_recv_;
 
   EdgeSet in_edges_;
   EdgeSet out_edges_;
@@ -401,6 +405,8 @@ inline bool IsLoopCond(const Node* node) { return node->IsLoopCond(); }
 inline bool IsControlTrigger(const Node* n) { return n->IsControlTrigger(); }
 inline bool IsSend(const Node* node) { return node->IsSend(); }
 inline bool IsRecv(const Node* node) { return node->IsRecv(); }
+inline bool IsHostSend(const Node* node) { return node->IsHostSend(); }
+inline bool IsHostRecv(const Node* node) { return node->IsHostRecv(); }
 
 // True for Nodes that mediate the transfer of values between processes.
 inline bool IsTransferNode(const Node* n) { return IsSend(n) || IsRecv(n); }
