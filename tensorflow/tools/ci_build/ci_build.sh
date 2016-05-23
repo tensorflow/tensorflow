@@ -74,8 +74,13 @@ if [[ "${CI_DOCKER_EXTRA_PARAMS}" != *"--rm"* ]]; then
   CI_DOCKER_EXTRA_PARAMS="--rm ${CI_DOCKER_EXTRA_PARAMS}"
 fi
 CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
-CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user ${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
+CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user "\
+"${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
+if [[ ! -z "${TF_BUILD_DISABLE_GCP}" ]] &&
+   [[ "${TF_BUILD_DISABLE_GCP}" != "0" ]]; then
+  CI_COMMAND_PREFIX+=("--disable-gcp")
+fi
 
 # Helper function to traverse directories up until given file is found.
 function upsearch () {

@@ -73,6 +73,10 @@
 #                      If set to any non-empty and non-0 value, will perform
 #                      the benchmark tests (see *_logged_benchmark targets in
 #                      tools/test/BUILD)
+#   TF_BUILD_DISABLE_GCP:
+#                      If set to any non-empty and non-0 value, will disable
+#                      support for Google Cloud Platform (GCP), which is
+#                      enabled by default.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -158,6 +162,7 @@ echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_INTEGRATION_TESTS=${TF_BUILD_INTEGRATION_TESTS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
+echo "  TF_BUILD_DISABLE_GCP=${TF_BUILD_DISABLE_GCP}"
 
 # Function that tries to determine CUDA capability, if deviceQuery binary
 # is available on path
