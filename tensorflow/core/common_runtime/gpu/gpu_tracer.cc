@@ -585,13 +585,14 @@ Status GPUTracerImpl::Collect(StepStatsCollector *collector) {
         std::max<int64>((rec.end_timestamp - rec.start_timestamp) / 1000, 1);
     ns->set_op_end_rel_micros(elapsed_us);
     ns->set_all_end_rel_micros(elapsed_us);
-    ns->set_node_name(name);
     auto copyKind = static_cast<CUpti_ActivityMemcpyKind>(rec.copyKind);
     auto srcKind = static_cast<CUpti_ActivityMemoryKind>(rec.srcKind);
     auto dstKind = static_cast<CUpti_ActivityMemoryKind>(rec.dstKind);
     const string details = strings::Printf(
         "MEMCPY%s %llu bytes (%s to %s)", getMemcpyKindString(copyKind),
         rec.bytes, getMemoryKindString(srcKind), getMemoryKindString(dstKind));
+    ns->set_node_name(
+        strings::StrCat(name, ":MEMCPY", getMemcpyKindString(copyKind)));
     ns->set_timeline_label(details);
     auto nscopy = new NodeExecStats;
     *nscopy = *ns;

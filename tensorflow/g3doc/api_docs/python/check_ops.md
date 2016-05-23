@@ -288,7 +288,7 @@ x = tf.with_dependencies([tf.assert_rank(x, 2)], x)
 
 
 *  <b>`x`</b>: Numeric `Tensor`.
-*  <b>`rank`</b>: Scalar `Tensor`.
+*  <b>`rank`</b>: Scalar integer `Tensor`.
 *  <b>`data`</b>: The tensors to print out if the condition is False.  Defaults to
     error message and first few entries of `x`.
 *  <b>`summarize`</b>: Print this many entries of each tensor.
@@ -342,6 +342,24 @@ x = tf.with_dependencies([tf.assert_rank_at_least(x, 2)], x)
 
 
 *  <b>`ValueError`</b>: If static checks determine `x` has wrong rank.
+
+
+- - -
+
+### `tf.assert_type(tensor, tf_type)` {#assert_type}
+
+Asserts that the given `Tensor` is of the specified type.
+
+##### Args:
+
+
+*  <b>`tensor`</b>: A tensorflow `Tensor`.
+*  <b>`tf_type`</b>: A tensorflow type (dtypes.float32, tf.int64, dtypes.bool, etc).
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the tensors data type doesn't match tf_type.
 
 
 - - -

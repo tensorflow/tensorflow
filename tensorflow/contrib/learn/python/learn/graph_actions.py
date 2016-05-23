@@ -282,7 +282,7 @@ def train(graph,
         if this_step <= last_step:
           logging.error(
               'Global step was not incremented by train op at step %s'
-              ': new step %d' % (last_step, this_step))
+              ': new step %d', last_step, this_step)
 
         last_step = this_step
         is_last_step = (max_steps is not None) and (last_step >= max_steps)
@@ -312,8 +312,8 @@ def train(graph,
         last_step = get_current_step()
         if supervisor_is_chief:
           ckpt_path = supervisor.save_path
-          logging.info('Saving checkpoint for step %d to checkpoint: %s.' % (
-              last_step, ckpt_path))
+          logging.info('Saving checkpoint for step %d to checkpoint: %s.',
+                       last_step, ckpt_path)
           supervisor.saver.save(session, ckpt_path, global_step=last_step)
 
           # Finish monitors.
@@ -343,6 +343,7 @@ def evaluate(graph,
              output_dir,
              checkpoint_path,
              eval_dict,
+             update_op=None,
              global_step_tensor=None,
              init_op=None,
              supervisor_master='',
@@ -368,6 +369,7 @@ def evaluate(graph,
       Can be `None` if the graph doesn't require loading any variables.
     eval_dict: A `dict` mapping string names to tensors to evaluate for in every
       eval step.
+    update_op: A 'Tensor' which is run before evaluating 'eval_dict'.
     global_step_tensor: A `Variable` containing the global step. If `None`,
       one is extracted from the graph using the same logic as in `Supervisor`.
       Used to place eval summaries on training curves.
@@ -432,6 +434,8 @@ def evaluate(graph,
             (max_steps is None) or (step < max_steps)):
           start_time = time.time()
           feed_dict = feed_fn() if feed_fn is not None else None
+          if update_op:
+            session.run(update_op)
           eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
           # TODO(wicke): We should assert that the global step hasn't changed.
           step += 1

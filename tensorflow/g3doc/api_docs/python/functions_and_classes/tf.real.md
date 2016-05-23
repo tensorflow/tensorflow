@@ -3,9 +3,10 @@
 Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
-type `float` that is the real part of each element in `input`. All elements in
-`input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
- part returned by this operation and *b* is the imaginary part.
+type `float` or `double` that is the real part of each element in `input`.
+All elements in `input` must be complex numbers of the form \(a + bj\),
+where *a* is the real part returned by this operation and *b* is the
+imaginary part.
 
 For example:
 
@@ -17,10 +18,11 @@ tf.real(input) ==> [-2.25, 3.25]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
+       `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`.
+  A `Tensor` of type `float` or `double`.
 

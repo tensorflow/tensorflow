@@ -44,6 +44,7 @@
   * [`assert_positive`](../../api_docs/python/check_ops.md#assert_positive)
   * [`assert_rank`](../../api_docs/python/check_ops.md#assert_rank)
   * [`assert_rank_at_least`](../../api_docs/python/check_ops.md#assert_rank_at_least)
+  * [`assert_type`](../../api_docs/python/check_ops.md#assert_type)
   * [`is_non_decreasing`](../../api_docs/python/check_ops.md#is_non_decreasing)
   * [`is_numeric_tensor`](../../api_docs/python/check_ops.md#is_numeric_tensor)
   * [`is_strictly_increasing`](../../api_docs/python/check_ops.md#is_strictly_increasing)
@@ -217,6 +218,7 @@
   * [`mod`](../../api_docs/python/math_ops.md#mod)
   * [`mul`](../../api_docs/python/math_ops.md#mul)
   * [`neg`](../../api_docs/python/math_ops.md#neg)
+  * [`polygamma`](../../api_docs/python/math_ops.md#polygamma)
   * [`pow`](../../api_docs/python/math_ops.md#pow)
   * [`real`](../../api_docs/python/math_ops.md#real)
   * [`reduce_all`](../../api_docs/python/math_ops.md#reduce_all)
@@ -251,6 +253,7 @@
   * [`unique`](../../api_docs/python/math_ops.md#unique)
   * [`unsorted_segment_sum`](../../api_docs/python/math_ops.md#unsorted_segment_sum)
   * [`where`](../../api_docs/python/math_ops.md#where)
+  * [`zeta`](../../api_docs/python/math_ops.md#zeta)
 
 * **[Strings](../../api_docs/python/string_ops.md)**:
   * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)

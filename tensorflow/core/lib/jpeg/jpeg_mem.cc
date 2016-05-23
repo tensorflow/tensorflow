@@ -103,6 +103,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   cinfo.client_data = &jpeg_jmpbuf;
   jerr.error_exit = CatchError;
   if (setjmp(jpeg_jmpbuf)) {
+    delete[] tempdata;
     return nullptr;
   }
 
@@ -148,6 +149,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   if (cinfo.output_width <= 0 || cinfo.output_height <= 0) {
     LOG(ERROR) << "Invalid image size: " << cinfo.output_width << " x "
                << cinfo.output_height;
+    jpeg_destroy_decompress(&cinfo);
     return nullptr;
   }
   if (total_size >= (1LL << 29)) {
@@ -243,6 +245,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
     output_line += stride;
   }
   delete[] tempdata;
+  tempdata = NULL;
 
   // Convert the RGB data to RGBA, with alpha set to 0xFF to indicate
   // opacity.
