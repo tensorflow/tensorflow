@@ -19,14 +19,20 @@
 #
 # The script obeys the following required environment variables:
 #   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID)
-#   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3)
+#   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
 #   TF_BUILD_IS_OPT:           (NO_OPT | OPT)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
-# Note: certain combinations of parameter values are regarded
+# Note:
+#   1) Certain combinations of parameter values are regarded
 # as invalid and will cause the script to exit with code 0. For example:
 #   NO_OPT & PIP     (PIP builds should always use OPT)
 #   ANDROID & PIP    (Android and PIP builds are mutually exclusive)
+#
+#   2) TF_BUILD_PYTHON_VERSION is set to PYTHON3, the build will use the version
+# pointed to by "which python3" on the system, which is typically python3.4. To
+# build for python3.5, set the environment variable to PYTHON3.5
+#
 #
 # Additionally, the script follows the directions of optional environment
 # variables:
@@ -349,17 +355,19 @@ fi
 # Process Python version
 if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
-elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
+elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" || \
+        ${TF_BUILD_PYTHON_VERSION} == "python3.4" || \
+        ${TF_BUILD_PYTHON_VERSION} == "python3.5" ]]; then
   # Supply proper environment variable to select Python 3
   if [[ "${DO_DOCKER}" == "1" ]]; then
-    EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=python3"
+    EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=${TF_BUILD_PYTHON_VERSION}"
   else
     # Determine the path to python3
-    PYTHON3_PATH=$(which python3 | head -1)
+    PYTHON3_PATH=$(which "${TF_BUILD_PYTHON_VERSION}" | head -1)
     if [[ -z "${PYTHON3_PATH}" ]]; then
-      die "ERROR: Failed to locate python3 binary on the system"
+      die "ERROR: Failed to locate ${TF_BUILD_PYTHON_VERSION} binary on path"
     else
-      echo "Found python3 binary at: ${PYTHON3_PATH}"
+      echo "Found ${TF_BUILD_PYTHON_VERSION} binary at: ${PYTHON3_PATH}"
     fi
 
     export PYTHON_BIN_PATH="${PYTHON3_PATH}"
@@ -413,6 +421,34 @@ cat ${TMP_SCRIPT}
 echo "=========================================="
 echo ""
 
+
+TMP_DIR=""
+DOCKERFILE_FLAG=""
+if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
+  # Modify Dockerfile for Python3.5 build
+  TMP_DIR=$(mktemp -d)
+  echo "Docker build will occur in temporary directory: ${TMP_DIR}"
+
+  # Copy the files required for the docker build
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
+      die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
+
+  DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+  cp "${DOCKERFILE}" "${TMP_DIR}/" || \
+      die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
+  DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+
+  # Replace a line in the Dockerfile
+  sed -i \
+      's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
+      "${DOCKERFILE}" && \
+      echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}" || \
+      die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+
+  DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
+fi
+
 chmod +x ${TMP_SCRIPT}
 
 FAILURE=0
@@ -422,7 +458,7 @@ if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
 else
   # Actually run the command
   if [[ "${DO_DOCKER}" == "1" ]]; then
-    ${DOCKER_MAIN_CMD} ${CTYPE} /tmp/tf_build.sh
+    ${DOCKER_MAIN_CMD} ${CTYPE} ${DOCKERFILE_FLAG} /tmp/tf_build.sh
   else
     ${TMP_SCRIPT}
   fi
@@ -440,5 +476,12 @@ END_TIME=$(date +'%s')
 echo ""
 echo "Parameterized build ends with ${RESULT} at: $(date) "\
 "(Elapsed time: $((${END_TIME} - ${START_TIME})) s)"
+
+
+# Clean up temporary directory if it exists
+if [[ ! -z "${TMP_DIR}" ]]; then
+  echo "Cleaning up temporary directory: ${TMP_DIR}"
+  rm -rf "${TMP_DIR}"
+fi
 
 exit ${FAILURE}
