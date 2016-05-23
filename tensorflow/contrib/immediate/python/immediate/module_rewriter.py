@@ -11,10 +11,12 @@ import re
 import sys
 import types
 
-from .op import OpWrapper2
+from .op import OpWrapper
 from .op import OpDefLibraryWrapper
 from .op import ConvertToTensorWrapper
 from .op import ConstantOpWrapper
+
+from .tensor import _ENABLE_DEBUG_LOGGING
 
 __all__ = ["ModuleRewriter"]
 
@@ -43,10 +45,8 @@ def copy_function(old_func, updated_module):
   """Copies a function, updating it to point to given module."""
 
   # Decorators don't set __module__ to the current function
-  # detect this case and return function unchanged
+  # detect this case and return it unchanged
   if old_func.__globals__ != sys.modules[old_func.__module__].__dict__:
-    print ('Module mismatch: %s %s' %(old_func.__name__,
-                                     old_func.__module__))
     return old_func
     
   new_func = types.FunctionType(old_func.__code__, updated_module.__dict__,
@@ -131,8 +131,9 @@ class ModuleRewriter(object):
       new_symbol = self.symbol_rewriter(symbol)
       if new_symbol:
         updated_symbols[symbol_name] = new_symbol
-        print("Rewrote symbol %s in %s" % (symbol_name,
-                                           original_module.__name__))
+        if _ENABLE_DEBUG_LOGGING:
+          print("Rewrote symbol %s in %s" % (symbol_name,
+                                             original_module.__name__))
 
       # Case 2: symbol is a module which may be affected by symbol_rewriter
       elif isinstance(symbol, types.ModuleType):
@@ -141,9 +142,6 @@ class ModuleRewriter(object):
 
           if new_symbol.__name__ != symbol.__name__:
             updated_symbols[symbol_name] = new_symbol
-#            print("Replaced %s in %s from %s" % (symbol_name,
-#                                                 original_module.__name__,
-#                                                 symbol.__name__))
 
       # Case 3: symbol is a function defined in a module which may be affected
       # by symbol rewriter
@@ -226,8 +224,6 @@ class GenopsRewriter(object):
     self._fname_re = re.compile(".*tensorflow/python/ops/gen_.*_ops.pyc?$")
     def filematch(symbol):
       fn = get_symbol_file(symbol)
-#      if 'tensorflow/python/ops' in fn:
-#        print ("Testing %s, %s, %s " %(symbol, fn, bool(self._fname_re.findall(get_symbol_file(symbol)))))
       return bool(self._fname_re.findall(fn))
     self.file_matches = filematch
 
@@ -237,7 +233,7 @@ class GenopsRewriter(object):
                                        or symbol.__name__=='_sum'
                                        or symbol.__name__=='rank'
                                        or symbol.__name__=='_range')):
-      return OpWrapper2(self.env, symbol)
+      return OpWrapper(self.env, symbol)
 
 
 from tensorflow.python.ops import op_def_library

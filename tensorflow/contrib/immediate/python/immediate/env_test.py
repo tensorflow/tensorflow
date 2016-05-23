@@ -11,16 +11,6 @@ class EnvTest(tf.test.TestCase):
     env = immediate.Env(tf)
     self.assertTrue(True)
 
-  def testNamespacePassthrough(self):
-    # test to make sure that non-ops pass-through the namespace without
-    # being wrapped
-    env = immediate.Env(tf)
-    from tensorflow.python.framework import ops
-
-    namespace = immediate.Namespace(env, "ops", ops, tf_root=False)
-    self.assertEqual(ops._convert_stack, namespace._convert_stack)
-
-
   def testNN(self):
     env = immediate.Env(tf)
     val = env.numpy_to_tensor(-1)
@@ -146,6 +136,17 @@ class EnvTest(tf.test.TestCase):
     self.assertAllEqual(split0.as_numpy(), [1])
     
 
+  def testConcat(self):
+    env = immediate.Env(tf)
+    val0 = env.numpy_to_tensor(0)
+    # test special degenerate case
+    self.assertEqual(env.tf.concat(0, 5), 5)
+
+    val1 = env.numpy_to_tensor([1,2])
+    val2 = env.numpy_to_tensor([3,4])
+    val3 = env.tf.concat(0, [val1, val2]) 
+    self.assertAllEqual(val3.as_numpy(), [1,2,3,4])
+
 
 ## TODO(yaroslavvb): move to env_test2
 #### Tests below are for development/checking the Graph Caching system
@@ -155,7 +156,7 @@ class EnvTest(tf.test.TestCase):
 #### reliably
 
 
-  def testAddCaching(self):
+  def atestAddCaching(self):
     # make sure that graph is not modified in a loop
     env = immediate.Env(tf)
     val = np.ones(())
@@ -177,7 +178,7 @@ class EnvTest(tf.test.TestCase):
     self.assertEqual(number_of_graph_modifications, env.graph_version)
     self.assertEqual(tensor1.as_numpy(), 30)
 
-  def testSplitCaching(self):
+  def atestSplitCaching(self):
     # TODO(yaroslavvb): remove to_split_value1/2 when numpy conversion
     # ops are properly cached
     env = immediate.Env(tf)

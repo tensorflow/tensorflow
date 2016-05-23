@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-__all__ = ["Op", "OpFactory", "OpWrapper", "PythonOpWrapper"]
+__all__ = ["Op", "OpFactory", "OpWrapper"]
 
 from .tensor import Tensor
 from .tensor import _ENABLE_DEBUG_LOGGING
@@ -13,53 +13,12 @@ import sys
 
 import wrapping_util
 
-# Implementation of Immediate Op
-class Op(object):
-
-  def __init__(self, env, input_holders, output_handle, key,
-               converted_tensors={}):
-    """Initialize Op.
-
-    Args:
-      converted_tensors: dictionary of argument position -> converted immedate
-        Tensor (only for argument positions where this conversion was made)
-    """
-
-    self.env = env
-    self.input_holders = input_holders
-    self.output_handle = output_handle
-    self.key = key
-    self.converted_tensors = converted_tensors
-
-  def __call__(self, *args):
-    if not len(args) == len(self.input_holders):
-      raise ValueError("Too many arguments provided (%d), %s can only accept "
-                       "%d" % (len(args), self.__str__(),
-                               len(self.input_holders)))
-
-    feed_dict = {}
-    for (i, (itensor, holder)) in enumerate(zip(args, self.input_holders)):
-      if i in self.converted_tensors:
-        itensor = self.converted_tensors[i]
-      if not isinstance(itensor, Tensor):
-        raise ValueError("All positional arguments must be immediate "
-                         "Tensors, instead we see "+str(itensor))
-      feed_dict[holder] = itensor.tf_handle
-
-    tensor_handle = self.env.run(self.output_handle, feed_dict=feed_dict)
-    if isinstance(tensor_handle, list):
-      return [Tensor(self.env, t) for t in tensor_handle]
-    else:
-      return Tensor(self.env, tensor_handle)
-
-  def __str__(self):
-    return "Op%s" % (str(self.key))
-
-  def __repr__(self):
-    return self.__str__()
-
 # Implementation of Immediate Op with keyword call arguments
-class KeywordOp(object):
+class Op(object):
+  """Op represents an object which accepts immediate tensors and returns
+  immediate tensors. It turns incoming objects into TensorHandles, runs
+  underlying op in env's session and wraps resulting TensorHandles in immediate
+  Tensors."""
 
   def __init__(self, env, input_holders, output_handle):
     """Initialize Op.
@@ -218,30 +177,16 @@ class OpFactory(object):
         input_holders.append(holder)
         input_tensors.append(tensor)
 
-      # extra check, make sure the user didn't use TF-style
-      # kwargs approach to specify inputs
-      for name,val in kwargs.items():
-        if isinstance(val, Tensor):
-          raise ValueError("Found Tensor in a keyword argument, use "
-                           "positional arguments instead.")
-
-
-     #      input_tensors, kwargs = _unfixup_args(symbol_name, *input_tensors, **kwargs)
-
-  #      if _ENABLE_DEBUG_LOGGING:
-  #        print("OpFactory unfixup: %s(%s, %s)" % (symbol_name, args, kwargs))
       if _ENABLE_DEBUG_LOGGING:
         print("OpFactory redirect: %s(%s, %s)" % (symbol_name, args, kwargs))
       output = symbol(*input_tensors, **kwargs)
 
-      # TODO(yaroslavvb): allow for multiple return values like tf.split
       if isinstance(output, list):
-        #  raise ValueError("Only support TF ops that return a single Tensor.")
         output_handle = [self.env.get_session_handle(o) for o in output]
       else:
         output_handle = self.env.get_session_handle(output)
 
-    op = Op(self.env, input_holders, output_handle, key, converted_tensors)
+    op = Op(self.env, input_holders, output_handle)
     self.cache[key] = op
 
     return op
@@ -250,31 +195,9 @@ class OpFactory(object):
   def _create_key(self, opname, *args, **kwargs):
     return opname
 
-# TODO(yaroslavvb): remove namespace from Op init
-class OpWrapper(object):
-  """A callable object that mirrors TF generated wrapper, but with immediate
-  execution semantics."""
-
-  def __init__(self, namespace, env, symbol_name, symbol):
-    self.namespace = namespace
-    self.env = env
-    self.symbol_name = symbol_name  # name of function, ie "tf.nn.relu"
-    self.symbol = symbol  # function object
-  
-  def __call__(self, *args, **kwargs):
-    op = self.env.op_factory(self.symbol_name, self.symbol, *args, **kwargs)
-    args, kwargs = _fixup_args(self.symbol_name, *args, **kwargs)
-    return op(*args)
-
-  def __str__(self):
-    return self.__repr__()
-
-  def __repr__(self):
-    return "OpWrapper(%s, %s, %s, %s)"%(self.namespace, self.env,
-                                        self.symbol_name, self.symbol)
 
 # TODO(yaroslavvb): copy __doc__ and __file__ from the original fun object
-class OpWrapper2(object):
+class OpWrapper(object):
   """A callable object that mirrors TF generated wrapper, but with immediate
   execution semantics."""
 
@@ -284,14 +207,13 @@ class OpWrapper2(object):
   
   def __call__(self, *args, **kwargs):
     op = self.env.op_factory(self.symbol.__name__, self.symbol, *args, **kwargs)
-    #    args, kwargs = _fixup_args(self.symbol.__name__, *args, **kwargs)
     return op(*args)
 
   def __str__(self):
     return self.__repr__()
 
   def __repr__(self):
-    return "OpWrapper2(%s, %s)"%(self.env, self.symbol)
+    return "OpWrapper(%s, %s)"%(self.env, self.symbol)
 
 
 op_input_argnames, op_input_argtypes = wrapping_util.get_op_input_argnames_argtypes()
@@ -373,7 +295,7 @@ class OpDefLibraryWrapper(object):
         raise ValueError("Op %s gave output (%s) of unexpected type (%s)"
                          % (op_type_name, output, type(output)))
 
-    op = KeywordOp(self.env, input_holders, output_handle)
+    op = Op(self.env, input_holders, output_handle)
     return op(**itensor_args)
     #    self.cache[key] = op
 
@@ -441,7 +363,3 @@ class ConcatOpWrapper(object):
     self.env = env
     self.symbol_name = symbol_name
     
-    
-    
-#  def __call__(self, concat_dim=concat_dim, values=values, name=name):
-#    return self.env.numpy_to_tensor(value, dtype)
