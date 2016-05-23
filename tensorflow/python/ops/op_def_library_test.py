@@ -707,7 +707,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     #                  "Don't know how to convert 5 to a TensorShapeProto for "
     #                  "argument 'a'")
 
-    with self.assertRaises(ValueError):
+    with self.assertRaises(TypeError):
       self._lib.apply_op("AttrShape", a="ABC")
 
   def testAttrShapeList(self):
@@ -774,7 +774,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     #                  "Don't know how to convert 5 to a TensorShapeProto for "
     #                  "argument 'a'")
 
-    with self.assertRaises(ValueError) as cm:
+    with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("AttrPartialShape", a="ABC")
 
   def testAttrPartialShapeList(self):
