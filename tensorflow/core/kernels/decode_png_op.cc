@@ -70,8 +70,8 @@ class DecodePngOp : public OpKernel {
     //   verify single dimension is not too large.
     // - verify when width and height are multiplied together, there are a few
     //   bits to spare as well.
-    const int width = decode.width;
-    const int height = decode.height;
+    const int width = static_cast<int>(decode.width);
+    const int height = static_cast<int>(decode.height);
     const int64 total_size =
         static_cast<int64>(width) * static_cast<int64>(height);
     if (width != static_cast<int64>(decode.width) || width <= 0 ||
