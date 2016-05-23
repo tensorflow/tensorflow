@@ -215,26 +215,6 @@ class AddSymbolRewriter(object):
         "gen_math_ops.py" in get_symbol_file(symbol)):
         return self.replacement_func
 
-class GenopsRewriter(object):
-  """Object implementing immediate-Environment-based symbol rewriter for all
-  tensorflow gen.*ops functions."""
-
-  def __init__(self, env):
-    self.env = env
-    self._fname_re = re.compile(".*tensorflow/python/ops/gen_.*_ops.pyc?$")
-    def filematch(symbol):
-      fn = get_symbol_file(symbol)
-      return bool(self._fname_re.findall(fn))
-    self.file_matches = filematch
-
-  def __call__(self, symbol):
-    if (isinstance(symbol, types.FunctionType) and 
-        self.file_matches(symbol) and (symbol.__name__=='add'
-                                       or symbol.__name__=='_sum'
-                                       or symbol.__name__=='rank'
-                                       or symbol.__name__=='_range')):
-      return OpWrapper(self.env, symbol)
-
 
 from tensorflow.python.ops import op_def_library
 class OpDefLibRewriter(object):

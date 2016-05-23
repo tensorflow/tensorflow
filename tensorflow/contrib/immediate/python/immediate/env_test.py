@@ -4,17 +4,20 @@ import tensorflow as tf
 import numpy as np
 import tensorflow.contrib.immediate as immediate
 
+#from tensorflow.contrib.immediate import test_util
+from tensorflow.contrib.immediate.python.immediate import test_util as test_util
 
-class EnvTest(tf.test.TestCase):
+class EnvTest(test_util.ImmediateTestCase):
+#class EnvTest(tf.test.TestCase):
 
-  def testInit(self):
-    env = immediate.Env(tf)
-    self.assertTrue(True)
+  def atestInit(self):
+    with self.test_env(tf) as env:
+      self.assertTrue(True)
 
   def testNN(self):
-    env = immediate.Env(tf)
-    val = env.numpy_to_tensor(-1)
-    self.assertEqual(env.tf.nn.relu(val), env.numpy_to_tensor(0))
+    with self.test_env(tf) as env:
+      val = env.numpy_to_tensor(-1)
+      self.assertEqual(env.tf.nn.relu(val), env.numpy_to_tensor(0))
 
   def testNumpyConversion(self):
     def testForDtype(dtype):
@@ -23,11 +26,11 @@ class EnvTest(tf.test.TestCase):
       b = env.handle_to_numpy(tensor_handle)
       self.assertAllEqual(a, b)
 
-    env = immediate.Env(tf)
-    testForDtype(np.float32)
-    testForDtype(np.float64)
-    testForDtype(np.int32)
-    testForDtype(np.int64)
+    with self.test_env(tf) as env:
+      testForDtype(np.float32)
+      testForDtype(np.float64)
+      testForDtype(np.int32)
+      testForDtype(np.int64)
 
   def testNumpySingleton(self):
     def testForDtype(dtype):
@@ -36,116 +39,116 @@ class EnvTest(tf.test.TestCase):
       b = env.handle_to_numpy(tensor_handle)
       self.assertAllEqual(a, b)
 
-    env = immediate.Env(tf)
-    testForDtype(np.float32)
-    testForDtype(np.float64)
-    testForDtype(np.int32)
-    testForDtype(np.int64)
+    with self.test_env(tf) as env:
+      testForDtype(np.float32)
+      testForDtype(np.float64)
+      testForDtype(np.int32)
+      testForDtype(np.int64)
 
   def testNumpyBoolConversion(self):
-    env = immediate.Env(tf)
-    tensor = env.numpy_to_tensor(False)
+    with self.test_env(tf) as env:
+      tensor = env.numpy_to_tensor(False)
+      self.assertEqual(tensor, False)
 
   def testAdd(self):
-    env = immediate.Env(tf)
-    val = np.ones(())
-    tensor1 = env.numpy_to_tensor(val)
-    tensor2 = env.numpy_to_tensor(val)
-    tensor3 = env.tf.add(tensor1, tensor2)
-    tensor4 = env.tf.add(tensor3, tensor2)
-    self.assertAllEqual(tensor4.as_numpy(), 3*val)
+    with self.test_env(tf) as env:
+      val = np.ones(())
+      tensor1 = env.numpy_to_tensor(val)
+      tensor2 = env.numpy_to_tensor(val)
+      tensor3 = env.tf.add(tensor1, tensor2)
+      tensor4 = env.tf.add(tensor3, tensor2)
+      self.assertAllEqual(tensor4.as_numpy(), 3*val)
 
   def testSub(self):
-    env = immediate.Env(tf)
-    val = np.ones(())
-    tensor1 = env.numpy_to_tensor(val)
-    tensor2 = env.numpy_to_tensor(val)
-    tensor3 = env.tf.sub(tensor1, tensor2)
-    tensor4 = env.tf.sub(tensor3, tensor2)
-    self.assertAllEqual(tensor4.as_numpy(), -1*val)
+    with self.test_env(tf) as env:
+      val = np.ones(())
+      tensor1 = env.numpy_to_tensor(val)
+      tensor2 = env.numpy_to_tensor(val)
+      tensor3 = env.tf.sub(tensor1, tensor2)
+      tensor4 = env.tf.sub(tensor3, tensor2)
+      self.assertAllEqual(tensor4.as_numpy(), -1*val)
 
   def testPowOp(self):
     """Try a simple non-native op."""
-    env = immediate.Env(tf)
-    val1 = env.numpy_to_tensor(2)
-    val2 = env.numpy_to_tensor(3)
-    self.assertEqual(env.tf.pow(val1, val2), env.numpy_to_tensor(8))
+
+    with self.test_env(tf) as env:
+      val1 = env.numpy_to_tensor(2)
+      val2 = env.numpy_to_tensor(3)
+      self.assertEqual(env.tf.pow(val1, val2), env.numpy_to_tensor(8))
 
   # TODO(yaroslavvb): test tf.ones for empty shape (ndarray.empty)
   def testOnes(self):
-    #fill(shape, constant(1, dtype=dtype), name=name)
-    env = immediate.Env(tf)
-    val1 = env.tf.ones((3, 3))
-    self.assertAllEqual(val1.as_numpy(), np.ones((3, 3)))
+    with self.test_env(tf) as env:
+      env = immediate.Env(tf)
+      val1 = env.tf.ones((3, 3))
+      self.assertAllEqual(val1.as_numpy(), np.ones((3, 3)))
 
   def testReshapeOpWithConversion(self):
     """Try reshape op where arguments are implicitly converted to Tensors"""
-    env = immediate.Env(tf)
-    val1 = env.numpy_to_tensor([[1],[2]])
-    val2 = env.tf.reshape(val1, [-1])
-    # TODO(yaroslavvb): implement slicing and get rid of numpy conversion
-    self.assertAllEqual(env.tensor_to_numpy(val2), [1, 2])
+    with self.test_env(tf) as env:
+      val1 = env.numpy_to_tensor([[1],[2]])
+      val2 = env.tf.reshape(val1, [-1])
+      # TODO(yaroslavvb): implement slicing and get rid of numpy conversion
+      self.assertAllEqual(env.tensor_to_numpy(val2), [1, 2])
 
   def testRank(self):
-    env = immediate.Env(tf)
-    val1 = env.numpy_to_tensor([[1],[2]])
-    self.assertEqual(env.tf.rank(val1), 2)
+    with self.test_env(tf) as env:
+      val1 = env.numpy_to_tensor([[1],[2]])
+      self.assertEqual(env.tf.rank(val1), 2)
 
   def testRange(self):
-    env = immediate.Env(tf)
-    val = env.tf.range(3)
-    self.assertAllEqual(env.tensor_to_numpy(val), [0, 1, 2])
+    with self.test_env(tf) as env:
+      val = env.tf.range(3)
+      self.assertAllEqual(env.tensor_to_numpy(val), [0, 1, 2])
     
   def testReduceSum(self):
     """Try a simple non-native op."""
-    env = immediate.Env(tf)
-    val1 = env.numpy_to_tensor([1,2,3])
-    self.assertEqual(env.tf.reduce_sum(val1), 6)
+    with self.test_env(tf) as env:
+      val1 = env.numpy_to_tensor([1,2,3])
+      self.assertEqual(env.tf.reduce_sum(val1), 6)
 
-  def testConstant(self):
-    env = immediate.Env(tf)
-    val1 = env.constant(1.5, shape=[2, 2])
-    self.assertAllEqual(val1.as_numpy(), [[1.5, 1.5], [1.5, 1.5]])
+  def atestConstant(self):
+    with self.test_env(tf) as env:
+      val1 = env.constant(1.5, shape=[2, 2])
+      self.assertAllEqual(val1.as_numpy(), [[1.5, 1.5], [1.5, 1.5]])
 
-    val2 = env.constant([1, 2, 3, 4])
-    self.assertAllEqual(val2.as_numpy(), [1, 2, 3, 4])
+      val2 = env.constant([1, 2, 3, 4])
+      self.assertAllEqual(val2.as_numpy(), [1, 2, 3, 4])
 
-    val3 = env.constant(7, dtype=tf.int32)
-    self.assertAllEqual(val3.as_numpy(), 7)
+      val3 = env.constant(7, dtype=tf.int32)
+      self.assertAllEqual(val3.as_numpy(), 7)
 
   def testRandomUniform(self):
-    env = immediate.Env(tf)
-    n = 3
-    val = env.tf.random_uniform([n, n], -2, 2)
-    sum_ = env.tf.reduce_sum(val)
-    self.assertTrue(sum_ < n*n*2+1.)
+    with self.test_env(tf) as env:
+      n = 3
+      val = env.tf.random_uniform([n, n], -2, 2)
+      sum_ = env.tf.reduce_sum(val)
+      self.assertTrue(sum_ < n*n*2+1.)
     
   def testShape(self):
-    env = immediate.Env(tf)
-    val0 = env.numpy_to_tensor([[1,2,3],[4,5,6]])
-    self.assertAllEqual(env.tf.shape(val0).as_numpy(), [2, 3])
+    with self.test_env(tf) as env:
+      val0 = env.numpy_to_tensor([[1,2,3],[4,5,6]])
+      self.assertAllEqual(env.tf.shape(val0).as_numpy(), [2, 3])
         
   def testSplit(self):
-    env = immediate.Env(tf)
-    value = env.tf.ones((1, 3))
-    split0, split1, split2 = env.tf.split(1, 3, value)
-    self.assertAllEqual(env.tf.shape(split0).as_numpy(), [1, 1])
-    split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2, 3, 4]))
-    self.assertAllEqual(split1.as_numpy(), [3, 4])
-    split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2]))
-    self.assertAllEqual(split0.as_numpy(), [1])
+    with self.test_env(tf) as env:
+      value = env.tf.ones((1, 3))
+      split0, split1, split2 = env.tf.split(1, 3, value)
+      self.assertAllEqual(env.tf.shape(split0).as_numpy(), [1, 1])
+      split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2, 3, 4]))
+      self.assertAllEqual(split1.as_numpy(), [3, 4])
+      split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2]))
+      self.assertAllEqual(split0.as_numpy(), [1])
     
-
   def testConcat(self):
-    env = immediate.Env(tf)
-    val0 = env.numpy_to_tensor(0)
-    # test special degenerate case
-    self.assertEqual(env.tf.concat(0, 5), 5)
+    with self.test_env(tf) as env:
+      val0 = env.numpy_to_tensor(0)
+      self.assertEqual(env.tf.concat(0, 5), 5)
 
-    val1 = env.numpy_to_tensor([1,2])
-    val2 = env.numpy_to_tensor([3,4])
-    val3 = env.tf.concat(0, [val1, val2]) 
-    self.assertAllEqual(val3.as_numpy(), [1,2,3,4])
+      val1 = env.numpy_to_tensor([1,2])
+      val2 = env.numpy_to_tensor([3,4])
+      val3 = env.tf.concat(0, [val1, val2]) 
+      self.assertAllEqual(val3.as_numpy(), [1,2,3,4])
 
 
 ## TODO(yaroslavvb): move to env_test2

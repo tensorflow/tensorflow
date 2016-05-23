@@ -30,6 +30,24 @@ py_library(
     ],
 )
 
+py_library(
+    name = "immediate_test_lib",
+    srcs = [
+        "python/immediate/test_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":immediate_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:session",
+        "//tensorflow/python:util",
+	"//tensorflow/python:framework_test_lib",
+    ],
+)
+
+
 py_test(
     name = "env_test",
     size = "small",
@@ -37,9 +55,11 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":immediate_py",
+	":immediate_test_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
 
