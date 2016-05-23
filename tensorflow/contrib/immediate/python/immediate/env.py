@@ -75,6 +75,7 @@ from .tensor import Tensor
 from .tensor import _ENABLE_DEBUG_LOGGING
 from .op import OpFactory
 from .op import OpWrapper 
+from .op import OpWrapper2
 from .op import PythonOpWrapper  # deprecated
 from .op import ConstantOpWrapper
 from .op import ConvertToTensorWrapper
@@ -123,102 +124,13 @@ launches namespace wrapping logic
   # note: np.int32 has different hash from np.dtype('int32'), so must use later
   supported_numpy_types = {np.dtype('int32'), np.dtype('int64'),
                            np.dtype('float32'), np.dtype('float64'),
-                           np.dtype('bool')}
+                           np.dtype('bool'), np.dtype("|S3")}
 
   def __init__(self, tf_namespace):
     self.tf_namespace = tf_namespace
     self.sess = session.Session()
     self.op_factory = OpFactory(self)
 
-    self.symbol_replacements = {}
-    self.function_whitelist = set()
-    self.module_whitelist = set()
-
-    # TODO(yaroslavvb): remove last name arg in special wrappers
-    self.register_replacement("tensorflow/python/framework/ops.py",
-                              "convert_to_tensor",
-                              ConvertToTensorWrapper(None, self,
-                                                     "convert_to_tensor"))
-
-    self.register_replacement('tensorflow/python/ops/constant_op.py',
-                              "constant",
-                              ConstantOpWrapper(None, self, "constant"))
-    
-    self.whitelist_module('tensorflow/python/ops/array_ops.py')
-    self.whitelist_function('tensorflow/python/ops/array_ops.py',
-                            'reduce_sum')
-    
-
-    # wrap all tensorflow op modules. Keep track of already wrapped modules
-    # for __globals__ substitution dictionary "sub" 
-    sub = {}
-    self.wrapped_namespaces = {}
-
-    # Wrap ops twice
-    # Wrap op_def_library with ops replacement
-
-    # Wrap gen.*ops modules
-    for op_module in gen_op_module_list:
-      wrapped_namespace = Namespace(self, op_module, eval(op_module),
-                                    tf_root=False)
-      self.wrapped_namespaces[op_module] = wrapped_namespace
-      sub[op_module] = wrapped_namespace
-
-    # convert_to_tensor is called on ops.convert_n_to_tensor
-    sub["convert_to_tensor"] = ConvertToTensorWrapper(None, self,
-                                                      "convert_to_tensor")
-    wrapped_namespace = Namespace(self, "ops", ops, tf_root=False,
-                                  global_sub=sub)
-    sub["ops"] = wrapped_namespace
-
-    # Because of array_ops: tensorflow.python.ops.constant_op import constant
-    sub["constant"] =  ConstantOpWrapper(None, self, "constant")
-
-    # Because of array_ops using "identity"
-    #    sub["identity"] =  OpWrapper(None, self, "identity")
-    sub["identity"] = sub["gen_array_ops"].identity
-
-    for op_module in python_op_module_list_sorted():
-      wrapped_namespace = Namespace(self, op_module,
-                                    eval(op_module),
-                                    tf_root=False, global_sub=sub)
-
-      self.wrapped_namespaces[op_module] = wrapped_namespace
-      sub[op_module] = wrapped_namespace
-
-    self.tf =  Namespace(self, "tf", tf_namespace, tf_root=True,
-                         global_sub=sub)
-
-
-  def init_namespace(self):
-    pass
-
-    # TODO(yaroslavvb): add run options
-    #    self.run_options = tf.RunOptions()
-
-  def register_replacement(self, module_name, symbol_name, replacement):
-    """Register module specific replacement."""
-
-    sym_name = module_name + ":" + symbol_name
-    self.symbol_replacements[sym_name] = replacement
-
-  def lookup_replacement(self, module_name, symbol_name, replacement):
-    sym_name = module_name + ":" + symbol_name
-    return self.symbol_replacements.get(sym_name, None)
-
-  def whitelist_module(self, module_name):
-    self.module_whitelist.add(module_name)
-
-  def is_module_whitelisted(self, module_name):
-    return module_name in self.module_whitelist
-
-  def whitelist_function(self, module_name, symbol_name):
-    sym_name = module_name + ":" + symbol_name
-    self.function_whitelist.add(sym_name)
-
-  def is_function_whitelisted(self, module_name, symbol_name):
-    sym_name = module_name + ":" + symbol_name
-    return sym_name in self.function_whitelist
 
   @property
   def g(self):

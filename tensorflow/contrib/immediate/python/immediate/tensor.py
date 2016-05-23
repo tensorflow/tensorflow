@@ -8,9 +8,13 @@ __all__ = ["Tensor"]
 
 _ENABLE_DEBUG_LOGGING = False
 
-import tensorflow as tf
+#import tensorflow as tf
 
 from tensorflow.python.framework import tensor_shape
+from tensorflow.core.framework import op_def_pb2
+from tensorflow.core.framework import graph_pb2
+from tensorflow.python.framework import ops as tf_ops
+from tensorflow.python.ops import constant_op
 
 class Tensor(object):
 
@@ -34,11 +38,38 @@ class Tensor(object):
 
     return self.env.handle_to_numpy(self.handle)
 
+
+  # for compatibility with array_ops transpose
+  # that has following temporary hack for shape inference
+  # input_shape = ret.op.inputs[0].get_shape().dims
+  # since we don't care about shape inference in immediate mode, return dummy
+  # node with no shape
+  @property
+  def op(self):
+    node_def = graph_pb2.NodeDef()
+    node_def.name = "immediate-dummy-node"
+    node_def.input.extend(["dummy1", "dummy2", "dummy3"])
+
+    dummy_input1 = constant_op.constant(1)
+    dummy_input2 = constant_op.constant(2)
+    dummy_input3 = constant_op.constant(3)
+    dummy_op = tf_ops.Operation(node_def, tf_ops.Graph(), inputs=[dummy_input1,
+                                                                  dummy_input2,
+                                                                  dummy_input3])
+    return dummy_op
+
+    
+
   # tf.Tensor compatibility
   def get_shape(self):
     shape_tensor = self.env.tf.shape(self)
     shape_tuple = tuple(self.env.tensor_to_numpy(shape_tensor))
     return tensor_shape.TensorShape(shape_tuple)
+
+  def set_shape(self, _unused_shape):
+    """Immediate tensors don't have static shape, but keep this method
+    for compatibility with array_ops.py"""
+    pass
 
   def __str__(self):
     return str(self.as_numpy())

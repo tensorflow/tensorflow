@@ -7,8 +7,14 @@ from __future__ import division
 from __future__ import print_function
 
 import imp
+import re
 import sys
 import types
+
+from .op import OpWrapper2
+from .op import OpDefLibraryWrapper
+from .op import ConvertToTensorWrapper
+from .op import ConstantOpWrapper
 
 __all__ = ["ModuleRewriter"]
 
@@ -17,7 +23,7 @@ def get_symbol_file(symbol):
 
   if hasattr(symbol, "__file__"):
     return symbol.__file__
-  else:
+  elif not isinstance(symbol, types.ModuleType):
     try:
       symbol_module = sys.modules[symbol.__module__]
       return symbol_module.__file__
@@ -36,6 +42,13 @@ def get_symbol_name(symbol):
 def copy_function(old_func, updated_module):
   """Copies a function, updating it to point to given module."""
 
+  # Decorators don't set __module__ to the current function
+  # detect this case and return function unchanged
+  if old_func.__globals__ != sys.modules[old_func.__module__].__dict__:
+    print ('Module mismatch: %s %s' %(old_func.__name__,
+                                     old_func.__module__))
+    return old_func
+    
   new_func = types.FunctionType(old_func.__code__, updated_module.__dict__,
                                 name=old_func.__name__,
                                 argdefs=old_func.__defaults__,
@@ -58,9 +71,9 @@ class ModuleRewriter(object):
     and all references to old module are updated to point to new module. If
     module is not affected by symbol-rewriter, original reference is returned.
 
-    Only function/module references are followed. This means that while objects
-    and types are copied to new modules, their references are not updated and
-    they will continue point to the old module.
+    Only function/module references are followed. This means that while object
+    and type references are retained in new module, their respective references
+    are not updated and they will continue point to the old module hierarchy.
 
     Args:
       symbol_rewriter: callable object that implements symbol rewriting. It
@@ -100,12 +113,13 @@ class ModuleRewriter(object):
     # system modules are missing __file__ attribute, and checking by
     # id is insufficient to prevent infinite loops, hence forbid missing
     # __file__
-    if not get_symbol_file(original_module):
+    if not hasattr(original_module, "__file__") or not original_module.__file__:
       self._done_modules[original_module] = original_module
 
     if original_module in self._done_modules:
       return self._done_modules[original_module]
 
+    #    self._module_stack.append(get_symbol_file(original_module))
     self._module_stack.append(original_module.__file__)
     updated_symbols = {}  # symbols that got touched
 
@@ -127,13 +141,14 @@ class ModuleRewriter(object):
 
           if new_symbol.__name__ != symbol.__name__:
             updated_symbols[symbol_name] = new_symbol
-            print("Replaced %s in %s from %s" % (symbol_name,
-                                                 original_module.__name__,
-                                                 symbol.__name__))
+#            print("Replaced %s in %s from %s" % (symbol_name,
+#                                                 original_module.__name__,
+#                                                 symbol.__name__))
 
-      # Case 3: symbol is defined in a module which may be affected
+      # Case 3: symbol is a function defined in a module which may be affected
       # by symbol rewriter
-      elif hasattr(symbol, "__module__"):
+      elif hasattr(symbol, "__module__") and isinstance(symbol,
+                                                        types.FunctionType):
         if symbol.__module__ != original_module.__name__:
           symbol_file = get_symbol_file(symbol)
           if symbol_file and symbol_file not in self._module_stack:
@@ -155,7 +170,7 @@ class ModuleRewriter(object):
     new_module = imp.new_module(new_module_name)
     new_module.__package__ = ""
     new_module.__file__ = self.module_prefix + original_module.__file__
-
+    #    print("Creating module: ", new_module.__file__)
     for symbol_name, symbol in original_module.__dict__.items():
 
       # don't rewrite new module attributes that we just set
@@ -180,7 +195,7 @@ class ModuleRewriter(object):
           new_symbol = symbol
         new_module.__dict__[symbol_name] = new_symbol
 
-      else: # objects, classes, constants remain unchanged
+      else:  # objects, classes, constants remain unchanged
         new_module.__dict__[symbol_name] = symbol
 
     sys.modules[new_module_name] = new_module
@@ -188,3 +203,80 @@ class ModuleRewriter(object):
     self._module_stack.pop()
     return new_module
 
+class AddSymbolRewriter(object):
+  """An object implementing simple symbol rewriter."""
+
+  def __init__(self, value):
+    def new_add(arg1, arg2):
+      return value
+
+    self.replacement_func = new_add
+
+  def __call__(self, symbol):
+    if (get_symbol_name(symbol) == "add" and
+        "gen_math_ops.py" in get_symbol_file(symbol)):
+        return self.replacement_func
+
+class GenopsRewriter(object):
+  """Object implementing immediate-Environment-based symbol rewriter for all
+  tensorflow gen.*ops functions."""
+
+  def __init__(self, env):
+    self.env = env
+    self._fname_re = re.compile(".*tensorflow/python/ops/gen_.*_ops.pyc?$")
+    def filematch(symbol):
+      fn = get_symbol_file(symbol)
+#      if 'tensorflow/python/ops' in fn:
+#        print ("Testing %s, %s, %s " %(symbol, fn, bool(self._fname_re.findall(get_symbol_file(symbol)))))
+      return bool(self._fname_re.findall(fn))
+    self.file_matches = filematch
+
+  def __call__(self, symbol):
+    if (isinstance(symbol, types.FunctionType) and 
+        self.file_matches(symbol) and (symbol.__name__=='add'
+                                       or symbol.__name__=='_sum'
+                                       or symbol.__name__=='rank'
+                                       or symbol.__name__=='_range')):
+      return OpWrapper2(self.env, symbol)
+
+
+from tensorflow.python.ops import op_def_library
+class OpDefLibRewriter(object):
+  """Replaces op_def_lib in gen_ops files with custom version."""
+  
+  # make this a formal dependency
+  def __init__(self, env):
+    self.env = env
+    self._fname_re = re.compile(".*tensorflow/python/ops/gen_.*_ops.pyc?$")
+    def filematch(symbol):
+      fn = get_symbol_file(symbol)
+      return bool(self._fname_re.findall(fn))
+    self.file_matches = filematch
+
+
+  def __call__(self, symbol):
+    # TODO(yaroslavvb): add filename filtering?
+    if (isinstance(symbol, op_def_library.OpDefLibrary)):
+      return OpDefLibraryWrapper(self.env, symbol)
+
+# TODO: add optional filename argument for rewriter?
+class ImmediateRewriter(object):
+  """Replaces all relevant symbols with corresponding immediate versions."""
+  
+  def __init__(self, env):
+    self.env = env
+
+  def __call__(self, symbol):
+    # replace _op_lib_def in gen_.*_ops files
+    if isinstance(symbol, op_def_library.OpDefLibrary):
+      return OpDefLibraryWrapper(self.env, symbol)
+
+    if isinstance(symbol, types.FunctionType):
+      if (symbol.__name__ == 'convert_to_tensor' and
+          symbol.__module__ == 'tensorflow.python.framework.ops'):
+        return ConvertToTensorWrapper(self.env, symbol)
+
+      if (symbol.__name__ == 'constant' and
+          symbol.__module__=='tensorflow.python.ops.constant_op'):
+        return ConstantOpWrapper(self.env, symbol)
+        
