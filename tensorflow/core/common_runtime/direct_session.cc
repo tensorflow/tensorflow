@@ -325,19 +325,25 @@ Status DirectSession::Run(const RunOptions& run_options,
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
 
-  std::unique_ptr<GPUTracer> tracer;
-  const bool full_trace = (run_options.trace_level() == RunOptions::FULL_TRACE);
+  const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
   const int64 build_cost_model =
       options_.config.graph_options().build_cost_model();
-  if (full_trace || build_cost_model > 0) {
+  if (do_trace || build_cost_model > 0) {
     args.stats_collector = new StepStatsCollector(
         run_metadata->mutable_step_stats(),
         (build_cost_model > 0) ? &cost_model_manager_ : nullptr);
     run_state.collector = args.stats_collector;
-    if (tracer && full_trace) {
-      tracer.reset(CreateGPUTracer());
-      tracer->Start();
-    }
+  }
+
+  // TODO(pbar) CostModel still gets very confused when presented
+  // with trace data from the GPUTracer. This will need fixing if the
+  // cost model needs meaningful GPU timing information.
+  std::unique_ptr<GPUTracer> tracer;
+  if (!build_cost_model &&
+      run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
+    tracer.reset(CreateGPUTracer());
+    // tracer will be NULL on non-GPU platforms.
+    if (tracer) tracer->Start();
   }
 
   for (const auto& item : executors_and_keys->items) {
