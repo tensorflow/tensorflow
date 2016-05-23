@@ -329,7 +329,7 @@ Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
         warn = warned.insert(op_def.name()).second;
       }
       if (warn) {
-        LOG(WARNING) << "Op is deprecated."
+        LOG(WARNING) << "Op " << op_def.name() << " is deprecated."
                      << " It will cease to work in GraphDef version "
                      << dep.version() << ". " << dep.explanation() << ".";
       }
