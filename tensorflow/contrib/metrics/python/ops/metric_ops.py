@@ -1424,7 +1424,10 @@ def streaming_mean_relative_error(predictions, labels, normalizer, weights=None,
   predictions, normalizer = _remove_squeezable_dimensions(
       predictions, normalizer)
   predictions.get_shape().assert_is_compatible_with(normalizer.get_shape())
-  relative_errors = math_ops.div(math_ops.abs(labels - predictions), normalizer)
+  relative_errors = math_ops.select(
+      math_ops.equal(normalizer, 0.0),
+      array_ops.zeros_like(labels),
+      math_ops.div(math_ops.abs(labels - predictions), normalizer))
   return streaming_mean(relative_errors, weights, metrics_collections,
                         updates_collections, name or 'mean_relative_error')
 
