@@ -3306,6 +3306,7 @@ class _DefaultStack(threading.local):
 
   def __init__(self):
     super(_DefaultStack, self).__init__()
+    self._enforce_nesting = True
     self.stack = []
 
   def get_default(self):
@@ -3314,6 +3315,14 @@ class _DefaultStack(threading.local):
   def reset(self):
     self.stack = []
 
+  @property
+  def enforce_nesting(self):
+    return self._enforce_nesting
+
+  @enforce_nesting.setter
+  def enforce_nesting(self, value):
+    self._enforce_nesting = value
+
   @contextlib.contextmanager
   def get_controller(self, default):
     """A context manager for manipulating a default stack."""
@@ -3321,9 +3330,14 @@ class _DefaultStack(threading.local):
       self.stack.append(default)
       yield default
     finally:
-      assert self.stack[-1] is default
-      self.stack.pop()
-
+      if self._enforce_nesting:
+        if self.stack[-1] is not default:
+          raise AssertionError(
+              "Nesting violated for default stack of %s objects"
+              % type(default))
+        self.stack.pop()
+      else:
+        self.stack.remove(default)
 
 _default_session_stack = _DefaultStack()
 
