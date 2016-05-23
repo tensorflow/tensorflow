@@ -95,16 +95,17 @@ To restart learning, create new estimator.
 
 Get parameters for this estimator.
 
-Parameters
-----------
-deep: boolean, optional
+##### Args:
+
+
+*  <b>`deep`</b>: boolean, optional
     If True, will return the parameters for this estimator and
     contained subobjects that are estimators.
 
-Returns
--------
-params : mapping of string to any
-    Parameter names mapped to their values.
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
 
 
 - - -
@@ -251,7 +252,7 @@ Restores model from give path.
 
 ##### Returns:
 
-  Estiamator, object of the subclass of TensorFlowEstimator.
+  Estimator, object of the subclass of TensorFlowEstimator.
 
 
 - - -
@@ -268,33 +269,6 @@ Saves checkpoints and graph to given path.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNClassifier.score(X, y, sample_weight=None)` {#TensorFlowRNNClassifier.score}
-
-Returns the mean accuracy on the given test data and labels.
-
-In multi-label classification, this is the subset accuracy
-which is a harsh metric since you require for each sample that
-each label set be correctly predicted.
-
-Parameters
-----------
-X : array-like, shape = (n_samples, n_features)
-    Test samples.
-
-y : array-like, shape = (n_samples) or (n_samples, n_outputs)
-    True labels for X.
-
-sample_weight : array-like, shape = [n_samples], optional
-    Sample weights.
-
-Returns
--------
-score : float
-    Mean accuracy of self.predict(X) wrt. y.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowRNNClassifier.set_params(**params)` {#TensorFlowRNNClassifier.set_params}
 
 Set the parameters of this estimator.
@@ -304,9 +278,9 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
-Returns
--------
-self
+##### Returns:
+
+  self
 
 
 - - -

@@ -13,7 +13,7 @@ gentle introduction to multiclass classification.
 ## Deep MNIST for Experts
 
 If you're already familiar with other deep learning software packages, and are
-already familiar with MNIST, this tutorial with give you a very brief primer on
+already familiar with MNIST, this tutorial will give you a very brief primer on
 TensorFlow.
 
 [View Tutorial](../tutorials/mnist/pros/index.md)

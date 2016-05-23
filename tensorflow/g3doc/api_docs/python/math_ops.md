@@ -23,7 +23,7 @@ Returns x + y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `string`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -41,7 +41,7 @@ Returns x - y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -59,7 +59,7 @@ Returns x * y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -77,7 +77,7 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -258,7 +258,7 @@ I.e., \\(y = -x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -279,7 +279,7 @@ For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -298,7 +298,7 @@ I.e., \\(y = 1 / x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -317,7 +317,7 @@ I.e., \\(y = x * x = x^2\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -360,7 +360,7 @@ I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -379,7 +379,7 @@ I.e., \\(y = 1 / \sqrt{x}\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -423,7 +423,7 @@ Computes exponential of x element-wise.  \\(y = e^x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -442,7 +442,7 @@ I.e., \\(y = \log_e x\\).
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -529,7 +529,7 @@ Computes cos of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -546,7 +546,7 @@ Computes sin of x element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -597,7 +597,7 @@ Computes the log of the absolute value of `Gamma(x)` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -616,7 +616,7 @@ Computes Psi, the derivative of Lgamma (the log of the absolute value of
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -633,7 +633,7 @@ Computes the Gauss error function of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -650,7 +650,7 @@ Computes the complementary error function of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -667,7 +667,7 @@ Returns (x - y)(x - y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `int64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -727,6 +727,55 @@ is the upper incomplete Gama function.
 
 Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
 Gamma function.
+
+##### Args:
+
+
+*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `a`.
+
+
+- - -
+
+### `tf.zeta(x, q, name=None)` {#zeta}
+
+Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
+
+The Hurwitz zeta function is defined as:
+
+```
+\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`q`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.polygamma(a, x, name=None)` {#polygamma}
+
+Compute the polygamma function \\(\psi^{(n)}(x)\\).
+
+The polygamma function is defined as:
+
+```
+\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
+```
+where \\(\psi(x)\\) is the digamma function.
 
 ##### Args:
 
@@ -1139,7 +1188,7 @@ It is computed as:
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
     3-D or higher with shape `[..., r_x, c_x]`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
     3-D or higher with shape `[..., r_y, c_y]`.
@@ -1694,29 +1743,29 @@ Converts two real numbers to a complex number.
 
 Given a tensor `real` representing the real part of a complex number, and a
 tensor `imag` representing the imaginary part of a complex number, this
-operation computes complex numbers elementwise of the form \\(a + bj\\),
-where *a* represents the `real` part and *b* represents the `imag` part.
+operation returns complex numbers elementwise of the form \(a + bj\), where
+*a* represents the `real` part and *b* represents the `imag` part.
 
-The input tensors `real` and `imag` must be the same shape.
+The input tensors `real` and `imag` must have the same shape.
 
 For example:
 
 ```
 # tensor 'real' is [2.25, 3.25]
 # tensor `imag` is [4.75, 5.75]
-tf.complex(real, imag) ==> [[2.25 + 4.74j], [3.25 + 5.75j]]
+tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ```
 
 ##### Args:
 
 
-*  <b>`real`</b>: A `Tensor` of type `float`.
-*  <b>`imag`</b>: A `Tensor` of type `float`.
+*  <b>`real`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`imag`</b>: A `Tensor`. Must have the same type as `real`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`.
+  A `Tensor` of type `complex64` or `complex128`.
 
 
 - - -
@@ -1726,9 +1775,9 @@ tf.complex(real, imag) ==> [[2.25 + 4.74j], [3.25 + 5.75j]]
 Computes the complex absolute value of a tensor.
 
 Given a tensor `x` of complex numbers, this operation returns a tensor of type
-`float` that is the absolute value of each element in `x`. All elements in `x`
-must be complex numbers of the form \\(a + bj\\). The absolute value is
-computed as \\( \sqrt{a^2 + b^2}\\).
+`float` or `double` that is the absolute value of each element in `x`. All
+elements in `x` must be complex numbers of the form \\(a + bj\\). The
+absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
 
 For example:
 
@@ -1740,12 +1789,12 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `complex64`.
+*  <b>`x`</b>: A `Tensor` of type `complex64` or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`.
+  A `Tensor` of type `float32` or `float64`.
 
 
 - - -
@@ -1771,12 +1820,12 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -
@@ -1786,9 +1835,10 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 Returns the imaginary part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
-type `float` that is the imaginary part of each element in `input`. All
-elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
-is the real part and *b* is the imaginary part returned by this operation.
+type `float` or `double` that is the imaginary part of each element in
+`input`. All elements in `input` must be complex numbers of the form \(a +
+bj\), where *a* is the real part and *b* is the imaginary part returned by
+this operation.
 
 For example:
 
@@ -1800,12 +1850,12 @@ tf.imag(input) ==> [4.75, 5.75]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`.
+  A `Tensor` of type `float` or `double`.
 
 
 - - -
@@ -1815,9 +1865,10 @@ tf.imag(input) ==> [4.75, 5.75]
 Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
-type `float` that is the real part of each element in `input`. All elements in
-`input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
- part returned by this operation and *b* is the imaginary part.
+type `float` or `double` that is the real part of each element in `input`.
+All elements in `input` must be complex numbers of the form \(a + bj\),
+where *a* is the real part returned by this operation and *b* is the
+imaginary part.
 
 For example:
 
@@ -1829,12 +1880,13 @@ tf.real(input) ==> [-2.25, 3.25]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
+       `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`.
+  A `Tensor` of type `float` or `double`.
 
 
 - - -

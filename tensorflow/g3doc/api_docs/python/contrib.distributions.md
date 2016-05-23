@@ -540,28 +540,51 @@ with Chi2(df) = Gamma(df/2, 1/2).
 
 #### `tf.contrib.distributions.Chi2.alpha` {#Chi2.alpha}
 
-
+Shape parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.batch_shape(name='batch_shape')` {#Chi2.batch_shape}
 
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.beta` {#Chi2.beta}
 
-
+Inverse scale parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.cdf(x, name='cdf')` {#Chi2.cdf}
 
+CDF of observations `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: tensor of dtype `dtype`, the CDFs of `x`.
 
 
 - - -
@@ -575,7 +598,7 @@ with Chi2(df) = Gamma(df/2, 1/2).
 
 #### `tf.contrib.distributions.Chi2.dtype` {#Chi2.dtype}
 
-
+dtype of samples from this distribution.
 
 
 - - -
@@ -586,8 +609,10 @@ The entropy of Gamma distribution(s).
 
 This is defined to be
 
-```entropy = alpha - log(beta) + log(Gamma(alpha))
-             + (1-alpha)digamma(alpha)```
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
+             + (1-alpha)digamma(alpha)
+```
 
 where digamma(alpha) is the digamma function.
 
@@ -606,21 +631,42 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Chi2.event_shape(name='event_shape')` {#Chi2.event_shape}
 
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.get_batch_shape()` {#Chi2.get_batch_shape}
 
+`TensorShape` available at graph construction time.
 
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.get_event_shape()` {#Chi2.get_event_shape}
 
+`TensorShape` available at graph construction time.
 
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
 
 
 - - -
@@ -675,21 +721,37 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Chi2.mean` {#Chi2.mean}
 
-
+Mean of each batch member.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.name` {#Chi2.name}
 
-
+Name to prepend to all ops.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.pdf(x, name='pdf')` {#Chi2.pdf}
 
+Pdf of observations in `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `x` and `alpha` are different dtypes.
 
 
 - - -
@@ -716,7 +778,7 @@ Generate `n` samples.
 
 #### `tf.contrib.distributions.Chi2.variance` {#Chi2.variance}
 
-
+Variance of each batch member.
 
 
 
@@ -743,35 +805,58 @@ distribution, with Exponential(lam) = Gamma(1, lam).
 
 #### `tf.contrib.distributions.Exponential.alpha` {#Exponential.alpha}
 
-
+Shape parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.batch_shape(name='batch_shape')` {#Exponential.batch_shape}
 
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.beta` {#Exponential.beta}
 
-
+Inverse scale parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.cdf(x, name='cdf')` {#Exponential.cdf}
 
+CDF of observations `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: tensor of dtype `dtype`, the CDFs of `x`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.dtype` {#Exponential.dtype}
 
-
+dtype of samples from this distribution.
 
 
 - - -
@@ -782,8 +867,10 @@ The entropy of Gamma distribution(s).
 
 This is defined to be
 
-```entropy = alpha - log(beta) + log(Gamma(alpha))
-             + (1-alpha)digamma(alpha)```
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
+             + (1-alpha)digamma(alpha)
+```
 
 where digamma(alpha) is the digamma function.
 
@@ -802,21 +889,42 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Exponential.event_shape(name='event_shape')` {#Exponential.event_shape}
 
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.get_batch_shape()` {#Exponential.get_batch_shape}
 
+`TensorShape` available at graph construction time.
 
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.get_event_shape()` {#Exponential.get_event_shape}
 
+`TensorShape` available at graph construction time.
 
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
 
 
 - - -
@@ -878,21 +986,37 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Exponential.mean` {#Exponential.mean}
 
-
+Mean of each batch member.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.name` {#Exponential.name}
 
-
+Name to prepend to all ops.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.pdf(x, name='pdf')` {#Exponential.pdf}
 
+Pdf of observations in `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `x` and `alpha` are different dtypes.
 
 
 - - -
@@ -919,7 +1043,7 @@ Sample `n` observations from the Exponential Distributions.
 
 #### `tf.contrib.distributions.Exponential.variance` {#Exponential.variance}
 
-
+Variance of each batch member.
 
 
 
@@ -965,7 +1089,7 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 *  <b>`beta`</b>: `float` or `double` tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 ##### Raises:
 
@@ -977,35 +1101,58 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 
 #### `tf.contrib.distributions.Gamma.alpha` {#Gamma.alpha}
 
-
+Shape parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.batch_shape(name='batch_shape')` {#Gamma.batch_shape}
 
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.beta` {#Gamma.beta}
 
-
+Inverse scale parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.cdf(x, name='cdf')` {#Gamma.cdf}
 
+CDF of observations `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: tensor of dtype `dtype`, the CDFs of `x`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.dtype` {#Gamma.dtype}
 
-
+dtype of samples from this distribution.
 
 
 - - -
@@ -1016,8 +1163,10 @@ The entropy of Gamma distribution(s).
 
 This is defined to be
 
-```entropy = alpha - log(beta) + log(Gamma(alpha))
-             + (1-alpha)digamma(alpha)```
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
+             + (1-alpha)digamma(alpha)
+```
 
 where digamma(alpha) is the digamma function.
 
@@ -1036,21 +1185,42 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Gamma.event_shape(name='event_shape')` {#Gamma.event_shape}
 
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.get_batch_shape()` {#Gamma.get_batch_shape}
 
+`TensorShape` available at graph construction time.
 
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.get_event_shape()` {#Gamma.get_event_shape}
 
+`TensorShape` available at graph construction time.
 
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
 
 
 - - -
@@ -1105,21 +1275,37 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Gamma.mean` {#Gamma.mean}
 
-
+Mean of each batch member.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.name` {#Gamma.name}
 
-
+Name to prepend to all ops.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.pdf(x, name='pdf')` {#Gamma.pdf}
 
+Pdf of observations in `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `x` and `alpha` are different dtypes.
 
 
 - - -
@@ -1146,7 +1332,7 @@ Generate `n` samples.
 
 #### `tf.contrib.distributions.Gamma.variance` {#Gamma.variance}
 
-
+Variance of each batch member.
 
 
 

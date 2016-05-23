@@ -135,7 +135,8 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
   def _get_default_metric_functions(self):
     """See base class."""
     def _compute_loss(logits, targets, weights=None):
-      return self._loss(logits, targets, weight_tensor=weights)
+      return metrics_lib.streaming_mean(self._loss(
+          logits, targets, weight_tensor=weights))
 
     def _compute_accuracy(logits, targets, weights=None):
       if self._n_classes > 2:
@@ -145,7 +146,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         predictions = math_ops.greater(predictions,
                                        array_ops.zeros_like(predictions))
         targets = array_ops.reshape(targets, [-1])
-      return metrics_lib.accuracy(
+      return metrics_lib.streaming_accuracy(
           math_ops.to_int32(predictions), math_ops.to_int32(targets), weights)
 
     result = {"loss": _compute_loss}
@@ -235,7 +236,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     if not self._weight_column_name:
       return None
     else:
-      return math_ops.to_float(features[self._weight_column_name])
+      return array_ops.reshape(
+          math_ops.to_float(features[self._weight_column_name]),
+          shape=(-1,))
 
   def _loss(self, logits, target, weight_tensor):
     if self._n_classes < 2:

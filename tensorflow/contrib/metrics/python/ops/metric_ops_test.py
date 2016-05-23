@@ -1806,7 +1806,7 @@ class StreamingMeanRelativeErrorTest(tf.test.TestCase):
                   np_labels))
 
     predictions = tf.constant(np_predictions, shape=(1, 4), dtype=tf.float32)
-    labels = tf.constant([1, 3, 2, 3], shape=(1, 4), dtype=tf.float32)
+    labels = tf.constant(np_labels, shape=(1, 4))
 
     error, update_op = tf.contrib.metrics.streaming_mean_relative_error(
         predictions, labels, normalizer=labels)
@@ -1815,6 +1815,20 @@ class StreamingMeanRelativeErrorTest(tf.test.TestCase):
       sess.run(tf.initialize_local_variables())
       sess.run(update_op)
       self.assertEqual(expected_error, error.eval())
+
+  def testSingleUpdateNormalizedByZeros(self):
+    np_predictions = np.asarray([2, 4, 6, 8], dtype=np.float32)
+
+    predictions = tf.constant(np_predictions, shape=(1, 4), dtype=tf.float32)
+    labels = tf.constant([1, 3, 2, 3], shape=(1, 4), dtype=tf.float32)
+
+    error, update_op = tf.contrib.metrics.streaming_mean_relative_error(
+        predictions, labels, normalizer=tf.zeros_like(labels))
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+      sess.run(update_op)
+      self.assertEqual(0.0, error.eval())
 
 
 class StreamingMeanSquaredErrorTest(tf.test.TestCase):

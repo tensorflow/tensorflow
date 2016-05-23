@@ -19,10 +19,10 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `complex64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `complex64`.
+  A `Tensor`. Has the same type as `input`.
 

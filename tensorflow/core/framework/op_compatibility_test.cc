@@ -564,6 +564,83 @@ TEST_F(OpCompatibilityTest, ShorterSameList) {
   EXPECT_EQ("shorter_same_list = ShorterSameList[N=2](a, a:1)", Result());
 }
 
+// Can remove a restriction to an attr
+
+REGISTER_OP("AttrRemoveRestriction").Attr("t: type").Output("ndef: string");
+REGISTER_KERNEL_BUILDER(Name("AttrRemoveRestriction").Device(DEVICE_CPU),
+                        TestKernel);
+
+TEST_F(OpCompatibilityTest, AttrRemoveRestriction) {
+  OpDef old_op_def;
+  TF_ASSERT_OK(OpDefBuilder("AttrRemoveRestriction")
+                   .Attr("t: {int32,int64}")
+                   .Output("ndef: string")
+                   .Finalize(&old_op_def));
+  TF_ASSERT_OK(NodeDefBuilder("remove_restriction", &old_op_def)
+                   .Attr("t", DT_INT32)
+                   .Finalize(node_def()));
+  ExpectSuccess(old_op_def);
+  EXPECT_EQ("remove_restriction = AttrRemoveRestriction[t=DT_INT32]()",
+            Result());
+}
+
+// Can make the restrictions on an attr less restrictive.
+
+REGISTER_OP("AttrLessRestrictive")
+    .Attr("t: {int32, int64, bool}")
+    .Output("ndef: string");
+REGISTER_KERNEL_BUILDER(Name("AttrLessRestrictive").Device(DEVICE_CPU),
+                        TestKernel);
+
+TEST_F(OpCompatibilityTest, AttrLessRestrictive) {
+  OpDef old_op_def;
+  TF_ASSERT_OK(OpDefBuilder("AttrLessRestrictive")
+                   .Attr("t: {int32, int64}")
+                   .Output("ndef: string")
+                   .Finalize(&old_op_def));
+  TF_ASSERT_OK(NodeDefBuilder("less_restrictive", &old_op_def)
+                   .Attr("t", DT_INT32)
+                   .Finalize(node_def()));
+  ExpectSuccess(old_op_def);
+  EXPECT_EQ("less_restrictive = AttrLessRestrictive[t=DT_INT32]()", Result());
+}
+
+// Can remove a minimum from an attr.
+
+REGISTER_OP("AttrRemoveMin").Attr("n: int").Output("ndef: string");
+REGISTER_KERNEL_BUILDER(Name("AttrRemoveMin").Device(DEVICE_CPU), TestKernel);
+
+TEST_F(OpCompatibilityTest, AttrRemoveMin) {
+  OpDef old_op_def;
+  TF_ASSERT_OK(OpDefBuilder("AttrRemoveMin")
+                   .Attr("n: int >= 3")
+                   .Output("ndef: string")
+                   .Finalize(&old_op_def));
+  TF_ASSERT_OK(NodeDefBuilder("remove_min", &old_op_def)
+                   .Attr("n", 4)
+                   .Finalize(node_def()));
+  ExpectSuccess(old_op_def);
+  EXPECT_EQ("remove_min = AttrRemoveMin[n=4]()", Result());
+}
+
+// Can lower the minimum on an attr.
+
+REGISTER_OP("AttrLowerMin").Attr("n: int >= 1").Output("ndef: string");
+REGISTER_KERNEL_BUILDER(Name("AttrLowerMin").Device(DEVICE_CPU), TestKernel);
+
+TEST_F(OpCompatibilityTest, AttrLowerMin) {
+  OpDef old_op_def;
+  TF_ASSERT_OK(OpDefBuilder("AttrLowerMin")
+                   .Attr("n: int >= 3")
+                   .Output("ndef: string")
+                   .Finalize(&old_op_def));
+  TF_ASSERT_OK(NodeDefBuilder("lower_min", &old_op_def)
+                   .Attr("n", 4)
+                   .Finalize(node_def()));
+  ExpectSuccess(old_op_def);
+  EXPECT_EQ("lower_min = AttrLowerMin[n=4]()", Result());
+}
+
 // Negative tests -------------------------------------------------------------
 
 // Can't remove an attr.
@@ -766,6 +843,73 @@ TEST_F(OpCompatibilityTest, SameToAnyListFails) {
                    .Finalize(node_def()));
   ExpectInvalid(old_op_def, "value with type 'type' when 'list(type)' expected",
                 "Attr 'T' changed type 'type' -> 'list(type)'");
+}
+
+// Can't add a restriction to an attr
+
+REGISTER_OP("AttrAddRestriction").Attr("t: {int32, int64}");
+
+TEST_F(OpCompatibilityTest, AttrAddRestrictionFails) {
+  OpDef old_op_def;
+  TF_ASSERT_OK(
+      OpDefBuilder("AttrAddRestriction").Attr("t: type").Finalize(&old_op_def));
+  TF_ASSERT_OK(NodeDefBuilder("add_restriction", &old_op_def)
+                   .Attr("t", DT_BOOL)
+                   .Finalize(node_def()));
+  ExpectInvalid(old_op_def,
+                "Value for attr 't' of bool is not in the list of allowed "
+                "values: int32, int64",
+                "Attr 't' has a stricter set of allowed values; from "
+                "no restriction to [DT_INT32, DT_INT64]");
+}
+
+// Can't make the restrictions on an attr more restrictive.
+
+REGISTER_OP("AttrMoreRestrictive").Attr("t: {int32, int64}");
+
+TEST_F(OpCompatibilityTest, AttrMoreRestrictiveFails) {
+  OpDef old_op_def;
+  TF_ASSERT_OK(OpDefBuilder("AttrMoreRestrictive")
+                   .Attr("t: {int32, int64, bool}")
+                   .Finalize(&old_op_def));
+  TF_ASSERT_OK(NodeDefBuilder("more_restrictive", &old_op_def)
+                   .Attr("t", DT_BOOL)
+                   .Finalize(node_def()));
+  ExpectInvalid(old_op_def,
+                "Value for attr 't' of bool is not in the list of allowed "
+                "values: int32, int64",
+                "Attr 't' has a stricter set of allowed values; from "
+                "[DT_INT32, DT_INT64, DT_BOOL] to [DT_INT32, DT_INT64]");
+}
+
+// Can't add a minimum to an attr.
+
+REGISTER_OP("AttrAddMin").Attr("n: int >= 3");
+
+TEST_F(OpCompatibilityTest, AttrAddMinFails) {
+  OpDef old_op_def;
+  TF_ASSERT_OK(OpDefBuilder("AttrAddMin").Attr("n: int").Finalize(&old_op_def));
+  TF_ASSERT_OK(
+      NodeDefBuilder("add_min", &old_op_def).Attr("n", 2).Finalize(node_def()));
+  ExpectInvalid(old_op_def,
+                "Value for attr 'n' of 2 must be at least minimum 3",
+                "Attr 'n' has a higher minimum; from no minimum to 3");
+}
+
+// Can't raise the minimum on an attr.
+
+REGISTER_OP("AttrRaiseMin").Attr("n: int >= 3");
+
+TEST_F(OpCompatibilityTest, AttrRaiseMinFails) {
+  OpDef old_op_def;
+  TF_ASSERT_OK(
+      OpDefBuilder("AttrRaiseMin").Attr("n: int >= 1").Finalize(&old_op_def));
+  TF_ASSERT_OK(NodeDefBuilder("raise_min", &old_op_def)
+                   .Attr("n", 2)
+                   .Finalize(node_def()));
+  ExpectInvalid(old_op_def,
+                "Value for attr 'n' of 2 must be at least minimum 3",
+                "Attr 'n' has a higher minimum; from 1 to 3");
 }
 
 // Changing an attr's default is not technically illegal, but should

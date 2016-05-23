@@ -66,67 +66,107 @@ class Gamma(ContinuousDistribution):
       beta: `float` or `double` tensor, the inverse scale params of the
         distribution(s).
         beta must contain only positive values.
-      name: The name to give Ops created by the initializer.
+      name: The name to prepend to all ops created by this distribution.
 
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
     with ops.op_scope([alpha, beta], name):
-      alpha = ops.convert_to_tensor(alpha, name="alpha_before_dependencies")
-      beta = ops.convert_to_tensor(beta, name="beta_before_dependencies")
-      contrib_tensor_util.assert_same_float_dtype((alpha, beta))
       with ops.control_dependencies([
-          check_ops.assert_positive(alpha), check_ops.assert_positive(beta)
-      ]):
-        self._alpha = alpha
-        self._beta = beta
-        self._name = name
+          check_ops.assert_positive(alpha), check_ops.assert_positive(beta)]):
+        alpha = array_ops.identity(alpha, name="alpha")
+        beta = array_ops.identity(beta, name="beta")
 
-    with ops.op_scope([self._alpha, self._beta], name, "mean"):
-      self._mean = self._alpha / self._beta
-      self._batch_shape = self._mean.get_shape()
+        contrib_tensor_util.assert_same_float_dtype((alpha, beta))
 
-    with ops.op_scope([self._alpha, self._beta], name, "variance"):
-      self._variance = self._alpha / math_ops.square(self._beta)
+        with ops.name_scope("mean"):
+          self._mean = alpha / beta
 
-    self._event_shape = tensor_shape.TensorShape([])
+        with ops.name_scope("variance"):
+          self._variance = alpha / math_ops.square(beta)
+
+    self._get_batch_shape = self._mean.get_shape()
+    self._get_event_shape = tensor_shape.TensorShape([])
+
+    self._alpha = alpha
+    self._beta = beta
+    self._name = name
 
   @property
   def name(self):
+    """Name to prepend to all ops."""
     return self._name
 
   @property
   def dtype(self):
+    """dtype of samples from this distribution."""
     return self._alpha.dtype
 
   @property
   def alpha(self):
+    """Shape parameter."""
     return self._alpha
 
   @property
   def beta(self):
+    """Inverse scale parameter."""
     return self._beta
 
   def batch_shape(self, name="batch_shape"):
+    """Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+    The product of the dimensions of the `batch_shape` is the number of
+    independent distributions of this kind the instance represents.
+
+    Args:
+      name: name to give to the op
+
+    Returns:
+      `Tensor` `batch_shape`
+    """
     with ops.name_scope(self.name):
       return array_ops.shape(self._mean, name=name)
 
   def get_batch_shape(self):
-    return self._batch_shape
+    """`TensorShape` available at graph construction time.
+
+    Same meaning as `batch_shape`. May be only partially defined.
+
+    Returns:
+      `TensorShape` object.
+    """
+    return self._get_batch_shape
 
   def event_shape(self, name="event_shape"):
+    """Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+    Args:
+      name: name to give to the op
+
+    Returns:
+      `Tensor` `event_shape`
+    """
     with ops.name_scope(self.name):
       return constant_op.constant(1, name=name)
 
   def get_event_shape(self):
-    return self._event_shape
+    """`TensorShape` available at graph construction time.
+
+    Same meaning as `event_shape`. May be only partially defined.
+
+    Returns:
+      `TensorShape` object.
+    """
+    return self._get_event_shape
 
   @property
   def mean(self):
+    """Mean of each batch member."""
     return self._mean
 
   @property
   def variance(self):
+    """Variance of each batch member."""
     return self._variance
 
   def log_pdf(self, x, name="log_pdf"):
@@ -138,6 +178,7 @@ class Gamma(ContinuousDistribution):
 
     Returns:
       log_pdf: tensor of dtype `dtype`, the log-PDFs of `x`.
+
     Raises:
       TypeError: if `x` and `alpha` are different dtypes.
     """
@@ -155,6 +196,18 @@ class Gamma(ContinuousDistribution):
                 beta * x - math_ops.lgamma(self._alpha))
 
   def pdf(self, x, name="pdf"):
+    """Pdf of observations in `x` under these Gamma distribution(s).
+
+    Args:
+      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+      name: The name to give this op.
+
+    Returns:
+      pdf: tensor of dtype `dtype`, the PDFs of `x`
+
+    Raises:
+      TypeError: if `x` and `alpha` are different dtypes.
+    """
     with ops.name_scope(name):
       return math_ops.exp(self.log_pdf(x, name))
 
@@ -180,6 +233,15 @@ class Gamma(ContinuousDistribution):
         return math_ops.log(math_ops.igamma(self._alpha, self._beta * x))
 
   def cdf(self, x, name="cdf"):
+    """CDF of observations `x` under these Gamma distribution(s).
+
+    Args:
+      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+      name: The name to give this op.
+
+    Returns:
+      cdf: tensor of dtype `dtype`, the CDFs of `x`.
+    """
     with ops.op_scope([self._alpha, self._beta, x], self.name):
       with ops.name_scope(name):
         return math_ops.igamma(self._alpha, self._beta * x)
@@ -189,8 +251,10 @@ class Gamma(ContinuousDistribution):
 
     This is defined to be
 
-    ```entropy = alpha - log(beta) + log(Gamma(alpha))
-                 + (1-alpha)digamma(alpha)```
+    ```
+    entropy = alpha - log(beta) + log(Gamma(alpha))
+                 + (1-alpha)digamma(alpha)
+    ```
 
     where digamma(alpha) is the digamma function.
 
