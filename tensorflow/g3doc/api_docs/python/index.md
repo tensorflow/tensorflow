@@ -44,6 +44,7 @@
   * [`assert_positive`](../../api_docs/python/check_ops.md#assert_positive)
   * [`assert_rank`](../../api_docs/python/check_ops.md#assert_rank)
   * [`assert_rank_at_least`](../../api_docs/python/check_ops.md#assert_rank_at_least)
+  * [`assert_type`](../../api_docs/python/check_ops.md#assert_type)
   * [`is_non_decreasing`](../../api_docs/python/check_ops.md#is_non_decreasing)
   * [`is_numeric_tensor`](../../api_docs/python/check_ops.md#is_numeric_tensor)
   * [`is_strictly_increasing`](../../api_docs/python/check_ops.md#is_strictly_increasing)

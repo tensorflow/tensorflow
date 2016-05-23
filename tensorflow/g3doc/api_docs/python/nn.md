@@ -1462,7 +1462,7 @@ This operation is for training only.  It is generally an underestimate of
 the full softmax loss.
 
 At inference time, you can compute full softmax probabilities with the
-expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
+expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
 
 See our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)
