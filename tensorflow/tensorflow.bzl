@@ -86,10 +86,22 @@ def tf_proto_text_protos_relative():
   return [p for p in tf_android_core_proto_sources_relative()
           if p not in ("util/test_log.proto")]
 
-def if_android_arm(a, b=[]):
+def if_android_arm(a):
   return select({
       "//tensorflow:android_arm": a,
-      "//conditions:default": b,
+      "//conditions:default": [],
+  })
+
+def if_not_android(a):
+  return select({
+      "//tensorflow:android": [],
+      "//conditions:default": a,
+  })
+
+def if_android(a):
+  return select({
+      "//tensorflow:android": a,
+      "//conditions:default": [],
   })
 
 def tf_copts():
