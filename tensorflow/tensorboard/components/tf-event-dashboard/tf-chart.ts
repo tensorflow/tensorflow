@@ -293,7 +293,8 @@ module TF {
         let points = plot.datasets().map(
             (dataset) => this.findClosestPoint(target, dataset));
         let pointsToCircle = points.filter(
-            (p) => Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox));
+            (p) => p != null &&
+                Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox));
         let pts: any = pointsComponent.content().selectAll('.point').data(
             pointsToCircle, (p: Point) => p.dataset.metadata().run);
         if (points.length !== 0) {
