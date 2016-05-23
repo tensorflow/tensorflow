@@ -86,16 +86,17 @@ Trains a model given training data X and y.
 
 Get parameters for this estimator.
 
-Parameters
-----------
-deep: boolean, optional
+##### Args:
+
+
+*  <b>`deep`</b>: boolean, optional
     If True, will return the parameters for this estimator and
     contained subobjects that are estimators.
 
-Returns
--------
-params : mapping of string to any
-    Parameter names mapped to their values.
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
 
 
 - - -
@@ -184,9 +185,9 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
-Returns
--------
-self
+##### Returns:
+
+  self
 
 
 - - -

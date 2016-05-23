@@ -163,7 +163,7 @@ case where both types are quantized.
 
 
 *  <b>`value`</b>: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-    `int16`, `int8`, `complex64` or `complex128`.
+    `int16`, `int8`, or `complex64`.
 *  <b>`bias`</b>: A 1-D `Tensor` with size matching the last dimension of `value`.
     Must be the same type as `value` unless `value` is a quantized type,
     in which case a different quantized type may be used.
@@ -186,7 +186,7 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `complex128`, `int64`,
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
     or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -205,7 +205,7 @@ Computes hyperbolic tangent of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `complex128`, `int64`,
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
     or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -450,15 +450,15 @@ the field of view of filters without increasing the number of parameters or
 the amount of computation.
 
 For a description of atrous convolution and how it can be used for dense
-feature extraction, please see: (Semantic Image Segmentation with Deep
-Convolutional Nets and Fully Connected CRFs)[http://arxiv.org/abs/1412.7062].
-The same operation is investigated further in (Multi-Scale Context Aggregation
-by Dilated Convolutions)[http://arxiv.org/abs/1511.07122]. Previous works
+feature extraction, please see: [Semantic Image Segmentation with Deep
+Convolutional Nets and Fully Connected CRFs](http://arxiv.org/abs/1412.7062).
+The same operation is investigated further in [Multi-Scale Context Aggregation
+by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
 that effectively use atrous convolution in different ways are, among others,
-(OverFeat: Integrated Recognition, Localization and Detection using
-Convolutional Networks) [http://arxiv.org/abs/1312.6229] and (Fast Image
-Scanning with Deep Max-Pooling Convolutional Neural Networks)
-[http://arxiv.org/abs/1302.1700]. Atrous convolution is also closely related
+[OverFeat: Integrated Recognition, Localization and Detection using
+Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
+Scanning with Deep Max-Pooling Convolutional Neural Networks]
+(http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
 to the so-called noble identities in multi-rate signal processing.
 
 There are many different ways to implement atrous convolution (see the refs
@@ -535,8 +535,8 @@ inputs are identical.
 
 The transpose of `conv2d`.
 
-This operation is sometimes called "deconvolution" after (Deconvolutional
-Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+This operation is sometimes called "deconvolution" after [Deconvolutional
+Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
 actually the transpose (gradient) of `conv2d` rather than an actual
 deconvolution.
 
