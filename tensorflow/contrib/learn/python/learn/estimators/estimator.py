@@ -290,8 +290,15 @@ class BaseEstimator(sklearn.BaseEstimator):
                              steps=steps,
                              monitors=monitors)
 
-  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=32, steps=100, metrics=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=32,
+               steps=100,
+               metrics=None,
+               name=None):
     """Evaluates given model with provided evaluation data.
 
     Args:
@@ -305,6 +312,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       steps: Number of steps to evalute for.
       metrics: Dict of metric ops to run. If None, the default metric functions
         are used; if {}, no metrics are used.
+      name: Name of the evaluation if user needs to run multiple evaluation on
+        different data sets, such as evaluate on training data vs test data.
 
     Returns:
       Returns self.
@@ -317,8 +326,11 @@ class BaseEstimator(sklearn.BaseEstimator):
     if input_fn is None:
       assert x is not None
       input_fn, feed_fn = _get_input_fn(x, y, batch_size)
-    return self._evaluate_model(input_fn=input_fn, feed_fn=feed_fn,
-                                steps=steps, metrics=metrics)
+    return self._evaluate_model(input_fn=input_fn,
+                                feed_fn=feed_fn,
+                                steps=steps,
+                                metrics=metrics,
+                                name=name)
 
   def predict(self, x, axis=None, batch_size=None):
     """Returns predictions for given features.
@@ -448,12 +460,18 @@ class BaseEstimator(sklearn.BaseEstimator):
 
     return update_ops, value_ops
 
-  def _evaluate_model(self, input_fn, steps, feed_fn=None, metrics=None):
+  def _evaluate_model(self,
+                      input_fn,
+                      steps,
+                      feed_fn=None,
+                      metrics=None,
+                      name=''):
     if self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset'):
       return
 
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
-    eval_dir = os.path.join(self._model_dir, 'eval')
+    eval_dir = os.path.join(self._model_dir, 'eval' if not name else
+                            'eval_' + name)
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
