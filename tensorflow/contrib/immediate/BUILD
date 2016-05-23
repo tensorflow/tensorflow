@@ -15,7 +15,6 @@ py_library(
         "python/immediate/tensor.py",
         "python/immediate/op.py",
         "python/immediate/wrapping_util.py",
-        "python/immediate/wrapping_manager.py",
 	"python/immediate/module_rewriter.py",
         "__init__.py",
         "python/__init__.py",
@@ -57,45 +56,6 @@ py_test(
     ],
 )
 
-
-py_test(
-    name = "wrapping_util_test",
-    size = "small",
-    srcs = ["python/immediate/wrapping_util_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":immediate_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_test(
-    name = "wrapping_manager_test",
-    size = "small",
-    srcs = ["python/immediate/wrapping_manager_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":immediate_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_test(
-    name = "env_test2",
-    size = "small",
-    srcs = ["python/immediate/env_test2.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":immediate_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
 
 py_test(
     name = "tensor_test",
