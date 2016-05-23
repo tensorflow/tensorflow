@@ -16,7 +16,7 @@
 
 set -eux
 
-TFDIR=$TEST_SRCDIR/tensorflow
+TFDIR=$TEST_SRCDIR/org_tensorflow/tensorflow
 DOXYGEN=doxygen
 DOXYGEN_CONFIG="tf-doxy_for_md-config"
 TMP_DIR=/tmp/tensorflow-docs

@@ -32,9 +32,23 @@ function main() {
     echo "Could not find bazel-bin.  Did you run from the root of the build tree?"
     exit 1
   fi
-  cp -R \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/{tensorflow,external} \
-    ${TMPDIR}
+
+  if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
+    # Old-style runfiles structure (--legacy_external_runfiles).
+    cp -R \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/{tensorflow,external} \
+      "${TMPDIR}"
+  else
+    # New-style runfiles structure (--nolegacy_external_runfiles).
+    cp -R \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
+      "${TMPDIR}"
+    mkdir "${TMPDIR}/external"
+    # Note: this makes an extra copy of org_tensorflow.
+    cp -R \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
+      "${TMPDIR}/external"
+  fi
   # protobuf pip package doesn't ship with header files. Copy the headers
   # over so user defined ops can be compiled.
   rsync --include "*/" --include "*.h" --exclude "*" --prune-empty-dirs -a \
