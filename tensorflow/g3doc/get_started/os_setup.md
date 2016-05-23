@@ -473,6 +473,10 @@ Supported cards include but are not limited to:
 * NVidia K20
 * NVidia K40
 
+##### Check NVIDIA Compute Capability of your GPU card
+
+https://developer.nvidia.com/cuda-gpus
+
 ##### Download and install Cuda Toolkit
 
 https://developer.nvidia.com/cuda-downloads
