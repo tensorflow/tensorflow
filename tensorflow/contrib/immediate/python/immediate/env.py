@@ -73,6 +73,7 @@ import types
 
 from .tensor import Tensor
 from .tensor import _ENABLE_DEBUG_LOGGING
+
 from .op import OpFactory
 
 from . import module_rewriter
@@ -95,15 +96,21 @@ class Env(object):
                            np.dtype('float32'), np.dtype('float64'),
                            np.dtype('bool'), np.dtype("|S3")}
 
-  def __init__(self, tf_namespace):
+  def __init__(self, tf_namespace, config=None):
     self.original_tf = tf_namespace
-    self.sess = session.Session()
+    self.sess = session.Session(config=config)
     self.op_factory = OpFactory(self)
+    #self.op_factory = OpFactory(None)
     symbol_rewriter = module_rewriter.ImmediateRewriter(self)
     rewriter = module_rewriter.ModuleRewriter(symbol_rewriter, "immediate.")
     self.tf = rewriter(self.original_tf)
 
     self._DEBUG_LOGGING = False
+
+
+  def close(self):
+    self.sess.close()
+    
 
   # TODO: make private?
   @property

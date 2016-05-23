@@ -15,8 +15,9 @@ import wrapping_util
 
 # Implementation of Immediate Op with keyword call arguments
 class Op(object):
+
   """Op represents an object which accepts immediate tensors and returns
-  immediate tensors. It turns incoming objects into TensorHandles, runs
+  immediate tensors. It turns incoming tensors into TensorHandle objects, runs
   underlying op in env's session and wraps resulting TensorHandles in immediate
   Tensors."""
 
@@ -300,35 +301,6 @@ class OpDefLibraryWrapper(object):
     #    self.cache[key] = op
 
 
-class PythonOpWrapper(object):
-  """A callable object that mirrors Python tensorflow function."""
-
-  def __init__(self, namespace, env, symbol_name, symbol, global_sub):
-    self.namespace = namespace
-    self.env = env
-    self.symbol_name = symbol_name
-    self.symbol = symbol
-    self.global_sub = global_sub
-    
-    for global_name in global_sub:
-      symbol.__globals__[global_name] = global_sub[global_name]
-
-  def __call__(self, *args, **kwargs):
-    if _ENABLE_DEBUG_LOGGING:
-      print("%s, %s, %s" % (self, args, kwargs))
-
-    return self.symbol(*args, **kwargs)
-
-  def __str__(self):
-    return "PythonOpWrapper(%s, %s, %s, %s)" % (self.namespace, self.env,
-                                                self.symbol_name, self.symbol)
-
-  def __repr__(self):
-    return "PythonOpWrapper(%s, %s, %s, %s, %s)" % (self.namespace, self.env,
-                                                self.symbol_name, self.symbol,
-                                                self.global_sub)
-
-
 # TODO(yaroslavvb): factor out into SimpleWrapper
 
 class ConstantOpWrapper(object):
@@ -355,11 +327,3 @@ class ConvertToTensorWrapper(object):
       return value
     return self.env.numpy_to_tensor(value, dtype)
 
-class ConcatOpWrapper(object):
-  """A callable object that mirrors gen_array_ops._concat"""
-
-  def __init__(self, namespace, env, symbol_name):
-    self.namespace = namespace
-    self.env = env
-    self.symbol_name = symbol_name
-    
