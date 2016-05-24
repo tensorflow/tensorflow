@@ -352,6 +352,7 @@
   * [`sparse_reorder`](../../api_docs/python/sparse_ops.md#sparse_reorder)
   * [`sparse_reset_shape`](../../api_docs/python/sparse_ops.md#sparse_reset_shape)
   * [`sparse_retain`](../../api_docs/python/sparse_ops.md#sparse_retain)
+  * [`sparse_softmax`](../../api_docs/python/sparse_ops.md#sparse_softmax)
   * [`sparse_split`](../../api_docs/python/sparse_ops.md#sparse_split)
   * [`sparse_tensor_dense_matmul`](../../api_docs/python/sparse_ops.md#sparse_tensor_dense_matmul)
   * [`sparse_tensor_to_dense`](../../api_docs/python/sparse_ops.md#sparse_tensor_to_dense)
