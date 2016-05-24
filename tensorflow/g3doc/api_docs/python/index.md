@@ -350,6 +350,7 @@
   * [`sparse_fill_empty_rows`](../../api_docs/python/sparse_ops.md#sparse_fill_empty_rows)
   * [`sparse_merge`](../../api_docs/python/sparse_ops.md#sparse_merge)
   * [`sparse_reorder`](../../api_docs/python/sparse_ops.md#sparse_reorder)
+  * [`sparse_reset_shape`](../../api_docs/python/sparse_ops.md#sparse_reset_shape)
   * [`sparse_retain`](../../api_docs/python/sparse_ops.md#sparse_retain)
   * [`sparse_split`](../../api_docs/python/sparse_ops.md#sparse_split)
   * [`sparse_tensor_dense_matmul`](../../api_docs/python/sparse_ops.md#sparse_tensor_dense_matmul)
