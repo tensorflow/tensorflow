@@ -23,6 +23,9 @@ import numpy as np
 import tensorflow as tf
 
 
+tf.contrib.rnn.Load()
+
+
 class RNNCellTest(tf.test.TestCase):
 
   def testTimeFreqLSTMCell(self):
@@ -90,6 +93,80 @@ class RNNCellTest(tf.test.TestCase):
               float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) > 1e-6)
           self.assertTrue(
               float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) > 1e-6)
+
+  def _testLSTMCellBlock(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([1, 2])
+        m0 = tf.zeros([1, 2])
+        m1 = tf.zeros([1, 2])
+        m2 = tf.zeros([1, 2])
+        m3 = tf.zeros([1, 2])
+        g, ((out_m0, out_m1), (out_m2, out_m3)) = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.contrib.rnn.LSTMCellBlock(2)] * 2,
+            state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run([g, out_m0, out_m1, out_m2, out_m3],
+                       {x.name: np.array([[1., 1.]]),
+                        m0.name: 0.1 * np.ones([1, 2]),
+                        m1.name: 0.1 * np.ones([1, 2]),
+                        m2.name: 0.1 * np.ones([1, 2]),
+                        m3.name: 0.1 * np.ones([1, 2])})
+        self.assertEqual(len(res), 5)
+        self.assertAllClose(res[0], [[0.24024698, 0.24024698]])
+        # These numbers are from testBasicLSTMCell and only test c/h.
+        self.assertAllClose(res[1], [[0.68967271, 0.68967271]])
+        self.assertAllClose(res[2], [[0.44848421, 0.44848421]])
+        self.assertAllClose(res[3], [[0.39897051, 0.39897051]])
+        self.assertAllClose(res[4], [[0.24024698, 0.24024698]])
+
+  def testLSTMCellBlock(self):
+    self._testLSTMCellBlock(use_gpu=False)
+    self._testLSTMCellBlock(use_gpu=True)
+
+  def testLSTMBasicToBlockCell(self):
+    with self.test_session() as sess:
+      x = tf.zeros([1, 2])
+      x_values = np.random.randn(1, 2)
+
+      m0_val = 0.1 * np.ones([1, 2])
+      m1_val = -0.1 * np.ones([1, 2])
+      m2_val = -0.2 * np.ones([1, 2])
+      m3_val = 0.2 * np.ones([1, 2])
+
+      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890212)
+      with tf.variable_scope("basic", initializer=initializer):
+        m0 = tf.zeros([1, 2])
+        m1 = tf.zeros([1, 2])
+        m2 = tf.zeros([1, 2])
+        m3 = tf.zeros([1, 2])
+        g, ((out_m0, out_m1), (out_m2, out_m3)) = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)] * 2,
+            state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
+        sess.run([tf.initialize_all_variables()])
+        basic_res = sess.run([g, out_m0, out_m1, out_m2, out_m3],
+                             {x.name: np.array([[1., 1.]]),
+                              m0.name: m0_val, m1.name: m1_val, m2.name:
+                              m2_val, m3.name: m3_val})
+
+      with tf.variable_scope("block", initializer=initializer):
+        m0 = tf.zeros([1, 2])
+        m1 = tf.zeros([1, 2])
+        m2 = tf.zeros([1, 2])
+        m3 = tf.zeros([1, 2])
+        g, ((out_m0, out_m1), (out_m2, out_m3)) = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.contrib.rnn.LSTMCellBlock(2)] * 2,
+            state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
+        sess.run([tf.initialize_all_variables()])
+        block_res = sess.run([g, out_m0, out_m1, out_m2, out_m3],
+                             {x.name: np.array([[1., 1.]]),
+                              m0.name: m0_val, m1.name: m1_val, m2.name:
+                              m2_val, m3.name: m3_val})
+
+      self.assertEqual(len(basic_res), len(block_res))
+      for basic, block in zip(basic_res, block_res):
+        self.assertAllClose(basic, block)
+
 
 if __name__ == "__main__":
   tf.test.main()
