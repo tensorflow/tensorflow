@@ -87,14 +87,11 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
         num_threads_(num_threads) {}
 
   void ParallelFor(int64 total, int64 cost_per_unit,
-                   std::function<void(int64, int64)> fn,
-                   int32 max_parallelism = kint32max) {
+                   std::function<void(int64, int64)> fn) {
 #ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
-    CHECK_GT(max_parallelism, 0);
     CHECK_GE(total, 0);
     CHECK_EQ(total, (int64)(Eigen::Index)total);
-    Eigen::ThreadPoolDevice device(this,
-                                   std::min(num_threads_, max_parallelism));
+    Eigen::ThreadPoolDevice device(this, num_threads_);
     device.parallelFor(
         total, Eigen::TensorOpCost(0, 0, cost_per_unit),
         [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
@@ -102,6 +99,8 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
     CHECK(0);  // should not be used with the old thread pool
 #endif
   }
+
+  int NumThreads() const { return num_threads_; };
 
   const int num_threads_;
 };
@@ -114,10 +113,11 @@ struct ThreadPool::Impl {
   ~Impl();
   void Schedule(std::function<void()> fn);
   void ParallelFor(int64 total, int64 cost_per_unit,
-                   std::function<void(int64, int64)> fn,
-                   int32 max_parallelism = kint32max) {
+                   std::function<void(int64, int64)> fn) {
     CHECK(0);  // should not be used with the old thread pool
   }
+
+  int NumThreads() const { return threads_.size(); };
 
  private:
   struct Waiter {
@@ -242,10 +242,11 @@ void ThreadPool::Schedule(std::function<void()> fn) {
 }
 
 void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
-                             std::function<void(int64, int64)> fn,
-                             int32 max_parallelism) {
-  impl_->ParallelFor(total, cost_per_unit, std::move(fn), max_parallelism);
+                             std::function<void(int64, int64)> fn) {
+  impl_->ParallelFor(total, cost_per_unit, std::move(fn));
 }
+
+int ThreadPool::NumThreads() const { return impl_->NumThreads(); }
 
 }  // namespace thread
 }  // namespace tensorflow
