@@ -98,7 +98,6 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
     const string& op_name = op_list_.op(cur).name();
     if (stable_ops_ != nullptr && stable_ops_->count(op_name) == 0) {
       // Ignore unstable op.
-      ++cur;
       for (++cur; cur < op_list_.op_size(); ++cur) {
         if (op_list_.op(cur).name() != op_name) break;
       }
