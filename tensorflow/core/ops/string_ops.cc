@@ -26,9 +26,39 @@ Converts each string in the input Tensor to its hash mod by a number of buckets.
 
 The hash function is deterministic on the content of the string within the
 process and will never change. However, it is not suitable for cryptography.
+This function may be used when CPU time is scarce and inputs are trusted or
+unimportant. There is a risk of adversaries constructing inputs that all hash
+to the same bucket. To prevent this problem, use a strong hash function with
+`tf.string_to_hash_bucket_strong`.
 
-input: The strings to assing a hash bucket.
+input: The strings to assign a hash bucket.
 num_buckets: The number of buckets.
+output: A Tensor of the same shape as the input `string_tensor`.
+)doc");
+
+REGISTER_OP("StringToHashBucketStrong")
+    .Input("input: string")
+    .Output("output: int64")
+    .Attr("num_buckets: int >= 1")
+    .Attr("key: list(int)")
+    .Doc(R"doc(
+Converts each string in the input Tensor to its hash mod by a number of buckets.
+
+The hash function is deterministic on the content of the string within the
+process. The hash function is a keyed hash function, where attribute `key`
+defines the key of the hash function. `key` is an array of 2 elements.
+
+A strong hash is important when inputs may be malicious, e.g. URLs with
+additional components. Adversaries could try to make their inputs hash to the
+same bucket for a denial-of-service attack or to skew the results. A strong
+hash prevents this by making it dificult, if not infeasible, to compute inputs
+that hash to the same bucket. This comes at a cost of roughly 4x higher compute
+time than tf.string_to_hash_bucket_fast.
+
+input: The strings to assign a hash bucket.
+num_buckets: The number of buckets.
+key: The key for the keyed hash function passed as a list of two uint64
+  elements.
 output: A Tensor of the same shape as the input `string_tensor`.
 )doc");
 
@@ -36,7 +66,9 @@ REGISTER_OP("StringToHashBucket")
     .Input("string_tensor: string")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
-    .Deprecated(10, "Use tf.string_to_hash_bucket_fast()")
+    .Deprecated(10,
+                "Use `tf.string_to_hash_bucket_fast()` or "
+                "`tf.string_to_hash_bucket_strong()`")
     .Doc(R"doc(
 Converts each string in the input Tensor to its hash mod by a number of buckets.
 

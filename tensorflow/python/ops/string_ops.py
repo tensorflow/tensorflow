@@ -19,6 +19,7 @@ String hashing ops take a string input tensor and map each element to an
 integer.
 
 @@string_to_hash_bucket_fast
+@@string_to_hash_bucket_strong
 @@string_to_hash_bucket
 
 ## Joining
@@ -49,10 +50,12 @@ from tensorflow.python.ops.gen_string_ops import *
 
 ops.NoGradient("StringToHashBucket")
 ops.NoGradient("StringToHashBucketFast")
+ops.NoGradient("StringToHashBucketStrong")
 ops.NoGradient("ReduceJoin")
 
 ops.RegisterShape("StringToHashBucket")(common_shapes.unchanged_shape)
 ops.RegisterShape("StringToHashBucketFast")(common_shapes.unchanged_shape)
+ops.RegisterShape("StringToHashBucketStrong")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("ReduceJoin")
