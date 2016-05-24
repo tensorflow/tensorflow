@@ -25,15 +25,16 @@ import time
 import numpy as np
 
 from six import reraise
+
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import summaries
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
-from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variables
@@ -42,9 +43,9 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as tf_saver
+from tensorflow.python.training import session_manager as session_manager_lib
 from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor as tf_supervisor
-
 
 # pylint: disable=invalid-name
 Supervisor = tf_supervisor.Supervisor
@@ -76,13 +77,15 @@ def _restore_from_checkpoint(session, graph, checkpoint_path, saver=None):
     logging.info('No variables found in graph, not creating Saver() object.')
 
 
-def _run_dict(session, run_dict, feed_dict=None):
+def _run_dict(session, run_dict, feed_dict=None, update_op=None):
   """Convenience function to run a session on each item in a dict of tensors.
 
   Args:
     session: The session to evaluate.
     run_dict: A dict of tensors to be run in the session.
     feed_dict: Feed dict to be used in running the session.
+    update_op: Operation to update some tensors that should run inline.
+
   Returns:
     A dict containing the result of evaluating the tensors.
   Raises:
@@ -91,38 +94,12 @@ def _run_dict(session, run_dict, feed_dict=None):
   if run_dict is None:
     raise ValueError('Invalid run_dict %s.', run_dict)
   keys = run_dict.keys()
-  values = session.run([run_dict[key] for key in keys], feed_dict=feed_dict)
+  tensors = [run_dict[key] for key in keys]
+  # TODO(ispir): Performance problems here.
+  if update_op is not None:
+    session.run(update_op, feed_dict=feed_dict)
+  values = session.run(tensors, feed_dict=feed_dict)
   return dict(zip(keys, values))
-
-
-def _prepare_session(graph,
-                     output_dir,
-                     start_services,
-                     global_step_tensor,
-                     init_op=None,
-                     init_feed_dict=None,
-                     init_fn=None,
-                     supervisor_is_chief=True,
-                     supervisor_master='',
-                     supervisor_save_model_secs=600):
-  """Starts a session using the supervisor."""
-  if global_step_tensor is None:
-    global_step_tensor = Supervisor.USE_DEFAULT
-  supervisor = Supervisor(
-      graph,
-      init_op=init_op or Supervisor.USE_DEFAULT,
-      init_feed_dict=init_feed_dict,
-      is_chief=supervisor_is_chief,
-      logdir=output_dir,
-      saver=_make_saver(graph),
-      global_step=global_step_tensor,
-      summary_op=None,
-      save_model_secs=supervisor_save_model_secs,
-      init_fn=init_fn)
-  session = supervisor.PrepareSession(master=supervisor_master,
-                                      start_standard_services=start_services)
-  supervisor.StartQueueRunners(session)
-  return supervisor, session
 
 
 def _run_with_monitors(session, step, tensors, feed_dict, monitors):
@@ -233,17 +210,20 @@ def train(graph,
   for monitor in monitors:
     monitor.begin(max_steps=max_steps)
 
-  supervisor, session = _prepare_session(
-      graph=graph,
-      output_dir=output_dir,
-      start_services=True,
-      global_step_tensor=global_step_tensor,
-      init_op=init_op,
+  supervisor = Supervisor(
+      graph,
+      init_op=init_op or Supervisor.USE_DEFAULT,
       init_feed_dict=init_feed_dict,
-      init_fn=init_fn,
-      supervisor_is_chief=supervisor_is_chief,
-      supervisor_master=supervisor_master,
-      supervisor_save_model_secs=supervisor_save_model_secs)
+      is_chief=supervisor_is_chief,
+      logdir=output_dir,
+      saver=_make_saver(graph),
+      global_step=global_step_tensor,
+      summary_op=None,
+      save_model_secs=supervisor_save_model_secs,
+      init_fn=init_fn)
+  session = supervisor.PrepareSession(master=supervisor_master,
+                                      start_standard_services=True)
+  supervisor.StartQueueRunners(session)
 
   with session:
     get_current_step = lambda: session.run(global_step_tensor)
@@ -338,6 +318,56 @@ def train(graph,
     return loss_value
 
 
+def _get_first_op_from_collection(collection_name):
+  elements = ops.get_collection(collection_name)
+  if elements is not None:
+    if elements:
+      return elements[0]
+  return None
+
+
+def _get_saver():
+  saver = _get_first_op_from_collection(ops.GraphKeys.SAVERS)
+  if saver is not None:
+    if saver:
+      saver = saver[0]
+    else:
+      saver = None
+  if saver is None and variables.all_variables():
+    saver = tf_saver.Saver()
+    ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
+  return saver
+
+
+def _get_ready_op():
+  ready_op = _get_first_op_from_collection(ops.GraphKeys.READY_OP)
+  if ready_op is None:
+    ready_op = variables.report_uninitialized_variables()
+    ops.add_to_collection(ops.GraphKeys.READY_OP, ready_op)
+  return ready_op
+
+
+def _get_local_init_op():
+  local_init_op = _get_first_op_from_collection(
+      ops.GraphKeys.LOCAL_INIT_OP)
+  if local_init_op is None:
+    op_list = [variables.initialize_local_variables(),
+               data_flow_ops.initialize_all_tables()]
+    if op_list:
+      local_init_op = control_flow_ops.group(*op_list)
+      ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, local_init_op)
+  return local_init_op
+
+
+def _start_queue_runners(session, coord):
+  queue_runners = ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS)
+  threads = []
+  for qr in queue_runners:
+    threads.extend(qr.create_threads(session, coord=coord, daemon=True,
+                                     start=True))
+  return threads
+
+
 # TODO(ptucker): Add unit test.
 def evaluate(graph,
              output_dir,
@@ -345,7 +375,6 @@ def evaluate(graph,
              eval_dict,
              update_op=None,
              global_step_tensor=None,
-             init_op=None,
              supervisor_master='',
              log_every_steps=10,
              feed_fn=None,
@@ -373,8 +402,6 @@ def evaluate(graph,
     global_step_tensor: A `Variable` containing the global step. If `None`,
       one is extracted from the graph using the same logic as in `Supervisor`.
       Used to place eval summaries on training curves.
-    init_op: An op that initializes the graph. If `None`, use `Supervisor`'s
-      default.
     supervisor_master: The master string to use when preparing the session.
     log_every_steps: Integer. Output logs every `log_every_steps` evaluation
       steps. The logs contain the `eval_dict` and timing information.
@@ -402,41 +429,46 @@ def evaluate(graph,
     if isinstance(value, ops.Tensor):
       summaries.summarize_tensor(value, tag=key)
 
-  # Create or get summary op.
+  # Create or get summary op, global_step and saver.
   summary_op = logging_ops.get_summary_op()
+  saver = _get_saver()
+  local_init_op = _get_local_init_op()
+  ready_op = _get_ready_op()
 
-  # TODO(wicke): Don't use supervisor here, or switch to output_dir=eval_dir.
-  supervisor, session = _prepare_session(
-      graph=graph,
-      output_dir=None,  # Must be None to avoid writing an event file
-      start_services=False,
-      global_step_tensor=global_step_tensor,
-      init_op=init_op,
-      supervisor_is_chief=True,
-      supervisor_master=supervisor_master,
-      supervisor_save_model_secs=None)
-  global_step_tensor = supervisor.global_step
+  session_manager = session_manager_lib.SessionManager(
+      local_init_op=local_init_op,
+      ready_op=ready_op)
+  session, initialized = session_manager.recover_session(
+      master=supervisor_master,
+      saver=saver,
+      checkpoint_dir=checkpoint_path)
+
+  # Start queue runners.
+  coord = coordinator.Coordinator()
+  threads = _start_queue_runners(session, coord)
 
   with session:
-    if checkpoint_path:
-      _restore_from_checkpoint(
-          session, graph, checkpoint_path, supervisor.saver)
+    if not initialized:
+      logging.warning('Failed to initialize from %s.', checkpoint_path)
+      # TODO(ipolosukhin): This should be failing, but old code relies on that.
+      session.run(variables.initialize_all_variables())
+      if checkpoint_path:
+        _restore_from_checkpoint(session, graph, checkpoint_path, saver)
 
     current_global_step = session.run(global_step_tensor)
     eval_results = None
     # TODO(amodei): Fix this to run through the eval set exactly once.
     step = 0
-    logging.info('Eval steps [%d,%s)', step, 'inf' if max_steps is None
-                 else str(max_steps))
+    logging.info('Eval steps [%d,%s) for training step %d.', step,
+                 'inf' if max_steps is None
+                 else str(max_steps), current_global_step)
     try:
       try:
-        while not supervisor.ShouldStop() and (
-            (max_steps is None) or (step < max_steps)):
+        while (max_steps is None) or (step < max_steps):
           start_time = time.time()
           feed_dict = feed_fn() if feed_fn is not None else None
-          if update_op:
-            session.run(update_op)
-          eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
+          eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict,
+                                   update_op=update_op)
           # TODO(wicke): We should assert that the global step hasn't changed.
           step += 1
           if step % log_every_steps == 0:
@@ -446,6 +478,10 @@ def evaluate(graph,
                          ', '.join('%s = %s' % (k, v)
                                    for k, v in eval_results.items()))
       finally:
+        # Stop queue runners.
+        coord.request_stop()
+        coord.join(threads, stop_grace_period_secs=120)
+
         # Make our own summary writer and write a summary to the eval dir.
         # Only is feed_fn is not provided.
         # TODO(ipolosukhin): Convert evaluation to use streaming_metrics,
@@ -462,17 +498,19 @@ def evaluate(graph,
           finally:
             if summary_writer:
               summary_writer.close()
-
-        # Call supervisor.Stop() from within a try block because it re-raises
-        # exceptions thrown by the supervised threads.
-        supervisor.Stop()
     # catch OutOfRangeError which is thrown when queue is out of data (and for
     # other reasons as well).
     except errors.OutOfRangeError as e:
-      logging.warn('Input queue is exhausted: %s.', e)
+      if max_steps is None:
+        logging.info('Input queue is exhausted.')
+      else:
+        logging.warn('Input queue is exhausted: %s.', e)
     # catch StopIteration which is thrown is DataReader is out of data.
     except StopIteration as e:
-      logging.info('Input iterator is exhausted: %s.', e)
+      if max_steps is None:
+        logging.info('Input iterator is exhausted.')
+      else:
+        logging.warn('Input iterator is exhausted: %s.', e)
 
   return eval_results, current_global_step
 

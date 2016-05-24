@@ -27,8 +27,8 @@ def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
   """Returns prediction and loss for mean squared error regression."""
   with ops.op_scope([tensor_in, labels], name, "mean_squared_error_regressor"):
     predictions = nn.xw_plus_b(tensor_in, weights, biases)
-    if len(labels.get_shape()) == 1:
-      labels = array_ops_.reshape(labels, [-1, 1])
+    if len(labels.get_shape()) == 1 and len(predictions.get_shape()) == 2:
+      predictions = array_ops_.squeeze(predictions, squeeze_dims=[1])
     return predictions, loss_ops.sum_of_squares(predictions, labels)
 
 

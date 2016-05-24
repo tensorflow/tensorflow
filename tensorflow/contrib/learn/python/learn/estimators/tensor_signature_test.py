@@ -35,6 +35,9 @@ class TensorSignatureTest(tf.test.TestCase):
     placeholder_c = tf.placeholder(name='mismatch',
                                    shape=[256, 100],
                                    dtype=tf.float32)
+    placeholder_d = tf.placeholder(name='mismatch',
+                                   shape=[128, 100],
+                                   dtype=tf.int32)
     signatures = tensor_signature.create_signatures(placeholder_a)
     self.assertTrue(tensor_signature.tensors_compatible(placeholder_a,
                                                         signatures))
@@ -42,6 +45,8 @@ class TensorSignatureTest(tf.test.TestCase):
                                                         signatures))
     self.assertFalse(tensor_signature.tensors_compatible(placeholder_c,
                                                          signatures))
+    self.assertTrue(tensor_signature.tensors_compatible(placeholder_d,
+                                                        signatures))
 
     inputs = {'a': placeholder_a}
     signatures = tensor_signature.create_signatures(inputs)
