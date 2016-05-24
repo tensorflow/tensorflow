@@ -108,10 +108,10 @@ mkdir -p "${TEST_DIR}" || \
 test_ffmpeg_lib() {
   # If FFmpeg is not installed then run a test that assumes it is not installed.
   if [[ -z "$(which ffmpeg)" ]]; then
-    bazel test tensorflow/contrib/ffmpeg/kernels:ffmpeg_lib_uninstalled_test
+    bazel test tensorflow/contrib/ffmpeg/default:ffmpeg_lib_uninstalled_test
     return $?
   else
-    bazel test tensorflow/contrib/ffmpeg/kernels:ffmpeg_lib_installed_test \
+    bazel test tensorflow/contrib/ffmpeg/default:ffmpeg_lib_installed_test \
         tensorflow/contrib/ffmpeg:decode_audio_op_test
     return $?
   fi
