@@ -48,7 +48,7 @@ class ExampleParserOp : public OpKernel {
                 errors::InvalidArgument("len(dense_keys) != len(dense_types"));
     OP_REQUIRES(ctx, static_cast<size_t>(num_dense_) == dense_shapes_.size(),
                 errors::InvalidArgument("len(dense_keys) != len(dense_shapes"));
-    OP_REQUIRES(ctx, num_dense_ <= TensorShape::MaxDimensions(),
+    OP_REQUIRES(ctx, num_dense_ <= std::numeric_limits<int32>::max(),
                 errors::InvalidArgument("num_dense_ too large"));
     for (const DataType& type : dense_types_) {
       OP_REQUIRES_OK(ctx, CheckValidType(type));
