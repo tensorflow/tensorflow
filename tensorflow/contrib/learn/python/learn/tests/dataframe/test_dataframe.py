@@ -92,6 +92,56 @@ class DataFrameTest(tf.test.TestCase):
                 "c": "Fake Tensor 1"}
     self.assertEqual(expected, result)
 
+  def test_to_input_fn_all_features(self):
+    df = setup_test_df()
+    input_fn = df.to_input_fn()
+    f, t = input_fn()
+    expected_f = {"a": "Fake Tensor 1",
+                  "b": "Fake Tensor 2",
+                  "c": "Fake Tensor 1"}
+    self.assertEqual(expected_f, f)
+
+    expected_t = {}
+    self.assertEqual(expected_t, t)
+
+  def test_to_input_fn_features_only(self):
+    df = setup_test_df()
+    input_fn = df.to_input_fn(["b", "c"])
+    f, t = input_fn()
+    expected_f = {"b": "Fake Tensor 2", "c": "Fake Tensor 1"}
+    self.assertEqual(expected_f, f)
+
+    expected_t = {}
+    self.assertEqual(expected_t, t)
+
+  def test_to_input_fn_targets_only(self):
+    df = setup_test_df()
+    input_fn = df.to_input_fn(target_keys=["b", "c"])
+    f, t = input_fn()
+    expected_f = {"a": "Fake Tensor 1"}
+    self.assertEqual(expected_f, f)
+
+    expected_t = {"b": "Fake Tensor 2", "c": "Fake Tensor 1"}
+    self.assertEqual(expected_t, t)
+
+  def test_to_input_fn_both(self):
+    df = setup_test_df()
+    input_fn = df.to_input_fn(feature_keys=["a"], target_keys=["b"])
+    f, t = input_fn()
+    expected_f = {"a": "Fake Tensor 1"}
+    self.assertEqual(expected_f, f)
+
+    expected_t = {"b": "Fake Tensor 2"}
+    self.assertEqual(expected_t, t)
+
+  def test_to_input_fn_not_disjoint(self):
+    df = setup_test_df()
+
+    def get_not_disjoint():
+      df.to_input_fn(feature_keys=["a", "b"], target_keys=["b"])
+
+    self.assertRaises(ValueError, get_not_disjoint)
+
 
 if __name__ == "__main__":
   tf.test.main()

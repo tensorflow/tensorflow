@@ -117,8 +117,56 @@ class DataFrame(object):
       value = [value]
     self.assign(**dict(zip(key, value)))
 
-  def build(self, cache=None):
-    if cache is None:
-      cache = {}
+  def build(self):
+    # We do not allow passing a cache here, because that would encourage
+    # working around the rule that DataFrames cannot be expected to be
+    # synced with each other (e.g., they shuffle independently).
+    cache = {}
     tensors = {name: c.build(cache) for name, c in self._columns.items()}
     return tensors
+
+  def to_input_fn(self, feature_keys=None, target_keys=None):
+    """Build an input_fn suitable for use with Estimator.
+
+    Args:
+      feature_keys: the names of columns to be used as features.  If None, all
+        columns except those in target_keys are used.
+      target_keys: the names of columns to be used as targets.  None is
+        acceptable for unsupervised learning.
+
+    Returns:
+      A function that returns a pair of dicts (features, targets), each mapping
+        string names to Tensors.
+
+    Raises:
+      ValueError: when the feature and target key sets are non-disjoint
+    """
+    if target_keys is None:
+      target_keys = []
+
+    if feature_keys is None:
+      if target_keys:
+        feature_keys = self.columns() - set(target_keys)
+      else:
+        feature_keys = self.columns()
+    else:
+      in_both = set(feature_keys) & set(target_keys)
+      if in_both:
+        raise ValueError(
+            "Columns cannot be used for both features and targets: %s" %
+            ", ".join(in_both))
+
+    def input_fn():
+      # It's important to build all the tensors together in one DataFrame.
+      # If we did df.select() for both key sets and then build those, the two
+      # resulting DataFrames would be shuffled independently.
+      tensors = self.build()
+
+      # Note that (for now at least) we provide our columns to Estimator keyed
+      # by strings, so they are base features as far as Estimator is concerned.
+      # TODO(soergel): reconcile with FeatureColumn keys, Transformer etc.
+      features = {key: tensors[key] for key in feature_keys}
+      targets = {key: tensors[key] for key in target_keys}
+      return features, targets
+
+    return input_fn
