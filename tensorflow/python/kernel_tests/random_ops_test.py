@@ -237,9 +237,10 @@ class RandomUniformTest(tf.test.TestCase):
   def testSeed(self):
     for use_gpu in False, True:
       for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
-        sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=345)
-        sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=345)
-        self.assertAllEqual(sx(), sy())
+          for seed in [345, 2**100, -2**100]:
+            sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
+            sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
+            self.assertAllEqual(sx(), sy())
 
   def testNoCSE(self):
     shape = [2, 3, 4]
