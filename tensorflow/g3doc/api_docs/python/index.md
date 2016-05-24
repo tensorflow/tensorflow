@@ -42,6 +42,7 @@
   * [`assert_non_negative`](../../api_docs/python/check_ops.md#assert_non_negative)
   * [`assert_non_positive`](../../api_docs/python/check_ops.md#assert_non_positive)
   * [`assert_positive`](../../api_docs/python/check_ops.md#assert_positive)
+  * [`assert_proper_iterable`](../../api_docs/python/check_ops.md#assert_proper_iterable)
   * [`assert_rank`](../../api_docs/python/check_ops.md#assert_rank)
   * [`assert_rank_at_least`](../../api_docs/python/check_ops.md#assert_rank_at_least)
   * [`assert_type`](../../api_docs/python/check_ops.md#assert_type)
