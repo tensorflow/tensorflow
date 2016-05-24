@@ -3700,6 +3700,8 @@ class GraphKeys(object):
   ACTIVATIONS = "activations"
   # Key to collect update_ops
   UPDATE_OPS = "update_ops"
+  # Key to collect losses
+  LOSSES = "losses"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
