@@ -152,9 +152,15 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       return metrics_lib.streaming_accuracy(
           math_ops.to_int32(predictions), math_ops.to_int32(targets), weights)
 
+    def _compute_auc(logits, targets, unused_weights=None):
+      return metrics_lib.streaming_auc(math_ops.sigmoid(logits), targets)
+
     result = {"loss": _compute_loss}
     if self._n_classes > 1:
       result["accuracy"] = _compute_accuracy
+    # Adds AUC for binary classification problems.
+    if self._num_label_columns() == 1:
+      result["eval_auc"] = _compute_auc
     return result
 
   def _get_predict_ops(self, features):
