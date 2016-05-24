@@ -566,5 +566,56 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
           self.assertLess(err, 2e-4)
 
 
+class SparseSoftmaxTest(test_util.TensorFlowTestCase):
+
+  def testEquivalentToDensified(self):
+    np.random.seed(1618)
+    n, m = np.random.choice(20, size=2)
+
+    for dtype in [np.float32, np.float64]:
+      sp_vals_np = np.random.rand(n, m).astype(dtype)
+
+      batched_sp_t, unused_nnz1 = _sparsify(
+          sp_vals_np.reshape((1, n, m)), thresh=0.)  # No masking.
+
+      with self.test_session(use_gpu=False):
+        densified = tf.constant(sp_vals_np)
+
+        sp_result = sparse_ops.sparse_softmax(
+            batched_sp_t).eval().values.reshape((n, m))
+        dense_result = tf.nn.softmax(densified)
+
+        self.assertAllClose(dense_result.eval(), sp_result)
+
+  def testHigherRanks(self):
+    # For the first shape:
+    # First batch:
+    # [?   e.]
+    # [1.  ? ]
+    # Second batch:
+    # [e   ? ]
+    # [e   e ]
+    #
+    # The softmax results should be:
+    # [?   1.]     [1    ?]
+    # [1.  ? ] and [.5  .5]
+    # where ? means implicitly zero.
+    #
+    # The second shape: same input data, but with a higher-rank shape.
+    shapes = [[2, 2, 2], [2, 1, 2, 2]]
+    for shape in shapes:
+      values = np.asarray(
+          [0., np.e, 1., 0., np.e, 0., np.e, np.e]).reshape(shape)
+      sp_t, unused_nnz = _sparsify(values, thresh=1e-2)
+      expected_values = [1., 1., 1., .5, .5]
+
+      with self.test_session(use_gpu=False):
+        result = sparse_ops.sparse_softmax(sp_t).eval()
+
+        self.assertAllEqual(expected_values, result.values)
+        self.assertAllEqual(sp_t.indices.eval(), result.indices)
+        self.assertAllEqual(shape, result.shape)
+
+
 if __name__ == "__main__":
   googletest.main()

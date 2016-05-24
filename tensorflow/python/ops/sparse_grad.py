@@ -224,3 +224,9 @@ def _SparseDenseCwiseMulGrad(op, grad):
 def _SparseDenseCwiseDivGrad(op, grad):
   """Gradients for SparseDenseCwiseDiv."""
   return _SparseDenseCwiseMulOrDivGrad(op, grad, False)
+
+
+@ops.RegisterGradient("SparseSoftmax")
+def _SparseSoftmaxGrad(unused_op, unused_grad):
+  raise NotImplementedError("SparseSoftmax op doesn't have its gradient"
+                            "implemented yet")
