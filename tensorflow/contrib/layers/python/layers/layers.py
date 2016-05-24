@@ -201,7 +201,7 @@ def batch_norm(inputs,
         collections=moving_variance_collections)
     if is_training:
       # Calculate the moments based on the individual batch.
-      mean, variance = nn.moments(inputs, axis)
+      mean, variance = nn.moments(inputs, axis, shift=moving_mean)
       # Update the moving_mean and moving_variance moments.
       update_moving_mean = moving_averages.assign_moving_average(
           moving_mean, mean, decay)
