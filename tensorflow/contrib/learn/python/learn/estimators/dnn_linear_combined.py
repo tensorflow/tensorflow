@@ -70,6 +70,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If `None`,
       will use `tf.nn.relu`.
+    config: RunConfig object to configure the runtime settings.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -85,8 +86,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu):
-    super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir)
+               dnn_activation_fn=nn.relu,
+               config=None):
+    super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir,
+                                                          config=config)
     self._n_classes = n_classes
     self._weight_column_name = weight_column_name
     self._linear_feature_columns = linear_feature_columns
@@ -367,6 +370,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If `None`,
       will use `tf.nn.relu`.
+    config: RunConfig object to configure the runtime settings.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -383,7 +387,8 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu):
+               dnn_activation_fn=nn.relu,
+               config=None):
     if n_classes < 2:
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
           n_classes))
@@ -397,7 +402,8 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         dnn_feature_columns=dnn_feature_columns,
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,
-        dnn_activation_fn=dnn_activation_fn)
+        dnn_activation_fn=dnn_activation_fn,
+        config=config)
 
 
 class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
@@ -466,6 +472,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If None, will
       use `tf.nn.relu`.
+    config: RunConfig object to configure the runtime settings.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -480,7 +487,8 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu):
+               dnn_activation_fn=nn.relu,
+               config=None):
     super(DNNLinearCombinedRegressor, self).__init__(
         model_dir=model_dir,
         n_classes=0,
@@ -490,4 +498,5 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         dnn_feature_columns=dnn_feature_columns,
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,
-        dnn_activation_fn=dnn_activation_fn)
+        dnn_activation_fn=dnn_activation_fn,
+        config=config)
