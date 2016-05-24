@@ -25,6 +25,7 @@ import tensorflow as tf
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import googletest
@@ -232,6 +233,101 @@ class SparseRetainTest(test_util.TensorFlowTestCase):
       to_retain = np.array([1, 0, 0, 1, 0], dtype=np.bool)
       with self.assertRaises(ValueError):
         sparse_ops.sparse_retain(sp_input, to_retain)
+
+
+class SparseResetShapeTest(test_util.TensorFlowTestCase):
+
+  _IND_2_5_6 = np.array([[0, 0, 0], [0, 1, 0], [0, 1, 3], [1, 1, 4],
+                         [1, 3, 2], [1, 3, 3]], dtype=np.int64)
+  _VAL_2_5_6 = np.array([0, 10, 13, 14, 32, 33], dtype=np.int32)
+  _SHP_2_5_6 = np.array([2, 5, 6], dtype=np.int64)
+
+  def _SparseTensor_2x5x6(self):
+    return ops.SparseTensor(
+        constant_op.constant(self._IND_2_5_6, dtypes.int64),
+        constant_op.constant(self._VAL_2_5_6, dtypes.int32),
+        constant_op.constant(self._SHP_2_5_6, dtypes.int64))
+
+  def _SparseTensorValue_2x5x6(self):
+    return ops.SparseTensorValue(self._IND_2_5_6, self._VAL_2_5_6,
+                                 self._SHP_2_5_6)
+
+  def testBasic(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensor_2x5x6()
+      new_shape = np.array([3, 6, 7], dtype=np.int64)
+      sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      output = sess.run(sp_output)
+
+      self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0],
+                                           [0, 1, 3], [1, 1, 4],
+                                           [1, 3, 2], [1, 3, 3]])
+      self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
+      self.assertAllEqual(output.shape, [3, 6, 7])
+
+  def testInputUnavaibleInGraphConstructionOk(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = array_ops.sparse_placeholder(dtype=dtypes.int32)
+      new_shape = np.array([3, 6, 7], dtype=np.int64)
+      sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      output = sess.run(sp_output,
+                        feed_dict={sp_input: self._SparseTensorValue_2x5x6()})
+
+      self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0],
+                                           [0, 1, 3], [1, 1, 4],
+                                           [1, 3, 2], [1, 3, 3]])
+      self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
+      self.assertAllEqual(output.shape, [3, 6, 7])
+
+  def testTightBoundingBox(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensor_2x5x6()
+      sp_output = sparse_ops.sparse_reset_shape(sp_input)
+
+      output = sess.run(sp_output)
+
+      self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0],
+                                           [0, 1, 3], [1, 1, 4],
+                                           [1, 3, 2], [1, 3, 3]])
+      self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
+      self.assertAllEqual(output.shape, [2, 4, 5])
+
+  def testInvalidRank(self):
+    with self.test_session(use_gpu=False):
+      sp_input = self._SparseTensor_2x5x6()
+      new_shape = np.array([3, 7], dtype=np.int64)
+
+      with self.assertRaises(ValueError):
+        sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+  def testInvalidRankNewShapeUnavaibleInGraphConstruction(self):
+    with self.test_session(use_gpu=False) as sess:
+      new_shape = array_ops.placeholder(dtype=dtypes.int64)
+      sp_input = self._SparseTensor_2x5x6()
+      out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      with self.assertRaisesOpError("x == y did not hold element-wise"):
+        sess.run(out, feed_dict={new_shape: np.array([3, 7], dtype=np.int64)})
+
+  def testInvalidDimensionSize(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensor_2x5x6()
+      new_shape = np.array([3, 7, 5], dtype=np.int64)
+      out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      with self.assertRaisesOpError("x <= y did not hold element-wise"):
+        sess.run(out)
+
+  def testInvalidDimensionSizeInputUnavailableInGraphConstruction(self):
+    sp_input = array_ops.sparse_placeholder(dtype=dtypes.int32)
+    with self.test_session(use_gpu=False) as sess:
+      new_shape = np.array([3, 7, 5], dtype=np.int64)
+      out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      with self.assertRaisesOpError("x <= y did not hold element-wise"):
+        sess.run(out, feed_dict={sp_input: self._SparseTensorValue_2x5x6()})
 
 
 class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
