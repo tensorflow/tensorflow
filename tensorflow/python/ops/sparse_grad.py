@@ -173,6 +173,12 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   return (None, a_values_grad, None, b_grad)
 
 
+@ops.RegisterGradient("SparseDenseCwiseAdd")
+def _SparseDenseCwiseAddGrad(unused_op, unused_grad):
+  raise NotImplementedError("Gradient for SparseDenseCwiseAdd is currently not"
+                            " implemented yet.")
+
+
 def _SparseDenseCwiseMulOrDivGrad(op, grad, is_mul):
   """Common code for SparseDenseCwise{Mul,Div} gradients."""
   x_indices = op.inputs[0]

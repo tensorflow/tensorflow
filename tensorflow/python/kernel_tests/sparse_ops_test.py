@@ -391,13 +391,15 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
 class SparseMathOpsTest(test_util.TensorFlowTestCase):
 
   def _check(self, result_tensor, result_np, input_sp_t):
+    self.assertTrue(isinstance(result_tensor, ops.SparseTensor))
+    self.assertTrue(isinstance(input_sp_t, ops.SparseTensor))
     self.assertAllEqual(input_sp_t.indices.eval(), result_tensor.indices.eval())
     self.assertAllEqual(input_sp_t.shape.eval(), result_tensor.shape.eval())
 
     res_densified = sparse_ops.sparse_to_dense(result_tensor.indices,
                                                result_tensor.shape,
                                                result_tensor.values).eval()
-    self.assertAllEqual(res_densified, result_np)
+    self.assertAllEqual(result_np, res_densified)
 
   def testCwiseDivAndMul(self):
     np.random.seed(1618)
@@ -421,6 +423,23 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
           if dtype in [np.int32, np.int64]:
             res = sp_t / dense_t  # should invoke "__truediv__"
             self.assertEqual(res.values.eval().dtype, np.float64)
+
+  def testCwiseAdd(self):
+    with self.test_session(use_gpu=False):
+      # Identity(2) + AllOnes(2,2).  Should be equal to 2 * Identity(2).
+      indices = [[0, 0], [1, 1]]
+      vals = [1, 1]
+      shape = (2, 2)
+
+      sp_t = tf.SparseTensor(indices, vals, shape)
+      dense_t = tf.ones(shape, dtype=dtypes.int32)
+      self._check(sparse_ops.sparse_dense_cwise_add(sp_t, dense_t),
+                  np.identity(2) * 2, sp_t)
+
+      # Variant of above, but broadcasts the dense side.
+      dense_t = tf.ones([1], dtype=dtypes.int32)
+      self._check(sparse_ops.sparse_dense_cwise_add(sp_t, dense_t),
+                  np.identity(2) * 2, sp_t)
 
   def testGradients(self):
     np.random.seed(1618)
