@@ -161,13 +161,11 @@ struct FillPhiloxRandom<CPUDevice, Distribution> {
 
     int64 total_group_count = (size + kGroupSize - 1) / kGroupSize;
 
-    // Limit to maximum six threads for now. The performance scaling is very
-    // sub-linear. Too many threads causes a much worse overall performance.
-    int num_workers = 6;
     const int kGroupCost =
         random::PhiloxRandom::kResultElementCount *
         (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
-    Shard(num_workers, worker_threads.workers, total_group_count, kGroupCost,
+    Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
+          kGroupCost,
           [&gen, data, size, dist](int64 start_group, int64 limit_group) {
             FillPhiloxRandomTask<
                 Distribution,
@@ -399,8 +397,10 @@ class MultinomialOp : public OpKernel {
                     sizeof(int64) * num_samples);
       }
     };
-    Shard(std::min(batch_size, worker_threads.num_threads),
-          worker_threads.workers, batch_size, num_samples * num_classes * 2,
+    // Rough estimate, log2() takes from 58-680 cycles on Haswell.
+    // The functor here calls log twice for each element.
+    const int64 cost = 500 * num_samples * num_classes;
+    Shard(worker_threads.num_threads, worker_threads.workers, batch_size, cost,
           DoWork);
   }
 
