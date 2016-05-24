@@ -76,7 +76,7 @@ class RNNCellTest(tf.test.TestCase):
       with tf.variable_scope("other", initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([1, 3])  # Test GRUCell with input_size != num_units.
         m = tf.zeros([1, 2])
-        g, _ = tf.nn.rnn_cell.GRUCell(2, input_size=3)(x, m)
+        g, _ = tf.nn.rnn_cell.GRUCell(2)(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([g], {x.name: np.array([[1., 1., 1.]]),
                              m.name: np.array([[0.1, 0.1]])})
@@ -104,7 +104,7 @@ class RNNCellTest(tf.test.TestCase):
       with tf.variable_scope("other", initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([1, 3])  # Test BasicLSTMCell with input_size != num_units.
         m = tf.zeros([1, 4])
-        g, out_m = tf.nn.rnn_cell.BasicLSTMCell(2, input_size=3)(x, m)
+        g, out_m = tf.nn.rnn_cell.BasicLSTMCell(2)(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([g, out_m], {x.name: np.array([[1., 1., 1.]]),
                                     m.name: 0.1 * np.ones([1, 4])})
@@ -147,8 +147,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([batch_size, input_size])
         m = tf.zeros([batch_size, state_size])
         output, state = tf.nn.rnn_cell.LSTMCell(
-            num_units=num_units, input_size=input_size,
-            num_proj=num_proj, forget_bias=1.0)(x, m)
+            num_units=num_units, num_proj=num_proj, forget_bias=1.0)(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([output, state],
                        {x.name: np.array([[1., 1.], [2., 2.], [3., 3.]]),
