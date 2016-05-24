@@ -6341,9 +6341,7 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -6366,9 +6364,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -6391,8 +6387,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -6968,9 +6962,6 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -6993,9 +6984,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -7018,10 +7006,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
       }
     }
   }
@@ -7709,9 +7693,6 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -7734,9 +7715,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -7759,10 +7737,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
       }
     }
   }
@@ -7784,34 +7758,6 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
-      }
-    }
-  }
-}
-op {
-  name: "Erfc"
-  input_arg {
-    name: "x"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "y"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -7834,10 +7780,28 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "Erfc"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -7874,9 +7838,7 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -7899,9 +7861,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -7924,8 +7884,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -10154,9 +10112,6 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -10179,9 +10134,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -10204,10 +10156,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
       }
     }
   }
@@ -10281,9 +10229,7 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -10306,9 +10252,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -10331,8 +10275,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -15760,9 +15702,7 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -15785,9 +15725,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -15810,8 +15748,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -17539,9 +17475,7 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -17564,9 +17498,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -17589,8 +17521,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -17712,9 +17642,7 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -17737,9 +17665,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -17762,8 +17688,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -20446,9 +20370,7 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -20471,9 +20393,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -20496,8 +20416,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -21224,9 +21142,7 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -21249,9 +21165,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -21274,8 +21188,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
