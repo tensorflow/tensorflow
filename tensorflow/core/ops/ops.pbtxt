@@ -12157,14 +12157,14 @@ op {
   description: "The hash function is deterministic on the content of the string within the\nprocess.\n\nNote that the hash function may change from time to time."
   deprecation {
     version: 10
-    explanation: "Use tf.string_to_hash_bucket_fast()"
+    explanation: "Use `tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`"
   }
 }
 op {
   name: "StringToHashBucketFast"
   input_arg {
     name: "input"
-    description: "The strings to assing a hash bucket."
+    description: "The strings to assign a hash bucket."
     type: DT_STRING
   }
   output_arg {
@@ -12180,7 +12180,34 @@ op {
     minimum: 1
   }
   summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
-  description: "The hash function is deterministic on the content of the string within the\nprocess and will never change. However, it is not suitable for cryptography."
+  description: "The hash function is deterministic on the content of the string within the\nprocess and will never change. However, it is not suitable for cryptography.\nThis function may be used when CPU time is scarce and inputs are trusted or\nunimportant. There is a risk of adversaries constructing inputs that all hash\nto the same bucket. To prevent this problem, use a strong hash function with\n`tf.string_to_hash_bucket_strong`."
+}
+op {
+  name: "StringToHashBucketStrong"
+  input_arg {
+    name: "input"
+    description: "The strings to assign a hash bucket."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "A Tensor of the same shape as the input `string_tensor`."
+    type: DT_INT64
+  }
+  attr {
+    name: "num_buckets"
+    type: "int"
+    description: "The number of buckets."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "key"
+    type: "list(int)"
+    description: "The key for the keyed hash function passed as a list of two uint64\nelements."
+  }
+  summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
+  description: "The hash function is deterministic on the content of the string within the\nprocess. The hash function is a keyed hash function, where attribute `key`\ndefines the key of the hash function. `key` is an array of 2 elements.\n\nA strong hash is important when inputs may be malicious, e.g. URLs with\nadditional components. Adversaries could try to make their inputs hash to the\nsame bucket for a denial-of-service attack or to skew the results. A strong\nhash prevents this by making it dificult, if not infeasible, to compute inputs\nthat hash to the same bucket. This comes at a cost of roughly 4x higher compute\ntime than tf.string_to_hash_bucket_fast."
 }
 op {
   name: "StringToNumber"
