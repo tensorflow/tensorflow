@@ -591,12 +591,8 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
 
   These sufficient statistics are computed using the one pass algorithm on
-  an input that's optionally shifted using the value of the 1st element in `x`.
-  See:
+  an input that's optionally shifted. See:
   https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
-  Unfortunately, in some cases using a random individual sample as the shift
-  value leads experimentally to very poor numerical stability, so it is disabled
-  by default. The one-pass approach might have to be revised accordingly.
 
   Args:
     x: A `Tensor`.
@@ -612,7 +608,7 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
     * the count (number of elements to average over).
     * the (possibly shifted) sum of the elements in the array.
     * the (possibly shifted) sum of squares of the elements in the array.
-    * the shift by which the mean must be corrected or None if `shift` is False.
+    * the shift by which the mean must be corrected or None if `shift` is None.
   """
   with ops.op_scope([x, axes, shift], name, "sufficient_statistics"):
     x = ops.convert_to_tensor(x, name="x")
