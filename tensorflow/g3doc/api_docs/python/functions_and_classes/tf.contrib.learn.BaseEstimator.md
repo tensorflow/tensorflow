@@ -19,7 +19,7 @@ Parameters:
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=100, metrics=None, name=None)` {#BaseEstimator.evaluate}
+#### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#BaseEstimator.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -135,7 +135,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.predict(x, axis=None, batch_size=None)` {#BaseEstimator.predict}
+#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None)` {#BaseEstimator.predict}
 
 Returns predictions for given features.
 
@@ -143,29 +143,12 @@ Returns predictions for given features.
 
 
 *  <b>`x`</b>: features.
-*  <b>`axis`</b>: Axis on which to argmax. (for classification).
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
 
 ##### Returns:
 
   Numpy array of predicted classes or regression values.
-
-
-- - -
-
-#### `tf.contrib.learn.BaseEstimator.predict_proba(x, batch_size=None)` {#BaseEstimator.predict_proba}
-
-Returns prediction probabilities for given features (classification).
-
-##### Args:
-
-
-*  <b>`x`</b>: features.
-*  <b>`batch_size`</b>: Override default batch size.
-
-##### Returns:
-
-  Numpy array of predicted probabilities.
 
 
 - - -

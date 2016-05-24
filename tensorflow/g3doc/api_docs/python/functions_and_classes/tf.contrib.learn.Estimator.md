@@ -25,7 +25,7 @@ Parameters:
 
 - - -
 
-#### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=100, metrics=None, name=None)` {#Estimator.evaluate}
+#### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#Estimator.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -141,7 +141,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.predict(x, axis=None, batch_size=None)` {#Estimator.predict}
+#### `tf.contrib.learn.Estimator.predict(x=None, input_fn=None, axis=None, batch_size=None)` {#Estimator.predict}
 
 Returns predictions for given features.
 
@@ -149,7 +149,9 @@ Returns predictions for given features.
 
 
 *  <b>`x`</b>: features.
-*  <b>`axis`</b>: Axis on which to argmax. (for classification).
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`axis`</b>: Axis on which to argmax (for classification).
+        Last axis is used by default.
 *  <b>`batch_size`</b>: Override default batch size.
 
 ##### Returns:
@@ -159,7 +161,7 @@ Returns predictions for given features.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.predict_proba(x, batch_size=None)` {#Estimator.predict_proba}
+#### `tf.contrib.learn.Estimator.predict_proba(x=None, input_fn=None, batch_size=None)` {#Estimator.predict_proba}
 
 Returns prediction probabilities for given features (classification).
 
@@ -167,6 +169,7 @@ Returns prediction probabilities for given features (classification).
 
 
 *  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
 *  <b>`batch_size`</b>: Override default batch size.
 
 ##### Returns:
