@@ -123,6 +123,7 @@ endif
 ifeq ($(TARGET),LINUX)
 	LIBS += -ldl
 endif
+
 # Set up Android building
 ifeq ($(TARGET),ANDROID)
 # Override ANDROID_NDK_DIR on the command line with your own NDK location, e.g.
@@ -136,6 +137,72 @@ ifeq ($(TARGET),ANDROID)
 # You need to have an Android version of the protobuf libraries compiled to link
 # in. The compile_android_protobuf.sh script may help.
 	LDFLAGS += -L$(GENDIR)protobuf/lib/
+endif
+
+# Settings for iOS.
+ifeq ($(TARGET),IOS)
+	IPHONEOS_PLATFORM=$(shell xcrun --sdk iphoneos --show-sdk-platform-path)
+	IPHONEOS_SYSROOT=$(shell xcrun --sdk iphoneos --show-sdk-path)
+	IPHONESIMULATOR_PLATFORM=$(shell xcrun --sdk iphonesimulator \
+	--show-sdk-platform-path)
+	IPHONESIMULATOR_SYSROOT=$(shell xcrun --sdk iphonesimulator \
+	--show-sdk-path)
+	IOS_SDK_VERSION=$(shell xcrun --sdk iphoneos --show-sdk-version)
+	MIN_SDK_VERSION=9.2
+# Override IOS_ARCH with ARMV7S, ARM64, or I386.
+	IOS_ARCH=X86_64
+	ifeq ($(IOS_ARCH),ARMV7S)
+		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
+		-arch armv7s \
+		-D__thread= \
+		-Wno-c++11-narrowing \
+		-isysroot \
+		${IPHONEOS_SYSROOT}
+		LDFLAGS = -arch armv7s \
+		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-all_load \
+		-L$(GENDIR)protobuf_ios/lib \
+		-lz
+	endif
+	ifeq ($(IOS_ARCH),ARM64)
+		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
+		-arch arm64 \
+		-D__thread= \
+		-Wno-c++11-narrowing \
+		-isysroot \
+		${IPHONEOS_SYSROOT}
+		LDFLAGS = -arch arm64 \
+		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-all_load \
+		-L$(GENDIR)protobuf_ios/lib \
+		-lz
+	endif
+	ifeq ($(IOS_ARCH),I386)
+		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
+		-arch i386 \
+		-D__thread= \
+		-Wno-c++11-narrowing \
+		-isysroot \
+		${IPHONESIMULATOR_SYSROOT}
+		LDFLAGS = -arch i386 \
+		-mios-simulator-version-min=${MIN_SDK_VERSION} \
+		-all_load \
+		-L$(GENDIR)protobuf_ios/lib \
+		-lz
+	endif
+	ifeq ($(IOS_ARCH),X86_64)
+		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
+		-arch x86_64 \
+		-D__thread= \
+		-Wno-c++11-narrowing \
+		-isysroot \
+		${IPHONESIMULATOR_SYSROOT}
+		LDFLAGS = -arch x86_64 \
+		-mios-simulator-version-min=${MIN_SDK_VERSION} \
+		-all_load \
+		-L$(GENDIR)protobuf_ios/lib \
+		-lz
+	endif
 endif
 
 # This library is the main target for this makefile. It will contain a minimal

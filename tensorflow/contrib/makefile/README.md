@@ -46,10 +46,12 @@ You should download the example graph from [http://download.tensorflow.org/model
 
 ## Supported Systems
 
-The script has been tested on Ubuntu, OS X, and Android. If you look in the
+The script has been tested on Ubuntu, OS X, Android, and iOS. If you look in the
 Makefile itself, you'll see it's broken up into host and target sections. If you
 are cross-compiling, you should look at customizing the target settings to match
 what you need for the system you're aiming at.
+
+## Android
 
 For Android, you'll need to explicitly specify that as the target, and supply
 the location of the NDK toolchain on the command line, for example:
@@ -62,6 +64,22 @@ ANDROID_NDK_DIR=$(HOME)/toolchains/clang-21-stl-gnu
 
 You'll also need a compiled version of the protobuf libraries for Android. You
 can use the helper script at `compile_android_protobuf.sh` to create these.
+
+## iOS
+
+For iOS you'll need to first run `compile_ios_protobuf.sh` to build iOS versions
+of the protobuf libraries. Once that's complete, you can run the makefile
+specifying iOS as the target, along with the architecture you want to build for:
+
+```bash
+make -f tensorflow/contrib/makefile/Makefile \
+TARGET=IOS \
+IOS_ARCH=ARM64
+```
+
+This will build the library and the benchmark program. Since the benchmark is
+command-line only, you'll need to load the static library into an Xcode app
+project to use it.
 
 ## Dependencies
 
