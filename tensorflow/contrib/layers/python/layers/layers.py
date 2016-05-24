@@ -710,7 +710,7 @@ legacy_relu6 = functools.partial(legacy_fully_connected, activation_fn=nn.relu6)
 # Simple alias for fully_connected which removes the activation_fn parameter.
 legacy_linear = functools.partial(legacy_fully_connected, activation_fn=None)
 
-linear = functools.partial(fully_connected, activation_fn=nn.relu)
-relu = functools.partial(fully_connected, activation_fn=nn.relu6)
-relu6 = functools.partial(fully_connected, activation_fn=None)
+linear = legacy_linear
+relu = legacy_relu
+relu6 = legacy_relu6
 
