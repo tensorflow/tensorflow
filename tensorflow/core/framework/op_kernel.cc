@@ -19,6 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/kernel_def.pb_text.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -89,6 +91,8 @@ OpKernel::OpKernel(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  NameRangesForNode(def_, context->op_def(), &input_name_map_,
                                    &output_name_map_));
+  OP_REQUIRES_OK(context, CheckOpDeprecation(context->op_def(),
+                                             context->graph_def_version()));
 }
 
 OpKernel::~OpKernel() {}
@@ -198,6 +202,9 @@ OpKernelContext::OpKernelContext(Params* params, int noutputs)
                                          params_->op_device_context,
                                          eigen_gpu_allocator);
   record_tensor_accesses_ = params_->device->RequiresRecordingAccessedTensors();
+  if (record_tensor_accesses_) {
+    referenced_tensors_.Init();
+  }
 }
 
 OpKernelContext::~OpKernelContext() {
@@ -206,6 +213,7 @@ OpKernelContext::~OpKernelContext() {
       delete value.tensor;
     }
   }
+  if (record_tensor_accesses_) referenced_tensors_.Destroy();
 }
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
@@ -234,7 +242,7 @@ void OpKernelContext::SetStatus(const Status& status) {
 void OpKernelContext::really_record_tensor_reference(const Tensor& tensor) {
   mutex_lock l(mu_);
   // Keep a reference to the underlying memory around.
-  referenced_tensors_.Add(tensor);
+  referenced_tensors_->Add(tensor);
 }
 
 Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
@@ -443,12 +451,12 @@ Status OpKernelContext::allocate_tensor(
     return errors::ResourceExhausted("OOM when allocating tensor with shape",
                                      shape.DebugString());
   }
-  if (LogMemory::IsEnabled()) {
+  if (params_->log_memory) {
     LogMemory::RecordTensorAllocation(params_->op_kernel->name(),
                                       params_->step_id, new_tensor);
   }
-  *out_tensor = new_tensor;
   record_tensor_reference(new_tensor);
+  *out_tensor = std::move(new_tensor);
   return Status::OK();
 }
 
@@ -658,7 +666,7 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
   for (const auto& constraint : kernel_def.constraint()) {
     if (constraint.allowed_values().list().type_size() == 0) {
       return errors::Unimplemented(
-          "KernelDef '", kernel_def.ShortDebugString(),
+          "KernelDef '", ProtoShortDebugString(kernel_def),
           " has constraint on attr '", constraint.name(),
           "' with unsupported type: ",
           SummarizeAttrValue(constraint.allowed_values()));
@@ -673,7 +681,7 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
       } else {
         if (!AttrValueHasType(*found, "list(type)").ok()) {
           return errors::InvalidArgument(
-              "KernelDef '", kernel_def.ShortDebugString(),
+              "KernelDef '", ProtoShortDebugString(kernel_def),
               "' has constraint on attr '", constraint.name(),
               "' that has value '", SummarizeAttrValue(*found),
               "' that does not have type 'type' or 'list(type)' in NodeDef "
@@ -692,7 +700,7 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
       return errors::InvalidArgument(
           "OpKernel '", kernel_def.op(), "' has constraint on attr '",
           constraint.name(), "' not in NodeDef '", SummarizeNodeDef(node_def),
-          "', KernelDef: '", kernel_def.ShortDebugString(), "'");
+          "', KernelDef: '", ProtoShortDebugString(kernel_def), "'");
     }
   }
   *match = true;
@@ -715,8 +723,9 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
       if (*reg != nullptr) {
         return errors::InvalidArgument(
             "Multiple OpKernel registrations match NodeDef '",
-            SummarizeNodeDef(node_def), "': '", (*reg)->def.ShortDebugString(),
-            "' and '", iter->second.def.ShortDebugString(), "'");
+            SummarizeNodeDef(node_def), "': '",
+            ProtoShortDebugString((*reg)->def), "' and '",
+            ProtoShortDebugString(iter->second.def), "'");
       }
       *reg = &iter->second;
     }
@@ -855,7 +864,7 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
     const OpDef* op_def = op_registry.LookUp(kernel_def.op(), &unused_status);
     if (op_def == nullptr) {
       // TODO(josh11b): Make this a hard error.
-      LOG(ERROR) << "OpKernel ('" << kernel_def.ShortDebugString()
+      LOG(ERROR) << "OpKernel ('" << ProtoShortDebugString(kernel_def)
                  << "') for unknown op: " << kernel_def.op();
       continue;
     }

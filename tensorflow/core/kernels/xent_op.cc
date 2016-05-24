@@ -88,6 +88,10 @@ struct XentFunctor<CPUDevice, T> {
 
 REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
                             .Device(DEVICE_CPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        SoftmaxXentWithLogitsOp<CPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
+                            .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T"),
                         SoftmaxXentWithLogitsOp<CPUDevice, float>);
 REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
@@ -98,8 +102,16 @@ REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
                             .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        SoftmaxXentWithLogitsOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T"),
                         SoftmaxXentWithLogitsOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<double>("T"),
+                        SoftmaxXentWithLogitsOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

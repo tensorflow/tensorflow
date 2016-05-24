@@ -60,7 +60,7 @@ tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
 
 *  <b>`tensor`</b>: A `Tensor`.
 *  <b>`dtype`</b>: A type for the returned `Tensor`. Must be `float32`, `float64`,
-  `int8`, `int16`, `int32`, `int64`, `uint8`, or `complex64`.
+  `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -119,7 +119,7 @@ tf.ones_like(tensor) ==> [[1, 1, 1], [1, 1, 1]]
 
 *  <b>`tensor`</b>: A `Tensor`.
 *  <b>`dtype`</b>: A type for the returned `Tensor`. Must be `float32`, `float64`,
-  `int8`, `int16`, `int32`, `int64`, `uint8`, or `complex64`.
+  `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64` or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -502,6 +502,37 @@ For example, RGB images can be cropped with
 ##### Returns:
 
   A cropped tensor of the same rank as `value` and shape `size`.
+
+
+- - -
+
+### `tf.multinomial(logits, num_samples, seed=None, name=None)` {#multinomial}
+
+Draws samples from a multinomial distribution.
+
+Example:
+
+  samples = tf.multinomial(tf.log([[0.5, 0.5]]), 10)
+  # samples has shape [1, 10], where each value is either 0 or 1.
+
+  samples = tf.multinomial([[1, -1, -1]], 10)
+  # samples is equivalent to tf.zeros([1, 10], dtype=tf.int64).
+
+##### Args:
+
+
+*  <b>`logits`</b>: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
+    `[i, :]` represents the unnormalized log probabilities for all classes.
+*  <b>`num_samples`</b>: 0-D.  Number of independent samples to draw for each row slice.
+*  <b>`seed`</b>: A Python integer. Used to create a random seed for the distribution.
+    See
+    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+    for behavior.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  The drawn samples of shape `[batch_size, num_samples]`.
 
 
 - - -

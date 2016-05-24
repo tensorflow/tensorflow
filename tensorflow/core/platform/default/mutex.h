@@ -37,12 +37,17 @@ class LOCKABLE mutex : public std::mutex {
   explicit mutex(LinkerInitialized x) {}
 
   void lock() ACQUIRE() { std::mutex::lock(); }
+  bool try_lock() EXCLUSIVE_TRYLOCK_FUNCTION(true) {
+    return std::mutex::try_lock();
+  };
   void unlock() RELEASE() { std::mutex::unlock(); }
 };
 
 class SCOPED_LOCKABLE mutex_lock : public std::unique_lock<std::mutex> {
  public:
   mutex_lock(class mutex& m) ACQUIRE(m) : std::unique_lock<std::mutex>(m) {}
+  mutex_lock(class mutex& m, std::try_to_lock_t t) ACQUIRE(m)
+      : std::unique_lock<std::mutex>(m, t) {}
   mutex_lock(mutex_lock&& ml) noexcept
       : std::unique_lock<std::mutex>(std::move(ml)) {}
   ~mutex_lock() RELEASE() {}

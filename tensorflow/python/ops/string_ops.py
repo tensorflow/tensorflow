@@ -18,6 +18,7 @@
 String hashing ops take a string input tensor and map each element to an
 integer.
 
+@@string_to_hash_bucket_fast
 @@string_to_hash_bucket
 
 ## Joining
@@ -47,9 +48,11 @@ from tensorflow.python.ops.gen_string_ops import *
 # pylint: enable=wildcard-import
 
 ops.NoGradient("StringToHashBucket")
+ops.NoGradient("StringToHashBucketFast")
 ops.NoGradient("ReduceJoin")
 
 ops.RegisterShape("StringToHashBucket")(common_shapes.unchanged_shape)
+ops.RegisterShape("StringToHashBucketFast")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("ReduceJoin")
@@ -94,4 +97,3 @@ def _ReduceJoinShape(op):
       returned_dims.append(dim)
 
   return [tensor_shape.TensorShape(returned_dims)]
-

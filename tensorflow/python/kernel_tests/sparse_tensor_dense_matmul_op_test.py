@@ -79,6 +79,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
     self._testBasic(np.float32)
     self._testBasic(np.float64)
     self._testBasic(np.complex64)
+    self._testBasic(np.complex128)
 
   # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):
@@ -102,6 +103,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
     self._testLarge(np.float32)
     self._testLarge(np.float64)
     self._testLarge(np.complex64)
+    self._testLarge(np.complex128)
 
   # Tests random sized matrices.
   def testFloatRandom(self):

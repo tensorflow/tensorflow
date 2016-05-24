@@ -26,8 +26,8 @@ namespace perftools {
 namespace gputools {
 namespace cuda {
 
-// e.g. DriverVersion{331, 79}
-using DriverVersion = std::tuple<int, int>;
+// e.g. DriverVersion{346, 3, 4}
+using DriverVersion = std::tuple<int, int, int>;
 
 // Converts a parsed driver version to string form.
 string DriverVersionToString(DriverVersion version);
@@ -72,8 +72,6 @@ class Diagnostician {
   static void LogDriverVersionInformation();
 
  private:
-  // Logs information about the loaded nvidia-related kernel modules.
-  static void LogKernelModuleInformation();
 
   // Given the DSO version number and the driver version file contents, extracts
   // the driver version and compares, warning the user in the case of

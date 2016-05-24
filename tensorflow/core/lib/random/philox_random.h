@@ -105,6 +105,8 @@ class PhiloxRandom {
   typedef uint32 ResultElementType;
   // The number of elements that will be returned.
   static const int kResultElementCount = 4;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 10;
 
   PHILOX_DEVICE_INLINE
   PhiloxRandom() {}

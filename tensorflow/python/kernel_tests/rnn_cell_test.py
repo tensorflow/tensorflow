@@ -23,6 +23,11 @@ import functools
 import numpy as np
 import tensorflow as tf
 
+# TODO(ebrevdo): Remove once _linear is fully deprecated.
+# pylint: disable=protected-access
+from tensorflow.python.ops.rnn_cell import _linear as linear
+# pylint: enable=protected-access
+
 
 class RNNCellTest(tf.test.TestCase):
 
@@ -30,20 +35,20 @@ class RNNCellTest(tf.test.TestCase):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(1.0)):
         x = tf.zeros([1, 2])
-        l = tf.nn.rnn_cell.linear([x], 2, False)
+        l = linear([x], 2, False)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([l], {x.name: np.array([[1., 2.]])})
         self.assertAllClose(res[0], [[3.0, 3.0]])
 
         # Checks prevent you from accidentally creating a shared function.
         with self.assertRaises(ValueError):
-          l1 = tf.nn.rnn_cell.linear([x], 2, False)
+          l1 = linear([x], 2, False)
 
         # But you can create a new one in a new scope and share the variables.
         with tf.variable_scope("l1") as new_scope:
-          l1 = tf.nn.rnn_cell.linear([x], 2, False)
+          l1 = linear([x], 2, False)
         with tf.variable_scope(new_scope, reuse=True):
-          tf.nn.rnn_cell.linear([l1], 2, False)
+          linear([l1], 2, False)
         self.assertEqual(len(tf.trainable_variables()), 2)
 
   def testBasicRNNCell(self):
@@ -105,6 +110,32 @@ class RNNCellTest(tf.test.TestCase):
                                     m.name: 0.1 * np.ones([1, 4])})
         self.assertEqual(len(res), 2)
 
+  def testBasicLSTMCellWithStateTuple(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([1, 2])
+        m0 = tf.zeros([1, 4])
+        m1 = tf.zeros([1, 4])
+        cell = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.nn.rnn_cell.BasicLSTMCell(2)] * 2, state_is_tuple=True)
+        g, (out_m0, out_m1) = cell(x, (m0, m1))
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run([g, out_m0, out_m1],
+                       {x.name: np.array([[1., 1.]]),
+                        m0.name: 0.1 * np.ones([1, 4]),
+                        m1.name: 0.1 * np.ones([1, 4])})
+        self.assertEqual(len(res), 3)
+        # The numbers in results were not calculated, this is just a smoke test.
+        # Note, however, these values should match the original
+        # version having state_is_tuple=False.
+        self.assertAllClose(res[0], [[0.24024698, 0.24024698]])
+        expected_mem0 = np.array([[0.68967271, 0.68967271,
+                                   0.44848421, 0.44848421]])
+        expected_mem1 = np.array([[0.39897051, 0.39897051,
+                                   0.24024698, 0.24024698]])
+        self.assertAllClose(res[1], expected_mem0)
+        self.assertAllClose(res[2], expected_mem1)
+
   def testLSTMCell(self):
     with self.test_session() as sess:
       num_units = 8
@@ -116,7 +147,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([batch_size, input_size])
         m = tf.zeros([batch_size, state_size])
         output, state = tf.nn.rnn_cell.LSTMCell(
-            num_units=num_units, input_size=input_size, 
+            num_units=num_units, input_size=input_size,
             num_proj=num_proj, forget_bias=1.0)(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([output, state],
@@ -127,39 +158,6 @@ class RNNCellTest(tf.test.TestCase):
         # smoke test.
         self.assertEqual(res[0].shape, (batch_size, num_proj))
         self.assertEqual(res[1].shape, (batch_size, state_size))
-        # Different inputs so different outputs and states
-        for i in range(1, batch_size):
-          self.assertTrue(
-              float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) > 1e-6)
-          self.assertTrue(
-              float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) > 1e-6)
-
-  def testTFLSTMCell(self):
-    with self.test_session() as sess:
-      num_units = 8
-      state_size = num_units * 2
-      batch_size = 3
-      input_size = 4
-      feature_size = 2
-      frequency_skip = 1
-      num_shifts = (input_size - feature_size) / frequency_skip + 1
-      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
-        x = tf.zeros([batch_size, input_size])
-        m = tf.zeros([batch_size, state_size*num_shifts])
-        output, state = tf.nn.rnn_cell.TFLSTMCell(
-            num_units=num_units, feature_size=feature_size,
-            frequency_skip=frequency_skip, forget_bias=1.0)(x, m)
-        sess.run([tf.initialize_all_variables()])
-        res = sess.run([output, state],
-                       {x.name: np.array([[1., 1., 1., 1.,],
-                                          [2., 2., 2., 2.], [3., 3., 3., 3.]]),
-                        m.name: 0.1 * np.ones((batch_size, state_size*(
-                            num_shifts)))})
-        self.assertEqual(len(res), 2)
-        # The numbers in results were not calculated, this is mostly just a
-        # smoke test.
-        self.assertEqual(res[0].shape, (batch_size, num_units*num_shifts))
-        self.assertEqual(res[1].shape, (batch_size, state_size*num_shifts))
         # Different inputs so different outputs and states
         for i in range(1, batch_size):
           self.assertTrue(
@@ -241,6 +239,32 @@ class RNNCellTest(tf.test.TestCase):
         self.assertAllClose(res, [[0.175991, 0.175991,
                                    0.13248, 0.13248]])
 
+  def testMultiRNNCellWithStateTuple(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([1, 2])
+        m_bad = tf.zeros([1, 4])
+        m_good = (tf.zeros([1, 2]), tf.zeros([1, 2]))
+
+        # Test incorrectness of state
+        with self.assertRaisesRegexp(ValueError, "Expected state .* a tuple"):
+          tf.nn.rnn_cell.MultiRNNCell(
+              [tf.nn.rnn_cell.GRUCell(2)] * 2, state_is_tuple=True)(x, m_bad)
+
+        _, ml = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.nn.rnn_cell.GRUCell(2)] * 2, state_is_tuple=True)(x, m_good)
+
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(ml, {x.name: np.array([[1., 1.]]),
+                            m_good[0].name: np.array([[0.1, 0.1]]),
+                            m_good[1].name: np.array([[0.1, 0.1]])})
+
+        # The numbers in results were not calculated, this is just a
+        # smoke test.  However, these numbers should match those of
+        # the test testMultiRNNCell.
+        self.assertAllClose(res[0], [[0.175991, 0.175991]])
+        self.assertAllClose(res[1], [[0.13248, 0.13248]])
+
 
 class SlimRNNCellTest(tf.test.TestCase):
 
@@ -292,8 +316,8 @@ def basic_rnn_cell(inputs, state, num_units, scope=None):
     return init_output, init_state
   else:
     with tf.variable_op_scope([inputs, state], scope, "BasicRNNCell"):
-      output = tf.tanh(tf.nn.rnn_cell.linear([inputs, state],
-                                             num_units, True))
+      output = tf.tanh(linear([inputs, state],
+                              num_units, True))
     return output, output
 
 if __name__ == "__main__":

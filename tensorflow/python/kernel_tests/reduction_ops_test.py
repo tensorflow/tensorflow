@@ -22,6 +22,45 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import math_ops
+
+
+class ReducedShapeTest(tf.test.TestCase):
+
+  def _check(self, shape, axes, result):
+    output = math_ops.reduced_shape(shape, axes=axes)
+    self.assertAllEqual(output.eval(), result)
+
+  def testSimple(self):
+    with self.test_session():
+      self._check([3], [], [3])
+      self._check([3], [0], [1])
+      self._check([5, 3], [], [5, 3])
+      self._check([5, 3], [0], [1, 3])
+      self._check([5, 3], [1], [5, 1])
+      self._check([5, 3], [0, 1], [1, 1])
+
+  def testZeros(self):
+    """Check that reduced_shape does the right thing with zero dimensions."""
+    with self.test_session():
+      self._check([0], [], [0])
+      self._check([0], [0], [1])
+      self._check([0, 3], [], [0, 3])
+      self._check([0, 3], [0], [1, 3])
+      self._check([0, 3], [1], [0, 1])
+      self._check([0, 3], [0, 1], [1, 1])
+      self._check([3, 0], [], [3, 0])
+      self._check([3, 0], [0], [1, 0])
+      self._check([3, 0], [1], [3, 1])
+      self._check([3, 0], [0, 1], [1, 1])
+
+  def testNegAxes(self):
+    with self.test_session():
+      self._check([10, 10, 10], [-1], [10, 10, 1])
+      self._check([10, 10, 10], [-1, 2], [10, 10, 1])
+      self._check([10, 10, 10], [-1, -1], [10, 10, 1])
+      self._check([10, 10, 10], [-1, 0], [1, 10, 1])
+      self._check([10, 10, 10], [-3], [1, 10, 10])
 
 
 class SumReductionTest(tf.test.TestCase):
@@ -77,6 +116,9 @@ class SumReductionTest(tf.test.TestCase):
     self._compareAll(np_arr, [1, 2])
     self._compareAll(np_arr, [0, 2])
     self._compareAll(np_arr, [0, 1, 2])
+    self._compareAll(np_arr, [-1])
+    self._compareAll(np_arr, [-1, -3])
+    self._compareAll(np_arr, [-1, 1])
 
   def testFloatReduce4D(self):
     # Create a 4D array of floats and reduce across some
@@ -134,7 +176,7 @@ class SumReductionTest(tf.test.TestCase):
     input_tensor = tf.convert_to_tensor(np_arr)
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Invalid reduction dimension" in str(e)):
-      tf.reduce_sum(input_tensor, [-1])
+      tf.reduce_sum(input_tensor, [-3])
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Invalid reduction dimension" in str(e)):
       tf.reduce_sum(input_tensor, [2])
@@ -193,6 +235,13 @@ class SumReductionTest(tf.test.TestCase):
     # Reduce an empty tensor to a nonempty tensor
     x = np.zeros((5, 0))
     self._compareAll(x, [1])
+
+  def testEmptyGradients(self):
+    with self.test_session():
+      x = tf.zeros([0, 3])
+      y = tf.reduce_sum(x, [1])
+      error = tf.test.compute_gradient_error(x, [0, 3], y, [0])
+      self.assertEqual(error, 0)
 
 
 class MeanReductionTest(tf.test.TestCase):
@@ -274,6 +323,13 @@ class MeanReductionTest(tf.test.TestCase):
                                                   x_init_value=x,
                                                   delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+
+  def testEmptyGradients(self):
+    with self.test_session():
+      x = tf.zeros([0, 3])
+      y = tf.reduce_mean(x, [1])
+      error = tf.test.compute_gradient_error(x, [0, 3], y, [0])
+      self.assertEqual(error, 0)
 
 
 class ProdReductionTest(tf.test.TestCase):
@@ -358,6 +414,13 @@ class ProdReductionTest(tf.test.TestCase):
                                             delta=1)
       with self.assertRaisesOpError("Tensor had NaN values"):
         tf.check_numerics(jacob_t, message="_ProdGrad NaN test").op.run()
+
+  def testEmptyGradients(self):
+    with self.test_session():
+      x = tf.zeros([0, 3])
+      y = tf.reduce_prod(x, [1])
+      error = tf.test.compute_gradient_error(x, [0, 3], y, [0])
+      self.assertEqual(error, 0)
 
 
 class MinReductionTest(tf.test.TestCase):
@@ -464,6 +527,13 @@ class MinReductionTest(tf.test.TestCase):
                                                   x_init_value=x,
                                                   delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
+
+  def testEmptyGradients(self):
+    with self.test_session():
+      x = tf.zeros([0, 3])
+      y = tf.reduce_min(x, [1])
+      error = tf.test.compute_gradient_error(x, [0, 3], y, [0])
+      self.assertEqual(error, 0)
 
 
 class MaxReductionTest(tf.test.TestCase):
@@ -573,6 +643,13 @@ class MaxReductionTest(tf.test.TestCase):
                                                   delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  def testEmptyGradients(self):
+    with self.test_session():
+      x = tf.zeros([0, 3])
+      y = tf.reduce_max(x, [1])
+      error = tf.test.compute_gradient_error(x, [0, 3], y, [0])
+      self.assertEqual(error, 0)
+
 
 class AllReductionTest(tf.test.TestCase):
 
@@ -610,6 +687,9 @@ class AllReductionTest(tf.test.TestCase):
     self._compareAll(np_arr, [1, 2])
     self._compareAll(np_arr, [0, 2])
     self._compareAll(np_arr, [0, 1, 2])
+
+  def testEmpty(self):
+    self._compareAll([], [0])
 
 
 class AnyReductionTest(tf.test.TestCase):
@@ -671,6 +751,9 @@ class AnyReductionTest(tf.test.TestCase):
     s_unknown_indices_keep = tf.reduce_sum(c_unknown_indices, unknown_indices,
                                           keep_dims=True)
     self.assertEqual(2, s_unknown_indices_keep.get_shape().ndims)
+
+  def testEmpty(self):
+    self._compareAll([], [0])
 
 
 if __name__ == "__main__":

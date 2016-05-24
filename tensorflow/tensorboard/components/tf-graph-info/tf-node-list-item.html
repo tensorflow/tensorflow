@@ -1,5 +1,6 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-graph/tf-graph-icon.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 
 <dom-module id="tf-node-list-item">
   <style>
@@ -40,18 +41,24 @@
     top: 1px;
     left: 2px;
   }
+
+  .faded span {
+    color: var(--tb-graph-faded);
+  }
   </style>
   <template>
     <div id="list-item"
          on-mouseover="_nodeListener"
          on-mouseout="_nodeListener"
          on-click="_nodeListener">
-      <tf-graph-icon class="node-icon" height="12"
-          color-by="[[colorBy]]" color-by-params="[[colorByParams]]"
-          node="[[itemNode]]" render-info="[[itemRenderInfo]]"
-          template-index="[[templateIndex]]"></tf-graph-icon>
-      <span title$="[[name]]">[[name]]</span>
-      <span class="edge-label">[[edgeLabel]]</span>
+      <div class$="{{_fadedClass(itemRenderInfo)}}">
+        <tf-graph-icon class="node-icon" height="12"
+            color-by="[[colorBy]]" color-by-params="[[colorByParams]]"
+            node="[[itemNode]]" render-info="[[itemRenderInfo]]"
+            template-index="[[templateIndex]]"></tf-graph-icon>
+        <span title$="[[name]]">[[name]]</span>
+        <span class="edge-label">[[edgeLabel]]</span>
+      </div>
     </div>
   </template>
 
@@ -103,6 +110,10 @@
             nodeName: this.name,
             type: this.itemType
           });
+        },
+
+        _fadedClass: function(itemRenderInfo) {
+          return itemRenderInfo && itemRenderInfo.isFadedOut ? 'faded' : '';
         }
       });
     })();

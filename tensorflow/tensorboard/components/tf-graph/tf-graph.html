@@ -105,22 +105,26 @@ Polymer({
     '_buildRenderHierarchy(graphHierarchy)'
   ],
   _statsChanged: function(stats) {
-    if (stats != null) {
-      tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats);
-      tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
+    if (this.graphHierarchy) {
+      if (stats != null) {
+        tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats);
+        tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
+      }
+
       // Recompute the rendering information.
       this._buildRenderHierarchy(this.graphHierarchy);
     }
   },
   _buildRenderHierarchy: function(graphHierarchy) {
-    tf.time('new tf.graph.render.Hierarchy', function() {
+    tf.graph.util.time('new tf.graph.render.Hierarchy', function() {
       if (graphHierarchy.root.type !== tf.graph.NodeType.META) {
         // root must be metanode but sometimes Polymer's dom-if has not
         // remove tf-graph element yet in <tf-node-info>
         // and thus mistakenly pass non-metanode to this module.
         return;
       }
-      var renderGraph = new tf.graph.render.RenderGraphInfo(graphHierarchy);
+      var renderGraph = new tf.graph.render.RenderGraphInfo(
+          graphHierarchy, !!this.stats /** displayingStats */);
       // Producing the 'color by' parameters to be consumed
       // by the tf-graph-controls panel. It contains information about the
       // min and max values and their respective colors, as well as list
@@ -265,8 +269,8 @@ Polymer({
       value: 0,
       msg: ''
     });
-    var tracker = tf.getTracker(this);
-    var hierarchyTracker = tf.getSubtaskTracker(tracker, 100,
+    var tracker = tf.graph.util.getTracker(this);
+    var hierarchyTracker = tf.graph.util.getSubtaskTracker(tracker, 100,
           'Namespace hierarchy');
     tf.graph.hierarchy.build(this.basicGraph, this.hierarchyParams, hierarchyTracker)
     .then(function(graphHierarchy) {

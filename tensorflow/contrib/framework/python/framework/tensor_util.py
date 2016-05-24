@@ -13,15 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor utility functions.
-
-@@assert_same_float_dtype
-@@assert_scalar_int
-@@local_variable
-@@reduce_sum_n
-@@with_shape
-@@with_same_shape
-"""
+"""Tensor utility functions."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,13 +26,16 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
 __all__ = [
-    'assert_same_float_dtype', 'assert_scalar_int',
-    'local_variable', 'reduce_sum_n', 'with_shape', 'with_same_shape',
-]
+    'assert_same_float_dtype',
+    'assert_scalar_int',
+    'convert_to_tensor_or_sparse_tensor',
+    'reduce_sum_n',
+    'with_shape',
+    'with_same_shape']
 
 
 def _assert_same_base_type(items, expected_type=None):
-  """Asserts all items are of the same base type.
+  r"""Asserts all items are of the same base type.
 
   Args:
     items: List of graph items (e.g., `Variable`, `Tensor`, `SparseTensor`,
@@ -114,23 +109,6 @@ def assert_scalar_int(tensor):
   if shape.ndims != 0:
     raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))
   return tensor
-
-
-# TODO(ptucker): Move to tf.variables?
-def local_variable(initial_value, validate_shape=True, name=None):
-  """Create variable and add it to `GraphKeys.LOCAL_VARIABLES` collection.
-
-  Args:
-    initial_value: See variables.Variable.__init__.
-    validate_shape: See variables.Variable.__init__.
-    name: See variables.Variable.__init__.
-  Returns:
-    New variable.
-  """
-  return variables.Variable(
-      initial_value, trainable=False,
-      collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      validate_shape=validate_shape, name=name)
 
 
 def reduce_sum_n(tensors, name=None):
@@ -307,3 +285,36 @@ def with_shape(expected_shape, tensor):
         tensor.name, expected_shape, actual_shape))
 
   return tensor
+
+
+def convert_to_tensor_or_sparse_tensor(
+    value, dtype=None, name=None, as_ref=False):
+  """Converts value to a `SparseTensor` or `Tensor`.
+
+  Args:
+    value: A `SparseTensor`, `SparseTensorValue`, or an object whose type has a
+      registered `Tensor` conversion function.
+    dtype: Optional element type for the returned tensor. If missing, the
+      type is inferred from the type of `value`.
+    name: Optional name to use if a new `Tensor` is created.
+    as_ref: True if we want the result as a ref tensor. Only used if a new
+      `Tensor` is created.
+
+  Returns:
+    A `SparseTensor` or `Tensor` based on `value`.
+
+  Raises:
+    RuntimeError: If result type is incompatible with `dtype`.
+  """
+  if dtype is not None:
+    dtype = dtypes.as_dtype(dtype)
+  if isinstance(value, ops.SparseTensorValue):
+    value = ops.SparseTensor.from_value(value)
+  if isinstance(value, ops.SparseTensor):
+    if dtype and not dtype.is_compatible_with(value.dtype):
+      raise RuntimeError(
+          'Sparse dtype: requested = %s, actual = %s' % (
+              dtype.name, value.dtype.name))
+    return value
+  return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
+

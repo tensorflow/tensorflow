@@ -183,7 +183,10 @@ def _EnterGrad(op, grad):
     return grad
   if op.get_attr("is_constant"):
     # Add a gradient accumulator for each loop invariant.
-    result = grad_ctxt.AddBackPropAccumulator(grad)
+    if isinstance(grad, ops.IndexedSlices):
+      result = grad_ctxt.AddBackPropIndexedSlicesAccumulator(grad)
+    else:
+      result = grad_ctxt.AddBackPropAccumulator(grad)
   else:
     result = exit(grad)
     grad_ctxt.ExitResult([result])

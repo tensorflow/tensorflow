@@ -54,6 +54,8 @@ or join multiple tensors together.
 @@reverse_sequence
 @@reverse
 @@transpose
+@@space_to_batch
+@@batch_to_space
 @@space_to_depth
 @@depth_to_space
 @@gather
@@ -76,6 +78,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import common_shapes
+from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import logging_ops
@@ -238,7 +241,100 @@ def pack(values, name="pack"):
   Returns:
     output: A packed `Tensor` with the same type as `values`.
   """
-  return gen_array_ops._pack(values, name=name)
+  try:
+    # If the input is a constant list, it can just be converted to a constant op
+    return ops.convert_to_tensor(values, name=name)
+  except (TypeError, ValueError):
+    # Input list contains non-constant tensors
+    return gen_array_ops._pack(values, name=name)
+
+
+# pylint: disable=invalid-name
+def _autopacking_helper(list_or_tuple, dtype, name):
+  """Converts the given list or tuple to a tensor by packing.
+
+  Args:
+    list_or_tuple: A (possibly nested) list or tuple containing a tensor.
+    dtype: The element type of the returned tensor.
+    name: A name for the returned tensor.
+
+  Returns:
+    A `tf.Tensor` with value equivalent to `list_or_tuple`.
+  """
+  must_pack = False
+  converted_elems = []
+  with ops.name_scope(name) as scope:
+    for i, elem in enumerate(list_or_tuple):
+      if ops.is_dense_tensor_like(elem):
+        if dtype is not None and elem.dtype.base_dtype != dtype:
+          raise TypeError(
+              "Cannot convert a list containing a tensor of dtype "
+              "%s to %s (Tensor is: %r)" % (elem.dtype, dtype, elem))
+        converted_elems.append(elem)
+        must_pack = True
+      elif isinstance(elem, (list, tuple)):
+        converted_elem = _autopacking_helper(elem, dtype, str(i))
+        if ops.is_dense_tensor_like(converted_elem):
+          must_pack = True
+        converted_elems.append(converted_elem)
+      else:
+        converted_elems.append(elem)
+    if must_pack:
+      elems_as_tensors = []
+      for i, elem in enumerate(converted_elems):
+        if ops.is_dense_tensor_like(elem):
+          elems_as_tensors.append(elem)
+        else:
+          # NOTE(mrry): This is inefficient, but it enables us to
+          # handle the case where the list arguments are other
+          # convertible-to-tensor types, such as numpy arrays.
+          elems_as_tensors.append(
+              constant_op.constant(elem, dtype=dtype, name=str(i)))
+      return gen_array_ops._pack(elems_as_tensors, name=scope)
+    else:
+      return converted_elems
+
+
+def _get_dtype_from_nested_lists(list_or_tuple):
+  """Returns the dtype of any tensor-like object in `list_or_tuple`, if found.
+
+  Args:
+    list_or_tuple: A list or tuple representing an object that can be
+      converted to a `tf.Tensor`.
+
+  Returns:
+    The dtype of any tensor-like object in `list_or_tuple`, or `None` if no
+    such object exists.
+  """
+  for elem in list_or_tuple:
+    if ops.is_dense_tensor_like(elem):
+      return elem.dtype.base_dtype
+    elif isinstance(elem, (list, tuple)):
+      maybe_dtype = _get_dtype_from_nested_lists(elem)
+      if maybe_dtype is not None:
+        return maybe_dtype
+  return None
+
+
+def _autopacking_conversion_function(v, dtype=None, name=None, as_ref=False):
+  """Tensor conversion function that automatically packs arguments."""
+  if as_ref:
+    return NotImplemented
+  inferred_dtype = _get_dtype_from_nested_lists(v)
+  if inferred_dtype is None:
+    # We did not find any tensor-like objects in the nested lists, so defer to
+    # other conversion functions.
+    return NotImplemented
+  if dtype is not None and dtype != inferred_dtype:
+    return NotImplemented
+  return _autopacking_helper(v, inferred_dtype, name or "packed")
+# pylint: enable=invalid-name
+
+
+# NOTE: Register this conversion function to run *before* one that
+# assumes every element is a value.
+ops.register_tensor_conversion_function(
+    (list, tuple), _autopacking_conversion_function, 99)
 
 
 def unpack(value, num=None, name="unpack"):
@@ -405,9 +501,8 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
   where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 
   Args:
-    tensor:  N-D tensor.  First K dimensions can be None, which allows e.g.
-      undefined batch size.  Trailing dimensions must be specified.
-    mask:  K-D boolean tensor, K <= N.
+    tensor:  N-D tensor.
+    mask:  K-D boolean tensor, K <= N and K must be known statically.
     name:  A name for this operation (optional).
 
   Returns:
@@ -421,7 +516,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
 
   ```python
   # 2-D example
-  a = [[1, 2], [3, 4], [5, 6]]
+  tensor = [[1, 2], [3, 4], [5, 6]]
   mask = [True, False, True]
   boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
   ```
@@ -446,7 +541,12 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
           ".  E.g. shape=[None] is ok, but shape=None is not.")
     shape_tensor[:ndims_mask].assert_is_compatible_with(shape_mask)
 
-    tensor = reshape(tensor, [-1] + shape_tensor.as_list()[ndims_mask:])
+    tensor = reshape(tensor, concat(0, [[-1], shape(tensor)[ndims_mask:]]))
+    first_dim = shape_tensor[:ndims_mask].num_elements()
+    tensor.set_shape(
+        tensor_shape.as_shape([first_dim])
+        .concatenate(shape_tensor[ndims_mask:]))
+
     mask = reshape(mask, [-1])
     return _apply_mask_1d(tensor, mask)
 
@@ -764,6 +864,61 @@ def placeholder(dtype, shape=None, name=None):
   return ret
 
 
+def sparse_placeholder(dtype, shape=None, name=None):
+  """Inserts a placeholder for a sparse tensor that will be always fed.
+
+  **Important**: This sparse tensor will produce an error if evaluated.
+  Its value must be fed using the `feed_dict` optional argument to
+  `Session.run()`, `Tensor.eval()`, or `Operation.run()`.
+
+  For example:
+
+  ```python
+  x = tf.sparse_placeholder(tf.float32)
+  y = tf.sparse_reduce_sum(x)
+
+  with tf.Session() as sess:
+    print(sess.run(y))  # ERROR: will fail because x was not fed.
+
+    indices = np.array([[3, 2, 0], [4, 5, 1]], dtype=np.int64)
+    values = np.array([1.0, 2.0], dtype=np.float32)
+    shape = np.array([7, 9, 2], dtype=np.int64)
+    print(sess.run(y, feed_dict={
+      x: tf.SparseTensorValue(indices, values, shape)}))  # Will succeed.
+    print(sess.run(y, feed_dict={
+      x: (indices, values, shape)}))  # Will succeed.
+
+    sp = tf.SparseTensor(indices=indices, values=values, shape=shape)
+    sp_value = sp.eval(session)
+    print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
+  ```
+
+  Args:
+    dtype: The type of `values` elements in the tensor to be fed.
+    shape: The shape of the tensor to be fed (optional). If the shape is not
+      specified, you can feed a sparse tensor of any shape.
+    name: A name for prefixing the operations (optional).
+
+  Returns:
+    A `SparseTensor` that may be used as a handle for feeding a value, but not
+    evaluated directly.
+  """
+  if shape is None:
+    shape = placeholder(
+        dtypes.int64, name=(name + "/shape") if name is not None else None)
+  else:
+    shape = ops.convert_to_tensor(
+        shape, name=(name + "/shape") if name is not None else None)
+  return ops.SparseTensor(
+      values=placeholder(
+          dtype, name=(name + "/values") if name is not None else None),
+      indices=placeholder(
+          dtypes.int64,
+          name=(name + "/indices") if name is not None else None),
+      shape=shape
+  )
+
+
 def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invalid-name
   """Pads a tensor.
 
@@ -968,21 +1123,18 @@ def _DiagPartShape(op):
     A single-element list containing the shape of the output.
 
   Raises:
-    ValueError: If input has odd rank or greater than 6
+    ValueError: If input has odd rank or greater than 6, or the first and
+    second halves of the shape are incompatible.
 
   """
-  shape = op.inputs[0].get_shape()
-  rank = len(shape)
+  input_shape = op.inputs[0].get_shape().with_rank_at_most(6)
+  rank = input_shape.ndims
+  if rank is None:
+    return [tensor_shape.unknown_shape()]
+  if rank % 2:
+    raise ValueError("Input must be even rank, got rank = " + str(rank) + ".")
   mid = rank // 2
-  if rank % 2 or rank > 6:
-    raise ValueError("Input must have even rank <= 6, input rank is " +
-                     str(rank) + "." )
-  if shape[:mid] != shape[mid:]:
-    raise ValueError("Invalid shape, shape[:mid] " + str(shape[:mid]) +
-                     " and shape[mid:] " + str(shape[mid:]) +
-                     " do not match ")
-  input_shape = shape.with_rank_at_most(6)
-  return [input_shape[:len(input_shape) // 2]]
+  return [input_shape[:mid].merge_with(input_shape[mid:])]
 
 @ops.RegisterShape("ExpandDims")
 def _ExpandDimsShape(op):
@@ -1068,17 +1220,19 @@ def _SqueezeShape(op):
 def _BitcastShape(op):
   """Shape function for Bitcast op."""
   input_shape = op.inputs[0].get_shape()
+  if input_shape == tensor_shape.unknown_shape():
+    return [tensor_shape.unknown_shape()]
   input_type = op.inputs[0].dtype
   size_of_input = input_type.size
   output = dtypes.as_dtype(op.get_attr("type"))
   size_of_output = output.size
   if size_of_input == size_of_output:
-    return [tensor_shape.TensorShape(input_shape)]
+    return [input_shape]
   else:
     if size_of_output > size_of_input:
-      new_shape = input_shape.as_list()
+      new_shape = input_shape.with_rank_at_least(1).as_list()
       last_val = new_shape[-1]
-      if last_val == (size_of_output // size_of_input):
+      if last_val is None or last_val == (size_of_output // size_of_input):
         new_shape = new_shape[:-1]
       else:
         raise ValueError(
@@ -1513,6 +1667,153 @@ def _QuantizeDequantizeShape(op):
   return common_shapes.unchanged_shape(op)
 
 
+@ops.RegisterShape("SpaceToBatch")
+def _SpaceToBatchShape(op):
+  """Shape function for the SpaceToBatch op.
+
+  The output shape is determined by the following inputs/ attributes:
+
+  * input: A rank-4 tensor with shape [B, H, W, D]
+  * paddings: A 2-by-2 matrix, specified as follows:
+
+        paddings = [[pad_top, pad_bottom], [pad_left, pad_right]],
+
+    implying effective padded spatial dimensions:
+
+        Hp = pad_top + H + pad_bottom
+        Wp = pad_left + W + pad_right
+
+    Both Hp and Wp must be multiples of block_size.
+  * block_size: an int.
+
+  Its output is also a rank-4 tensor with shape:
+
+      [B*block_size*block_size, Hp/block_size, Wp/block_size, D]
+
+  Args:
+    op: A SpaceToBatch op.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If the shapes of inputs are not as expected.
+    IndexError: If block_size does not divide Wp or Hp.
+  """
+  # Check that the input tensor is 4-D.
+  try:
+    input_shape = op.inputs[0].get_shape().with_rank(4)
+  except ValueError:
+    raise ValueError(
+        "tf.space_to_batch() requires 4-D input tensor.")
+
+  # Check that the paddings tensor is a matrix with shape [2, 2].
+  try:
+    paddings_shape = op.inputs[1].get_shape().with_rank(2)
+  except ValueError:
+    raise ValueError(
+        "tf.space_to_batch() requires 2-D paddings tensor.")
+
+  if paddings_shape[0] != 2 or paddings_shape[1] != 2:
+    raise ValueError(
+        "tf.space_to_batch() requires input paddings with shape [2, 2].")
+
+  block_size = op.get_attr("block_size")
+  if block_size <= 1:
+    raise ValueError("Attribute block_size has to be > 1.")
+
+  paddings = tensor_util.constant_value(op.inputs[1])
+  if (paddings[0, 0] < 0 or paddings[0, 1] < 0 or
+      paddings[1, 0] < 0 or paddings[1, 1] < 0):
+    raise ValueError("paddings cannot be negative.")
+
+  input_height = input_shape[1] + paddings[0, 0] + paddings[0, 1]
+  input_width = input_shape[2] + paddings[1, 0] + paddings[1, 1]
+
+  if input_height % block_size > 0 or input_width % block_size > 0:
+    raise IndexError("block_size needs to divide both width and height.")
+
+  batch = input_shape[0] * block_size * block_size
+  height = input_height // block_size
+  width = input_width // block_size
+  depth = input_shape[3]
+
+  return [tensor_shape.TensorShape([batch, height, width, depth])]
+
+
+@ops.RegisterShape("BatchToSpace")
+def _BatchToSpaceShape(op):
+  """Shape function for the BatchToSpace op.
+
+  The output shape is determined by the following inputs/ attributes:
+
+  * input: A rank-4 tensor with shape
+
+        [B*block_size*block_size, Hp/block_size, Wp/block_size, D]
+
+    Note that the batch size of the input tensor must be divisible by
+    `block_size * block_size`.
+  * crops: A 2-by-2 matrix, specified as follows:
+
+        crops = [[crop_top, crop_bottom], [crop_left, crop_right]].
+
+  * block_size: an int.
+
+  Its output is also a rank-4 tensor with shape [B, H, W, D], where:
+
+      H = Hp - crop_top - crop_bottom
+      W = Wp - crop_left - crop_right
+
+  Args:
+    op: A BatchToSpace op.
+
+  Returns:
+    A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If the shapes of the inputs are not as expected.
+    IndexError: If block_size*block_size does not divide the input batch size.
+  """
+  # Check that the input tensor is 4-D.
+  try:
+    input_shape = op.inputs[0].get_shape().with_rank(4)
+  except ValueError:
+    raise ValueError("tf.batch_to_space() requires 4-D input tensor.")
+
+  # Check that the crops tensor is a matrix with shape [2, 2].
+  try:
+    crops_shape = op.inputs[1].get_shape().with_rank(2)
+  except ValueError:
+    raise ValueError(
+        "tf.space_to_batch() requires 2-D crops tensor.")
+
+  if crops_shape[0] != 2 or crops_shape[1] != 2:
+    raise ValueError(
+        "tf.space_to_batch() requires input crops with shape [2, 2].")
+
+  crops = tensor_util.constant_value(op.inputs[1])
+  if (crops[0, 0] < 0 or crops[0, 1] < 0 or
+      crops[1, 0] < 0 or crops[1, 1] < 0):
+    raise ValueError("crops cannot be negative.")
+
+  block_size = op.get_attr("block_size")
+  if block_size <= 1:
+    raise ValueError("Attribute block_size has to be > 1.")
+
+  input_batch = input_shape[0]
+  if input_batch % (block_size * block_size) > 0:
+    raise IndexError("input batch must be divisible by block_size*block_size.")
+  batch = input_batch // (block_size * block_size)
+
+  height = input_shape[1] * block_size - crops[0, 0] - crops[0, 1]
+  width = input_shape[2] * block_size - crops[1, 0] - crops[1, 1]
+  if height <= 0 or width <= 0:
+    raise ValueError("Output height or width is not positive.")
+  depth = input_shape[3]
+
+  return [tensor_shape.TensorShape([batch, height, width, depth])]
+
+
 @ops.RegisterShape("SpaceToDepth")
 def _SpaceToDepthShape(op):
   """Shape function for the SpaceToDepth op.
@@ -1609,6 +1910,172 @@ def _DepthToSpaceShape(op):
   new_depth = input_depth // (block_size * block_size)
   return [tensor_shape.TensorShape(
       [input_shape[0], height, width, new_depth])]
+
+
+def one_hot(indices, depth, on_value=None, off_value=None,
+            axis=None, dtype=None, name=None):
+  """Returns a one-hot tensor.
+
+  The locations represented by indices in `indices` take value `on_value`,
+  while all other locations take value `off_value`. 
+
+  `on_value` and `off_value` must have matching data types. If `dtype` is also
+  provided, they must be the same data type as specified by `dtype`.
+
+  If `on_value` is not provided, it will default to the value `1` with type 
+  `dtype`
+
+  If `off_value` is not provided, it will default to the value `0` with type 
+  `dtype`
+
+  If the input `indices` is rank `N`, the output will have rank `N+1`. The
+  new axis is created at dimension `axis` (default: the new axis is appended
+  at the end).
+
+  If `indices` is a scalar the output shape will be a vector of length `depth`
+
+  If `indices` is a vector of length `features`, the output shape will be:
+  ```
+    features x depth if axis == -1
+    depth x features if axis == 0
+  ```
+
+  If `indices` is a matrix (batch) with shape `[batch, features]`, the output
+  shape will be:
+  ```
+    batch x features x depth if axis == -1
+    batch x depth x features if axis == 1
+    depth x batch x features if axis == 0
+  ```
+
+  If `dtype` is not provided, it will attempt to assume the data type of 
+  `on_value` or `off_value`, if one or both are passed in. If none of 
+  `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the 
+  value `tf.float32`
+
+  Note: If a non-numeric data type output is desired (tf.string, tf.bool, etc.),
+  both `on_value` and `off_value` _must_ be provided to `one_hot`
+
+  Examples
+  =========
+
+  Suppose that
+
+  ```
+    indices = [0, 2, -1, 1]
+    depth = 3
+    on_value = 5.0
+    off_value = 0.0
+    axis = -1
+  ```
+
+  Then output is `[4 x 3]`:
+
+  ```
+    output =
+    [5.0 0.0 0.0]  // one_hot(0)
+    [0.0 0.0 5.0]  // one_hot(2)
+    [0.0 0.0 0.0]  // one_hot(-1)
+    [0.0 5.0 0.0]  // one_hot(1)
+  ```
+
+  Suppose that
+
+  ```
+    indices = [[0, 2], [1, -1]]
+    depth = 3
+    on_value = 1.0
+    off_value = 0.0
+    axis = -1
+  ```
+
+  Then output is `[2 x 2 x 3]`:
+
+  ```
+    output =
+    [
+      [1.0, 0.0, 0.0]  // one_hot(0)
+      [0.0, 0.0, 1.0]  // one_hot(2)
+    ][
+      [0.0, 1.0, 0.0]  // one_hot(1)
+      [0.0, 0.0, 0.0]  // one_hot(-1)
+    ]
+  ```
+
+  Using default values for `on_value` and `off_value`:
+
+  ```
+    indices = [0, 1, 2]
+    depth = 3
+  ```
+
+  The output will be
+
+  ```
+    output = 
+    [[1., 0., 0.],
+     [0., 1., 0.],
+     [0., 0., 1.]]
+  ```
+
+  Args:
+    indices: A `Tensor` of indices.
+    depth: A scalar defining the depth of the one hot dimension.
+    on_value: A scalar defining the value to fill in output when `indices[j]
+      = i`. (default: 1)
+    off_value: A scalar defining the value to fill in output when `indices[j]
+      != i`. (default: 0)
+    axis: The axis to fill (default: -1, a new inner-most axis).
+    dtype: The data type of the output tensor.
+
+  Returns:
+    output: The one-hot tensor.
+
+  Raises:
+    TypeError: If dtype of either `on_value` or `off_value` don't match `dtype`
+    TypeError: If dtype of `on_value` and `off_value` don't match one another
+  """
+  with ops.op_scope([indices, depth, on_value, off_value,
+            axis, dtype], name, "one_hot") as name:
+    on_exists = on_value is not None
+    off_exists = off_value is not None
+
+    on_dtype = ops.convert_to_tensor(on_value).dtype.base_dtype if on_exists \
+                  else None
+    off_dtype = ops.convert_to_tensor(off_value).dtype.base_dtype if off_exists\
+                  else None
+    
+    if on_exists or off_exists:
+      if dtype is not None:
+        # Ensure provided on_value and/or off_value match dtype
+        if (on_exists and on_dtype != dtype):
+          raise TypeError("dtype {0} of on_value does not match " \
+                          "dtype parameter {1}".format(on_dtype, dtype))
+        if (off_exists and off_dtype != dtype): 
+          raise TypeError("dtype {0} of off_value does not match " \
+                          "dtype parameter {1}".format(off_dtype, dtype))
+      else:
+        # dtype not provided: automatically assign it
+        dtype = on_dtype if on_exists else off_dtype
+    elif dtype is None:
+      # None of on_value, off_value, or dtype provided. Default dtype to float32
+      dtype = dtypes.float32
+    
+    if not on_exists:
+      # on_value not provided: assign to value 1 of type dtype
+      on_value = ops.convert_to_tensor(1, dtype, name="on_value")
+      on_dtype = dtype
+    if not off_exists:
+      # off_value not provided: assign to value 0 of type dtype
+      off_value = ops.convert_to_tensor(0, dtype, name="off_value")
+      off_dtype = dtype
+
+    if on_dtype != off_dtype:
+      raise TypeError("dtype {0} of on_value does not match " \
+                      "dtype {1} of off_value".format(on_dtype, off_dtype))
+
+    return gen_array_ops._one_hot(indices, depth, on_value, 
+                                  off_value, axis, name)
 
 
 @ops.RegisterShape("OneHot")

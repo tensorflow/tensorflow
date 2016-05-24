@@ -167,7 +167,7 @@ y: a tensor of the same shape and type as x but filled with zeros.
 REGISTER_OP("Diag")
     .Input("diagonal: T")
     .Output("output: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {float, double, int32, int64, complex64}")
     .Doc(R"doc(
 Returns a diagonal tensor with a given diagonal values.
 
@@ -196,7 +196,7 @@ diagonal: Rank k tensor where k is at most 3.
 REGISTER_OP("DiagPart")
     .Input("input: T")
     .Output("diagonal: T")
-    .Attr("T: {float, double, int32, int64}")
+    .Attr("T: {float, double, int32, int64, complex64}")
     .Doc(R"doc(
 Returns the diagonal part of the tensor.
 
@@ -624,7 +624,7 @@ to pretend that the value was a constant. Some examples include:
 REGISTER_OP("CheckNumerics")
     .Input("tensor: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Attr("message: string")
     .Doc(R"doc(
 Checks a tensor for NaN and Inf values.
@@ -660,14 +660,14 @@ For example:
 ```prettyprint
 # tensor 't' is [1, 2, 3, 4, 5, 6, 7, 8, 9]
 # tensor 't' has shape [9]
-reshape(t, [3, 3]) ==> [[1, 2, 3]
-                        [4, 5, 6]
+reshape(t, [3, 3]) ==> [[1, 2, 3],
+                        [4, 5, 6],
                         [7, 8, 9]]
 
-# tensor 't' is [[[1, 1], [2, 2]]
+# tensor 't' is [[[1, 1], [2, 2]],
 #                [[3, 3], [4, 4]]]
 # tensor 't' has shape [2, 2, 2]
-reshape(t, [2, 4]) ==> [[1, 1, 2, 2]
+reshape(t, [2, 4]) ==> [[1, 1, 2, 2],
                         [3, 3, 4, 4]]
 
 # tensor 't' is [[[1, 1, 1],
@@ -679,9 +679,22 @@ reshape(t, [2, 4]) ==> [[1, 1, 2, 2]
 # tensor 't' has shape [3, 2, 3]
 # pass '[-1]' to flatten 't'
 reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
-# -1 can also be used with higher dimensional shapes
+
+# -1 can also be used to infer the shape
+
+# -1 is inferred to be 9:
 reshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
                          [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+# -1 is inferred to be 2:
+reshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
+                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+# -1 is inferred to be 3:
+reshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],
+                              [2, 2, 2],
+                              [3, 3, 3]],
+                             [[4, 4, 4],
+                              [5, 5, 5],
+                              [6, 6, 6]]]
 
 # tensor 't' is [7]
 # shape `[]` reshapes to a scalar
@@ -993,6 +1006,7 @@ REGISTER_OP("TileGrad")
     .Input("multiples: int32")
     .Output("output: T")
     .Attr("T: type")
+    .Deprecated(3, "TileGrad has been replaced with reduce_sum")
     .Doc(R"doc(
 Returns the gradient of `Tile`.
 
@@ -1324,6 +1338,207 @@ idx: 1-D. Positions of `x` values preserved in `out`.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("SpaceToBatch")
+    .Input("input: T")
+    .Input("paddings: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("block_size: int32 > 1")
+    .Doc(R"doc(
+SpaceToBatch for 4-D tensors of type T.
+
+Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
+More specifically, this op outputs a copy of the input tensor where values from
+the `height` and `width` dimensions are moved to the `batch` dimension. After
+the zero-padding, both `height` and `width` of the input must be divisible by the
+block size.
+
+input: 4-D with shape `[batch, height, width, depth]`.
+
+paddings: 2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
+  the padding of the input with zeros across the spatial dimensions as follows:
+
+      paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
+
+  The effective spatial dimensions of the zero-padded input tensor will be:
+
+      height_pad = pad_top + height + pad_bottom
+      width_pad = pad_left + width + pad_right
+
+The attr `block_size` must be greater than one. It indicates the block size.
+
+  * Non-overlapping blocks of size `block_size x block size` in the height and
+    width dimensions are rearranged into the batch dimension at each location.
+  * The batch of the output tensor is `batch * block_size * block_size`.
+  * Both height_pad and width_pad must be divisible by block_size.
+
+The shape of the output will be:
+
+    [batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
+     depth]
+
+Examples:
+
+(1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:
+
+```prettyprint
+x = [[[[1], [2]], [[3], [4]]]]
+```
+
+The output tensor has shape `[4, 1, 1, 1]` and value:
+
+```prettyprint
+[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
+```
+
+(2) For the following input of shape `[1, 2, 2, 3]` and block_size of 2:
+
+```prettyprint
+x = [[[[1, 2, 3], [4, 5, 6]],
+      [[7, 8, 9], [10, 11, 12]]]]
+```
+
+The output tensor has shape `[4, 1, 1, 3]` and value:
+
+```prettyprint
+[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+```
+
+(3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:
+
+```prettyprint
+x = [[[[1],   [2],  [3],  [4]],
+      [[5],   [6],  [7],  [8]],
+      [[9],  [10], [11],  [12]],
+      [[13], [14], [15],  [16]]]]
+```
+
+The output tensor has shape `[4, 2, 2, 1]` and value:
+
+```prettyprint
+x = [[[[1], [3]], [[5], [7]]],
+     [[[2], [4]], [[10], [12]]],
+     [[[5], [7]], [[13], [15]]],
+     [[[6], [8]], [[14], [16]]]]
+```
+
+(4) For the following input of shape `[2, 2, 4, 1]` and block_size of 2:
+
+```prettyprint
+x = [[[[1],   [2],  [3],  [4]],
+      [[5],   [6],  [7],  [8]]],
+     [[[9],  [10], [11],  [12]],
+      [[13], [14], [15],  [16]]]]
+```
+
+The output tensor has shape `[8, 1, 2, 1]` and value:
+
+```prettyprint
+x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
+     [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
+```
+
+Among others, this operation is useful for reducing atrous convolution into
+regular convolution.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("BatchToSpace")
+    .Input("input: T")
+    .Input("crops: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("block_size: int32 > 1")
+    .Doc(R"doc(
+BatchToSpace for 4-D tensors of type T.
+
+Rearranges (permutes) data from batch into blocks of spatial data, followed by
+cropping. This is the reverse transformation of SpaceToBatch. More specifically,
+this op outputs a copy of the input tensor where values from the `batch`
+dimension are moved in spatial blocks to the `height` and `width` dimensions,
+followed by cropping along the `height` and `width` dimensions.
+
+input: 4-D tensor with shape
+ `[batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
+   depth]`. Note that the batch size of the input tensor must be divisible by
+ `block_size * block_size`.
+
+crops: 2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
+  how many elements to crop from the intermediate result across the spatial
+  dimensions as follows:
+
+      crops = [[crop_top, crop_bottom], [crop_left, crop_right]]
+
+output: 4-D with shape `[batch, height, width, depth]`, where:
+
+      height = height_pad - crop_top - crop_bottom
+      width = width_pad - crop_left - crop_right
+
+The attr `block_size` must be greater than one. It indicates the block size.
+
+Examples:
+
+(1) For the following input of shape `[4, 1, 1, 1]` and block_size of 2:
+
+```prettyprint
+[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
+```
+
+The output tensor has shape `[1, 2, 2, 1]` and value:
+
+```prettyprint
+x = [[[[1], [2]], [[3], [4]]]]
+```
+
+(2) For the following input of shape `[4, 1, 1, 3]` and block_size of 2:
+
+```prettyprint
+[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+```
+
+The output tensor has shape `[1, 2, 2, 3]` and value:
+
+```prettyprint
+x = [[[[1, 2, 3], [4, 5, 6]],
+      [[7, 8, 9], [10, 11, 12]]]]
+```
+
+(3) For the following input of shape `[4, 2, 2, 1]` and block_size of 2:
+
+```prettyprint
+x = [[[[1], [3]], [[5], [7]]],
+     [[[2], [4]], [[10], [12]]],
+     [[[5], [7]], [[13], [15]]],
+     [[[6], [8]], [[14], [16]]]]
+```
+
+The output tensor has shape `[1, 4, 4, 1]` and value:
+
+```prettyprint
+x = [[[1],   [2],  [3],  [4]],
+     [[5],   [6],  [7],  [8]],
+     [[9],  [10], [11],  [12]],
+     [[13], [14], [15],  [16]]]
+```
+
+(4) For the following input of shape `[8, 1, 2, 1]` and block_size of 2:
+
+```prettyprint
+x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
+     [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
+```
+
+The output tensor has shape `[2, 2, 4, 1]` and value:
+
+```prettyprint
+x = [[[[1], [3]], [[5], [7]]],
+     [[[2], [4]], [[10], [12]]],
+     [[[5], [7]], [[13], [15]]],
+     [[[6], [8]], [[14], [16]]]]
+```
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("SpaceToDepth")
     .Input("input: T")
     .Output("output: T")
@@ -1389,10 +1604,10 @@ This operation, for block_size of 2, will return the following tensor of shape
 Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
 
 ```prettyprint
-x = [[ [1],   [2],  [5],  [6]],
-     [ [3],   [4],  [7],  [8]],
-     [ [9],  [10], [13],  [14]],
-     [ [11], [12], [15],  [16]]]
+x = [[[[1],   [2],  [5],  [6]],
+      [[3],   [4],  [7],  [8]],
+      [[9],  [10], [13],  [14]],
+      [[11], [12], [15],  [16]]]]
 ```
 
 the operator will return the following tensor of shape `[1 2 2 4]`:
@@ -1518,13 +1733,14 @@ dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 )doc");
 
 REGISTER_OP("OneHot")
-    .Input("indices: int64")
+    .Input("indices: TI")
     .Input("depth: int32")
     .Input("on_value: T")
     .Input("off_value: T")
     .Attr("axis: int = -1")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("TI: {int32, int64} = DT_INT64")
     .Doc(R"doc(
 Returns a one-hot tensor.
 

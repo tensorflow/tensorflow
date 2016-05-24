@@ -95,9 +95,11 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
+    elems = ops.convert_to_tensor(elems, name="elems")
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False)
+                                            dynamic_size=False,
+                                            infer_shape=True)
     elems_ta = elems_ta.unpack(elems)
 
     if initializer is None:
@@ -166,9 +168,11 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
+    elems = ops.convert_to_tensor(elems, name="elems")
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False)
+                                            dynamic_size=False,
+                                            infer_shape=True)
     elems_ta = elems_ta.unpack(elems)
 
     if initializer is None:
@@ -234,17 +238,20 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     if varscope.caching_device is None:
       varscope.set_caching_device(lambda op: op.device)
 
+    elems = ops.convert_to_tensor(elems, name="elems")
     dtype = dtype if dtype else elems.dtype
 
     # Convert elems to tensor array.
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False)
+                                            dynamic_size=False,
+                                            infer_shape=True)
     elems_ta = elems_ta.unpack(elems)
 
     i = constant_op.constant(0)
     acc_ta = tensor_array_ops.TensorArray(dtype=dtype, size=n,
-                                          dynamic_size=False)
+                                          dynamic_size=False,
+                                          infer_shape=True)
     def compute(i, ta):
       ta = ta.write(i, fn(elems_ta.read(i)))
       return [i + 1, ta]
@@ -253,7 +260,10 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
         swap_memory=swap_memory)
-    return r_a.pack()
+    result = r_a.pack()
+    result.set_shape(elems.get_shape().with_rank_at_least(1)[0:1].concatenate(
+        result.get_shape()[1:]))
+    return result
 
 
 def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
@@ -304,9 +314,11 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(lambda op: op.device)
 
     # Convert elems to tensor array.
+    elems = ops.convert_to_tensor(elems, name="elems")
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False)
+                                            dynamic_size=False,
+                                            infer_shape=True)
     elems_ta = elems_ta.unpack(elems)
 
     if initializer is None:
@@ -318,7 +330,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     # Create a tensor array to store the intermediate values.
     acc_ta = tensor_array_ops.TensorArray(dtype=a.dtype, size=n,
-                                          dynamic_size=False)
+                                          dynamic_size=False,
+                                          infer_shape=True)
     if initializer is None:
       acc_ta = acc_ta.write(0, a)
 
@@ -330,7 +343,10 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         lambda i, a, ta: i < n, compute, [i, a, acc_ta],
         parallel_iterations=parallel_iterations,
         back_prop=back_prop, swap_memory=swap_memory)
-    return r_a.pack()
+    result = r_a.pack()
+    result.set_shape(elems.get_shape().with_rank_at_least(1)[0:1].concatenate(
+        result.get_shape()[1:]))
+    return result
 
 
 @ops.RegisterShape("SymbolicGradient")

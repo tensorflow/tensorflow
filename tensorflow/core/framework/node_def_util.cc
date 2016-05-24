@@ -20,8 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def_util.h"
+#include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -143,7 +146,8 @@ DEFINE_GET_ATTR(PartialTensorShape, shape, "shape", emplace_back,
 DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
                 if (!t.FromProto(v)) {
                   return errors::InvalidArgument(
-                      "Attr ", attr_name, " has value ", v.ShortDebugString(),
+                      "Attr ", attr_name, " has value ",
+                      ProtoShortDebugString(v),
                       " that can't be converted to a Tensor");
                 })
 
@@ -204,7 +208,7 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
       }
     } else {
       return errors::InvalidArgument("Missing type or type_attr field in ",
-                                     arg_def.ShortDebugString());
+                                     ProtoShortDebugString(arg_def));
     }
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
@@ -222,7 +226,7 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
     sig->push_back(arg_def.type());
   } else {
     return errors::InvalidArgument("No type fields in ",
-                                   arg_def.ShortDebugString());
+                                   ProtoShortDebugString(arg_def));
   }
   if (arg_def.is_ref()) {
     // For all types that were added by this function call, make them refs.

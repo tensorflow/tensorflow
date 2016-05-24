@@ -305,6 +305,20 @@ Node* Merge(Graph* g, Node* in0, gtl::ArraySlice<string> remaining_in) {
   return ret;
 }
 
+Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors) {
+  std::vector<NodeBuilder::NodeOut> nodeouts;
+  nodeouts.reserve(tensors.size());
+  for (auto const t : tensors) {
+    nodeouts.emplace_back(t);
+  }
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Concat")
+                  .Input(concat_dim)
+                  .Input(nodeouts)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Next(Graph* g, const string& name, Node* input) {
   Node* ret;
   TF_CHECK_OK(

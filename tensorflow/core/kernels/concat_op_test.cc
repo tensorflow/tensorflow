@@ -137,8 +137,8 @@ static void MemcpyAlternativeHelper(int iters, int concat_dimension, int dim2) {
                           ((kDim1 * dim2) + (kDim1 * dim2)) * sizeof(float));
   testing::StartTiming();
   while (--iters > 0) {
-    const int n0 = data1.size();
-    const int n1 = data2.size();
+    const size_t n0 = data1.size();
+    const size_t n1 = data2.size();
     float* result = new float[n0 + n1];
     memcpy(&result[0], &data1[0], n0 * sizeof(float));
     memcpy(&result[n0], &data2[0], n1 * sizeof(float));

@@ -19,12 +19,15 @@
 @@assert_positive
 @@assert_non_negative
 @@assert_non_positive
+@@assert_equal
 @@assert_less
 @@assert_less_equal
 @@assert_rank
 @@assert_rank_at_least
-@@is_numeric_tensor
+@@assert_type
+@@assert_integer
 @@is_non_decreasing
+@@is_numeric_tensor
 @@is_strictly_increasing
 """
 
@@ -50,10 +53,13 @@ __all__ = [
     'assert_positive',
     'assert_non_negative',
     'assert_non_positive',
+    'assert_equal',
     'assert_less',
     'assert_less_equal',
     'assert_rank',
     'assert_rank_at_least',
+    'assert_integer',
+    'assert_type',
     'is_non_decreasing',
     'is_numeric_tensor',
     'is_strictly_increasing',
@@ -62,6 +68,19 @@ __all__ = [
 
 def assert_negative(x, data=None, summarize=None, name=None):
   """Assert the condition `x < 0` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_negative(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_negative(x)], x)
+  ```
 
   Negative means, for every element `x[i]` of `x`, we have `x[i] < 0`.
   If `x` is empty this is trivially satisfied.
@@ -87,6 +106,19 @@ def assert_negative(x, data=None, summarize=None, name=None):
 def assert_positive(x, data=None, summarize=None, name=None):
   """Assert the condition `x > 0` holds element-wise.
 
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_positive(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_positive(x)], x)
+  ```
+
   Positive means, for every element `x[i]` of `x`, we have `x[i] > 0`.
   If `x` is empty this is trivially satisfied.
 
@@ -95,7 +127,7 @@ def assert_positive(x, data=None, summarize=None, name=None):
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional).  Defaults to "assert_negative".
+    name: A name for this operation (optional).  Defaults to "assert_positive".
 
   Returns:
     Op raising `InvalidArgumentError` unless `x` is all positive.
@@ -110,6 +142,19 @@ def assert_positive(x, data=None, summarize=None, name=None):
 
 def assert_non_negative(x, data=None, summarize=None, name=None):
   """Assert the condition `x >= 0` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_non_negative(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_non_negative(x)], x)
+  ```
 
   Non-negative means, for every element `x[i]` of `x`, we have `x[i] >= 0`.
   If `x` is empty this is trivially satisfied.
@@ -136,6 +181,19 @@ def assert_non_negative(x, data=None, summarize=None, name=None):
 def assert_non_positive(x, data=None, summarize=None, name=None):
   """Assert the condition `x <= 0` holds element-wise.
 
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_non_positive(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_non_positive(x)], x)
+  ```
+
   Non-positive means, for every element `x[i]` of `x`, we have `x[i] <= 0`.
   If `x` is empty this is trivially satisfied.
 
@@ -158,8 +216,64 @@ def assert_non_positive(x, data=None, summarize=None, name=None):
     return assert_less_equal(x, zero, data=data, summarize=summarize)
 
 
+def assert_equal(x, y, data=None, summarize=None, name=None):
+  """Assert the condition `x == y` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_equal(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_equal(x, y)], x)
+  ```
+
+  This condition holds if for every pair of (possibly broadcast) elements
+  `x[i]`, `y[i]`, we have `x[i] == y[i]`.
+  If both `x` and `y` are empty, this is trivially satisfied.
+
+  Args:
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`, `y`.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).  Defaults to "assert_equal".
+
+  Returns:
+    Op that raises `InvalidArgumentError` if `x == y` is False.
+  """
+  with ops.op_scope([x, y, data], name, 'assert_equal'):
+    x = ops.convert_to_tensor(x, name='x')
+    y = ops.convert_to_tensor(y, name='y')
+    if data is None:
+      data = [
+          'Condition x == y did not hold element-wise: x = ', x.name, x, 'y = ',
+          y.name, y
+      ]
+    condition = math_ops.reduce_all(math_ops.equal(x, y))
+    return logging_ops.Assert(condition, data, summarize=summarize)
+
+
 def assert_less(x, y, data=None, summarize=None, name=None):
   """Assert the condition `x < y` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_less(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_less(x, y)], x)
+  ```
 
   This condition holds if for every pair of (possibly broadcast) elements
   `x[i]`, `y[i]`, we have `x[i] < y[i]`.
@@ -191,6 +305,19 @@ def assert_less(x, y, data=None, summarize=None, name=None):
 def assert_less_equal(x, y, data=None, summarize=None, name=None):
   """Assert the condition `x <= y` holds element-wise.
 
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_less_equal(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_less_equal(x, y)], x)
+  ```
+
   This condition holds if for every pair of (possibly broadcast) elements
   `x[i]`, `y[i]`, we have `x[i] <= y[i]`.
   If both `x` and `y` are empty, this is trivially satisfied.
@@ -218,12 +345,81 @@ def assert_less_equal(x, y, data=None, summarize=None, name=None):
     return logging_ops.Assert(condition, data, summarize=summarize)
 
 
-def assert_rank(x, rank, data=None, summarize=None, name=None):
-  """Assert `x` has rank equal to `rank`.
+def _assert_rank_condition(x, rank, static_condition, dynamic_condition, data,
+                           summarize, name):
+  """Assert `x` has a rank that satisfies a given condition.
 
   Args:
     x:  Numeric `Tensor`.
     rank:  Scalar `Tensor`.
+    static_condition:   A python function that takes `[actual_rank, given_rank]`
+      and returns `True` if the condition is satisfied, `False` otherwise.
+    dynamic_condition:  An `op` that takes [actual_rank, given_rank]
+      and return `True` if the condition is satisfied, `False` otherwise.
+    data:  The tensors to print out if the condition is false.  Defaults to
+      error message and first few entries of `x`.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).
+      Defaults to "assert_rank_at_least".
+
+  Returns:
+    Op raising `InvalidArgumentError` if `x` fails dynamic_condition.
+
+  Raises:
+    ValueError:  If static checks determine `x` fails static_condition.
+  """
+  with ops.op_scope([x], name, 'assert_rank'):
+    x = ops.convert_to_tensor(x, name='x')
+    rank = ops.convert_to_tensor(rank, name='rank')
+
+    # Attempt to statically defined rank.
+    x_rank_static = x.get_shape().ndims
+    rank_static = tensor_util.constant_value(rank)
+
+    assert_type(rank, dtypes.int32)
+
+    if rank_static is not None:
+      if rank_static.ndim != 0:
+        raise ValueError('Rank must be a scalar')
+
+      if x_rank_static is not None:
+        if not static_condition(x_rank_static, rank_static):
+          raise ValueError('Static rank condition failed', x_rank_static,
+                           rank_static)
+        return control_flow_ops.no_op(name='static_checks_determined_all_ok')
+
+    condition = dynamic_condition(array_ops.rank(x), rank)
+
+    if rank_static is None:
+      rank_check = assert_rank(rank,
+                               0,
+                               data=[['Rank must be a scalar.'
+                                      'Received rank:'], rank])
+
+      condition = control_flow_ops.with_dependencies([rank_check], condition)
+
+  return logging_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_rank(x, rank, data=None, summarize=None, name=None):
+  """Assert `x` has rank equal to `rank`.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_rank(x, 2)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_rank(x, 2)], x)
+  ```
+
+  Args:
+    x:  Numeric `Tensor`.
+    rank:  Scalar integer `Tensor`.
     data:  The tensors to print out if the condition is False.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
@@ -235,32 +431,46 @@ def assert_rank(x, rank, data=None, summarize=None, name=None):
   Raises:
     ValueError:  If static checks determine `x` has wrong rank.
   """
-  with ops.op_scope([x], name, 'assert_rank'):
-    x = ops.convert_to_tensor(x, name='x')
-    rank = ops.convert_to_tensor(rank, name='rank')
 
-    # Attempt to statically defined rank.
-    x_rank_static = x.get_shape().ndims
-    rank_static = tensor_util.constant_value(rank)
-    if x_rank_static is not None and rank_static is not None:
-      if x_rank_static != rank_static:
-        raise ValueError(
-            'Tensor %s must have rank %d.  Received rank %d, shape %s' %
-            (x.name, rank_static, x_rank_static, x.get_shape()))
-      return control_flow_ops.no_op(name='static_checks_determined_all_ok')
+  static_condition = lambda actual_rank, given_rank: actual_rank == given_rank
+  dynamic_condition = math_ops.equal
 
-    # Assert dynamically.
-    if data is None:
-      data = [
-          'Tensor %s must have rank' % x.name, rank, 'Received shape: ',
-          array_ops.shape(x)
-      ]
-    condition = math_ops.equal(array_ops.rank(x), rank)
-    return logging_ops.Assert(condition, data, summarize=summarize)
+  if data is None:
+    data = [
+        'Tensor %s must have rank' % x.name, rank, 'Received shape: ',
+        array_ops.shape(x)
+    ]
+
+  try:
+    assert_op = _assert_rank_condition(x, rank, static_condition,
+                                       dynamic_condition, data, summarize, name)
+
+  except ValueError as e:
+    if e.args[0] == 'Static rank condition failed':
+      raise ValueError(
+          'Tensor %s must have rank %d.  Received rank %d, shape %s' %
+          (x.name, e.args[1], e.args[2], x.get_shape()))
+    else:
+      raise
+
+  return assert_op
 
 
 def assert_rank_at_least(x, rank, data=None, summarize=None, name=None):
   """Assert `x` has rank equal to `rank` or higher.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_rank_at_least(x, 2)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_rank_at_least(x, 2)], x)
+  ```
 
   Args:
     x:  Numeric `Tensor`.
@@ -277,27 +487,75 @@ def assert_rank_at_least(x, rank, data=None, summarize=None, name=None):
   Raises:
     ValueError:  If static checks determine `x` has wrong rank.
   """
-  with ops.op_scope([x], name, 'assert_rank_at_least'):
+
+  static_condition = lambda actual_rank, given_rank: actual_rank >= given_rank
+  dynamic_condition = math_ops.greater_equal
+  if data is None:
+    data = [
+        'Tensor %s must have rank at least' % x.name, rank,
+        'Received shape: ', array_ops.shape(x)
+    ]
+
+  try:
+    assert_op = _assert_rank_condition(x, rank, static_condition,
+                                       dynamic_condition, data, summarize, name)
+
+  except ValueError as e:
+    if e.args[0] == 'Static rank condition failed':
+      raise ValueError(
+          'Tensor %s must have rank at least %d.  Received rank %d, shape %s' %
+          (x.name, e.args[1], e.args[2], x.get_shape()))
+    else:
+      raise
+
+  return assert_op
+
+
+def assert_integer(x, data=None, summarize=None, name=None):
+  """Assert that `x` is of integer dtype.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_integer(x)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_integer(x)], x)
+  ```
+
+  Args:
+    x: `Tensor` whose basetype is integer and is not quantized.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).  Defaults to "assert_integer".
+
+  Returns:
+    Op that raises `InvalidArgumentError` if `x == y` is False.
+  """
+  with ops.op_scope([x], name, 'assert_integer'):
     x = ops.convert_to_tensor(x, name='x')
-    rank = ops.convert_to_tensor(rank, name='rank')
-
-    # Attempt to statically defined rank.
-    x_rank_static = x.get_shape().ndims
-    rank_static = tensor_util.constant_value(rank)
-    if x_rank_static is not None and rank_static is not None:
-      if x_rank_static < rank_static:
-        raise ValueError(
-            'Tensor %s must have rank %d.  Received rank %d, shape %s' %
-            (x.name, rank_static, x_rank_static, x.get_shape()))
-      return control_flow_ops.no_op(name='static_checks_determined_all_ok')
-
-    if data is None:
-      data = [
-          'Tensor %s must have rank at least' % x.name, rank,
-          'Received shape: ', array_ops.shape(x)
-      ]
-    condition = math_ops.greater_equal(array_ops.rank(x), rank)
+    data = ['x is not of integer dtype: x = ', x.name, x]
+    condition = x.dtype.is_integer
     return logging_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_type(tensor, tf_type):
+  """Asserts that the given `Tensor` is of the specified type.
+
+  Args:
+    tensor: A tensorflow `Tensor`.
+    tf_type: A tensorflow type (dtypes.float32, tf.int64, dtypes.bool, etc).
+
+  Raises:
+    ValueError: If the tensors data type doesn't match tf_type.
+  """
+  if tensor.dtype != tf_type:
+    raise ValueError('%s must be of type %s' % (tensor.op.name, tf_type))
 
 
 def _get_diff_for_monotonic_comparison(x):

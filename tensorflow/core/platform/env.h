@@ -68,8 +68,8 @@ class Env {
   virtual Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes);
 
   // \brief Register a file system for a scheme.
-  virtual void RegisterFileSystem(const string& scheme,
-                                  FileSystemRegistry::Factory factory);
+  virtual Status RegisterFileSystem(const string& scheme,
+                                    FileSystemRegistry::Factory factory);
 
   /// \brief Creates a brand new random access read-only file with the
   /// specified name.
@@ -162,6 +162,10 @@ class Env {
   /// time. Only useful for computing deltas of time.
   virtual uint64 NowMicros() = 0;
 
+  /// \brief Returns the number of seconds since some fixed point in
+  /// time. Only useful for computing deltas of time.
+  virtual uint64 NowSeconds() { return NowMicros() / 1000000L; }
+
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int micros) = 0;
 
@@ -236,9 +240,9 @@ class EnvWrapper : public Env {
     return target_->GetRegisteredFileSystemSchemes(schemes);
   }
 
-  void RegisterFileSystem(const string& scheme,
-                          FileSystemRegistry::Factory factory) override {
-    target_->RegisterFileSystem(scheme, factory);
+  Status RegisterFileSystem(const string& scheme,
+                            FileSystemRegistry::Factory factory) override {
+    return target_->RegisterFileSystem(scheme, factory);
   }
 
   uint64 NowMicros() override { return target_->NowMicros(); }

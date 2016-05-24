@@ -57,6 +57,36 @@ TEST(ThreadPool, DoWork) {
   }
 }
 
+#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
+TEST(ThreadPool, ParallelFor) {
+  // Make ParallelFor use as many threads as possible.
+  int64 kHugeCost = 1 << 30;
+  for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
+    fprintf(stderr, "Testing with %d threads\n", num_threads);
+    const int kWorkItems = 15;
+    bool work[kWorkItems];
+    ThreadPool pool(Env::Default(), "test", num_threads);
+    for (int max_parallelism = 1; max_parallelism <= kNumThreads + 1;
+         max_parallelism++) {
+      for (int i = 0; i < kWorkItems; i++) {
+        work[i] = false;
+      }
+      pool.ParallelFor(kWorkItems, kHugeCost,
+                       [&work](int64 begin, int64 end) {
+                         for (int64 i = begin; i < end; ++i) {
+                           ASSERT_FALSE(work[i]);
+                           work[i] = true;
+                         }
+                       },
+                       max_parallelism);
+      for (int i = 0; i < kWorkItems; i++) {
+        ASSERT_TRUE(work[i]);
+      }
+    }
+  }
+}
+#endif
+
 static void BM_Sequential(int iters) {
   ThreadPool pool(Env::Default(), "test", kNumThreads);
   // Decrement count sequentially until 0.

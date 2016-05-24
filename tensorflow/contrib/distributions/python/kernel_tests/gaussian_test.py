@@ -127,5 +127,15 @@ class GaussianTest(tf.test.TestCase):
       self.assertAllClose(sample_values[:, 0, 1].mean(), mu_v[1], atol=1e-2)
       self.assertAllClose(sample_values[:, 0, 1].std(), sigma_v[1], atol=1e-1)
 
+  def testNegativeSigmaFails(self):
+    with tf.Session():
+      gaussian = tf.contrib.distributions.Gaussian(
+          mu=[1.],
+          sigma=[-5.],
+          name='G')
+      with self.assertRaisesOpError(
+          r'should contain only positive values'):
+        gaussian.mean.eval()
+
 if __name__ == '__main__':
   tf.test.main()

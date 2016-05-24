@@ -22,7 +22,7 @@ import os
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 # Get training data
 
@@ -88,15 +88,15 @@ MAX_DOCUMENT_LENGTH = 30
 HIDDEN_SIZE = 100
 
 def translate_model(X, y):
-    byte_list = skflow.ops.one_hot_matrix(X, 256)
-    in_X, in_y, out_y = skflow.ops.seq2seq_inputs(
+    byte_list = learn.ops.one_hot_matrix(X, 256)
+    in_X, in_y, out_y = learn.ops.seq2seq_inputs(
         byte_list, y, MAX_DOCUMENT_LENGTH, MAX_DOCUMENT_LENGTH)
     cell = tf.nn.rnn_cell.OutputProjectionWrapper(tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE), 256)
-    decoding, _, sampling_decoding, _ = skflow.ops.rnn_seq2seq(in_X, in_y, cell)
-    return skflow.ops.sequence_classifier(decoding, out_y, sampling_decoding)
+    decoding, _, sampling_decoding, _ = learn.ops.rnn_seq2seq(in_X, in_y, cell)
+    return learn.ops.sequence_classifier(decoding, out_y, sampling_decoding)
 
 
-vocab_processor = skflow.preprocessing.ByteProcessor(
+vocab_processor = learn.preprocessing.ByteProcessor(
     max_document_length=MAX_DOCUMENT_LENGTH)
 
 x_iter = vocab_processor.transform(X_train)
@@ -107,9 +107,9 @@ ygold = list(y_test)[:20]
 PATH = '/tmp/tf_examples/ntm/'
 
 if os.path.exists(PATH):
-    translator = skflow.TensorFlowEstimator.restore(PATH)
+    translator = learn.TensorFlowEstimator.restore(PATH)
 else:
-    translator = skflow.TensorFlowEstimator(model_fn=translate_model,
+    translator = learn.TensorFlowEstimator(model_fn=translate_model,
         n_classes=256,
         optimizer='Adam', learning_rate=0.01, batch_size=128,
         continue_training=True)

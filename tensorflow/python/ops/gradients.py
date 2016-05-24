@@ -42,7 +42,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import functional_ops
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 
 # Warn the user if we convert a sparse representation to dense with at
 # least this number of elements.
@@ -501,6 +501,8 @@ def gradients(ys,
           in_grads = [None] * len(op.inputs)
         for t_in, in_grad in zip(op.inputs, in_grads):
           if in_grad is not None:
+            if isinstance(in_grad, ops.Tensor):
+              in_grad.set_shape(t_in.get_shape())
             _SetGrad(grads, t_in, in_grad)
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=False)

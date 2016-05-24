@@ -7,8 +7,7 @@ writing TensorFlow programs.
 
 ## Hello distributed TensorFlow!
 
-This tutorial assumes that you are using a TensorFlow nightly build. You
-can test your installation by starting and using a local server as follows:
+ To see a simple TensorFlow cluster in action, execute the following:
 
 ```shell
 # Start a TensorFlow server as a single-process "cluster".
@@ -22,7 +21,7 @@ $ python
 ```
 
 The
-[`tf.train.Server.create_local_server()`](../../api_docs/train.md#Server.create_local_server)
+[`tf.train.Server.create_local_server()`](../../api_docs/python/train.md#Server.create_local_server)
 method creates a single-process cluster, with an in-process server.
 
 ## Create a cluster
@@ -111,7 +110,7 @@ which you'd like to see support, please raise a
 ## Specifying distributed devices in your model
 
 To place operations on a particular process, you can use the same
-[`tf.device()`](https://www.tensorflow.org/versions/master/api_docs/python/framework.html#device)
+[`tf.device()`](../../api_docs/python/framework.md#device)
 function that is used to specify whether ops run on the CPU or GPU. For example:
 
 ```python
@@ -159,7 +158,7 @@ simplify the work of specifying a replicated model. Possible approaches include:
   for each `/job:worker` task, typically in the same process as the worker
   task. Each client builds a similar graph containing the parameters (pinned to
   `/job:ps` as before using
-  [`tf.train.replica_device_setter()`](../../api_docs/train.md#replica_device_setter)
+  [`tf.train.replica_device_setter()`](../../api_docs/python/train.md#replica_device_setter)
   to map them deterministically to the same tasks); and a single copy of the
   compute-intensive part of the model, pinned to the local task in
   `/job:worker`.
@@ -200,7 +199,7 @@ FLAGS = tf.app.flags.FLAGS
 
 def main(_):
   ps_hosts = FLAGS.ps_hosts.split(",")
-  worker_hosts = FLAGS.worker_hosts(",")
+  worker_hosts = FLAGS.worker_hosts.split(",")
 
   # Create a cluster from the parameter server and worker hosts.
   cluster = tf.train.ClusterSpec({"ps": ps_hosts, "worker": worker_hosts})
@@ -239,21 +238,19 @@ def main(_):
                              global_step=global_step,
                              save_model_secs=600)
 
-    # The supervisor takes care of session initialization and restoring from
-    # a checkpoint.
-    sess = sv.prepare_or_wait_for_session(server.target)
+    # The supervisor takes care of session initialization, restoring from
+    # a checkpoint, and closing when done or an error occurs.
+    with sv.managed_session(server.target) as sess:
+      # Loop until the supervisor shuts down or 1000000 steps have completed.
+      step = 0
+      while not sv.should_stop() and step < 1000000:
+        # Run a training step asynchronously.
+        # See `tf.train.SyncReplicasOptimizer` for additional details on how to
+        # perform *synchronous* training.
+        _, step = sess.run([train_op, global_step])
 
-    # Start queue runners for the input pipelines (if any).
-    sv.start_queue_runners(sess)
-
-    # Loop until the supervisor shuts down (or 1000000 steps have completed).
-    step = 0
-    while not sv.should_stop() and step < 1000000:
-      # Run a training step asynchronously.
-      # See `tf.train.SyncReplicasOptimizer` for additional details on how to
-      # perform *synchronous* training.
-      _, step = sess.run([train_op, global_step])
-
+    # Ask for all the services to stop.
+    sv.stop()
 
 if __name__ == "__main__":
   tf.app.run()

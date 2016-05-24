@@ -268,8 +268,3 @@ message SequenceExample {
   Features context = 1;
   FeatureLists feature_lists = 2;
 };
-
-message InferenceExample {
-  Features context = 1;
-  repeated Features features = 2;
-};

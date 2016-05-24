@@ -165,6 +165,14 @@ class DiagTest(tf.test.TestCase):
     self.diagOp(x, np.float32, expected_ans)
     self.diagOp(x, np.float64, expected_ans)
 
+  def testRankOneComplexTensor(self):
+    x = np.array([1.1 + 1.1j, 2.2 + 2.2j, 3.3 + 3.3j], dtype = np.complex64)
+    expected_ans = np.array(
+        [[1.1 + 1.1j, 0 + 0j, 0 + 0j],
+         [0 + 0j, 2.2 + 2.2j, 0 + 0j],
+         [0 + 0j, 0 + 0j, 3.3 + 3.3j]], dtype = np.complex64)
+    self.diagOp(x, np.complex64, expected_ans)
+
   def testRankTwoIntTensor(self):
     x = np.array([[1, 2, 3], [4, 5, 6]])
     expected_ans = np.array(
@@ -189,6 +197,19 @@ class DiagTest(tf.test.TestCase):
     self.diagOp(x, np.float32, expected_ans)
     self.diagOp(x, np.float64, expected_ans)
 
+  def testRankTwoComplexTensor(self):
+    x = np.array([[1.1 + 1.1j, 2.2 + 2.2j, 3.3 + 3.3j],
+        [4.4 + 4.4j, 5.5 + 5.5j, 6.6 + 6.6j]], dtype = np.complex64)
+    expected_ans = np.array(
+        [[[[1.1 + 1.1j, 0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j, 0 + 0j]],
+          [[0 + 0j, 2.2 + 2.2j, 0 + 0j], [0 + 0j, 0 + 0j, 0 + 0j]],
+          [[0 + 0j, 0 + 0j, 3.3 + 3.3j], [0 + 0j, 0 + 0j, 0 + 0j]]],
+         [[[0 + 0j, 0 + 0j, 0 + 0j], [4.4 + 4.4j, 0 + 0j, 0 + 0j]],
+          [[0 + 0j, 0 + 0j, 0 + 0j], [0 + 0j, 5.5 + 5.5j, 0 + 0j]],
+          [[0 + 0j, 0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j, 6.6 + 6.6j]]]],
+         dtype = np.complex64)
+    self.diagOp(x, np.complex64, expected_ans)
+
   def testRankThreeFloatTensor(self):
     x = np.array([[[1.1, 2.2], [3.3, 4.4]],
                   [[5.5, 6.6], [7.7, 8.8]]])
@@ -204,14 +225,39 @@ class DiagTest(tf.test.TestCase):
     self.diagOp(x, np.float32, expected_ans)
     self.diagOp(x, np.float64, expected_ans)
 
+  def testRankThreeComplexTensor(self):
+    x = np.array([[[1.1 + 1.1j, 2.2 + 2.2j], [3.3 + 3.3j, 4.4 + 4.4j]],
+                  [[5.5 + 5.5j, 6.6 + 6.6j], [7.7 + 7.7j, 8.8 + 8.8j]]],
+                  dtype = np.complex64)
+    expected_ans = np.array(
+        [[[[[[1.1 + 1.1j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+            [[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]]],
+           [[[0 + 0j, 2.2 + 2.2j], [0 + 0j, 0 + 0j]], 
+               [[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]]]],
+          [[[[0 + 0j, 0 + 0j], [3.3 + 3.3j, 0 + 0j]], 
+              [[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]]],
+           [[[0 + 0j, 0 + 0j], [0 + 0j, 4.4 + 4.4j]], 
+               [[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]]]]],
+         [[[[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+             [[5.5 + 5.5j, 0 + 0j], [0 + 0j, 0 + 0j]]],
+           [[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+               [[0 + 0j, 6.6 + 6.6j], [0 + 0j, 0 + 0j]]]],
+          [[[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+              [[0 + 0j, 0 + 0j], [7.7 + 7.7j, 0 + 0j]]],
+           [[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+               [[0 + 0j, 0 + 0j], [0 + 0j, 8.8 + 8.8j]]]]]],
+           dtype = np.complex64)
+    self.diagOp(x, np.complex64, expected_ans)
+
 
 class DiagPartOpTest(tf.test.TestCase):
 
   def setUp(self):
     np.random.seed(0)
 
-  def diagPartOp(self, tensor, dtpe, expected_ans, use_gpu=False):
+  def diagPartOp(self, tensor, dtype, expected_ans, use_gpu=False):
     with self.test_session(use_gpu=use_gpu):
+      tensor = tf.convert_to_tensor(tensor.astype(dtype))
       tf_ans_inv = tf.diag_part(tensor)
       inv_out = tf_ans_inv.eval()
     self.assertAllClose(inv_out, expected_ans)
@@ -223,6 +269,19 @@ class DiagPartOpTest(tf.test.TestCase):
     expected_ans = x[i, i]
     self.diagPartOp(x, np.float32, expected_ans)
     self.diagPartOp(x, np.float64, expected_ans)
+
+  def testRankFourFloatTensorUnknownShape(self):
+    x = np.random.rand(3, 3)
+    i = np.arange(3)
+    expected_ans = x[i, i]
+    for shape in None, (None, 3), (3, None):
+      with self.test_session(use_gpu=False):
+        t = tf.convert_to_tensor(x.astype(np.float32))
+        t.set_shape(shape)
+        tf_ans = tf.diag_part(t)
+        out = tf_ans.eval()
+      self.assertAllClose(out, expected_ans)
+      self.assertShapeEqual(expected_ans, tf_ans)
 
   def testRankFourFloatTensor(self):
     x = np.random.rand(2, 3, 2, 3)

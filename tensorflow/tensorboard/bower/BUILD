@@ -38,6 +38,8 @@ filegroup(
         "@paper_behaviors//:paper_behaviors",
         "@paper_button//:paper_button",
         "@paper_checkbox//:paper_checkbox",
+        "@paper_dialog//:paper_dialog",
+        "@paper_dialog_behavior//:paper_dialog_behavior",
         "@paper_dropdown_menu//:paper_dropdown_menu",
         "@paper_header_panel//:paper_header_panel",
         "@paper_icon_button//:paper_icon_button",

@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -247,7 +248,7 @@ Status InstantiateNode(const FunctionDef::Node& fnode,
           gtl::FindOrNull(name_info, fnode.arg(fnode_arg_index));
       if (item == nullptr) {
         return errors::InvalidArgument("arg[", i, "] is not found: ",
-                                       fnode.ShortDebugString());
+                                       ProtoShortDebugString(fnode));
       }
       if (dtypes != item->dtypes) {
         return errors::InvalidArgument("Invalid arg(", i,
@@ -269,7 +270,7 @@ Status InstantiateNode(const FunctionDef::Node& fnode,
             gtl::FindOrNull(name_info, fnode.arg(fnode_arg_index + j));
         if (item == nullptr) {
           return errors::InvalidArgument("arg[", i + j, "] is not found: ",
-                                         fnode.ShortDebugString());
+                                         ProtoShortDebugString(fnode));
         }
         if (item->dtypes.size() != 1 || (item->dtypes[0] != dtypes[j])) {
           return errors::InvalidArgument(
@@ -706,6 +707,10 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
+    const FunctionLibraryDefinition& other)
+    : function_defs_(other.function_defs_), func_grad_(other.func_grad_) {}
+
+FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionDefLibrary& def_lib)
     : function_defs_(def_lib.function_size()) {
   for (const auto& fdef : def_lib.function()) {
@@ -728,6 +733,15 @@ const FunctionDef* FunctionLibraryDefinition::Find(const string& name) const {
   }
 }
 
+Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
+  if (!function_defs_.insert({fdef.signature().name(), fdef}).second) {
+    return errors::InvalidArgument("Function with name: ",
+                                   fdef.signature().name(),
+                                   " already exists in function library.");
+  }
+  return Status::OK();
+}
+
 string FunctionLibraryDefinition::FindGradient(const string& func) const {
   return gtl::FindWithDefault(func_grad_, func, "");
 }
@@ -739,6 +753,19 @@ const OpDef* FunctionLibraryDefinition::LookUp(const string& op,
     return &(fdef->signature());
   }
   return OpRegistry::Global()->LookUp(op, status);
+}
+
+FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
+  FunctionDefLibrary lib;
+  for (const auto& f : function_defs_) {
+    *lib.add_function() = f.second;
+  }
+  for (const auto& g : func_grad_) {
+    GradientDef* gd = lib.add_gradient();
+    gd->set_function_name(g.first);
+    gd->set_gradient_func(g.second);
+  }
+  return lib;
 }
 
 Status InstantiateFunction(const FunctionDef& fdef,

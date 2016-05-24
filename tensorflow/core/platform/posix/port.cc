@@ -112,5 +112,7 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 #endif
 }
 
+string Demangle(const char* mangled) { return mangled; }
+
 }  // namespace port
 }  // namespace tensorflow

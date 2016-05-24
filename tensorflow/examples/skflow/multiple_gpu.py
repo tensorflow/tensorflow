@@ -17,7 +17,7 @@ from __future__ import print_function
 
 from sklearn import datasets, metrics, cross_validation
 import tensorflow as tf
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
@@ -31,11 +31,11 @@ def my_model(X, y):
     CUDNN 6.5 V2 from NVIDIA need to be installed beforehand. 
     """
     with tf.device('/gpu:1'):
-    	layers = skflow.ops.dnn(X, [10, 20, 10], dropout=0.5)
+    	layers = learn.ops.dnn(X, [10, 20, 10], dropout=0.5)
     with tf.device('/gpu:2'):
-    	return skflow.models.logistic_regression(layers, y)
+    	return learn.models.logistic_regression(layers, y)
 
-classifier = skflow.TensorFlowEstimator(model_fn=my_model, n_classes=3)
+classifier = learn.TensorFlowEstimator(model_fn=my_model, n_classes=3)
 classifier.fit(X_train, y_train)
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))

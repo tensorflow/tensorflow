@@ -389,11 +389,6 @@ Tensor::Tensor() : Tensor(DT_FLOAT) {}
 
 Tensor::Tensor(DataType type) : shape_({0}), buf_(nullptr) { set_dtype(type); }
 
-Tensor::Tensor(const Tensor& other) : shape_(other.shape()), buf_(other.buf_) {
-  set_dtype(other.dtype());
-  RefIfNonNull(buf_);
-}
-
 Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
     : shape_(shape), buf_(buf) {
   set_dtype(type);
@@ -643,44 +638,83 @@ bool Tensor::CanUseDMA() const {
 #undef CASES
 #undef CASE
 
-string Tensor::SummarizeValue(int64 max_entries) const {
+namespace {
+template <typename T>
+string SummarizeArray(int64 limit, int64 num_elts, const char* data) {
   string ret;
-  // TODO(irving): Don't call NumElements and flat every time around this
-  // loop.
-  for (int64 i = 0; i < std::min(max_entries, NumElements()); ++i) {
+  const T* array = reinterpret_cast<const T*>(data);
+  for (int64 i = 0; i < limit; ++i) {
     if (i > 0) strings::StrAppend(&ret, " ");
-    switch (dtype()) {
-      case DT_STRING:
-        strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
-        break;
-      case DT_BOOL:
-        strings::StrAppend(&ret, flat<bool>()(i) ? "True" : "False");
-        break;
+    strings::StrAppend(&ret, array[i]);
+  }
+  if (num_elts > limit) strings::StrAppend(&ret, "...");
+  return ret;
+}
+}  // namespace
 
-#define CASE(DT_ENUM)                                                   \
-  case DT_ENUM:                                                         \
-    strings::StrAppend(&ret, flat<EnumToDataType<DT_ENUM>::Type>()(i)); \
-    break
-
-        CASE(DT_FLOAT);
-        CASE(DT_DOUBLE);
-        CASE(DT_INT32);
-        CASE(DT_UINT8);
-        CASE(DT_UINT16);
-        CASE(DT_INT16);
-        CASE(DT_INT8);
-        CASE(DT_INT64);
-
-#undef CASE
-      default:
-        // TODO(zhifengc, josh11b): Pretty-print other types (bool,
-        // complex64, quantized, bfloat16).
-        strings::StrAppend(&ret, " ?");
+string Tensor::SummarizeValue(int64 max_entries) const {
+  const int64 num_elts = NumElements();
+  size_t limit = std::min(max_entries, num_elts);
+  if ((limit > 0) && (buf_ == nullptr)) {
+    return strings::StrCat("uninitialized Tensor of ", num_elts,
+                           " elements of type ", dtype());
+  }
+  const char* data = limit > 0 ? tensor_data().data() : nullptr;
+  switch (dtype()) {
+    case DT_FLOAT:
+      return SummarizeArray<float>(limit, num_elts, data);
+      break;
+    case DT_DOUBLE:
+      return SummarizeArray<double>(limit, num_elts, data);
+      break;
+    case DT_INT32:
+      return SummarizeArray<int32>(limit, num_elts, data);
+      break;
+    case DT_UINT8:
+    case DT_QUINT8:
+      return SummarizeArray<uint8>(limit, num_elts, data);
+      break;
+    case DT_UINT16:
+    case DT_QUINT16:
+      return SummarizeArray<uint16>(limit, num_elts, data);
+      break;
+    case DT_INT16:
+    case DT_QINT16:
+      return SummarizeArray<int16>(limit, num_elts, data);
+      break;
+    case DT_INT8:
+    case DT_QINT8:
+      return SummarizeArray<int8>(limit, num_elts, data);
+      break;
+    case DT_INT64:
+      return SummarizeArray<int64>(limit, num_elts, data);
+      break;
+    case DT_BOOL:
+      // TODO(tucker): Is it better to emit "True False..."?  This
+      // will emit "1 0..." which is more compact.
+      return SummarizeArray<bool>(limit, num_elts, data);
+      break;
+    default: {
+      // All irregular cases
+      string ret;
+      // TODO(irving): Don't call flat every time around this
+      // loop.
+      for (int64 i = 0; i < limit; ++i) {
+        if (i > 0) strings::StrAppend(&ret, " ");
+        switch (dtype()) {
+          case DT_STRING:
+            strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
+            break;
+          default:
+            // TODO(zhifengc, josh11b): Pretty-print other types (bool,
+            // complex64, quantized).
+            strings::StrAppend(&ret, "?");
+        }
+      }
+      if (max_entries < num_elts) strings::StrAppend(&ret, "...");
+      return ret;
     }
   }
-  if (max_entries < NumElements()) strings::StrAppend(&ret, "...");
-
-  return ret;
 }
 
 StringPiece Tensor::tensor_data() const {
@@ -714,34 +748,43 @@ void Tensor::FillDescription(TensorDescription* description) const {
   }
 }
 
-gtl::InlinedVector<int64, 5> Tensor::ComputeFlatInnerDims(
+gtl::InlinedVector<int64, 4> Tensor::ComputeFlatInnerDims(
     int64 num_out_dims) const {
-  gtl::InlinedVector<int64, 5> out_dims(num_out_dims, 0);
+  if (num_out_dims == dims()) {
+    return shape_.dim_sizes();
+  }
+  gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
   const int64 num_elements = NumElements();
-  if (num_elements != 0) {
-    int64 prod_out_dims = 1;
-    for (int64 out_dim = num_out_dims - 1; out_dim > 0; --out_dim) {
-      const int64 in_dim = out_dim + (dims() - num_out_dims);
-      out_dims[out_dim] =
-          (in_dim >= dims() || in_dim < 0) ? 1 : dim_size(in_dim);
-      prod_out_dims *= out_dims[out_dim];
-    }
+  int64 prod_out_dims = 1;
+  for (int64 out_dim = num_out_dims - 1; out_dim > 0; --out_dim) {
+    const int64 in_dim = out_dim + (dims() - num_out_dims);
+    out_dims[out_dim] = (in_dim >= dims() || in_dim < 0) ? 1 : dim_size(in_dim);
+    prod_out_dims *= out_dims[out_dim];
+  }
+  if (prod_out_dims != 0) {
     out_dims[0] = num_elements / prod_out_dims;
+  } else {
+    out_dims[0] = 0;
   }
   return out_dims;
 }
 
-gtl::InlinedVector<int64, 5> Tensor::ComputeFlatOuterDims(
+gtl::InlinedVector<int64, 4> Tensor::ComputeFlatOuterDims(
     int64 num_out_dims) const {
-  gtl::InlinedVector<int64, 5> out_dims(num_out_dims, 0);
+  if (num_out_dims == dims()) {
+    return shape_.dim_sizes();
+  }
+  gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
   const int64 num_elements = NumElements();
-  if (num_elements != 0) {
-    int64 prod_out_dims = 1;
-    for (int64 out_dim = 0; out_dim < num_out_dims - 1; ++out_dim) {
-      out_dims[out_dim] = out_dim >= dims() ? 1 : dim_size(out_dim);
-      prod_out_dims *= out_dims[out_dim];
-    }
+  int64 prod_out_dims = 1;
+  for (int64 out_dim = 0; out_dim < num_out_dims - 1; ++out_dim) {
+    out_dims[out_dim] = out_dim >= dims() ? 1 : dim_size(out_dim);
+    prod_out_dims *= out_dims[out_dim];
+  }
+  if (prod_out_dims != 0) {
     out_dims[num_out_dims - 1] = num_elements / prod_out_dims;
+  } else {
+    out_dims[num_out_dims - 1] = 0;
   }
   return out_dims;
 }

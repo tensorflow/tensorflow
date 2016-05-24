@@ -23,6 +23,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+class TensorTestHelper {
+ public:
+  // This is an operation that can be done by VariableOp.
+  static void set_shape(Tensor* t, const TensorShape& s) { t->set_shape(s); }
+};
 
 TEST(TensorTest, Default) {
   Tensor t;
@@ -106,6 +111,22 @@ void TestCopies(const Tensor& t) {
     gtl::ArraySlice<T> values(t.flat<T>().data(), t.NumElements());
     Tensor t2 = test::AsTensor(values, t.shape());
     test::ExpectTensorEqual<T>(t, t2);
+  }
+  {
+    LOG(INFO) << "Move constructor";
+    Tensor t2 = t;
+    Tensor t3(std::move(t2));
+    test::ExpectTensorEqual<T>(t, t3);
+    EXPECT_TRUE(t3.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());
+  }
+  {
+    LOG(INFO) << "Move assignment";
+    Tensor t2 = t;
+    Tensor t3 = std::move(t2);
+    test::ExpectTensorEqual<T>(t, t3);
+    EXPECT_TRUE(t3.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());
   }
 }
 
@@ -266,6 +287,46 @@ TEST(Tensor_Float, Reshape) {
     EXPECT_EQ(1, flat_outer_dims.dimension(4));
     EXPECT_EQ(flat_outer_dims(0, 0, 0, 0, 0), 0.01f);
     EXPECT_EQ(flat_outer_dims(1, 2, 3, 4, 0), 0.02f);
+  }
+
+  Tensor zero_t(DT_FLOAT, TensorShape({3, 0, 2, 0, 5}));
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+  }
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float, 3>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+    EXPECT_EQ(0, flat_outer_dims.dimension(2));
+  }
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float, 5>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+    EXPECT_EQ(2, flat_outer_dims.dimension(2));
+    EXPECT_EQ(0, flat_outer_dims.dimension(3));
+    EXPECT_EQ(5, flat_outer_dims.dimension(4));
+  }
+  {
+    auto flat_inner_dims = zero_t.flat_inner_dims<float>();
+    EXPECT_EQ(0, flat_inner_dims.dimension(0));
+    EXPECT_EQ(5, flat_inner_dims.dimension(1));
+  }
+  {
+    auto flat_inner_dims = zero_t.flat_inner_dims<float, 3>();
+    EXPECT_EQ(0, flat_inner_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_dims.dimension(1));
+    EXPECT_EQ(5, flat_inner_dims.dimension(2));
+  }
+  {
+    auto flat_inner_dims = zero_t.flat_inner_dims<float, 5>();
+    EXPECT_EQ(3, flat_inner_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_dims.dimension(1));
+    EXPECT_EQ(2, flat_inner_dims.dimension(2));
+    EXPECT_EQ(0, flat_inner_dims.dimension(3));
+    EXPECT_EQ(5, flat_inner_dims.dimension(4));
   }
 }
 
@@ -532,12 +593,12 @@ TEST(Tensor_Complex, SimpleWithHelper64) {
 TEST(Tensor_Complex, SimpleWithHelper128) {
   {
     Tensor t1 = test::AsTensor<complex128>({0,
-                                           {1, 1},
-                                           complex128(2),
-                                           complex128(3, 3),
-                                           complex128(0, 4),
-                                           complex128(2, 5)},
-                                          {2, 3});
+                                            {1, 1},
+                                            complex128(2),
+                                            complex128(3, 3),
+                                            complex128(0, 4),
+                                            complex128(2, 5)},
+                                           {2, 3});
     Tensor t2(t1.dtype(), t1.shape());
     t2.flat<complex128>() = t1.flat<complex128>() * complex128(0, 2);
     Tensor t3 = test::AsTensor<complex128>(
@@ -660,6 +721,63 @@ TEST(Tensor, Slice_Basic) {
   }
 }
 
+namespace {
+template <typename T>
+Tensor MkTensor(DataType dt, TensorShape shape, std::vector<T> init_values) {
+  Tensor x(dt, shape);
+  const int limit = x.NumElements();
+  int vi = 0;
+  for (int i = 0; i < limit; ++i) {
+    x.flat<T>()(i) = init_values[vi++];
+    if (vi >= init_values.size()) vi = 0;
+  }
+  return x;
+}
+}  // namespace
+
+TEST(SummarizeValue, Uninitialized) {
+  Tensor x(DT_INT32);
+  TensorTestHelper::set_shape(&x, TensorShape({4, 4}));
+  EXPECT_EQ(
+      strings::StrCat("uninitialized Tensor of 16 elements of type ", DT_INT32),
+      x.SummarizeValue(16));
+}
+
+TEST(SummarizeValue, INT32) {
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  EXPECT_EQ("1 2 3...", x.SummarizeValue(3));
+}
+
+TEST(SummarizeValue, FLOAT) {
+  Tensor x = MkTensor<float>(DT_FLOAT, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  EXPECT_EQ("1 2 3...", x.SummarizeValue(3));
+}
+
+TEST(SummarizeValue, BOOL) {
+  Tensor x = MkTensor<bool>(DT_BOOL, TensorShape({5}), {false, true, true});
+  EXPECT_EQ("0 1 1 0 1", x.SummarizeValue(16));
+  EXPECT_EQ("0 1 1...", x.SummarizeValue(3));
+}
+
+TEST(SummarizeValue, STRING) {
+  Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
+                              {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("one two three four five", x.SummarizeValue(16));
+  x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
+                       {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("one two three four five one...", x.SummarizeValue(6));
+}
+
 static void BM_CreateAndDestroy(int iters) {
   TensorShape shape({10, 20});
   while (--iters) {
@@ -688,5 +806,37 @@ TEST(Tensor, EmptyTensorData) {
   Tensor empty;
   EXPECT_EQ(empty.tensor_data().size(), 0);
 }
+
+// Benchmark create and destroy a tensor, with an allocated buffer.
+static void BM_CreateAndDestroyWithBuf(int iters) {
+  TensorShape shape({10, 20});
+  Allocator* allocator = cpu_allocator();
+  while (--iters) {
+    Tensor a(allocator, DT_FLOAT, shape);
+  }
+}
+BENCHMARK(BM_CreateAndDestroyWithBuf);
+
+// Benchmark create+copy a tensor, with an allocated buffer.
+static void BM_CreateAndCopyCtrWithBuf(int iters) {
+  TensorShape shape({10, 20});
+  Allocator* allocator = cpu_allocator();
+  while (--iters) {
+    Tensor a(allocator, DT_FLOAT, shape);
+    Tensor b(a);
+  }
+}
+BENCHMARK(BM_CreateAndCopyCtrWithBuf);
+
+// Benchmark create+move a tensor, with an allocated buffer.
+static void BM_CreateAndMoveCtrWithBuf(int iters) {
+  TensorShape shape({10, 20});
+  Allocator* allocator = cpu_allocator();
+  while (--iters) {
+    Tensor a(allocator, DT_FLOAT, shape);
+    Tensor b(std::move(a));
+  }
+}
+BENCHMARK(BM_CreateAndMoveCtrWithBuf);
 
 }  // namespace tensorflow

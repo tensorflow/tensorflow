@@ -23,10 +23,10 @@ message TestAllTypes {
   }
 
   // Singular
-  int32 optional_int32 = 1;
+  int32 optional_int32 = 1000;  // use large tag to test output order.
   int64 optional_int64 = 2;
   uint32 optional_uint32 = 3;
-  uint64 optional_uint64 = 4;
+  uint64 optional_uint64 = 999;  // use large tag to test output order.
   sint32 optional_sint32 = 5;
   sint64 optional_sint64 = 6;
   fixed32 optional_fixed32 = 7;
@@ -74,6 +74,7 @@ message TestAllTypes {
     NestedMessage oneof_nested_message = 112;
     string oneof_string = 113;
     bytes oneof_bytes = 114;
+    NestedEnum oneof_enum = 100;
   }
 
   map<string, NestedMessage> map_string_to_message = 58;
@@ -82,6 +83,7 @@ message TestAllTypes {
   map<bool, NestedMessage> map_bool_to_message = 61;
   map<string, int64> map_string_to_int64 = 62;
   map<int64, string> map_int64_to_string = 63;
+  map<string, NestedMessage> another_map_string_to_message = 65;
 
   repeated int64 packed_repeated_int64 = 64 [packed = true];
 }
@@ -90,6 +92,8 @@ message TestAllTypes {
 message NestedTestAllTypes {
   NestedTestAllTypes child = 1;
   TestAllTypes payload = 2;
+
+  map<string, int64> map_string_to_int64 = 3;
 }
 
 message ForeignMessage {

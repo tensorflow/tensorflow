@@ -182,7 +182,7 @@ if [[ ${IS_LOCAL_CLUSTER} == "0" ]]; then
   while true; do
     sleep 1
     ((COUNTER++))
-    if [[ $(echo "${COUNTER}>${GCLOUD_OP_MAX_STEPS}" | bc -l) == "1" ]]; then
+    if [[ "${COUNTER}" -gt "${GCLOUD_OP_MAX_STEPS}" ]]; then
       die "Reached maximum polling steps while waiting for external IP "\
 "of tf-worker0 service to emerge"
     fi
@@ -224,7 +224,7 @@ else
   while true; do
     sleep 1
     ((COUNTER++))
-    if [[ $(echo "${COUNTER}>${GCLOUD_OP_MAX_STEPS}" | bc -l) == "1" ]]; then
+    if [[ "${COUNTER}" -gt "${GCLOUD_OP_MAX_STEPS}" ]]; then
       die "Reached maximum polling steps while waiting for all tf pods to "\
 "be running in local k8s TensorFlow cluster"
     fi

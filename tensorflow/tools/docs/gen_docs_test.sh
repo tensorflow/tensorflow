@@ -16,7 +16,12 @@
 
 set -eux
 
-TFDIR=$TEST_SRCDIR/tensorflow
+if [ -d $TEST_SRCDIR/org_tensorflow ]; then
+  TFDIR=$TEST_SRCDIR/org_tensorflow/tensorflow
+else
+  # Support 0.2.1- runfiles.
+  TFDIR=$TEST_SRCDIR/tensorflow
+fi
 DOXYGEN=doxygen
 DOXYGEN_CONFIG="tf-doxy_for_md-config"
 TMP_DIR=/tmp/tensorflow-docs

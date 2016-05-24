@@ -142,6 +142,9 @@ TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
 g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC
 ```
 
+On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
+building the .so file.
+
 > Note on gcc version 5: gcc5 uses the new C++
 [ABI](https://gcc.gnu.org/gcc-5/changes.html#libstdcxx). The binary pip packages
 available on the TensorFlow website are built with gcc4 that uses the older ABI.
@@ -168,6 +171,12 @@ Run the following command to build `zero_out.so`.
 ```bash
 $ bazel build -c opt //tensorflow/core/user_ops:zero_out.so
 ```
+
+> Note:
+Although you can create a shared library (a `.so` file) with the standard
+`cc_library` rule, we strongly recommend that you use the `tf_custom_op_library`
+macro. It adds some required dependencies, and performs checks to ensure that
+the shared library is compatible with TensorFlow's plugin loading mechanism.
 
 ## Using the Op in Python
 
@@ -806,7 +815,7 @@ expressions:
   ```c++
   REGISTER_OP("BuiltInTypesExample")
       .Input("integers: int32")
-      .Input("complex_numbers: scomplex64");
+      .Input("complex_numbers: complex64");
   ```
 
 * `<attr-type>`, where `<attr-type>` is the name of an [Attr](#attrs) with type
@@ -956,6 +965,14 @@ One thing to note, even when the GPU kernel version of `pad` is used, it still
 needs its `"paddings"` input in CPU memory.  To mark that inputs or outputs are
 kept on the CPU, add a `HostMemory()` call to the kernel registration, e.g.:
 
+```c++
+#define REGISTER_GPU_KERNEL(T)                         \
+  REGISTER_KERNEL_BUILDER(Name("Pad")                  \
+                              .Device(DEVICE_GPU)      \
+                              .TypeConstraint<T>("T")  \
+                              .HostMemory("paddings"), \
+                          PadOp<GPUDevice, T>)
+```
 
 ### Compiling the kernel for the GPU device
 
@@ -982,15 +999,6 @@ cuda_op_kernel.cu.o -I $TF_INC -fPIC -lcudart
 
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the
 `tf.load_op_library` function.
-
-```c++
-#define REGISTER_GPU_KERNEL(T)                         \
-  REGISTER_KERNEL_BUILDER(Name("Pad")                  \
-                              .Device(DEVICE_GPU)      \
-                              .TypeConstraint<T>("T")  \
-                              .HostMemory("paddings"), \
-                          PadOp<GPUDevice, T>)
-```
 
 ## Implement the gradient in Python
 
@@ -1087,7 +1095,7 @@ to a shape function. For example, the
 the following:
 
 ```python
-@tf.RegisterShape("ZeroOut"):
+@tf.RegisterShape("ZeroOut")
 def _zero_out_shape(op):
   """Shape function for the ZeroOut op.
 
@@ -1102,7 +1110,7 @@ A shape function can also constrain the shape of an input. For the version of
 would be as follows:
 
 ```python
-@tf.RegisterShape("ZeroOut"):
+@tf.RegisterShape("ZeroOut")
 def _zero_out_shape(op):
   """Shape function for the ZeroOut op.
 

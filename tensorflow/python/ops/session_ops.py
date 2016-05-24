@@ -166,7 +166,7 @@ def get_session_tensor(dtype, name=None):
     # Commit the device when it is used the first time.
     holder = array_ops.placeholder(dtypes.string)
     _register_handle_feeder(holder.graph, holder, dtype)
-  tensor = gen_data_flow_ops._get_session_tensor(holder, dtype, name=name)
+    tensor = gen_data_flow_ops._get_session_tensor(holder, dtype, name=name)
   return (holder, tensor)
 
 
@@ -224,6 +224,7 @@ def _get_handle_mover(graph, feeder, handle):
   handle_device = TensorHandle._get_device_name(handle)
   if not feeder.op.device:
     feeder.op._set_device(handle_device)
+    feeder.consumers()[0]._set_device(handle_device)
     return None
   if feeder.op.device == handle_device:
     return None

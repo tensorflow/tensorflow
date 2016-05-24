@@ -26,6 +26,18 @@ namespace core {
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
 
+inline uint16 DecodeFixed16(const char* ptr) {
+  if (port::kLittleEndian) {
+    // Load the raw bytes
+    uint16 result;
+    memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
+    return result;
+  } else {
+    return ((static_cast<uint16>(static_cast<unsigned char>(ptr[0]))) |
+            (static_cast<uint16>(static_cast<unsigned char>(ptr[1])) << 8));
+  }
+}
+
 inline uint32 DecodeFixed32(const char* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes

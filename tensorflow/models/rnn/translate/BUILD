@@ -37,7 +37,6 @@ py_library(
     deps = [
         ":data_utils",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/models/rnn:seq2seq",
     ],
 )
 

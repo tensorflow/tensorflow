@@ -337,7 +337,7 @@ TEST_F(OptimizerCSETest, Constant_Dedup) {
             "n/_0(Const);n/_1(Const);n/_2(Const);n/_3(Const);"
             "n/_4(Const);n/_5(Const);n/_6(Const);n/_7(Const)|");
   // In theory, there are 2^4 possible correct output of CSE.  In this
-  // test, it happens happens to eliminate the first 4 nodes.
+  // test, it happens to eliminate the first 4 nodes.
   EXPECT_EQ(DoCSE(), "n/_4(Const);n/_5(Const);n/_6(Const);n/_7(Const)|");
 }
 

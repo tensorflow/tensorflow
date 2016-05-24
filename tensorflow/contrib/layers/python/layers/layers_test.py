@@ -21,8 +21,602 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+# TODO(sguada) Expose tf.with_dependencies
+from tensorflow.python.ops import control_flow_ops
 
-class FullyConnectedTest(tf.test.TestCase):
+
+class BiasAddTest(tf.test.TestCase):
+
+  def testCreate(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.bias_add(images)
+      self.assertEquals(output.op.name, 'BiasAdd/BiasAdd')
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
+
+  def testCreateWithActivation(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.bias_add(images, activation_fn=tf.nn.relu)
+      self.assertEquals(output.op.name, 'BiasAdd/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
+
+  def testCreateDimensions(self):
+    dims = (2, 3, 4)
+    shape = [5, 2, 3, 4]
+    with self.test_session():
+      for d in dims:
+        input_shape = shape[:d]
+        inputs = tf.random_uniform(input_shape, seed=1)
+        output = tf.contrib.layers.bias_add(inputs)
+        self.assertListEqual(output.get_shape().as_list(), input_shape)
+        biases = tf.contrib.framework.get_variables_by_name('biases')[-1]
+        self.assertListEqual(biases.get_shape().as_list(), [input_shape[-1]])
+
+
+class Convolution2dTest(tf.test.TestCase):
+
+  def testCreateConv(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 4), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 32, [3, 3])
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
+      weights = tf.contrib.framework.get_variables_by_name('weights')[0]
+      self.assertListEqual(weights.get_shape().as_list(), [3, 3, 4, 32])
+      biases = tf.contrib.framework.get_variables_by_name('biases')[0]
+      self.assertListEqual(biases.get_shape().as_list(), [32])
+
+  def testCreateSquareConv(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 32, 3)
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
+
+  def testCreateConvWithTensorShape(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 32,
+                                               images.get_shape()[1:3])
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
+
+  def testCreateFullyConv(self):
+    height, width = 6, 6
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 32), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 64,
+                                               images.get_shape()[1:3],
+                                               padding='VALID')
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 64])
+      biases = tf.contrib.framework.get_variables_by_name('biases')[0]
+      self.assertListEqual(biases.get_shape().as_list(), [64])
+
+  def testCreateVerticalConv(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 4), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 32, [3, 1])
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(),
+                           [5, height, width, 32])
+      weights = tf.contrib.framework.get_variables_by_name('weights')[0]
+      self.assertListEqual(weights.get_shape().as_list(), [3, 1, 4, 32])
+      biases = tf.contrib.framework.get_variables_by_name('biases')[0]
+      self.assertListEqual(biases.get_shape().as_list(), [32])
+
+  def testCreateHorizontalConv(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 4), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 32, [1, 3])
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(),
+                           [5, height, width, 32])
+      weights = tf.contrib.framework.get_variables_by_name('weights')[0]
+      self.assertListEqual(weights.get_shape().as_list(), [1, 3, 4, 32])
+
+  def testCreateConvWithStride(self):
+    height, width = 6, 6
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 32, [3, 3], stride=2)
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(),
+                           [5, height/2, width/2, 32])
+
+  def testCreateConvCreatesWeightsAndBiasesVars(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    with self.test_session():
+      self.assertFalse(tf.contrib.framework.get_variables('conv1/weights'))
+      self.assertFalse(tf.contrib.framework.get_variables('conv1/biases'))
+      tf.contrib.layers.convolution2d(images, 32, [3, 3], scope='conv1')
+      self.assertTrue(tf.contrib.framework.get_variables('conv1/weights'))
+      self.assertTrue(tf.contrib.framework.get_variables('conv1/biases'))
+
+  def testCreateConvWithScope(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 32, [3, 3],
+                                               scope='conv1')
+      self.assertEquals(output.op.name, 'conv1/Relu')
+
+  def testCreateConvWithoutActivation(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 32, [3, 3],
+                                               activation_fn=None)
+      self.assertEquals(output.op.name, 'Conv/BiasAdd')
+
+  def testCreateConvValid(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.convolution2d(images, 32, [3, 3],
+                                               padding='VALID')
+      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 32])
+
+  def testCreateConvWithWD(self):
+    height, width = 3, 3
+    weight_decay = 0.01
+    with self.test_session() as sess:
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      regularizer = tf.contrib.layers.l2_regularizer(weight_decay)
+      tf.contrib.layers.convolution2d(images, 32, [3, 3],
+                                      weights_regularizer=regularizer)
+      l2_loss = tf.nn.l2_loss(
+          tf.contrib.framework.get_variables_by_name('weights')[0])
+      wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
+      self.assertEquals(wd.op.name,
+                        'Conv/weights/Regularizer/l2_regularizer')
+      sess.run(tf.initialize_all_variables())
+      print(wd.eval())
+      self.assertAlmostEqual(sess.run(wd), weight_decay * l2_loss.eval())
+
+  def testCreateConvNoRegularizers(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.convolution2d(images, 32, [3, 3])
+      self.assertEquals(
+          tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES), [])
+
+  def testReuseVars(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.convolution2d(images, 32, [3, 3], scope='conv1')
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 2)
+      tf.contrib.layers.convolution2d(images, 32, [3, 3], scope='conv1',
+                                      reuse=True)
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 2)
+
+  def testNonReuseVars(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.convolution2d(images, 32, [3, 3])
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 2)
+      tf.contrib.layers.convolution2d(images, 32, [3, 3])
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 4)
+
+  def testReuseConvWithWD(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      weight_decay = tf.contrib.layers.l2_regularizer(0.01)
+      with tf.contrib.framework.arg_scope(
+          [tf.contrib.layers.convolution2d],
+          weights_regularizer=weight_decay):
+        tf.contrib.layers.convolution2d(images, 32, [3, 3], scope='conv1')
+        self.assertEquals(len(tf.contrib.framework.get_variables()), 2)
+        self.assertEquals(
+            len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+        tf.contrib.layers.convolution2d(images, 32, [3, 3], scope='conv1',
+                                        reuse=True)
+        self.assertEquals(len(tf.contrib.framework.get_variables()), 2)
+        self.assertEquals(
+            len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+
+  def testConvWithBatchNorm(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 32), seed=1)
+      with tf.contrib.framework.arg_scope(
+          [tf.contrib.layers.convolution2d],
+          normalizer_fn=tf.contrib.layers.batch_norm,
+          normalizer_params={'decay': 0.9}):
+        net = tf.contrib.layers.convolution2d(images, 32, [3, 3])
+        net = tf.contrib.layers.convolution2d(net, 32, [3, 3])
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 8)
+      self.assertEquals(
+          len(tf.contrib.framework.get_variables('Conv/BatchNorm')), 3)
+      self.assertEquals(
+          len(tf.contrib.framework.get_variables('Conv_1/BatchNorm')), 3)
+
+  def testReuseConvWithBatchNorm(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 32), seed=1)
+      with tf.contrib.framework.arg_scope(
+          [tf.contrib.layers.convolution2d],
+          normalizer_fn=tf.contrib.layers.batch_norm,
+          normalizer_params={'decay': 0.9}):
+        net = tf.contrib.layers.convolution2d(images, 32, [3, 3], scope='Conv')
+        net = tf.contrib.layers.convolution2d(net, 32, [3, 3], scope='Conv',
+                                              reuse=True)
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 4)
+      self.assertEquals(
+          len(tf.contrib.framework.get_variables('Conv/BatchNorm')), 3)
+      self.assertEquals(
+          len(tf.contrib.framework.get_variables('Conv_1/BatchNorm')), 0)
+
+
+class FCTest(tf.test.TestCase):
+
+  def testCreateFC(self):
+    height, width = 3, 3
+    with self.test_session():
+      inputs = tf.random_uniform((5, height * width * 3), seed=1)
+      output = tf.contrib.layers.fully_connected(inputs, 32)
+      self.assertEquals(output.op.name, 'FC/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 32])
+      weights = tf.contrib.framework.get_variables_by_name('weights')[0]
+      self.assertListEqual(weights.get_shape().as_list(), [3 * 3 * 3, 32])
+      biases = tf.contrib.framework.get_variables_by_name('biases')[0]
+      self.assertListEqual(biases.get_shape().as_list(), [32])
+
+  def testCreateFCWithScope(self):
+    height, width = 3, 3
+    with self.test_session():
+      inputs = tf.random_uniform((5, height * width * 3), seed=1)
+      output = tf.contrib.layers.fully_connected(inputs, 32, scope='fc1')
+      self.assertEquals(output.op.name, 'fc1/Relu')
+
+  def testCreateFcCreatesWeightsAndBiasesVars(self):
+    height, width = 3, 3
+    inputs = tf.random_uniform((5, height * width * 3), seed=1)
+    with self.test_session():
+      self.assertFalse(tf.contrib.framework.get_variables('fc1/weights'))
+      self.assertFalse(tf.contrib.framework.get_variables('fc1/biases'))
+      tf.contrib.layers.fully_connected(inputs, 32, scope='fc1')
+      self.assertTrue(tf.contrib.framework.get_variables('fc1/weights'))
+      self.assertTrue(tf.contrib.framework.get_variables('fc1/biases'))
+
+  def testReuseVars(self):
+    height, width = 3, 3
+    inputs = tf.random_uniform((5, height * width * 3), seed=1)
+    with self.test_session():
+      tf.contrib.layers.fully_connected(inputs, 32, scope='fc1')
+      self.assertEquals(len(tf.contrib.framework.get_variables('fc1')), 2)
+      tf.contrib.layers.fully_connected(inputs, 32, scope='fc1', reuse=True)
+      self.assertEquals(len(tf.contrib.framework.get_variables('fc1')), 2)
+
+  def testNonReuseVars(self):
+    height, width = 3, 3
+    inputs = tf.random_uniform((5, height * width * 3), seed=1)
+    with self.test_session():
+      tf.contrib.layers.fully_connected(inputs, 32)
+      self.assertEquals(len(tf.contrib.framework.get_variables('FC')), 2)
+      tf.contrib.layers.fully_connected(inputs, 32)
+      self.assertEquals(len(tf.contrib.framework.get_variables('FC')), 4)
+
+  def testCreateFCWithoutActivation(self):
+    height, width = 3, 3
+    with self.test_session():
+      inputs = tf.random_uniform((5, height * width * 3), seed=1)
+      output = tf.contrib.layers.fully_connected(inputs, 32, activation_fn=None)
+      self.assertEquals(output.op.name, 'FC/BiasAdd')
+
+  def testCreateFCWithWD(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      inputs = tf.random_uniform((5, height * width * 3), seed=1)
+      weight_decay = tf.contrib.layers.l2_regularizer(0.01)
+      tf.contrib.layers.fully_connected(inputs, 32,
+                                        weights_regularizer=weight_decay)
+      wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
+      self.assertEquals(wd.op.name,
+                        'FC/weights/Regularizer/l2_regularizer')
+      sess.run(tf.initialize_all_variables())
+      self.assertLess(sess.run(wd), 0.2)
+
+  def testCreateNoRegularizers(self):
+    height, width = 3, 3
+    with self.test_session():
+      inputs = tf.random_uniform((5, height * width * 3), seed=1)
+      tf.contrib.layers.fully_connected(inputs, 32)
+      self.assertEquals(
+          tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES), [])
+
+  def testReuseFCWithWD(self):
+    height, width = 3, 3
+    with self.test_session():
+      inputs = tf.random_uniform((5, height * width * 3), seed=1)
+      weight_decay = tf.contrib.layers.l2_regularizer(0.01)
+      tf.contrib.layers.fully_connected(inputs, 32,
+                                        weights_regularizer=weight_decay,
+                                        scope='fc')
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 2)
+      self.assertEquals(
+          len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+      tf.contrib.layers.fully_connected(inputs, 32,
+                                        weights_regularizer=weight_decay,
+                                        scope='fc',
+                                        reuse=True)
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 2)
+      self.assertEquals(
+          len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+
+  def testFCWithBatchNorm(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height * width * 3), seed=1)
+      with tf.contrib.framework.arg_scope(
+          [tf.contrib.layers.fully_connected],
+          normalizer_fn=tf.contrib.layers.batch_norm,
+          normalizer_params={'decay': 0.9}):
+        net = tf.contrib.layers.fully_connected(images, 27)
+        net = tf.contrib.layers.fully_connected(net, 27)
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 8)
+      self.assertEquals(
+          len(tf.contrib.framework.get_variables('FC/BatchNorm')), 3)
+      self.assertEquals(
+          len(tf.contrib.framework.get_variables('FC_1/BatchNorm')), 3)
+
+  def testReuseFCWithBatchNorm(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height * width * 3), seed=1)
+      with tf.contrib.framework.arg_scope(
+          [tf.contrib.layers.fully_connected],
+          normalizer_fn=tf.contrib.layers.batch_norm,
+          normalizer_params={'decay': 0.9}):
+        net = tf.contrib.layers.fully_connected(images, 27, scope='fc1')
+        net = tf.contrib.layers.fully_connected(net, 27, scope='fc1',
+                                                reuse=True)
+      self.assertEquals(len(tf.contrib.framework.get_variables()), 4)
+      self.assertEquals(
+          len(tf.contrib.framework.get_variables('fc1/BatchNorm')), 3)
+
+
+class BatchNormTest(tf.test.TestCase):
+
+  def testCreateOp(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.batch_norm(images)
+      self.assertTrue(output.op.name.startswith('BatchNorm/batchnorm'))
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
+
+  def testCreateVariables(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.batch_norm(images, scale=True)
+      beta = tf.contrib.framework.get_variables_by_name('beta')[0]
+      gamma = tf.contrib.framework.get_variables_by_name('gamma')[0]
+      self.assertEquals(beta.op.name, 'BatchNorm/beta')
+      self.assertEquals(gamma.op.name, 'BatchNorm/gamma')
+      moving_mean = tf.contrib.framework.get_variables_by_name('moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables_by_name(
+          'moving_variance')[0]
+      self.assertEquals(moving_mean.op.name, 'BatchNorm/moving_mean')
+      self.assertEquals(moving_variance.op.name, 'BatchNorm/moving_variance')
+
+  def testMovingAverageVariables(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.batch_norm(images, scale=True)
+      moving_mean = tf.contrib.framework.get_variables_by_name('moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables_by_name(
+          'moving_variance')[0]
+      self.assertEquals(moving_mean.op.name, 'BatchNorm/moving_mean')
+      self.assertEquals(moving_variance.op.name, 'BatchNorm/moving_variance')
+
+  def testUpdatesCollection(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.batch_norm(images, updates_collection='update_ops')
+      update_layers = tf.get_collection('update_ops')
+      update_moving_mean = update_layers[0]
+      update_moving_variance = update_layers[1]
+      self.assertEquals(update_moving_mean.op.name,
+                        'BatchNorm/AssignMovingAvg')
+      self.assertEquals(update_moving_variance.op.name,
+                        'BatchNorm/AssignMovingAvg_1')
+
+  def testReuseVariables(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.batch_norm(images, scale=True, scope='bn')
+      tf.contrib.layers.batch_norm(images, scale=True, scope='bn', reuse=True)
+      beta = tf.contrib.framework.get_variables_by_name('beta')
+      gamma = tf.contrib.framework.get_variables_by_name('gamma')
+      self.assertEquals(len(beta), 1)
+      self.assertEquals(len(gamma), 1)
+      moving_mean = tf.contrib.framework.get_variables_by_name('moving_mean')
+      moving_variance = tf.contrib.framework.get_variables_by_name(
+          'moving_variance')
+      moving_vars = moving_mean + moving_variance
+      self.assertEquals(len(moving_vars), 2)
+
+  def testReuseUpdateOps(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      with tf.contrib.framework.arg_scope([tf.contrib.layers.batch_norm],
+                                          updates_collection='update_ops'):
+        tf.contrib.layers.batch_norm(images, scope='bn')
+        self.assertEquals(len(tf.get_collection('update_ops')), 2)
+        tf.contrib.layers.batch_norm(images, scope='bn', reuse=True)
+        self.assertEquals(len(tf.get_collection('update_ops')), 4)
+
+  def testCreateMovingVars(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      _ = tf.contrib.layers.batch_norm(images)
+      moving_mean = tf.contrib.framework.get_variables('BatchNorm/moving_mean')
+      self.assertEquals(len(moving_mean), 1)
+      self.assertEquals(moving_mean[0].op.name, 'BatchNorm/moving_mean')
+      moving_variance = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_variance')
+      self.assertEquals(len(moving_variance), 1)
+      self.assertEquals(moving_variance[0].op.name, 'BatchNorm/moving_variance')
+
+  def testUpdateMovingVars(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      image_shape = (10, height, width, 3)
+      image_values = np.random.rand(*image_shape)
+      expected_mean = np.mean(image_values, axis=(0, 1, 2))
+      expected_var = np.var(image_values, axis=(0, 1, 2))
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      output = tf.contrib.layers.batch_norm(images, decay=0.1)
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      moving_mean = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_variance')[0]
+      mean, variance = sess.run([moving_mean, moving_variance])
+      # After initialization moving_mean == 0 and moving_variance == 1.
+      self.assertAllClose(mean, [0] * 3)
+      self.assertAllClose(variance, [1] * 3)
+      for _ in range(10):
+        sess.run([output])
+      mean = moving_mean.eval()
+      variance = moving_variance.eval()
+      # After 10 updates with decay 0.1 moving_mean == expected_mean and
+      # moving_variance == expected_var.
+      self.assertAllClose(mean, expected_mean)
+      self.assertAllClose(variance, expected_var)
+
+  def testDelayedUpdateMovingVars(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      image_shape = (10, height, width, 3)
+      image_values = np.random.rand(*image_shape)
+      expected_mean = np.mean(image_values, axis=(0, 1, 2))
+      expected_var = np.var(image_values, axis=(0, 1, 2))
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      output = tf.contrib.layers.batch_norm(images, decay=0.1,
+                                            updates_collection='update_ops')
+      update_ops = tf.get_collection('update_ops')
+      with tf.control_dependencies(update_ops):
+        barrier = tf.no_op(name='barrier')
+      output = control_flow_ops.with_dependencies([barrier], output)
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      moving_mean = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_variance')[0]
+      mean, variance = sess.run([moving_mean, moving_variance])
+      # After initialization moving_mean == 0 and moving_variance == 1.
+      self.assertAllClose(mean, [0] * 3)
+      self.assertAllClose(variance, [1] * 3)
+      for _ in range(10):
+        sess.run([output])
+      mean = moving_mean.eval()
+      variance = moving_variance.eval()
+      # After 10 updates with decay 0.1 moving_mean == expected_mean and
+      # moving_variance == expected_var.
+      self.assertAllClose(mean, expected_mean)
+      self.assertAllClose(variance, expected_var)
+
+  def testEvalMovingVars(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      image_shape = (10, height, width, 3)
+      image_values = np.random.rand(*image_shape)
+      expected_mean = np.mean(image_values, axis=(0, 1, 2))
+      expected_var = np.var(image_values, axis=(0, 1, 2))
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      output = tf.contrib.layers.batch_norm(images,
+                                            decay=0.1,
+                                            is_training=False,
+                                            updates_collection='update_ops')
+      update_layers = tf.get_collection('update_ops')
+      self.assertEquals(update_layers, [])
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      moving_mean = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_variance')[0]
+      mean, variance = sess.run([moving_mean, moving_variance])
+      # After initialization moving_mean == 0 and moving_variance == 1.
+      self.assertAllClose(mean, [0] * 3)
+      self.assertAllClose(variance, [1] * 3)
+      # Simulate assigment from saver restore.
+      init_assigns = [tf.assign(moving_mean, expected_mean),
+                      tf.assign(moving_variance, expected_var)]
+      sess.run(init_assigns)
+      for _ in range(10):
+        sess.run([output], {images: np.random.rand(*image_shape)})
+      mean = moving_mean.eval()
+      variance = moving_variance.eval()
+      # Although we feed different images, the moving_mean and moving_variance
+      # shouldn't change.
+      self.assertAllClose(mean, expected_mean)
+      self.assertAllClose(variance, expected_var)
+
+  def testReuseVars(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      image_shape = (10, height, width, 3)
+      image_values = np.random.rand(*image_shape)
+      expected_mean = np.mean(image_values, axis=(0, 1, 2))
+      expected_var = np.var(image_values, axis=(0, 1, 2))
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      output = tf.contrib.layers.batch_norm(images,
+                                            decay=0.1,
+                                            is_training=False,
+                                            updates_collection='update_ops')
+      update_layers = tf.get_collection('update_ops')
+      self.assertEquals(update_layers, [])
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      moving_mean = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_variance')[0]
+      mean, variance = sess.run([moving_mean, moving_variance])
+      # After initialization moving_mean == 0 and moving_variance == 1.
+      self.assertAllClose(mean, [0] * 3)
+      self.assertAllClose(variance, [1] * 3)
+      # Simulate assigment from saver restore.
+      init_assigns = [tf.assign(moving_mean, expected_mean),
+                      tf.assign(moving_variance, expected_var)]
+      sess.run(init_assigns)
+      for _ in range(10):
+        sess.run([output], {images: np.random.rand(*image_shape)})
+      mean = moving_mean.eval()
+      variance = moving_variance.eval()
+      # Although we feed different images, the moving_mean and moving_variance
+      # shouldn't change.
+      self.assertAllClose(mean, expected_mean)
+      self.assertAllClose(variance, expected_var)
+
+
+# TODO(b/28426988): Add separate tests for non-legacy versions.
+class LegacyFullyConnectedTest(tf.test.TestCase):
 
   def setUp(self):
     tf.test.TestCase.setUp(self)
@@ -41,8 +635,9 @@ class FullyConnectedTest(tf.test.TestCase):
     assert not tf.get_collection(tf.GraphKeys.SUMMARIES)
 
   def _fully_connected_basic_use(self, x, num_output_units, expected_shape):
-    output = tf.contrib.layers.fully_connected(x, num_output_units,
-                                               activation_fn=tf.nn.relu)
+    output = tf.contrib.layers.legacy_fully_connected(x,
+                                                      num_output_units,
+                                                      activation_fn=tf.nn.relu)
 
     with tf.Session() as sess:
       with self.assertRaises(tf.errors.FailedPreconditionError):
@@ -71,7 +666,7 @@ class FullyConnectedTest(tf.test.TestCase):
           self.input_3_dim, last_dim, [2, 4, last_dim])
 
   def test_relu_layer_basic_use(self):
-    output = tf.contrib.layers.relu(self.input, 8)
+    output = tf.contrib.layers.legacy_relu(self.input, 8)
 
     with tf.Session() as sess:
       with self.assertRaises(tf.errors.FailedPreconditionError):
@@ -90,7 +685,7 @@ class FullyConnectedTest(tf.test.TestCase):
                      len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
 
   def test_relu6_layer_basic_use(self):
-    output = tf.contrib.layers.relu6(self.input, 8)
+    output = tf.contrib.layers.legacy_relu6(self.input, 8)
 
     with tf.Session() as sess:
       with self.assertRaises(tf.errors.FailedPreconditionError):
@@ -112,11 +707,11 @@ class FullyConnectedTest(tf.test.TestCase):
 
   def test_variable_reuse_with_scope(self):
     with tf.variable_scope('test') as vs:
-      output1 = tf.contrib.layers.relu(self.input, 8)
-      output2 = tf.contrib.layers.relu(self.input, 8)
+      output1 = tf.contrib.layers.legacy_relu(self.input, 8)
+      output2 = tf.contrib.layers.legacy_relu(self.input, 8)
 
     with tf.variable_scope(vs, reuse=True):
-      output3 = tf.contrib.layers.relu(self.input, 8)
+      output3 = tf.contrib.layers.legacy_relu(self.input, 8)
 
     with tf.Session() as sess:
       tf.initialize_all_variables().run()
@@ -127,7 +722,7 @@ class FullyConnectedTest(tf.test.TestCase):
 
   def test_variable_reuse_with_template(self):
     tmpl1 = tf.make_template('test',
-                             tf.contrib.layers.fully_connected,
+                             tf.contrib.layers.legacy_fully_connected,
                              num_output_units=8)
     output1 = tmpl1(self.input)
     output2 = tmpl1(self.input)
@@ -138,9 +733,11 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertAllClose(out_value1, out_value2)
 
   def _custom_initializers(self, x, num_output_units, expected_outputs):
-    output = tf.contrib.layers.relu(x, num_output_units,
-                                    weight_init=tf.constant_initializer(2.0),
-                                    bias_init=tf.constant_initializer(1.0))
+    output = tf.contrib.layers.legacy_relu(
+        x,
+        num_output_units,
+        weight_init=tf.constant_initializer(2.0),
+        bias_init=tf.constant_initializer(1.0))
 
     with tf.Session() as sess:
       tf.initialize_all_variables().run()
@@ -165,10 +762,11 @@ class FullyConnectedTest(tf.test.TestCase):
                                 [49.6, 49.6]]])
 
   def test_custom_collections(self):
-    tf.contrib.layers.relu(self.input, 2,
-                           weight_collections=['unbiased'],
-                           bias_collections=['biased'],
-                           output_collections=['output'])
+    tf.contrib.layers.legacy_relu(self.input,
+                                  2,
+                                  weight_collections=['unbiased'],
+                                  bias_collections=['biased'],
+                                  output_collections=['output'])
 
     self.assertEquals(1, len(tf.get_collection('unbiased')))
     self.assertEquals(1, len(tf.get_collection('biased')))
@@ -176,9 +774,10 @@ class FullyConnectedTest(tf.test.TestCase):
     self.assertEquals(2, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
 
   def test_all_custom_collections(self):
-    tf.contrib.layers.relu(self.input, 2,
-                           weight_collections=['unbiased', 'all'],
-                           bias_collections=['biased', 'all'])
+    tf.contrib.layers.legacy_relu(self.input,
+                                  2,
+                                  weight_collections=['unbiased', 'all'],
+                                  bias_collections=['biased', 'all'])
 
     self.assertEquals(1, len(tf.get_collection('unbiased')))
     self.assertEquals(1, len(tf.get_collection('biased')))
@@ -186,16 +785,16 @@ class FullyConnectedTest(tf.test.TestCase):
                       tf.get_collection('all'))
 
   def test_no_bias(self):
-    tf.contrib.layers.relu(self.input, 2, bias_init=None)
+    tf.contrib.layers.legacy_relu(self.input, 2, bias_init=None)
     self.assertEqual(1, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
 
   def test_no_activation(self):
-    y = tf.contrib.layers.fully_connected(self.input, 2)
+    y = tf.contrib.layers.legacy_fully_connected(self.input, 2)
     self.assertEquals(2, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
     self.assertEquals('BiasAdd', y.op.type)
 
   def test_no_activation_no_bias(self):
-    y = tf.contrib.layers.fully_connected(self.input, 2, bias_init=None)
+    y = tf.contrib.layers.legacy_fully_connected(self.input, 2, bias_init=None)
     self.assertEquals(1, len(tf.get_collection(tf.GraphKeys.VARIABLES)))
     self.assertEquals('MatMul', y.op.type)
 
@@ -206,7 +805,9 @@ class FullyConnectedTest(tf.test.TestCase):
       cnt[0] += 1
       return tensor
 
-    tf.contrib.layers.fully_connected(self.input, 2, weight_regularizer=test_fn)
+    tf.contrib.layers.legacy_fully_connected(self.input,
+                                             2,
+                                             weight_regularizer=test_fn)
 
     self.assertEqual([tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
@@ -219,10 +820,12 @@ class FullyConnectedTest(tf.test.TestCase):
       cnt[0] += 1
       return tensor
 
-    tf.contrib.layers.fully_connected(self.input, 2,
-                                      weight_regularizer=test_fn)
-    tf.contrib.layers.fully_connected(self.input, 2,
-                                      weight_regularizer=test_fn)
+    tf.contrib.layers.legacy_fully_connected(self.input,
+                                             2,
+                                             weight_regularizer=test_fn)
+    tf.contrib.layers.legacy_fully_connected(self.input,
+                                             2,
+                                             weight_regularizer=test_fn)
 
     self.assertEqual([tensor, tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
@@ -236,12 +839,14 @@ class FullyConnectedTest(tf.test.TestCase):
       return tensor
 
     with tf.variable_scope('test') as vs:
-      tf.contrib.layers.fully_connected(self.input, 2,
-                                        weight_regularizer=test_fn)
+      tf.contrib.layers.legacy_fully_connected(self.input,
+                                               2,
+                                               weight_regularizer=test_fn)
 
     with tf.variable_scope(vs, reuse=True):
-      tf.contrib.layers.fully_connected(self.input, 2,
-                                        weight_regularizer=test_fn)
+      tf.contrib.layers.legacy_fully_connected(self.input,
+                                               2,
+                                               weight_regularizer=test_fn)
 
     self.assertEqual([tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
@@ -254,7 +859,9 @@ class FullyConnectedTest(tf.test.TestCase):
     with self.test_session():
       x = tf.constant([[]], shape=[0, 3])
       self.assertEqual(0, tf.size(x).eval())
-      y = tf.contrib.layers.fully_connected(x, 2, activation_fn=tf.nn.softmax)
+      y = tf.contrib.layers.legacy_fully_connected(x,
+                                                   2,
+                                                   activation_fn=tf.nn.softmax)
       tf.initialize_all_variables().run()
       expected_y = np.array([]).reshape(0, 2)
       np.testing.assert_array_equal(expected_y, y.eval())
@@ -262,7 +869,7 @@ class FullyConnectedTest(tf.test.TestCase):
   def test_shapes_variable_first_dim(self):
     # first dimension is not known statically.
     x = tf.placeholder(tf.float32, shape=[None, 4, 3])
-    y = tf.contrib.layers.fully_connected(x, 1)
+    y = tf.contrib.layers.legacy_fully_connected(x, 1)
     # in the output we still only know the 2nd and 3rd dimensions statically.
     self.assertEquals(y.get_shape().as_list(), [None, 4, 1])
     with self.test_session() as sess:
@@ -280,7 +887,7 @@ class FullyConnectedTest(tf.test.TestCase):
 
   def _unknown_dim_invalid_input(self, last_dim):
     x = tf.placeholder(tf.float32, shape=[3, last_dim])
-    tf.contrib.layers.fully_connected(x, 2, activation_fn=None)
+    tf.contrib.layers.legacy_fully_connected(x, 2, activation_fn=None)
 
   def test_known_dim_valid_input(self):
     self._unknown_dim_invalid_input(last_dim=3)
@@ -295,10 +902,12 @@ class FullyConnectedTest(tf.test.TestCase):
       with self.assertRaisesRegexp(ValueError,
                                    'rank of x must be at least 2 not: 1'):
         x = tf.constant([[]], shape=[0])
-        tf.contrib.layers.fully_connected(x, 2, activation_fn=tf.nn.softmax)
+        tf.contrib.layers.legacy_fully_connected(x,
+                                                 2,
+                                                 activation_fn=tf.nn.softmax)
 
 
-class Convolution2dTest(tf.test.TestCase):
+class LegacyConvolution2dTest(tf.test.TestCase):
 
   def setUp(self):
     tf.test.TestCase.setUp(self)
@@ -308,8 +917,9 @@ class Convolution2dTest(tf.test.TestCase):
     assert not tf.get_collection(tf.GraphKeys.SUMMARIES)
 
   def test_basic_use(self):
-    output = tf.contrib.layers.convolution2d(self.input, 8, (3, 3),
-                                             activation_fn=tf.nn.relu)
+    output = tf.contrib.layers.legacy_convolution2d(self.input,
+                                                    8, (3, 3),
+                                                    activation_fn=tf.nn.relu)
 
     with tf.Session() as sess:
       with self.assertRaises(tf.errors.FailedPreconditionError):
@@ -328,17 +938,17 @@ class Convolution2dTest(tf.test.TestCase):
 
   def test_variable_reuse_with_scope(self):
     with tf.variable_scope('test') as vs:
-      output1 = tf.contrib.layers.convolution2d(self.input,
-                                                8, (3, 3),
-                                                activation_fn=tf.nn.relu)
-      output2 = tf.contrib.layers.convolution2d(self.input,
-                                                8, (3, 3),
-                                                activation_fn=tf.nn.relu)
+      output1 = tf.contrib.layers.legacy_convolution2d(self.input,
+                                                       8, (3, 3),
+                                                       activation_fn=tf.nn.relu)
+      output2 = tf.contrib.layers.legacy_convolution2d(self.input,
+                                                       8, (3, 3),
+                                                       activation_fn=tf.nn.relu)
 
     with tf.variable_scope(vs, reuse=True):
-      output3 = tf.contrib.layers.convolution2d(self.input,
-                                                8, (3, 3),
-                                                activation_fn=tf.nn.relu)
+      output3 = tf.contrib.layers.legacy_convolution2d(self.input,
+                                                       8, (3, 3),
+                                                       activation_fn=tf.nn.relu)
 
     with tf.Session() as sess:
       tf.initialize_all_variables().run()
@@ -349,7 +959,7 @@ class Convolution2dTest(tf.test.TestCase):
 
   def test_variable_reuse_with_template(self):
     tmpl1 = tf.make_template('test',
-                             tf.contrib.layers.convolution2d,
+                             tf.contrib.layers.legacy_convolution2d,
                              kernel_size=(3, 3),
                              num_output_channels=8)
     output1 = tmpl1(self.input)
@@ -361,10 +971,9 @@ class Convolution2dTest(tf.test.TestCase):
     self.assertAllClose(out_value1, out_value2)
 
   def test_custom_initializers(self):
-    output = tf.contrib.layers.convolution2d(
+    output = tf.contrib.layers.legacy_convolution2d(
         self.input,
-        2,
-        (3, 3),
+        2, (3, 3),
         activation_fn=tf.nn.relu,
         weight_init=tf.constant_initializer(2.0),
         bias_init=tf.constant_initializer(1.0),
@@ -378,21 +987,22 @@ class Convolution2dTest(tf.test.TestCase):
         np.array([[[[1261., 1261.]]], [[[3853., 3853.]]]]), out_value)
 
   def test_custom_collections(self):
-    tf.contrib.layers.convolution2d(self.input,
-                                    2, (3, 3),
-                                    activation_fn=tf.nn.relu,
-                                    weight_collections=['unbiased'],
-                                    bias_collections=['biased'])
+    tf.contrib.layers.legacy_convolution2d(self.input,
+                                           2, (3, 3),
+                                           activation_fn=tf.nn.relu,
+                                           weight_collections=['unbiased'],
+                                           bias_collections=['biased'])
 
     self.assertEquals(1, len(tf.get_collection('unbiased')))
     self.assertEquals(1, len(tf.get_collection('biased')))
 
   def test_all_custom_collections(self):
-    tf.contrib.layers.convolution2d(self.input,
-                                    2, (3, 3),
-                                    activation_fn=tf.nn.relu,
-                                    weight_collections=['unbiased', 'all'],
-                                    bias_collections=['biased', 'all'])
+    tf.contrib.layers.legacy_convolution2d(
+        self.input,
+        2, (3, 3),
+        activation_fn=tf.nn.relu,
+        weight_collections=['unbiased', 'all'],
+        bias_collections=['biased', 'all'])
 
     self.assertEquals(1, len(tf.get_collection('unbiased')))
     self.assertEquals(1, len(tf.get_collection('biased')))
@@ -407,15 +1017,18 @@ class Convolution2dTest(tf.test.TestCase):
       cnt[0] += 1
       return tensor
 
-    tf.contrib.layers.convolution2d(self.input, 2, (3, 3),
-                                    weight_regularizer=test_fn)
+    tf.contrib.layers.legacy_convolution2d(self.input,
+                                           2, (3, 3),
+                                           weight_regularizer=test_fn)
 
     self.assertEqual([tensor],
                      tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
     self.assertEqual(1, cnt[0])
 
   def test_no_bias(self):
-    tf.contrib.layers.convolution2d(self.input, 2, (3, 3), bias_init=None)
+    tf.contrib.layers.legacy_convolution2d(self.input,
+                                           2, (3, 3),
+                                           bias_init=None)
     self.assertEqual(1,
                      len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
 

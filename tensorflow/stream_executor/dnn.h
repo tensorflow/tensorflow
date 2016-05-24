@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
+#include "third_party/eigen3/Eigen/Core"
+
 namespace perftools {
 namespace gputools {
 
@@ -45,6 +47,22 @@ enum class DataLayout : int64 {
   kBatchDepthYX,      // cuDNN's NCHW layout, data laid out as image, feature,
                       // maps, rows, columns.
 };
+
+// Specifies an index to use when accessing specific spatial dimensions.
+enum class DimIndex : int {
+  X = 0,
+  Y = 1,
+  Z = 2,
+};
+
+// Helper functions to make methods more readable.
+inline int64 GetDim(const std::vector<int64>& data, DimIndex dim) {
+  return data.rbegin()[static_cast<int64>(dim)];
+}
+
+inline void SetDim(std::vector<int64>* data, DimIndex dim, int64 value) {
+  data->rbegin()[static_cast<int64>(dim)] = value;
+}
 
 // Returns a string representation of the given data layout.
 string DataLayoutString(DataLayout layout);
@@ -103,6 +121,7 @@ class BatchDescriptor {
   // Creates a "blank" batch descriptor, which should be initialized via the
   // named argument helpers.
   BatchDescriptor();
+  explicit BatchDescriptor(int ndims);
 
   // Clones values from 'other' for initialization.
   void CloneFrom(const BatchDescriptor& other);
@@ -113,14 +132,23 @@ class BatchDescriptor {
   // Accessors.
   int64 count() const { return count_; }
   int64 feature_map_count() const { return feature_map_count_; }
-  int64 height() const { return height_; }
-  int64 width() const { return width_; }
+  int64 height() const { return GetDim(spatial_size_, DimIndex::Y); }
+  int64 width() const { return GetDim(spatial_size_, DimIndex::X); }
+  int64 spatial_dim(DimIndex dim) const { return GetDim(spatial_size_, dim); }
+  int ndims() const { return ndims_; }
   float value_max() const { return value_max_; }
   float value_min() const { return value_min_; }
   DataLayout layout() const { return layout_; }
   QuantizedActivationMode quantized_activation_mode() const {
     return quantized_activation_mode_;
   }
+  // Full dimensions of the underlying data, ordered according to a specific
+  // layout.
+  std::vector<int64> full_dims(const DataLayout& layout) const;
+
+  // Full strides of the underlying data, ordered according to a specific
+  // layout.
+  std::vector<int64> full_strides(const DataLayout& layout) const;
 
   // Named-argument helpers for avoiding user error during construction.
   BatchDescriptor& set_count(int64 value) {
@@ -132,11 +160,15 @@ class BatchDescriptor {
     return *this;
   }
   BatchDescriptor& set_height(int64 value) {
-    height_ = value;
+    SetDim(&spatial_size_, DimIndex::Y, value);
     return *this;
   }
   BatchDescriptor& set_width(int64 value) {
-    width_ = value;
+    SetDim(&spatial_size_, DimIndex::X, value);
+    return *this;
+  }
+  BatchDescriptor& set_spatial_dim(DimIndex dim, int64 value) {
+    SetDim(&spatial_size_, dim, value);
     return *this;
   }
   BatchDescriptor& set_value_max(float value) {
@@ -189,11 +221,12 @@ class BatchDescriptor {
  private:
   int64 count_;
   int64 feature_map_count_;
-  int64 height_;
-  int64 width_;
+  // Stored as: ..., y, x.
+  std::vector<int64> spatial_size_;
   float value_max_;
   float value_min_;
   DataLayout layout_;
+  int ndims_;
   QuantizedActivationMode quantized_activation_mode_;
 };
 
@@ -241,7 +274,7 @@ class FilterDescriptor {
   // be populated by the user via the named-argument helpers below. (See class
   // comment for details.)
   FilterDescriptor();
-
+  explicit FilterDescriptor(int ndims);
   ~FilterDescriptor();
 
   // Named-argument helpers for avoiding user error during construction.
@@ -254,17 +287,22 @@ class FilterDescriptor {
     return *this;
   }
   FilterDescriptor& set_input_filter_height(int64 value) {
-    input_filter_height_ = value;
+    SetDim(&input_filter_dims_, DimIndex::Y, value);
     return *this;
   }
   FilterDescriptor& set_input_filter_width(int64 value) {
-    input_filter_width_ = value;
+    SetDim(&input_filter_dims_, DimIndex::X, value);
     return *this;
   }
   FilterDescriptor& set_layout(FilterLayout layout) {
     layout_ = layout;
     return *this;
   }
+  FilterDescriptor& set_spatial_dim(DimIndex dim, int64 value) {
+    SetDim(&input_filter_dims_, dim, value);
+    return *this;
+  }
+  int ndims() const { return ndims_; }
 
   void CloneFrom(const FilterDescriptor& other);
 
@@ -275,21 +313,31 @@ class FilterDescriptor {
   // using this filter descriptor.
   int64 ComputeWeightCount() const;
 
-  // Returns the number of biases required as parameters for a convolution using
-  // this filter descriptor.
+  // Returns the number of biases required as parameters for a convolution
+  // using this filter descriptor.
   int64 bias_count() const { return output_feature_map_count_; }
 
   int64 output_feature_map_count() const { return output_feature_map_count_; }
   int64 input_feature_map_count() const { return input_feature_map_count_; }
-  int64 input_filter_height() const { return input_filter_height_; }
-  int64 input_filter_width() const { return input_filter_width_; }
+  int64 input_filter_height() const {
+    return GetDim(input_filter_dims_, DimIndex::Y);
+  }
+  int64 input_filter_width() const {
+    return GetDim(input_filter_dims_, DimIndex::X);
+  }
+  int64 input_filter_dim(DimIndex dim) const {
+    return GetDim(input_filter_dims_, dim);
+  }
+
   FilterLayout layout() const { return layout_; }
+  std::vector<int64> input_filter_dims() const { return input_filter_dims_; }
 
  private:
   int64 output_feature_map_count_;
   int64 input_feature_map_count_;
-  int64 input_filter_height_;
-  int64 input_filter_width_;
+  // Stored as: ..., y, x.
+  std::vector<int64> input_filter_dims_;
+  int ndims_;
   FilterLayout layout_;
 };
 
@@ -319,38 +367,62 @@ class ConvolutionDescriptor {
   // 1x1 (centering the filter on every cell in the input layer's
   // width-by-height area).
   ConvolutionDescriptor();
+  explicit ConvolutionDescriptor(int ndims);
   ~ConvolutionDescriptor();
 
   string ToString() const;
   string ToShortString() const;
 
   ConvolutionDescriptor& set_zero_padding_height(int64 value) {
-    zero_padding_height_ = value;
+    SetDim(&zero_padding_, DimIndex::Y, value);
     return *this;
   }
   ConvolutionDescriptor& set_zero_padding_width(int64 value) {
-    zero_padding_width_ = value;
+    SetDim(&zero_padding_, DimIndex::X, value);
+    return *this;
+  }
+  ConvolutionDescriptor& set_zero_padding(DimIndex dim, int64 value) {
+    SetDim(&zero_padding_, dim, value);
     return *this;
   }
   ConvolutionDescriptor& set_vertical_filter_stride(int64 value) {
-    vertical_filter_stride_ = value;
+    SetDim(&filter_strides_, DimIndex::Y, value);
     return *this;
   }
   ConvolutionDescriptor& set_horizontal_filter_stride(int64 value) {
-    horizontal_filter_stride_ = value;
+    SetDim(&filter_strides_, DimIndex::X, value);
+    return *this;
+  }
+  ConvolutionDescriptor& set_filter_stride(DimIndex dim, int64 value) {
+    SetDim(&filter_strides_, dim, value);
     return *this;
   }
 
-  int64 zero_padding_height() const { return zero_padding_height_; }
-  int64 zero_padding_width() const { return zero_padding_width_; }
-  int64 vertical_filter_stride() const { return vertical_filter_stride_; }
-  int64 horizontal_filter_stride() const { return horizontal_filter_stride_; }
+  int64 zero_padding_height() const {
+    return GetDim(zero_padding_, DimIndex::Y);
+  }
+  int64 zero_padding_width() const {
+    return GetDim(zero_padding_, DimIndex::X);
+  }
+  int64 vertical_filter_stride() const {
+    return GetDim(filter_strides_, DimIndex::Y);
+  }
+  int64 horizontal_filter_stride() const {
+    return GetDim(filter_strides_, DimIndex::X);
+  }
+
+  int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
+  int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
+  int ndims() const { return ndims_; }
+
+  std::vector<int64> strides() const { return filter_strides_; }
+  std::vector<int64> padding() const { return zero_padding_; }
 
  private:
-  int64 zero_padding_height_;
-  int64 zero_padding_width_;
-  int64 vertical_filter_stride_;
-  int64 horizontal_filter_stride_;
+  // Stored as: .. y, x.
+  std::vector<int64> zero_padding_;
+  std::vector<int64> filter_strides_;
+  int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
   // their effect is -- they may be boolean rather than integral.
   // int64 upscale_input_x;
@@ -384,57 +456,101 @@ string ShortPoolingModeString(PoolingMode mode);
 class PoolingDescriptor {
  public:
   PoolingDescriptor();
+  explicit PoolingDescriptor(int ndims);
 
   PoolingDescriptor& set_pooling_mode(PoolingMode value) {
     mode_ = value;
     return *this;
   }
   PoolingDescriptor& set_window_height(int64 value) {
-    window_height_ = value;
+    SetDim(&window_, DimIndex::Y, value);
     return *this;
   }
   PoolingDescriptor& set_window_width(int64 value) {
-    window_width_ = value;
+    SetDim(&window_, DimIndex::X, value);
+    return *this;
+  }
+  PoolingDescriptor& set_window(DimIndex dim, int64 value) {
+    SetDim(&window_, dim, value);
     return *this;
   }
   PoolingDescriptor& set_vertical_padding(int64 value) {
-    vertical_padding_ = value;
+    SetDim(&padding_, DimIndex::Y, value);
     return *this;
   }
   PoolingDescriptor& set_horizontal_padding(int64 value) {
-    horizontal_padding_ = value;
+    SetDim(&padding_, DimIndex::X, value);
+    return *this;
+  }
+  PoolingDescriptor& set_padding(DimIndex dim, int64 value) {
+    SetDim(&padding_, dim, value);
     return *this;
   }
   PoolingDescriptor& set_vertical_stride(int64 value) {
-    vertical_stride_ = value;
+    SetDim(&strides_, DimIndex::Y, value);
     return *this;
   }
   PoolingDescriptor& set_horizontal_stride(int64 value) {
-    horizontal_stride_ = value;
+    SetDim(&strides_, DimIndex::X, value);
+    return *this;
+  }
+  PoolingDescriptor& set_stride(DimIndex dim, int64 value) {
+    SetDim(&strides_, dim, value);
     return *this;
   }
 
+  int ndims() const { return ndims_; }
   void CloneFrom(const PoolingDescriptor& other);
 
   string ToString() const;
   string ToShortString() const;
 
   PoolingMode mode() const { return mode_; }
-  int64 window_height() const { return window_height_; }
-  int64 window_width() const { return window_width_; }
-  int64 vertical_padding() const { return vertical_padding_; }
-  int64 horizontal_padding() const { return horizontal_padding_; }
-  int64 vertical_stride() const { return vertical_stride_; }
-  int64 horizontal_stride() const { return horizontal_stride_; }
+  int64 window_height() const { return GetDim(window_, DimIndex::Y); }
+  int64 window_width() const { return GetDim(window_, DimIndex::X); }
+  int64 window(DimIndex dim) const { return GetDim(window_, dim); }
+  int64 vertical_padding() const { return GetDim(padding_, DimIndex::Y); }
+  int64 horizontal_padding() const { return GetDim(padding_, DimIndex::X); }
+  int64 padding(DimIndex dim) const { return GetDim(padding_, dim); }
+  int64 vertical_stride() const { return GetDim(strides_, DimIndex::Y); }
+  int64 horizontal_stride() const { return GetDim(strides_, DimIndex::X); }
+  int64 stride(DimIndex dim) const { return GetDim(strides_, dim); }
+  std::vector<int64> window() const { return window_; }
+  std::vector<int64> padding() const { return padding_; }
+  std::vector<int64> strides() const { return strides_; }
 
  private:
   PoolingMode mode_;
-  int64 window_height_;
-  int64 window_width_;
-  int64 vertical_padding_;
-  int64 horizontal_padding_;
-  int64 vertical_stride_;
-  int64 horizontal_stride_;
+  int ndims_;
+
+  // Stored as: ..., y, x.
+  std::vector<int64> window_;
+  std::vector<int64> padding_;
+  std::vector<int64> strides_;
+};
+
+typedef int64 AlgorithmType;
+constexpr AlgorithmType kDefaultAlgorithm = -1;
+
+// Describes the result from a perf experiment.
+//
+// Arguments:
+//  is_valid: indicates whether a valid measurement was obtained.
+//  algorithm: returns the exact algorithm that was used.
+//  elapsed_time_in_ms: returns the measured elapsed time in milliseconds.
+class ProfileResult {
+ public:
+  bool is_valid() const { return is_valid_; }
+  void set_is_valid(bool val) { is_valid_ = val; }
+  AlgorithmType algorithm() const { return algorithm_; }
+  void set_algorithm(AlgorithmType val) { algorithm_ = val; }
+  float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
+  void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
+
+ private:
+  bool is_valid_ = false;
+  AlgorithmType algorithm_ = kDefaultAlgorithm;
+  float elapsed_time_in_ms_ = -1.0f;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -445,14 +561,14 @@ class PoolingDescriptor {
 // input, across all coordinates (batch, y, x), by mapping each V to
 // another vector U of the same size using the formula
 //
-//   V_i = U_i / ((bias + alpha * (sum_j U_j^2)) ^ beta)
+//   U_i = V_i / ((bias + alpha * (sum_j V_j^2)) ^ beta)
 //
-// where the sum is taken for j in the inclusive range [i - range, i + range].
+// where the sum is taken over j in the closed range [i - range, i + range].
 //
-// When calculating V_i the j in the sum can extend beyond the bounds
-// of U. If wrap_around is true, then U_j = U_{j mod F} where F is the
-// size of U, which is the number of feature maps. If wrap_around is
-// false, then U_j = 0 for j outside [0, F-1].
+// When calculating U_i the j in the sum can extend beyond the bounds
+// of V. If wrap_around is true, then V_j = V_{j mod F} where F is the
+// size of V, which is the number of feature maps. If wrap_around is
+// false, then V_j = 0 for j outside [0, F-1].
 //
 // If segment_size <= F, where F is the number of feature_maps, then
 // segment_size has no effect. Otherwise, each consecutive segment of
@@ -565,6 +681,12 @@ class DnnSupport {
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
+  //  algorithm: an integer to specify which algorithm should be used for the
+  //    operation. kDefaultAlgorithm means the system will pick an algorithm
+  //    by default. The coding of the algorithm is be interpretted by the
+  //    underlying implementation.
+  //  output_profile_result: the output profile result for this call. The
+  //    profiling is only enabled when this is not nullptr.
   //
   // input_descriptor, filter_descriptor, convolution_descriptor and
   // output_descriptor together specify exactly how the convolution is aligned
@@ -579,8 +701,7 @@ class DnnSupport {
   //   corresponds to dist_belief padding = FULL, i.e. the output is sized so
   //   that if the inverse of the filter is applied to the output in VALID mode
   //   the result is the same size as the input - this requires even more
-  //   padding
-  //   of the input.
+  //   padding of the input.
   virtual bool DoConvolve(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,
       const DeviceMemory<float>& input_data,
@@ -588,8 +709,12 @@ class DnnSupport {
       const DeviceMemory<float>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data,
-      ScratchAllocator* scratch_allocator) = 0;
+      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the forward convolution pass.
+  virtual bool GetConvolveAlgorithms(
+      std::vector<AlgorithmType>* out_algorithms);
 
   // Enqueues a double-precision convolution operation onto the stream.
   // See DoConvolve above for argument details.
@@ -601,6 +726,19 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<double>* output_data) = 0;
+
+  // Enqueues a half-precision convolution operation onto the stream.
+  // See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
 
   // Variation of the above with the weight matrix split into two matrices.
   // first_weights: Coefficients of the first matrix.
@@ -629,8 +767,7 @@ class DnnSupport {
   //  filter_descriptor: dimensions of the convolution filter.
   //  filter_data: coefficients for the convolution filter.
   //  output_descriptor: dimensions of the output gradients, which is the same
-  //  as
-  //  the dimensions of the ouput.
+  //    as the dimensions of the ouput.
   //  backward_output_data: un-owned device memory region which contains the
   //    backprop of the output.
   //  convolution_descriptor: stride of the convolution filter.
@@ -647,11 +784,27 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& input_descriptor,
       DeviceMemory<float>* backward_input_data,
-      ScratchAllocator* scratch_allocator) = 0;
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the backward convolution pass for
+  // data.
+  virtual bool GetConvolveBackwardDataAlgorithms(
+      std::vector<AlgorithmType>* out_algorithms);
+
+  virtual bool DoConvolveBackwardData(
+      Stream* stream, const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half> backward_output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const BatchDescriptor& input_descriptor,
+      DeviceMemory<Eigen::half>* backward_input_data,
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for filter) operation
-  // onto
-  // the stream.
+  // onto the stream.
   //
   // Arguments:
   //  stream: borrowed pointer to the stream that the 'convolve' operation
@@ -660,8 +813,7 @@ class DnnSupport {
   //  input_data: un-owned device memory region which contains the
   //    convolution input.
   //  output_descriptor: dimensions of the output gradients, which is the same
-  //  as
-  //  the dimensions of the ouput.
+  //    as the dimensions of the ouput.
   //  backward_output_data: un-owned device memory region which contains the
   //    backprop of the output.
   //  convolution_descriptor: stride of the convolution filter.
@@ -678,7 +830,24 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<float>* backward_filter_data,
-      ScratchAllocator* scratch_allocator) = 0;
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the backward convolution pass for
+  // filters.
+  virtual bool GetConvolveBackwardFilterAlgorithms(
+      std::vector<AlgorithmType>* out_algorithms);
+
+  virtual bool DoConvolveBackwardFilter(
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half> backward_output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const FilterDescriptor& filter_descriptor,
+      DeviceMemory<Eigen::half>* backward_filter_data,
+      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ProfileResult* output_profile_result) = 0;
 
   // Fully connects the "nodes" (float values) in input_data with
   // shape input_dimensions to output_data with output_dimensions

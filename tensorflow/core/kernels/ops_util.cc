@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>
 
 #include "tensorflow/core/kernels/ops_util.h"
@@ -54,21 +55,46 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
       *new_width = ceil(in_width / static_cast<float>(col_stride));
       // Calculate padding for top/bottom/left/right, spilling any excess
       // padding to bottom and right.
-      const int pad_needed_height =
-          (*new_height - 1) * row_stride + filter_height - in_height;
+      const int pad_needed_height = std::max(0,
+          (*new_height - 1) * row_stride + filter_height - in_height);
       *pad_top = pad_needed_height / 2;
-      CHECK_GE(pad_needed_height, 0);
       *pad_bottom = pad_needed_height - *pad_top;
 
-      const int pad_needed_width =
-          (*new_width - 1) * col_stride + filter_width - in_width;
+      const int pad_needed_width = std::max(0,
+          (*new_width - 1) * col_stride + filter_width - in_width);
       *pad_left = pad_needed_width / 2;
-      CHECK_GE(pad_needed_width, 0);
       *pad_right = pad_needed_width - *pad_left;
       break;
   }
   if (*new_height < 0 || *new_width < 0) {
     return errors::InvalidArgument("computed output size would be negative");
+  }
+  return Status::OK();
+}
+
+Status Get3dOutputSize(const std::array<int64, 3>& input,
+                       const std::array<int64, 3>& window,
+                       const std::array<int64, 3>& strides,
+                       Padding padding_type, std::array<int64, 3>* output_ptr,
+                       std::array<int64, 3>* padding_ptr) {
+  auto& output = *output_ptr;
+  auto& padding = *padding_ptr;
+  switch (padding_type) {
+    case Padding::VALID:
+      for (size_t i = 0; i < input.size(); ++i) {
+        output[i] = (input[i] - window[i] + strides[i]) / strides[i];
+        padding[i] = 0;
+      }
+      break;
+    case Padding::SAME:
+      for (size_t i = 0; i < input.size(); ++i) {
+        output[i] = (input[i] + strides[i] - 1) / strides[i];
+        const int64 delta = (output[i] - 1) * strides[i] + window[i] - input[i];
+        // For odd values of total padding, add more padding at the 'right'
+        // side of the given dimension.
+        padding[i] = std::max(delta / 2, 0ll);
+      }
+      break;
   }
   return Status::OK();
 }

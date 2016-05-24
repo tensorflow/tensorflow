@@ -49,6 +49,7 @@ class _FakeAccumulator(object):
 
   def Tags(self):
     return {event_accumulator.IMAGES: ['im1', 'im2'],
+            event_accumulator.AUDIO: ['snd1', 'snd2'],
             event_accumulator.HISTOGRAMS: ['hst1', 'hst2'],
             event_accumulator.COMPRESSED_HISTOGRAMS: ['cmphst1', 'cmphst2'],
             event_accumulator.SCALARS: ['sv1', 'sv2']}
@@ -70,6 +71,11 @@ class _FakeAccumulator(object):
 
   def Images(self, tag_name):
     if tag_name not in self.Tags()[event_accumulator.IMAGES]:
+      raise KeyError
+    return ['%s/%s' % (self._path, tag_name)]
+
+  def Audio(self, tag_name):
+    if tag_name not in self.Tags()[event_accumulator.AUDIO]:
       raise KeyError
     return ['%s/%s' % (self._path, tag_name)]
 

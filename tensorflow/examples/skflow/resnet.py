@@ -30,7 +30,7 @@ from math import sqrt
 from sklearn import metrics
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 
 def res_net(x, y, activation=tf.nn.relu):
@@ -62,7 +62,7 @@ def res_net(x, y, activation=tf.nn.relu):
 
     # First convolution expands to 64 channels
     with tf.variable_scope('conv_layer1'):
-        net = skflow.ops.conv2d(x, 64, [7, 7], batch_norm=True,
+        net = learn.ops.conv2d(x, 64, [7, 7], batch_norm=True,
                                 activation=activation, bias=False)
 
     # Max pool
@@ -71,7 +71,7 @@ def res_net(x, y, activation=tf.nn.relu):
 
     # First chain of resnets
     with tf.variable_scope('conv_layer2'):
-        net = skflow.ops.conv2d(net, blocks[0].num_filters,
+        net = learn.ops.conv2d(net, blocks[0].num_filters,
                                [1, 1], [1, 1, 1, 1],
                                padding='VALID', bias=True)
 
@@ -83,7 +83,7 @@ def res_net(x, y, activation=tf.nn.relu):
 
             # 1x1 convolution responsible for reducing dimension
             with tf.variable_scope(name + '/conv_in'):
-                conv = skflow.ops.conv2d(net, block.bottleneck_size,
+                conv = learn.ops.conv2d(net, block.bottleneck_size,
                                          [1, 1], [1, 1, 1, 1],
                                          padding='VALID',
                                          activation=activation,
@@ -91,7 +91,7 @@ def res_net(x, y, activation=tf.nn.relu):
                                          bias=False)
 
             with tf.variable_scope(name + '/conv_bottleneck'):
-                conv = skflow.ops.conv2d(conv, block.bottleneck_size,
+                conv = learn.ops.conv2d(conv, block.bottleneck_size,
                                          [3, 3], [1, 1, 1, 1],
                                          padding='SAME',
                                          activation=activation,
@@ -100,7 +100,7 @@ def res_net(x, y, activation=tf.nn.relu):
 
             # 1x1 convolution responsible for restoring dimension
             with tf.variable_scope(name + '/conv_out'):
-                conv = skflow.ops.conv2d(conv, block.num_filters,
+                conv = learn.ops.conv2d(conv, block.num_filters,
                                          [1, 1], [1, 1, 1, 1],
                                          padding='VALID',
                                          activation=activation,
@@ -115,7 +115,7 @@ def res_net(x, y, activation=tf.nn.relu):
             # upscale to the next block size
             next_block = blocks[block_i + 1]
             with tf.variable_scope('block_%d/conv_upscale' % block_i):
-                net = skflow.ops.conv2d(net, next_block.num_filters,
+                net = learn.ops.conv2d(net, next_block.num_filters,
                                         [1, 1], [1, 1, 1, 1],
                                         bias=False,
                                         padding='SAME')
@@ -130,7 +130,7 @@ def res_net(x, y, activation=tf.nn.relu):
     net_shape = net.get_shape().as_list()
     net = tf.reshape(net, [-1, net_shape[1] * net_shape[2] * net_shape[3]])
 
-    return skflow.models.logistic_regression(net, y)
+    return learn.models.logistic_regression(net, y)
 
 
 # Download and load MNIST data.
@@ -138,10 +138,10 @@ mnist = input_data.read_data_sets('MNIST_data')
 
 # Restore model if graph is saved into a folder.
 if os.path.exists("models/resnet/graph.pbtxt"):
-    classifier = skflow.TensorFlowEstimator.restore("models/resnet/")
+    classifier = learn.TensorFlowEstimator.restore("models/resnet/")
 else:
     # Create a new resnet classifier.
-    classifier = skflow.TensorFlowEstimator(
+    classifier = learn.TensorFlowEstimator(
         model_fn=res_net, n_classes=10, batch_size=100, steps=100,
         learning_rate=0.001, continue_training=True)
 

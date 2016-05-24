@@ -78,6 +78,19 @@ TEST_F(GatherOpTest, Simple_TwoD32) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(GatherOpTest, ZeroSize_TwoD32) {
+  MakeOp(DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5, 0}), {});
+  AddInputFromArray<int32>(TensorShape({4}), {0, 4, 0, 2});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output.
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({4, 0}));
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(GatherOpTest, Simple_TwoD64) {
   MakeOp(DT_INT64);
 

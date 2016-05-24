@@ -112,6 +112,9 @@ class Session {
   /// REQUIRES: The name of each Tensor of the input or output must
   /// match a "Tensor endpoint" in the `GraphDef` passed to `Create()`.
   ///
+  /// REQUIRES: At least one of `output_tensor_names` and
+  /// `target_node_names` must be non-empty.
+  ///
   /// REQUIRES: outputs is not nullptr if `output_tensor_names` is non-empty.
   virtual Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
                      const std::vector<string>& output_tensor_names,

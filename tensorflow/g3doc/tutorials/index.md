@@ -13,7 +13,7 @@ gentle introduction to multiclass classification.
 ## Deep MNIST for Experts
 
 If you're already familiar with other deep learning software packages, and are
-already familiar with MNIST, this tutorial with give you a very brief primer on
+already familiar with MNIST, this tutorial will give you a very brief primer on
 TensorFlow.
 
 [View Tutorial](../tutorials/mnist/pros/index.md)
@@ -72,6 +72,14 @@ for machine translation.  You will learn to build your own English-to-French
 translator, entirely machine learned, end-to-end.
 
 [View Tutorial](../tutorials/seq2seq/index.md)
+
+
+## SyntaxNet: Neural Models of Syntax
+
+An introduction to SyntaxNet, a Natural Language Processing framework for
+TensorFlow.
+
+[View Tutorial](../tutorials/syntaxnet/index.md)
 
 
 ## Mandelbrot Set

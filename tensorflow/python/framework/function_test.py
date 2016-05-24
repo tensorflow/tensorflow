@@ -120,15 +120,20 @@ class FunctionTest(tf.test.TestCase):
       return x * x + 1.0
 
     def XSquarePlusOneGrad(x, dy):
-      dx = functional_ops._symbolic_gradient(input=[x, dy],
-                                             Tout=[tf.float32],
-                                             f="XSquarePlusOne",
-                                             name="dx")
+      dx = functional_ops._symbolic_gradient(
+          input=[x, dy],
+          Tout=[tf.float32],
+          # This line on define_function to register the above
+          # function with name "XSquarePlusOneFn"
+          f="XSquarePlusOneFn",
+          name="dx")
       return dx
 
     g = tf.Graph()
     with g.as_default():
-      f = function.define_function(XSquarePlusOne, {"x": tf.float32})
+      # This line registers the Function "XSquarePlusOneFn"
+      f = function.define_function(
+          XSquarePlusOne, {"x": tf.float32}, func_name="XSquarePlusOneFn")
       g = function.define_function(XSquarePlusOneGrad, {"x": tf.float32,
                                                         "dy": tf.float32})
       epsilon = tf.constant([0.1])
@@ -173,7 +178,7 @@ class FunctionTest(tf.test.TestCase):
         # Takes exp(dlogits) to differentiate it from the "correct" gradient.
         return tf.exp(dlogits), dlabels
 
-      @function.Defun(dtype, dtype, grad_func="XentLossGrad")
+      @function.Defun(dtype, dtype, grad_func=XentLossGrad)
       def XentLoss(logits, labels):
         return tf.reduce_sum(labels * tf.log(tf.nn.softmax(logits)), 1)
 
@@ -201,7 +206,7 @@ class FunctionTest(tf.test.TestCase):
         # Should have returned 1 result.
         return x, dy + dz
 
-      @function.Defun(dtype, grad_func="Grad")
+      @function.Defun(dtype, grad_func=Grad)
       def Forward(x):
         return x, x
 
@@ -231,6 +236,21 @@ class FunctionTest(tf.test.TestCase):
                                                  f="Foo")
       self.assertEquals(x.get_shape(), dx.get_shape())
       self.assertEquals(y.get_shape(), dy.get_shape())
+
+  def testZNoDepOnY(self):
+    with tf.Graph().as_default():
+      # z = Foo(x, y). z doe
+      @function.Defun(tf.float32, tf.float32)
+      def Foo(x, y):
+        return x * 2
+      x = tf.constant(1.0)
+      y = tf.constant(2.0)
+      z = Foo(x, y)
+      dx, dy = tf.gradients([z], [x, y])
+      with tf.Session() as sess:
+        dx_val, dy_val = sess.run([dx, dy])
+        self.assertEquals([2.0], dx_val)
+        self.assertEquals([0.0], dy_val)
 
   def testDefineFunctionNoArgs(self):
 
@@ -346,7 +366,8 @@ class FunctionTest(tf.test.TestCase):
 
       two = tf.constant([2.])
       call1 = Minus1(two)
-      self.assertEquals("Minus1", call1.op.name)
+      self.assertTrue(isinstance(Minus1, function._DefinedFunction))
+      self.assertEqual(Minus1.name, "Minus1")
       # pylint: disable=unexpected-keyword-arg
       call2 = Minus1(call1, name="next")
       # pylint:enable=unexpected-keyword-arg
@@ -369,6 +390,32 @@ class FunctionTest(tf.test.TestCase):
       z = CubeXPlusY(tf.constant(3.0), tf.constant(-2.0))
       with self.test_session():
         self.assertAllEqual(z.eval(), 25.0)
+
+  def testReduction(self):
+    g = tf.Graph()
+
+    # BN0 is computing batch normed matrix along rows.
+    def BN0(x):
+      mean = tf.reduce_mean(x, [0])
+      var = tf.reduce_mean(tf.square(x - mean))  # biased var
+      rstd = tf.rsqrt(var + 1e-8)
+      return (x - mean) * rstd
+    with g.as_default():
+      # Wraps BatchNorm in a tf function.
+      @function.Defun(tf.float32)
+      def BN1(x):
+        return BN0(x)
+
+      x = tf.placeholder(tf.float32)
+      y0 = BN0(x)  # A plain graph
+      y1 = BN1(x)  # A tf function
+      dx0, = tf.gradients([y0], [x])
+      dx1, = tf.gradients([y1], [x])
+    # Both should produce the same result and gradient.
+    with self.test_session(graph=g) as sess:
+      vals = sess.run([y0, y1, dx0, dx1], {x: np.random.uniform(size=(3, 7))})
+      self.assertAllClose(vals[0], vals[1])
+      self.assertAllClose(vals[2], vals[3])
 
 
 class UnrollLSTMTest(tf.test.TestCase):

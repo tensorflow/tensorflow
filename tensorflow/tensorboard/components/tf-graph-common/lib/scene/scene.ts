@@ -1,13 +1,13 @@
 /* Copyright 2015 Google Inc. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -18,56 +18,54 @@ module tf.graph.scene {
 export let Class = {
   Node: {
     // <g> element that contains nodes.
-    CONTAINER: "nodes",
+    CONTAINER: 'nodes',
     // <g> element that contains detail about a node.
-    GROUP: "node",
+    GROUP: 'node',
     // <g> element that contains visual elements (like rect, ellipse).
-    SHAPE: "nodeshape",
+    SHAPE: 'nodeshape',
     // <*> element(s) under SHAPE that should receive color updates.
-    COLOR_TARGET: "nodecolortarget",
+    COLOR_TARGET: 'nodecolortarget',
     // <text> element showing the node's label.
-    LABEL: "nodelabel",
+    LABEL: 'nodelabel',
     // <g> element that contains all visuals for the expand/collapse
     // button for expandable group nodes.
-    BUTTON_CONTAINER: "buttoncontainer",
+    BUTTON_CONTAINER: 'buttoncontainer',
     // <circle> element that surrounds expand/collapse buttons.
-    BUTTON_CIRCLE: "buttoncircle",
+    BUTTON_CIRCLE: 'buttoncircle',
     // <path> element of the expand button.
-    EXPAND_BUTTON: "expandbutton",
+    EXPAND_BUTTON: 'expandbutton',
     // <path> element of the collapse button.
-    COLLAPSE_BUTTON: "collapsebutton"
+    COLLAPSE_BUTTON: 'collapsebutton'
   },
   Edge: {
-    CONTAINER: "edges",
-    GROUP: "edge",
-    LINE: "edgeline",
-    REF_LINE: "refline",
-    STRUCTURAL: "structural"
+    CONTAINER: 'edges',
+    GROUP: 'edge',
+    LINE: 'edgeline',
+    REF_LINE: 'refline',
+    STRUCTURAL: 'structural'
   },
   Annotation: {
-    OUTBOX: "out-annotations",
-    INBOX: "in-annotations",
-    GROUP: "annotation",
-    NODE: "annotation-node",
-    EDGE: "annotation-edge",
-    CONTROL_EDGE: "annotation-control-edge",
-    LABEL: "annotation-label",
-    ELLIPSIS: "annotation-ellipsis"
+    OUTBOX: 'out-annotations',
+    INBOX: 'in-annotations',
+    GROUP: 'annotation',
+    NODE: 'annotation-node',
+    EDGE: 'annotation-edge',
+    CONTROL_EDGE: 'annotation-control-edge',
+    LABEL: 'annotation-label',
+    ELLIPSIS: 'annotation-ellipsis'
   },
   Scene: {
-    GROUP: "scene",
-    CORE: "core",
-    INEXTRACT: "in-extract",
-    OUTEXTRACT: "out-extract"
+    GROUP: 'scene',
+    CORE: 'core',
+    INEXTRACT: 'in-extract',
+    OUTEXTRACT: 'out-extract'
   },
-  Subscene: {
-    GROUP: "subscene"
-  },
-  OPNODE: "op",
-  METANODE: "meta",
-  SERIESNODE: "series",
-  BRIDGENODE: "bridge",
-  ELLIPSISNODE: "ellipsis"
+  Subscene: {GROUP: 'subscene'},
+  OPNODE: 'op',
+  METANODE: 'meta',
+  SERIESNODE: 'series',
+  BRIDGENODE: 'bridge',
+  ELLIPSISNODE: 'ellipsis'
 };
 
 /**
@@ -80,23 +78,36 @@ export let Class = {
  */
 export function fit(svg, zoomG, d3zoom, callback) {
   let svgRect = svg.getBoundingClientRect();
-  let sceneSize = zoomG.getBBox();
+  let sceneSize = null;
+  try {
+    sceneSize = zoomG.getBBox();
+    if (sceneSize.width === 0) {
+      // There is no scene anymore. We have been detached from the dom.
+      return;
+    }
+  } catch (e) {
+    // Firefox produced NS_ERROR_FAILURE if we have been
+    // detached from the dom.
+    return;
+  }
   let scale = 0.9 * Math.min(
       svgRect.width / sceneSize.width,
       svgRect.height / sceneSize.height,
       2
     );
   let params = layout.PARAMS.graph;
-  let zoomEvent = d3zoom.scale(scale)
-    .on("zoomend.fitted", () => {
-      // Remove the listener for the zoomend event,
-      // so we don't get called at the end of regular zoom events,
-      // just those that fit the graph to screen.
-      d3zoom.on("zoomend.fitted", null);
-      callback();
-    })
-    .translate([params.padding.paddingLeft, params.padding.paddingTop])
-    .event;
+  let zoomEvent =
+      d3zoom.scale(scale)
+          .on('zoomend.fitted',
+              () => {
+                // Remove the listener for the zoomend event,
+                // so we don't get called at the end of regular zoom events,
+                // just those that fit the graph to screen.
+                d3zoom.on('zoomend.fitted', null);
+                callback();
+              })
+          .translate([params.padding.paddingLeft, params.padding.paddingTop])
+          .event;
   d3.select(zoomG).transition().duration(500).call(zoomEvent);
 };
 
@@ -112,8 +123,9 @@ export function fit(svg, zoomG, d3zoom, callback) {
  *            provided node.
  */
 export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
-  let node = <SVGAElement> d3.select("[data-name='" + nodeName + "']."
-    + Class.Node.GROUP).node();
+  let node = <SVGAElement>d3
+                 .select('[data-name="' + nodeName + '"].' + Class.Node.GROUP)
+                 .node();
   if (!node) {
     return false;
   }
@@ -170,8 +182,8 @@ export function selectOrCreateChild(container, tagName: string,
   if (!child.empty()) {
     return child;
   }
-  let newElement = document.createElementNS("http://www.w3.org/2000/svg",
-    tagName);
+  let newElement =
+      document.createElementNS('http://www.w3.org/2000/svg', tagName);
   if (className) {
     newElement.classList.add(className);
   }
@@ -214,22 +226,22 @@ export function selectChild(container, tagName: string, className?: string) {
  *
  * Structure Pattern:
  *
- * <g class="scene">
- *   <g class="core">
- *     <g class="edges">
+ * <g class='scene'>
+ *   <g class='core'>
+ *     <g class='edges'>
  *       ... stuff from tf.graph.scene.edges.build ...
  *     </g>
- *     <g class="nodes">
+ *     <g class='nodes'>
  *       ... stuff from tf.graph.scene.nodes.build ...
  *     </g>
  *   </g>
- *   <g class="in-extract">
- *     <g class="nodes">
+ *   <g class='in-extract'>
+ *     <g class='nodes'>
  *       ... stuff from tf.graph.scene.nodes.build ...
  *     </g>
  *   </g>
- *   <g class="out-extract">
- *     <g class="nodes">
+ *   <g class='out-extract'>
+ *     <g class='nodes'>
  *       ... stuff from tf.graph.scene.nodes.build ...
  *     </g>
  *   </g>
@@ -238,18 +250,18 @@ export function selectChild(container, tagName: string, className?: string) {
  * @param container D3 selection of the parent.
  * @param renderNode render node of a metanode or series node.
  * @param sceneElement <tf-graph-scene> polymer element.
- * @param sceneClass class attribute of the scene (default="scene").
+ * @param sceneClass class attribute of the scene (default='scene').
  */
 export function buildGroup(container,
     renderNode: render.RenderGroupNodeInfo,
     sceneElement,
     sceneClass: string) {
   sceneClass = sceneClass || Class.Scene.GROUP;
-  let isNewSceneGroup = selectChild(container, "g", sceneClass).empty();
-  let sceneGroup = selectOrCreateChild(container, "g", sceneClass);
+  let isNewSceneGroup = selectChild(container, 'g', sceneClass).empty();
+  let sceneGroup = selectOrCreateChild(container, 'g', sceneClass);
 
   // core
-  let coreGroup = selectOrCreateChild(sceneGroup, "g", Class.Scene.CORE);
+  let coreGroup = selectOrCreateChild(sceneGroup, 'g', Class.Scene.CORE);
   let coreNodes = _.reduce(renderNode.coreGraph.nodes(), (nodes, name) => {
                     let node = renderNode.coreGraph.node(name);
                     if (!node.excluded) {
@@ -273,29 +285,29 @@ export function buildGroup(container,
 
   // In-extract
   if (renderNode.isolatedInExtract.length > 0) {
-    let inExtractGroup = selectOrCreateChild(sceneGroup, "g",
-      Class.Scene.INEXTRACT);
+    let inExtractGroup =
+        selectOrCreateChild(sceneGroup, 'g', Class.Scene.INEXTRACT);
     node.buildGroup(inExtractGroup, renderNode.isolatedInExtract,
         sceneElement);
   } else {
-    selectChild(sceneGroup, "g", Class.Scene.INEXTRACT).remove();
+    selectChild(sceneGroup, 'g', Class.Scene.INEXTRACT).remove();
   }
 
   // Out-extract
   if (renderNode.isolatedOutExtract.length > 0) {
-    let outExtractGroup = selectOrCreateChild(sceneGroup, "g",
-      Class.Scene.OUTEXTRACT);
+    let outExtractGroup =
+        selectOrCreateChild(sceneGroup, 'g', Class.Scene.OUTEXTRACT);
     node.buildGroup(outExtractGroup, renderNode.isolatedOutExtract,
         sceneElement);
   } else {
-    selectChild(sceneGroup, "g", Class.Scene.OUTEXTRACT).remove();
+    selectChild(sceneGroup, 'g', Class.Scene.OUTEXTRACT).remove();
   }
 
   position(sceneGroup, renderNode);
 
   // Fade in the scene group if it didn't already exist.
   if (isNewSceneGroup) {
-    sceneGroup.attr("opacity", 0).transition().attr("opacity", 1);
+    sceneGroup.attr('opacity', 0).transition().attr('opacity', 1);
   }
 
   return sceneGroup;
@@ -317,7 +329,7 @@ function position(sceneGroup, renderNode: render.RenderGroupNodeInfo) {
     0 : layout.PARAMS.subscene.meta.labelHeight;
 
   // core
-  translate(selectChild(sceneGroup, "g", Class.Scene.CORE), 0, yTranslate);
+  translate(selectChild(sceneGroup, 'g', Class.Scene.CORE), 0, yTranslate);
 
   // in-extract
   let hasInExtract = renderNode.isolatedInExtract.length > 0;
@@ -328,33 +340,35 @@ function position(sceneGroup, renderNode: render.RenderGroupNodeInfo) {
     let inExtractX = renderNode.coreBox.width -
       renderNode.inExtractBox.width / 2 - renderNode.outExtractBox.width -
           (hasOutExtract ? offset : 0);
-    translate(selectChild(sceneGroup, "g", Class.Scene.INEXTRACT),
-                    inExtractX, yTranslate);
+    translate(
+        selectChild(sceneGroup, 'g', Class.Scene.INEXTRACT), inExtractX,
+        yTranslate);
   }
 
   // out-extract
   if (hasOutExtract) {
     let outExtractX = renderNode.coreBox.width -
       renderNode.outExtractBox.width / 2;
-    translate(selectChild(sceneGroup, "g", Class.Scene.OUTEXTRACT),
-                    outExtractX, yTranslate);
+    translate(
+        selectChild(sceneGroup, 'g', Class.Scene.OUTEXTRACT), outExtractX,
+        yTranslate);
   }
 };
 
 /** Adds a click listener to a group that fires a graph-select event */
 export function addGraphClickListener(graphGroup, sceneElement) {
-  d3.select(graphGroup).on("click", () => {
-    sceneElement.fire("graph-select");
+  d3.select(graphGroup).on('click', () => {
+    sceneElement.fire('graph-select');
   });
 };
 
 /** Helper for adding transform: translate(x0, y0) */
 export function translate(selection, x0: number, y0: number) {
   // If it is already placed on the screen, make it a transition.
-  if (selection.attr("transform") != null) {
-    selection = selection.transition("position");
+  if (selection.attr('transform') != null) {
+    selection = selection.transition('position');
   }
-  selection.attr("transform", "translate(" + x0 + "," + y0 + ")");
+  selection.attr('transform', 'translate(' + x0 + ',' + y0 + ')');
 };
 
 /**
@@ -397,13 +411,10 @@ export function positionButton(button, renderNode: render.RenderNodeInfo) {
     x += 10;
     y -= 2;
   }
-  let translateStr = "translate(" + x + "," + y + ")";
-  button.selectAll("path").transition().attr("transform", translateStr);
-  button.select("circle").transition().attr({
-    cx: x,
-    cy: y,
-    r: layout.PARAMS.nodeSize.meta.expandButtonRadius
-  });
+  let translateStr = 'translate(' + x + ',' + y + ')';
+  button.selectAll('path').transition().attr('transform', translateStr);
+  button.select('circle').transition().attr(
+      {cx: x, cy: y, r: layout.PARAMS.nodeSize.meta.expandButtonRadius});
 };
 
 /**

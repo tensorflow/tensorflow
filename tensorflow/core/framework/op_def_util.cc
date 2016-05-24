@@ -17,12 +17,16 @@ limitations under the License.
 
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -155,12 +159,12 @@ OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def) {
   return nullptr;
 }
 
-#define VALIDATE(EXPR, ...)                                       \
-  do {                                                            \
-    if (!(EXPR)) {                                                \
-      return errors::InvalidArgument(__VA_ARGS__, "; in OpDef: ", \
-                                     op_def.ShortDebugString());  \
-    }                                                             \
+#define VALIDATE(EXPR, ...)                                          \
+  do {                                                               \
+    if (!(EXPR)) {                                                   \
+      return errors::InvalidArgument(__VA_ARGS__, "; in OpDef: ",    \
+                                     ProtoShortDebugString(op_def)); \
+    }                                                                \
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
@@ -307,6 +311,33 @@ Status ValidateOpDef(const OpDef& op_def) {
 
 #undef VALIDATE
 
+Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
+  if (op_def.has_deprecation()) {
+    const OpDeprecation& dep = op_def.deprecation();
+    if (graph_def_version >= dep.version()) {
+      return errors::Unimplemented(
+          "Op ", op_def.name(), " is not available in GraphDef version ",
+          graph_def_version, ". It has been removed in version ", dep.version(),
+          ". ", dep.explanation(), ".");
+    } else {
+      // Warn only once for each op name, and do it in a threadsafe manner.
+      static mutex mu;
+      static std::unordered_set<string> warned;
+      bool warn;
+      {
+        mutex_lock lock(mu);
+        warn = warned.insert(op_def.name()).second;
+      }
+      if (warn) {
+        LOG(WARNING) << "Op " << op_def.name() << " is deprecated."
+                     << " It will cease to work in GraphDef version "
+                     << dep.version() << ". " << dep.explanation() << ".";
+      }
+    }
+  }
+  return Status::OK();
+}
+
 namespace {
 
 string SummarizeArgs(const protobuf::RepeatedPtrField<OpDef::ArgDef>& args) {
@@ -366,6 +397,62 @@ string SummarizeOpDef(const OpDef& op_def) {
 }
 
 namespace {
+
+// Returns true if every element of `sub` is contained in `super`.
+template <class T>
+bool IsSubsetOf(const T& sub, const T& super) {
+  for (const auto& o : sub) {
+    bool found = false;
+    for (const auto& n : super) {
+      if (o == n) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+bool MoreRestrictive(const OpDef::AttrDef& old_attr,
+                     const OpDef::AttrDef& new_attr) {
+  // Anything -> no restriction : not more restrictive.
+  if (!new_attr.has_allowed_values()) return false;
+  // No restriction -> restriction : more restrictive.
+  if (!old_attr.has_allowed_values()) return true;
+  // If anything that was previously allowed is no longer allowed:
+  // more restrictive.
+  if (!IsSubsetOf(old_attr.allowed_values().list().type(),
+                  new_attr.allowed_values().list().type())) {
+    return true;
+  }
+  if (!IsSubsetOf(old_attr.allowed_values().list().s(),
+                  new_attr.allowed_values().list().s())) {
+    return true;
+  }
+  return false;
+}
+
+string AllowedStr(const OpDef::AttrDef& attr) {
+  if (!attr.has_allowed_values()) return "no restriction";
+  return SummarizeAttrValue(attr.allowed_values());
+}
+
+bool HigherMinimum(const OpDef::AttrDef& old_attr,
+                   const OpDef::AttrDef& new_attr) {
+  // Anything -> no restriction : not more restrictive.
+  if (!new_attr.has_minimum()) return false;
+  // No restriction -> restriction : more restrictive.
+  if (!old_attr.has_minimum()) return true;
+  // If anything that was previously allowed is no longer allowed:
+  // more restrictive.
+  return new_attr.minimum() > old_attr.minimum();
+}
+
+string MinStr(const OpDef::AttrDef& attr) {
+  if (!attr.has_minimum()) return "no minimum";
+  return strings::StrCat(attr.minimum());
+}
 
 typedef std::unordered_map<string, const OpDef::AttrDef*> AttrMap;
 void FillAttrMap(const OpDef& op_def, AttrMap* attr_map) {
@@ -496,6 +583,12 @@ Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
     VALIDATE(old_attr.type() == new_attr->type(), "Attr '", old_attr.name(),
              "' changed type '", old_attr.type(), "' -> '", new_attr->type(),
              "'");
+    VALIDATE(!MoreRestrictive(old_attr, *new_attr), "Attr '", old_attr.name(),
+             "' has a stricter set of allowed values; from ",
+             AllowedStr(old_attr), " to ", AllowedStr(*new_attr));
+    VALIDATE(!HigherMinimum(old_attr, *new_attr), "Attr '", old_attr.name(),
+             "' has a higher minimum; from ", MinStr(old_attr), " to ",
+             MinStr(*new_attr));
   }
 
   for (const auto& new_attr : new_op.attr()) {
@@ -561,7 +654,7 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
   return Status::OK();
 }
 
-void RemoveDescriptionsFromOpDef(OpDef* op_def) {
+void RemoveNonDeprecationDescriptionsFromOpDef(OpDef* op_def) {
   for (int i = 0; i < op_def->input_arg_size(); ++i) {
     op_def->mutable_input_arg(i)->clear_description();
   }
@@ -573,6 +666,13 @@ void RemoveDescriptionsFromOpDef(OpDef* op_def) {
   }
   op_def->clear_summary();
   op_def->clear_description();
+}
+
+void RemoveDescriptionsFromOpDef(OpDef* op_def) {
+  RemoveNonDeprecationDescriptionsFromOpDef(op_def);
+  if (op_def->has_deprecation()) {
+    op_def->mutable_deprecation()->clear_explanation();
+  }
 }
 
 void RemoveDescriptionsFromOpList(OpList* op_list) {

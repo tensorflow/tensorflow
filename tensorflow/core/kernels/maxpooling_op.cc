@@ -50,77 +50,96 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 const int kInvalidMaxPoolingIndex = -1;
 
 template <typename Device, typename T>
-struct SpatialMaxPoolWithArgMaxHelper {
-  static void Compute(Tensor* output, Tensor* output_arg_max,
-                      const Tensor& tensor_in, const PoolParameters& params,
-                      const Padding& padding) {
-    typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
-        ConstEigenMatrixMap;
-    typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
-        EigenMatrixMap;
-    typedef Eigen::Map<Eigen::Matrix<int64, Eigen::Dynamic, Eigen::Dynamic>>
-        EigenIndexMatrixMap;
+static void SpatialMaxPoolWithArgMaxHelper(
+    OpKernelContext* context, Tensor* output, Tensor* output_arg_max,
+    Tensor* input_backprop, const Tensor& tensor_in, const Tensor& out_backprop,
+    const PoolParameters& params, const Padding& padding) {
+  typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
+      ConstEigenMatrixMap;
+  typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
+      EigenMatrixMap;
+  typedef Eigen::Map<Eigen::Matrix<int64, Eigen::Dynamic, Eigen::Dynamic>>
+      EigenIndexMatrixMap;
 
-    ConstEigenMatrixMap in_mat(
-        tensor_in.flat<T>().data(), params.depth,
-        params.tensor_in_cols * params.tensor_in_rows * params.tensor_in_batch);
-    EigenMatrixMap out_mat(
-        output->flat<T>().data(), params.depth,
-        params.out_width * params.out_height * params.tensor_in_batch);
-    EigenIndexMatrixMap out_arg_max_mat(
-        output_arg_max->flat<int64>().data(), params.depth,
-        params.out_width * params.out_height * params.tensor_in_batch);
+  ConstEigenMatrixMap in_mat(
+      tensor_in.flat<T>().data(), params.depth,
+      params.tensor_in_cols * params.tensor_in_rows * params.tensor_in_batch);
+  EigenMatrixMap out_mat(
+      output->flat<T>().data(), params.depth,
+      params.out_width * params.out_height * params.tensor_in_batch);
+  EigenIndexMatrixMap out_arg_max_mat(
+      output_arg_max->flat<int64>().data(), params.depth,
+      params.out_width * params.out_height * params.tensor_in_batch);
 
-    // Initializes the output tensor with MIN<T>.
-    output_arg_max->flat<int64>().setConstant(kInvalidMaxPoolingIndex);
-    output->flat<T>().setConstant(Eigen::NumTraits<T>::lowest());
+  const DeviceBase::CpuWorkerThreads& worker_threads =
+      *(context->device()->tensorflow_cpu_worker_threads());
 
-    // The following code basically does the following:
-    // 1. Flattens the input and output tensors into two dimensional arrays.
-    //    tensor_in_as_matrix:
-    //      depth by (tensor_in_cols * tensor_in_rows * tensor_in_batch)
-    //    output_as_matrix:
-    //      depth by (out_width * out_height * tensor_in_batch)
-    //
-    // 2. Walks through the set of columns in the flattened tensor_in_as_matrix,
-    //    and updates the corresponding column(s) in output_as_matrix with the
-    //    max value.
-    for (int b = 0; b < params.tensor_in_batch; ++b) {
-      for (int h = 0; h < params.tensor_in_rows; ++h) {
-        for (int w = 0; w < params.tensor_in_cols; ++w) {
+  // The following code basically does the following:
+  // 1. Flattens the input and output tensors into two dimensional arrays.
+  //    tensor_in_as_matrix:
+  //      depth by (tensor_in_cols * tensor_in_rows * tensor_in_batch)
+  //    output_as_matrix:
+  //      depth by (out_width * out_height * tensor_in_batch)
+  //
+  // 2. Walks through the set of columns in the flattened tensor_in_as_matrix,
+  //    and updates the corresponding column(s) in output_as_matrix with the
+  //    max value.
+  auto shard = [&params, &in_mat, &out_mat, &out_arg_max_mat, &input_backprop,
+                &output_arg_max, &out_backprop](int64 start, int64 limit) {
+
+    const int32 depth = params.depth;
+    const int32 in_rows = params.tensor_in_rows;
+    const int32 in_cols = params.tensor_in_cols;
+    const int32 pad_rows = params.pad_rows;
+    const int32 pad_cols = params.pad_cols;
+    const int32 window_rows = params.window_rows;
+    const int32 window_cols = params.window_cols;
+    const int32 row_stride = params.row_stride;
+    const int32 col_stride = params.col_stride;
+    const int32 out_height = params.out_height;
+    const int32 out_width = params.out_width;
+
+    {
+      // Initializes the output tensor with MIN<T>.
+      const int32 output_image_size = out_height * out_width * depth;
+      EigenMatrixMap out_shard(out_mat.data() + start * output_image_size, 1,
+                               (limit - start) * output_image_size);
+      out_shard.setConstant(Eigen::NumTraits<T>::lowest());
+      EigenIndexMatrixMap out_arg_max_shard(
+          out_arg_max_mat.data() + start * output_image_size, 1,
+          (limit - start) * output_image_size);
+      out_arg_max_shard.setConstant(kInvalidMaxPoolingIndex);
+    }
+
+    for (int32 b = start; b < limit; ++b) {
+      for (int h = 0; h < in_rows; ++h) {
+        for (int w = 0; w < in_cols; ++w) {
           // (h_start, h_end) * (w_start, w_end) is the range that the input
           // vector projects to.
-          const int hpad = h + params.pad_rows;
-          const int wpad = w + params.pad_cols;
+          const int hpad = h + pad_rows;
+          const int wpad = w + pad_cols;
           const int h_start =
-              (hpad < params.window_rows)
-                  ? 0
-                  : (hpad - params.window_rows) / params.row_stride + 1;
-          const int h_end =
-              std::min(hpad / params.row_stride + 1, params.out_height);
+              (hpad < window_rows) ? 0 : (hpad - window_rows) / row_stride + 1;
+          const int h_end = std::min(hpad / row_stride + 1, out_height);
           const int w_start =
-              (wpad < params.window_cols)
-                  ? 0
-                  : (wpad - params.window_cols) / params.col_stride + 1;
-          const int w_end =
-              std::min(wpad / params.col_stride + 1, params.out_width);
+              (wpad < window_cols) ? 0 : (wpad - window_cols) / col_stride + 1;
+          const int w_end = std::min(wpad / col_stride + 1, out_width);
           // compute elementwise max
-          const int in_index =
-              (b * params.tensor_in_rows + h) * params.tensor_in_cols + w;
+          const int in_index = (b * in_rows + h) * in_cols + w;
           for (int ph = h_start; ph < h_end; ++ph) {
+            const int out_index_base = (b * out_height + ph) * out_width;
             for (int pw = w_start; pw < w_end; ++pw) {
-              const int out_index =
-                  (b * params.out_height + ph) * params.out_width + pw;
-              /// NOTES(zhengxq): not using the eigen matrix operation for now.
-              /// May consider parallelizing the operations if needed.
-              for (int d = 0; d < params.depth; ++d) {
+              const int out_index = out_index_base + pw;
+              /// NOTES(zhengxq): not using the eigen matrix operation for
+              /// now.
+              for (int d = 0; d < depth; ++d) {
                 const T& input_ref = in_mat.coeffRef(d, in_index);
                 T& output_ref = out_mat.coeffRef(d, out_index);
                 int64& out_arg_max_ref = out_arg_max_mat.coeffRef(d, out_index);
                 if (output_ref < input_ref ||
                     out_arg_max_ref == kInvalidMaxPoolingIndex) {
                   output_ref = input_ref;
-                  int input_offset = in_index * params.depth + d;
+                  int input_offset = in_index * depth + d;
                   out_arg_max_ref = input_offset;
                 }
               }
@@ -129,8 +148,44 @@ struct SpatialMaxPoolWithArgMaxHelper {
         }
       }
     }
-  }
-};
+
+    {
+      auto input_backprop_flat = input_backprop->flat<T>();
+      auto out_arg_max_flat = output_arg_max->flat<int64>();
+      auto out_backprop_flat = out_backprop.flat<T>();
+
+      // Initialize output to 0.
+      const int in_size = in_rows * in_cols * depth;
+      const int in_start = start * in_size;
+      const int in_end = limit * in_size;
+      EigenMatrixMap in_shard(input_backprop_flat.data() + in_start, 1,
+                              in_end - in_start);
+      in_shard.setConstant(0);
+
+      // Backpropagate.
+      const int out_size = out_height * out_width * depth;
+      const int out_start = start * out_size;
+      const int out_end = limit * out_size;
+      for (int index = out_start; index < out_end; ++index) {
+        int input_backprop_index = out_arg_max_flat(index);
+        // Although this check is in the inner loop, it is worth its value
+        // so we don't end up with memory corruptions. Our benchmark shows that
+        // the performance impact is quite small
+        CHECK(input_backprop_index >= in_start && input_backprop_index < in_end)
+            << "Invalid input backprop index: " << input_backprop_index << ", "
+            << in_start << ", " << in_end;
+        input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
+      }
+    }
+
+  };
+
+  const int64 shard_cost = params.tensor_in_rows * params.tensor_in_cols *
+                           params.depth * params.window_rows *
+                           params.window_cols;
+  Shard(worker_threads.num_threads, worker_threads.workers,
+        params.tensor_in_batch, shard_cost, shard);
+}
 
 REGISTER_KERNEL_BUILDER(Name("MaxPool").Device(DEVICE_CPU),
                         MaxPoolingOp<CPUDevice, float>);
@@ -212,8 +267,6 @@ class MaxPoolingGradOp : public OpKernel {
 
     TensorShape output_shape = tensor_in.shape();
 
-    // Tensor index_tensor(context->allocator(), DT_INT32, output_shape);
-
     Tensor tensor_out_dup;
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DataTypeToEnum<T>::v(),
@@ -231,27 +284,10 @@ class MaxPoolingGradOp : public OpKernel {
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    output->flat<T>().setZero();
 
-    SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>::Compute(
-        &tensor_out_dup, &tensor_out_arg_max, tensor_in, params, padding_);
-    auto out_backprop_flat = out_backprop.flat<T>();
-    auto input_backprop_flat = output->flat<T>();
-    auto out_arg_max_flat = tensor_out_arg_max.flat<int64>();
-    int num_total_outputs = out_backprop.flat<T>().size();
-    int num_total_inputs = input_backprop_flat.size();
-
-    for (int index = 0; index < num_total_outputs; ++index) {
-      int input_backprop_index = out_arg_max_flat(index);
-      // Although this check is in the inner loop, it is worth its value
-      // so we don't end up with memory corruptions. Our benchmark shows that
-      // the performance impact is quite small
-      CHECK(input_backprop_index >= 0 &&
-            input_backprop_index < num_total_inputs)
-          << "Invalid input backprop index: " << input_backprop_index << ", "
-          << num_total_inputs;
-      input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
-    }
+    SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(
+        context, &tensor_out_dup, &tensor_out_arg_max, output, tensor_in,
+        out_backprop, params, padding_);
   }
 
  private:

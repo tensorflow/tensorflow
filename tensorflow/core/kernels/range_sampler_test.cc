@@ -66,7 +66,7 @@ class RangeSamplerTest : public ::testing::Test {
     sampler_->Update(a);
   }
   void Update2() {
-    // Add the value n n times.
+    // Add the value n times.
     int64 a[10];
     for (int i = 0; i < 10; i++) {
       a[i] = i;

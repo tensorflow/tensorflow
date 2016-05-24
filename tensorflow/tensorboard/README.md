@@ -1,11 +1,11 @@
 # TensorBoard
 
 TensorBoard is a suite of web applications for inspecting and understanding your
-TensorFlow runs and graphs. TensorBoard currently supports four visualizations:
-scalars, images, histograms, and the graph.
+TensorFlow runs and graphs. TensorBoard currently supports five visualizations:
+scalars, images, audio, histograms, and the graph.
 
 You can play with an interactive demo TensorBoard at
-[tensorflow.org/tensorboard](https://www.tensorflow.org/tensorboard).
+[tensorflow.org/tensorboard/](https://www.tensorflow.org/tensorboard/).
 
 This README gives an overview of key concepts in TensorBoard, as well as how to
 interpret the visualizations TensorBoard provides. For an in-depth example of
@@ -161,6 +161,13 @@ column corresponds to a run. Since the image dashboard supports arbitrary pngs,
 you can use this to embed custom visualizations (e.g. matplotlib scatterplots)
 into TensorBoard. This dashboard always shows you the latest image for each tag.
 
+### Audio Dashboard
+
+The Audio Dashboard can embed playable audio widgets for audio saved via a
+tf.audio_summary. The dashboard is set up so that each row corresponds to a
+different tag, and each column corresponds to a run. This dashboard always
+embeds the latest audio for each tag.
+
 ### Graph Explorer
 
 The Graph Explorer can visualize a TensorBoard graph, enabling inspection of the
@@ -201,13 +208,10 @@ under a subdirectory. Try running the command:
 
 If you have at least one result, then TensorBoard should be able to load data.
 
-Finally, let's make sure that the event files actually have data. Inspecting
-them is a bit tricky, but we can get a hint from the size: try
+Finally, let's make sure that the event files actually have data. Run
+tensorboard in inspector mode to inspect the contents of your event files.
 
-`find DIRECTORY_PATH | grep tfevents | xargs ls -lh`  
-
-and look at the sizes of the files. If they are all tiny (around 69 bytes) then
-they probably just contain a file version descriptor, but no actual events.
+`tensorboard --inspect --logdir=DIRECTORY_PATH`
 
 If after running this procedure, it's still not working, please file an [issue
 on GitHub](https://github.com/tensorflow/tensorflow/issues). It will be much
@@ -324,9 +328,11 @@ that someone else has already had the same issue or question.
 
 If you have a bug, please [file a GitHub
 issue](https://github.com/tensorflow/tensorflow/issues). If the bug is related
-to your specific data (e.g. the events aren't loading properly), please upload
-some events files that will reproduce the issue - that makes it much easier for
-us to debug and fix.
+to your specific data (e.g. the events aren't loading properly), please do both
+of the following things to make it easier for us to debug and fix:
+
+- Run tensorboard in --inspect mode and copy paste the debug output.
+- Upload some events files that will reproduce the issue.
 
 If you have a feature request, please [file a GitHub
 issue](https://github.com/tensorflow/tensorflow/issues).

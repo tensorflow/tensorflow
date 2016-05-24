@@ -521,13 +521,13 @@ def get_random_distorted_bottlenecks(
   ground_truths = []
   for unused_i in range(how_many):
     label_index = random.randrange(class_count)
-    label_name = image_lists.keys()[label_index]
+    label_name = list(image_lists.keys())[label_index]
     image_index = random.randrange(65536)
     image_path = get_image_path(image_lists, label_name, image_index, image_dir,
                                 category)
     if not gfile.Exists(image_path):
       tf.logging.fatal('File does not exist %s', image_path)
-    jpeg_data = gfile.FastGFile(image_path, 'r').read()
+    jpeg_data = gfile.FastGFile(image_path, 'rb').read()
     # Note that we materialize the distorted_image_data as a numpy array before
     # sending running inference on the image. This involves 2 memory copies and
     # might be optimized in other implementations.
@@ -616,7 +616,7 @@ def add_input_distortions(flip_left_right, random_crop, random_scale,
   """
 
   jpeg_data = tf.placeholder(tf.string, name='DistortJPGInput')
-  decoded_image = tf.image.decode_jpeg(jpeg_data)
+  decoded_image = tf.image.decode_jpeg(jpeg_data, channels=MODEL_INPUT_DEPTH)
   decoded_image_as_float = tf.cast(decoded_image, dtype=tf.float32)
   decoded_image_4d = tf.expand_dims(decoded_image_as_float, 0)
   margin_scale = 1.0 + (random_crop / 100.0)

@@ -429,19 +429,6 @@ version of the training script parallelizes the model across multiple GPU cards.
 python cifar10_multi_gpu_train.py --num_gpus=2
 ```
 
-The training script should output:
-
-```shell
-Filling queue with 20000 CIFAR images before starting to train. This will take a few minutes.
-2015-11-04 11:45:45.927302: step 0, loss = 4.68 (2.0 examples/sec; 64.221 sec/batch)
-2015-11-04 11:45:49.133065: step 10, loss = 4.66 (533.8 examples/sec; 0.240 sec/batch)
-2015-11-04 11:45:51.397710: step 20, loss = 4.64 (597.4 examples/sec; 0.214 sec/batch)
-2015-11-04 11:45:54.446850: step 30, loss = 4.62 (391.0 examples/sec; 0.327 sec/batch)
-2015-11-04 11:45:57.152676: step 40, loss = 4.61 (430.2 examples/sec; 0.298 sec/batch)
-2015-11-04 11:46:00.437717: step 50, loss = 4.59 (406.4 examples/sec; 0.315 sec/batch)
-...
-```
-
 Note that the number of GPU cards used defaults to 1. Additionally, if only 1
 GPU is available on your machine, all computations will be placed on it, even if
 you ask for more.

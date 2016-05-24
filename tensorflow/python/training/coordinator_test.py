@@ -141,5 +141,39 @@ class CoordinatorTest(tf.test.TestCase):
       coord.join(threads)
 
 
+def _StopAt0(coord, n):
+  if n[0] == 0:
+    coord.request_stop()
+  else:
+    n[0] -= 1
+
+
+class LooperTest(tf.test.TestCase):
+
+  def testTargetArgs(self):
+    n = [3]
+    coord = tf.train.Coordinator()
+    thread = tf.train.LooperThread.loop(coord, 0, target=_StopAt0,
+                                        args=(coord, n))
+    coord.join([thread])
+    self.assertEqual(0, n[0])
+
+  def testTargetKwargs(self):
+    n = [3]
+    coord = tf.train.Coordinator()
+    thread = tf.train.LooperThread.loop(coord, 0, target=_StopAt0,
+                                        kwargs={"coord": coord, "n": n})
+    coord.join([thread])
+    self.assertEqual(0, n[0])
+
+  def testTargetMixedArgs(self):
+    n = [3]
+    coord = tf.train.Coordinator()
+    thread = tf.train.LooperThread.loop(coord, 0, target=_StopAt0,
+                                        args=(coord,), kwargs={"n": n})
+    coord.join([thread])
+    self.assertEqual(0, n[0])
+
+
 if __name__ == "__main__":
   tf.test.main()

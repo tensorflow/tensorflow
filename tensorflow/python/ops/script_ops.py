@@ -62,9 +62,9 @@ class FuncRegistry(object):
     # Ensures that we return either a single numpy array or a list of numpy
     # arrays.
     if isinstance(ret, (tuple, list)):
-      ret = [np.array(x) for x in ret]
+      ret = [np.array(x, order="C") for x in ret]
     else:
-      ret = np.array(ret)
+      ret = np.array(ret, order="C")
     return ret
 
   def size(self):
@@ -99,10 +99,13 @@ def py_func(func, inp, Tout, name=None):
   Given a python function `func`, which takes numpy arrays as its
   inputs and returns numpy arrays as its outputs. E.g.,
 
-    def my_func(x):
-      return np.sinh(x)
-    inp = tf.placeholder(..., tf.float32)
-    y = py_func(my_func, [inp], [tf.float32])
+  ```python
+  def my_func(x):
+    # x will be a numpy array with the contents of the placeholder below
+    return np.sinh(x)
+  inp = tf.placeholder(tf.float32, [...])
+  y = py_func(my_func, [inp], [tf.float32])
+  ```
 
   The above snippet constructs a tf graph which invokes a numpy
   sinh(x) as an op in the graph.

@@ -132,6 +132,11 @@ public class CameraConnectionFragment extends Fragment {
   private CameraDevice cameraDevice;
 
   /**
+   * The rotation in degrees of the camera sensor from the display. 
+   */
+  private Integer sensorOrientation;
+  
+  /**
    * The {@link android.util.Size} of camera preview.
    */
   private Size previewSize;
@@ -338,6 +343,8 @@ public class CameraConnectionFragment extends Fragment {
                 Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)),
                 new CompareSizesByArea());
 
+        sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+        
         // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
         // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
         // garbage capture data.
@@ -530,7 +537,8 @@ public class CameraConnectionFragment extends Fragment {
     }
 
     LOGGER.i("Getting assets.");
-    tfPreviewListener.initialize(getActivity().getAssets(), scoreView, inferenceHandler);
+    tfPreviewListener.initialize(
+        getActivity().getAssets(), scoreView, inferenceHandler, sensorOrientation);
     LOGGER.i("Tensorflow initialized.");
   }
 

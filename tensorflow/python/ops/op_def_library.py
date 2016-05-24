@@ -32,7 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import constant_op
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
@@ -290,7 +290,6 @@ class OpDefLibrary(object):
     # pylint: disable=g-doc-args
     """Add a node invoking a registered Op to a graph.
 
-    Config proto extensions must be provided via the 'ext' keyword argument.
     Example usage:
        # input1 and input2 can be Tensors or anything ops.convert_to_tensor()
        # will convert to a Tensor.
@@ -339,6 +338,17 @@ class OpDefLibrary(object):
     # Default name if not specified.
     if name is None:
       name = op_type_name
+
+    # Check for deprecation
+    deprecation_version = op_def.deprecation.version
+    if deprecation_version:
+      producer = g.graph_def_versions.producer
+      if producer >= deprecation_version:
+        raise NotImplementedError(
+            ("Op %s is not available in GraphDef version %d. "
+             "It has been removed in version %d. %s.") %
+            (op_type_name, producer, deprecation_version,
+             op_def.deprecation.explanation))
 
     # Requires that op_def has passed validation (using the C++
     # ValidateOpDef() from ../framework/op_def_util.h).
@@ -398,25 +408,36 @@ class OpDefLibrary(object):
             values = ops.convert_n_to_tensor(
                 values, name=input_arg.name, dtype=dtype if dtype else None,
                 as_ref=input_arg.is_ref)
+            if input_arg.number_attr and len(
+                set(v.dtype.base_dtype for v in values)) > 1:
+              raise TypeError()  # All types should match.
           except (TypeError, ValueError):
-            assert dtype is not None, "Should not fail if dtype is None"
-            assert input_arg.number_attr, "Should be number_attr case"
             # What types does the conversion function think values have?
-            values = ops.convert_n_to_tensor(values, as_ref=input_arg.is_ref)
-            observed = ", ".join(v.dtype.base_dtype.name for v in values)
+            observed_types = []
+            for value in values:
+              try:
+                converted_value = ops.convert_to_tensor(
+                    value, as_ref=input_arg.is_ref)
+                observed_types.append(converted_value.dtype.base_dtype.name)
+              except (TypeError, ValueError):
+                observed_types.append("<NOT CONVERTIBLE TO TENSOR>")
+            observed = ", ".join(observed_types)
 
             prefix = (
                 "Tensors in list passed to '%s' of '%s' Op have types [%s]" %
                 (input_name, op_type_name, observed))
-            if input_arg.type != types_pb2.DT_INVALID:
-              raise TypeError("%s that do not match expected type %s." %
-                              (prefix, dtype.name))
-            elif input_arg.type_attr in attrs:
-              raise TypeError("%s that do not match type %s inferred from "
-                              "earlier arguments." %
-                              (prefix, dtype.name))
+            if input_arg.number_attr:
+              if input_arg.type != types_pb2.DT_INVALID:
+                raise TypeError("%s that do not match expected type %s." %
+                                (prefix, dtype.name))
+              elif input_arg.type_attr in attrs:
+                raise TypeError("%s that do not match type %s inferred from "
+                                "earlier arguments." %
+                                (prefix, dtype.name))
+              else:
+                raise TypeError("%s that don't all match." % prefix)
             else:
-              raise TypeError("%s that don't all match." % prefix)
+              raise TypeError("%s that are invalid." % prefix)
 
           types = [x.dtype for x in values]
           inputs.extend(values)

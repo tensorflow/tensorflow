@@ -593,53 +593,260 @@ REGISTER_KERNEL_BUILDER(
 #endif  // GOOGLE_CUDA
 
 // Kernels to compute the gradients of the filters for depthwise convolution.
+
+// Computes filter backprop using 'out_backprop' and 'input_buffer', storing the
+// result in 'output_buffer' at an index computed from 'out_r' and 'out_c'.
+//
+// EX:
+//   in_depth = 3, depth_multiplier = 2, filter [2, 2], register_width = 4
+//   Both 'input_buffer' and 'filter' are padded to register-width boundaries.
+//
+//   'input_buffer' [rows, cols, in_depth, depth_multiplier]
+//
+//     [f00, f01, f10, f11] [f20, f21, 0, 0]   in_row = 0, in_col = 0
+//     [e00, e01, e10, e11] [e20, e21, 0, 0]   in_row = 0, in_col = 1
+//     [b00, b01, b10, b11] [b20, b21, 0, 0]   in_row = 1, in_col = 0
+//     [a00, a01, a10, a11] [a20, a21, 0, 0]   in_row = 1, in_col = 1
+//
+//   'out_backprop' [out_rows, out_cols, in_depth, depth_multiplier]
+//
+//     [q00, q01, q10, q11] [q20, q21, r00, r01]
+//     [r10, r11, r20, r21] [s00, s01, s10, s11]
+//     [s20, s21, t00, t01] [t10, t11, t20, a21]
+//
+//   First output register of 'filter_backprop'
+//     [u0, v0, w0, x0] += ([f00, f01, f10, f11] x [q00, q01, q10, q11])
+//
+template <typename T>
+static void ComputeBackpropFilter(const DepthwiseArgs& args,
+                                  const int64 padded_out_depth_size,
+                                  const int64 out_r, const int64 out_c,
+                                  const T* out_backprop, const T* input_buffer,
+                                  T* output_buffer) {
+  typedef typename Eigen::internal::packet_traits<T>::type Packet;
+  static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
+  // Calculate vectorized size of 'padded_out_depth_size'.
+  const int64 out_depth = args.out_depth;
+  const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
+  const int64 output_vectorized_size =
+      (padded_out_depth_size / kPacketSize) * kPacketSize;
+  const int64 base_output_index = (out_r * args.out_cols + out_c) * out_depth;
+  // Determine whether we can execute fast or slow code path.
+  const int64 output_image_size =
+      args.out_rows * args.out_cols * args.out_depth;
+  const int64 output_last_vector_index =
+      output_image_size - (filter_spatial_size * padded_out_depth_size);
+  const bool fast_path = base_output_index <= output_last_vector_index;
+
+  if (fast_path) {
+    // TODO(andydavis) Process multiple inputs in 'input_buffer' so we can
+    // amortize the cost of 'output_buffer' load store in the loop below.
+    for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
+      // Load vector register from 'out_backprop'.
+      const auto out_bprop_block =
+          Eigen::internal::ploadu<Packet>(out_backprop + base_output_index + i);
+      for (int j = 0; j < filter_spatial_size; ++j) {
+        const int64 index = i + j * padded_out_depth_size;
+        // Load vector register from 'input_buffer'.
+        const auto input_block =
+            Eigen::internal::ploadu<Packet>(input_buffer + index);
+        // Load output block into vector register.
+        auto out_block_data = output_buffer + index;
+        auto out_block = Eigen::internal::ploadu<Packet>(out_block_data);
+        // Vector multiply-add.
+        out_block = Eigen::internal::pmadd<Packet>(out_bprop_block, input_block,
+                                                   out_block);
+        // Store 'out_block' back to memory.
+        Eigen::internal::pstoreu<T>(out_block_data, out_block);
+      }
+    }
+  } else {
+    // Slow path (cant do vector reads from non-padded 'out_backprop'.
+    for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
+      // Calculate safe read size from 'out_backprop'.
+      const int64 out_bprop_index = base_output_index + i;
+      const int64 out_bprop_limit =
+          std::min(output_image_size, out_bprop_index + kPacketSize);
+      T out_buf[kPacketSize];
+      memset(&out_buf, 0, kPacketSize * sizeof(T));
+      const int64 scalar_size = out_bprop_limit - out_bprop_index;
+      for (int64 j = 0; j < scalar_size; ++j) {
+        out_buf[j] = out_backprop[out_bprop_index + j];
+      }
+      // Load vector register from 'out_buf'.
+      const auto out_bprop_block = Eigen::internal::ploadu<Packet>(out_buf);
+      for (int j = 0; j < filter_spatial_size; ++j) {
+        const int64 index = i + j * padded_out_depth_size;
+        // Load vector register from 'input_buffer'.
+        const auto input_block =
+            Eigen::internal::ploadu<Packet>(input_buffer + index);
+        // Load output block into vector register.
+        auto out_block_data = output_buffer + index;
+        auto out_block = Eigen::internal::ploadu<Packet>(out_block_data);
+        // Vector multiply-add.
+        out_block = Eigen::internal::pmadd<Packet>(out_bprop_block, input_block,
+                                                   out_block);
+        // Store 'out_block' back to memory.
+        Eigen::internal::pstoreu<T>(out_block_data, out_block);
+      }
+    }
+  }
+}
+
 template <typename Device, typename T>
 struct LaunchDepthwiseConvBackpropFilterOp;
 
 template <typename T>
 struct LaunchDepthwiseConvBackpropFilterOp<CPUDevice, T> {
+  typedef typename Eigen::internal::packet_traits<T>::type Packet;
+
   static void launch(OpKernelContext* ctx, const DepthwiseArgs& args,
                      const T* out_backprop, const T* input,
                      T* filter_backprop) {
-    int num_filter_backprop = args.filter_rows * args.filter_cols *
-                              args.in_depth * args.depth_multiplier;
-    memset(filter_backprop, 0, num_filter_backprop * sizeof(T));
+    static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
 
-    // Naive for loop as a reference point without concerns about performance.
-    // Expected to be replaced later.
-    // TODO(andydavis): replace this with an optimized version
-    for (int b = 0; b < args.batch; ++b) {
-      for (int out_r = 0; out_r < args.out_rows; ++out_r) {
-        for (int out_c = 0; out_c < args.out_cols; ++out_c) {
-          for (int out_d = 0; out_d < args.out_depth; ++out_d) {
-            const int in_d = out_d / args.depth_multiplier;
-            const int dm = out_d % args.depth_multiplier;
-            const int in_r_start = out_r * args.stride - args.pad_rows;
-            const int in_c_start = out_c * args.stride - args.pad_cols;
+    const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
+    const int64 padded_out_depth_size =
+        ((args.out_depth + kPacketSize - 1) / kPacketSize) * kPacketSize;
 
-            for (int f_r = 0; f_r < args.filter_rows; ++f_r) {
-              for (int f_c = 0; f_c < args.filter_cols; ++f_c) {
-                const int in_r = in_r_start + f_r;
-                const int in_c = in_c_start + f_c;
+    // Allocate output buffers for each image in 'batch' (padded to vector
+    // register boundaries).
+    Tensor output_buffer;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                TensorShape({args.batch, filter_spatial_size,
+                                             padded_out_depth_size}),
+                                &output_buffer));
+    T* output_buffer_data = output_buffer.template flat<T>().data();
 
-                if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
-                    in_c < args.in_cols) {
-                  int out_backprop_offset =
-                      out_d +
-                      args.out_depth *
-                          (out_c + args.out_cols * (out_r + args.out_rows * b));
-                  int input_offset =
-                      in_d +
-                      args.in_depth *
-                          (in_c + args.in_cols * (in_r + args.in_rows * b));
-                  int filter_backprop_offset =
-                      dm +
-                      args.depth_multiplier *
-                          (in_d +
-                           args.in_depth * (f_c + args.filter_cols * f_r));
-                  filter_backprop[filter_backprop_offset] +=
-                      input[input_offset] * out_backprop[out_backprop_offset];
-                }
+    // Computes one shard of depthwise conv2d backprop filter.
+    auto shard = [&ctx, &args, &out_backprop, &input, &output_buffer_data](
+        int64 start, int64 limit) {
+      static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
+      const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
+      const int64 padded_out_depth_size =
+          ((args.out_depth + kPacketSize - 1) / kPacketSize) * kPacketSize;
+
+      // Allocate buffer for local input regions.
+      Tensor input_buffer;
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(
+                   DataTypeToEnum<T>::value,
+                   TensorShape({filter_spatial_size, padded_out_depth_size}),
+                   &input_buffer));
+      T* input_buffer_data = input_buffer.template flat<T>().data();
+
+      const int64 input_image_size =
+          args.in_rows * args.in_cols * args.in_depth;
+      const int64 output_image_size =
+          args.out_rows * args.out_cols * args.out_depth;
+      const int64 padded_filter_size =
+          filter_spatial_size * padded_out_depth_size;
+
+      for (int b = start; b < limit; ++b) {
+        // Initialize 'output_buffer' for 'b'.
+        auto* output_buffer = output_buffer_data + b * padded_filter_size;
+        memset(output_buffer, 0, padded_filter_size * sizeof(T));
+
+        for (int out_r = 0; out_r < args.out_rows; ++out_r) {
+          for (int out_c = 0; out_c < args.out_cols; ++out_c) {
+            // Populate 'input_buffer_data' with data from local input region.
+            functor::DepthwiseInputCopyOp<T>()(
+                args, padded_out_depth_size, out_r, out_c,
+                input + b * input_image_size, input_buffer_data);
+            // Compute depthwise backprop filter.
+            ComputeBackpropFilter(args, padded_out_depth_size, out_r, out_c,
+                                  out_backprop + b * output_image_size,
+                                  input_buffer_data, output_buffer);
+          }
+        }
+      }
+    };
+    const int64 shard_cost = args.out_rows * args.out_cols * args.out_depth;
+    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers, args.batch,
+          shard_cost, shard);
+
+    // Accumulate 'output_buffer' from each shard into 'output'.
+    const int64 out_depth = args.out_depth;
+    const int64 vectorized_size = (out_depth / kPacketSize) * kPacketSize;
+    const int64 scalar_size = out_depth - vectorized_size;
+    const int64 padded_filter_size =
+        filter_spatial_size * padded_out_depth_size;
+    memset(filter_backprop, 0, filter_spatial_size * out_depth * sizeof(T));
+
+    for (int64 i = 0; i < filter_spatial_size; ++i) {
+      const int64 buffer_base = i * padded_out_depth_size;
+      const int64 output_base = i * out_depth;
+      // Write vectorized length of filter's inner dimension to output.
+      for (int64 j = 0; j < vectorized_size; j += kPacketSize) {
+        // Load data from 'filter_backprop' into vector register.
+        auto out_block_data = filter_backprop + output_base + j;
+        auto out_block = Eigen::internal::ploadu<Packet>(out_block_data);
+        for (int b = 0; b < args.batch; ++b) {
+          // Load data from 'output_buffer' for 'b'.
+          const auto* output_buffer =
+              output_buffer_data + b * padded_filter_size;
+          const auto v =
+              Eigen::internal::ploadu<Packet>(output_buffer + buffer_base + j);
+          // Add 'v' to 'out_block'.
+          out_block = Eigen::internal::padd<Packet>(out_block, v);
+        }
+        // Store 'out_block' back to memory.
+        Eigen::internal::pstoreu<T>(out_block_data, out_block);
+      }
+      // Write scalar length of filter's inner dimension to output.
+      for (int64 j = 0; j < scalar_size; ++j) {
+        for (int b = 0; b < args.batch; ++b) {
+          const auto* output_buffer =
+              output_buffer_data + b * padded_filter_size;
+          filter_backprop[output_base + vectorized_size + j] +=
+              output_buffer[buffer_base + vectorized_size + j];
+        }
+      }
+    }
+  }
+};
+
+template <typename T>
+static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
+                                                 const T* out_backprop,
+                                                 const T* input,
+                                                 T* filter_backprop) {
+  int num_filter_backprop = args.filter_rows * args.filter_cols *
+                            args.in_depth * args.depth_multiplier;
+  memset(filter_backprop, 0, num_filter_backprop * sizeof(T));
+  // Naive for loop as a reference point without concerns about performance.
+  for (int b = 0; b < args.batch; ++b) {
+    for (int out_r = 0; out_r < args.out_rows; ++out_r) {
+      for (int out_c = 0; out_c < args.out_cols; ++out_c) {
+        for (int out_d = 0; out_d < args.out_depth; ++out_d) {
+          const int in_d = out_d / args.depth_multiplier;
+          const int dm = out_d % args.depth_multiplier;
+          const int in_r_start = out_r * args.stride - args.pad_rows;
+          const int in_c_start = out_c * args.stride - args.pad_cols;
+
+          for (int f_r = 0; f_r < args.filter_rows; ++f_r) {
+            for (int f_c = 0; f_c < args.filter_cols; ++f_c) {
+              const int in_r = in_r_start + f_r;
+              const int in_c = in_c_start + f_c;
+
+              if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
+                  in_c < args.in_cols) {
+                int out_backprop_offset =
+                    out_d +
+                    args.out_depth *
+                        (out_c + args.out_cols * (out_r + args.out_rows * b));
+                int input_offset =
+                    in_d +
+                    args.in_depth *
+                        (in_c + args.in_cols * (in_r + args.in_rows * b));
+                int filter_backprop_offset =
+                    dm +
+                    args.depth_multiplier *
+                        (in_d + args.in_depth * (f_c + args.filter_cols * f_r));
+                filter_backprop[filter_backprop_offset] +=
+                    input[input_offset] * out_backprop[out_backprop_offset];
               }
             }
           }
@@ -647,7 +854,7 @@ struct LaunchDepthwiseConvBackpropFilterOp<CPUDevice, T> {
       }
     }
   }
-};
+}
 
 #if GOOGLE_CUDA
 
@@ -682,7 +889,7 @@ struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, T> {
 
 #endif  // GOOGLE_CUDA
 
-// Kernel to compute the input backprop for depthwise convolution.
+// Kernel to compute the filter backprop for depthwise convolution.
 template <typename Device, class T>
 class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
  public:

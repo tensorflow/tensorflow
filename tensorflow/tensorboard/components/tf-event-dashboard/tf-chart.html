@@ -9,8 +9,7 @@ It has the following settable properties:
   selectedRuns: (required, string[]) - the runs the chart should display
   xType: (required, string) - the way to display x values - allows "step" or "wall_time"
   dataCoordinator: (required, TF.DataCoordinator) - the data coordinator for talking to backend
-  colorScale: (required, Plottable.Scales.Color) - maps from runs to colors
-  tooltipUpdater: (required, function) - allows the chart to modify tooltips
+  colorScale: (required, Plottable.Scales.Color) - maps from runs to colors: (required, function) - allows the chart to modify tooltips
 
 It exposes the following methods:
   redraw() - cause the chart to re-render (useful if e.g. container size changed)
@@ -21,6 +20,22 @@ The wall_time is serialized as seconds since epoch.
 <dom-module id="tf-chart">
   <template>
     <svg id="chartsvg"></svg>
+    <div id="tooltip">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Run</th>
+            <th>Value</th>
+            <th>Step</th>
+            <th>Time</th>
+            <th>Relative</th>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
     <style>
       :host {
         -webkit-user-select: none;
@@ -29,6 +44,7 @@ The wall_time is serialized as seconds since epoch.
         flex-direction: column;
         flex-grow: 1;
         flex-shrink: 1;
+        position: relative;
       }
       svg {
         -webkit-user-select: none;
@@ -36,9 +52,49 @@ The wall_time is serialized as seconds since epoch.
         flex-grow: 1;
         flex-shrink: 1;
       }
-      .plottable .crosshairs line.guide-line {
-        stroke: #777;
+      td {
+        padding-left: 5px;
+        padding-right: 5px;
+        font-size: 13px;
+        opacity: 1;
       }
+      #tooltip {
+        pointer-events: none;
+        position: absolute;
+        opacity: 0;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+        font-size: 14px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        border-radius: 4px;
+        line-height: 1.4em;
+        padding: 8px;
+        z-index: 5;
+        cursor: none;
+      }
+      .swatch {
+        border-radius: 50%;
+        width: 14px;
+        height: 14px;
+        display: block;
+        border: 2px solid rgba(0,0,0,0);
+      }
+      .closest .swatch {
+        border: 2px solid white;
+      }
+      th {
+        padding-left: 5px;
+        padding-right: 5px;
+        text-align: left;
+      }
+      .distant td {
+        opacity: 0.8;
+      }
+
+      .distant td.swatch {
+        opacity: 1;
+      }
+
     </style>
   </template>
   <script src="dragZoomInteraction.js"></script>
@@ -54,11 +110,10 @@ The wall_time is serialized as seconds since epoch.
         selectedRuns: Array,
         xType: String,
         dataProvider: Function,
-        tooltipUpdater: Function,
         _initialized: Boolean,
       },
       observers: [
-        "_makeChart(type, tag, dataProvider, tooltipUpdater, xType, colorScale, _initialized)",
+        "_makeChart(type, tag, dataProvider, xType, colorScale, _initialized)",
         "_changeRuns(_chart, selectedRuns.*)"
       ],
       _changeRuns: function(chart) {
@@ -83,13 +138,15 @@ The wall_time is serialized as seconds since epoch.
           throw new Error("Unrecognized chart type");
         }
       },
-      _makeChart: function(type, tag, dataProvider, tooltipUpdater, xType, colorScale, _initialized) {
+      _makeChart: function(type, tag, dataProvider, xType, colorScale, _initialized) {
         if (!_initialized) {
           return;
         }
         if (this._chart) this._chart.destroy();
         var cns = this._constructor(type);
-        var chart = new cns(tag, dataProvider, tooltipUpdater, xType, colorScale);
+        var tooltip = d3.select(this.$.tooltip);
+        this.scopeSubtree(this.$.tooltip, true);
+        var chart = new cns(tag, dataProvider, xType, colorScale, tooltip);
         var svg = d3.select(this.$.chartsvg);
         this.async(function() {
           chart.renderTo(svg);

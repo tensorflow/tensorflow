@@ -98,10 +98,6 @@ TEST(GrpcSessionTest, BasicNonProtoAPI) {
   for (int iters = 0; iters < 25; ++iters) {
     TF_CHECK_OK(session->Create(graph));
     {
-      std::vector<std::pair<string, Tensor>> inputs;
-      TF_CHECK_OK(session->Run(inputs, {}, {}, {}));
-    }
-    {
       // Just run to target node
       std::vector<std::pair<string, Tensor>> inputs;
       std::vector<string> targets = {node_names[2]};
@@ -174,14 +170,14 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
     GraphDef graph_copy(graph);
     graph::SetDefaultDevice(cluster->devices()[0].name(), &graph_copy);
     TF_CHECK_OK(session->Create(graph_copy));
-    TF_CHECK_OK(session->Run({}, {}, {}, nullptr));
+    TF_CHECK_OK(session->Run({}, {}, {node_names[2]}, nullptr));
     TF_CHECK_OK(session->Close());
   }
   {
     GraphDef graph_copy(graph);
     graph::SetDefaultDevice(cluster->devices()[1].name(), &graph_copy);
     TF_CHECK_OK(session->Create(graph_copy));
-    auto status = session->Run({}, {}, {}, nullptr);
+    auto status = session->Run({}, {}, {node_names[2]}, nullptr);
     EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
     TF_CHECK_OK(session->Close());
   }

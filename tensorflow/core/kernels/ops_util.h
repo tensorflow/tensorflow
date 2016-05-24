@@ -18,6 +18,8 @@ limitations under the License.
 
 // This file contains utilities for various operations.
 
+#include <array>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -88,6 +90,19 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
                               int row_stride, int col_stride, Padding padding,
                               int* new_height, int* new_width, int* pad_top,
                               int* pad_bottom, int* pad_left, int* pad_right);
+
+// Given an input tensor, kernel, stride and padding type, populates the 3D size
+// of the output tensor and padding to be applied to the input tensor at the
+// lower end of every dimension. Use for 3D convolutions, where the input data
+// is padded with zeros, as well as for 3D avg/max pooling, where the input data
+// is padded with invalid values that are not considered for pooling.
+//
+// TODO(mjanusz): Unify this with Get2dOutputSize by using a common template.
+Status Get3dOutputSize(const std::array<int64, 3>& input,
+                       const std::array<int64, 3>& window,
+                       const std::array<int64, 3>& strides,
+                       Padding padding_type, std::array<int64, 3>* output,
+                       std::array<int64, 3>* padding);
 
 // Calculates broadcast starting index and size.  For SAME padding, addition
 // padding could be applied to right, left, top and bottom.  Depending on the

@@ -32,25 +32,20 @@ from sklearn import metrics
 import pandas
 
 import tensorflow as tf
-from tensorflow.models.rnn import rnn, rnn_cell
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 ### Training data
 
-# Download dbpedia_csv.tar.gz from
-# https://drive.google.com/folderview?id=0Bz8a_Dbh9Qhbfll6bVpmNUtUcFdjYmF2SEpmZUZUcVNiMUw1TWN6RDV3a0JHT3kxLVhVR2M
-# Unpack: tar -xvf dbpedia_csv.tar.gz
-
-train = pandas.read_csv('dbpedia_csv/train.csv', header=None)
-X_train, y_train = train[2], train[0]
-test = pandas.read_csv('dbpedia_csv/test.csv', header=None)
-X_test, y_test = test[2], test[0]
+# Downloads, unpacks and reads DBpedia dataset.
+dbpedia = learn.datasets.load_dataset('dbpedia')
+X_train, y_train = pandas.DataFrame(dbpedia.train.data)[1], pandas.Series(dbpedia.train.target)
+X_test, y_test = pandas.DataFrame(dbpedia.test.data)[1], pandas.Series(dbpedia.test.target)
 
 ### Process vocabulary
 
 MAX_DOCUMENT_LENGTH = 100
 
-char_processor = skflow.preprocessing.ByteProcessor(MAX_DOCUMENT_LENGTH)
+char_processor = learn.preprocessing.ByteProcessor(MAX_DOCUMENT_LENGTH)
 X_train = np.array(list(char_processor.fit_transform(X_train)))
 X_test = np.array(list(char_processor.transform(X_test)))
 
@@ -59,13 +54,13 @@ X_test = np.array(list(char_processor.transform(X_test)))
 HIDDEN_SIZE = 20
 
 def char_rnn_model(X, y):
-    byte_list = skflow.ops.one_hot_matrix(X, 256)
-    byte_list = skflow.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, byte_list)
-    cell = rnn_cell.GRUCell(HIDDEN_SIZE)
-    _, encoding = rnn.rnn(cell, byte_list, dtype=tf.float32)
-    return skflow.models.logistic_regression(encoding, y)
+    byte_list = learn.ops.one_hot_matrix(X, 256)
+    byte_list = learn.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, byte_list)
+    cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
+    _, encoding = tf.nn.rnn(cell, byte_list, dtype=tf.float32)
+    return learn.models.logistic_regression(encoding, y)
 
-classifier = skflow.TensorFlowEstimator(model_fn=char_rnn_model, n_classes=15,
+classifier = learn.TensorFlowEstimator(model_fn=char_rnn_model, n_classes=15,
     steps=100, optimizer='Adam', learning_rate=0.01, continue_training=True)
 
 # Continuously train for 1000 steps & predict on test set.

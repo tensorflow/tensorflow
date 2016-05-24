@@ -17,7 +17,61 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
+
+
+class AssertEqualTest(tf.test.TestCase):
+
+  def test_doesnt_raise_when_equal(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      with tf.control_dependencies([tf.assert_equal(small, small)]):
+        out = tf.identity(small)
+      out.eval()
+
+  def test_raises_when_greater(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      big = tf.constant([3, 4], name="big")
+      with tf.control_dependencies([tf.assert_equal(big, small)]):
+        out = tf.identity(small)
+      with self.assertRaisesOpError("big.*small"):
+        out.eval()
+
+  def test_raises_when_less(self):
+    with self.test_session():
+      small = tf.constant([3, 1], name="small")
+      big = tf.constant([4, 2], name="big")
+      with tf.control_dependencies([tf.assert_equal(small, big)]):
+        out = tf.identity(small)
+      with self.assertRaisesOpError("small.*big"):
+        out.eval()
+
+  def test_doesnt_raise_when_equal_and_broadcastable_shapes(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      small_2 = tf.constant([1, 2], name="small_2")
+      with tf.control_dependencies([tf.assert_equal(small, small_2)]):
+        out = tf.identity(small)
+      out.eval()
+
+  def test_raises_when_equal_but_non_broadcastable_shapes(self):
+    with self.test_session():
+      small = tf.constant([1, 1, 1], name="small")
+      small_2 = tf.constant([1, 1], name="small_2")
+      with self.assertRaisesRegexp(ValueError, "broadcast"):
+        with tf.control_dependencies([tf.assert_equal(small, small_2)]):
+          out = tf.identity(small)
+        out.eval()
+
+  def test_doesnt_raise_when_both_empty(self):
+    with self.test_session():
+      larry = tf.constant([])
+      curly = tf.constant([])
+      with tf.control_dependencies([tf.assert_equal(larry, curly)]):
+        out = tf.identity(larry)
+      out.eval()
 
 
 class AssertLessTest(tf.test.TestCase):
@@ -277,6 +331,36 @@ class AssertRankTest(tf.test.TestCase):
         with self.assertRaisesOpError("my_tensor.*rank"):
           tf.identity(tensor).eval(feed_dict={tensor: [1, 2]})
 
+  def test_raises_if_rank_is_not_scalar_static(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      with self.assertRaisesRegexp(ValueError, "Rank must be a scalar"):
+        tf.assert_rank(tensor, np.array([], dtype=np.int32))
+
+  def test_raises_if_rank_is_not_scalar_dynamic(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], dtype=tf.float32, name="my_tensor")
+      rank_tensor = tf.placeholder(tf.int32, name="rank_tensor")
+      with self.assertRaisesOpError("Rank must be a scalar"):
+        with tf.control_dependencies([tf.assert_rank(tensor, rank_tensor)]):
+          tf.identity(tensor).eval(feed_dict={rank_tensor: [1, 2]})
+
+  def test_raises_if_rank_is_not_integer_static(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      with self.assertRaisesRegexp(ValueError,
+                                   "must be of type <dtype: 'int32'>"):
+        tf.assert_rank(tensor, .5)
+
+  def test_raises_if_rank_is_not_integer_dynamic(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], dtype=tf.float32, name="my_tensor")
+      rank_tensor = tf.placeholder(tf.float32, name="rank_tensor")
+      with self.assertRaisesRegexp(ValueError,
+                                   "must be of type <dtype: 'int32'>"):
+        with tf.control_dependencies([tf.assert_rank(tensor, rank_tensor)]):
+          tf.identity(tensor).eval(feed_dict={rank_tensor: .5})
+
 
 class AssertRankAtLeastTest(tf.test.TestCase):
 
@@ -421,6 +505,24 @@ class AssertNonPositiveTest(tf.test.TestCase):
       with tf.control_dependencies([tf.assert_non_positive(empty)]):
         out = tf.identity(empty)
       out.eval()
+
+
+class AssertIntegerTest(tf.test.TestCase):
+
+  def test_doesnt_raise_when_integer(self):
+    with self.test_session():
+      integers = tf.constant([1, 2], name="integers")
+      with tf.control_dependencies([tf.assert_integer(integers)]):
+        out = tf.identity(integers)
+      out.eval()
+
+  def test_raises_when_float(self):
+    with self.test_session():
+      floats = tf.constant([1.0, 2.0], name="floats")
+      with tf.control_dependencies([tf.assert_integer(floats)]):
+        out = tf.identity(floats)
+      with self.assertRaisesOpError("x is not of integer dtype.*"):
+        out.eval()
 
 
 class IsStrictlyIncreasingTest(tf.test.TestCase):
