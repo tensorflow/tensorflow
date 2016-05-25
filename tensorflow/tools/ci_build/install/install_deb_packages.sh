@@ -39,12 +39,10 @@ apt-get install -y \
     openjdk-8-jre-headless \
     pkg-config \
     python-dev \
-    python-numpy \
     python-pandas \
     python-pip \
     python-virtualenv \
     python3-dev \
-    python3-numpy \
     python3-pandas \
     python3-pip \
     sudo \

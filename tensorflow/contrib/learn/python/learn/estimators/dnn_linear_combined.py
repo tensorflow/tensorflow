@@ -162,7 +162,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
   def _run_metrics(self, predictions, targets, metrics, weights):
     result = {}
     targets = math_ops.cast(targets, predictions.dtype)
-    for name, metric in six.iteritems(metrics):
+    for name, metric in six.iteritems(metrics or {}):
       if "weights" in inspect.getargspec(metric)[0]:
         result[name] = metric(predictions, targets, weights=weights)
       else:
@@ -211,7 +211,8 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
   def _get_feature_ops_from_example(self, examples_batch):
     column_types = layers.create_dict_for_parse_example(
-        self._get_linear_feature_columns() + self._get_dnn_feature_columns())
+        (self._get_linear_feature_columns() or []) +
+        (self._get_dnn_feature_columns() or []))
     features = parsing_ops.parse_example(examples_batch, column_types)
     return features
 
