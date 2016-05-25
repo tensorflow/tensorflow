@@ -3205,9 +3205,10 @@ and written to `output_dir`.
 *  <b>`output_dir`</b>: A string containing the directory to write a summary to.
 *  <b>`checkpoint_path`</b>: A string containing the path to a checkpoint to restore.
     Can be `None` if the graph doesn't require loading any variables.
-*  <b>`eval_dict`</b>: A `dict` mapping string names to tensors to evaluate for in every
-    eval step.
-*  <b>`update_op`</b>: A 'Tensor' which is run before evaluating 'eval_dict'.
+*  <b>`eval_dict`</b>: A `dict` mapping string names to tensors to evaluate. It is
+    evaluated in every logging step. The result of the final evaluation is
+    returned. If update_op is None, then it's evaluated in every step.
+*  <b>`update_op`</b>: A `Tensor` which is run in every step.
 *  <b>`global_step_tensor`</b>: A `Variable` containing the global step. If `None`,
     one is extracted from the graph using the same logic as in `Supervisor`.
     Used to place eval summaries on training curves.
@@ -3223,7 +3224,7 @@ and written to `output_dir`.
   A tuple `(eval_results, global_step)`:
 
 *  <b>`eval_results`</b>: A `dict` mapping `string` to numeric values (`int`, `float`)
-    that are the eval results from the last step of the eval.  None if no
+    that are the result of running eval_dict in the last step. `None` if no
     eval steps were run.
 *  <b>`global_step`</b>: The global step this evaluation corresponds to.
 
