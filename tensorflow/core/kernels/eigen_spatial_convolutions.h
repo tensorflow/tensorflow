@@ -61,6 +61,7 @@ class TensorContractionInputMapper<
   typedef SubMapper LinearMapper;
   typedef typename packet_traits<Scalar>::type Packet;
 
+  EIGEN_DEVICE_FUNC
   TensorContractionInputMapper(
       const TensorEvaluator<
           const TensorReshapingOp<
@@ -77,7 +78,7 @@ class TensorContractionInputMapper<
       m_patch_cols = tensor.impl().dimensions()[2];
       m_num_patches = tensor.impl().dimensions()[3];
     } else {
-      static const int NumDims = tensor.impl().dimensions().size();
+      const int NumDims = tensor.impl().dimensions().size();
       patch_depth = tensor.impl().dimensions()[NumDims - 1];
       patch_rows = tensor.impl().dimensions()[NumDims - 2];
       m_patch_cols = tensor.impl().dimensions()[NumDims - 3];
@@ -99,7 +100,7 @@ class TensorContractionInputMapper<
       m_inputRows = tensor.impl().impl().dimensions()[1];
       m_inputCols = tensor.impl().impl().dimensions()[2];
     } else {
-      static const int NumDims = tensor.impl().impl().dimensions().size();
+      const int NumDims = tensor.impl().impl().dimensions().size();
       m_inputRows = tensor.impl().impl().dimensions()[NumDims - 2];
       m_inputCols = tensor.impl().impl().dimensions()[NumDims - 3];
     }
@@ -121,6 +122,7 @@ class TensorContractionInputMapper<
     m_fastDimZero = internal::TensorIntDivisor<Index>(patch_depth);
   }
 
+  EIGEN_DEVICE_FUNC
   TensorContractionInputMapper(const TensorContractionInputMapper& base_mapper)
       : m_impl(base_mapper.m_impl) {
     m_patch_cols = base_mapper.m_patch_cols;
@@ -650,8 +652,10 @@ struct gemm_pack_rhs<
       SubMapper;
   typedef SubMapper DataMapper;
 
+  EIGEN_DEVICE_FUNC
   static inline Index ceil_div(Index a, Index b) { return (a + b - 1) / b; }
 
+  EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
                                     Index depth, Index cols, Index stride = 0,
                                     Index offset = 0) const {
@@ -822,8 +826,10 @@ struct gemm_pack_rhs<
       SubMapper;
   typedef SubMapper DataMapper;
 
+  EIGEN_DEVICE_FUNC
   static inline Index ceil_div(Index a, Index b) { return (a + b - 1) / b; }
 
+  EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
                                     Index depth, Index cols, Index stride = 0,
                                     Index offset = 0) const {
@@ -898,36 +904,40 @@ struct gemm_pack_rhs<
   *
   */
 template <typename Input, typename Kernel>
-EIGEN_ALWAYS_INLINE static const typename internal::conditional<
-    internal::traits<Input>::Layout == ColMajor,
-    TensorReshapingOp<
-        const DSizes<typename internal::traits<Input>::Index,
-                     internal::traits<Input>::NumDimensions>,
-        const TensorContractionOp<
-            const array<IndexPair<typename internal::traits<Input>::Index>, 1>,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const Kernel>,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const TensorImagePatchOp<Dynamic, Dynamic, const Input> > > >,
-    TensorReshapingOp<
-        const DSizes<typename internal::traits<Input>::Index,
-                     internal::traits<Input>::NumDimensions>,
-        const TensorContractionOp<
-            const array<IndexPair<typename internal::traits<Input>::Index>, 1>,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const TensorImagePatchOp<Dynamic, Dynamic, const Input> >,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const Kernel> > > >::type
-SpatialConvolution(const Input& input, const Kernel& kernel,
-                   const DenseIndex row_stride = 1,
-                   const DenseIndex col_stride = 1,
-                   const PaddingType padding_type = PADDING_SAME,
-                   const DenseIndex row_in_stride = 1,
-                   const DenseIndex col_in_stride = 1) {
+EIGEN_DEVICE_FUNC
+    EIGEN_ALWAYS_INLINE static const typename internal::conditional<
+        internal::traits<Input>::Layout == ColMajor,
+        TensorReshapingOp<
+            const DSizes<typename internal::traits<Input>::Index,
+                         internal::traits<Input>::NumDimensions>,
+            const TensorContractionOp<
+                const array<IndexPair<typename internal::traits<Input>::Index>,
+                            1>,
+                const TensorReshapingOp<
+                    const DSizes<typename internal::traits<Input>::Index, 2>,
+                    const Kernel>,
+                const TensorReshapingOp<
+                    const DSizes<typename internal::traits<Input>::Index, 2>,
+                    const TensorImagePatchOp<Dynamic, Dynamic,
+                                             const Input> > > >,
+        TensorReshapingOp<
+            const DSizes<typename internal::traits<Input>::Index,
+                         internal::traits<Input>::NumDimensions>,
+            const TensorContractionOp<
+                const array<IndexPair<typename internal::traits<Input>::Index>,
+                            1>,
+                const TensorReshapingOp<
+                    const DSizes<typename internal::traits<Input>::Index, 2>,
+                    const TensorImagePatchOp<Dynamic, Dynamic, const Input> >,
+                const TensorReshapingOp<
+                    const DSizes<typename internal::traits<Input>::Index, 2>,
+                    const Kernel> > > >::type
+    SpatialConvolution(const Input& input, const Kernel& kernel,
+                       const DenseIndex row_stride = 1,
+                       const DenseIndex col_stride = 1,
+                       const PaddingType padding_type = PADDING_SAME,
+                       const DenseIndex row_in_stride = 1,
+                       const DenseIndex col_in_stride = 1) {
   typedef typename internal::traits<Input>::Index TensorIndex;
   TensorRef<Tensor<typename internal::traits<Input>::Scalar,
                    internal::traits<Input>::NumDimensions,
@@ -941,9 +951,9 @@ SpatialConvolution(const Input& input, const Kernel& kernel,
   EIGEN_STATIC_ASSERT(
       internal::traits<Input>::Layout == internal::traits<Kernel>::Layout,
       YOU_MADE_A_PROGRAMMING_MISTAKE);
-  static const bool isColMajor = (internal::traits<Input>::Layout == ColMajor);
+  const bool isColMajor = (internal::traits<Input>::Layout == ColMajor);
 
-  static const int NumDims = internal::traits<Input>::NumDimensions;
+  const int NumDims = internal::traits<Input>::NumDimensions;
 
   // Number of filters to apply. This is the same as the output depth of the
   // result
