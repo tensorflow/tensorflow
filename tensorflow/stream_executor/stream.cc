@@ -741,6 +741,57 @@ Stream &Stream::ThenConvolveBackwardFilter(
       /*scratch_allocator=*/nullptr);
 }
 
+template <typename T>
+Stream &Stream::ThenConvolveBackwardBiasImpl(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<T> &input_data,
+    const dnn::BatchDescriptor &bias_descriptor,
+    DeviceMemory<T> *backward_bias_data) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data), PARAM(bias_descriptor),
+            PARAM(backward_bias_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoConvolveBackwardBias(this, input_descriptor, input_data,
+                                             bias_descriptor,
+                                             backward_bias_data));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardBias(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<double> &input_data,
+    const dnn::BatchDescriptor &bias_descriptor,
+    DeviceMemory<double> *backward_bias_data) {
+  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
+                                      bias_descriptor, backward_bias_data);
+}
+
+Stream &Stream::ThenConvolveBackwardBias(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::BatchDescriptor &bias_descriptor,
+    DeviceMemory<float> *backward_bias_data) {
+  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
+                                      bias_descriptor, backward_bias_data);
+}
+
+Stream &Stream::ThenConvolveBackwardBias(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::BatchDescriptor &bias_descriptor,
+    DeviceMemory<Eigen::half> *backward_bias_data) {
+  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
+                                      bias_descriptor, backward_bias_data);
+}
+
 Stream &Stream::ThenMatMul(const DeviceMemory<float> &input_data,
                            const DeviceMemory<float> &weights,
                            const dnn::BatchDescriptor &input_dimensions,
