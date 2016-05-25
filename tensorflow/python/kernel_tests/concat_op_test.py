@@ -412,6 +412,17 @@ class ConcatOpTest(tf.test.TestCase):
       self.assertEqual(n + 3, after - before)
       print("graph = ", [x.name for x in g.get_operations()])
 
+  def testConcatLargeTensors(self):
+    # CPU-only test, because it fails on GPUs with <= 4GB memory.
+    with tf.device("/cpu:0"):
+      a = tf.ones([2**31 + 6], dtype=tf.int8)
+      b = tf.zeros([1024], dtype=tf.int8)
+      onezeros = tf.concat(0, [a, b])
+    with self.test_session(use_gpu=False):
+      # TODO(dga):  Add more depth to this test to validate correctness,
+      # not just non-crashingness, once other large tensor fixes have gone in.
+      _ = onezeros.eval()
+
 
 class ConcatOffsetTest(tf.test.TestCase):
 

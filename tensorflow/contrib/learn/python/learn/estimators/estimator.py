@@ -563,9 +563,13 @@ class Estimator(BaseEstimator):
                                     input_fn=input_fn,
                                     batch_size=batch_size)
     if self._classification:
-      for key in predictions:
-        cur_axis = (len(predictions[key].shape) - 1) if axis is None else axis
-        predictions[key] = np.argmax(predictions[key], axis=cur_axis)
+      if isinstance(predictions, dict):
+        for key in predictions:
+          cur_axis = (len(predictions[key].shape) - 1) if axis is None else axis
+          predictions[key] = np.argmax(predictions[key], axis=cur_axis)
+      else:
+        cur_axis = (len(predictions.shape) - 1) if axis is None else axis
+        predictions = np.argmax(predictions, axis=cur_axis)
     return predictions
 
   def predict_proba(self, x=None, input_fn=None, batch_size=None):

@@ -74,6 +74,14 @@ class SparseReduceSumOp : public OpKernel {
     std::vector<int32> axes(num_reduction_axes);
     std::copy_n(reduction_axes_t->flat<int32>().data(), num_reduction_axes,
                 axes.begin());
+    for (int i = 0; i < num_reduction_axes; ++i) {
+      int32 axis = axes[i];
+      OP_REQUIRES(
+          ctx, axis >= -ndims && axis < ndims,
+          errors::InvalidArgument("Invalid reduction dimension ", axis,
+                                  ", for input with ", ndims, " dimensions."));
+      axes[i] = (axes[i] + ndims) % ndims;
+    }
     std::sort(axes.begin(), axes.end());
 
     std::vector<int64> group_by_dims;

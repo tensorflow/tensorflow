@@ -140,6 +140,24 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator, dnn::AlgorithmType algorithm,
       dnn::ProfileResult* output_profile_result) override;
 
+  bool DoConvolveBackwardBias(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<double>& input_data,
+      const dnn::BatchDescriptor& bias_descriptor,
+      DeviceMemory<double>* backward_bias_data) override;
+
+  bool DoConvolveBackwardBias(Stream* stream,
+                              const dnn::BatchDescriptor& input_descriptor,
+                              const DeviceMemory<float>& input_data,
+                              const dnn::BatchDescriptor& bias_descriptor,
+                              DeviceMemory<float>* backward_bias_data) override;
+
+  bool DoConvolveBackwardBias(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::BatchDescriptor& bias_descriptor,
+      DeviceMemory<Eigen::half>* backward_bias_data) override;
+
   bool DoMatMul(Stream* stream, const DeviceMemory<float>& input_data,
                 const DeviceMemory<float>& weights,
                 const dnn::BatchDescriptor& input_dimensions,
@@ -310,6 +328,14 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       dnn::AlgorithmType algorithm,
       dnn::ProfileResult* output_profile_result);
+
+  template <class T>
+  bool DoConvolveBackwardBiasImpl(Stream* stream,
+                                  int cudnn_type,  // Actually cudnnDataType_t.
+                                  const dnn::BatchDescriptor& input_descriptor,
+                                  const DeviceMemory<T>& input_data,
+                                  const dnn::BatchDescriptor& bias_descriptor,
+                                  DeviceMemory<T>* backward_bias_data);
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
 };

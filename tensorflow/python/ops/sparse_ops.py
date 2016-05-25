@@ -548,7 +548,8 @@ def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
   with length 1.
 
   If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
-  with a single element is returned.
+  with a single element is returned.  Additionally, the axes can be negative,
+  similar to the indexing rules in Python.
 
   For example:
 
@@ -558,7 +559,7 @@ def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
   # where ? is implictly-zero.
   tf.sparse_reduce_sum(x) ==> 3
   tf.sparse_reduce_sum(x, 0) ==> [1, 1, 1]
-  tf.sparse_reduce_sum(x, 1) ==> [2, 1]
+  tf.sparse_reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
   tf.sparse_reduce_sum(x, 1, keep_dims=True) ==> [[2], [1]]
   tf.sparse_reduce_sum(x, [0, 1]) ==> 3
   ```

@@ -13,10 +13,11 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_DEFAULT_FFMPEG_LIB_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_DEFAULT_FFMPEG_LIB_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_FFMPEG_LIB_H_
+#define THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_FFMPEG_LIB_H_
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/lib/core/status.h"
 
@@ -40,9 +41,9 @@ Status ReadAudioFile(const string& filename,
 // contain a separate sample for each channel. Frames are ordered by time.
 // Currently, the implementation only supports wav files, and ffmpeg is not used
 // to create them.
-Status CreateAudioFile(const string& audio_format_id, int32 samples_per_second,
-                       int32 channel_count, const std::vector<float>& samples,
-                       string* output_data);
+Status CreateAudioFile(const string& audio_format_id, int32 bits_per_second,
+                       int32 samples_per_second, int32 channel_count,
+                       const std::vector<float>& samples, string* output_data);
 
 }  // namespace ffmpeg
 }  // namespace tensorflow

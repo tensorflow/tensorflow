@@ -371,6 +371,22 @@ class Stream {
       ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
       dnn::ProfileResult *output_profile_result);
 
+  Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
+                                   const DeviceMemory<double> &input_data,
+                                   const dnn::BatchDescriptor &bias_descriptor,
+                                   DeviceMemory<double> *backward_bias_data);
+
+  Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
+                                   const DeviceMemory<float> &input_data,
+                                   const dnn::BatchDescriptor &bias_descriptor,
+                                   DeviceMemory<float> *backward_bias_data);
+
+  Stream &ThenConvolveBackwardBias(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::BatchDescriptor &bias_descriptor,
+      DeviceMemory<Eigen::half> *backward_bias_data);
+
   Stream &ThenMatMul(const DeviceMemory<float> &input_data,
                      const DeviceMemory<float> &weights,
                      const dnn::BatchDescriptor &input_dimensions,
@@ -1438,6 +1454,14 @@ class Stream {
   // notes when they can be reclaimed -- reclamation is attempted when
   // BlockHostUntilDone() is called.
   internal::TemporaryMemoryManager temporary_memory_manager_;
+
+  // Implementation of ThenConvolveBackwardBias that is shared by all types.
+  template <typename T>
+  Stream &ThenConvolveBackwardBiasImpl(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<T> &input_data,
+      const dnn::BatchDescriptor &bias_descriptor,
+      DeviceMemory<T> *backward_bias_data);
 
   SE_DISALLOW_COPY_AND_ASSIGN(Stream);
 };

@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "tensorflow/contrib/ffmpeg/default/ffmpeg_lib.h"
+#include "tensorflow/contrib/ffmpeg/ffmpeg_lib.h"
 
 #include <stdlib.h>
 #include <vector>
@@ -91,7 +91,7 @@ TEST(FfmpegLibTest, TestRoundTripGeneratedWav) {
     sine_wave.push_back(std::sin(6.28 * 440.0 * i / 20000.0));
   }
   string content;
-  ASSERT_TRUE(CreateAudioFile("wav", 20000, 1, sine_wave, &content).ok());
+  ASSERT_TRUE(CreateAudioFile("wav", 0, 20000, 1, sine_wave, &content).ok());
   string temp_filename = GetTempFilename("wav");
   ASSERT_TRUE(WriteStringToFile(Env::Default(), temp_filename, content).ok());
   std::vector<float> roundtrip_data;
@@ -122,7 +122,7 @@ TEST(FfmpegLibTest, TestRoundTripWav) {
 
   string written_audio;
   ASSERT_TRUE(
-      CreateAudioFile("wav", 10000, 1, output_samples, &written_audio).ok());
+      CreateAudioFile("wav", 0, 10000, 1, output_samples, &written_audio).ok());
 
   EXPECT_EQ(original_audio, written_audio);
 }

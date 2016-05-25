@@ -430,7 +430,8 @@ Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
 with length 1.
 
 If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
-with a single element is returned.
+with a single element is returned.  Additionally, the axes can be negative,
+which are interpreted according to the indexing rules in Python.
 
 input_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
   SparseTensor, possibly not in canonical ordering.
