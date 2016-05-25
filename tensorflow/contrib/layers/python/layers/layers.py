@@ -201,7 +201,7 @@ def batch_norm(inputs,
         collections=moving_variance_collections)
     if is_training:
       # Calculate the moments based on the individual batch.
-      mean, variance = nn.moments(inputs, axis)
+      mean, variance = nn.moments(inputs, axis, shift=moving_mean)
       # Update the moving_mean and moving_variance moments.
       update_moving_mean = moving_averages.assign_moving_average(
           moving_mean, mean, decay)
@@ -710,7 +710,7 @@ legacy_relu6 = functools.partial(legacy_fully_connected, activation_fn=nn.relu6)
 # Simple alias for fully_connected which removes the activation_fn parameter.
 legacy_linear = functools.partial(legacy_fully_connected, activation_fn=None)
 
-linear = functools.partial(fully_connected, activation_fn=nn.relu)
-relu = functools.partial(fully_connected, activation_fn=nn.relu6)
-relu6 = functools.partial(fully_connected, activation_fn=None)
+linear = legacy_linear
+relu = legacy_relu
+relu6 = legacy_relu6
 

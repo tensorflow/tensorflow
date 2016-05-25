@@ -1,4 +1,4 @@
-### `tf.nn.moments(x, axes, name=None, keep_dims=False)` {#moments}
+### `tf.nn.moments(x, axes, shift=None, name=None, keep_dims=False)` {#moments}
 
 Calculate the mean and variance of `x`.
 
@@ -18,6 +18,9 @@ When using these moments for batch normalization (see
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
     variance.
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
+    numerical stability, or `None` if no shift is to be performed. A shift
+    close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 

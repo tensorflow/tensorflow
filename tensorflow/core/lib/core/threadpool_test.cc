@@ -66,22 +66,17 @@ TEST(ThreadPool, ParallelFor) {
     const int kWorkItems = 15;
     bool work[kWorkItems];
     ThreadPool pool(Env::Default(), "test", num_threads);
-    for (int max_parallelism = 1; max_parallelism <= kNumThreads + 1;
-         max_parallelism++) {
-      for (int i = 0; i < kWorkItems; i++) {
-        work[i] = false;
+    for (int i = 0; i < kWorkItems; i++) {
+      work[i] = false;
+    }
+    pool.ParallelFor(kWorkItems, kHugeCost, [&work](int64 begin, int64 end) {
+      for (int64 i = begin; i < end; ++i) {
+        ASSERT_FALSE(work[i]);
+        work[i] = true;
       }
-      pool.ParallelFor(kWorkItems, kHugeCost,
-                       [&work](int64 begin, int64 end) {
-                         for (int64 i = begin; i < end; ++i) {
-                           ASSERT_FALSE(work[i]);
-                           work[i] = true;
-                         }
-                       },
-                       max_parallelism);
-      for (int i = 0; i < kWorkItems; i++) {
-        ASSERT_TRUE(work[i]);
-      }
+    });
+    for (int i = 0; i < kWorkItems; i++) {
+      ASSERT_TRUE(work[i]);
     }
   }
 }

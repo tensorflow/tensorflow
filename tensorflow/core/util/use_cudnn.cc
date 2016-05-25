@@ -37,7 +37,7 @@ static bool ReadBoolFromEnvVar(const char* env_var_name, bool default_val) {
 bool CanUseCudnn() { return ReadBoolFromEnvVar("TF_USE_CUDNN", true); }
 
 bool CudnnUseAutotune() {
-  return ReadBoolFromEnvVar("TF_CUDNN_USE_AUTOTUNE", false);
+  return ReadBoolFromEnvVar("TF_CUDNN_USE_AUTOTUNE", true);
 }
 
 }  // namespace tensorflow

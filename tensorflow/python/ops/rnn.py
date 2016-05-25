@@ -32,6 +32,13 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 
 
+# pylint: disable=protected-access
+_is_sequence = rnn_cell._is_sequence
+_unpacked_state = rnn_cell._unpacked_state
+_packed_state = rnn_cell._packed_state
+# pylint: enable=protected-access
+
+
 def rnn(cell, inputs, initial_state=None, dtype=None,
         sequence_length=None, scope=None):
   """Creates a recurrent neural network specified by RNNCell `cell`.
@@ -177,20 +184,26 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
      type of `state_name` does not match that of `cell.state_size`.
   """
   state_size = cell.state_size
-  state_is_tuple = isinstance(state_size, (list, tuple))
-  state_name_tuple = isinstance(state_name, (list, tuple))
+  state_is_tuple = _is_sequence(state_size)
+  state_name_tuple = _is_sequence(state_name)
 
   if state_is_tuple != state_name_tuple:
     raise ValueError(
-        "state_name should be a tuple iff cell.state_size is.  state_name: %s, "
-        "cell.state_size: %s" % (str(state_name), str(state_size)))
+        "state_name should be the same type as cell.state_size.  "
+        "state_name: %s, cell.state_size: %s"
+        % (str(state_name), str(state_size)))
 
   if state_is_tuple:
-    if len(state_name) != len(state_size):
-      raise ValueError("len(state_name) != len(state_size): %d vs. %d"
-                       % (len(state_name), len(state_size)))
+    state_name_flat = _unpacked_state(state_name)
+    state_size_flat = _unpacked_state(state_size)
 
-    initial_state = tuple(state_saver.state(n) for n in state_name)
+    if len(state_name_flat) != len(state_size_flat):
+      raise ValueError("#elems(state_name) != #elems(state_size): %d vs. %d"
+                       % (len(state_name_flat), len(state_size_flat)))
+
+    initial_state = _packed_state(
+        structure=state_name,
+        state=[state_saver.state(n) for n in state_name_flat])
   else:
     initial_state = state_saver.state(state_name)
 
@@ -198,8 +211,10 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
                          sequence_length=sequence_length, scope=scope)
 
   if state_is_tuple:
+    state_flat = _unpacked_state(state)
     save_state = [
-        state_saver.save_state(n, s) for (n, s) in zip(state_name, state)]
+        state_saver.save_state(n, s)
+        for (n, s) in zip(state_name_flat, state_flat)]
   else:
     save_state = [state_saver.save_state(state_name, state)]
 
@@ -262,9 +277,10 @@ def _rnn_step(
       that returned by `state_size`.
   """
 
-  state_is_tuple = isinstance(state, (list, tuple))
+  state_is_tuple = _is_sequence(state)
+  orig_state = state
   # Convert state to a list for ease of use
-  state = list(state) if state_is_tuple else [state]
+  state = list(_unpacked_state(state)) if state_is_tuple else [state]
   state_shape = [s.get_shape() for s in state]
 
   def _copy_some_through(new_output, new_state):
@@ -279,7 +295,8 @@ def _rnn_step(
   def _maybe_copy_some_through():
     """Run RNN step.  Pass through either no or some past state."""
     new_output, new_state = call_cell()
-    new_state = list(new_state) if state_is_tuple else [new_state]
+    new_state = (
+        list(_unpacked_state(new_state)) if state_is_tuple else [new_state])
 
     if len(state) != len(new_state):
       raise ValueError(
@@ -300,7 +317,8 @@ def _rnn_step(
     # steps.  This is faster when max_seq_len is equal to the number of unrolls
     # (which is typical for dynamic_rnn).
     new_output, new_state = call_cell()
-    new_state = list(new_state) if state_is_tuple else [new_state]
+    new_state = (
+        list(_unpacked_state(new_state)) if state_is_tuple else [new_state])
 
     if len(state) != len(new_state):
       raise ValueError(
@@ -325,7 +343,9 @@ def _rnn_step(
     final_state_i.set_shape(state_shape_i)
 
   if state_is_tuple:
-    return (final_output, tuple(final_state))
+    return (
+        final_output,
+        _packed_state(structure=orig_state, state=final_state))
   else:
     return (final_output, final_state[0])
 
@@ -613,9 +633,9 @@ def _dynamic_rnn_loop(
   time = array_ops.constant(0, dtype=dtypes.int32, name="time")
 
   state_size = cell.state_size
-  state_is_tuple = isinstance(state_size, (list, tuple))
+  state_is_tuple = _is_sequence(state_size)
 
-  state = tuple(state) if state_is_tuple else (state,)
+  state = _unpacked_state(state) if state_is_tuple else (state,)
 
   with ops.op_scope([], "dynamic_rnn") as scope:
     base_name = scope
@@ -646,8 +666,9 @@ def _dynamic_rnn_loop(
     # Restore some shape information
     input_t.set_shape([const_batch_size, const_depth])
 
-    # Unpack state if not using state tuples
-    state = tuple(state) if state_is_tuple else state[0]
+    # Pack state back up for use by cell
+    state = (_packed_state(structure=state_size, state=state)
+             if state_is_tuple else state[0])
 
     call_cell = lambda: cell(input_t, state)
 
@@ -665,7 +686,7 @@ def _dynamic_rnn_loop(
       (output, new_state) = call_cell()
 
     # Pack state if using state tuples
-    new_state = tuple(new_state) if state_is_tuple else (new_state,)
+    new_state = _unpacked_state(new_state) if state_is_tuple else (new_state,)
 
     output_ta_t = output_ta_t.write(time, output)
 
@@ -686,6 +707,7 @@ def _dynamic_rnn_loop(
       const_time_steps, const_batch_size, cell.output_size])
 
   # Unpack final state if not using state tuples.
-  final_state = tuple(final_state) if state_is_tuple else final_state[0]
+  final_state = (
+      _unpacked_state(final_state) if state_is_tuple else final_state[0])
 
   return (final_outputs, final_state)

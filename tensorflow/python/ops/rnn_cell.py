@@ -18,11 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import math
 
-# pylint: disable=redefined-builtin,unused-import
-from six.moves import xrange
-# pylint: enable=redefined-builtin,unused-import
+import six
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -37,6 +36,88 @@ from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
 
 from tensorflow.python.platform import tf_logging as logging
+
+
+def _is_sequence(seq):
+  return (isinstance(seq, collections.Sequence)
+          and not isinstance(seq, six.string_types))
+
+
+def _packed_state_with_indices(structure, flat, index):
+  """Helper function for _packed_state.
+
+  Args:
+    structure: Substructure (tuple of elements and/or tuples) to mimic
+    flat: Flattened values to output substructure for.
+    index: Index at which to start reading from flat.
+
+  Returns:
+    The tuple (new_index, child), where:
+      * new_index - the updated index into `flat` having processed `structure`.
+      * packed - the subset of `flat` corresponding to `structure`,
+                 having started at `index`, and packed into the same nested
+                 format.
+
+  Raises:
+    ValueError: if `structure` contains more elements than `flat`
+      (assuming indexing starts from `index`).
+  """
+  packed = []
+  for s in structure:
+    if _is_sequence(s):
+      new_index, child = _packed_state_with_indices(s, flat, index)
+      packed.append(type(s)(child))
+      index = new_index
+    else:
+      packed.append(flat[index])
+      index += 1
+  return (index, packed)
+
+
+def _yield_unpacked_state(state):
+  for s in state:
+    if _is_sequence(s):
+      for si in _yield_unpacked_state(s):
+        yield si
+    else:
+      yield s
+
+
+def _unpacked_state(state):
+  if not _is_sequence(state):
+    raise TypeError("state must be a sequence")
+  return type(state)(_yield_unpacked_state(state))
+
+
+def _packed_state(structure, state):
+  """Returns the flat state packed into a recursive tuple like structure.
+
+  Args:
+    structure: tuple or list constructed of scalars and/or other tuples/lists.
+    state: flattened state.
+
+  Returns:
+    packed: `state` converted to have the same recursive structure as
+      `structure`.
+
+  Raises:
+    TypeError: If structure or state is not a tuple or list.
+    ValueError: If state and structure have different element counts.
+  """
+  if not _is_sequence(structure):
+    raise TypeError("structure must be a sequence")
+  if not _is_sequence(state):
+    raise TypeError("state must be a sequence")
+
+  flat_structure = _unpacked_state(structure)
+  if len(flat_structure) != len(state):
+    raise ValueError(
+        "Internal error: Could not pack state.  Structure had %d elements, but "
+        "state had %d elements.  Structure: %s, state: %s."
+        % (len(flat_structure), len(state), structure, state))
+
+  (_, packed) = _packed_state_with_indices(structure, state, 0)
+  return type(structure)(packed)
 
 
 class RNNCell(object):
@@ -98,17 +179,19 @@ class RNNCell(object):
       If `state_size` is an int, then the return value is a `2-D` tensor of
       shape `[batch_size x state_size]` filled with zeros.
 
-      If `state_size` is a list or tuple of ints, then the return value is
-      a tuple of `2-D` tensors with shape
-      `[batch_size x s] for s in state_size`.
+      If `state_size` is a nested list or tuple, then the return value is
+      a nested list or tuple (of the same structure) of `2-D` tensors with
+    the shapes `[batch_size x s]` for each s in `state_size`.
     """
     state_size = self.state_size
-    if isinstance(state_size, (list, tuple)):
-      zeros = tuple(
+    if _is_sequence(state_size):
+      state_size_flat = _unpacked_state(state_size)
+      zeros_flat = [
           array_ops.zeros(array_ops.pack([batch_size, s]), dtype=dtype)
-          for s in state_size)
-      for s, z in zip(state_size, zeros):
+          for s in state_size_flat]
+      for s, z in zip(state_size_flat, zeros_flat):
         z.set_shape([None, s])
+      zeros = _packed_state(structure=state_size, state=zeros_flat)
     else:
       zeros = array_ops.zeros(
           array_ops.pack([batch_size, state_size]), dtype=dtype)
@@ -675,7 +758,7 @@ class MultiRNNCell(RNNCell):
     self._cells = cells
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
-      if any(isinstance(c.state_size, (list, tuple)) for c in self._cells):
+      if any(_is_sequence(c.state_size) for c in self._cells):
         raise ValueError("Some cells return tuples of states, but the flag "
                          "state_is_tuple is not set.  State sizes are: %s"
                          % str([c.state_size for c in self._cells]))
@@ -700,7 +783,7 @@ class MultiRNNCell(RNNCell):
       for i, cell in enumerate(self._cells):
         with vs.variable_scope("Cell%d" % i):
           if self._state_is_tuple:
-            if not isinstance(state, (list, tuple)):
+            if not _is_sequence(state):
               raise ValueError(
                   "Expected state to be a tuple of length %d, but received: %s"
                   % (len(self.state_size), state))
@@ -778,9 +861,9 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
   Raises:
     ValueError: if some of the arguments has unspecified or wrong shape.
   """
-  if args is None or (isinstance(args, (list, tuple)) and not args):
+  if args is None or (_is_sequence(args) and not args):
     raise ValueError("`args` must be specified")
-  if not isinstance(args, (list, tuple)):
+  if not _is_sequence(args):
     args = [args]
 
   # Calculate the total size of arguments on dimension 1.

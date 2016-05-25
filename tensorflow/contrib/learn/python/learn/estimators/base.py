@@ -240,9 +240,9 @@ class TensorFlowEstimator(estimator.Estimator):
         input_fn=predict_data_feeder.input_builder,
         feed_fn=predict_data_feeder.get_feed_dict_fn())
     if self.n_classes > 1 and axis != -1:
-      preds = preds['predictions'].argmax(axis=axis)
+      preds = preds.argmax(axis=axis)
     else:
-      preds = preds['predictions']
+      preds = preds
     return preds
 
   def predict(self, x, axis=1, batch_size=None):

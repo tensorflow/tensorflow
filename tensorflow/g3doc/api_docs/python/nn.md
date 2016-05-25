@@ -824,24 +824,22 @@ convolutional neural networks (NIPS 2012)]
 
 - - -
 
-### `tf.nn.sufficient_statistics(x, axes, shift=False, keep_dims=False, name=None)` {#sufficient_statistics}
+### `tf.nn.sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None)` {#sufficient_statistics}
 
 Calculate the sufficient statistics for the mean and variance of `x`.
 
 These sufficient statistics are computed using the one pass algorithm on
-an input that's optionally shifted using the value of the 1st element in `x`.
-See:
+an input that's optionally shifted. See:
 https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
-Unfortunately, in some cases using a random individual sample as the shift
-value leads experimentally to very poor numerical stability, so it is disabled
-by default. The one-pass approach might have to be revised accordingly.
 
 ##### Args:
 
 
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: Array of ints. Axes along which to compute mean and variance.
-*  <b>`shift`</b>: If true, shift the data to provide more numerically stable results.
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
+    numerical stability, or `None` if no shift is to be performed. A shift
+    close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce statistics with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the sufficient stats.
 
@@ -851,7 +849,7 @@ by default. The one-pass approach might have to be revised accordingly.
   * the count (number of elements to average over).
   * the (possibly shifted) sum of the elements in the array.
   * the (possibly shifted) sum of squares of the elements in the array.
-  * the shift by which the mean must be corrected or None if `shift` is False.
+  * the shift by which the mean must be corrected or None if `shift` is None.
 
 
 - - -
@@ -879,7 +877,7 @@ Calculate the mean and variance of based on the sufficient statistics.
 
 - - -
 
-### `tf.nn.moments(x, axes, name=None, keep_dims=False)` {#moments}
+### `tf.nn.moments(x, axes, shift=None, name=None, keep_dims=False)` {#moments}
 
 Calculate the mean and variance of `x`.
 
@@ -899,6 +897,9 @@ When using these moments for batch normalization (see
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
     variance.
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
+    numerical stability, or `None` if no shift is to be performed. A shift
+    close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 

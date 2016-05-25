@@ -97,11 +97,6 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language])
 
-    # Evaluate on untrained model
-    classifier.evaluate(input_fn=input_fn, steps=2)
-    # TODO(ispir): Enable accuracy check after resolving the randomness issue.
-    # self.assertAlmostEqual(.5, evaluated_values['accuracy/mean'])
-
     # Evaluate on trained mdoel
     classifier.train(input_fn, steps=100)
     classifier.evaluate(input_fn=input_fn, steps=2)

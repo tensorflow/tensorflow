@@ -30,11 +30,9 @@ extern "C" {
 #define TENSORFLOW_METHOD(METHOD_NAME) \
   Java_org_tensorflow_demo_TensorflowClassifier_##METHOD_NAME  // NOLINT
 
-JNIEXPORT jint JNICALL
-TENSORFLOW_METHOD(initializeTensorflow)(
-    JNIEnv* env, jobject thiz, jobject java_asset_manager,
-    jstring model, jstring labels,
-    jint num_classes, jint mognet_input_size, jint image_mean);
+JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
+    JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model,
+    jstring labels, jint num_classes, jint model_input_size, jint image_mean);
 
 JNIEXPORT jstring JNICALL
 TENSORFLOW_METHOD(classifyImageBmp)(

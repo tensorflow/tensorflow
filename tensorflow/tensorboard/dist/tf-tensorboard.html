@@ -358,7 +358,8 @@ var TF;
       var name = e.srcElement.name;
       var checked = e.srcElement.checked;
       this.runToIsCheckedMapping[name] = checked;
-      this.notifyPath("runToIsCheckedMapping." + name, checked);
+      // n.b. notifyPath won't work because run names may have periods.
+      this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
     },
     _isChecked: function(item, outSelectedChange) {
       return this.runToIsCheckedMapping[item];
@@ -453,6 +454,7 @@ var TF;
     --tb-grey-lighter: #f3f3f3;
     --tb-ui-dark-accent: #757575;
     --tb-ui-light-accent: #e0e0e0;
+    --tb-graph-faded: #e0d4b3;
   }
 
 </style>
@@ -1541,7 +1543,8 @@ var TF;
                 };
                 var centerBBox = _this.gridlines.content().node().getBBox();
                 var points = plot.datasets().map(function (dataset) { return _this.findClosestPoint(target, dataset); });
-                var pointsToCircle = points.filter(function (p) { return Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox); });
+                var pointsToCircle = points.filter(function (p) { return p != null &&
+                    Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox); });
                 var pts = pointsComponent.content().selectAll('.point').data(pointsToCircle, function (p) { return p.dataset.metadata().run; });
                 if (points.length !== 0) {
                     pts.enter().append('circle').classed('point', true);
@@ -3697,16 +3700,16 @@ Polymer({
   },
   observers: [
     '_selectedDatasetChanged(selectedDataset, datasets)',
-    '_readAndParseMetadata(selectedDataset, selectedMetadataTag, datasets)'
+    '_readAndParseMetadata(selectedMetadataTag)'
   ],
-  _readAndParseMetadata: function(datasetIndex, metadataIndex, datasets) {
-    if (metadataIndex == -1 || datasets[datasetIndex] == null ||
-        datasets[datasetIndex].runMetadata == null ||
-        datasets[datasetIndex].runMetadata[metadataIndex] == null) {
+  _readAndParseMetadata: function(metadataIndex) {
+    if (metadataIndex == -1 || this.datasets[this.selectedDataset] == null ||
+        this.datasets[this.selectedDataset].runMetadata == null ||
+        this.datasets[this.selectedDataset].runMetadata[metadataIndex] == null) {
       this._setOutStats(null);
       return;
     }
-    var path = datasets[datasetIndex].runMetadata[metadataIndex].path;
+    var path = this.datasets[this.selectedDataset].runMetadata[metadataIndex].path;
     // Reset the progress bar to 0.
     this.set('progress', {
       value: 0,
@@ -6577,8 +6580,9 @@ var tf;
              * for each node in the graph.
              */
             var RenderGraphInfo = (function () {
-                function RenderGraphInfo(hierarchy) {
+                function RenderGraphInfo(hierarchy, displayingStats) {
                     this.hierarchy = hierarchy;
+                    this.displayingStats = displayingStats;
                     this.index = {};
                     this.computeScales();
                     // Maps node name to whether the rendering hierarchy was already
@@ -6663,6 +6667,9 @@ var tf;
                         renderInfo.computeTimeColor =
                             this.computeTimeScale(node.stats.totalMicros);
                     }
+                    // We only fade nodes when we're displaying stats.
+                    renderInfo.isFadedOut = this.displayingStats &&
+                        !tf.graph.util.hasDisplayableNodeStats(node.stats);
                     if (node.isGroupNode) {
                         // Make a list of tuples (device, proportion), where proportion
                         // is the fraction of op nodes that have that device.
@@ -6768,6 +6775,8 @@ var tf;
                     _.each(metagraph.edges(), function (edgeObj) {
                         var metaedge = metagraph.edge(edgeObj);
                         var renderMetaedgeInfo = new RenderMetaedgeInfo(metaedge);
+                        renderMetaedgeInfo.isFadedOut =
+                            _this.index[edgeObj.v].isFadedOut || _this.index[edgeObj.w].isFadedOut;
                         coreGraph.setEdge(edgeObj.v, edgeObj.w, renderMetaedgeInfo);
                     });
                     if (PARAMS.enableExtraction &&
@@ -7220,6 +7229,8 @@ var tf;
                     this.isInExtract = false;
                     this.isOutExtract = false;
                     this.coreBox = { width: 0, height: 0 };
+                    // By default, we don't fade nodes out. Default to false for safety.
+                    this.isFadedOut = false;
                 }
                 RenderNodeInfo.prototype.isInCore = function () {
                     return !this.isInExtract && !this.isOutExtract;
@@ -7237,6 +7248,7 @@ var tf;
                     this.adjoiningMetaedge = null;
                     this.structural = false;
                     this.weight = 1;
+                    this.isFadedOut = false;
                 }
                 return RenderMetaedgeInfo;
             }());
@@ -8197,6 +8209,7 @@ var tf;
                  * d's label property will be a RenderMetaedgeInfo object.
                  */
                 function stylize(edgeGroup, d, stylize) {
+                    edgeGroup.classed('faded', d.label.isFadedOut);
                     var metaedge = d.label.metaedge;
                     edgeGroup.select('path.' + scene.Class.Edge.LINE)
                         .classed('control-dep', metaedge && !metaedge.numRegularEdges);
@@ -8600,7 +8613,10 @@ var tf;
                                 stampType =
                                     groupNodeInfo.node.hasNonControlEdges ? 'vertical' : 'horizontal';
                             }
-                            scene.selectOrCreateChild(shapeGroup, 'use', scene.Class.Node.COLOR_TARGET)
+                            scene
+                                .selectOrCreateChild(shapeGroup, 'use', scene.Class.Node.COLOR_TARGET + ' ' + groupNodeInfo.isFadedOut ?
+                                'faded-ellipse' :
+                                '')
                                 .attr('xlink:href', '#op-series-' + stampType + '-stamp');
                             scene.selectOrCreateChild(shapeGroup, 'rect', scene.Class.Node.COLOR_TARGET)
                                 .attr({ rx: d.radius, ry: d.radius });
@@ -8782,10 +8798,12 @@ var tf;
                     var isSelected = sceneElement.isNodeSelected(renderInfo.node.name);
                     var isExtract = renderInfo.isInExtract || renderInfo.isOutExtract;
                     var isExpanded = renderInfo.expanded;
+                    var isFadedOut = renderInfo.isFadedOut;
                     nodeGroup.classed('highlighted', isHighlighted);
                     nodeGroup.classed('selected', isSelected);
                     nodeGroup.classed('extract', isExtract);
                     nodeGroup.classed('expanded', isExpanded);
+                    nodeGroup.classed('faded', isFadedOut);
                     // Main node always exists here and it will be reached before subscene,
                     // so d3 selection is fine here.
                     var node = nodeGroup.select('.' + nodeClass + ' .' + scene.Class.Node.COLOR_TARGET);
@@ -9677,6 +9695,14 @@ var tf;
                 return (value.toPrecision(3) - 0) + ' ' + units[unitIndex].symbol;
             }
             util.convertUnitsToHumanReadable = convertUnitsToHumanReadable;
+            function hasDisplayableNodeStats(stats) {
+                if (stats &&
+                    (stats.totalBytes > 0 || stats.totalMicros > 0 || stats.outputSize)) {
+                    return true;
+                }
+                return false;
+            }
+            util.hasDisplayableNodeStats = hasDisplayableNodeStats;
         })(util = graph.util || (graph.util = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {}));
@@ -10083,6 +10109,34 @@ Polymer({
   stroke-width: 4;
 }
 
+::content .faded,
+::content .faded rect,
+::content .faded ellipse,
+::content .faded path,
+::content #rectHatch line,
+::content #ellipseHatch line {
+  color: var(--tb-graph-faded) !important;
+  fill: white;
+  stroke: var(--tb-graph-faded) !important;
+}
+
+
+::content .faded path {
+  stroke-width: 1px !important;
+}
+
+::content .faded rect {
+  fill: url("#rectHatch") !important;
+}
+
+::content .faded ellipse {
+  fill: url("#ellipseHatch") !important;
+}
+
+::content .faded text {
+  opacity: 0;
+}
+
 
 /* --- Op Node --- */
 
@@ -10232,8 +10286,16 @@ Polymer({
   marker-end: url("#annotation-arrowhead");
 }
 
+::content .faded .annotation > .annotation-edge {
+  marker-end: url("#annotation-arrowhead-faded");
+}
+
 ::content .annotation > .annotation-edge.refline {
   marker-start: url("#ref-annotation-arrowhead");
+}
+
+::content .faded .annotation > .annotation-edge.refline {
+  marker-start: url("#ref-annotation-arrowhead-faded");
 }
 
 ::content .annotation > .annotation-control-edge {
@@ -10244,8 +10306,16 @@ Polymer({
   fill: #aaa;
 }
 
+::content #annotation-arrowhead-faded {
+  fill: var(--tb-graph-faded);
+}
+
 ::content #ref-annotation-arrowhead {
   fill: #aaa;
+}
+
+::content #ref-annotation-arrowhead-faded {
+  fill: var(--tb-graph-faded);
 }
 
 ::content .annotation > .annotation-label {
@@ -10398,7 +10468,13 @@ Polymer({
     <marker id="annotation-arrowhead" markerWidth="5" markerHeight="5" refX="5" refY="2.5" orient="auto">
       <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"></path>
     </marker>
+    <marker id="annotation-arrowhead-faded" markerWidth="5" markerHeight="5" refX="5" refY="2.5" orient="auto">
+      <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"></path>
+    </marker>
     <marker id="ref-annotation-arrowhead" markerWidth="5" markerHeight="5" refX="0" refY="2.5" orient="auto">
+      <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"></path>
+    </marker>
+    <marker id="ref-annotation-arrowhead-faded" markerWidth="5" markerHeight="5" refX="0" refY="2.5" orient="auto">
       <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"></path>
     </marker>
     
@@ -10428,6 +10504,14 @@ Polymer({
     </svg>
     
     <g id="linearGradients"></g>
+
+    
+    <pattern id="rectHatch" patternTransform="rotate(45 0 0)" width="5" height="5" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="5" style="stroke-width: 1"></line>
+    </pattern>
+    <pattern id="ellipseHatch" patternTransform="rotate(45 0 0)" width="2" height="2" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="2" style="stroke-width: 1"></line>
+    </pattern>
   </defs>
   
   <rect fill="white" width="10000" height="10000"></rect>
@@ -10908,9 +10992,12 @@ Polymer({
     '_buildRenderHierarchy(graphHierarchy)'
   ],
   _statsChanged: function(stats) {
-    if (stats != null) {
-      tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats);
-      tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
+    if (this.graphHierarchy) {
+      if (stats != null) {
+        tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats);
+        tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
+      }
+
       // Recompute the rendering information.
       this._buildRenderHierarchy(this.graphHierarchy);
     }
@@ -10923,7 +11010,8 @@ Polymer({
         // and thus mistakenly pass non-metanode to this module.
         return;
       }
-      var renderGraph = new tf.graph.render.RenderGraphInfo(graphHierarchy);
+      var renderGraph = new tf.graph.render.RenderGraphInfo(
+          graphHierarchy, !!this.stats /** displayingStats */);
       // Producing the 'color by' parameters to be consumed
       // by the tf-graph-controls panel. It contains information about the
       // min and max values and their respective colors, as well as list
@@ -11083,6 +11171,19 @@ Polymer({
 });
 </script>
 <dom-module id="tf-graph-icon" assetpath="../tf-graph/">
+  <style>
+    .faded-rect {
+      fill: url("#rectHatch");
+    }
+
+    .faded-ellipse {
+      fill: url("#ellipseHatch");
+    }
+
+    .faded-rect, .faded-ellipse, .faded-series {
+      stroke:   var(--tb-graph-faded) !important;
+    }
+  </style>
   <template>
     <template is="dom-if" if="[[_isType(node, type, 'OP')]]">
       <template is="dom-if" if="[[_isConst(node, const)]]">
@@ -11097,24 +11198,24 @@ Polymer({
       </template>
       <template is="dom-if" if="[[_isRegularOp(node, const, summary)]]">
         <svg height$="[[height]]" preserveAspectRatio="xMinYMid meet" viewBox="0 0 16 8">
-          <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#op-node-stamp" fill$="[[_getFill(_computedFill, 'OP')]]" stroke$="[[_getStroke(_computedFill, 'OP')]]" x="8" y="4"></use>
+          <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#op-node-stamp" fill$="[[_getFill(_computedFill, 'OP')]]" stroke$="[[_getStroke(_computedFill, 'OP')]]" class$="{{_fadedClass(renderInfo, 'ellipse')}}" x="8" y="4"></use>
         </svg>
       </template>
     </template>
     <template is="dom-if" if="[[_isType(node, type, 'META')]]">
       <svg height$="[[height]]" preserveAspectRatio="xMinYMid meet" viewBox="0 0 37 16">
-        <rect x="1" y="1" fill$="[[_getFill(_computedFill, 'META')]]" stroke$="[[_getStroke(_computedFill, 'META')]]" stroke-width="2px" height="14" width="35" rx="5" ry="5"></rect>
+        <rect x="1" y="1" fill$="[[_getFill(_computedFill, 'META')]]" stroke$="[[_getStroke(_computedFill, 'META')]]" class$="{{_fadedClass(renderInfo, 'rect')}}" stroke-width="2px" height="14" width="35" rx="5" ry="5"></rect>
       </svg>
     </template>
     <template is="dom-if" if="[[_isType(node, type, 'SERIES')]]">
       <template is="dom-if" if="[[_isVertical(node, vertical)]]">
         <svg height$="[[height]]" preserveAspectRatio="xMinYMid meet" viewBox="0 0 16 15">
-          <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#op-series-vertical-stamp" fill$="[[_getFill(_computedFill, 'SERIES')]]" stroke$="[[_getStroke(_computedFill, 'SERIES')]]" x="0" y="2"></use>
+          <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#op-series-vertical-stamp" fill$="[[_getFill(_computedFill, 'SERIES')]]" stroke$="[[_getStroke(_computedFill, 'SERIES')]]" class$="{{_fadedClass(renderInfo, 'series')}}" x="0" y="2"></use>
         </svg>
       </template>
       <template is="dom-if" if="[[!_isVertical(node, vertical)]]">
         <svg height$="[[height]]" preserveAspectRatio="xMinYMid meet" viewBox="0 0 24 10">
-          <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#op-series-horizontal-stamp" fill$="[[_getFill(_computedFill, 'SERIES')]]" stroke$="[[_getStroke(_computedFill, 'SERIES')]]" x="0" y="1"></use>
+          <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#op-series-horizontal-stamp" fill$="[[_getFill(_computedFill, 'SERIES')]]" stroke$="[[_getStroke(_computedFill, 'SERIES')]]" class$="{{_fadedClass(renderInfo, 'series')}}" x="0" y="1"></use>
         </svg>
       </template>
     </template>
@@ -11308,6 +11409,10 @@ Polymer({
         _isRegularOp: function(inputNode, inputConst, inputSummary) {
           return !this._isConst(inputNode, inputConst) &&
               !this._isSummary(inputNode, inputSummary);
+        },
+
+        _fadedClass: function(itemRenderInfo, shape) {
+          return itemRenderInfo && itemRenderInfo.isFadedOut ? 'faded-' + shape : '';
         }
       });
     })();
@@ -11352,12 +11457,18 @@ Polymer({
     top: 1px;
     left: 2px;
   }
+
+  .faded span {
+    color: var(--tb-graph-faded);
+  }
   </style>
   <template>
     <div id="list-item" on-mouseover="_nodeListener" on-mouseout="_nodeListener" on-click="_nodeListener">
-      <tf-graph-icon class="node-icon" height="12" color-by="[[colorBy]]" color-by-params="[[colorByParams]]" node="[[itemNode]]" render-info="[[itemRenderInfo]]" template-index="[[templateIndex]]"></tf-graph-icon>
-      <span title$="[[name]]">[[name]]</span>
-      <span class="edge-label">[[edgeLabel]]</span>
+      <div class$="{{_fadedClass(itemRenderInfo)}}">
+        <tf-graph-icon class="node-icon" height="12" color-by="[[colorBy]]" color-by-params="[[colorByParams]]" node="[[itemNode]]" render-info="[[itemRenderInfo]]" template-index="[[templateIndex]]"></tf-graph-icon>
+        <span title$="[[name]]">[[name]]</span>
+        <span class="edge-label">[[edgeLabel]]</span>
+      </div>
     </div>
   </template>
 
@@ -11409,6 +11520,10 @@ Polymer({
             nodeName: this.name,
             type: this.itemType
           });
+        },
+
+        _fadedClass: function(itemRenderInfo) {
+          return itemRenderInfo && itemRenderInfo.isFadedOut ? 'faded' : '';
         }
       });
     })();
@@ -11451,6 +11566,10 @@ Polymer({
 
   .sub-list-table-row {
     display: table-row;
+  }
+
+  .sub-list-table-row .sub-list-table-cell:last-child {
+    text-align: right;
   }
 
   .sub-list-table-cell {
@@ -11795,13 +11914,7 @@ Polymer({
           return null;
         },
         _getHasDisplayableNodeStats: function(stats) {
-          if (stats &&
-              (stats.totalBytes > 0 ||
-                  stats.totalBytes > 0 ||
-                  stats.outputSize)) {
-            return true;
-          }
-          return false;
+          return tf.graph.util.hasDisplayableNodeStats(stats);
         },
         _getNodeStatsFormattedBytes(stats) {
           if (!stats || !stats.totalBytes) {
@@ -12228,7 +12341,6 @@ Polymer({
   }
 });
 </script>
-
 <dom-module id="tf-graph-controls" assetpath="../tf-graph/">
 <template>
 <style>
@@ -12315,6 +12427,7 @@ svg.icon {
   fill: #D9D9D9;
 }
 .domainValues {
+  margin-bottom: 10px;
   width: 165px;
 }
 .domainStart {
@@ -12353,8 +12466,31 @@ svg.icon {
   padding: 8px 0;
 }
 
-.color-text {
-  padding: 0 0 0 49px;
+.color-legend-row {
+  clear: both;
+  height: 20px;
+  margin-top: 5px;
+  position: relative;
+}
+
+.color-legend-row svg {
+  position: absolute;
+  top: -1px;
+  width: 40px;
+}
+
+.color-legend-row span.color-legend-value {
+  margin-left: 60px;
+}
+
+#grey-rect {
+  fill: #eee;
+  stroke: #a6a6a6;
+}
+
+#faded-rect {
+  fill: url("#rectHatch");
+  stroke: var(--tb-graph-faded);
 }
 
 .button-text {
@@ -12397,6 +12533,19 @@ span.counter {
   color: gray;
 }
 </style>
+<svg width="0" height="0">
+  <defs>
+    <g id="legend-rect">
+      <rect x="1" y="1" stroke-width="2px" height="14" width="35" rx="5" ry="5"></rect>
+    </g>
+    <g id="grey-rect">
+       <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#legend-rect"></use>
+     </g>
+     <g id="faded-rect">
+       <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#legend-rect"></use>
+     </g>
+  </defs>
+</svg>
 <div class="allcontrols">
   <div class="control-holder">
     <paper-icon-button icon="aspect-ratio" class="iconbutton" on-click="fit" alt="Fit to screen">
@@ -12466,11 +12615,22 @@ span.counter {
         <div class="domainStart">[[_currentGradientParams.minValue]]</div>
         <div class="domainEnd">[[_currentGradientParams.maxValue]]</div>
       </div>
+      <br style="clear: both">
     </template>
     <template is="dom-if" if="[[_equals(colorBy, 'structure')]]">
       <div class="color-text">
-        color: same substructure<br>
-        gray: unique substructure
+        <div class="color-legend-row">
+          <div style="position: absolute;">
+            colors
+          </div>
+          <span class="color-legend-value">same substructure</span>
+        </div>
+        <div class="color-legend-row">
+          <svg>
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#grey-rect" x="0" y="0"></use>
+          </svg>
+          <span class="color-legend-value">unique substructure</span>
+        </div>
       </div>
     </template>
     <template is="dom-if" if="[[_equals(colorBy, 'device')]]">
@@ -12490,7 +12650,20 @@ span.counter {
           </table>
         </div>
         <br>
-        gray: unknown device
+        <div class="color-legend-row">
+          <svg>
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#grey-rect" x="0" y="0"></use>
+          </svg>
+          <span class="color-legend-value">unknown device</span>
+        </div>
+      </div>
+    </template>
+    <template is="dom-if" if="[[_statsNotNull(stats)]]">
+      <div class="color-legend-row">
+        <svg>
+          <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#faded-rect" x="0" y="0"></use>
+        </svg>
+        <span class="color-legend-value">unused substructure</span>
       </div>
     </template>
   </div>

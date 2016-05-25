@@ -79,6 +79,27 @@ If `x` is empty this is trivially satisfied.
 
 - - -
 
+### `tf.assert_proper_iterable(values)` {#assert_proper_iterable}
+
+Static assert that values is a "proper" iterable.
+
+`Ops` that expect iterables of `Tensor` can call this to validate input.
+Useful since `Tensor`, `ndarray`, byte/text type are all iterables themselves.
+
+##### Args:
+
+
+*  <b>`values`</b>: Object to be checked.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `values` is not iterable or is one of
+    `Tensor`, `SparseTensor`, `np.array`, `tf.compat.bytes_or_text_types`.
+
+
+- - -
+
 ### `tf.assert_non_negative(x, data=None, summarize=None, name=None)` {#assert_non_negative}
 
 Assert the condition `x >= 0` holds element-wise.
@@ -183,6 +204,39 @@ If both `x` and `y` are empty, this is trivially satisfied.
     error message and first few entries of `x`, `y`.
 *  <b>`summarize`</b>: Print this many entries of each tensor.
 *  <b>`name`</b>: A name for this operation (optional).  Defaults to "assert_equal".
+
+##### Returns:
+
+  Op that raises `InvalidArgumentError` if `x == y` is False.
+
+
+- - -
+
+### `tf.assert_integer(x, data=None, summarize=None, name=None)` {#assert_integer}
+
+Assert that `x` is of integer dtype.
+
+Example of adding a dependency to an operation:
+
+```python
+with tf.control_dependencies([tf.assert_integer(x)]):
+  output = tf.reduce_sum(x)
+```
+
+Example of adding dependency to the tensor being checked:
+
+```python
+x = tf.with_dependencies([tf.assert_integer(x)], x)
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` whose basetype is integer and is not quantized.
+*  <b>`data`</b>: The tensors to print out if the condition is False.  Defaults to
+    error message and first few entries of `x`.
+*  <b>`summarize`</b>: Print this many entries of each tensor.
+*  <b>`name`</b>: A name for this operation (optional).  Defaults to "assert_integer".
 
 ##### Returns:
 
@@ -360,39 +414,6 @@ Asserts that the given `Tensor` is of the specified type.
 
 
 *  <b>`ValueError`</b>: If the tensors data type doesn't match tf_type.
-
-
-- - -
-
-### `tf.assert_integer(x, data=None, summarize=None, name=None)` {#assert_integer}
-
-Assert that `x` is of integer dtype.
-
-Example of adding a dependency to an operation:
-
-```python
-with tf.control_dependencies([tf.assert_integer(x)]):
-  output = tf.reduce_sum(x)
-```
-
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_integer(x)], x)
-```
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor` whose basetype is integer and is not quantized.
-*  <b>`data`</b>: The tensors to print out if the condition is False.  Defaults to
-    error message and first few entries of `x`.
-*  <b>`summarize`</b>: Print this many entries of each tensor.
-*  <b>`name`</b>: A name for this operation (optional).  Defaults to "assert_integer".
-
-##### Returns:
-
-  Op that raises `InvalidArgumentError` if `x == y` is False.
 
 
 - - -
