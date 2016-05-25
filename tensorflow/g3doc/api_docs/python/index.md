@@ -42,6 +42,7 @@
   * [`assert_non_negative`](../../api_docs/python/check_ops.md#assert_non_negative)
   * [`assert_non_positive`](../../api_docs/python/check_ops.md#assert_non_positive)
   * [`assert_positive`](../../api_docs/python/check_ops.md#assert_positive)
+  * [`assert_proper_iterable`](../../api_docs/python/check_ops.md#assert_proper_iterable)
   * [`assert_rank`](../../api_docs/python/check_ops.md#assert_rank)
   * [`assert_rank_at_least`](../../api_docs/python/check_ops.md#assert_rank_at_least)
   * [`assert_type`](../../api_docs/python/check_ops.md#assert_type)
@@ -259,6 +260,7 @@
   * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
   * [`string_to_hash_bucket`](../../api_docs/python/string_ops.md#string_to_hash_bucket)
   * [`string_to_hash_bucket_fast`](../../api_docs/python/string_ops.md#string_to_hash_bucket_fast)
+  * [`string_to_hash_bucket_strong`](../../api_docs/python/string_ops.md#string_to_hash_bucket_strong)
 
 * **[Histograms](../../api_docs/python/histogram_ops.md)**:
   * [`histogram_fixed_width`](../../api_docs/python/histogram_ops.md#histogram_fixed_width)
@@ -348,7 +350,9 @@
   * [`sparse_fill_empty_rows`](../../api_docs/python/sparse_ops.md#sparse_fill_empty_rows)
   * [`sparse_merge`](../../api_docs/python/sparse_ops.md#sparse_merge)
   * [`sparse_reorder`](../../api_docs/python/sparse_ops.md#sparse_reorder)
+  * [`sparse_reset_shape`](../../api_docs/python/sparse_ops.md#sparse_reset_shape)
   * [`sparse_retain`](../../api_docs/python/sparse_ops.md#sparse_retain)
+  * [`sparse_softmax`](../../api_docs/python/sparse_ops.md#sparse_softmax)
   * [`sparse_split`](../../api_docs/python/sparse_ops.md#sparse_split)
   * [`sparse_tensor_dense_matmul`](../../api_docs/python/sparse_ops.md#sparse_tensor_dense_matmul)
   * [`sparse_tensor_to_dense`](../../api_docs/python/sparse_ops.md#sparse_tensor_to_dense)

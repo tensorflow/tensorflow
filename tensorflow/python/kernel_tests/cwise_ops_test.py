@@ -515,6 +515,9 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareBoth(x, y, np.true_divide, _TRUEDIV)
     self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
     self._compareBoth(x, y, np.mod, _MOD)
+    # _compareBoth tests on GPU only for floating point types, so test
+    # _MOD for int32 on GPU by calling _compareGpu
+    self._compareGpu(x, y, np.mod, _MOD)
 
   def testInt64Basic(self):
     x = np.arange(1 << 40, 13 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)

@@ -52,6 +52,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@farmhash//:farmhash",
   )
 
+  native.git_repository(
+    name = "highwayhash",
+    remote = "https://github.com/google/highwayhash.git",
+    commit = "be5edafc2e1a455768e260ccd68ae7317b6690ee",
+    init_submodules = True,
+  )
+
   native.new_http_archive(
     name = "jpeg_archive",
     url = "http://www.ijg.org/files/jpegsrc.v9a.tar.gz",

@@ -17,8 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import math
 
+import numpy as np
 import six
 
 from tensorflow.contrib import layers
@@ -70,6 +72,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If `None`,
       will use `tf.nn.relu`.
+    config: RunConfig object to configure the runtime settings.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -85,8 +88,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu):
-    super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir)
+               dnn_activation_fn=nn.relu,
+               config=None):
+    super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir,
+                                                          config=config)
     self._n_classes = n_classes
     self._weight_column_name = weight_column_name
     self._linear_feature_columns = linear_feature_columns
@@ -99,6 +104,37 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       self._dnn_activation_fn = nn.relu
     self._dnn_weight_collection = "DNNLinearCombined_dnn"
     self._linear_weight_collection = "DNNLinearCombined_linear"
+
+  def predict(self, x=None, input_fn=None, batch_size=None):
+    """Returns predictions for given features.
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x must be None.
+      batch_size: Override default batch size.
+
+    Returns:
+      Numpy array of predicted classes or regression values.
+    """
+    predictions = self._infer_model(x=x,
+                                    input_fn=input_fn,
+                                    batch_size=batch_size)
+    if self._n_classes > 1:
+      predictions = np.argmax(predictions, axis=1)
+    return predictions
+
+  def predict_proba(self, x=None, input_fn=None, batch_size=None):
+    """Returns prediction probabilities for given features (classification).
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x and y must be None.
+      batch_size: Override default batch size.
+
+    Returns:
+      Numpy array of predicted probabilities.
+    """
+    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
 
   def _get_train_ops(self, features, targets):
     """See base class."""
@@ -123,39 +159,55 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       with ops.get_default_graph().colocate_with(global_step):
         return state_ops.assign_add(global_step, 1).op, loss
 
-  def _get_eval_ops(self, features, targets, metrics):
-    """See base class."""
-    predictions = self._get_predict_ops(features)
+  def _run_metrics(self, predictions, targets, metrics, weights):
     result = {}
+    targets = math_ops.cast(targets, predictions.dtype)
     for name, metric in six.iteritems(metrics):
-      result[name] = metric(predictions, targets,
-                            self._get_weight_tensor(features))
+      if "weights" in inspect.getargspec(metric)[0]:
+        result[name] = metric(predictions, targets, weights=weights)
+      else:
+        result[name] = metric(predictions, targets)
+
     return result
 
-  def _get_default_metric_functions(self):
+  def _get_eval_ops(self, features, targets, metrics=None):
     """See base class."""
-    def _compute_loss(logits, targets, weights=None):
-      return metrics_lib.streaming_mean(self._loss(
-          logits, targets, weight_tensor=weights))
+    logits = self._logits(features)
+    result = {"loss": metrics_lib.streaming_mean(self._loss(
+        logits, targets,
+        weight_tensor=self._get_weight_tensor(features)))}
 
-    def _compute_accuracy(logits, targets, weights=None):
-      if self._n_classes > 2:
-        _, predictions = nn.top_k(logits, 1)
-      else:
-        predictions = array_ops.reshape(logits, [-1])
-        predictions = math_ops.greater(predictions,
-                                       array_ops.zeros_like(predictions))
-        targets = array_ops.reshape(targets, [-1])
-      return metrics_lib.streaming_accuracy(
-          math_ops.to_int32(predictions), math_ops.to_int32(targets), weights)
+    # Adding default metrics
+    if metrics is None and self._n_classes > 1:
+      metrics = {"accuracy": metrics_lib.streaming_accuracy}
 
-    result = {"loss": _compute_loss}
-    if self._n_classes > 1:
-      result["accuracy"] = _compute_accuracy
+    if self._n_classes == 2:
+      predictions = math_ops.sigmoid(logits)
+      result["eval_auc"] = metrics_lib.streaming_auc(predictions, targets)
+
+    if metrics:
+      predictions = self._logits_to_predictions(logits, proba=False)
+      result.update(self._run_metrics(predictions, targets, metrics,
+                                      self._get_weight_tensor(features)))
+
     return result
 
   def _get_predict_ops(self, features):
-    return self._logits(features)
+    """See base class."""
+    logits = self._logits(features)
+    return self._logits_to_predictions(logits, proba=True)
+
+  def _logits_to_predictions(self, logits, proba=False):
+    if self._n_classes < 2:
+      return array_ops.reshape(logits, [-1])
+
+    if self._n_classes == 2:
+      logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
+
+    if proba:
+      return nn.softmax(logits)
+    else:
+      return math_ops.argmax(logits, 1)
 
   def _get_feature_ops_from_example(self, examples_batch):
     column_types = layers.create_dict_for_parse_example(
@@ -367,6 +419,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If `None`,
       will use `tf.nn.relu`.
+    config: RunConfig object to configure the runtime settings.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -383,7 +436,8 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu):
+               dnn_activation_fn=nn.relu,
+               config=None):
     if n_classes < 2:
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
           n_classes))
@@ -397,7 +451,8 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         dnn_feature_columns=dnn_feature_columns,
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,
-        dnn_activation_fn=dnn_activation_fn)
+        dnn_activation_fn=dnn_activation_fn,
+        config=config)
 
 
 class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
@@ -466,6 +521,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If None, will
       use `tf.nn.relu`.
+    config: RunConfig object to configure the runtime settings.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -480,7 +536,8 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu):
+               dnn_activation_fn=nn.relu,
+               config=None):
     super(DNNLinearCombinedRegressor, self).__init__(
         model_dir=model_dir,
         n_classes=0,
@@ -490,4 +547,5 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         dnn_feature_columns=dnn_feature_columns,
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,
-        dnn_activation_fn=dnn_activation_fn)
+        dnn_activation_fn=dnn_activation_fn,
+        config=config)

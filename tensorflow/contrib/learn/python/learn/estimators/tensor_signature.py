@@ -20,6 +20,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 
 
@@ -43,10 +44,23 @@ class TensorSignature(collections.namedtuple(
 
   def is_compatible_with(self, other):
     """Returns True if signatures are compatible."""
+
+    def _shape_is_compatible_0dim(this, other):
+      other = tensor_shape.as_shape(other)
+      if this.ndims != other.ndims:
+        return False
+      for dim, (x_dim, y_dim) in enumerate(zip(this.dims, other.dims)):
+        if dim == 0:
+          continue
+        if not x_dim.is_compatible_with(y_dim):
+          return False
+      return True
+
     if other.is_sparse:
       return self.is_sparse and self.dtype.is_compatible_with(other.dtype)
     return (self.dtype.is_compatible_with(other.dtype) and
-            self.shape.is_compatible_with(other.shape) and not self.is_sparse)
+            _shape_is_compatible_0dim(self.shape, other.shape) and
+            not self.is_sparse)
 
   def get_placeholder(self):
     if self.is_sparse:

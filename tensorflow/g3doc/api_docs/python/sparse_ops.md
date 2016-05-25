@@ -422,7 +422,7 @@ equal to:
 
 - - -
 
-### `tf.sparse_concat(concat_dim, sp_inputs, name=None)` {#sparse_concat}
+### `tf.sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False)` {#sparse_concat}
 
 Concatenates a list of `SparseTensor` along the specified dimension.
 
@@ -430,11 +430,19 @@ Concatenation is with respect to the dense versions of each sparse input.
 It is assumed that each inputs is a `SparseTensor` whose elements are ordered
 along increasing dimension number.
 
-All inputs' shapes must match, except for the concat dimension.  The
-`indices`, `values`, and `shapes` lists must have the same length.
+If expand_nonconcat_dim is False, all inputs' shapes must match, except for
+the concat dimension. If expand_nonconcat_dim is True, then inputs' shapes are
+allowd to vary among all inputs.
 
-The output shape is identical to the inputs', except along the concat
-dimension, where it is the sum of the inputs' sizes along that dimension.
+The `indices`, `values`, and `shapes` lists must have the same length.
+
+If expand_nonconcat_dim is False, then the output shape is identical to the
+inputs', except along the concat dimension, where it is the sum of the inputs'
+sizes along that dimension.
+
+If expand_nonconcat_dim is True, then the output shape along the non-concat
+dimensions will be expand to be the largest among all inputs, and it is the
+sum of the inputs sizes along the concat dimension.
 
 The output elements will be resorted to preserve the sort order along
 increasing dimension number.
@@ -468,12 +476,42 @@ Graphically this is equivalent to doing
     [    a] concat [  d e  ] = [    a   d e  ]
     [b c  ]        [       ]   [b c          ]
 
+Another example, if 'concat_dim = 1' and the inputs are
+
+    sp_inputs[0]: shape = [3, 3]
+    [0, 2]: "a"
+    [1, 0]: "b"
+    [2, 1]: "c"
+
+    sp_inputs[1]: shape = [2, 4]
+    [0, 1]: "d"
+    [0, 2]: "e"
+
+if expand_nonconcat_dim = False, this will result in an error. But if
+expand_nonconcat_dim = True, this will result in:
+
+    shape = [3, 7]
+    [0, 2]: "a"
+    [0, 4]: "d"
+    [0, 5]: "e"
+    [1, 0]: "b"
+    [2, 1]: "c"
+
+Graphically this is equivalent to doing
+
+    [    a] concat [  d e  ] = [    a   d e  ]
+    [b    ]        [       ]   [b            ]
+    [  c  ]                    [  c          ]
+
+
 ##### Args:
 
 
 *  <b>`concat_dim`</b>: Dimension to concatenate along.
 *  <b>`sp_inputs`</b>: List of `SparseTensor` to concatenate.
 *  <b>`name`</b>: A name prefix for the returned tensors (optional).
+*  <b>`expand_nonconcat_dim`</b>: Whether to allow the expansion in the non-concat
+    dimensions. Defaulted to False.
 
 ##### Returns:
 
@@ -610,6 +648,69 @@ be a `SparseTensor` of shape `[4, 5]` with 2 non-empty values:
 
 - - -
 
+### `tf.sparse_reset_shape(sp_input, new_shape=None)` {#sparse_reset_shape}
+
+Resets the shape of a `SparseTensor` with indices and values unchanged.
+
+If `new_shape` is None, returns a copy of `sp_input` with its shape reset
+to the tight bounding box of `sp_input`.
+
+If `new_shape` is provided, then it must be larger or equal in all dimensions
+compared to the shape of `sp_input`. When this condition is met, the returned
+SparseTensor will have its shape reset to `new_shape` and its indices and
+values unchanged from that of `sp_input.`
+
+For example:
+
+  Consider a `sp_input` with shape [2, 3, 5]:
+
+    [0, 0, 1]: a
+    [0, 1, 0]: b
+    [0, 2, 2]: c
+    [1, 0, 3]: d
+
+  - It is an error to set `new_shape` as [3, 7] since this represents a
+    rank-2 tensor while `sp_input` is rank-3. This is either a ValueError
+    during graph construction (if both shapes are known) or an OpError during
+    run time.
+
+  - Setting `new_shape` as [2, 3, 6] will be fine as this shape is larger or
+    eqaul in every dimension compared to the original shape [2, 3, 5].
+
+  - On the other hand, setting new_shape as [2, 3, 4] is also an error: The
+    third dimension is smaller than the original shape [2, 3, 5] (and an
+    `InvalidArgumentError` will be raised).
+
+  - If `new_shape` is None, the returned SparseTensor will have a shape
+    [2, 3, 4], which is the tight bounding box of `sp_input`.
+
+##### Args:
+
+
+*  <b>`sp_input`</b>: The input `SparseTensor`.
+*  <b>`new_shape`</b>: None or a vector representing the new shape for the returned
+    `SpraseTensor`.
+
+##### Returns:
+
+  A `SparseTensor` indices and values unchanged from `input_sp`. Its shape is
+    `new_shape` if that is set. Otherwise it is  the tight bounding box of
+     `input_sp`
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `sp_input` is not a `SparseTensor`.
+*  <b>`ValueError`</b>: If `new_shape` represents a tensor with a different rank from
+    that of `sp_input` (if shapes are known when graph is constructed).
+*  <b>`OpError`</b>: 
+    - If `new_shape` has dimension sizes that are too small.
+    - If shapes are not known during graph construction time, and during run
+      time it is found out that the ranks do not match.
+
+
+- - -
+
 ### `tf.sparse_fill_empty_rows(sp_input, default_value, name=None)` {#sparse_fill_empty_rows}
 
 Fills empty rows in the input 2-D `SparseTensor` with a default value.
@@ -723,6 +824,60 @@ Then,
 
 
 *  <b>`TypeError`</b>: If both `a` and `b` are `Tensor`s.  Use `tf.add()` instead.
+
+
+- - -
+
+### `tf.sparse_softmax(sp_input, name=None)` {#sparse_softmax}
+
+Applies softmax to a batched N-D `SparseTensor`.
+
+The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
+(where `N >= 2`), and with indices sorted in the canonical lexicographic
+order.
+
+This op is equivalent to applying the normal `tf.nn.softmax()` to each
+innermost logical submatrix with shape `[B, C]`, but with the catch that *the
+implicitly zero elements do not participate*.  Specifically, the algorithm is
+equivalent to:
+
+  (1) Applies `tf.nn.softmax()` to a densified view of each innermost
+      submatrix with shape `[B, C]`, along the size-C dimension;
+  (2) Masks out the original implicitly-zero locations;
+  (3) Renormalizes the remaining elements.
+
+Hence, the `SparseTensor` result has exactly the same non-zero indices and
+shape.
+
+Example:
+```python
+# First batch:
+# [?   e.]
+# [1.  ? ]
+# Second batch:
+# [e   ? ]
+# [e   e ]
+shape = [2, 2, 2]  # 3-D SparseTensor
+values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
+indices = np.vstack(np.where(values)).astype(np.int64).T
+
+result = tf.sparse_softmax(tf.SparseTensor(indices, values, shape))
+# ...returning a 3-D SparseTensor, equivalent to:
+# [?   1.]     [1    ?]
+# [1.  ? ] and [.5  .5]
+# where ? means implicitly zero.
+```
+
+##### Args:
+
+
+*  <b>`sp_input`</b>: N-D `SparseTensor`, where `N >= 2`.
+*  <b>`name`</b>: optional name of the operation.
+
+##### Returns:
+
+
+*  <b>`output`</b>: N-D `SparseTensor` representing the results.
 
 
 - - -

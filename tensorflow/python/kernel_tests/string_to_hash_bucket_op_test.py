@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 
@@ -65,6 +66,30 @@ class StringToHashBucketOpTest(tf.test.TestCase):
       # Hash64('b') -> 5795986006276551370 -> mod 10 -> 0
       # Hash64('c') -> 14899841994519054197 -> mod 10 -> 7
       self.assertAllEqual([8, 0, 7], result)
+
+  def testStringToOneHashBucketStrongOneHashBucket(self):
+    with self.test_session():
+      input_string = tf.constant(['a', 'b', 'c'])
+      output = tf.string_to_hash_bucket_strong(input_string, 1, key=[123, 345])
+      self.assertAllEqual([0, 0, 0], output.eval())
+
+  def testStringToHashBucketsStrong(self):
+    with self.test_session():
+      input_string = tf.constant(['a', 'b', 'c'])
+      output = tf.string_to_hash_bucket_strong(input_string,
+                                               10,
+                                               key=[98765, 132])
+      # key = [98765, 132]
+      # StrongKeyedHash(key, 'a') -> 7157389809176466784 -> mod 10 -> 4
+      # StrongKeyedHash(key, 'b') -> 15805638358933211562 -> mod 10 -> 2
+      # StrongKeyedHash(key, 'c') -> 18100027895074076528 -> mod 10 -> 8
+      self.assertAllEqual([4, 2, 8], output.eval())
+
+  def testStringToHashBucketsStrongInvalidKey(self):
+    with self.test_session():
+      input_string = tf.constant(['a', 'b', 'c'])
+      with self.assertRaisesOpError('Key must have 2 elements'):
+        tf.string_to_hash_bucket_strong(input_string, 10, key=[98765]).eval()
 
 
 if __name__ == '__main__':

@@ -14,6 +14,9 @@
 # ==============================================================================
 """## Loss operations for use in neural networks.
 
+Note: By default all the losses are collected into the `GraphKeys.LOSSES`
+collection.
+
 All of the loss functions take a pair of predictions and ground truth labels,
 from which the loss is computed. It is assumed that the shape of both these
 tensors is of the form [batch_size, d1, ... dN] where `batch_size` is the number
@@ -31,6 +34,9 @@ implement this as:
 
   # Uses default weight of 1.0
   tf.contrib.losses.sum_of_squares(predictions, targets)
+
+  # All the losses are collected into the `GraphKeys.LOSSES` collection.
+  losses = tf.get_collection(tf.GraphKeys.LOSSES)
 
 While specifying a scalar loss rescales the loss over the entire batch,
 we sometimes want to rescale the loss per batch sample. For example, if we have
@@ -75,7 +81,7 @@ these predictions.
   predictions = MyModelPredictions(images)
 
   weight = tf.cast(tf.greater(depths, 0), tf.float32)
-  tf.contrib.losses.sum_of_squares(predictions, depths, weight)
+  loss  = tf.contrib.losses.sum_of_squares(predictions, depths, weight)
 
 Note that when using weights for the losses, the final average is computed
 by rescaling the losses by the weights and then dividing by the total number of
@@ -96,7 +102,7 @@ weighted average over the individual prediction errors:
 
   weight = MyComplicatedWeightingFunction(labels)
   weight = tf.div(weight, tf.size(weight))
-  tf.contrib.losses.sum_of_squares(predictions, depths, weight)
+  loss = tf.contrib.losses.sum_of_squares(predictions, depths, weight)
 
 
 @@absolute_difference
@@ -189,7 +195,9 @@ def _compute_weighted_loss(losses, weight):
 
   total_loss = _scale_losses(losses, weight)
   num_present = _num_present(losses, weight)
-  return _safe_mean(total_loss, num_present)
+  mean_loss = _safe_mean(total_loss, num_present)
+  ops.add_to_collection(ops.GraphKeys.LOSSES, mean_loss)
+  return mean_loss
 
 
 def _num_present(losses, weight, per_batch=False):
@@ -516,10 +524,12 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
 
     loss = _scale_losses(term1 - term2, weight)
 
-    return math_ops.select(math_ops.reduce_sum(num_present_per_batch) > 0,
-                           loss,
-                           array_ops.zeros_like(loss),
-                           name="value")
+    mean_loss = math_ops.select(math_ops.reduce_sum(num_present_per_batch) > 0,
+                                loss,
+                                array_ops.zeros_like(loss),
+                                name="value")
+    ops.add_to_collection(ops.GraphKeys.LOSSES, mean_loss)
+    return mean_loss
 
 
 def cosine_distance(predictions, targets, dim, weight=1.0, scope=None):

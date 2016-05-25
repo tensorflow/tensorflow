@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/strong_hash.h"
 
 namespace tensorflow {
 
@@ -57,11 +58,14 @@ class LegacyStringToHashBuckeOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(LegacyStringToHashBuckeOp);
 };
 
-// StringToHashBucket is deprecated in favor of StringToHashBucketStable.
+// StringToHashBucket is deprecated in favor of StringToHashBucketFast/Strong.
 REGISTER_KERNEL_BUILDER(Name("StringToHashBucket").Device(DEVICE_CPU),
                         LegacyStringToHashBuckeOp);
 
 REGISTER_KERNEL_BUILDER(Name("StringToHashBucketFast").Device(DEVICE_CPU),
                         StringToHashBucketOp<Fingerprint64>);
+
+REGISTER_KERNEL_BUILDER(Name("StringToHashBucketStrong").Device(DEVICE_CPU),
+                        StringToKeyedHashBucketOp<StrongKeyedHash>);
 
 }  // namespace tensorflow

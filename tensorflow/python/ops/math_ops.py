@@ -1533,6 +1533,7 @@ def _BroadcastShape(op):
 
 @ops.RegisterShape("SparseDenseCwiseMul")
 @ops.RegisterShape("SparseDenseCwiseDiv")
+@ops.RegisterShape("SparseDenseCwiseAdd")
 def _SparseDenseBinaryOpShape(op):  # pylint: disable=invalid-name
   """Common shape for 'sparse <binary cwise op> dense -> sparse' operators."""
   nnz = op.inputs[1].get_shape()[0]

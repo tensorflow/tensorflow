@@ -17,15 +17,16 @@
 
 @@assert_negative
 @@assert_positive
+@@assert_proper_iterable
 @@assert_non_negative
 @@assert_non_positive
 @@assert_equal
+@@assert_integer
 @@assert_less
 @@assert_less_equal
 @@assert_rank
 @@assert_rank_at_least
 @@assert_type
-@@assert_integer
 @@is_non_decreasing
 @@is_numeric_tensor
 @@is_strictly_increasing
@@ -35,6 +36,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -42,6 +45,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import compat
 
 NUMERIC_TYPES = frozenset(
     [dtypes.float32, dtypes.float64, dtypes.int8, dtypes.int16, dtypes.int32,
@@ -51,19 +55,47 @@ NUMERIC_TYPES = frozenset(
 __all__ = [
     'assert_negative',
     'assert_positive',
+    'assert_proper_iterable',
     'assert_non_negative',
     'assert_non_positive',
     'assert_equal',
+    'assert_integer',
     'assert_less',
     'assert_less_equal',
     'assert_rank',
     'assert_rank_at_least',
-    'assert_integer',
     'assert_type',
     'is_non_decreasing',
     'is_numeric_tensor',
     'is_strictly_increasing',
 ]
+
+
+def assert_proper_iterable(values):
+  """Static assert that values is a "proper" iterable.
+
+  `Ops` that expect iterables of `Tensor` can call this to validate input.
+  Useful since `Tensor`, `ndarray`, byte/text type are all iterables themselves.
+
+  Args:
+    values:  Object to be checked.
+
+  Raises:
+    TypeError:  If `values` is not iterable or is one of
+      `Tensor`, `SparseTensor`, `np.array`, `tf.compat.bytes_or_text_types`.
+  """
+  unintentional_iterables = (
+      (ops.Tensor, ops.SparseTensor, np.ndarray)
+      + compat.bytes_or_text_types
+  )
+  if isinstance(values, unintentional_iterables):
+    raise TypeError(
+        'Expected argument "values" to be a "proper" iterable.  Found: %s' %
+        type(values))
+
+  if not hasattr(values, '__iter__'):
+    raise TypeError(
+        'Expected argument "values" to be iterable.  Found: %s' % type(values))
 
 
 def assert_negative(x, data=None, summarize=None, name=None):

@@ -46,7 +46,7 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
   # Skip first dimension if it is 1.
   if y_shape and y_shape[0] == 1:
     y_shape = y_shape[1:]
-  if n_classes > 1:
+  if n_classes is not None and n_classes > 1:
     output_shape = [batch_size] + y_shape + [n_classes]
   else:
     output_shape = [batch_size] + y_shape
@@ -441,7 +441,7 @@ class StreamingDataFeeder(DataFeeder):
 
         if self.y is not None:
           y = six.next(self.y)
-          if self.n_classes > 1:
+          if self.n_classes is not None and self.n_classes > 1:
             if len(self.output_shape) == 2:
               out.itemset((i, y), 1.0)
             else:

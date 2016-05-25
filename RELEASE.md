@@ -10,6 +10,9 @@
 ## Bug Fixes and Other Changes
 * TensorBoard now displays graphs with only one data point
 * TensorBoard now visually displays NaN values
+* `tf.nn.moments()` now accepts a `shift` argument. Shifting by a good estimate
+  of the mean improves numerical stability. Also changes the behavior of the
+  `shift` argument to `tf.nn.sufficient_statistics()`.
 
 # Release 0.8.0
 

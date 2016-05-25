@@ -92,8 +92,8 @@ creates a part of the graph and returns output tensors.
  If operation needs to save some `Tensor`s to Graph collections,
  put the arguments with names of the collections right before `name` argument.
 
-* Tensor arguments should be either a single tensor or an iterable of tensors,
-  not both.  E.g. a "Tensor or list of Tensors" is too broad.
+* Tensor arguments should be either a single tensor or an iterable of tensors.
+  E.g. a "Tensor or list of Tensors" is too broad. See `assert_proper_iterable`.
 
 * Operations that take tensors as arguments should call `convert_to_tensor`
  to convert non-tensor inputs into tensors if they are using C++ operations.

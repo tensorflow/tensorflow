@@ -387,9 +387,10 @@ output: `images` converted to RGB.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("DrawBoundingBoxes")
-    .Input("images: float")
+    .Input("images: T")
     .Input("boxes: float")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Draw bounding boxes on a batch of images.
 
