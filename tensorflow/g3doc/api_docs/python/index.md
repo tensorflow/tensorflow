@@ -530,10 +530,10 @@
   * [`DiscreteDistribution`](../../api_docs/python/contrib.distributions.md#DiscreteDistribution)
   * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
   * [`Gamma`](../../api_docs/python/contrib.distributions.md#Gamma)
-  * [`Gaussian`](../../api_docs/python/contrib.distributions.md#Gaussian)
-  * [`gaussian_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#gaussian_congugates_known_sigma_predictive)
-  * [`gaussian_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#gaussian_conjugates_known_sigma_posterior)
   * [`MultivariateNormal`](../../api_docs/python/contrib.distributions.md#MultivariateNormal)
+  * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
+  * [`normal_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#normal_congugates_known_sigma_predictive)
+  * [`normal_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#normal_conjugates_known_sigma_posterior)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)
 

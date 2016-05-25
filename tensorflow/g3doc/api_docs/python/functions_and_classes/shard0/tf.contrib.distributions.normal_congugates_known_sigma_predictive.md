@@ -1,20 +1,20 @@
-### `tf.contrib.distributions.gaussian_congugates_known_sigma_predictive(prior, sigma, s, n)` {#gaussian_congugates_known_sigma_predictive}
+### `tf.contrib.distributions.normal_congugates_known_sigma_predictive(prior, sigma, s, n)` {#normal_congugates_known_sigma_predictive}
 
-Posterior predictive Gaussian distribution w. conjugate prior on the mean.
+Posterior predictive Normal distribution w. conjugate prior on the mean.
 
 This model assumes that `n` observations (with sum `s`) come from a
-Gaussian with unknown mean `mu` (described by the Gaussian `prior`)
+Normal with unknown mean `mu` (described by the Normal `prior`)
 and known variance `sigma^2`.  The "known sigma predictive"
 is the distribution of new observations, conditioned on the existing
 observations and our prior.
 
-Accepts a prior Gaussian distribution object, having parameters
+Accepts a prior Normal distribution object, having parameters
 `mu0` and `sigma0`, as well as known `sigma` values of the predictive
-distribution(s) (also assumed Gaussian),
+distribution(s) (also assumed Normal),
 and statistical estimates `s` (the sum(s) of the observations) and
 `n` (the number(s) of observations).
 
-Calculates the Gaussian distribution(s) `p(x | sigma^2)`:
+Calculates the Normal distribution(s) `p(x | sigma^2)`:
 
 ```
   p(x | sigma^2) = int N(x | mu, sigma^2) N(mu | prior.mu, prior.sigma^2) dmu
@@ -36,7 +36,7 @@ will broadcast in the case of multidimensional sets of parameters.
 ##### Args:
 
 
-*  <b>`prior`</b>: `Gaussian` object of type `dtype`:
+*  <b>`prior`</b>: `Normal` object of type `dtype`:
     the prior distribution having parameters `(mu0, sigma0)`.
 *  <b>`sigma`</b>: tensor of type `dtype`, taking values `sigma > 0`.
     The known stddev parameter(s).
@@ -45,11 +45,11 @@ will broadcast in the case of multidimensional sets of parameters.
 
 ##### Returns:
 
-  A new Gaussian predictive distribution object.
+  A new Normal predictive distribution object.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if dtype of `s` does not match `dtype`, or `prior` is not a
-    Gaussian object.
+    Normal object.
 
