@@ -156,14 +156,14 @@ class MatMulTest(tf.test.TestCase):
 
   def testComplex64Random(self):
     for _ in range(10):
-      n, k, m = np.random.randint(1, 100, size=3)
+      n, k, m = np.random.randint(1, 10, size=3)  # Smaller range than float
       x = self._randMatrix(n, k, np.complex64)
       y = self._randMatrix(k, m, np.complex64)
       self._testCpuMatmul(x, y)
 
   def testComplex128Random(self):
     for _ in range(10):
-      n, k, m = np.random.randint(1, 100, size=3)
+      n, k, m = np.random.randint(1, 10, size=3)  # Smaller range than float
       x = self._randMatrix(n, k, np.complex128)
       y = self._randMatrix(k, m, np.complex128)
       self._testCpuMatmul(x, y)
