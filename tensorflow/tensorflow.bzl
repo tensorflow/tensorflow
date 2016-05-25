@@ -314,6 +314,11 @@ def _cuda_copts():
                 "--cuda-gpu-arch=sm_35",
             ]
         ),
+    }) + select({
+        # Pass -O3 when building CUDA code with clang; some important
+        # optimizations are not enabled at O2.
+        "//third_party/gpus/cuda:using_clang_opt": ["-O3"],
+        "//conditions:default": [],
     })
 
 # Build defs for TensorFlow kernels
