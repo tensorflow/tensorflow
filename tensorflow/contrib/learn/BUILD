@@ -160,7 +160,7 @@ py_test(
 
 py_test(
     name = "dnn_linear_combined_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
     srcs_version = "PY2AND3",
     deps = [

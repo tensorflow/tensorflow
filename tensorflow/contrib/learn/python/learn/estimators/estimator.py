@@ -259,8 +259,7 @@ class BaseEstimator(sklearn.BaseEstimator):
     Returns:
       Numpy array of predicted classes or regression values.
     """
-    return self._infer_model(x=x, input_fn=input_fn,
-                             batch_size=batch_size)
+    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
 
   @property
   def model_dir(self):
@@ -296,6 +295,8 @@ class BaseEstimator(sklearn.BaseEstimator):
   def _get_eval_ops(self, features, targets, metrics):
     """Method that builds model graph and returns evaluation ops.
 
+    Expected to be overriden by sub-classes that require custom support.
+
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
       targets: `Tensor` or `dict` of `Tensor` objects.
@@ -304,11 +305,7 @@ class BaseEstimator(sklearn.BaseEstimator):
     Returns:
       metrics: `dict` of `Tensor` objects.
     """
-    predictions = self._get_predict_ops(features)
-    result = {}
-    for name, metric in six.iteritems(metrics):
-      result[name] = metric(predictions, targets)
-    return result
+    raise NotImplementedError('_get_eval_ops not implemented in BaseEstimator')
 
   def _get_feature_ops_from_example(self, examples_batch):
     """Method that returns features given the batch of examples.
@@ -323,16 +320,6 @@ class BaseEstimator(sklearn.BaseEstimator):
     """
     raise NotImplementedError('_get_feature_ops_from_example not implemented '
                               'in BaseEstimator')
-
-  def _get_default_metric_functions(self):
-    """Method that provides default metric operations.
-
-    This functions is intented to be overridden by sub-classes.
-    Returns:
-      `dict` of functions that take predictions and targets `Tensor` objects and
-      return `Tensor`.
-    """
-    return {}
 
   def _check_inputs(self, features, targets):
     if self._features_info is not None:
@@ -460,9 +447,7 @@ class BaseEstimator(sklearn.BaseEstimator):
       global_step = contrib_framework.create_global_step(g)
       features, targets = input_fn()
       self._check_inputs(features, targets)
-      eval_dict = self._get_eval_ops(features, targets,
-                                     metrics if metrics is not None else
-                                     self._get_default_metric_functions())
+      eval_dict = self._get_eval_ops(features, targets, metrics)
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
       eval_results, _ = evaluate(graph=g,
                                  output_dir=eval_dir,
@@ -475,9 +460,13 @@ class BaseEstimator(sklearn.BaseEstimator):
                                  max_steps=steps)
       return eval_results
 
-  def _infer_model(self,
-                   x=None, input_fn=None, feed_fn=None,
-                   batch_size=None):
+  def _get_features_from_input_fn(self, input_fn):
+    result = input_fn()
+    if isinstance(result, (list, tuple)):
+      return result[0]
+    return result
+
+  def _infer_model(self, x=None, input_fn=None, feed_fn=None, batch_size=None):
     # Converts inputs into tf.DataFrame / tf.Series.
     batch_size = -1 if batch_size is None else batch_size
     if x is not None:
@@ -487,7 +476,7 @@ class BaseEstimator(sklearn.BaseEstimator):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
-      features, _ = input_fn()
+      features = self._get_features_from_input_fn(input_fn)
       predictions = self._get_predict_ops(features)
       return_dict = True
       if not isinstance(predictions, dict):
@@ -570,7 +559,8 @@ class Estimator(BaseEstimator):
     Returns:
       Numpy array of predicted classes or regression values.
     """
-    predictions = self._infer_model(x=x, input_fn=input_fn,
+    predictions = self._infer_model(x=x,
+                                    input_fn=input_fn,
                                     batch_size=batch_size)
     if self._classification:
       for key in predictions:
@@ -589,8 +579,7 @@ class Estimator(BaseEstimator):
     Returns:
       Numpy array of predicted probabilities.
     """
-    return self._infer_model(x=x, input_fn=input_fn,
-                             batch_size=batch_size)
+    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -645,6 +634,9 @@ class Estimator(BaseEstimator):
     """
     predictions, loss = self._model_fn(features, targets, ModeKeys.EVAL)
     result = {'loss': loss}
+    if metrics is None:
+      metrics = _EVAL_METRICS[
+          'classification' if self._classification else 'regression']
     if isinstance(targets, dict) and len(targets) == 1:
       # Unpack single target into just tensor.
       targets = targets[targets.keys()[0]]
@@ -670,15 +662,6 @@ class Estimator(BaseEstimator):
         self._targets_info)
     predictions, _ = self._model_fn(features, targets, ModeKeys.INFER)
     return predictions
-
-  def _get_default_metric_functions(self):
-    """Method that provides default metric operations.
-
-    Returns:
-      a dictionary of metric operations.
-    """
-    return _EVAL_METRICS[
-        'classification' if self._classification else 'regression']
 
   def _get_feature_ops_from_example(self, examples_batch):
     """Unimplemented.
