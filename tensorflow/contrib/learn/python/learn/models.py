@@ -1,5 +1,4 @@
-"""Various high level TF models."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -12,13 +11,16 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+"""Various high level TF models."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.learn.python.learn.ops import autoencoder_ops
 from tensorflow.contrib.learn.python.learn.ops import dnn_ops
 from tensorflow.contrib.learn.python.learn.ops import losses_ops
-from tensorflow.contrib.learn.python.learn.ops import autoencoder_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
@@ -29,8 +31,7 @@ from tensorflow.python.ops import variable_scope as vs
 
 
 def linear_regression_zero_init(X, y):
-  """Creates a linear regression TensorFlow subgraph, in which weights and
-    bias terms are initialized to exactly zero.
+  """Linear regression subgraph with zero-value initial weights and bias.
 
   Args:
     X: tensor or placeholder for input features.
@@ -43,8 +44,7 @@ def linear_regression_zero_init(X, y):
 
 
 def logistic_regression_zero_init(X, y):
-  """Creates a logistic regression TensorFlow subgraph, in which weights and
-       bias terms are initialized to exactly zero.
+  """Logistic regression subgraph with zero-value initial weights and bias.
 
   Args:
     X: tensor or placeholder for input features.
@@ -85,7 +85,7 @@ def linear_regression(X, y, init_mean=None, init_stddev=1.0):
     else:
       output_shape = y_shape[1]
     # Set up the requested initialization.
-    if (init_mean is None):
+    if init_mean is None:
       weights = vs.get_variable('weights', [X.get_shape()[1], output_shape])
       bias = vs.get_variable('bias', [output_shape])
     else:
@@ -134,7 +134,7 @@ def logistic_regression(X,
     logging_ops.histogram_summary('logistic_regression.X', X)
     logging_ops.histogram_summary('logistic_regression.y', y)
     # Set up the requested initialization.
-    if (init_mean is None):
+    if init_mean is None:
       weights = vs.get_variable('weights',
                                 [X.get_shape()[1], y.get_shape()[-1]])
       bias = vs.get_variable('bias', [y.get_shape()[-1]])
@@ -188,35 +188,37 @@ def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
 
   return dnn_estimator
 
+
 def get_autoencoder_model(hidden_units, target_predictor_fn,
                           activation, add_noise=None, dropout=None):
-    """Returns a function that creates a Autoencoder TensorFlow subgraph with given
-    params.
+  """Returns a function that creates a Autoencoder TensorFlow subgraph.
 
-    Args:
-        hidden_units: List of values of hidden units for layers.
-        target_predictor_fn: Function that will predict target from input
-                             features. This can be logistic regression,
-                             linear regression or any other model,
-                             that takes X, y and returns predictions and loss tensors.
-        activation: activation function used to map inner latent layer onto
-                    reconstruction layer.
-        add_noise: a function that adds noise to tensor_in, 
-               e.g. def add_noise(x):
-                        return(x + np.random.normal(0, 0.1, (len(x), len(x[0]))))
-        dropout: When not none, causes dropout regularization to be used,
-                 with the specified probability of removing a given coordinate.
+  Args:
+    hidden_units: List of values of hidden units for layers.
+    target_predictor_fn: Function that will predict target from input
+                         features. This can be logistic regression,
+                         linear regression or any other model,
+                         that takes X, y and returns predictions and loss
+                         tensors.
+    activation: activation function used to map inner latent layer onto
+                reconstruction layer.
+    add_noise: a function that adds noise to tensor_in,
+           e.g. def add_noise(x):
+                    return(x + np.random.normal(0, 0.1, (len(x), len(x[0]))))
+    dropout: When not none, causes dropout regularization to be used,
+             with the specified probability of removing a given coordinate.
 
-    Returns:
-        A function that creates the subgraph.
-    """
-    def dnn_autoencoder_estimator(X):
-        """Autoencoder estimator with target predictor function on top."""
-        encoder, decoder = autoencoder_ops.dnn_autoencoder(
-          X, hidden_units, activation,
-          add_noise=add_noise, dropout=dropout)
-        return encoder, decoder, target_predictor_fn(X, decoder)
-    return dnn_autoencoder_estimator
+  Returns:
+      A function that creates the subgraph.
+  """
+  def dnn_autoencoder_estimator(X):
+    """Autoencoder estimator with target predictor function on top."""
+    encoder, decoder = autoencoder_ops.dnn_autoencoder(
+        X, hidden_units, activation,
+        add_noise=add_noise, dropout=dropout)
+    return encoder, decoder, target_predictor_fn(X, decoder)
+  return dnn_autoencoder_estimator
+
 
 ## This will be in Tensorflow 0.7.
 ## TODO(ilblackdragon): Clean this up when it's released
