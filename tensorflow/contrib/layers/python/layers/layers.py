@@ -39,6 +39,7 @@ from tensorflow.python.training import moving_averages
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
 __all__ = ['bias_add',
            'batch_norm',
+           'conv2d',
            'convolution2d',
            'fully_connected',
            'linear',
@@ -113,7 +114,7 @@ def batch_norm(inputs,
                scale=False,
                epsilon=0.001,
                activation_fn=None,
-               updates_collection=None,
+               updates_collections=ops.GraphKeys.UPDATE_OPS,
                is_training=True,
                reuse=None,
                variables_collections=None,
@@ -138,8 +139,9 @@ def batch_norm(inputs,
       disabled since the scaling can be done by the next layer.
     epsilon: small float added to variance to avoid dividing by zero.
     activation_fn: Optional activation function.
-    updates_collection: collection to collect the update ops for computation. If
-      None a control dependency would be added to make sure they are computed.
+    updates_collections: collections to collect the update ops for computation.
+      If None, a control dependency would be added to make sure the updates are
+      computed.
     is_training: whether or not the layer is in training mode. In training mode
       it would accumulate the statistics of the moments into `moving_mean` and
       `moving_variance` using an exponential moving average with the given
@@ -207,7 +209,7 @@ def batch_norm(inputs,
           moving_mean, mean, decay)
       update_moving_variance = moving_averages.assign_moving_average(
           moving_variance, variance, decay)
-      if updates_collection is None:
+      if updates_collections is None:
         # Make sure the updates are computed here.
         with ops.control_dependencies([update_moving_mean,
                                        update_moving_variance]):
@@ -215,8 +217,8 @@ def batch_norm(inputs,
               inputs, mean, variance, beta, gamma, epsilon)
       else:
         # Collect the updates to be computed later.
-        ops.add_to_collection(updates_collection, update_moving_mean)
-        ops.add_to_collection(updates_collection, update_moving_variance)
+        ops.add_to_collections(updates_collections, update_moving_mean)
+        ops.add_to_collections(updates_collections, update_moving_variance)
         outputs = nn.batch_normalization(
             inputs, mean, variance, beta, gamma, epsilon)
     else:
@@ -504,22 +506,6 @@ def legacy_fully_connected(x,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  # pylint: enable=anomalous-backslash-in-string
-# TODO(ptucker) redirect to fully_connected
-#   _ = trainable
-#   variables_collections = {'weights': weight_collections,
-#                            'biases': bias_collections}
-#   outputs = fully_connected(inputs=x,
-#                             num_outputs=num_output_units,
-#                             activation_fn=activation_fn,
-#                             weights_initializer=weight_init,
-#                             weights_regularizer=weight_regularizer,
-#                             biases_initializer=bias_init,
-#                             biases_regularizer=bias_regularizer,
-#                             variables_collections=variables_collections,
-#                             scope=name)
-#   ops.add_to_collections(output_collections, outputs)
-#   return outputs
   with variable_scope.variable_op_scope([x], name, 'fully_connected'):
     dims = x.get_shape().dims
     if dims is None:
@@ -645,24 +631,6 @@ def legacy_convolution2d(x,
   Raises:
     ValueError: If `kernel_size` or `stride` are not length 2.
   """
-# TODO(ptucker) redirect to convolution2d
-#   _ = trainable
-#   variables_collections = {'weights': weight_collections,
-#                            'biases': bias_collections}
-#   outputs = convolution2d(inputs=x,
-#                           num_outputs=num_output_channels,
-#                           kernel_size=kernel_size,
-#                           stride=stride,
-#                           padding=padding,
-#                           activation_fn=activation_fn,
-#                           weights_initializer=weight_init,
-#                           weights_regularizer=weight_regularizer,
-#                           biases_initializer=bias_init,
-#                           biases_regularizer=bias_regularizer,
-#                           variables_collections=variables_collections,
-#                           scope=name)
-#   ops.add_to_collections(output_collections, outputs)
-#   return outputs
   with variable_scope.variable_op_scope([x], name, 'convolution2d'):
     num_input_channels = x.get_shape().dims[3].value
 
@@ -713,4 +681,7 @@ legacy_linear = functools.partial(legacy_fully_connected, activation_fn=None)
 linear = legacy_linear
 relu = legacy_relu
 relu6 = legacy_relu6
+
+# Simple alias for convolution2d.
+conv2d = convolution2d
 

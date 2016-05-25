@@ -430,8 +430,8 @@ class BatchNormTest(tf.test.TestCase):
     height, width = 3, 3
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
-      tf.contrib.layers.batch_norm(images, updates_collection='update_ops')
-      update_layers = tf.get_collection('update_ops')
+      tf.contrib.layers.batch_norm(images, updates_collections='my_update_ops')
+      update_layers = tf.get_collection('my_update_ops')
       update_moving_mean = update_layers[0]
       update_moving_variance = update_layers[1]
       self.assertEquals(update_moving_mean.op.name,
@@ -460,7 +460,7 @@ class BatchNormTest(tf.test.TestCase):
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
       with tf.contrib.framework.arg_scope([tf.contrib.layers.batch_norm],
-                                          updates_collection='update_ops'):
+                                          updates_collections='update_ops'):
         tf.contrib.layers.batch_norm(images, scope='bn')
         self.assertEquals(len(tf.get_collection('update_ops')), 2)
         tf.contrib.layers.batch_norm(images, scope='bn', reuse=True)
@@ -479,7 +479,7 @@ class BatchNormTest(tf.test.TestCase):
       self.assertEquals(len(moving_variance), 1)
       self.assertEquals(moving_variance[0].op.name, 'BatchNorm/moving_variance')
 
-  def testUpdateMovingVars(self):
+  def testForceUpdateMovingVars(self):
     height, width = 3, 3
     with self.test_session() as sess:
       image_shape = (10, height, width, 3)
@@ -487,7 +487,8 @@ class BatchNormTest(tf.test.TestCase):
       expected_mean = np.mean(image_values, axis=(0, 1, 2))
       expected_var = np.var(image_values, axis=(0, 1, 2))
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
-      output = tf.contrib.layers.batch_norm(images, decay=0.1)
+      output = tf.contrib.layers.batch_norm(images, decay=0.1,
+                                            updates_collections=None)
       # Initialize all variables
       sess.run(tf.initialize_all_variables())
       moving_mean = tf.contrib.framework.get_variables(
@@ -515,9 +516,8 @@ class BatchNormTest(tf.test.TestCase):
       expected_mean = np.mean(image_values, axis=(0, 1, 2))
       expected_var = np.var(image_values, axis=(0, 1, 2))
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
-      output = tf.contrib.layers.batch_norm(images, decay=0.1,
-                                            updates_collection='update_ops')
-      update_ops = tf.get_collection('update_ops')
+      output = tf.contrib.layers.batch_norm(images, decay=0.1)
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
       with tf.control_dependencies(update_ops):
         barrier = tf.no_op(name='barrier')
       output = control_flow_ops.with_dependencies([barrier], output)
@@ -550,10 +550,9 @@ class BatchNormTest(tf.test.TestCase):
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
       output = tf.contrib.layers.batch_norm(images,
                                             decay=0.1,
-                                            is_training=False,
-                                            updates_collection='update_ops')
-      update_layers = tf.get_collection('update_ops')
-      self.assertEquals(update_layers, [])
+                                            is_training=False)
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      self.assertEquals(update_ops, [])
       # Initialize all variables
       sess.run(tf.initialize_all_variables())
       moving_mean = tf.contrib.framework.get_variables(
@@ -587,10 +586,9 @@ class BatchNormTest(tf.test.TestCase):
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
       output = tf.contrib.layers.batch_norm(images,
                                             decay=0.1,
-                                            is_training=False,
-                                            updates_collection='update_ops')
-      update_layers = tf.get_collection('update_ops')
-      self.assertEquals(update_layers, [])
+                                            is_training=False)
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      self.assertEquals(update_ops, [])
       # Initialize all variables
       sess.run(tf.initialize_all_variables())
       moving_mean = tf.contrib.framework.get_variables(
