@@ -393,6 +393,11 @@ class BaseEstimator(sklearn.BaseEstimator):
           summary_op=logging_ops.get_summary_op(),
           save_summary_steps=100)
 
+      is_chief = self._config.task == 0
+      if not is_chief:
+        # Run monitors only on chief.
+        monitors = []
+
       # Setup monitors.
       for monitor in monitors:
         monitor.set_estimator(self)
@@ -407,7 +412,7 @@ class BaseEstimator(sklearn.BaseEstimator):
           init_feed_dict=init_feed_fn() if init_feed_fn is not None else None,
           init_fn=init_fn,
           log_every_steps=log_every_steps,
-          supervisor_is_chief=(self._config.task == 0),
+          supervisor_is_chief=is_chief,
           supervisor_master=self._config.master,
           feed_fn=feed_fn,
           max_steps=steps,
