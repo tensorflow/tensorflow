@@ -131,13 +131,13 @@ class ResizeBilinearOpGrad : public OpKernel {
           const float inverse_x_lerp = (1.0f - x_lerp);
           for (int64 c = 0; c < st.channels; ++c) {
             output_grad(b, top_y_index, left_x_index, c) +=
-                input_grad(b, y, x, c) * inverse_y_lerp * inverse_x_lerp;
+                T(input_grad(b, y, x, c) * inverse_y_lerp * inverse_x_lerp);
             output_grad(b, top_y_index, right_x_index, c) +=
-                input_grad(b, y, x, c) * inverse_y_lerp * x_lerp;
+                T(input_grad(b, y, x, c) * inverse_y_lerp * x_lerp);
             output_grad(b, bottom_y_index, left_x_index, c) +=
-                input_grad(b, y, x, c) * y_lerp * inverse_x_lerp;
+                T(input_grad(b, y, x, c) * y_lerp * inverse_x_lerp);
             output_grad(b, bottom_y_index, right_x_index, c) +=
-                input_grad(b, y, x, c) * y_lerp * x_lerp;
+                T(input_grad(b, y, x, c) * y_lerp * x_lerp);
           }
         }
       }
@@ -165,6 +165,9 @@ REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")
                         ResizeBilinearOpGrad<CPUDevice, float>);
 REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        ResizeBilinearOpGrad<CPUDevice, double>);
+                            .TypeConstraint<Eigen::half>("T"),
+                        ResizeBilinearOpGrad<CPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("ResizeBilinearGrad").Device(DEVICE_CPU).TypeConstraint<double>("T"),
+    ResizeBilinearOpGrad<CPUDevice, double>);
 }  // namespace tensorflow
