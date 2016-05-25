@@ -77,14 +77,13 @@ def _restore_from_checkpoint(session, graph, checkpoint_path, saver=None):
     logging.info('No variables found in graph, not creating Saver() object.')
 
 
-def _run_dict(session, run_dict, feed_dict=None, update_op=None):
+def _run_dict(session, run_dict, feed_dict=None):
   """Convenience function to run a session on each item in a dict of tensors.
 
   Args:
     session: The session to evaluate.
     run_dict: A dict of tensors to be run in the session.
     feed_dict: Feed dict to be used in running the session.
-    update_op: Operation to update some tensors that should run inline.
 
   Returns:
     A dict containing the result of evaluating the tensors.
@@ -95,9 +94,6 @@ def _run_dict(session, run_dict, feed_dict=None, update_op=None):
     raise ValueError('Invalid run_dict %s.', run_dict)
   keys = run_dict.keys()
   tensors = [run_dict[key] for key in keys]
-  # TODO(ispir): Performance problems here.
-  if update_op is not None:
-    session.run(update_op, feed_dict=feed_dict)
   values = session.run(tensors, feed_dict=feed_dict)
   return dict(zip(keys, values))
 
@@ -396,9 +392,10 @@ def evaluate(graph,
     output_dir: A string containing the directory to write a summary to.
     checkpoint_path: A string containing the path to a checkpoint to restore.
       Can be `None` if the graph doesn't require loading any variables.
-    eval_dict: A `dict` mapping string names to tensors to evaluate for in every
-      eval step.
-    update_op: A 'Tensor' which is run before evaluating 'eval_dict'.
+    eval_dict: A `dict` mapping string names to tensors to evaluate. It is
+      evaluated in every logging step. The result of the final evaluation is
+      returned. If update_op is None, then it's evaluated in every step.
+    update_op: A `Tensor` which is run in every step.
     global_step_tensor: A `Variable` containing the global step. If `None`,
       one is extracted from the graph using the same logic as in `Supervisor`.
       Used to place eval summaries on training curves.
@@ -412,7 +409,7 @@ def evaluate(graph,
   Returns:
     A tuple `(eval_results, global_step)`:
     eval_results: A `dict` mapping `string` to numeric values (`int`, `float`)
-      that are the eval results from the last step of the eval.  None if no
+      that are the result of running eval_dict in the last step. `None` if no
       eval steps were run.
     global_step: The global step this evaluation corresponds to.
   """
@@ -467,17 +464,25 @@ def evaluate(graph,
         while (max_steps is None) or (step < max_steps):
           start_time = time.time()
           feed_dict = feed_fn() if feed_fn is not None else None
-          eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict,
-                                   update_op=update_op)
+          eval_results = None
+          if update_op is not None:
+            session.run(update_op, feed_dict=feed_dict)
+          else:
+            eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
+
           # TODO(wicke): We should assert that the global step hasn't changed.
           step += 1
           if step % log_every_steps == 0:
+            if eval_results is None:
+              eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
             duration = time.time() - start_time
             logging.info('Results after %d steps (%.3f sec/batch): %s.',
                          step, float(duration),
                          ', '.join('%s = %s' % (k, v)
                                    for k, v in eval_results.items()))
       finally:
+        if eval_results is None:
+          eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
         # Stop queue runners.
         coord.request_stop()
         coord.join(threads, stop_grace_period_secs=120)
