@@ -38,8 +38,8 @@ def _assert_all_positive(x):
       ["Tensor %s should contain only positive values: " % x.name, x])
 
 
-class Gaussian(object):
-  """The scalar Gaussian distribution with mean and stddev parameters mu, sigma.
+class Normal(object):
+  """The scalar Normal distribution with mean and stddev parameters mu, sigma.
 
   #### Mathematical details
 
@@ -52,15 +52,15 @@ class Gaussian(object):
   Examples of initialization of one or a batch of distributions.
 
   ```python
-  # Define a single scalar Gaussian distribution.
-  dist = tf.contrib.distributions.Gaussian(mu=0, sigma=3)
+  # Define a single scalar Normal distribution.
+  dist = tf.contrib.distributions.Normal(mu=0, sigma=3)
 
   # Evaluate the cdf at 1, returning a scalar.
   dist.cdf(1)
 
-  # Define a batch of two scalar valued Gaussians.
+  # Define a batch of two scalar valued Normals.
   # The first has mean 1 and standard deviation 11, the second 2 and 22.
-  dist = tf.contrib.distributions.Gaussian(mu=[1, 2.], sigma=[11, 22.])
+  dist = tf.contrib.distributions.Normal(mu=[1, 2.], sigma=[11, 22.])
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
@@ -73,9 +73,9 @@ class Gaussian(object):
   Arguments are broadcast when possible.
 
   ```python
-  # Define a batch of two scalar valued Gaussians.
+  # Define a batch of two scalar valued Normals.
   # Both have mean 1, but different standard deviations.
-  dist = tf.contrib.distributions.Gaussian(mu=1, sigma=[11, 22.])
+  dist = tf.contrib.distributions.Normal(mu=1, sigma=[11, 22.])
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
@@ -85,7 +85,7 @@ class Gaussian(object):
   """
 
   def __init__(self, mu, sigma, name=None):
-    """Construct Gaussian distributions with mean and stddev `mu` and `sigma`.
+    """Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
     The parameters `mu` and `sigma` must be shaped in a way that supports
     broadcasting (e.g. `mu + sigma` is a valid operation).
@@ -99,7 +99,7 @@ class Gaussian(object):
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
-    with ops.op_scope([mu, sigma], name, "Gaussian"):
+    with ops.op_scope([mu, sigma], name, "Normal"):
       mu = ops.convert_to_tensor(mu)
       sigma = ops.convert_to_tensor(sigma)
       with ops.control_dependencies([_assert_all_positive(sigma)]):
@@ -125,7 +125,7 @@ class Gaussian(object):
     return self._mu * array_ops.ones_like(self._sigma)
 
   def log_pdf(self, x, name=None):
-    """Log pdf of observations in `x` under these Gaussian distribution(s).
+    """Log pdf of observations in `x` under these Normal distribution(s).
 
     Args:
       x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
@@ -134,7 +134,7 @@ class Gaussian(object):
     Returns:
       log_pdf: tensor of dtype `dtype`, the log-PDFs of `x`.
     """
-    with ops.op_scope([self._mu, self._sigma, x], name, "GaussianLogPdf"):
+    with ops.op_scope([self._mu, self._sigma, x], name, "NormalLogPdf"):
       x = ops.convert_to_tensor(x)
       if x.dtype != self.dtype:
         raise TypeError("Input x dtype does not match dtype: %s vs. %s"
@@ -144,7 +144,7 @@ class Gaussian(object):
               -0.5*math_ops.square((x - self._mu) / self._sigma))
 
   def cdf(self, x, name=None):
-    """CDF of observations in `x` under these Gaussian distribution(s).
+    """CDF of observations in `x` under these Normal distribution(s).
 
     Args:
       x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
@@ -153,7 +153,7 @@ class Gaussian(object):
     Returns:
       cdf: tensor of dtype `dtype`, the CDFs of `x`.
     """
-    with ops.op_scope([self._mu, self._sigma, x], name, "GaussianCdf"):
+    with ops.op_scope([self._mu, self._sigma, x], name, "NormalCdf"):
       x = ops.convert_to_tensor(x)
       if x.dtype != self.dtype:
         raise TypeError("Input x dtype does not match dtype: %s vs. %s"
@@ -162,7 +162,7 @@ class Gaussian(object):
           1.0/(math.sqrt(2.0) * self._sigma)*(x - self._mu)))
 
   def log_cdf(self, x, name=None):
-    """Log CDF of observations `x` under these Gaussian distribution(s).
+    """Log CDF of observations `x` under these Normal distribution(s).
 
     Args:
       x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
@@ -171,11 +171,11 @@ class Gaussian(object):
     Returns:
       log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
     """
-    with ops.op_scope([self._mu, self._sigma, x], name, "GaussianLogCdf"):
+    with ops.op_scope([self._mu, self._sigma, x], name, "NormalLogCdf"):
       return math_ops.log(self.cdf(x))
 
   def pdf(self, x, name=None):
-    """The PDF of observations in `x` under these Gaussian distribution(s).
+    """The PDF of observations in `x` under these Normal distribution(s).
 
     Args:
       x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
@@ -184,11 +184,11 @@ class Gaussian(object):
     Returns:
       pdf: tensor of dtype `dtype`, the pdf values of `x`.
     """
-    with ops.op_scope([self._mu, self._sigma, x], name, "GaussianPdf"):
+    with ops.op_scope([self._mu, self._sigma, x], name, "NormalPdf"):
       return math_ops.exp(self.log_pdf(x))
 
   def entropy(self, name=None):
-    """The entropy of Gaussian distribution(s).
+    """The entropy of Normal distribution(s).
 
     Args:
       name: The name to give this op.
@@ -196,7 +196,7 @@ class Gaussian(object):
     Returns:
       entropy: tensor of dtype `dtype`, the entropy.
     """
-    with ops.op_scope([self._mu, self._sigma], name, "GaussianEntropy"):
+    with ops.op_scope([self._mu, self._sigma], name, "NormalEntropy"):
       two_pi_e1 = constant_op.constant(
           2 * math.pi * math.exp(1), dtype=self.dtype)
       # Use broadcasting rules to calculate the full broadcast sigma.
@@ -204,7 +204,7 @@ class Gaussian(object):
       return 0.5 * math_ops.log(two_pi_e1 * math_ops.square(sigma))
 
   def sample(self, n, seed=None, name=None):
-    """Sample `n` observations from the Gaussian Distributions.
+    """Sample `n` observations from the Normal Distributions.
 
     Args:
       n: `Scalar`, type int32, the number of observations to sample.
@@ -215,7 +215,7 @@ class Gaussian(object):
       samples: `[n, ...]`, a `Tensor` of `n` samples for each
         of the distributions determined by broadcasting the hyperparameters.
     """
-    with ops.op_scope([self._mu, self._sigma, n], name, "GaussianSample"):
+    with ops.op_scope([self._mu, self._sigma, n], name, "NormalSample"):
       broadcast_shape = (self._mu + self._sigma).get_shape()
       n = ops.convert_to_tensor(n)
       shape = array_ops.concat(

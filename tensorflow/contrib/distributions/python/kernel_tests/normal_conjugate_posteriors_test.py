@@ -25,9 +25,9 @@ import tensorflow as tf
 distributions = tf.contrib.distributions
 
 
-class GaussianTest(tf.test.TestCase):
+class NormalTest(tf.test.TestCase):
 
-  def testGaussianConjugateKnownSigmaPosterior(self):
+  def testNormalConjugateKnownSigmaPosterior(self):
     with tf.Session():
       mu0 = tf.constant([3.0])
       sigma0 = tf.constant([math.sqrt(10.0)])
@@ -35,16 +35,16 @@ class GaussianTest(tf.test.TestCase):
       x = tf.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
       s = tf.reduce_sum(x)
       n = tf.size(x)
-      prior = distributions.Gaussian(mu=mu0, sigma=sigma0)
-      posterior = distributions.gaussian_conjugates_known_sigma_posterior(
+      prior = distributions.Normal(mu=mu0, sigma=sigma0)
+      posterior = distributions.normal_conjugates_known_sigma_posterior(
           prior=prior, sigma=sigma, s=s, n=n)
 
       # Smoke test
-      self.assertTrue(isinstance(posterior, distributions.Gaussian))
+      self.assertTrue(isinstance(posterior, distributions.Normal))
       posterior_log_pdf = posterior.log_pdf(x).eval()
       self.assertEqual(posterior_log_pdf.shape, (6,))
 
-  def testGaussianConjugateKnownSigmaPosteriorND(self):
+  def testNormalConjugateKnownSigmaPosteriorND(self):
     with tf.Session():
       batch_size = 6
       mu0 = tf.constant([[3.0, -3.0]] * batch_size)
@@ -54,16 +54,16 @@ class GaussianTest(tf.test.TestCase):
           tf.constant([[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=tf.float32))
       s = tf.reduce_sum(x)
       n = tf.size(x)
-      prior = distributions.Gaussian(mu=mu0, sigma=sigma0)
-      posterior = distributions.gaussian_conjugates_known_sigma_posterior(
+      prior = distributions.Normal(mu=mu0, sigma=sigma0)
+      posterior = distributions.normal_conjugates_known_sigma_posterior(
           prior=prior, sigma=sigma, s=s, n=n)
 
       # Smoke test
-      self.assertTrue(isinstance(posterior, distributions.Gaussian))
+      self.assertTrue(isinstance(posterior, distributions.Normal))
       posterior_log_pdf = posterior.log_pdf(x).eval()
       self.assertEqual(posterior_log_pdf.shape, (6, 2))
 
-  def testGaussianConjugateKnownSigmaNDPosteriorND(self):
+  def testNormalConjugateKnownSigmaNDPosteriorND(self):
     with tf.Session():
       batch_size = 6
       mu0 = tf.constant([[3.0, -3.0]] * batch_size)
@@ -75,19 +75,19 @@ class GaussianTest(tf.test.TestCase):
       s = tf.reduce_sum(x, reduction_indices=[1])
       x = tf.transpose(x)  # Reshape to shape (6, 2)
       n = tf.constant([6] * 2)
-      prior = distributions.Gaussian(mu=mu0, sigma=sigma0)
-      posterior = distributions.gaussian_conjugates_known_sigma_posterior(
+      prior = distributions.Normal(mu=mu0, sigma=sigma0)
+      posterior = distributions.normal_conjugates_known_sigma_posterior(
           prior=prior, sigma=sigma, s=s, n=n)
 
       # Smoke test
-      self.assertTrue(isinstance(posterior, distributions.Gaussian))
+      self.assertTrue(isinstance(posterior, distributions.Normal))
 
       # Calculate log_pdf under the 2 models
       posterior_log_pdf = posterior.log_pdf(x)
       self.assertEqual(posterior_log_pdf.get_shape(), (6, 2))
       self.assertEqual(posterior_log_pdf.eval().shape, (6, 2))
 
-  def testGaussianConjugateKnownSigmaPredictive(self):
+  def testNormalConjugateKnownSigmaPredictive(self):
     with tf.Session():
       batch_size = 6
       mu0 = tf.constant([3.0] * batch_size)
@@ -96,12 +96,12 @@ class GaussianTest(tf.test.TestCase):
       x = tf.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
       s = tf.reduce_sum(x)
       n = tf.size(x)
-      prior = distributions.Gaussian(mu=mu0, sigma=sigma0)
-      predictive = distributions.gaussian_congugates_known_sigma_predictive(
+      prior = distributions.Normal(mu=mu0, sigma=sigma0)
+      predictive = distributions.normal_congugates_known_sigma_predictive(
           prior=prior, sigma=sigma, s=s, n=n)
 
       # Smoke test
-      self.assertTrue(isinstance(predictive, distributions.Gaussian))
+      self.assertTrue(isinstance(predictive, distributions.Normal))
       predictive_log_pdf = predictive.log_pdf(x).eval()
       self.assertEqual(predictive_log_pdf.shape, (6,))
 
