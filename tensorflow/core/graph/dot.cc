@@ -32,7 +32,7 @@ static string GraphNodeName(const DotOptions& opts, const Node* n) {
   return strings::StrCat("N", n->id());
 }
 
-bool ShoulDisplayOpType(const Node* n) {
+bool ShouldDisplayOpType(const Node* n) {
   if (n->type_string() == "NoOp") {
     return false;
   }
@@ -125,7 +125,7 @@ string DotGraph(const Graph& g, const DotOptions& opts) {
       continue;
     }
     string label = src->name();
-    if (ShoulDisplayOpType(src)) {
+    if (ShouldDisplayOpType(src)) {
       // Append the op type if it is not directly deducible from the op name.
       strings::StrAppend(&label, "\\n(", src->type_string(), ")");
     }
@@ -137,7 +137,14 @@ string DotGraph(const Graph& g, const DotOptions& opts) {
       shape = "oval";
     } else {
       const string& d = src->assigned_device_name();
-      const int dindex = (!d.empty()) ? device_index[d] : -1;
+
+      int dindex;
+      if (opts.node_color) {
+        dindex = opts.node_color(src);
+      } else {
+        dindex = (!d.empty()) ? device_index[d] : -1;
+      }
+
       if (dindex >= 0) {
         color = ColorFor(dindex);
       }
