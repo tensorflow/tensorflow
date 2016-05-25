@@ -17,6 +17,8 @@ filegroup(
     srcs = glob(["testdata/*"]),
 )
 
+exports_files(["ffmpeg_lib.h"])
+
 cc_library(
     name = "decode_audio_op_cc",
     srcs = ["decode_audio_op.cc"],
