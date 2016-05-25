@@ -633,6 +633,16 @@ tf_kernel_libraries(
     ],
 )
 
+tf_kernel_library(
+    name = "sampling_ops",
+    prefix = "sampling",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:sampling_ops_op_lib",
+    ],
+)
+
 tf_cc_tests(
     size = "small",
     tests = [

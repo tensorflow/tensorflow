@@ -708,6 +708,11 @@ tf_gen_op_wrapper_py(
 )
 
 tf_gen_op_wrapper_py(
+    name = "sampling_ops",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_py(
     name = "script_ops",
     hidden = [
         "PyFunc",
@@ -787,6 +792,7 @@ py_library(
         "ops/gen_math_ops.py",
         "ops/gen_nn_ops.py",
         "ops/gen_random_ops.py",
+        "ops/gen_sampling_ops.py",
         "ops/gen_state_ops.py",
         "ops/gen_string_ops.py",
         "ops/gradients.py",
@@ -809,6 +815,7 @@ py_library(
         "ops/random_ops.py",
         "ops/rnn.py",
         "ops/rnn_cell.py",
+        "ops/sampling_ops.py",
         "ops/script_ops.py",
         "ops/seq2seq.py",
         "ops/session_ops.py",
@@ -1152,6 +1159,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/partitioned_variables_test.py",
     "kernel_tests/queue_ops_test.py",
     "kernel_tests/random_shuffle_queue_test.py",
+    "kernel_tests/sampling_ops_test.py",
     "kernel_tests/save_restore_ops_test.py",
     "kernel_tests/segment_reduction_ops_test.py",
     "kernel_tests/self_adjoint_eig_op_test.py",
