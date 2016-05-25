@@ -267,8 +267,11 @@ export class Minimap {
       downloadContext.drawImage(image, 0, 0,
         this.downloadCanvas.width, this.downloadCanvas.height);
     };
-    let blob = new Blob([svgXml], {type: 'image/svg+xml;charset=utf-8'});
-    image.src = URL.createObjectURL(blob);
+    image.onerror = () => {
+      let blob = new Blob([svgXml], {type: 'image/svg+xml;charset=utf-8'});
+      image.src = URL.createObjectURL(blob);
+    }
+    image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgXml);
   }
 
   /**
