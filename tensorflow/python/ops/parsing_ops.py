@@ -225,7 +225,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   features: {
       "kw": VarLenFeature(tf.string),
       "dank": VarLenFeature(tf.int64),
-      "gps": VarLenFeature(tf.float),
+      "gps": VarLenFeature(tf.float32),
   }
   ```
 
