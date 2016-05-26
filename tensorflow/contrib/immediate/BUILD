@@ -212,6 +212,34 @@ py_test(
            ],
 )
 
+py_test(
+    name = "nn_test2",
+    srcs = ["python/immediate/ops/nn_test2.py"],
+    deps = [
+           ":immediate_py",
+           ":immediate_test_lib",
+           "//tensorflow:tensorflow_py",
+           "//tensorflow/python:framework_test_lib",
+           "//tensorflow/python:platform_test",
+           "//tensorflow/python:extra_py_tests_deps",
+           "//tensorflow/python:kernel_tests/gradient_checker",
+           ],
+)
+
+py_test(
+    name = "batchnorm_test",
+    srcs = ["python/immediate/ops/batchnorm_test.py"],
+    deps = [
+           ":immediate_py",
+           ":immediate_test_lib",
+           "//tensorflow:tensorflow_py",
+           "//tensorflow/python:framework_test_lib",
+           "//tensorflow/python:platform_test",
+           "//tensorflow/python:extra_py_tests_deps",
+           "//tensorflow/python:kernel_tests/gradient_checker",
+           ],
+)
+
 #cuda_py_tests(
 #    name = "op_tests",
 #    size = "small",

@@ -111,7 +111,15 @@ class TensorFlowTestCase(ImmediateTestCase):
      # restore graph from default env because default graph is used
      # by session ops to create handle deleters
 
-     with immediate.Env._get_global_default_env().g.as_default():
-       yield 1
+     env = immediate.Env._get_global_default_env()
+     assert env, "Must initialize Env before using test_session"
+       
+     with env.g.as_default():
+       immediate_session = ImmediateSession()
+       yield immediate_session
 
+# session for immediate execution, converts immediate tensors to numpy arrays
+class ImmediateSession(session.Session):
 
+  def run(self, fetches, *args, **kwargs):
+    return [itensor.as_numpy() for itensor in fetches]

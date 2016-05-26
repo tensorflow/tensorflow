@@ -104,14 +104,21 @@ class Env(object):
   def __init__(self, tf_namespace, config=None):
     print("Creating Env")
     global _global_default_env
-    self.original_tf = tf_namespace
     self.g = ops.Graph()
     self.sess = session.Session(config=config, graph=self.g)
     self.op_factory = OpFactory(self)
     #self.op_factory = OpFactory(None)
     symbol_rewriter = module_rewriter.ImmediateRewriter(self)
     rewriter = module_rewriter.ModuleRewriter(symbol_rewriter, "immediate.")
-    self.tf = rewriter(self.original_tf)
+    
+    # if given {"tf": tf, "gen_math_ops": gen_math_ops}
+    if isinstance(tf_namespace, dict):
+      for name, namespace in tf_namespace.items():
+        self.__dict__[name] = rewriter(namespace)
+    else: # given tf
+      # TODO(yaroslavvb): get rid of original_tf
+      self.original_tf = tf_namespace
+      self.tf = rewriter(self.original_tf)
 
     self._DEBUG_LOGGING = False
     _global_default_env = self
@@ -233,7 +240,7 @@ class Env(object):
 
     return self.numpy_to_tensor(values, dtype, shape)
 
-  
+  # TODO(yaroslavvb): delete? tensor_to_numpy should return nump, returns Tensor
   def tensor_to_numpy(self, tensor):
     with self.g.as_default():
       return self.handle_to_numpy(tensor.handle)

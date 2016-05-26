@@ -6,7 +6,7 @@ from __future__ import print_function
 
 __all__ = ["Tensor"]
 
-_ENABLE_DEBUG_LOGGING = False
+_ENABLE_DEBUG_LOGGING = True
 
 #import tensorflow as tf
 
@@ -82,7 +82,7 @@ class Tensor(object):
     return str(self.as_numpy())
 
   def __repr__(self):
-    return "iTensor(%s)" % (self.__str__())
+    return "iTensor(%s, dtype=%s)" % (self.__str__(), self.dtype)
 
 
   # Methods to emulate Python numeric type

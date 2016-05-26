@@ -240,9 +240,6 @@ class OpDefLibraryWrapper(object):
       ...
     """
 
-    if _ENABLE_DEBUG_LOGGING:
-      print("OpFactory __call__: %s(%s)" % (op_type_name, keywords))
-
     # converted_args stores args converted to Tensors, ie, Python list [1]
     # becomes immediate.Tensor([1])), immediate.Tensor objects are unchanged
     itensor_args = {} 
@@ -250,9 +247,14 @@ class OpDefLibraryWrapper(object):
     input_names = op_input_argnames[op_type_name]
     input_types = op_input_argtypes[op_type_name]
 
+    if _ENABLE_DEBUG_LOGGING:
+      print("OpFactory __call__: %s(%s)" % (op_type_name, keywords))
+      print("OpFactory inputs: %s" % (input_names))
+      print("OpFactory types: %s" % [type(keywords[name]) for name in input_names])
     old_tensor_inputs = {}
     key = [op_type_name]
 
+    # TODO(yaroslavvb): check that attributes are not tensors
     # NOTE(yaroslavvb): by converting to tensor here I can get dtype
     # but that potentially gets a different dtype than what convert_to_tensor
     # would've called because it uses attribute inference to determine
@@ -265,7 +267,7 @@ class OpDefLibraryWrapper(object):
     #                                            **keywords)
       
 
-    def try_convert_to_itensor(itensor):
+    def try_convert_to_itensor(itensor, dtype=None):
       if isinstance(itensor, Tensor):
         return itensor
 
@@ -273,18 +275,33 @@ class OpDefLibraryWrapper(object):
         raise ValueError("Trying to feed a non-immediate Tensor %s to immediate op %s" %
                          (itensor, op_type_name))
       try:
-        return self.env.numpy_to_tensor(itensor)
+        result = self.env.numpy_to_tensor(itensor, dtype)
+        print("Converting %s to %s, result is %s" %(itensor, dtype, result.dtype))
+        return result
       except ValueError as e:
         raise ValueError("Couldn't convert input argument %s=%s to immediate "
                          "tensor (%s)" % (input_name, itensor,
                                           sys.exc_info()))
         
+    # TODO(yaroslavvb): replace with common type lookup
+    # or move to op_def_lib parsing
+    list_dtype = None
+    if op_type_name == "Concat":
+      for maybe_itensor in keywords["values"]:
+        print("Examining %s of type %s"%(repr(maybe_itensor), type(maybe_itensor)))
+        if isinstance(maybe_itensor, Tensor):
+          list_dtype = maybe_itensor.dtype
+          break
+      
 
     for input_name in input_names:
       itensor = keywords[input_name]
       if input_types[input_name] == "list":
         for i in range(len(itensor)):
-          itensor[i] = try_convert_to_itensor(itensor[i])
+          if op_type_name == "Concat":
+            itensor[i] = try_convert_to_itensor(itensor[i], list_dtype)
+          else:
+            itensor[i] = try_convert_to_itensor(itensor[i])
       else:
         itensor = try_convert_to_itensor(itensor)
           
@@ -306,10 +323,9 @@ class OpDefLibraryWrapper(object):
           input_holders[input_name] = holder_list
         else:
           holder, tensor = self.env.get_session_tensor(itensor_args[input_name].dtype)
-          #        print("Created %s for %s" %(tensor, input_name))
           input_holders[input_name] = holder
-          # replace previous inputs with tensorflow.Tensor args
           keywords[input_name] = tensor
+            
 
       output = self.original_op_def_library.apply_op(op_type_name,
                                                      **keywords)
