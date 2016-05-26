@@ -1231,6 +1231,10 @@ cc_test(
 # higher level tests
 tf_cc_tests(
     size = "small",
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = glob(
         [

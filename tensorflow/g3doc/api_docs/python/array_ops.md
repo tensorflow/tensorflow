@@ -874,7 +874,7 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 ##### Args:
 
 
-*  <b>`tensor`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `bool`, `float32`, `float64`.
+*  <b>`tensor`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `bool`, `half`, `float32`, `float64`.
     Up to 8-D.
 *  <b>`dims`</b>: A `Tensor` of type `bool`. 1-D. The dimensions to reverse.
 *  <b>`name`</b>: A name for the operation (optional).

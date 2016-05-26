@@ -25,7 +25,7 @@ passed in the variable scope will be used (if that is `None` too,
 then by default no regularization is performed).
 
 If a partitioner is provided, first a sharded `Variable` is created
-via `_get_partitioned_variable_list`, and the return value is a
+via `_get_partitioned_variable`, and the return value is a
 `Tensor` composed of the shards concatenated along the partition axis.
 
 Some useful partitioners are available.  See, e.g.,
@@ -45,8 +45,6 @@ Some useful partitioners are available.  See, e.g.,
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
     Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
-    If partitioning is enabled and used, the concatenated return value
-    is also added to collection `GraphKeys.CONCATENATED_VARIABLES`.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
     Variable should be cached for reading.  Defaults to the Variable's
     device.  If not `None`, caches on another device.  Typical use is to
