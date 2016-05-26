@@ -1,3 +1,5 @@
+workspace(name = "org_tensorflow")
+
 # Uncomment and update the paths in these entries to build the Android demo.
 #android_sdk_repository(
 #    name = "androidsdk",

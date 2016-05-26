@@ -136,6 +136,14 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
   Input("x: T").Output("y: T").Attr( \
       "T: {half, float, double, int32, int64, complex64, complex128}")
 
+#define UNARY_REAL()                 \
+  Input("x: T").Output("y: T").Attr( \
+      "T: {half, float, double}")
+
+#define UNARY_COMPLEX()              \
+  Input("x: T").Output("y: T").Attr( \
+      "T: {half, float, double, complex64, complex128}")
+
 REGISTER_OP("Neg")
     .UNARY()
     .Doc(R"doc(
@@ -158,65 +166,65 @@ I.e., \\(y = x * x = x^2\\).
 )doc");
 
 REGISTER_OP("Sqrt")
-    .UNARY()
+    .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes square root of x element-wise.
 I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 )doc");
 
 REGISTER_OP("Rsqrt")
-    .UNARY()
+    .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes reciprocal of square root of x element-wise.
 I.e., \\(y = 1 / \sqrt{x}\\).
 )doc");
 
 REGISTER_OP("Exp")
-    .UNARY()
+    .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes exponential of x element-wise.  \\(y = e^x\\).
 )doc");
 
 REGISTER_OP("Log")
-    .UNARY()
+    .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes natural logarithm of x element-wise.
 I.e., \\(y = \log_e x\\).
 )doc");
 
 REGISTER_OP("Tanh")
-    .UNARY()
+    .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
 )doc");
 
 REGISTER_OP("Lgamma")
-    .UNARY()
+    .UNARY_REAL()
     .Doc(R"doc(
 Computes the log of the absolute value of `Gamma(x)` element-wise.
 )doc");
 
 REGISTER_OP("Digamma")
-    .UNARY()
+    .UNARY_REAL()
     .Doc(R"doc(
 Computes Psi, the derivative of Lgamma (the log of the absolute value of
 `Gamma(x)`), element-wise.
 )doc");
 
 REGISTER_OP("Erf")
-    .UNARY()
+    .UNARY_REAL()
     .Doc(R"doc(
 Computes the Gauss error function of `x` element-wise.
 )doc");
 
 REGISTER_OP("Erfc")
-    .UNARY()
+    .UNARY_REAL()
     .Doc(R"doc(
 Computes the complementary error function of `x` element-wise.
 )doc");
 
 REGISTER_OP("Sigmoid")
-    .UNARY()
+    .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes sigmoid of `x` element-wise.
 
@@ -224,18 +232,20 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 )doc");
 
 REGISTER_OP("Sin")
-    .UNARY()
+    .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes sin of x element-wise.
 )doc");
 
 REGISTER_OP("Cos")
-    .UNARY()
+    .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes cos of x element-wise.
 )doc");
 
 #undef UNARY
+#undef UNARY_REAL
+#undef UNARY_COMPLEX
 
 REGISTER_OP("IsNan")
     .Input("x: T")

@@ -72,6 +72,41 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       expected = .1 * 0.96**(100 // 3)
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
 
+  def testPiecewiseConstant(self):
+    with self.test_session():
+      x = variables.Variable(-999)
+      assign_100 = x.assign(100)
+      assign_105 = x.assign(105)
+      assign_110 = x.assign(110)
+      assign_120 = x.assign(120)
+      assign_999 = x.assign(999)
+      pc = learning_rate_decay.piecewise_constant(x, [100, 110, 120],
+                                                  [1.0, 0.1, 0.01, 0.001])
+      
+      variables.initialize_all_variables().run()
+      self.assertAllClose(pc.eval(), 1.0, 1e-6)
+      assign_100.op.run()
+      self.assertAllClose(pc.eval(), 1.0, 1e-6)
+      assign_105.op.run()
+      self.assertAllClose(pc.eval(), 0.1, 1e-6)
+      assign_110.op.run()
+      self.assertAllClose(pc.eval(), 0.1, 1e-6)
+      assign_120.op.run()
+      self.assertAllClose(pc.eval(), 0.01, 1e-6)
+      assign_999.op.run()
+      self.assertAllClose(pc.eval(), 0.001, 1e-6)
+  
+  def testPiecewiseConstantEdgeCases(self):
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        x_int = variables.Variable(0, dtype=variables.dtypes.int32)
+        boundaries, values = [-1.0, 1.0], [1, 2, 3]
+        pc = learning_rate_decay.piecewise_constant(x_int, boundaries, values)
+      with self.assertRaises(ValueError):
+        x = variables.Variable(0.0)
+        boundaries, values = [-1.0, 1.0], [1.0, 2, 3]
+        pc = learning_rate_decay.piecewise_constant(x, boundaries, values)
+
 
 if __name__ == "__main__":
   googletest.main()

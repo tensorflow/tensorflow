@@ -234,7 +234,7 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
 def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
-               suffix="", args=None):
+               suffix="", args=None, linkopts=[]):
   name = name.replace(".cc", "")
   native.cc_test(name="%s%s" % (name.replace("/", "_"), suffix),
                  size=size,
@@ -243,7 +243,7 @@ def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
                  copts=tf_copts(),
                  data=data,
                  deps=deps,
-                 linkopts=["-lpthread", "-lm"],
+                 linkopts=["-lpthread", "-lm"] + linkopts,
                  linkstatic=linkstatic,
                  tags=tags,)
 
@@ -254,13 +254,15 @@ def tf_cc_test_gpu(name, deps, linkstatic=0, tags=[], data=[], size="medium",
   tf_cc_test(name, deps, linkstatic=linkstatic, tags=tags, data=data,
              size=size, suffix=suffix, args=args)
 
-def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium",linkstatic=0,args=[]):
+def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium", linkstatic=0,
+                    args=[], linkopts=[]):
   tf_cc_test(name=name,
              deps=deps,
              tags=tags + ["manual"],
              data=data,
              size=size,
              linkstatic=linkstatic,
+             linkopts=linkopts,
              args=args)
   tf_cc_test(name=name,
              suffix="_gpu",
@@ -269,21 +271,26 @@ def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium",linkstatic=0,arg
              tags=tags + tf_cuda_tests_tags(),
              data=data,
              size=size,
+             linkopts=linkopts,
              args=args)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium", args=None):
+def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium", args=None,
+                linkopts=[]):
   for t in tests:
-    tf_cc_test(t, deps, linkstatic, tags=tags, size=size, args=args)
+    tf_cc_test(t, deps, linkstatic, tags=tags, size=size, args=args,
+               linkopts=linkopts)
 
 def tf_cc_tests_gpu(tests, deps, linkstatic=0, tags=[], size="medium", args=None):
   tf_cc_tests(tests, deps, linkstatic, tags=tags, size=size, args=args)
 
 
 
-def tf_cuda_cc_tests(tests, deps, tags=[], size="medium", linkstatic=0, args=None):
+def tf_cuda_cc_tests(tests, deps, tags=[], size="medium", linkstatic=0,
+                     args=None, linkopts=[]):
   for t in tests:
-    tf_cuda_cc_test(t, deps, tags=tags, size=size, linkstatic=linkstatic, args=args)
+    tf_cuda_cc_test(t, deps, tags=tags, size=size, linkstatic=linkstatic,
+                    args=args, linkopts=linkopts)
 
 def _cuda_copts():
     """Gets the appropriate set of copts for (maybe) CUDA compilation.

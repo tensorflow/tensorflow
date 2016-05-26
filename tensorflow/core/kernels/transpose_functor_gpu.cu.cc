@@ -130,6 +130,10 @@ Status DoTranspose<Device>(const Device& d, const Tensor& in,
       internal::Transpose<Device, uint64>(d, in, perm, out);
       break;
 
+    case DT_COMPLEX128:
+      internal::Transpose<Device, float4>(d, in, perm, out);
+      break;
+
     default:
       return errors::Unimplemented("Unsupported dtype on GPU: ", in.dtype());
   }

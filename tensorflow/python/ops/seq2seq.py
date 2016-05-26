@@ -260,9 +260,8 @@ def embedding_rnn_decoder(decoder_inputs, initial_state, cell, num_symbols,
     proj_biases.get_shape().assert_is_compatible_with([num_symbols])
 
   with variable_scope.variable_scope(scope or "embedding_rnn_decoder"):
-    with ops.device("/cpu:0"):
-      embedding = variable_scope.get_variable("embedding",
-                                              [num_symbols, embedding_size])
+    embedding = variable_scope.get_variable("embedding",
+            [num_symbols, embedding_size])
     loop_function = _extract_argmax_and_embed(
         embedding, output_projection,
         update_embedding_for_previous) if feed_previous else None
@@ -398,9 +397,8 @@ def embedding_tied_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
     proj_biases.get_shape().assert_is_compatible_with([num_symbols])
 
   with variable_scope.variable_scope(scope or "embedding_tied_rnn_seq2seq"):
-    with ops.device("/cpu:0"):
-      embedding = variable_scope.get_variable("embedding",
-                                              [num_symbols, embedding_size])
+    embedding = variable_scope.get_variable("embedding",
+            [num_symbols, embedding_size])
 
     emb_encoder_inputs = [embedding_ops.embedding_lookup(embedding, x)
                           for x in encoder_inputs]
@@ -636,9 +634,8 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
     proj_biases.get_shape().assert_is_compatible_with([num_symbols])
 
   with variable_scope.variable_scope(scope or "embedding_attention_decoder"):
-    with ops.device("/cpu:0"):
-      embedding = variable_scope.get_variable("embedding",
-                                              [num_symbols, embedding_size])
+    embedding = variable_scope.get_variable("embedding",
+            [num_symbols, embedding_size])
     loop_function = _extract_argmax_and_embed(
         embedding, output_projection,
         update_embedding_for_previous) if feed_previous else None
