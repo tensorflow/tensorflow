@@ -314,7 +314,6 @@ tf_cuda_library(
 tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
-        "batchnorm_training_op",
         "candidate_sampling_ops",
         "control_flow_ops",
         "ctc_ops",
@@ -376,7 +375,6 @@ cc_library(
         ":state_ops_op_lib",
         ":string_ops_op_lib",
         ":training_ops_op_lib",
-        ":batchnorm_training_op_op_lib",
         ":user_ops_op_lib",
         "//tensorflow/models/embedding:word2vec_ops",
     ],
@@ -495,7 +493,6 @@ cc_library(
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
-        "//tensorflow/core/kernels:batchnorm_training_op",
         "//tensorflow/models/embedding:word2vec_kernels",
     ],
 )

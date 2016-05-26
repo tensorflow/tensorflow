@@ -13,6 +13,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/cudnn_batchnorm:cudnn_batchnorm_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/ctc:ctc_py",
@@ -41,6 +42,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",
         "//tensorflow/contrib/metrics:set_ops_kernels",
+        "//tensorflow/contrib/cudnn_batchnorm:cudnn_batchnorm_kernels",
     ],
 )
 
@@ -50,6 +52,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/linear_optimizer:sdca_ops_op_lib",
         "//tensorflow/contrib/metrics:set_ops_op_lib",
+        "//tensorflow/contrib/cudnn_batchnorm:cudnn_batchnorm_op_lib",
     ],
 )
 

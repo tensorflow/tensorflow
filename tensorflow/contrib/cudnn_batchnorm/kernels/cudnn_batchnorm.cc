@@ -33,6 +33,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
+#else// GOOGLE_CUDA
+#error "Requires GOOGLE_CUDA"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -389,10 +391,6 @@ class BatchNormTrainingGradOp : public OpKernel {
       OP_REQUIRES(context, input.shape() == output_grad.shape(),
           errors::InvalidArgument("input shape(", input.shape().DebugString(),
           "(does not match output_grad shape(", output_grad.shape().DebugString(), ")"));
-
-      Tensor* output = nullptr;
-      TensorShape out_shape = input.shape();
-      OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
       const int64 in_depths = GetTensorDim(input, data_format_, 'C');
       OP_REQUIRES(context, in_depths == scale.dim_size(0),

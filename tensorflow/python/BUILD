@@ -762,15 +762,6 @@ tf_gen_op_wrapper_py(
     require_shape_functions = True,
 )
 
-tf_gen_op_wrapper_py(
-  name = "batchnorm_training_op",
-  out = "gen_batchnorm_training_op.py",
-  require_shape_functions=False,
-  hidden=[
-    "BatchNormTrainingGrad"
-  ]
-)
-
 py_library(
     name = "ops",
     srcs = [
@@ -853,7 +844,6 @@ py_library(
         ":sparse_ops",
         ":string_ops",
         ":user_ops",
-        ":batchnorm_training_op"
     ],
 )
 

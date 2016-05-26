@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # Add projects here, they will show up under tf.contrib.
+from tensorflow.contrib import cudnn_batchnorm
 from tensorflow.contrib import ctc
 from tensorflow.contrib import distributions
 from tensorflow.contrib import framework

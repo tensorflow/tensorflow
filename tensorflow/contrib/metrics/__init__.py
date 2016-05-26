@@ -43,4 +43,3 @@ from tensorflow.contrib.metrics.python.ops.set_ops import set_difference
 from tensorflow.contrib.metrics.python.ops.set_ops import set_intersection
 from tensorflow.contrib.metrics.python.ops.set_ops import set_size
 from tensorflow.contrib.metrics.python.ops.set_ops import set_union
-
