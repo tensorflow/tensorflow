@@ -32,6 +32,9 @@ from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
+ops.NoGradient("CholeskyGrad")
+ops.NoGradient("BatchCholeskyGrad")
+
 
 @ops.RegisterGradient("MatrixInverse")
 def _MatrixInverseGrad(op, grad):
@@ -76,9 +79,15 @@ def _BatchMatrixDeterminantGrad(op, grad):
 
 
 @ops.RegisterGradient("Cholesky")
-def _cholesky_grad(op, grad):
+def _CholeskyGrad(op, grad):
   """Gradient for Cholesky."""
   return linalg_ops.cholesky_grad(op.outputs[0], grad)
+
+
+@ops.RegisterGradient("BatchCholesky")
+def _BatchCholeskyGrad(op, grad):
+  """Gradient for BatchCholesky."""
+  return linalg_ops.batch_cholesky_grad(op.outputs[0], grad)
 
 
 @ops.RegisterGradient("MatrixSolve")

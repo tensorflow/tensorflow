@@ -3396,7 +3396,7 @@ Extracts numpy matrix from pandas DataFrame.
 
 - - -
 
-### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, queue_capacity=10000, num_threads=1, name='dequeue_examples')` {#read_batch_examples}
+### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, name=None)` {#read_batch_examples}
 
 Adds operations to read, queue, batch `Example` protos.
 
@@ -3418,6 +3418,10 @@ All ops are added to the default graph.
 *  <b>`reader`</b>: A function or class that returns an object with
     `read` method, (filename tensor) -> (example tensor).
 *  <b>`randomize_input`</b>: Whether the input should be randomized.
+*  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
+    dataset. If `None`, cycles through the dataset forever.
+    NOTE - If specified, creates a variable that must be initialized, so call
+    `tf.initialize_all_variables()` as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
 *  <b>`name`</b>: Name of resulting op.
@@ -3434,7 +3438,7 @@ All ops are added to the default graph.
 
 - - -
 
-### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, queue_capacity=10000, num_threads=1, name='dequeue_examples')` {#read_batch_features}
+### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, parser_num_threads=1, name=None)` {#read_batch_features}
 
 Adds operations to read, queue, batch and parse `Example` protos.
 
@@ -3459,8 +3463,13 @@ All ops are added to the default graph.
 *  <b>`reader`</b>: A function or class that returns an object with
     `read` method, (filename tensor) -> (example tensor).
 *  <b>`randomize_input`</b>: Whether the input should be randomized.
+*  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
+    dataset. If None, cycles through the dataset forever. NOTE - If specified,
+    creates a variable that must be initialized, so call
+    tf.initialize_all_variables() as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
-*  <b>`num_threads`</b>: The number of threads enqueuing examples.
+*  <b>`reader_num_threads`</b>: The number of threads to read examples.
+*  <b>`parser_num_threads`</b>: The number of threads to parse examples.
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:
@@ -3475,7 +3484,7 @@ All ops are added to the default graph.
 
 - - -
 
-### `tf.contrib.learn.read_batch_record_features(file_pattern, batch_size, features, randomize_input=True, queue_capacity=10000, num_threads=1, name='dequeue_record_examples')` {#read_batch_record_features}
+### `tf.contrib.learn.read_batch_record_features(file_pattern, batch_size, features, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, parser_num_threads=1, name='dequeue_record_examples')` {#read_batch_record_features}
 
 Reads TFRecord, queues, batches and parses `Example` proto.
 
@@ -3490,8 +3499,13 @@ See more detailed description in `read_examples`.
 *  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature` or
     `VarLenFeature` values.
 *  <b>`randomize_input`</b>: Whether the input should be randomized.
+*  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
+    dataset. If None, cycles through the dataset forever. NOTE - If specified,
+    creates a variable that must be initialized, so call
+    tf.initialize_all_variables() as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
-*  <b>`num_threads`</b>: The number of threads enqueuing examples.
+*  <b>`reader_num_threads`</b>: The number of threads to read examples.
+*  <b>`parser_num_threads`</b>: The number of threads to parse examples.
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:

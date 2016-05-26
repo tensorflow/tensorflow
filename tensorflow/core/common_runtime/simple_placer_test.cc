@@ -729,6 +729,12 @@ TEST_F(SimplePlacerTest, TestHeterogeneousDeviceSetFailure) {
   EXPECT_TRUE(StringPiece(s.error_message())
                   .contains("colocated with a group of nodes that required "
                             "incompatible device"));
+
+  // The error message should contain information that indicates which
+  // op types have which registered device types.
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("VariableGPU: GPU")) << s;
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("TestAssign: GPU CPU"))
+      << s;
 }
 
 // Test that placement fails when an unknown device is requested.

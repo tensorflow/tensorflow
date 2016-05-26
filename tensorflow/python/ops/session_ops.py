@@ -207,7 +207,7 @@ def _get_handle_reader(graph, handle, dtype):
   if result is None:
     # Create reader if we haven't done it.
     handle_device = TensorHandle._get_device_name(handle)
-    with ops.device(handle_device):
+    with graph.as_default(), graph.device(handle_device):
       holder = array_ops.placeholder(dtypes.string)
       _register_handle_feeder(holder.graph, holder, dtype)
       reader = gen_data_flow_ops._get_session_tensor(holder, dtype)
@@ -234,7 +234,7 @@ def _get_handle_mover(graph, feeder, handle):
   if result is None:
     # Create mover if we haven't done it.
     holder, reader = _get_handle_reader(graph, handle, dtype)
-    with ops.device(feeder.op.device):
+    with graph.as_default(), graph.device(feeder.op.device):
       mover = gen_data_flow_ops._get_session_handle(reader)
     result = (holder, mover)
     graph._handle_movers[graph_key] = result
@@ -248,7 +248,7 @@ def _get_handle_deleter(graph, handle):
   if result is None:
     # Create deleter if we haven't done it.
     handle_device = TensorHandle._get_device_name(handle)
-    with ops.device(handle_device):
+    with graph.as_default(), graph.device(handle_device):
       holder = array_ops.placeholder(dtypes.string)
       deleter = gen_data_flow_ops._delete_session_tensor(holder)
     result = (holder, deleter)

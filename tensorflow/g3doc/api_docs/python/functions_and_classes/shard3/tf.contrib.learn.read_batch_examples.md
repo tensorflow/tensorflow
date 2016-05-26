@@ -1,4 +1,4 @@
-### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, queue_capacity=10000, num_threads=1, name='dequeue_examples')` {#read_batch_examples}
+### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, name=None)` {#read_batch_examples}
 
 Adds operations to read, queue, batch `Example` protos.
 
@@ -20,6 +20,10 @@ All ops are added to the default graph.
 *  <b>`reader`</b>: A function or class that returns an object with
     `read` method, (filename tensor) -> (example tensor).
 *  <b>`randomize_input`</b>: Whether the input should be randomized.
+*  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
+    dataset. If `None`, cycles through the dataset forever.
+    NOTE - If specified, creates a variable that must be initialized, so call
+    `tf.initialize_all_variables()` as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
 *  <b>`name`</b>: Name of resulting op.
