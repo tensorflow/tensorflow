@@ -25,7 +25,7 @@ cc_library(
         "core/ops/tree_utils.h",
     ],
     deps = [
-        "//google/protobuf",
+        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
