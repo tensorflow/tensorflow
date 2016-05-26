@@ -1059,9 +1059,9 @@ class SeparableConv2DTest(tf.test.TestCase):
 
   def testSeparableConv2D(self):
     # The output is the result of two convolutions:
-    # First with tensor_in[1, 4, 4, 3] * filter1[2, 2, 3, 3].
-    # Second with intermediate_out[4, 4, 3, 3] * filter2[1, 1, 3, 6].
-    # Complexity is O(3*3*2*2 + 3*6*1*1] as opposed to O(3*6*2*2).
+    # First with tensor_in[1, 4, 4, 2] * filter1[2, 2, 2, 3].
+    # Second with intermediate_out[1, 4, 4, 6] * filter2[1, 1, 6, 7].
+    # Complexity is O(2*3*2*2 + 6*7*1*1) as opposed to O(2*7*2*2).
     expected_output = [
         6644.5, 6971.5, 7298.5, 7625.5, 7952.5, 8279.5, 8606.5, 8154.5, 8556.5,
         8958.5, 9360.5, 9762.5, 10164.5, 10566.5, 9664.5, 10141.5, 10618.5,
@@ -1083,6 +1083,46 @@ class SeparableConv2DTest(tf.test.TestCase):
                        pointwise_filter_in_sizes=[1, 1, 6, 7],
                        stride=1, padding="SAME",
                        expected=expected_output)
+
+  def testSeparableConv2DEqualInputOutputDepth(self):
+    # The output is the result of two convolutions:
+    # First with tensor_in[1, 4, 4, 2] * filter1[2, 2, 3, 3].
+    # Second with intermediate_out[1, 4, 4, 6] * filter2[1, 1, 6, 6].
+    # Complexity is O(2*3*2*2 + 6*6*1*1) as opposed to O(2*6*2*2).
+    expected_output = [
+        5742.0, 6069.0, 6396.0, 6723.0, 7050.0, 7377.0,
+        7047.0, 7449.0, 7851.0, 8253.0, 8655.0, 9057.0,
+        8352.0, 8829.0, 9306.0, 9783.0, 10260.0, 10737.0,
+        3582.0, 3783.0, 3984.0, 4185.0, 4386.0, 4587.0,
+        10962.0, 11589.0, 12216.0, 12843.0, 13470.0, 14097.0,
+        12267.0, 12969.0, 13671.0, 14373.0, 15075.0, 15777.0,
+        13572.0, 14349.0, 15126.0, 15903.0, 16680.0, 17457.0,
+        5616.0, 5931.0, 6246.0, 6561.0, 6876.0, 7191.0,
+        16182.0, 17109.0, 18036.0, 18963.0, 19890.0, 20817.0,
+        17487.0, 18489.0, 19491.0, 20493.0, 21495.0, 22497.0,
+        18792.0, 19869.0, 20946.0, 22023.0, 23100.0, 24177.0,
+        7650.0, 8079.0, 8508.0, 8937.0, 9366.0, 9795.0,
+        4963.5, 5227.5, 5491.5, 5755.5, 6019.5, 6283.5,
+        5328.0, 5611.5, 5895.0, 6178.5, 6462.0, 6745.5,
+        5692.5, 5995.5, 6298.5, 6601.5, 6904.5, 7207.5,
+        1757.25, 1840.5, 1923.75, 2007.0, 2090.25, 2173.5]
+
+    self._VerifyValues(tensor_in_sizes=[1, 4, 4, 2],
+                       depthwise_filter_in_sizes=[2, 2, 2, 3],
+                       pointwise_filter_in_sizes=[1, 1, 6, 6],
+                       stride=1, padding="SAME",
+                       expected=expected_output)
+
+  def testSeparableConv2DIllegalCases(self):
+    # Output depth less then input depth.
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Refusing to perform an overparameterized separable convolution"):
+      self._VerifyValues(tensor_in_sizes=[1, 4, 4, 2],
+                         depthwise_filter_in_sizes=[2, 2, 2, 3],
+                         pointwise_filter_in_sizes=[1, 1, 6, 5],
+                         stride=1, padding="SAME",
+                         expected=None)
 
 
 def GetInceptionFwdTest(input_size, filter_size, stride, padding):
