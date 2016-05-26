@@ -3185,8 +3185,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -3745,10 +3743,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
       }
     }
   }
@@ -4219,10 +4213,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
       }
     }
   }
@@ -4246,10 +4236,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
       }
     }
   }
@@ -4292,8 +4278,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -5701,10 +5685,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
       }
     }
   }
@@ -5792,8 +5772,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -9421,8 +9399,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -10249,8 +10225,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -10305,8 +10279,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -12079,8 +12051,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -12571,8 +12541,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
