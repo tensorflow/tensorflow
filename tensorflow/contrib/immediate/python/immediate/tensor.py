@@ -32,11 +32,11 @@ class Tensor(object):
   def dtype(self):
     return self.handle._dtype
 
-
   def as_numpy(self):
     """Convert current Tensor into numpy array."""
 
     return self.env.handle_to_numpy(self.handle)
+
 
 
   # for compatibility with array_ops transpose
@@ -58,9 +58,16 @@ class Tensor(object):
                                                                   dummy_input3])
     return dummy_op
 
-    
+   
 
   # tf.Tensor compatibility
+  def eval(self):
+    return self.as_numpy()
+
+  @property
+  def shape(self):
+    return self.get_shape()
+
   def get_shape(self):
     shape_tensor = self.env.tf.shape(self)
     shape_tuple = tuple(self.env.tensor_to_numpy(shape_tensor))
@@ -83,13 +90,39 @@ class Tensor(object):
 
 
   def __add__(self, other):
+    # TODO(yaroslavvb): complain if downcasting
+    if not isinstance(other, Tensor):
+      other = self.env.numpy_to_tensor(other, dtype=self.dtype)
     return self.env.tf.add(self, other)
 
+  def __radd__(self, other):
+    if not isinstance(other, Tensor):
+      other = self.env.numpy_to_tensor(other, dtype=self.dtype)
+    return self.env.tf.add(other, self)
+
+  def __neg__(self):
+    return self.env.tf.neg(self)
+
+
   def __sub__(self, other):
+    if not isinstance(other, Tensor):
+      other = self.env.numpy_to_tensor(other, dtype=self.dtype)
     return self.env.tf.sub(self, other)
 
+  def __rsub__(self, other):
+    if not isinstance(other, Tensor):
+      other = self.env.numpy_to_tensor(other, dtype=self.dtype)
+    return self.env.tf.sub(other, self)
+
   def __mul__(self, other):
+    if not isinstance(other, Tensor):
+      other = self.env.numpy_to_tensor(other, dtype=self.dtype)
     return self.env.tf.mul(self, other)
+
+  def __rmul__(self, other):
+    if not isinstance(other, Tensor):
+      other = self.env.numpy_to_tensor(other, dtype=self.dtype)
+    return self.env.tf.mul(other, self)
 
   def __bool__(self):
     # TODO(yaroslavvb): add in cast after Python-only ops are supported

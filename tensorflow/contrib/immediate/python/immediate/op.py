@@ -6,12 +6,11 @@ __all__ = ["Op", "OpFactory", "OpWrapper"]
 
 from .tensor import Tensor
 from .tensor import _ENABLE_DEBUG_LOGGING
+from .wrapping_util import get_op_input_argnames_argtypes
 
 from tensorflow.python.framework import ops as tf_ops
 
 import sys
-
-import wrapping_util
 
 # Implementation of Immediate Op with keyword call arguments
 class Op(object):
@@ -217,7 +216,7 @@ class OpWrapper(object):
     return "OpWrapper(%s, %s)"%(self.env, self.symbol)
 
 
-op_input_argnames, op_input_argtypes = wrapping_util.get_op_input_argnames_argtypes()
+op_input_argnames, op_input_argtypes = get_op_input_argnames_argtypes()
 
 class OpDefLibraryWrapper(object):
   def __init__(self, env, original_op_def_library):
@@ -225,9 +224,24 @@ class OpDefLibraryWrapper(object):
     self.original_op_def_library = original_op_def_library
 
   def apply_op(self, op_type_name, name=None, **keywords):
+    """
+    stuff
+    Retrieves op from the cache.
+    op = env.get_op(op_type_name, keywords)
+    return op(keywords)
+
+    get_op(op_type_name, keywords):
+
+    key = self.get_key(op_type_name, keywords)
+    if key in cache:
+      return cache[key]
+    else:
+      op_def = self.get_op_def(op_type_name, keywords)
+      ...
+    """
 
     if _ENABLE_DEBUG_LOGGING:
-      print("OpFactory __call__: %s(%s, %s)" % (symbol_name, args, kwargs))
+      print("OpFactory __call__: %s(%s)" % (op_type_name, keywords))
 
     # converted_args stores args converted to Tensors, ie, Python list [1]
     # becomes immediate.Tensor([1])), immediate.Tensor objects are unchanged
@@ -238,6 +252,18 @@ class OpDefLibraryWrapper(object):
 
     old_tensor_inputs = {}
     key = [op_type_name]
+
+    # NOTE(yaroslavvb): by converting to tensor here I can get dtype
+    # but that potentially gets a different dtype than what convert_to_tensor
+    # would've called because it uses attribute inference to determine
+    # types when flexible (Python) objects are provided. A better
+    # solution would call logic in op_def_library to determine types
+    # and skip the conversion step here
+    # self.original_op_def_library.apply_op
+    #    with MockGraph().as_default():
+    #      self.original_op_def_library.apply_op(op_type_name,
+    #                                            **keywords)
+      
 
     def try_convert_to_itensor(itensor):
       if isinstance(itensor, Tensor):
@@ -326,4 +352,14 @@ class ConvertToTensorWrapper(object):
     if isinstance(value, Tensor):
       return value
     return self.env.numpy_to_tensor(value, dtype)
+
+
+class MockGraph(tf_ops.Graph):
+  def __init__(self):
+    super(MockGraph, self).__init__()
+
+  def create_op(self, op_type, inputs, dtypes,
+                input_types=None, name=None, attrs=None, op_def=None,
+                compute_shapes=True, compute_device=True):
+    print("Intercepted create_op %s %s %s" %(op_type, op_def, attrs))
 
