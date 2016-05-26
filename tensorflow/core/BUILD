@@ -1231,6 +1231,10 @@ cc_test(
 # higher level tests
 tf_cc_tests(
     size = "small",
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = glob(
         [
@@ -1277,10 +1281,6 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
-    linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
 )
 
 # GPU-related tests

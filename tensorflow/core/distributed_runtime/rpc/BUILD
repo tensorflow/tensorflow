@@ -324,6 +324,10 @@ cc_library(
 
 tf_cuda_cc_tests(
     size = "small",
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [],
     tests = [
@@ -347,10 +351,6 @@ tf_cuda_cc_tests(
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:server_lib",
     ],
-    linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
 )
 
 tf_cuda_cc_tests(

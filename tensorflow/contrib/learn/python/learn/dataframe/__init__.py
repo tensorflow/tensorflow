@@ -23,4 +23,8 @@ from tensorflow.contrib.learn.python.learn.dataframe.dataframe import DataFrame
 from tensorflow.contrib.learn.python.learn.dataframe.transform import parameter
 from tensorflow.contrib.learn.python.learn.dataframe.transform import Transform
 
+# Transforms
+from tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source import ReaderSource
+
+
 __all__ = ['Column', 'TransformedColumn', 'DataFrame', 'parameter', 'Transform']

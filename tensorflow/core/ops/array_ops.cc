@@ -367,7 +367,7 @@ REGISTER_OP("Reverse")
     .Input("tensor: T")
     .Input("dims: bool")
     .Output("output: T")
-    .Attr("T: {uint8, int8, int32, bool, float, double}")
+    .Attr("T: {uint8, int8, int32, bool, half, float, double}")
     .Doc(R"Doc(
 Reverses specific dimensions of a tensor.
 

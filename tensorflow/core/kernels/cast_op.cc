@@ -35,22 +35,11 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
-template <typename Device, typename Tout, typename Tin>
-void CastMaybeInline(const Device& d, typename TTypes<Tout>::Flat o,
-                     typename TTypes<Tin>::ConstFlat i) {
-  if (o.size() * (sizeof(Tin) + sizeof(Tout)) < 131072) {
-    // Small cast on a CPU: do inline
-    o = i.template cast<Tout>();
-  } else {
-    o.device(d) = i.template cast<Tout>();
-  }
-}
-
 template <typename O, typename I>
 struct CastFunctor<CPUDevice, O, I> {
   void operator()(const CPUDevice& d, typename TTypes<O>::Flat o,
                   typename TTypes<I>::ConstFlat i) {
-    CastMaybeInline<CPUDevice, O, I>(d, o, i);
+    o.device(d) = i.template cast<O>();
   }
 };
 

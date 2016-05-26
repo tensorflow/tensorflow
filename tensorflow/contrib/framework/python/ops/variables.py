@@ -18,10 +18,14 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -404,6 +408,107 @@ def get_unique_variable(var_op_name):
       return candidate
   raise ValueError('Variable %s does not uniquely identify a variable',
                    var_op_name)
+
+
+def assign_from_values(var_names_to_values):
+  """Creates an assignment operation from a given mapping.
+
+  This function provides a mechanism for performing assignment of variables
+  to values in a way that does not fill the graph with large assignment values.
+
+  Args:
+    var_names_to_values: A map from variable names to values.
+
+  Returns:
+    assign_op: An `Operation` that assigns each of the given variables to the
+      requested values.
+    feed_dict: The feed dictionary to use when evaluating `assign_op`.
+
+  Raises:
+    ValueError: if any of the given variable names were not found.
+  """
+  feed_dict = {}
+  assign_ops = []
+
+  for var_name in var_names_to_values:
+    var_value = var_names_to_values[var_name]
+    var = ops.get_collection(ops.GraphKeys.VARIABLES, var_name)
+    if not var:
+      raise ValueError('Variable %s wasnt found', var_name)
+    elif len(var) > 1:
+      # tf.get_collection is just a filter on the prefix: find the exact match:
+      found = False
+      for v in var:
+        if v.op.name == var_name:
+          var = v
+          found = True
+          break
+
+      if not found:
+        raise ValueError('Variable %s doesnt uniquely identify a variable',
+                         var_name)
+    else:
+      var = var[0]
+
+    # TODO(nsilberman): ensure placeholder and assign are on the same device.
+    # Assign a placeholder to the value that will be filled later.
+    placeholder_name = 'placeholder/' + var.op.name
+    placeholder_value = array_ops.placeholder(
+        dtype=var.dtype.base_dtype,
+        shape=var.get_shape(),
+        name=placeholder_name)
+    assign_ops.append(var.assign(placeholder_value))
+
+    feed_dict[placeholder_value] = var_value.reshape(var.get_shape())
+
+  assign_op = control_flow_ops.group(*assign_ops)
+  return assign_op, feed_dict
+
+
+# TODO(nsilberman): add flag to load exponential moving averages instead
+def assign_from_checkpoint(model_path, var_list):
+  """Creates an operation to assign specific variables from a checkpoint.
+
+  Args:
+    model_path: The full path to the model checkpoint. To get latest checkpoint
+        use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
+    var_list: A list of `Variable` objects or a dictionary mapping names in the
+        checkpoint to the correspoing variables to initialize. If empty or None,
+        it would return  no_op(), None.
+
+  Returns:
+    the restore_op and the feed_dict that need to be run to restore var_list.
+
+  Raises:
+    ValueError: If the checkpoint specified at `model_path` is missing one of
+      the variables in `var_list`.
+  """
+  reader = pywrap_tensorflow.NewCheckpointReader(model_path)
+
+  if isinstance(var_list, (tuple, list)):
+    var_list = {var.op.name: var for var in var_list}
+
+  feed_dict = {}
+  assign_ops = []
+
+  for checkpoint_var_name in var_list:
+    var = var_list[checkpoint_var_name]
+    if not reader.has_tensor(checkpoint_var_name):
+      raise ValueError(
+          'Checkpoint is missing variable [%s]' % checkpoint_var_name)
+
+    var_value = reader.get_tensor(checkpoint_var_name)
+    placeholder_name = 'placeholder/' + var.op.name
+    placeholder_value = array_ops.placeholder(
+        dtype=var.dtype.base_dtype,
+        shape=var.get_shape(),
+        name=placeholder_name)
+    assign_ops.append(var.assign(placeholder_value))
+
+    feed_dict[placeholder_value] = var_value.reshape(var.get_shape())
+
+  assign_op = control_flow_ops.group(*assign_ops)
+  return assign_op, feed_dict
 
 
 class VariableDeviceChooser(object):

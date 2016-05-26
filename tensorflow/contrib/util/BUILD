@@ -36,6 +36,10 @@ cc_binary(
 cc_test(
     name = "convert_graphdef_memmapped_format_test",
     srcs = ["convert_graphdef_memmapped_format_test.cc"],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":convert_graphdef_memmapped_format_lib",
         "//tensorflow/cc:cc_ops",
@@ -46,10 +50,6 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-    linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
 )
 
 cc_binary(

@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""tensor_util tests."""
+"""variables tests."""
 
-# pylint: disable=unused-import
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
+import numpy as np
 import tensorflow as tf
 
 
@@ -637,11 +639,172 @@ class GetVariablesByNameTest(tf.test.TestCase):
       fooa = tf.contrib.framework.variable('fooa', [5])
       b_a = tf.contrib.framework.variable('B/a', [5])
       matched_variables = tf.contrib.framework.get_variables_by_name('a')
-      for v in matched_variables:
-        print(v.name)
       self.assertEquals([a, b_a], matched_variables)
       matched_variables = tf.contrib.framework.get_variables_by_name('fooa')
       self.assertEquals([fooa], matched_variables)
+
+
+class AssignFromValuesTest(tf.test.TestCase):
+
+  def testNoScopes(self):
+    init_value0 = np.asarray([1.0, 3.0, 9.0]).reshape((1, 3, 1))
+    init_value1 = np.asarray([2.0, 4.0, 6.0, 8.0]).reshape((2, 1, 2))
+
+    with self.test_session() as sess:
+      initializer = tf.truncated_normal_initializer(stddev=.1)
+      var0 = tf.contrib.framework.variables.variable(
+          'my_var0', shape=[1, 3, 1], initializer=initializer)
+      var1 = tf.contrib.framework.variables.variable(
+          'my_var1', shape=[2, 1, 2], initializer=initializer)
+
+      var_names_to_values = {'my_var0': init_value0, 'my_var1': init_value1}
+      assign_op, feed_dict = tf.contrib.framework.variables.assign_from_values(
+          var_names_to_values)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      sess.run(assign_op, feed_dict)
+
+      # Request and test the variable values:
+      var0, var1 = sess.run([var0, var1])
+      self.assertAllEqual(init_value0, var0)
+      self.assertAllEqual(init_value1, var1)
+
+  def testWithScopes(self):
+    init_value0 = np.asarray([1.0, 3.0, 9.0]).reshape((1, 3, 1))
+    init_value1 = np.asarray([2.0, 4.0, 6.0, 8.0]).reshape((2, 1, 2))
+
+    with self.test_session() as sess:
+      initializer = tf.truncated_normal_initializer(stddev=.1)
+
+      with tf.variable_scope('my_model/my_layer0'):
+        var0 = tf.contrib.framework.variables.variable(
+            'my_var0', shape=[1, 3, 1], initializer=initializer)
+      with tf.variable_scope('my_model/my_layer1'):
+        var1 = tf.contrib.framework.variables.variable(
+            'my_var1', shape=[2, 1, 2], initializer=initializer)
+
+      var_names_to_values = {'my_model/my_layer0/my_var0': init_value0,
+                             'my_model/my_layer1/my_var1': init_value1}
+      assign_op, feed_dict = tf.contrib.framework.variables.assign_from_values(
+          var_names_to_values)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      sess.run(assign_op, feed_dict)
+
+      # Request and test the variable values:
+      var0, var1 = sess.run([var0, var1])
+      self.assertAllEqual(init_value0, var0)
+      self.assertAllEqual(init_value1, var1)
+
+
+class AssignFromCheckpointTest(tf.test.TestCase):
+
+  def create_checkpoint_from_values(self, var_names_to_values, checkpoint_dir,
+                                    global_step=None):
+    """Creates a checkpoint from a mapping of name to values in model_dir.
+
+    Args:
+      var_names_to_values: a map from variable names to values.
+      checkpoint_dir: the directory where the checkpoint will be saved.
+      global_step: the global step used to save the checkpoint.
+
+    Returns:
+      the model_path to the checkpoint.
+    """
+    var_list = []
+    with tf.Session('', graph=tf.Graph()) as sess:
+      # Create a set of variables to save in the checkpoint.
+      for var_name in var_names_to_values:
+        var_value = var_names_to_values[var_name]
+        var_list.append(tf.Variable(var_value, name=var_name))
+      saver = tf.train.Saver(var_list)
+      init_op = tf.initialize_variables(var_list)
+      sess.run(init_op)
+      # Save the initialized values in the file at 'checkpoint_dir'
+      return saver.save(sess, checkpoint_dir, global_step=global_step)
+
+  def testLoadExistingVariables(self):
+    init_value0 = 10.0
+    init_value1 = 20.0
+    var_names_to_values = {'v0': init_value0, 'v1': init_value1}
+
+    model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with self.test_session() as sess:
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      var0 = tf.contrib.framework.variables.variable('my_var0', shape=[])
+      var1 = tf.contrib.framework.variables.variable('my_var1', shape=[])
+
+      vars_to_restore = {'v0': var0, 'v1': var1}
+      op, feed_dict = tf.contrib.framework.variables.assign_from_checkpoint(
+          model_path, vars_to_restore)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      sess.run(op, feed_dict)
+
+      # Request and test the variable values:
+      self.assertEqual(init_value0, var0.eval())
+      self.assertEqual(init_value1, var1.eval())
+
+  def testRaisesValueErrorIfAVariableIsntFound(self):
+    init_value0 = 10.0
+    init_value1 = 20.0
+    var_names_to_values = {'v0': init_value0, 'v1': init_value1}
+
+    model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with self.test_session():
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      var0 = tf.contrib.framework.variables.variable('my_var0', shape=[])
+      var1 = tf.contrib.framework.variables.variable('my_var1', shape=[])
+
+      vars_to_restore = {'v0_fake': var0, 'v1': var1}
+
+      with self.assertRaises(ValueError):
+        tf.contrib.framework.variables.assign_from_checkpoint(model_path,
+                                                              vars_to_restore)
+
+  def testInitFromCheckpointWithScopes(self):
+    init_value0 = np.asarray([1.0, 3.0, 9.0],
+                             dtype=np.float32).reshape((1, 3, 1))
+    init_value1 = np.asarray([2.0, 4.0, 6.0, 8.0],
+                             dtype=np.float32).reshape((2, 1, 2))
+
+    var_names_to_values = {'layer0/v0': init_value0, 'layer1/v1': init_value1}
+    model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with self.test_session() as sess:
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      with tf.variable_scope('my_model/my_layer0'):
+        var0 = tf.contrib.framework.variables.variable('my_var0',
+                                                       shape=init_value0.shape)
+      with tf.variable_scope('my_model/my_layer1'):
+        var1 = tf.contrib.framework.variables.variable('my_var1',
+                                                       shape=init_value1.shape)
+
+      vars_to_restore = {'layer0/v0': var0, 'layer1/v1': var1}
+      op, feed_dict = tf.contrib.framework.variables.assign_from_checkpoint(
+          model_path,
+          vars_to_restore)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      sess.run(op, feed_dict)
+
+      # Request and test the variable values:
+      self.assertAllEqual(init_value0, var0.eval())
+      self.assertAllEqual(init_value1, var1.eval())
 
 if __name__ == '__main__':
   tf.test.main()

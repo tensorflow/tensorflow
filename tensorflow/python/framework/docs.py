@@ -165,6 +165,14 @@ def _get_anchor(module_to_name, fullname):
   return anchor
 
 
+def _stable_hash(s):
+  """A simple string hash that won't change from run to run."""
+  ret = 0
+  for c in s:
+    ret = ret * 97 + ord(c)
+  return ret
+
+
 class Library(Document):
   """An automatically generated document for a set of functions and classes."""
 
@@ -258,7 +266,7 @@ class Library(Document):
     When generating individual files for each function and class, we shard
     the files across several directories to avoid hitting the limit for
     files per directory. This function determines the subdirectory for
-    a member based on a hash of its name.
+    a member based on a stable hash of its name.
 
     Args:
       name: string. The name of a function or class.
@@ -266,7 +274,7 @@ class Library(Document):
     Returns:
       The path to a subdirectory of the api docs directory.
     """
-    index = hash(name) % _num_subdirs
+    index = _stable_hash(name) % _num_subdirs
     return os.path.join(self.functions_and_classes_dir,
                         _subdir_prefix + str(index))
 
