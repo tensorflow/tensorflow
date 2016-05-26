@@ -274,9 +274,9 @@ example we fetched the single node `state`, but you can also fetch multiple
 tensors:
 
 ```python
-input1 = tf.constant(3.0)
-input2 = tf.constant(2.0)
-input3 = tf.constant(5.0)
+input1 = tf.constant([3.0])
+input2 = tf.constant([2.0])
+input3 = tf.constant([5.0])
 intermed = tf.add(input2, input3)
 mul = tf.mul(input1, intermed)
 
