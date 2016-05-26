@@ -119,7 +119,7 @@ class TensorFlowTestCase(ImmediateTestCase):
        yield immediate_session
 
 # session for immediate execution, converts immediate tensors to numpy arrays
-class ImmediateSession(session.Session):
+class ImmediateSession(object):
 
   def run(self, fetches, *args, **kwargs):
     return [itensor.as_numpy() for itensor in fetches]
