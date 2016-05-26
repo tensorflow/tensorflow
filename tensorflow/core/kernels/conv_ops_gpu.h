@@ -64,8 +64,7 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
       return perftools::gputools::port::StatusOr<
-          perftools::gputools::DeviceMemory<uint8>>(
-          AsDeviceMemory<uint8>(nullptr, 0));
+          perftools::gputools::DeviceMemory<uint8>>();
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
