@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/simple_placer.h"
 
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -182,6 +183,7 @@ class ColocationGraph {
   Status ColocateNodes(const Node& x, const Node& y) {
     int x_root = FindRoot(x.id());
     int y_root = FindRoot(y.id());
+
     Status s;
     if (x_root != y_root) {
       // Merge the sets by swinging the parent pointer of the smaller
@@ -229,6 +231,12 @@ class ColocationGraph {
                                        s.error_message());
       }
 
+      // Transfer ids in the old group to the new one.
+      members_[new_root].ids_in_group.insert(
+          members_[old_root].ids_in_group.begin(),
+          members_[old_root].ids_in_group.end());
+      members_[old_root].ids_in_group.clear();
+
       // Ensure that the common root has at least one supported device
       // type, by computing the intersection of
       // members_[new_root].supported_device_types and
@@ -266,6 +274,9 @@ class ColocationGraph {
       *possible_devices = members_[node_root].possible_devices;
       return Status::OK();
     }
+
+    // String containing additional debugging info on failures.
+    string debug_info;
 
     // We have not yet computed the possible devices for the
     // colocated node set containing 'node', so we do so now using the
@@ -310,6 +321,8 @@ class ColocationGraph {
         // Return an error when a physical device that matches an explicit
         // device specification is not found. This ensures that we don't
         // assign a node to GPU when the user wanted to force it on CPU.
+        AddDebugInfo(node_root, &debug_info);
+
         DeviceNameUtils::ParsedName specified_device_name;
         if (DeviceNameUtils::ParseFullName(node->def().device(),
                                            &specified_device_name) &&
@@ -334,16 +347,17 @@ class ColocationGraph {
                 node->def().device(),
                 "' because no devices matching that specification "
                 "are registered in this process; available devices: ",
-                str_util::Join(device_names, ", "));
+                str_util::Join(device_names, ", "), debug_info);
           } else if (specified_device_name.has_type) {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",
                 node->def().device(), "' because no supported kernel for ",
-                specified_device_name.type, " devices is available");
+                specified_device_name.type, " devices is available.",
+                debug_info);
           } else {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",
-                node->def().device());
+                node->def().device(), debug_info);
           }
         } else {
           // The specified device may be a valid device but the
@@ -355,7 +369,7 @@ class ColocationGraph {
               "required incompatible device '",
               DeviceNameUtils::ParsedNameToString(
                   members_[node_root].device_name),
-              "'");
+              "'", debug_info);
         }
       }
     } else {
@@ -368,10 +382,11 @@ class ColocationGraph {
           device_set_->devices(), members_[node_root].supported_device_types);
 
       if (devices.empty()) {
+        AddDebugInfo(node_root, &debug_info);
         return errors::InvalidArgument(
             "Node had no OpKernel registered to support this operation: ",
             "Operation was ", node->type_string(), " and inputs were ",
-            DataTypeVectorString(node->input_types()));
+            DataTypeVectorString(node->input_types()), debug_info);
       }
     }
 
@@ -389,6 +404,15 @@ class ColocationGraph {
     // The id of the node that is the parent of this one, or its own
     // id if it is a root. parent <= 0 indicates that this member is invalid.
     int parent = -1;
+
+    // The set of ids that are part of the disjoint node set forest.
+    //
+    // This is only fully specified in the root of a disjoint
+    // node set forest.
+    std::set<int> ids_in_group;
+
+    // The type of the op for this node.
+    string op_type;
 
     // A proxy for the depth of the tree that is used to prefer
     // connecting smaller trees to larger trees when merging disjoint
@@ -410,8 +434,41 @@ class ColocationGraph {
     std::vector<Device*> possible_devices;
   };
 
+  // Adds debugging info to 'output' for the node referred to by
+  // 'node_root'.
+  void AddDebugInfo(const int node_root, string* output) {
+    if (members_[node_root].ids_in_group.size() > 1) {
+      strings::StrAppend(output, "\nColocation Debug Info:\n");
+
+      // If this node is part of a colocation group, then we want to
+      // collect the mapping of ops to supported devices, so that
+      // the user can see why an unsatisfiable placement occurred.
+      strings::StrAppend(
+          output, "Colocation group had the following types and devices: ");
+
+      std::unordered_map<string, string> type_to_devices;
+      for (const int id : members_[node_root].ids_in_group) {
+        const string& op_type = members_[id].op_type;
+        string devices_registered;
+        for (const auto& device_type : members_[id].supported_device_types) {
+          strings::StrAppend(&devices_registered, DeviceTypeString(device_type),
+                             " ");
+        }
+
+        type_to_devices[op_type] = devices_registered;
+      }
+
+      for (const auto& td : type_to_devices) {
+        strings::StrAppend(output, "\n", td.first, ": ", td.second);
+      }
+    }
+  }
+
   Status InitializeMember(const Node& node, Member* member) {
     const int id = node.id();
+    member->ids_in_group.insert(id);
+    member->op_type = node.type_string();
+
     if (id < 0) {
       return errors::InvalidArgument("Node id was not positive: ", id);
     }
