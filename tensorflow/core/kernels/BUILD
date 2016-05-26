@@ -1552,6 +1552,24 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "batchnorm_training_op",
+    prefix = "cudnn_batchnorm_op",
+    #hdrs = ["cudnn_batchnorm_op.h"],
+    #srcs = ["cudnn_batchnorm_op.cc"],
+
+    deps = [
+        ":ops_util",
+        ":bounds_check",
+        ":conv_2d",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:batchnorm_training_op_op_lib",
+        "//third_party/eigen3"
+    ],
+)
+
+
 tf_cc_test(
     name = "multinomial_op_test",
     size = "small",

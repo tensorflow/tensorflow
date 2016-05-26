@@ -64,6 +64,35 @@ class CudnnSupport : public dnn::DnnSupport {
                   dnn::AlgorithmType algorithm,
                   dnn::ProfileResult* output_profile_result) override;
 
+  bool DoBatchNormTrainingForward(
+                    Stream* stream,
+                    const double epsilon,
+                    const dnn::BatchDescriptor& input_dimensions,
+                    const DeviceMemory<float>& input_data,
+                    const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
+                    const DeviceMemory<float>& scale_data,
+                    const DeviceMemory<float>& bias_data,
+                    const dnn::BatchDescriptor& output_dimensions,
+                    DeviceMemory<float>* output_data,
+                    DeviceMemory<float>* save_mean,
+                    DeviceMemory<float>* save_inv_var) override;
+
+  bool DoBatchNormTrainingBackward(
+      Stream* stream,
+      const double epsilon,
+      const dnn::BatchDescriptor& input_dimensions,
+      const DeviceMemory<float>& input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      const DeviceMemory<float>& output_data_grad,
+      const dnn::BatchDescriptor& scale_bias_mean_var_dimensions,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& saved_mean,
+      const DeviceMemory<float>& saved_inv_var,
+      DeviceMemory<float>* input_data_grad,
+      DeviceMemory<float>* scale_grad,
+      DeviceMemory<float>* bias_grad
+  ) override;
+
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
                   const DeviceMemory<double>& input_data,
                   const dnn::FilterDescriptor& filter_descriptor,

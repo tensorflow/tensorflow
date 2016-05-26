@@ -25,6 +25,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python import gen_batchnorm_training_op
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
@@ -328,6 +329,19 @@ def _BatchNormWithGlobalNormalizationGrad(op, grad):
       op.get_attr("variance_epsilon"), op.get_attr("scale_after_normalization"))
   return dx, dm, dv, db, dg
 
+@ops.RegisterGradient("BatchNormTraining")
+def _BatchNormTrainingGrad(op, output_grad, saved_mean_grad, saved_inv_var_grad):
+    input_data = op.inputs[0]
+    scale_data = op.inputs[1]
+
+    saved_mean = op.outputs[1]
+    saved_inv_var = op.outputs[2]
+
+    dinput, dscale, dbias = gen_batchnorm_training_op._batch_norm_training_grad(input_data,
+        output_grad, scale_data, saved_mean, saved_inv_var,
+        epsilon=op.get_attr("epsilon"), data_format=op.get_attr("data_format"))
+
+    return dinput, dscale, dbias
 
 @ops.RegisterGradient("L2Loss")
 def _L2LossGrad(op, grad):
