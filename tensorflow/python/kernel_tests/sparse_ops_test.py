@@ -417,16 +417,27 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
 
 class SparseReduceSumTest(test_util.TensorFlowTestCase):
 
-  def _compare(self, sp_t, reduction_axes, keep_dims):
+  # [[1, ?, 1]
+  #  [?, 1, ?]]
+  # where ? is implictly-zero.
+  ind = np.array([[0, 0], [0, 2], [1, 1]]).astype(np.int64)
+  vals = np.array([1, 1, 1]).astype(np.int32)
+  shape = np.array([2, 3]).astype(np.int64)
+
+  def _compare(self, sp_t, reduction_axes, ndims, keep_dims):
     densified = sparse_ops.sparse_tensor_to_dense(sp_t).eval()
 
     np_ans = densified
     if reduction_axes is None:
       np_ans = np.sum(np_ans, keepdims=keep_dims)
     else:
-      if isinstance(reduction_axes, list):
-        reduction_axes = sorted(reduction_axes)  # loop below depends on sorted
+      if not isinstance(reduction_axes, list):  # Single scalar.
+        reduction_axes = [reduction_axes]
       reduction_axes = np.array(reduction_axes).astype(np.int32)
+      # Handles negative axes.
+      reduction_axes = (reduction_axes + ndims) % ndims
+      # Loop below depends on sorted.
+      reduction_axes.sort()
       for ra in reduction_axes.ravel()[::-1]:
         np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
 
@@ -436,25 +447,21 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(np_ans, out)
 
-  def _compare_all(self, sp_t, reduction_axes):
-    self._compare(sp_t, reduction_axes, False)
-    self._compare(sp_t, reduction_axes, True)
+  def _compare_all(self, sp_t, reduction_axes, ndims):
+    self._compare(sp_t, reduction_axes, ndims, False)
+    self._compare(sp_t, reduction_axes, ndims, True)
 
   def testSimpleAndRandomInputs(self):
-    # [[1, ?, 1]
-    #  [?, 1, ?]]
-    # where ? is implictly-zero.
-    ind = np.array([[0, 0], [0, 2], [1, 1]]).astype(np.int64)
-    vals = np.array([1, 1, 1]).astype(np.int32)
-    shape = np.array([2, 3]).astype(np.int64)
-    sp_t = ops.SparseTensor(ind, vals, shape)
+    sp_t = ops.SparseTensor(self.ind, self.vals, self.shape)
 
     with self.test_session(use_gpu=False):
-      self._compare_all(sp_t, None)
-      self._compare_all(sp_t, 0)
-      self._compare_all(sp_t, [1])
-      self._compare_all(sp_t, [0, 1])
-      self._compare_all(sp_t, [1, 0])
+      self._compare_all(sp_t, None, ndims=2)
+      self._compare_all(sp_t, 0, ndims=2)
+      self._compare_all(sp_t, [1], ndims=2)
+      self._compare_all(sp_t, [0, 1], ndims=2)
+      self._compare_all(sp_t, [1, 0], ndims=2)
+      self._compare_all(sp_t, [-1], ndims=2)
+      self._compare_all(sp_t, [1, -2], ndims=2)
 
     np.random.seed(1618)
     test_dims = [(1618, 1, 11, 7, 1), (1,), (1, 1, 1)]
@@ -462,11 +469,19 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
       for dims in test_dims:
         sp_t, unused_nnz = _sparsify(np.random.randn(*dims))
         # reduce all using None
-        self._compare_all(sp_t, None)
+        self._compare_all(sp_t, None, ndims=len(dims))
         # reduce random axes from 1D to N-D
         for d in range(1, len(dims) + 1):
           axes = np.random.choice(len(dims), size=d, replace=False).tolist()
-          self._compare_all(sp_t, axes)
+          self._compare_all(sp_t, axes, ndims=len(dims))
+
+  def testInvalidAxes(self):
+    sp_t = ops.SparseTensor(self.ind, self.vals, self.shape)
+    with self.test_session(use_gpu=False):
+      with self.assertRaisesOpError("Invalid reduction dimension -3"):
+        sparse_ops.sparse_reduce_sum(sp_t, -3).eval()
+      with self.assertRaisesOpError("Invalid reduction dimension 2"):
+        sparse_ops.sparse_reduce_sum(sp_t, 2).eval()
 
   def testGradient(self):
     np.random.seed(8161)
@@ -482,6 +497,12 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
           err = tf.test.compute_gradient_error(sp_t.values, (nnz,), reduced,
                                                reduced.eval().shape)
           self.assertLess(err, 1e-3)
+
+        # Tests for negative axes.
+        reduced = sparse_ops.sparse_reduce_sum(sp_t, -1)
+        err = tf.test.compute_gradient_error(sp_t.values, (nnz,), reduced,
+                                             reduced.eval().shape)
+        self.assertLess(err, 1e-3)
 
 
 class SparseMathOpsTest(test_util.TensorFlowTestCase):

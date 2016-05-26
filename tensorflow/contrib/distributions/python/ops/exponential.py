@@ -70,6 +70,7 @@ class Exponential(gamma.Gamma):
     """
     broadcast_shape = self._lam.get_shape()
     with ops.op_scope([self.lam, n], name, "ExponentialSample"):
+      n = ops.convert_to_tensor(n, name="n")
       shape = array_ops.concat(
           0, [array_ops.pack([n]), array_ops.shape(self._lam)])
       sampled = random_ops.random_uniform(

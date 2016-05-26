@@ -849,6 +849,43 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
       ProfileResult* output_profile_result) = 0;
 
+  // Enqueues a single-precision backward convolution (for bias) operation onto
+  // the stream.
+  //
+  // Arguments:
+  //  stream: borrowed pointer to the stream that the 'convolve' operation
+  //    should be enqueued onto.
+  //  input_descriptor: dimensions of the input layer.
+  //  input_data: un-owned device memory region which contains the
+  //    convolution input.
+  //  bias_descriptor: dimensions of the bias tensor. Should be the same as the
+  //    input dimensions, but with the spatial dimensions set to 1.
+  //  backward_filter_data: un-owned device memory region in which to place the
+  //    backprop of the bias.
+  virtual bool DoConvolveBackwardBias(Stream* stream,
+                                      const BatchDescriptor& input_descriptor,
+                                      const DeviceMemory<float>& input_data,
+                                      const BatchDescriptor& bias_descriptor,
+                                      DeviceMemory<float>* backward_bias_data) {
+    return false;
+  }
+
+  virtual bool DoConvolveBackwardBias(
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      const DeviceMemory<double>& input_data,
+      const BatchDescriptor& bias_descriptor,
+      DeviceMemory<double>* backward_bias_data) {
+    return false;
+  }
+
+  virtual bool DoConvolveBackwardBias(
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const BatchDescriptor& bias_descriptor,
+      DeviceMemory<Eigen::half>* backward_bias_data) {
+    return false;
+  }
+
   // Fully connects the "nodes" (float values) in input_data with
   // shape input_dimensions to output_data with output_dimensions
   // using provided weights. This is equivalent to computing a matrix

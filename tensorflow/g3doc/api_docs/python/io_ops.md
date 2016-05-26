@@ -1289,7 +1289,7 @@ example_names: ["input0", "input1"],
 features: {
     "kw": VarLenFeature(tf.string),
     "dank": VarLenFeature(tf.int64),
-    "gps": VarLenFeature(tf.float),
+    "gps": VarLenFeature(tf.float32),
 }
 ```
 

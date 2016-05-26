@@ -1916,10 +1916,18 @@ class Graph(object):
 
   def __init__(self):
     """Creates a new, empty Graph."""
-    self._nodes_by_id = dict()
-    self._next_node_id = [dict()]
-    self._next_id_counter = 0
-    self._nodes_by_name = dict()
+    # Protects the core state that may be accessed by multiple readers.
+    # Only state that can be returned via public accessors (`as_graph_def()`,
+    # `get_operations()`, `as_graph_element()`, `get_collection()`, and
+    # `get_collection_ref()`) is by the lock. Thread-safety is provided on a
+    # best-effort basis to support buggy programs, and is not guaranteed by the
+    # public `tf.Graph` API.
+    # NOTE(mrry): This does not protect the various stacks. A warning will
+    # be reported if these are used from multiple threads
+    self._lock = threading.Lock()
+    self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
+    self._next_id_counter = 0  # GUARDED_BY(self._lock)
+    self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
     # Current name stack: uniquified names
     self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
@@ -1987,15 +1995,15 @@ class Graph(object):
     self._check_not_finalized()
     if not isinstance(op, (Tensor, Operation)):
       raise TypeError("op must be a Tensor or Operation: %s" % op)
-
-    if op._id in self._nodes_by_id:
-      raise ValueError("cannot add an op with id %d as it already "
-                       "exists in the graph" % op._id)
-    if op.name in self._nodes_by_name:
-      raise ValueError("cannot add op with name %s as that name "
-                       "is already used" % op.name)
-    self._nodes_by_id[op._id] = op
-    self._nodes_by_name[op.name] = op
+    with self._lock:
+      if op._id in self._nodes_by_id:
+        raise ValueError("cannot add an op with id %d as it already "
+                         "exists in the graph" % op._id)
+      if op.name in self._nodes_by_name:
+        raise ValueError("cannot add op with name %s as that name "
+                         "is already used" % op.name)
+      self._nodes_by_id[op._id] = op
+      self._nodes_by_name[op.name] = op
 
   @property
   def version(self):
@@ -2081,31 +2089,32 @@ class Graph(object):
     Raises:
       ValueError: If the `graph_def` would be too large.
     """
-    graph = graph_pb2.GraphDef()
-    graph.versions.CopyFrom(self._graph_def_versions)
-    bytesize = 0
-    for op_id in sorted(self._nodes_by_id):
-      op = self._nodes_by_id[op_id]
-      if from_version is None or op_id > from_version:
-        graph.node.extend([op.node_def])
-        if op.outputs and add_shapes:
-          assert "_output_shapes" not in graph.node[-1].attr
-          graph.node[-1].attr["_output_shapes"].list.shape.extend([
-              output.get_shape().as_proto() for output in op.outputs])
-        bytesize += op.node_def.ByteSize()
-        if bytesize >= (1 << 31) or bytesize < 0:
-          raise ValueError("GraphDef cannot be larger than 2GB.")
-    if self._functions:
-      for f in self._functions.values():
-        bytesize += f.ByteSize()
-        if bytesize >= (1 << 31) or bytesize < 0:
-          raise ValueError("GraphDef cannot be larger than 2GB.")
-      graph.library.function.extend(self._functions.values())
-      for func in self._function_gradient:
-        grad_def = function_pb2.GradientDef()
-        grad_def.function_name = func
-        grad_def.gradient_func = self._function_gradient[func]
-        graph.library.gradient.extend([grad_def])
+    with self._lock:
+      graph = graph_pb2.GraphDef()
+      graph.versions.CopyFrom(self._graph_def_versions)
+      bytesize = 0
+      for op_id in sorted(self._nodes_by_id):
+        op = self._nodes_by_id[op_id]
+        if from_version is None or op_id > from_version:
+          graph.node.extend([op.node_def])
+          if op.outputs and add_shapes:
+            assert "_output_shapes" not in graph.node[-1].attr
+            graph.node[-1].attr["_output_shapes"].list.shape.extend([
+                output.get_shape().as_proto() for output in op.outputs])
+          bytesize += op.node_def.ByteSize()
+          if bytesize >= (1 << 31) or bytesize < 0:
+            raise ValueError("GraphDef cannot be larger than 2GB.")
+      if self._functions:
+        for f in self._functions.values():
+          bytesize += f.ByteSize()
+          if bytesize >= (1 << 31) or bytesize < 0:
+            raise ValueError("GraphDef cannot be larger than 2GB.")
+        graph.library.function.extend(self._functions.values())
+        for func in self._function_gradient:
+          grad_def = function_pb2.GradientDef()
+          grad_def.function_name = func
+          grad_def.gradient_func = self._function_gradient[func]
+          graph.library.gradient.extend([grad_def])
 
     return graph
 
@@ -2298,7 +2307,11 @@ class Graph(object):
         example, an invalid string.
       KeyError: If `obj` is not an object in the graph.
     """
+    with self._lock:
+      return self._as_graph_element_locked(obj, allow_tensor, allow_operation)
 
+  def _as_graph_element_locked(self, obj, allow_tensor, allow_operation):
+    """See `Graph.as_graph_element()` for details."""
     # The vast majority of this function is figuring
     # out what an API user might be doing wrong, so
     # that we can give helpful error messages.
@@ -2398,7 +2411,8 @@ class Graph(object):
     Returns:
       A list of Operations.
     """
-    return list(self._nodes_by_id.values())
+    with self._lock:
+      return list(self._nodes_by_id.values())
 
   def get_operation_by_name(self, name):
     """Returns the `Operation` with the given `name`.
@@ -2445,8 +2459,9 @@ class Graph(object):
   def _next_id(self):
     """Id for next Operation instance. Also increments the internal id."""
     self._check_not_finalized()
-    self._next_id_counter += 1
-    return self._next_id_counter
+    with self._lock:
+      self._next_id_counter += 1
+      return self._next_id_counter
 
   @property
   def _last_id(self):
@@ -2499,10 +2514,11 @@ class Graph(object):
       value: The value to add to the collection.
     """
     self._check_not_finalized()
-    if name not in self._collections:
-      self._collections[name] = [value]
-    else:
-      self._collections[name].append(value)
+    with self._lock:
+      if name not in self._collections:
+        self._collections[name] = [value]
+      else:
+        self._collections[name].append(value)
 
   def add_to_collections(self, names, value):
     """Stores `value` in the collections given by `names`.
@@ -2543,11 +2559,12 @@ class Graph(object):
       The list of values in the collection with the given `name`, or an empty
       list if no value has been added to that collection.
     """
-    coll_list = self._collections.get(name, None)
-    if coll_list is None:
-      coll_list = []
-      self._collections[name] = coll_list
-    return coll_list
+    with self._lock:
+      coll_list = self._collections.get(name, None)
+      if coll_list is None:
+        coll_list = []
+        self._collections[name] = coll_list
+      return coll_list
 
   def get_collection(self, name, scope=None):
     """Returns a list of values in the collection with the given `name`.
@@ -2571,22 +2588,24 @@ class Graph(object):
       list contains the values in the order under which they were
       collected.
     """
-    coll_list = self._collections.get(name, None)
-    if coll_list is None:
-      return []
-    if scope is None:
-      return list(coll_list)
-    else:
-      c = []
-      regex = re.compile(scope)
-      for item in coll_list:
-        if hasattr(item, "name") and regex.match(item.name):
-          c.append(item)
-      return c
+    with self._lock:
+      coll_list = self._collections.get(name, None)
+      if coll_list is None:
+        return []
+      if scope is None:
+        return list(coll_list)
+      else:
+        c = []
+        regex = re.compile(scope)
+        for item in coll_list:
+          if hasattr(item, "name") and regex.match(item.name):
+            c.append(item)
+        return c
 
   def get_all_collection_keys(self):
     """Returns a list of collections used in this graph."""
-    return [x for x in self._collections if isinstance(x, six.string_types)]
+    with self._lock:
+      return [x for x in self._collections if isinstance(x, six.string_types)]
 
   @contextlib.contextmanager
   def _original_op(self, op):

@@ -120,12 +120,9 @@ def StartMultiplexerReloadingThread(multiplexer, path_to_run, load_interval):
 
   Returns:
     A started `threading.Thread` that reloads the multiplexer.
-
   """
-  # Ensure the Multiplexer initializes in a loaded state before it adds runs
-  # So it can handle HTTP requests while runs are loading
-  multiplexer.Reload()
-
+  # We don't call multiplexer.Reload() here because that would make
+  # AddRunsFromDirectory block until the runs have all loaded.
   for path in path_to_run.keys():
     if gcs.IsGCSPath(path):
       gcs.CheckIsSupported()

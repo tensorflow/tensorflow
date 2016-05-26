@@ -36,6 +36,17 @@ def boston_input_fn():
   return features, target
 
 
+def iris_input_fn():
+  iris = tf.contrib.learn.datasets.load_iris()
+  features = tf.cast(
+      tf.reshape(
+          tf.constant(iris.data), [-1, 4]), tf.float32)
+  target = tf.cast(
+      tf.reshape(
+          tf.constant(iris.target), [-1, 1]), tf.int32)
+  return features, target
+
+
 def boston_eval_fn():
   boston = tf.contrib.learn.datasets.load_boston()
   n_examples = len(boston.target)
@@ -50,6 +61,10 @@ def boston_eval_fn():
 
 def linear_model_fn(features, target, unused_mode):
   return tf.contrib.learn.models.linear_regression_zero_init(features, target)
+
+
+def logistic_model_fn(features, target, unused_mode):
+  return tf.contrib.learn.models.logistic_regression_zero_init(features, target)
 
 
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
@@ -83,6 +98,15 @@ class EstimatorTest(tf.test.TestCase):
     predictions = est.predict(x=boston.data)
     other_score = mean_squared_error(predictions, boston.target)
     self.assertAllClose(other_score, scores['mean_squared_error'])
+
+  def testIrisAll(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_fn,
+                                     classification=True)
+    est.train(input_fn=iris_input_fn, steps=100)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    predictions = est.predict(x=iris.data)
+    self.assertEqual(predictions.shape[0], iris.target.shape[0])
 
   def testTrainInputFn(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
