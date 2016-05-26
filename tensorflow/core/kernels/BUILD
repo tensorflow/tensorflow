@@ -489,10 +489,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-    linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
 )
 
 tf_cc_test(
@@ -798,10 +794,6 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-    linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
 )
 
 tf_cuda_cc_test(
@@ -1090,10 +1082,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-    linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
 )
 
 tf_cc_test(

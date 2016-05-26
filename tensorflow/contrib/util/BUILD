@@ -50,10 +50,6 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-    linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
 )
 
 cc_binary(
