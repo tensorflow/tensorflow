@@ -112,6 +112,20 @@ py_test(
 )
 
 py_test(
+    name = "test_reader_source",
+    size = "small",
+    srcs = [
+        "python/learn/dataframe/transforms/reader_source.py",
+        "python/learn/tests/dataframe/test_reader_source.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "test_early_stopping",
     size = "medium",
     srcs = ["python/learn/tests/test_early_stopping.py"],
