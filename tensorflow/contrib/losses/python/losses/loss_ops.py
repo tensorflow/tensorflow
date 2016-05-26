@@ -104,9 +104,11 @@ weighted average over the individual prediction errors:
   weight = tf.div(weight, tf.size(weight))
   loss = tf.contrib.losses.sum_of_squares(predictions, depths, weight)
 
-
 @@absolute_difference
+@@add_loss
 @@cosine_distance
+@@get_losses
+@@get_total_loss
 @@log
 @@sigmoid_cross_entropy
 @@softmax_cross_entropy
@@ -250,6 +252,61 @@ def _num_present(losses, weight, per_batch=False):
 
   num_per_batch = math_ops.mul(num_nonzero_per_batch, num_to_broadcast)
   return num_per_batch if per_batch else math_ops.reduce_sum(num_per_batch)
+
+
+def add_loss(loss):
+  """Adds a externally defined loss to collection of losses.
+
+  Args:
+    loss: A loss `Tensor`.
+  """
+  ops.add_to_collection(ops.GraphKeys.LOSSES, loss)
+
+
+def get_losses(scope=None):
+  """Gets the list of loss variables.
+
+  Args:
+    scope: an optional scope for filtering the losses to return.
+
+  Returns:
+    a list of loss variables.
+  """
+  return ops.get_collection(ops.GraphKeys.LOSSES, scope)
+
+
+def get_regularization_losses(scope=None):
+  """Gets the regularization losses.
+
+  Args:
+    scope: an optional scope for filtering the losses to return.
+
+  Returns:
+    A list of loss variables.
+  """
+  return ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES, scope)
+
+
+def get_total_loss(add_regularization_losses=True, name="total_loss"):
+  """Returns a tensor whose value represents the total loss.
+
+  Notice that the function adds the given losses to the regularization losses.
+
+  Args:
+    add_regularization_losses: A boolean indicating whether or not to use the
+      regularization losses in the sum.
+    name: The name of the returned tensor.
+
+  Returns:
+    A `Tensor` whose value represents the total loss.
+
+  Raises:
+    ValueError: if `losses` is not iterable.
+  """
+  losses = get_losses()
+  if add_regularization_losses:
+    losses += get_regularization_losses()
+  return math_ops.add_n(losses, name=name)
 
 
 def absolute_difference(predictions, targets, weight=1.0, scope=None):
