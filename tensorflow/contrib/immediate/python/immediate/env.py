@@ -66,7 +66,10 @@ from tensorflow.python.ops import tensor_array_ops
 
 from tensorflow.python.framework import ops
 
+import contextlib
+
 import inspect
+import numbers
 import re
 import os
 import types
@@ -79,6 +82,8 @@ from .op import OpFactory
 from . import module_rewriter
 
 import numpy as np
+
+_global_default_env = None
 
 class Env(object):
   """Env is an object that manages current graph and session and translates
@@ -97,8 +102,11 @@ class Env(object):
                            np.dtype('bool'), np.dtype("|S3")}
 
   def __init__(self, tf_namespace, config=None):
+    print("Creating Env")
+    global _global_default_env
     self.original_tf = tf_namespace
-    self.sess = session.Session(config=config)
+    self.g = ops.Graph()
+    self.sess = session.Session(config=config, graph=self.g)
     self.op_factory = OpFactory(self)
     #self.op_factory = OpFactory(None)
     symbol_rewriter = module_rewriter.ImmediateRewriter(self)
@@ -106,16 +114,19 @@ class Env(object):
     self.tf = rewriter(self.original_tf)
 
     self._DEBUG_LOGGING = False
+    _global_default_env = self
 
+    # make Env's graph the default graph (this breaks because graph doesn't allow nested Cont.managers)
+    #    self.default_graph_context_manager = self.g.as_default()
+    #    self.default_graph_context_manager.__enter__()
+
+  @staticmethod
+  def _get_global_default_env():
+    return _global_default_env
 
   def close(self):
     self.sess.close()
     
-
-  # TODO: make private?
-  @property
-  def g(self):
-    return self.sess.graph
 
   # TODO: make private?
   @property
@@ -135,7 +146,8 @@ class Env(object):
       numpy array with a copy of data from tensor_handle
     """
 
-    holder, tensor = session_ops.get_session_tensor(tensor_handle._dtype)
+    with self.g.as_default():
+      holder, tensor = session_ops.get_session_tensor(tensor_handle._dtype)
 
     # TODO(yaroslavvb): use session settings for .run call
     array = self.sess.run(tensor, feed_dict={holder: tensor_handle.handle})
@@ -161,7 +173,7 @@ class Env(object):
 
   # TODO(yaroslavvb): test bad conversions
 
-  def numpy_to_tensor(self, array, dtype=None):
+  def numpy_to_tensor(self, array, dtype=None, shape=None):
     """Converts numpy.ndarray or compatible type to immediate.Tensor."""
 
     # convert to numpy dtype if necessary
@@ -169,6 +181,7 @@ class Env(object):
       dtype = dtypes.as_dtype(dtype)
       dtype = dtype.as_numpy_dtype
 
+    # TODO(yaroslavvb): handle iTensor conversions here?
     if isinstance(array, Tensor):
       raise ValueError("Passed immediate.Tensor instead of numpy into "
                        "numpy_to_tensor.")
@@ -191,12 +204,18 @@ class Env(object):
       if np.array_equal(downcasted_array, array):
         array = downcasted_array
 
+    if shape and array.shape != shape:
+      array = array.reshape(shape)
+
     handle = self.numpy_to_handle(array)
     return Tensor(self, handle)
 
+  # TODO(yaroslavvb): make constant more closely matched with tf.constant
+  # to make math_ops_test work
   def constant(self, values, dtype=None, shape=None, name='Const'):
     np_dtype = None
 
+    # Convert numpy dtype to TensorFlow dtype if needed
     if dtype:
       try:
         dtype = dtypes.as_dtype(dtype)
@@ -205,28 +224,32 @@ class Env(object):
         raise TypeError("Trying to create constant with dtype=%s, "
                         "got TypeError(%s)" % (dtype, e.message))
 
-    if shape:
-      assert (isinstance(values, types.FloatType) or
-              isinstance(values, types.IntType) or
-              isinstance(values, types.LongType))
+    # Native TensorFlow has special handling for TensorProto initialized with
+    # a scalar and non-empty shape. For feature parity in immedate.Tensor we handle
+    # this case by tiling the constant explicitly.
+    if isinstance(values, numbers.Number) and shape:
       return self.numpy_to_tensor(values*np.ones(shape=shape, dtype=np_dtype),
-                                  dtype=dtype)
-    return self.numpy_to_tensor(values, dtype)
+                                  dtype=dtype, shape=shape)
+
+    return self.numpy_to_tensor(values, dtype, shape)
 
   
   def tensor_to_numpy(self, tensor):
-    return self.handle_to_numpy(tensor.handle)
-    handle = self.numpy_to_handle(array)
+    with self.g.as_default():
+      return self.handle_to_numpy(tensor.handle)
+      handle = self.numpy_to_handle(array)
     return Tensor(env, handle)
   
   # TODO(yaroslavvb): remove?
   def get_session_tensor(self, dtype):
-    holder, tensor = session_ops.get_session_tensor(dtype)
-    return holder, tensor
+    with self.g.as_default():
+      holder, tensor = session_ops.get_session_tensor(dtype)
+      return holder, tensor
 
   def get_session_handle(self, tf_tensor):
-    handle_op = session_ops.get_session_handle(tf_tensor)
-    return handle_op
+    with self.g.as_default():
+      handle_op = session_ops.get_session_handle(tf_tensor)
+      return handle_op
 
   def run(self, *args, **kwargs):
     """Execute session.run in the current Env."""

@@ -5,10 +5,14 @@ import numpy as np
 import tensorflow.contrib.immediate as immediate
 
 #from tensorflow.contrib.immediate import test_util
-from tensorflow.contrib.immediate.python.immediate import test_util as test_util
+from tensorflow.contrib.immediate.python.immediate import test_util
 
 class EnvTest(test_util.ImmediateTestCase):
 #class EnvTest(tf.test.TestCase):
+
+  def testAdd(self):
+    with self.test_env(tf) as env:
+      self.assertEqual(env.tf.add(1, 2), 3)
 
   def atestInit(self):
     with self.test_env(tf) as env:
@@ -19,7 +23,7 @@ class EnvTest(test_util.ImmediateTestCase):
       val = env.numpy_to_tensor(-1)
       self.assertEqual(env.tf.nn.relu(val), env.numpy_to_tensor(0))
 
-  def testNumpyConversion(self):
+  def atestNumpyConversion(self):
     def testForDtype(dtype):
       a = np.array([[1,2],[3,4]], dtype=dtype)
       tensor_handle = env.numpy_to_handle(a)
@@ -79,8 +83,7 @@ class EnvTest(test_util.ImmediateTestCase):
   # TODO(yaroslavvb): test tf.ones for empty shape (ndarray.empty)
   def testOnes(self):
     with self.test_env(tf) as env:
-      env = immediate.Env(tf)
-      val1 = env.tf.ones((3, 3))
+      val1 = env.tf.ones(shape=(3, 3))
       self.assertAllEqual(val1.as_numpy(), np.ones((3, 3)))
 
   def testReshapeOpWithConversion(self):
@@ -107,7 +110,7 @@ class EnvTest(test_util.ImmediateTestCase):
       val1 = env.numpy_to_tensor([1,2,3])
       self.assertEqual(env.tf.reduce_sum(val1), 6)
 
-  def atestConstant(self):
+  def testConstant(self):
     with self.test_env(tf) as env:
       val1 = env.constant(1.5, shape=[2, 2])
       self.assertAllEqual(val1.as_numpy(), [[1.5, 1.5], [1.5, 1.5]])
