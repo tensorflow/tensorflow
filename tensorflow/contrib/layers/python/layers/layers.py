@@ -36,15 +36,13 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import moving_averages
 
+# TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
 __all__ = ['bias_add',
            'batch_norm',
            'conv2d',
            'convolution2d',
            'fully_connected',
-           'linear',
-           'relu',
-           'relu6',
            'legacy_convolution2d',
            'legacy_fully_connected',
            'legacy_linear',
@@ -678,10 +676,5 @@ legacy_relu6 = functools.partial(legacy_fully_connected, activation_fn=nn.relu6)
 # Simple alias for fully_connected which removes the activation_fn parameter.
 legacy_linear = functools.partial(legacy_fully_connected, activation_fn=None)
 
-linear = legacy_linear
-relu = legacy_relu
-relu6 = legacy_relu6
-
 # Simple alias for convolution2d.
 conv2d = convolution2d
-
