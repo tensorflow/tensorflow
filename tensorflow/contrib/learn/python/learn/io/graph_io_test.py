@@ -210,9 +210,9 @@ class GraphIOTest(tf.test.TestCase):
       coord = tf.train.Coordinator()
       tf.train.start_queue_runners(session, coord=coord)
 
-      self.assertEqual(session.run(inputs), "ABC")
-      self.assertEqual(session.run(inputs), "DEF")
-      self.assertEqual(session.run(inputs), "GHK")
+      self.assertAllEqual(session.run(inputs), [b"ABC"])
+      self.assertAllEqual(session.run(inputs), [b"DEF"])
+      self.assertAllEqual(session.run(inputs), [b"GHK"])
       with self.assertRaises(errors.OutOfRangeError):
         session.run(inputs)
 
