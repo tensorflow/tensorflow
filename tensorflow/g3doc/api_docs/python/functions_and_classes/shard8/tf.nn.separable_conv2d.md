@@ -38,3 +38,9 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If channel_multiplier * in_channels > out_channels,
+    which means that the separable convolution is overparameterized.
+

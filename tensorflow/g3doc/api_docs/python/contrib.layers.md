@@ -339,7 +339,7 @@ Optimize weights given a loss.
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, variables=None, name=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
@@ -369,6 +369,8 @@ Given loss and parameters for optimizer, returns a training op.
                           Can be used to implement any learning rate decay
                           functions.
                           For example: tf.train.exponential_decay.
+*  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
+              uses elements of UPDATE_OPS collection.
 *  <b>`variables`</b>: list of variables to optimize or
              `None` to use all trainable variables.
 *  <b>`name`</b>: The name for this operation is used to scope operations and summaries.
