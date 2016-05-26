@@ -195,7 +195,10 @@ def train(graph,
     raise ValueError('No "global_step" was provided or found in the graph.')
 
   # TODO(ipolosukhin): Replace all functionality of Supervisor with Monitors.
-  if not monitors:
+  if not supervisor_is_chief:
+    # monitors should run only in supervisor.
+    monitors = []
+  elif not monitors:
     monitors = monitors_lib.get_default_monitors(
         loss_op=loss_op,
         summary_op=logging_ops.get_summary_op(),
