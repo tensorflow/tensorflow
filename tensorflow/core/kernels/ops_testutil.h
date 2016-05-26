@@ -150,6 +150,28 @@ class OpsTestBase : public ::testing::Test {
     }
   }
 
+  // Convenience function to add an input and populate it with the elements from
+  // an initializer list converting the types as needed.
+  template <typename T, typename SrcType>
+  void AddInputFromList(const TensorShape& shape,
+                        std::initializer_list<SrcType> data) {
+    CHECK_GT(input_types_.size(), inputs_.size())
+        << "Adding more inputs than types; perhaps you need to call MakeOp";
+    bool is_ref = IsRefType(input_types_[inputs_.size()]);
+    Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
+                               DataTypeToEnum<T>::v(), shape);
+    test::FillValues<T>(input, data);
+    tensors_.push_back(input);
+    if (is_ref) {
+      CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
+               DataTypeToEnum<T>::v());
+      inputs_.push_back({&lock_for_refs_, input});
+    } else {
+      CHECK_EQ(input_types_[inputs_.size()], DataTypeToEnum<T>::v());
+      inputs_.push_back({nullptr, input});
+    }
+  }
+
   // Runs an operation producing 'num_outputs' outputs.
   //
   // Returns the context's status after running the operation.
