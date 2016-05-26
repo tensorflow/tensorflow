@@ -637,6 +637,17 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(sp_t.indices.eval(), result.indices)
         self.assertAllEqual(shape, result.shape)
 
+  def testGradient(self):
+    x_shape = [2, 5, 10]
+    with self.test_session(use_gpu=False):
+      for dtype in [np.float32, np.float64]:
+        x_np = np.random.randn(*x_shape).astype(dtype)
+        x_tf, nnz = _sparsify(x_np)
+        y_tf = tf.sparse_softmax(x_tf)
+        err = tf.test.compute_gradient_error(x_tf.values, (nnz,), y_tf.values,
+                                             (nnz,))
+        self.assertLess(err, 1e-4)
+
 
 if __name__ == "__main__":
   googletest.main()

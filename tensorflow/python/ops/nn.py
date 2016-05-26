@@ -559,6 +559,10 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
 
   Returns:
     A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
+
+  Raises:
+    ValueError: If channel_multiplier * in_channels > out_channels,
+      which means that the separable convolution is overparameterized.
   """
   with ops.op_scope([input, depthwise_filter, pointwise_filter],
                    name, "separable_conv2d") as name:
@@ -576,8 +580,13 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
         channel_multiplier = depthwise_filter.get_shape()[3]
         in_channels = input.get_shape()[3]
         out_channels = pointwise_filter.get_shape()[3]
-        # This would mean the separable convolutions is over-parametrized.
-        assert channel_multiplier * in_channels < out_channels
+        if channel_multiplier * in_channels > out_channels:
+          raise ValueError(
+              ("Refusing to perform an overparameterized separable "
+               "convolution: channel_multiplier * in_channels = "
+               "%d * %d = %d > %d = out_channels" %
+               (channel_multiplier, in_channels,
+                channel_multiplier * in_channels, out_channels)))
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.

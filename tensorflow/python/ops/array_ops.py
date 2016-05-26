@@ -1723,15 +1723,19 @@ def _SpaceToBatchShape(op):
     raise ValueError("Attribute block_size has to be > 1.")
 
   paddings = tensor_util.constant_value(op.inputs[1])
-  if (paddings[0, 0] < 0 or paddings[0, 1] < 0 or
-      paddings[1, 0] < 0 or paddings[1, 1] < 0):
-    raise ValueError("paddings cannot be negative.")
+  if paddings is not None:
+    if (paddings[0, 0] < 0 or paddings[0, 1] < 0 or
+        paddings[1, 0] < 0 or paddings[1, 1] < 0):
+      raise ValueError("paddings cannot be negative.")
 
-  input_height = input_shape[1] + paddings[0, 0] + paddings[0, 1]
-  input_width = input_shape[2] + paddings[1, 0] + paddings[1, 1]
+    input_height = input_shape[1] + paddings[0, 0] + paddings[0, 1]
+    input_width = input_shape[2] + paddings[1, 0] + paddings[1, 1]
 
-  if input_height % block_size > 0 or input_width % block_size > 0:
-    raise IndexError("block_size needs to divide both width and height.")
+    if input_height % block_size > 0 or input_width % block_size > 0:
+      raise IndexError("block_size needs to divide both width and height.")
+  else:
+    input_height = tensor_shape.Dimension(None)
+    input_width = tensor_shape.Dimension(None)
 
   batch = input_shape[0] * block_size * block_size
   height = input_height // block_size
@@ -1792,8 +1796,9 @@ def _BatchToSpaceShape(op):
         "tf.space_to_batch() requires input crops with shape [2, 2].")
 
   crops = tensor_util.constant_value(op.inputs[1])
-  if (crops[0, 0] < 0 or crops[0, 1] < 0 or
-      crops[1, 0] < 0 or crops[1, 1] < 0):
+  if (crops is not None and
+      (crops[0, 0] < 0 or crops[0, 1] < 0 or
+       crops[1, 0] < 0 or crops[1, 1] < 0)):
     raise ValueError("crops cannot be negative.")
 
   block_size = op.get_attr("block_size")
@@ -1805,10 +1810,14 @@ def _BatchToSpaceShape(op):
     raise IndexError("input batch must be divisible by block_size*block_size.")
   batch = input_batch // (block_size * block_size)
 
-  height = input_shape[1] * block_size - crops[0, 0] - crops[0, 1]
-  width = input_shape[2] * block_size - crops[1, 0] - crops[1, 1]
-  if height <= 0 or width <= 0:
-    raise ValueError("Output height or width is not positive.")
+  if crops is not None:
+    height = input_shape[1] * block_size - crops[0, 0] - crops[0, 1]
+    width = input_shape[2] * block_size - crops[1, 0] - crops[1, 1]
+    if height <= 0 or width <= 0:
+      raise ValueError("Output height or width is not positive.")
+  else:
+    height = tensor_shape.Dimension(None)
+    width = tensor_shape.Dimension(None)
   depth = input_shape[3]
 
   return [tensor_shape.TensorShape([batch, height, width, depth])]
