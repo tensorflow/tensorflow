@@ -13,6 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 
+# NOTE(yaroslavvb): port of nn_test for immediate execution. The following
+# tests are incompatible with immediate execution and are commented out
+# 1. Gradient tests (tf.test.compute_gradient_error, tf.gradients)
+# 2. Tests that rely on static shape inference (get_shape)
+# Note, replace all tf.test.TestCase with test_util.TensorflowTestCase
+# that's the custom version that avoids creating new graphs in in test_session
+# and keeps "tf.get_default_graph" in sync with env's graph
+
+# Tests that change graph_def version in the middle fail because graphdef
+# can't have a mix of versions. Solution is to set graphdef version at the top
+
+# test that do AssertAllClose
+
 """Tests for tensorflow.ops.nn."""
 from __future__ import absolute_import
 from __future__ import division
@@ -32,8 +45,10 @@ log = math.log
 
 from tensorflow.contrib.immediate.python.immediate import test_util
 import tensorflow.contrib.immediate as immediate
-env = immediate.Env(tf)
+
+env = immediate.Env({"tf": tf, "gen_nn_ops": gen_nn_ops})
 tf = env.tf
+gen_nn_ops = env.gen_nn_ops
 
 
 class SigmoidCrossEntropyWithLogitsTest(test_util.TensorFlowTestCase):
@@ -655,23 +670,24 @@ class DropoutTest(tf.test.TestCase):
   #                             noise_shape=tf.placeholder(tf.int32))
   #   self.assertEqual(x.get_shape(), dropout_x.get_shape())
 
-  # def testInvalidKeepProb(self):
-  #   x_dim = 40
-  #   y_dim = 30
-  #   t = tf.constant(1.0, shape=[x_dim, y_dim], dtype=tf.float32)
-  #   with self.assertRaises(ValueError):
-  #     tf.nn.dropout(t, -1.0)
-  #   with self.assertRaises(ValueError):
-  #     tf.nn.dropout(t, 1.1)
-  #   with self.assertRaises(ValueError):
-  #     tf.nn.dropout(t, [0.0, 1.0])
-  #   with self.assertRaises(ValueError):
-  #     tf.nn.dropout(t, tf.placeholder(tf.float64))
-  #   with self.assertRaises(ValueError):
-  #     tf.nn.dropout(t, tf.placeholder(tf.float32, shape=[2]))
+  # NOTE(yaroslavvb): comment-out placeholder tests
+  def testInvalidKeepProb(self):
+    x_dim = 40
+    y_dim = 30
+    t = tf.constant(1.0, shape=[x_dim, y_dim], dtype=tf.float32)
+    with self.assertRaises(ValueError):
+      tf.nn.dropout(t, -1.0)
+    with self.assertRaises(ValueError):
+      tf.nn.dropout(t, 1.1)
+    with self.assertRaises(ValueError):
+      tf.nn.dropout(t, [0.0, 1.0])
+    # with self.assertRaises(ValueError):
+    #   tf.nn.dropout(t, tf.placeholder(tf.float64))
+    # with self.assertRaises(ValueError):
+    #   tf.nn.dropout(t, tf.placeholder(tf.float32, shape=[2]))
 
   # NOTE(yaroslavvb): change error type because ValueError is only raised
-  # during static shape inference
+  # during static shape inference. During runtime it raises InvalidArgumentError
   def testShapedDropoutShapeError(self):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
     x_dim = 40
@@ -693,836 +709,231 @@ class DropoutTest(tf.test.TestCase):
     _ = tf.nn.dropout(t, keep_prob, noise_shape=[1, 1])
 
 
-# class BatchNormalizationTest(tf.test.TestCase):
-
-#   def _npBatchNorm(self, x, m, v, beta, gamma, epsilon,
-#                    scale_after_normalization, shift_after_normalization):
-#     y = (x - m) / np.sqrt(v + epsilon)
-#     y = y * gamma if scale_after_normalization else y
-#     return y + beta if shift_after_normalization else y
-
-#   def _opsBatchNorm(self, x, m, v, beta, gamma, epsilon,
-#                     scale_after_normalization, shift_after_normalization):
-#     y = (x - m) * tf.rsqrt(v + epsilon)
-#     if scale_after_normalization:
-#       y = gamma * y
-#     return y + beta if shift_after_normalization else y
-
-#   def _tfBatchNormV1(self, x, m, v, beta, gamma, epsilon,
-#                      scale_after_normalization):
-#     """Original implementation."""
-#     # _batch_norm_with_global_normalization is deprecated in v9
-#     tf.get_default_graph().graph_def_versions.producer = 8
-#     # pylint: disable=protected-access
-#     return gen_nn_ops._batch_norm_with_global_normalization(
-#         x, m, v, beta, gamma, epsilon, scale_after_normalization)
-#     # pylint: enable=protected-access
-
-#   def _tfBatchNormV1BW(self, x, m, v, beta, gamma, epsilon,
-#                        scale_after_normalization):
-#     """Re-implementation of the original kernel for backward compatibility."""
-#     return tf.nn.batch_norm_with_global_normalization(
-#         x, m, v, beta, gamma, epsilon, scale_after_normalization)
-
-#   def _tfBatchNormV2(self, x, m, v, beta, gamma, epsilon,
-#                      scale_after_normalization, shift_after_normalization):
-#     """New implementation."""
-#     return tf.nn.batch_normalization(
-#         x, m, v, beta if shift_after_normalization else None,
-#         gamma if scale_after_normalization else None, epsilon)
-
-#   def testBatchNorm(self):
-#     x_shape = [3, 5, 4, 2]
-#     param_shape = [2]
-#     x_val = np.random.random_sample(x_shape).astype(np.float32)
-#     m_val = np.random.random_sample(param_shape).astype(np.float32)
-#     v_val = np.random.random_sample(param_shape).astype(np.float32)
-#     beta_val = np.random.random_sample(param_shape).astype(np.float32)
-#     gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-#     for use_gpu in [True, False]:
-#       with self.test_session(use_gpu=use_gpu) as sess:
-#         x = tf.constant(x_val, name="x")
-#         m = tf.constant(m_val, name="m")
-#         v = tf.constant(v_val, name="v")
-#         beta = tf.constant(beta_val, name="beta")
-#         gamma = tf.constant(gamma_val, name="gamma")
-#         epsilon = 0.001
-#         for scale_after_normalization in [True, False]:
-#           for shift_after_normalization in [True, False]:
-#             bn2 = self._tfBatchNormV2(
-#                 x, m, v, beta, gamma, epsilon, scale_after_normalization,
-#                 shift_after_normalization)
-#             bn1bw = self._tfBatchNormV1BW(
-#                 x, m, v, beta, gamma, epsilon, scale_after_normalization)
-#             bn1 = self._tfBatchNormV1(
-#                 x, m, v, beta, gamma, epsilon, scale_after_normalization)
-#             on = self._opsBatchNorm(
-#                 x, m, v, beta, gamma, epsilon, scale_after_normalization,
-#                 shift_after_normalization)
-#             np_bn = self._npBatchNorm(
-#                 x_val, m_val, v_val, beta_val, gamma_val, epsilon,
-#                 scale_after_normalization, shift_after_normalization)
-#             tf_bn_v2, tf_bn_v1bw, tf_bn_v1, ops_bn = sess.run(
-#                 [bn2, bn1bw, bn1, on])
-#             self.assertAllClose(np_bn, ops_bn, atol=0.00001)
-#             self.assertAllClose(np_bn, tf_bn_v2, atol=0.00001)
-#             self.assertAllClose(tf_bn_v2, ops_bn, atol=0.00001)
-#             # shift_after_normalization=False is not supported in v1.
-#             if shift_after_normalization:
-#               self.assertAllClose(np_bn, tf_bn_v1bw, atol=0.00001)
-#               self.assertAllClose(np_bn, tf_bn_v1, atol=0.00001)
-#               self.assertAllClose(tf_bn_v1, ops_bn, atol=0.00001)
-#               self.assertAllClose(tf_bn_v1bw, ops_bn, atol=0.00001)
-
-#   def _testBatchNormGradient(self, param_index, tag, scale_after_normalization,
-#                              shift_after_normalization, version,
-#                              err_tolerance=1e-11):
-#     x_shape = [3, 5, 4, 5]
-#     param_shape = [5]
-#     np.random.seed(1)  # Make it reproducible.
-#     x_val = np.random.random_sample(x_shape).astype(np.float64)
-#     m_val = np.random.random_sample(param_shape).astype(np.float64)
-#     v_val = np.random.random_sample(param_shape).astype(np.float64)
-#     beta_val = np.random.random_sample(param_shape).astype(np.float64)
-#     gamma_val = np.random.random_sample(param_shape).astype(np.float64)
-#     with self.test_session():
-#       x = tf.constant(x_val, name="x")
-#       m = tf.constant(m_val, name="m")
-#       v = tf.constant(v_val, name="v")
-#       beta = tf.constant(beta_val, name="beta")
-#       gamma = tf.constant(gamma_val, name="gamma")
-#       epsilon = 0.001
-#       if version == 1:
-#         output = self._tfBatchNormV1(
-#             x, m, v, beta, gamma, epsilon, scale_after_normalization)
-#       elif version == 2:
-#         output = self._tfBatchNormV2(
-#             x, m, v, beta, gamma, epsilon, scale_after_normalization,
-#             shift_after_normalization)
-#       else:
-#         print("Invalid version", version)
-#         raise ValueError()
-#       all_params = [x, m, v, beta, gamma]
-#       all_shapes = [x_shape, param_shape, param_shape, param_shape, param_shape]
-#       err = tf.test.compute_gradient_error(
-#           all_params[param_index], all_shapes[param_index], output, x_shape)
-#     print("Batch normalization v%d %s gradient %s scale and %s shift err = " %
-#           (version, tag, "with" if scale_after_normalization else "without",
-#            "with" if shift_after_normalization else "without"),
-#           err)
-#     self.assertLess(err, err_tolerance)
-
-#   def _testBatchNormGradientInAllNeedConfigs(
-#       self, param_index, tag, err_tolerance=1e-11):
-#     for scale_after_normalization in [True, False]:
-#       for shift_after_normalization in [True, False]:
-#         # shift_after_normalization=False is not supported in version 1.
-#         for v in ([1, 2] if shift_after_normalization else [2]):
-#           self._testBatchNormGradient(
-#               param_index, tag, scale_after_normalization,
-#               shift_after_normalization, v, err_tolerance)
-
-#   def testBatchNormInputGradient(self):
-#     self._testBatchNormGradientInAllNeedConfigs(0, "x")
-
-#   def testBatchNormMeanGradient(self):
-#     self._testBatchNormGradientInAllNeedConfigs(1, "mean")
-
-#   def testBatchNormVarianceGradient(self):
-#     self._testBatchNormGradientInAllNeedConfigs(2, "variance",
-#                                                 err_tolerance=1e-03)
-
-#   def testBatchNormBetaGradient(self):
-#     # Since beta does not exist when scale_after_normalization=False, we only
-#     # test for scale_after_normalization=True.
-#     for scale_after_normalization in [True, False]:
-#       for v in [1, 2]:
-#         self._testBatchNormGradient(3, "beta", scale_after_normalization, True,
-#                                     v)
-
-#   def testBatchNormGammaGradient(self):
-#     # If scale_after_normalization is False, backprop for gamma in v1
-#     # will be 0. In version 2 of the API, if scale_after_normalization is False,
-#     # gamma is not used at all, and the gradient is None, which displeases the
-#     # gradient checker.
-#     for scale_after_normalization in [True, False]:
-#       self._testBatchNormGradient(4, "gamma", scale_after_normalization, True,
-#                                   1)
-#     for shift_after_normalization in [True, False]:
-#       self._testBatchNormGradient(4, "gamma", True, shift_after_normalization,
-#                                   2)
-
-#   def testBatchNormGradImpl(self):
-#     x_shape = [7, 5, 4, 6]
-#     param_shape = [6]
-#     np.random.seed(1)  # Make it reproducible.
-#     x_val = np.random.random_sample(x_shape).astype(np.float32)
-#     m_val = np.random.random_sample(param_shape).astype(np.float32)
-#     v_val = np.random.random_sample(param_shape).astype(np.float32)
-#     beta_val = np.random.random_sample(param_shape).astype(np.float32)
-#     gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-#     backprop_val = np.random.random_sample(x_shape).astype(np.float32)
-#     for use_gpu in [False, True]:
-#       with self.test_session(use_gpu=use_gpu) as sess:
-#         x = tf.constant(x_val, name="x")
-#         m = tf.constant(m_val, name="m")
-#         v = tf.constant(v_val, name="v")
-#         beta = tf.constant(beta_val, name="beta")
-#         gamma = tf.constant(gamma_val, name="gamma")
-#         backprop = tf.constant(backprop_val, name="backprop")
-#         epsilon = 0.001
-#         for scale_after_normalization in [True, False]:
-#           # _batch_norm_with_global_normalization_grad is deprecated in v9
-#           tf.get_default_graph().graph_def_versions.producer = 8
-#           dx, dm, dv, db, dg = (
-#               gen_nn_ops._batch_norm_with_global_normalization_grad(
-#               x, m, v, gamma, backprop, epsilon, scale_after_normalization))
-#           on = self._opsBatchNorm(
-#               x, m, v, beta, gamma, epsilon, scale_after_normalization, True)
-#           odx, odm, odv, odb, odg = tf.gradients(
-#               [on], [x, m, v, beta, gamma], [backprop])
-#           if scale_after_normalization:
-#             all_grads = sess.run([dx, dm, dv, db, dg, odx, odm, odv, odb, odg])
-#             to_check = ["dx", "dm", "dv", "db", "dg"]
-#           else:
-#             all_grads = sess.run([dx, dm, dv, db, odx, odm, odv, odb])
-#             to_check = ["dx", "dm", "dv", "db"]
-#           for i, _ in enumerate(to_check):
-#             self.assertAllClose(
-#                 all_grads[i + len(to_check)], all_grads[i], atol=0.000001)
-
-#   def testBatchNormKeepDims(self):
-#     """Test for tf.nn.moments(..., keep_dims=True / False).
-
-#     Make sure that parameters with shape (1, 1, 1, depth) yield the same
-#     result as parameters with shape (depth)
-#     """
-#     x_shape = (3, 5, 4, 2)
-#     param_shape = (2)
-#     keep_dims_param_shape = (1, 1, 1, 2)
-#     x_val = np.random.random_sample(x_shape).astype(np.float32)
-#     m_val = np.random.random_sample(param_shape).astype(np.float32)
-#     v_val = np.random.random_sample(param_shape).astype(np.float32)
-#     beta_val = np.random.random_sample(param_shape).astype(np.float32)
-#     gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-#     for use_gpu in [True, False]:
-#       with self.test_session(use_gpu=use_gpu) as sess:
-#         x = tf.constant(x_val, name="x")
-#         m = tf.constant(m_val, name="m")
-#         v = tf.constant(v_val, name="v")
-#         beta = tf.constant(beta_val, name="beta")
-#         gamma = tf.constant(gamma_val, name="gamma")
-#         keep_dims_m = tf.reshape(m, keep_dims_param_shape, name="keep_dims_m")
-#         keep_dims_v = tf.reshape(v, keep_dims_param_shape, name="keep_dims_v")
-#         keep_dims_beta = tf.reshape(
-#             beta, keep_dims_param_shape, name="keep_dims_beta")
-#         keep_dims_gamma = tf.reshape(
-#             gamma, keep_dims_param_shape, name="keep_dims_gamma")
-#         epsilon = 0.001
-#         for scale_after_normalization in [True, False]:
-#           for shift_after_normalization in [True, False]:
-#             bn = self._tfBatchNormV2(
-#                 x, m, v, beta, gamma, epsilon, scale_after_normalization,
-#                 shift_after_normalization)
-#             keep_dims_bn = self._tfBatchNormV2(
-#                 x, keep_dims_m, keep_dims_v, keep_dims_beta,
-#                 keep_dims_gamma, epsilon, scale_after_normalization,
-#                 shift_after_normalization)
-#             tf_batch_norm, keep_dims_tf_batch_norm = sess.run(
-#                 [bn, keep_dims_bn])
-#             self.assertEquals(x_shape, tf_batch_norm.shape)
-#             self.assertEquals(x_shape, keep_dims_tf_batch_norm.shape)
-#             self.assertAllClose(
-#                 tf_batch_norm, keep_dims_tf_batch_norm, atol=0.000001)
-
-#   def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.0001):
-#     x_val = np.random.random_sample(x_shape).astype(np.float32)
-#     m_val = np.random.random_sample(param_shape).astype(np.float32)
-#     v_val = np.random.random_sample(param_shape).astype(np.float32)
-#     beta_val = np.random.random_sample(param_shape).astype(np.float32)
-#     gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-#     for use_gpu in [True, False]:
-#       with self.test_session(use_gpu=use_gpu) as sess:
-#         x = tf.constant(x_val, name="x")
-#         m = tf.constant(m_val, name="m")
-#         v = tf.constant(v_val, name="v")
-#         beta = tf.constant(beta_val, name="beta")
-#         gamma = tf.constant(gamma_val, name="gamma")
-#         epsilon = 0.001
-#         for scale_after_normalization in [True, False]:
-#           for shift_after_normalization in [True, False]:
-#             bn = self._tfBatchNormV2(
-#                 x, m, v, beta, gamma, epsilon, scale_after_normalization,
-#                 shift_after_normalization)
-#             np_batch_norm = self._npBatchNorm(
-#                 x_val, m_val, v_val, beta_val, gamma_val, epsilon,
-#                 scale_after_normalization, shift_after_normalization)
-#             [tf_batch_norm] = sess.run([bn])
-#             self.assertEquals(x_shape, np_batch_norm.shape)
-#             self.assertEquals(x_shape, tf_batch_norm.shape)
-#             self.assertAllClose(np_batch_norm, tf_batch_norm, atol=atol)
-
-#   def testBatchNormArbitraryShapes(self):
-#     """Test for a variety of shapes and moments.
-
-#     Batch normalization is expected to work regardless of the position and
-#     dimensionality of the 'depth' axis/axes.
-#     """
-#     self._testBatchNormArbitraryShapes((3, 3), (1, 3))
-#     self._testBatchNormArbitraryShapes((3, 3), (3, 1))
-#     self._testBatchNormArbitraryShapes((3, 2, 4, 5), (1, 2, 1, 1))
-#     self._testBatchNormArbitraryShapes((2, 3, 2, 4, 5), (1, 1, 1, 4, 5),
-#                                        atol=0.005)
-
-
-# class SufficientStatisticsTest(tf.test.TestCase):
-
-#   def _npSuffStats(self, x, axes, shift, keep_dims):
-#     axis = tuple(axes)
-#     if shift:
-#       shift_value = x[[slice(None) if i not in set(axis) else slice(0, 1)
-#                        for i in xrange(x.ndim)]]
-#       m_ss = np.sum(x - shift_value, axis=axis, keepdims=keep_dims)
-#       v_ss = np.sum(
-#           (x - shift_value) * (x - shift_value),
-#           axis=axis,
-#           keepdims=keep_dims)
-#     else:
-#       shift_value = None
-#       m_ss = np.sum(x, axis=axis, keepdims=keep_dims)
-#       v_ss = np.sum(x * x, axis=axis, keepdims=keep_dims)
-#     count = 1.0
-#     for d in xrange(x.ndim):
-#       if d in set(axes):
-#         count *= x.shape[d]
-#     if not keep_dims:
-#       shift_value = np.squeeze(shift_value, axis=axis)
-#     return count, m_ss, v_ss, shift_value
-
-#   def _opSuffStats(self, x, axes, shift, keep_dims):
-#     return tf.nn.sufficient_statistics(x, axes, shift, keep_dims)
-
-#   def _testSuffStats(self, x_shape, axes, shift, keep_dims, has_shape):
-#     x_val = np.random.random_sample(x_shape).astype(np.float32)
-#     np_c, np_m, np_v, np_s = self._npSuffStats(x_val, axes, shift, keep_dims)
-#     for use_gpu in [True, False]:
-#       with self.test_session(use_gpu=use_gpu) as sess:
-#         if has_shape:
-#           x = tf.constant(x_val, name="x")
-#           x.set_shape(x_shape)
-#           op_c, op_m, op_v, op_s = self._opSuffStats(x, axes, shift, keep_dims)
-#           if shift:
-#             tf_c, tf_m, tf_v, tf_s = sess.run([op_c, op_m, op_v, op_s])
-#           else:
-#             tf_c, tf_m, tf_v = sess.run([op_c, op_m, op_v])
-#         else:
-#           x = tf.placeholder(dtype=tf.float32,
-#                              shape=[None] * len(x_shape),
-#                              name="x")
-#           op_c, op_m, op_v, op_s = self._opSuffStats(x, axes, shift, keep_dims)
-#           if shift:
-#             tf_c, tf_m, tf_v, tf_s = sess.run(
-#                 [op_c, op_m, op_v, op_s],
-#                 feed_dict={x: x_val})
-#           else:
-#             tf_c, tf_m, tf_v = sess.run(
-#                 [op_c, op_m, op_v],
-#                 feed_dict={x: x_val})
-#         self.assertAllClose(np_c, tf_c, atol=0.000001)
-#         self.assertAllClose(np_m, tf_m, atol=0.000001)
-#         self.assertAllClose(np_v, tf_v, atol=0.000001)
-#         if shift:
-#           self.assertAllClose(np_s, tf_s, atol=0.000001)
-
-#   def testSuffStats(self):
-#     for has_shape in [True, False]:
-#       for keep_dims in [True, False]:
-#         for shift in [True, False]:
-#           self._testSuffStats([2, 3], [1], shift, keep_dims, has_shape)
-#           self._testSuffStats([2, 3], [0], shift, keep_dims, has_shape)
-#           self._testSuffStats([1, 2, 3], [0, 2], shift, keep_dims, has_shape)
-
-
-# class NormalizeMomentsTest(tf.test.TestCase):
-
-#   def _npNormalizeMoments(self, counts, mean_ss, variance_ss, shift):
-#     mean = mean_ss / counts
-#     variance = variance_ss / counts - mean * mean
-#     if shift is not None:
-#       mean += shift
-#     return mean, variance
-
-#   def _opNormalizeMoments(self, counts, mean_ss, variance_ss, shift):
-#     return tf.nn.normalize_moments(counts, mean_ss, variance_ss, shift)
-
-#   def _testNormalizeMoments(self, shape, shift):
-#     counts = np.ones([1]).astype(np.float32)
-#     mean_ss = np.random.random_sample(shape).astype(np.float32)
-#     variance_ss = np.random.random_sample(shape).astype(np.float32)
-#     variance_ss *= variance_ss
-#     if shift:
-#       shift_v = np.random.random_sample(shape).astype(np.float32)
-#     else:
-#       shift_v = None
-#     npm, npv = self._npNormalizeMoments(counts, mean_ss, variance_ss, shift_v)
-#     for use_gpu in [True, False]:
-#       with self.test_session(use_gpu=use_gpu) as sess:
-#         tf_counts = tf.constant(counts, name="counts")
-#         tf_mean_ss = tf.constant(mean_ss, name="mean_ss")
-#         tf_variance_ss = tf.constant(variance_ss, name="variance_ss")
-#         if shift:
-#           tf_shift_v = tf.constant(shift_v, name="shift")
-#         else:
-#           tf_shift_v = None
-#         opm, opv = self._opNormalizeMoments(tf_counts, tf_mean_ss,
-#                                             tf_variance_ss, tf_shift_v)
-#         tfm, tfv = sess.run([opm, opv])
-#         self.assertAllClose(npm, tfm, atol=0.000001)
-#         self.assertAllClose(npv, tfv, atol=0.000001)
-
-#   def testNormalizeMoments(self):
-#     for shift in [True, False]:
-#       self._testNormalizeMoments([3], shift)
-#       self._testNormalizeMoments([2, 3], shift)
-
-
-# class MomentsTest(tf.test.TestCase):
-
-#   def RunMomentTestWithDynamicShape(self, shape, axes, keep_dims):
-#     with self.test_session():
-#       # shape = [batch, width, height, depth]
-#       assert len(shape) == 4
-
-#       x_numpy = np.random.normal(size=shape).astype(np.float32)
-#       x = tf.placeholder(tf.float32, shape=[None] * len(shape))
-
-#       mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
-
-#       num_elements = np.prod([shape[i] for i in axes])
-
-#       ax = tuple(axes)
-#       expected_mean = np.sum(
-#           x_numpy, axis=ax, keepdims=keep_dims) / num_elements
-#       expected_mean_squared = np.multiply(expected_mean, expected_mean)
-#       expected_x_squared = np.sum(
-#           np.multiply(x_numpy, x_numpy),
-#           axis=ax,
-#           keepdims=keep_dims) / num_elements
-#       expected_variance = expected_x_squared - expected_mean_squared
-
-#       # Check that the moments are correct.
-#       self.assertAllClose(expected_mean, mean.eval(feed_dict={x: x_numpy}))
-#       self.assertAllClose(expected_variance, var.eval(feed_dict={x: x_numpy}))
-
-#   def RunMomentTest(self, shape, axes, keep_dims):
-#     with self.test_session():
-#       # shape = [batch, width, height, depth]
-#       assert len(shape) == 4
-
-#       x_numpy = np.random.normal(size=shape).astype(np.float32)
-#       x = tf.constant(x_numpy)
-
-#       mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
-
-#       num_elements = np.prod([shape[i] for i in axes])
-
-#       ax = tuple(axes)
-#       expected_mean = np.sum(
-#           x_numpy, axis=ax, keepdims=keep_dims) / num_elements
-#       expected_mean_squared = np.multiply(expected_mean, expected_mean)
-#       expected_x_squared = np.sum(
-#           np.multiply(x_numpy, x_numpy),
-#           axis=ax,
-#           keepdims=keep_dims) / num_elements
-#       expected_variance = expected_x_squared - expected_mean_squared
-
-#       # Check that the moments are correct.
-#       self.assertAllClose(expected_mean, mean.eval())
-#       self.assertAllClose(expected_variance, var.eval())
-
-#   def testBasic(self):
-#     for keep_dims in [False, True]:
-#       self.RunMomentTest(shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
-#       self.RunMomentTestWithDynamicShape(
-#           shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
-
-#   def testGlobalNormalization(self):
-#     for keep_dims in [False, True]:
-#       self.RunMomentTest(
-#           shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
-#       self.RunMomentTestWithDynamicShape(
-#           shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
-
-#   def testAxes(self):
-#     for keep_dims in [False, True]:
-#       self.RunMomentTest(
-#           shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
-#       self.RunMomentTestWithDynamicShape(
-#           shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
-
-#   def _testGlobalGradient(self, from_y="mean"):
-#     with self.test_session():
-#       x_shape = [3, 5, 4, 2]
-#       x_val = np.random.random_sample(x_shape).astype(np.float64)
-#       x = tf.constant(x_val)
-#       x.set_shape(x_shape)
-
-#       axes = [0, 1, 2]
-#       y_shape = [2]  # Depth of x
-#       out_mean, out_var = tf.nn.moments(x, axes)
-#       if from_y == "mean":
-#         y = out_mean
-#       elif from_y == "var":
-#         y = out_var
-#       err = tf.test.compute_gradient_error(x, x_shape, y, y_shape)
-#       print("Moments %s gradient err = %g" % (from_y, err))
-#       self.assertLess(err, 1e-11)
-
-#   def testMeanGlobalGradient(self):
-#     self._testGlobalGradient(from_y="mean")
-
-#   def testVarGlobalGradient(self):
-#     self._testGlobalGradient(from_y="var")
-
-#   def testOutputNamesNoKeep(self):
-#     """Make sure the output names are stable."""
-#     with self.test_session():
-#       mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=False)
-#       self.assertEquals(mean.op.name, "moments/normalize/mean")
-#       self.assertEquals(var.op.name, "moments/normalize/variance")
-
-#   def testOutputNamesKeep(self):
-#     """Make sure the output names are stable."""
-#     with self.test_session():
-#       mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=True)
-#       self.assertEquals(mean.op.name, "moments/normalize/mean")
-#       self.assertEquals(var.op.name, "moments/normalize/variance")
-
-
-# class ComputeSampledLogitsTest(tf.test.TestCase):
-
-#   def setUp(self):
-#     self._num_classes = 5
-#     self._dim = 10
-#     self._batch_size = 3
-#     self._num_shards = 3
-
-#   def _GenerateTestInputs(self):
-#     np.random.seed(0)
-#     weights = np.random.randn(self._num_classes, self._dim).astype(np.float32)
-#     biases = np.random.randn(self._num_classes).astype(np.float32)
-#     hidden_acts = np.random.randn(self._batch_size, self._dim).astype(
-#         np.float32)
-#     sharded_weights = [
-#         weights[[row for row in range(self._num_classes)
-#                  if row % self._num_shards == shard]]
-#         for shard in range(self._num_shards)]
-#     return weights, biases, hidden_acts, sharded_weights
-
-#   def _ComputeSampledLogitsNP(self, true_w, true_b, sampled_w, sampled_b,
-#                               hidden_acts,
-#                               num_true=1,
-#                               true_expected=None,
-#                               sampled_expected=None):
-
-#     batch_size, dim = hidden_acts.shape
-#     true_logits = np.sum(
-#         hidden_acts.reshape((batch_size, 1, dim)) * true_w.reshape(
-#             (batch_size, num_true, dim)),
-#         axis=2)
-#     true_b = true_b.reshape((batch_size, num_true))
-#     true_logits += true_b
-#     sampled_logits = np.dot(hidden_acts, sampled_w.T) + sampled_b
-
-#     if true_expected is not None:
-#       true_logits -= np.log(true_expected)
-#     if sampled_expected is not None:
-#       sampled_logits -= np.log(sampled_expected[np.newaxis, :])
-
-#     out_logits = np.concatenate([true_logits, sampled_logits], axis=1)
-#     out_labels = np.hstack((np.ones_like(true_logits) / num_true,
-#                             np.zeros_like(sampled_logits)))
-
-#     return out_logits, out_labels
-
-#   def _ComputeSampledLogitsTF(self, weights, biases, hidden_acts, labels,
-#                               num_sampled, num_classes, num_true, sampled_vals,
-#                               subtract_log_q, remove_accidental_hits,
-#                               name="sampled_loss_TF"):
-#     # Should be called from within a `with test_session():` block
-#     if isinstance(weights, list):
-#       weights_tf = [tf.constant(shard) for shard in weights]
-#     else:
-#       weights_tf = tf.constant(weights)
-#     biases_tf = tf.constant(biases)
-#     hidden_acts_tf = tf.constant(hidden_acts,
-#                                  shape=(self._batch_size, self._dim))
-#     labels_tf = tf.constant(labels,
-#                             dtype=tf.int64,
-#                             shape=(self._batch_size, num_true))
-
-#     pred_logits_tf, pred_labels_tf = tf.nn._compute_sampled_logits(
-#         weights_tf,
-#         biases_tf,
-#         hidden_acts_tf,
-#         labels_tf,
-#         num_sampled,
-#         num_classes,
-#         num_true,
-#         sampled_vals,
-#         subtract_log_q=subtract_log_q,
-#         remove_accidental_hits=remove_accidental_hits,
-#         name=name)
-#     return pred_logits_tf, pred_labels_tf
-
-#   def testComputeSampledLogitsShapes(self):
-#     # We just check that the shapes of the returned values are correct.
-#     weights, biases, hidden_acts, _ = self._GenerateTestInputs()
-#     sampled = [1, 0, 2, 3]
-#     num_sampled = len(sampled)
-#     true_exp = sampled_exp = [1., 1., 1., 1.]
-#     test_sampled_vals = (sampled, true_exp, sampled_exp)
-#     sampled_w, sampled_b = weights[sampled], biases[sampled]
-
-#     with self.test_session() as sess:
-#       for num_true_test in range(1, 5):
-#         labels = np.random.randint(low=0, high=self._num_classes,
-#                                    size=self._batch_size * num_true_test)
-#         true_w, true_b = weights[labels], biases[labels]
-
-#         logits_np, labels_np = self._ComputeSampledLogitsNP(
-#             true_w, true_b, sampled_w, sampled_b, hidden_acts,
-#             num_true=num_true_test)
-
-#         logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-#             weights, biases, hidden_acts, labels, num_sampled,
-#             self._num_classes,
-#             num_true=num_true_test,
-#             sampled_vals=test_sampled_vals,
-#             remove_accidental_hits=True,
-#             subtract_log_q=False)
-
-#       logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
-#       self.assertEqual(logits_np.shape, logits_tf_val.shape)
-#       self.assertEqual(labels_np.shape, labels_tf_val.shape)
-
-#   def testComputeSampledLogitsValues(self):
-#     # Here we check the actual numerics.
-#     weights, biases, hidden_acts, sharded_weights = self._GenerateTestInputs()
-#     eps = 1e-3
-#     sampled = [1, 0, 2, 3]
-#     num_sampled = len(sampled)
-#     true_exp = np.empty([self._batch_size, 1], dtype=np.float32)
-#     true_exp.fill(0.5)
-#     sampled_exp = np.empty([num_sampled], dtype=np.float32)
-#     sampled_exp.fill(0.5)
-#     sampled_w, sampled_b = weights[sampled], biases[sampled]
-#     test_sampled_vals = (sampled, true_exp, sampled_exp)
-
-#     with self.test_session() as sess:
-#       for num_true_test in range(1, 5):
-#         # Generate test data for this run
-#         labels = np.random.randint(low=0, high=self._num_classes,
-#                                    size=self._batch_size * num_true_test)
-#         true_w, true_b = weights[labels], biases[labels]
-
-#         # Test 1: Without accidental hit removal or subtract_log_q
-#         logits_np, labels_np = self._ComputeSampledLogitsNP(
-#             true_w, true_b, sampled_w, sampled_b, hidden_acts,
-#             num_true=num_true_test)
-#         logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-#             weights, biases, hidden_acts, labels, num_sampled,
-#             self._num_classes,
-#             num_true=num_true_test,
-#             sampled_vals=test_sampled_vals,
-#             subtract_log_q=False,
-#             remove_accidental_hits=False,
-#             name="sampled_loss_test1_num_true%d" % num_true_test)
-
-#         logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
-#         self.assertAllClose(logits_np, logits_tf_val, eps)
-#         self.assertAllClose(labels_np, labels_tf_val, eps)
-
-#         # Test 2: With accidental hit removal, no subtract_log_q
-#         logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-#             weights, biases, hidden_acts, labels, num_sampled,
-#             self._num_classes,
-#             num_true=num_true_test,
-#             sampled_vals=test_sampled_vals,
-#             subtract_log_q=False,
-#             remove_accidental_hits=True,
-#             name="sampled_loss_test2_num_true%d" % num_true_test)
-
-#         # Test that the exponentiated logits of accidental hits are near 0.
-#         # First we need to find the hits in this random test run:
-#         labels_reshape = labels.reshape((self._batch_size, num_true_test))
-#         logits_tf_np = logits_tf.eval()
-#         for row in xrange(self._batch_size):
-#           row_labels = labels_reshape[row, :]
-#           for col in xrange(num_sampled):
-#             if sampled[col] in row_labels:
-#               # We need to add the num_true_test offset into logits_*
-#               self.assertNear(
-#                   np.exp(logits_tf_np[row, col + num_true_test]), 0., eps)
-
-#         # Test 3: With subtract_log_q, no accidental hit removal
-#         logits_np, labels_np = self._ComputeSampledLogitsNP(
-#             true_w, true_b, sampled_w, sampled_b, hidden_acts,
-#             num_true=num_true_test,
-#             true_expected=true_exp,
-#             sampled_expected=sampled_exp)
-#         logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-#             weights, biases, hidden_acts, labels, num_sampled,
-#             self._num_classes,
-#             num_true=num_true_test,
-#             sampled_vals=test_sampled_vals,
-#             subtract_log_q=True,
-#             remove_accidental_hits=False,
-#             name="sampled_loss_test3_num_true%d" % num_true_test)
-
-#         logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
-#         self.assertAllClose(logits_np, logits_tf_val, eps)
-#         self.assertAllClose(labels_np, labels_tf_val, eps)
-
-#         # Test 4: Test 1, with sharded weights
-#         logits_np, labels_np = self._ComputeSampledLogitsNP(
-#             true_w, true_b, sampled_w, sampled_b, hidden_acts,
-#             num_true=num_true_test)
-#         logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-#             sharded_weights, biases, hidden_acts, labels, num_sampled,
-#             self._num_classes,
-#             num_true=num_true_test,
-#             sampled_vals=test_sampled_vals,
-#             subtract_log_q=False,
-#             remove_accidental_hits=False,
-#             name="sampled_loss_test1_num_true%d" % num_true_test)
-
-#         logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
-#         self.assertAllClose(logits_np, logits_tf_val, eps)
-#         self.assertAllClose(labels_np, labels_tf_val, eps)
-
-#   def testNCELoss(self):
-#     # A simple test to verify the numerics.
-
-#     def _SigmoidCrossEntropyWithLogits(logits, targets):
-#       # logits, targets: float arrays of the same shape.
-#       assert logits.shape == targets.shape
-#       pred = 1. / (1. + np.exp(-logits))
-#       eps = 0.0001
-#       pred = np.minimum(np.maximum(pred, eps), 1 - eps)
-#       return -targets * np.log(pred) - (1. - targets) * np.log(1. - pred)
-
-#     weights, biases, hidden_acts, sharded_weights = self._GenerateTestInputs()
-#     labels = [0, 1, 2]
-#     true_w, true_b = weights[labels], biases[labels]
-#     sampled = [1, 0, 2, 3]
-#     num_sampled = len(sampled)
-#     true_exp = np.empty([self._batch_size, 1], dtype=np.float32)
-#     true_exp.fill(0.5)
-#     sampled_exp = np.empty([num_sampled], dtype=np.float32)
-#     sampled_exp.fill(0.5)
-#     sampled_w, sampled_b = weights[sampled], biases[sampled]
-#     test_sampled_vals = (sampled, true_exp, sampled_exp)
-
-#     with self.test_session():
-#       logits_np, labels_np = self._ComputeSampledLogitsNP(
-#           true_w, true_b, sampled_w, sampled_b, hidden_acts,
-#           true_expected=true_exp,
-#           sampled_expected=sampled_exp)
-#       nce_loss_np = np.sum(
-#           _SigmoidCrossEntropyWithLogits(logits_np, labels_np), 1)
-
-#       labels_tf = tf.constant(labels, shape=(self._batch_size, 1))
-#       weights_tf = tf.constant(weights)
-#       biases_tf = tf.constant(biases)
-#       inputs_tf = tf.constant(hidden_acts)
-
-#       nce_loss_tf = tf.nn.nce_loss(weights_tf,
-#                                    biases_tf,
-#                                    inputs_tf,
-#                                    labels_tf,
-#                                    num_sampled=1,
-#                                    num_classes=self._num_classes,
-#                                    num_true=1,
-#                                    sampled_values=test_sampled_vals)
-
-#       self.assertAllClose(nce_loss_np, nce_loss_tf.eval(), 1e-4)
-
-#       # Test with sharded weights
-#       nce_loss_tf = tf.nn.nce_loss(
-#           [tf.constant(shard) for shard in sharded_weights],
-#           biases_tf,
-#           inputs_tf,
-#           labels_tf,
-#           num_sampled=1,
-#           num_classes=self._num_classes,
-#           num_true=1,
-#           sampled_values=test_sampled_vals)
-
-#       self.assertAllClose(nce_loss_np, nce_loss_tf.eval(), 1e-4)
-
-#   def testSampledSoftmaxLoss(self):
-#     # A simple test to verify the numerics.
-
-#     def _SoftmaxCrossEntropyWithLogits(logits, targets):
-#       # logits, targets: float arrays of the same shape.
-#       assert logits.shape == targets.shape
-#       stable_exp_logits = np.exp(logits - np.amax(
-#           logits, axis=1, keepdims=True))
-#       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-#       return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
-
-#     weights, biases, hidden_acts, sharded_weights = self._GenerateTestInputs()
-#     labels = [0, 1, 2]
-#     true_w, true_b = weights[labels], biases[labels]
-#     sampled = [1, 0, 2, 3]
-#     num_sampled = len(sampled)
-#     true_exp = np.full([self._batch_size, 1], fill_value=0.5, dtype=np.float32)
-#     sampled_exp = np.full([num_sampled], fill_value=0.5, dtype=np.float32)
-#     sampled_w, sampled_b = weights[sampled], biases[sampled]
-#     test_sampled_vals = (sampled, true_exp, sampled_exp)
-
-#     with self.test_session():
-#       logits_np, labels_np = self._ComputeSampledLogitsNP(
-#           true_w, true_b, sampled_w, sampled_b, hidden_acts,
-#           true_expected=true_exp,
-#           sampled_expected=sampled_exp)
-#       sampled_softmax_loss_np = _SoftmaxCrossEntropyWithLogits(logits_np,
-#                                                                labels_np)
-
-#       labels_tf = tf.constant(labels, shape=(self._batch_size, 1))
-#       weights_tf = tf.constant(weights)
-#       biases_tf = tf.constant(biases)
-#       inputs_tf = tf.constant(hidden_acts)
-
-#       sampled_softmax_loss_tf = tf.nn.sampled_softmax_loss(
-#           weights_tf,
-#           biases_tf,
-#           inputs_tf,
-#           labels_tf,
-#           num_sampled=1,
-#           num_classes=self._num_classes,
-#           num_true=1,
-#           sampled_values=test_sampled_vals,
-#           remove_accidental_hits=False)
-
-#       self.assertAllClose(
-#           sampled_softmax_loss_np, sampled_softmax_loss_tf.eval(), 1e-4)
-
-#       # Test with sharded weights
-#       sampled_softmax_loss_tf = tf.nn.sampled_softmax_loss(
-#           [tf.constant(shard) for shard in sharded_weights],
-#           biases_tf,
-#           inputs_tf,
-#           labels_tf,
-#           num_sampled=1,
-#           num_classes=self._num_classes,
-#           num_true=1,
-#           sampled_values=test_sampled_vals,
-#           remove_accidental_hits=False)
-
-#       self.assertAllClose(
-#           sampled_softmax_loss_np, sampled_softmax_loss_tf.eval(), 1e-4)
+
+class SufficientStatisticsTest(test_util.TensorFlowTestCase):
+
+  def _npSuffStats(self, x, axes, shift, keep_dims):
+    axis = tuple(axes)
+    if shift:
+      shift_value = x[[slice(None) if i not in set(axis) else slice(0, 1)
+                       for i in xrange(x.ndim)]]
+      m_ss = np.sum(x - shift_value, axis=axis, keepdims=keep_dims)
+      v_ss = np.sum(
+          (x - shift_value) * (x - shift_value),
+          axis=axis,
+          keepdims=keep_dims)
+    else:
+      shift_value = None
+      m_ss = np.sum(x, axis=axis, keepdims=keep_dims)
+      v_ss = np.sum(x * x, axis=axis, keepdims=keep_dims)
+    count = 1.0
+    for d in xrange(x.ndim):
+      if d in set(axes):
+        count *= x.shape[d]
+    if not keep_dims:
+      shift_value = np.squeeze(shift_value, axis=axis)
+    return count, m_ss, v_ss, shift_value
+
+  def _opSuffStats(self, x, axes, shift, keep_dims):
+    return tf.nn.sufficient_statistics(x, axes, shift, keep_dims)
+
+  # NOTE(yaroslavvb): comment out because of placeholder use
+  # def _testSuffStats(self, x_shape, axes, shift, keep_dims, has_shape):
+  #   x_val = np.random.random_sample(x_shape).astype(np.float32)
+  #   np_c, np_m, np_v, np_s = self._npSuffStats(x_val, axes, shift, keep_dims)
+  #   for use_gpu in [True, False]:
+  #     with self.test_session(use_gpu=use_gpu) as sess:
+  #       if has_shape:
+  #         x = tf.constant(x_val, name="x")
+  #         x.set_shape(x_shape)
+  #         op_c, op_m, op_v, op_s = self._opSuffStats(x, axes, shift, keep_dims)
+  #         if shift:
+  #           tf_c, tf_m, tf_v, tf_s = sess.run([op_c, op_m, op_v, op_s])
+  #         else:
+  #           tf_c, tf_m, tf_v = sess.run([op_c, op_m, op_v])
+  #       else:
+  #         x = tf.placeholder(dtype=tf.float32,
+  #                            shape=[None] * len(x_shape),
+  #                            name="x")
+  #         op_c, op_m, op_v, op_s = self._opSuffStats(x, axes, shift, keep_dims)
+  #         if shift:
+  #           tf_c, tf_m, tf_v, tf_s = sess.run(
+  #               [op_c, op_m, op_v, op_s],
+  #               feed_dict={x: x_val})
+  #         else:
+  #           tf_c, tf_m, tf_v = sess.run(
+  #               [op_c, op_m, op_v],
+  #               feed_dict={x: x_val})
+  #       self.assertAllClose(np_c, tf_c, atol=0.000001)
+  #       self.assertAllClose(np_m, tf_m, atol=0.000001)
+  #       self.assertAllClose(np_v, tf_v, atol=0.000001)
+  #       if shift:
+  #         self.assertAllClose(np_s, tf_s, atol=0.000001)
+
+  # def testSuffStats(self):
+  #   for has_shape in [True, False]:
+  #     for keep_dims in [True, False]:
+  #       for shift in [True, False]:
+  #         self._testSuffStats([2, 3], [1], shift, keep_dims, has_shape)
+  #         self._testSuffStats([2, 3], [0], shift, keep_dims, has_shape)
+  #         self._testSuffStats([1, 2, 3], [0, 2], shift, keep_dims, has_shape)
+
+
+class NormalizeMomentsTest(test_util.TensorFlowTestCase):
+
+  def _npNormalizeMoments(self, counts, mean_ss, variance_ss, shift):
+    mean = mean_ss / counts
+    variance = variance_ss / counts - mean * mean
+    if shift is not None:
+      mean += shift
+    return mean, variance
+
+  def _opNormalizeMoments(self, counts, mean_ss, variance_ss, shift):
+    return tf.nn.normalize_moments(counts, mean_ss, variance_ss, shift)
+
+  def _testNormalizeMoments(self, shape, shift):
+    counts = np.ones([1]).astype(np.float32)
+    mean_ss = np.random.random_sample(shape).astype(np.float32)
+    variance_ss = np.random.random_sample(shape).astype(np.float32)
+    variance_ss *= variance_ss
+    if shift:
+      shift_v = np.random.random_sample(shape).astype(np.float32)
+    else:
+      shift_v = None
+    npm, npv = self._npNormalizeMoments(counts, mean_ss, variance_ss, shift_v)
+    for use_gpu in [True, False]:
+      with self.test_session(use_gpu=use_gpu) as sess:
+        tf_counts = tf.constant(counts, name="counts")
+        tf_mean_ss = tf.constant(mean_ss, name="mean_ss")
+        tf_variance_ss = tf.constant(variance_ss, name="variance_ss")
+        if shift:
+          tf_shift_v = tf.constant(shift_v, name="shift")
+        else:
+          tf_shift_v = None
+        opm, opv = self._opNormalizeMoments(tf_counts, tf_mean_ss,
+                                            tf_variance_ss, tf_shift_v)
+        tfm, tfv = sess.run([opm, opv])
+        self.assertAllClose(npm, tfm, atol=0.000001)
+        self.assertAllClose(npv, tfv, atol=0.000001)
+
+  def testNormalizeMoments(self):
+    for shift in [True, False]:
+      self._testNormalizeMoments([3], shift)
+      self._testNormalizeMoments([2, 3], shift)
+
+
+class MomentsTest(test_util.TensorFlowTestCase):
+
+  # def RunMomentTestWithDynamicShape(self, shape, axes, keep_dims):
+  #   with self.test_session():
+  #     # shape = [batch, width, height, depth]
+  #     assert len(shape) == 4
+
+  #     x_numpy = np.random.normal(size=shape).astype(np.float32)
+  #     x = tf.placeholder(tf.float32, shape=[None] * len(shape))
+
+  #     mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
+
+  #     num_elements = np.prod([shape[i] for i in axes])
+
+  #     ax = tuple(axes)
+  #     expected_mean = np.sum(
+  #         x_numpy, axis=ax, keepdims=keep_dims) / num_elements
+  #     expected_mean_squared = np.multiply(expected_mean, expected_mean)
+  #     expected_x_squared = np.sum(
+  #         np.multiply(x_numpy, x_numpy),
+  #         axis=ax,
+  #         keepdims=keep_dims) / num_elements
+  #     expected_variance = expected_x_squared - expected_mean_squared
+
+  #     # Check that the moments are correct.
+  #     self.assertAllClose(expected_mean, mean.eval(feed_dict={x: x_numpy}))
+  #     self.assertAllClose(expected_variance, var.eval(feed_dict={x: x_numpy}))
+
+  def RunMomentTest(self, shape, axes, keep_dims):
+    with self.test_session():
+      # shape = [batch, width, height, depth]
+      assert len(shape) == 4
+
+      x_numpy = np.random.normal(size=shape).astype(np.float32)
+      x = tf.constant(x_numpy)
+
+      mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
+
+      num_elements = np.prod([shape[i] for i in axes])
+
+      ax = tuple(axes)
+      expected_mean = np.sum(
+          x_numpy, axis=ax, keepdims=keep_dims) / num_elements
+      expected_mean_squared = np.multiply(expected_mean, expected_mean)
+      expected_x_squared = np.sum(
+          np.multiply(x_numpy, x_numpy),
+          axis=ax,
+          keepdims=keep_dims) / num_elements
+      expected_variance = expected_x_squared - expected_mean_squared
+
+      # Check that the moments are correct.
+      self.assertAllClose(expected_mean, mean.eval())
+      self.assertAllClose(expected_variance, var.eval())
+
+  def testBasic(self):
+    for keep_dims in [False, True]:
+      self.RunMomentTest(shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
+  #      self.RunMomentTestWithDynamicShape(
+  #          shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
+
+  def testGlobalNormalization(self):
+    for keep_dims in [False, True]:
+      self.RunMomentTest(
+          shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
+  #     self.RunMomentTestWithDynamicShape(
+  #         shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
+
+  def testAxes(self):
+    for keep_dims in [False, True]:
+      self.RunMomentTest(
+          shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
+  #     self.RunMomentTestWithDynamicShape(
+  #         shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
+
+  # def _testGlobalGradient(self, from_y="mean"):
+  #   with self.test_session():
+  #     x_shape = [3, 5, 4, 2]
+  #     x_val = np.random.random_sample(x_shape).astype(np.float64)
+  #     x = tf.constant(x_val)
+  #     x.set_shape(x_shape)
+
+  #     axes = [0, 1, 2]
+  #     y_shape = [2]  # Depth of x
+  #     out_mean, out_var = tf.nn.moments(x, axes)
+  #     if from_y == "mean":
+  #       y = out_mean
+  #     elif from_y == "var":
+  #       y = out_var
+  #     err = tf.test.compute_gradient_error(x, x_shape, y, y_shape)
+  #     print("Moments %s gradient err = %g" % (from_y, err))
+  #     self.assertLess(err, 1e-11)
+
+  # def testMeanGlobalGradient(self):
+  #   self._testGlobalGradient(from_y="mean")
+
+  # def testVarGlobalGradient(self):
+  #   self._testGlobalGradient(from_y="var")
+
+  # NOTE(yaroslavvb): testing graph op names
+  # def testOutputNamesNoKeep(self):
+  #   """Make sure the output names are stable."""
+  #   with self.test_session():
+  #     mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=False)
+  #     self.assertEquals(mean.op.name, "moments/normalize/mean")
+  #     self.assertEquals(var.op.name, "moments/normalize/variance")
+
+  # def testOutputNamesKeep(self):
+  #   """Make sure the output names are stable."""
+  #   with self.test_session():
+  #     mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=True)
+  #     self.assertEquals(mean.op.name, "moments/normalize/mean")
+  #     self.assertEquals(var.op.name, "moments/normalize/variance")
 
 
 if __name__ == "__main__":
