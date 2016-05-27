@@ -75,7 +75,7 @@ class PackStateTest(tf.test.TestCase):
   def testPackUnpackState(self):
     structure = ((3, 4), 5, (6, 7, (9, 10), 8))
     flat = ["a", "b", "c", "d", "e", "f", "g", "h"]
-    self.assertEqual(_unpacked_state(structure), (3, 4, 5, 6, 7, 9, 10, 8))
+    self.assertEqual(_unpacked_state(structure), [3, 4, 5, 6, 7, 9, 10, 8])
     self.assertEqual(_packed_state(structure, flat),
                      (("a", "b"), "c", ("d", "e", ("f", "g"), "h")))
 
@@ -726,6 +726,12 @@ class LSTMTest(tf.test.TestCase):
       outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
           cell, inputs_c, dtype=tf.float32, time_major=True,
           sequence_length=sequence_length)
+      self.assertTrue(isinstance(state_static, tf.nn.rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(state_dynamic, tf.nn.rnn_cell.LSTMStateTuple))
+      self.assertEqual(state_static[0], state_static.c)
+      self.assertEqual(state_static[1], state_static.h)
+      self.assertEqual(state_dynamic[0], state_dynamic.c)
+      self.assertEqual(state_dynamic[1], state_dynamic.h)
 
       tf.initialize_all_variables().run()
 
