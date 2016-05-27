@@ -30,7 +30,3 @@ from tensorflow.contrib.learn.python.learn.io.pandas_io import extract_pandas_da
 from tensorflow.contrib.learn.python.learn.io.pandas_io import extract_pandas_labels
 from tensorflow.contrib.learn.python.learn.io.pandas_io import extract_pandas_matrix
 from tensorflow.contrib.learn.python.learn.io.pandas_io import HAS_PANDAS
-
-# pylint: disable=g-import-not-at-top
-if HAS_PANDAS:
-  from tensorflow.contrib.learn.python.learn.io.pandas_io import pd

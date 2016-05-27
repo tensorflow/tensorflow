@@ -26,7 +26,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.io import HAS_PANDAS
-from tensorflow.contrib.learn.python.learn.io import pd
 from tensorflow.contrib.learn.python.learn.preprocessing import categorical
 
 
@@ -41,6 +40,7 @@ class CategoricalTest(tf.test.TestCase):
 
   def testSingleCategoricalProcessorPandasSingleDF(self):
     if HAS_PANDAS:
+      import pandas as pd
       cat_processor = categorical.CategoricalProcessor()
       data = pd.DataFrame({"Gender": ["Male", "Female", "Male"]})
       x = list(cat_processor.fit_transform(data))
