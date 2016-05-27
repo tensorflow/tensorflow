@@ -74,19 +74,34 @@ __device__ __host__ inline T ldg(const T* address) {
 
 // CUDA provides atomic ops, but not for all types.  We provide wrappers
 // for some ops and provide implementation for all reasonable types.
-#define CUDA_ATOMIC_WRAPPER(op, T)                                      \
+#define CUDA_ATOMIC_WRAPPER(op, T) \
   __device__ __forceinline__ T CudaAtomic##op(T* address, T val)
 
-#define USE_CUDA_ATOMIC(op, T)       \
-  CUDA_ATOMIC_WRAPPER(op, T) {       \
-    return atomic##op(address, val); \
-  }
+// Reason of guarding: NVCC cannot compile the "::" in "cuda_builtin::atomicOp".
+#ifdef __GCUDACC__
+#define USE_CUDA_ATOMIC(op, T) \
+  CUDA_ATOMIC_WRAPPER(op, T) { return cuda_builtin::atomic##op(address, val); }
+#else
+#define USE_CUDA_ATOMIC(op, T) \
+  CUDA_ATOMIC_WRAPPER(op, T) { return atomic##op(address, val); }
+#endif
 
 // For atomicAdd.
 USE_CUDA_ATOMIC(Add, int32);
 USE_CUDA_ATOMIC(Add, uint32);
 USE_CUDA_ATOMIC(Add, uint64);
 USE_CUDA_ATOMIC(Add, float);
+// For atomicMax.
+USE_CUDA_ATOMIC(Max, int32);
+USE_CUDA_ATOMIC(Max, uint32);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+USE_CUDA_ATOMIC(Max, uint64);
+#endif
+// For atomicExch.
+USE_CUDA_ATOMIC(Exch, int32);
+USE_CUDA_ATOMIC(Exch, uint32);
+USE_CUDA_ATOMIC(Exch, uint64);
+USE_CUDA_ATOMIC(Exch, float);
 
 // Custom implementation of atomicAdd for double.
 // This implementation is copied from CUDA manual.
@@ -185,10 +200,8 @@ __global__ void SetZero(const int nthreads, T* bottom_diff) {
 // For atomicSub.
 
 // Custom implementation for sub by just negating the value.
-#define WRAPPED_ATOMIC_SUB(T)                       \
-  CUDA_ATOMIC_WRAPPER(Sub, T) {                     \
-    return CudaAtomicAdd(address, -val);            \
-  }
+#define WRAPPED_ATOMIC_SUB(T) \
+  CUDA_ATOMIC_WRAPPER(Sub, T) { return CudaAtomicAdd(address, -val); }
 
 WRAPPED_ATOMIC_SUB(uint64);
 WRAPPED_ATOMIC_SUB(int32);
