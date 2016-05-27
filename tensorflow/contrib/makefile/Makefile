@@ -17,36 +17,39 @@
 MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
 # Try to figure out the host system
-HOST_OS =
+HOST_OS :=
 ifeq ($(OS),Windows_NT)
 	HOST_OS = WINDOWS
 else
 	UNAME_S := $(shell uname -s)
 	ifeq ($(UNAME_S),Linux)
-	        HOST_OS = LINUX
+	        HOST_OS := LINUX
 	endif
 	ifeq ($(UNAME_S),Darwin)
-		HOST_OS = OSX
+		HOST_OS := OSX
 	endif
 endif
 
 # Where compiled objects are stored.
-HOST_OBJDIR = $(MAKEFILE_DIR)/gen/host_obj/
-HOST_BINDIR = $(MAKEFILE_DIR)/gen/host_bin/
-HOST_GENDIR = $(MAKEFILE_DIR)/gen/host_obj/
+HOST_OBJDIR := $(MAKEFILE_DIR)/gen/host_obj/
+HOST_BINDIR := $(MAKEFILE_DIR)/gen/host_bin/
+HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
+
+# Which Eigen version we're using.
+EIGEN_HASH := f3a13643ac1f
 
 # Settings for the host compiler.
-HOST_CXX = gcc
-HOST_CXXFLAGS = --std=c++11
-HOST_LDOPTS = \
+HOST_CXX := gcc
+HOST_CXXFLAGS := --std=c++11
+HOST_LDOPTS := \
 -L/usr/local/lib
-HOST_INCLUDES = \
+HOST_INCLUDES := \
 -I/usr/local/include \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
--I$(MAKEFILE_DIR)/downloads/eigen-eigen-a5e9085a94e8 \
+-I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
 -I$(HOST_GENDIR)
-HOST_LIBS = \
+HOST_LIBS := \
 -lstdc++ \
 -lprotobuf \
 -lm
@@ -61,55 +64,55 @@ endif
 # produce a much more minimal result so we can save binary space.
 # We have to build it on the host system first so that we can create files
 # that are needed for the runtime building.
-PROTO_TEXT = $(HOST_BINDIR)proto_text
+PROTO_TEXT := $(HOST_BINDIR)proto_text
 # The list of dependencies is derived from the Bazel build file by running
 # the gen_file_lists.sh script on a system with a working Bazel setup.
-PROTO_TEXT_CC_FILES = $(shell cat $(MAKEFILE_DIR)/proto_text_cc_files.txt)
-PROTO_TEXT_PB_CC_LIST = $(shell cat $(MAKEFILE_DIR)/proto_text_pb_cc_files.txt)
-PROTO_TEXT_PB_H_LIST = $(shell cat $(MAKEFILE_DIR)/proto_text_pb_h_files.txt)
+PROTO_TEXT_CC_FILES := $(shell cat $(MAKEFILE_DIR)/proto_text_cc_files.txt)
+PROTO_TEXT_PB_CC_LIST := $(shell cat $(MAKEFILE_DIR)/proto_text_pb_cc_files.txt)
+PROTO_TEXT_PB_H_LIST := $(shell cat $(MAKEFILE_DIR)/proto_text_pb_h_files.txt)
 
 # Locations of the intermediate files proto_text generates.
-PROTO_TEXT_PB_H_FILES = $(addprefix $(HOST_GENDIR), $(PROTO_TEXT_PB_H_LIST))
-PROTO_TEXT_CC_OBJS = $(addprefix $(HOST_OBJDIR), $(PROTO_TEXT_CC_FILES:.cc=.o))
-PROTO_TEXT_PB_OBJS = $(addprefix $(HOST_OBJDIR), $(PROTO_TEXT_PB_CC_LIST:.cc=.o))
-PROTO_TEXT_OBJS = $(PROTO_TEXT_CC_OBJS) $(PROTO_TEXT_PB_OBJS)
+PROTO_TEXT_PB_H_FILES := $(addprefix $(HOST_GENDIR), $(PROTO_TEXT_PB_H_LIST))
+PROTO_TEXT_CC_OBJS := $(addprefix $(HOST_OBJDIR), $(PROTO_TEXT_CC_FILES:.cc=.o))
+PROTO_TEXT_PB_OBJS := $(addprefix $(HOST_OBJDIR), $(PROTO_TEXT_PB_CC_LIST:.cc=.o))
+PROTO_TEXT_OBJS := $(PROTO_TEXT_CC_OBJS) $(PROTO_TEXT_PB_OBJS)
 
 # Target device settings.
 
 # Default to running on the same system we're compiling on.
 # You should override TARGET on the command line if you're cross-compiling, e.g.
 # make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID
-TARGET = $(HOST_OS)
+TARGET := $(HOST_OS)
 
 # Where compiled objects are stored.
-GENDIR = $(MAKEFILE_DIR)/gen/
-OBJDIR = $(GENDIR)obj/
-LIBDIR = $(GENDIR)lib/
-BINDIR = $(GENDIR)bin/
-PBTGENDIR = $(GENDIR)proto_text/
-PROTOGENDIR = $(GENDIR)proto/
+GENDIR := $(MAKEFILE_DIR)/gen/
+OBJDIR := $(GENDIR)obj/
+LIBDIR := $(GENDIR)lib/
+BINDIR := $(GENDIR)bin/
+PBTGENDIR := $(GENDIR)proto_text/
+PROTOGENDIR := $(GENDIR)proto/
 
 # Settings for the target compiler.
-CXX = gcc
-CXXFLAGS = --std=c++11
-LDFLAGS = \
+CXX := gcc
+CXXFLAGS := --std=c++11
+LDFLAGS := \
 -L/usr/local/lib
-INCLUDES = \
+INCLUDES := \
 -I/usr/local/include \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
--I$(MAKEFILE_DIR)/downloads/eigen-eigen-a5e9085a94e8 \
+-I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
-LIBS = \
+LIBS := \
 -lstdc++ \
 -lprotobuf \
 -lm
-PROTOC = protoc
-PROTOCFLAGS =
-AR = ar
-ARFLAGS = -r
-LIBFLAGS =
+PROTOC := protoc
+PROTOCFLAGS :=
+AR := ar
+ARFLAGS := -r
+LIBFLAGS :=
 
 # If we're on OS X, make sure that globals aren't stripped out.
 ifeq ($(TARGET),OSX)
@@ -129,8 +132,8 @@ ifeq ($(TARGET),ANDROID)
 # Override ANDROID_NDK_DIR on the command line with your own NDK location, e.g.
 # make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID \
 # ANDROID_NDK_DIR=/path/to/your/ndk
-	ANDROID_NDK_DIR = $(HOME)/toolchains/clang-21-stl-gnu
-	CXX = $(ANDROID_NDK_DIR)/bin/arm-linux-androideabi-g++
+	ANDROID_NDK_DIR := $(HOME)/toolchains/clang-21-stl-gnu
+	CXX := $(ANDROID_NDK_DIR)/bin/arm-linux-androideabi-g++
 	CXXFLAGS += --sysroot=$(ANDROID_NDK_DIR)/sysroot
 	INCLUDES += -I$(ANDROID_NDK_DIR)/sysroot/usr/include
 	LIBS += -llog
@@ -141,16 +144,16 @@ endif
 
 # Settings for iOS.
 ifeq ($(TARGET),IOS)
-	IPHONEOS_PLATFORM=$(shell xcrun --sdk iphoneos --show-sdk-platform-path)
-	IPHONEOS_SYSROOT=$(shell xcrun --sdk iphoneos --show-sdk-path)
-	IPHONESIMULATOR_PLATFORM=$(shell xcrun --sdk iphonesimulator \
+	IPHONEOS_PLATFORM := $(shell xcrun --sdk iphoneos --show-sdk-platform-path)
+	IPHONEOS_SYSROOT := $(shell xcrun --sdk iphoneos --show-sdk-path)
+	IPHONESIMULATOR_PLATFORM := $(shell xcrun --sdk iphonesimulator \
 	--show-sdk-platform-path)
-	IPHONESIMULATOR_SYSROOT=$(shell xcrun --sdk iphonesimulator \
+	IPHONESIMULATOR_SYSROOT := $(shell xcrun --sdk iphonesimulator \
 	--show-sdk-path)
-	IOS_SDK_VERSION=$(shell xcrun --sdk iphoneos --show-sdk-version)
-	MIN_SDK_VERSION=9.2
+	IOS_SDK_VERSION := $(shell xcrun --sdk iphoneos --show-sdk-version)
+	MIN_SDK_VERSION := 9.2
 # Override IOS_ARCH with ARMV7, ARMV7S, ARM64, or I386.
-	IOS_ARCH=X86_64
+	IOS_ARCH := X86_64
 	ifeq ($(IOS_ARCH),ARMV7)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7 \
@@ -158,7 +161,7 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
-		LDFLAGS = -arch armv7 \
+		LDFLAGS := -arch armv7 \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
@@ -171,7 +174,7 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
-		LDFLAGS = -arch armv7s \
+		LDFLAGS := -arch armv7s \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
@@ -184,7 +187,7 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
-		LDFLAGS = -arch arm64 \
+		LDFLAGS := -arch arm64 \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
@@ -197,7 +200,7 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
-		LDFLAGS = -arch i386 \
+		LDFLAGS := -arch i386 \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
@@ -210,7 +213,7 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
-		LDFLAGS = -arch x86_64 \
+		LDFLAGS := -arch x86_64 \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
@@ -220,31 +223,31 @@ endif
 
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
-LIB_NAME = libtensorflow-core.a
-LIB_PATH = $(LIBDIR)$(LIB_NAME)
+LIB_NAME := libtensorflow-core.a
+LIB_PATH := $(LIBDIR)$(LIB_NAME)
 
 # A small example program that shows how to link against the library.
-BENCHMARK_NAME = $(BINDIR)benchmark
+BENCHMARK_NAME := $(BINDIR)benchmark
 
 # What sources we want to compile, derived from the main Bazel build using the
 # gen_file_lists.sh script.
-TF_CC_SRCS = $(shell cat $(MAKEFILE_DIR)/tf_cc_files.txt)
-PBT_CC_SRCS = $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
-PROTO_SRCS = $(shell cat $(MAKEFILE_DIR)/tf_proto_files.txt)
-BENCHMARK_SRCS = \
+TF_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_cc_files.txt)
+PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
+PROTO_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_proto_files.txt)
+BENCHMARK_SRCS := \
 tensorflow/tools/benchmark/benchmark_model.cc \
 tensorflow/tools/benchmark/benchmark_model_main.cc
 
 # File names of the intermediate files target compilation generates.
-TF_CC_OBJS = $(addprefix $(OBJDIR), $(TF_CC_SRCS:.cc=.o))
-PBT_GEN_FILES = $(addprefix $(PBTGENDIR), $(PBT_CC_SRCS))
-PBT_OBJS = $(addprefix $(OBJDIR), $(PBT_CC_SRCS:.cc=.o))
-PROTO_CC_SRCS = $(addprefix $(PROTOGENDIR), $(PROTO_SRCS:.proto=.pb.cc))
-PROTO_OBJS = $(addprefix $(OBJDIR), $(PROTO_SRCS:.proto=.pb.o))
-LIB_OBJS = $(PROTO_OBJS) $(TF_CC_OBJS) $(PBT_OBJS)
-BENCHMARK_OBJS = $(addprefix $(OBJDIR), $(BENCHMARK_SRCS:.cc=.o))
+TF_CC_OBJS := $(addprefix $(OBJDIR), $(TF_CC_SRCS:.cc=.o))
+PBT_GEN_FILES := $(addprefix $(PBTGENDIR), $(PBT_CC_SRCS))
+PBT_OBJS := $(addprefix $(OBJDIR), $(PBT_CC_SRCS:.cc=.o))
+PROTO_CC_SRCS := $(addprefix $(PROTOGENDIR), $(PROTO_SRCS:.proto=.pb.cc))
+PROTO_OBJS := $(addprefix $(OBJDIR), $(PROTO_SRCS:.proto=.pb.o))
+LIB_OBJS := $(PROTO_OBJS) $(TF_CC_OBJS) $(PBT_OBJS)
+BENCHMARK_OBJS := $(addprefix $(OBJDIR), $(BENCHMARK_SRCS:.cc=.o))
 
-.PHONY: clean
+.PHONY: clean cleantarget
 
 # The target that's compiled if there's no command-line arguments.
 all: $(LIB_PATH) $(BENCHMARK_NAME)
