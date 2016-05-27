@@ -48,10 +48,6 @@ namespace tensorflow {
 
 namespace test {
 
-// Return a NodeDef with the specified name/op/inputs.
-NodeDef Node(const string& name, const string& op,
-             const std::vector<string>& inputs);
-
 inline void SetOutputAttrs(OpKernelContext::Params* params,
                            std::vector<AllocatorAttributes>* attrs) {
   attrs->clear();

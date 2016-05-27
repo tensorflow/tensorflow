@@ -114,7 +114,6 @@ cc_library(
 cc_library(
     name = "ops_testutil",
     testonly = 1,
-    srcs = ["ops_testutil.cc"],
     hdrs = ["ops_testutil.h"],
     deps = [
         "//tensorflow/core:core_cpu",
