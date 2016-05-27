@@ -543,10 +543,14 @@ namespace functor {
   extern template struct PadInput<GPUDevice, T, int, 4>
 
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 // Registration of the GPU implementations.
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    Conv2DOp<GPUDevice, Eigen::half>);
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv2DOp<GPUDevice, float>);
