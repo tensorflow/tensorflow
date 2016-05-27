@@ -114,7 +114,6 @@ cc_library(
 cc_library(
     name = "ops_testutil",
     testonly = 1,
-    srcs = ["ops_testutil.cc"],
     hdrs = ["ops_testutil.h"],
     deps = [
         "//tensorflow/core:core_cpu",
@@ -473,6 +472,10 @@ tf_cc_test(
 tf_cc_test(
     name = "slice_op_test",
     size = "small",
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -768,6 +771,10 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
     tests = [
         "adjust_contrast_op_test",
         "colorspace_op_test",
@@ -1058,6 +1065,10 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "reduction_ops_test",
     size = "small",
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -1425,6 +1436,7 @@ tf_kernel_libraries(
         "sparse_reduce_sum_op",
         "sparse_dense_binary_op_shared",
         "sparse_reorder_op",
+        "sparse_softmax",
         "sparse_split_op",
         "sparse_tensor_dense_add_op",
         "sparse_tensor_dense_matmul_op",
@@ -1539,7 +1551,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "multinomial_op_test",
     size = "small",
     deps = [

@@ -1,16 +1,19 @@
-#  Copyright 2015 Google Inc. All Rights Reserved.
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """TensorSignature class and utilities."""
 
 from __future__ import absolute_import
@@ -20,6 +23,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 
 
@@ -43,10 +47,23 @@ class TensorSignature(collections.namedtuple(
 
   def is_compatible_with(self, other):
     """Returns True if signatures are compatible."""
+
+    def _shape_is_compatible_0dim(this, other):
+      other = tensor_shape.as_shape(other)
+      if this.ndims != other.ndims:
+        return False
+      for dim, (x_dim, y_dim) in enumerate(zip(this.dims, other.dims)):
+        if dim == 0:
+          continue
+        if not x_dim.is_compatible_with(y_dim):
+          return False
+      return True
+
     if other.is_sparse:
       return self.is_sparse and self.dtype.is_compatible_with(other.dtype)
     return (self.dtype.is_compatible_with(other.dtype) and
-            self.shape.is_compatible_with(other.shape) and not self.is_sparse)
+            _shape_is_compatible_0dim(self.shape, other.shape) and
+            not self.is_sparse)
 
   def get_placeholder(self):
     if self.is_sparse:

@@ -305,7 +305,7 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
             const int out_offset =
                 (b * params.out_height + ph) * params.out_width + pw;
             out_mat.col(out_offset) += in_mat.col(in_offset);
-            out_count(out_offset)++;
+            out_count(out_offset) += T(1);
           }
         }
       }

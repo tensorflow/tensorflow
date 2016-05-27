@@ -456,18 +456,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.Audio('snd1'), [snd1])
     self.assertEqual(acc.Audio('snd2'), [snd2])
 
-  def testActivation(self):
-    gen = _EventGenerator()
-    acc = ea.EventAccumulator(gen)
-    self.assertFalse(acc._activated)
-    with self.assertRaises(RuntimeError):
-      acc.Tags()
-    with self.assertRaises(RuntimeError):
-      acc.Scalars('s1')
-    acc.Reload()
-    self.assertTrue(acc._activated)
-    acc._activated = False
-
   def testKeyError(self):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)

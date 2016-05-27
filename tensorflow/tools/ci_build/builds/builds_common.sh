@@ -38,6 +38,13 @@ realpath() {
   [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
 }
 
+to_lower () {
+  # Convert string to lower case.
+  # Usage: to_lower <string>
+
+  echo "$1" | tr '[:upper:]' '[:lower:]'
+}
+
 calc_elapsed_time() {
   # Calculate elapsed time. Takes nanosecond format input of the kind output
   # by date +'%s%N'

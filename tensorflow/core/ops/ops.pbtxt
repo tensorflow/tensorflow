@@ -65,6 +65,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_STRING
       }
     }
@@ -1397,6 +1398,36 @@ op {
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix Cholesky\ndecomposition above. The output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`."
 }
 op {
+  name: "BatchCholeskyGrad"
+  input_arg {
+    name: "l"
+    description: "Output of batch Cholesky algorithm l = batch_cholesky(A). Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "df/dl where f is some scalar function. Shape is `[..., M, M]\'.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Symmetrized version of df/dA . Shape is `[..., M, M]\'"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Calculates the reverse mode backpropagated gradient of the Cholesky algorithm."
+  description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
+}
+op {
   name: "BatchFFT"
   input_arg {
     name: "input"
@@ -1513,6 +1544,7 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -2480,17 +2512,17 @@ op {
   name: "CholeskyGrad"
   input_arg {
     name: "l"
-    description: "Output of Cholesky algorithm l = chol(A). Shape is `[M, M]`. Algorithm depends only on lower triangular part of this matrix."
+    description: "Output of Cholesky algorithm l = chol(A). Shape is `[M, M]`.\nAlgorithm depends only on lower triangular part of this matrix."
     type_attr: "T"
   }
   input_arg {
     name: "grad"
-    description: "df/dl where f is some scalar function. Shape is `[M, M]\'. Algorithm depends only on lower triangular part of this matrix."
+    description: "df/dl where f is some scalar function. Shape is `[M, M]\'.\nAlgorithm depends only on lower triangular part of this matrix."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Symmetrized version of df/dA . Shape is `[M, M]\'"
+    description: "Symmetrized version of df/dA . Shape is `[M, M]\'."
     type_attr: "T"
   }
   attr {
@@ -2504,21 +2536,47 @@ op {
     }
   }
   summary: "Calculates the reverse mode backpropagated gradient of the Cholesky algorithm."
-  description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by Iain Murray http://arxiv.org/abs/1602.07527."
+  description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
 }
 op {
   name: "Complex"
   input_arg {
     name: "real"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "imag"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   output_arg {
-    name: "output"
-    type: DT_COMPLEX64
+    name: "out"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
   summary: "Converts two real numbers to a complex number."
   description: "Given a tensor `real` representing the real part of a complex number, and a\ntensor `imag` representing the imaginary part of a complex number, this\noperation returns complex numbers elementwise of the form \\\\(a + bj\\\\), where\n*a* represents the `real` part and *b* represents the `imag` part.\n\nThe input tensors `real` and `imag` must have the same shape.\n\nFor example:\n\n```\n# tensor \'real\' is [2.25, 3.25]\n# tensor `imag` is [4.75, 5.75]\ntf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]\n```"
@@ -2527,14 +2585,40 @@ op {
   name: "ComplexAbs"
   input_arg {
     name: "x"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "y"
-    type: DT_FLOAT
+    type_attr: "Tout"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
   }
   summary: "Computes the complex absolute value of a tensor."
-  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` that is the absolute value of each element in `x`. All elements in `x`\nmust be complex numbers of the form \\\\(a + bj\\\\). The absolute value is\ncomputed as \\\\( \\sqrt{a^2 + b^2}\\\\).\n\nFor example:\n\n```\n# tensor \'x\' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]\ntf.complex_abs(x) ==> [5.25594902, 6.60492229]\n```"
+  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\).\n\nFor example:\n\n```\n# tensor \'x\' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]\ntf.complex_abs(x) ==> [5.25594902, 6.60492229]\n```"
 }
 op {
   name: "ComputeAccidentalHits"
@@ -2648,11 +2732,24 @@ op {
   name: "Conj"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "output"
-    type: DT_COMPLEX64
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
   summary: "Returns the complex conjugate of a complex number."
   description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ncomplex numbers that are the complex conjugate of each element in `input`. The\ncomplex numbers in `input` must be of the form \\\\(a + bj\\\\), where *a* is the\nreal part and *b* is the imaginary part.\n\nThe complex conjugate returned by this operation is of the form \\\\(a - bj\\\\).\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]\n```"
@@ -2698,6 +2795,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -2770,6 +2868,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -2841,6 +2940,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -3088,9 +3188,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -3594,7 +3693,7 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
-				type: DT_COMPLEX64
+        type: DT_COMPLEX64
       }
     }
   }
@@ -3622,7 +3721,7 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
-				type: DT_COMPLEX64
+        type: DT_COMPLEX64
       }
     }
   }
@@ -3647,9 +3746,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -3684,6 +3780,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -3694,7 +3791,7 @@ op {
   input_arg {
     name: "images"
     description: "4-D with shape `[batch, height, width, depth]`. A batch of images."
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "boxes"
@@ -3704,7 +3801,20 @@ op {
   output_arg {
     name: "output"
     description: "4-D with the same shape as `images`. The batch of input images with\nbounding boxes drawn on the images."
-    type: DT_FLOAT
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_HALF
+      }
+    }
   }
   summary: "Draw bounding boxes on a batch of images."
   description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
@@ -4081,6 +4191,7 @@ op {
         type: DT_QINT32
         type: DT_STRING
         type: DT_BOOL
+        type: DT_COMPLEX128
       }
     }
   }
@@ -4105,9 +4216,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -4131,9 +4239,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -4176,9 +4281,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -4973,11 +5077,37 @@ op {
   name: "Imag"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "output"
-    type: DT_FLOAT
+    type_attr: "Tout"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
   }
   summary: "Returns the imaginary part of a complex number."
   description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the imaginary part of each element in `input`. All\nelements in `input` must be complex numbers of the form \\\\(a + bj\\\\), where *a*\nis the real part and *b* is the imaginary part returned by this operation.\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.imag(input) ==> [4.75, 5.75]\n```"
@@ -5019,6 +5149,7 @@ op {
       list {
         type: DT_UINT8
         type: DT_FLOAT
+        type: DT_HALF
       }
     }
   }
@@ -5153,8 +5284,9 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
-        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -5556,9 +5688,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_COMPLEX64
-        type: DT_INT64
       }
     }
   }
@@ -5646,9 +5775,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -5672,6 +5800,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5896,6 +6025,7 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -6850,6 +6980,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -6928,8 +7059,9 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
-        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -7032,6 +7164,7 @@ op {
         type: DT_QINT32
         type: DT_STRING
         type: DT_BOOL
+        type: DT_COMPLEX128
       }
     }
   }
@@ -7043,7 +7176,7 @@ op {
   input_arg {
     name: "indices"
     description: "A tensor of indices."
-    type: DT_INT64
+    type_attr: "TI"
   }
   input_arg {
     name: "depth"
@@ -7076,6 +7209,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "TI"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Returns a one-hot tensor."
   description: "The locations represented by indices in `indices` take value `on_value`,\nwhile all other locations take value `off_value`.\n\nIf the input `indices` is rank `N`, the output will have rank `N+1`,\nThe new axis is created at dimension `axis` (default: the new axis is\nappended at the end).\n\nIf `indices` is a scalar the output shape will be a vector of length `depth`.\n\nIf `indices` is a vector of length `features`, the output shape will be:\n```\n  features x depth if axis == -1\n  depth x features if axis == 0\n```\n\nIf `indices` is a matrix (batch) with shape `[batch, features]`,\nthe output shape will be:\n```\n  batch x features x depth if axis == -1\n  batch x depth x features if axis == 1\n  depth x batch x features if axis == 0\n```\n\n\nExamples\n=========\n\nSuppose that\n\n```\n  indices = [0, 2, -1, 1]\n  depth = 3\n  on_value = 5.0\n  off_value = 0.0\n  axis = -1\n```\n\nThen output is `[4 x 3]`:\n\n    ```output =\n      [5.0 0.0 0.0]  // one_hot(0)\n      [0.0 0.0 5.0]  // one_hot(2)\n      [0.0 0.0 0.0]  // one_hot(-1)\n      [0.0 5.0 0.0]  // one_hot(1)\n    ```\n\nSuppose that\n\n```\n  indices = [0, 2, -1, 1]\n  depth = 3\n  on_value = 0.0\n  off_value = 3.0\n  axis = 0\n```\n\nThen output is `[3 x 4]`:\n\n    ```output =\n      [0.0 3.0 3.0 3.0]\n      [3.0 3.0 3.0 0.0]\n      [3.0 3.0 3.0 3.0]\n      [3.0 0.0 3.0 3.0]\n    //  ^                one_hot(0)\n    //      ^            one_hot(2)\n    //          ^        one_hot(-1)\n    //              ^    one_hot(1)\n    ```\nSuppose that\n\n```\n  indices = [[0, 2], [1, -1]]\n  depth = 3\n  on_value = 1.0\n  off_value = 0.0\n  axis = -1\n```\n\nThen output is `[2 x 2 x 3]`:\n\n    ```output =\n      [\n        [1.0, 0.0, 0.0]  // one_hot(0)\n        [0.0, 0.0, 1.0]  // one_hot(2)\n      ][\n        [0.0, 1.0, 0.0]  // one_hot(1)\n        [0.0, 0.0, 0.0]  // one_hot(-1)\n      ]```"
@@ -7521,6 +7667,33 @@ op {
   summary: "A placeholder op that passes though `input` when its output is not fed."
 }
 op {
+  name: "Polygamma"
+  input_arg {
+    name: "a"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Compute the polygamma function \\\\(\\psi^{(n)}(x)\\\\)."
+  description: "The polygamma function is defined as:\n\n```\n\\psi^{(n)}(x) = \\frac{d^n}{dx^n} \\psi(x)\n```\nwhere \\\\(\\psi(x)\\\\) is the digamma function."
+}
+op {
   name: "Pow"
   input_arg {
     name: "x"
@@ -7543,8 +7716,9 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
-        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -8394,11 +8568,37 @@ op {
   name: "Real"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "T"
   }
   output_arg {
     name: "output"
-    type: DT_FLOAT
+    type_attr: "Tout"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
   }
   summary: "Returns the real part of a complex number."
   description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ntype `float` that is the real part of each element in `input`. All elements in\n`input` must be complex numbers of the form \\\\(a + bj\\\\), where *a* is the real\n part returned by this operation and *b* is the imaginary part.\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.real(input) ==> [-2.25, 3.25]\n```"
@@ -8787,7 +8987,7 @@ op {
     type: "type"
   }
   summary: "Reshapes a tensor."
-  description: "Given `tensor`, this operation returns a tensor that has the same values\nas `tensor` with shape `shape`.\n\nIf one component of `shape` is the special value -1, the size of that dimension\nis computed so that the total size remains constant.  In particular, a `shape`\nof `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.\n\nIf `shape` is 1-D or higher, then the operation returns a tensor with shape\n`shape` filled with the values of `tensor`. In this case, the number of elements\nimplied by `shape` must be the same as the number of elements in `tensor`.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [1, 2, 3, 4, 5, 6, 7, 8, 9]\n# tensor \'t\' has shape [9]\nreshape(t, [3, 3]) ==> [[1, 2, 3]\n                        [4, 5, 6]\n                        [7, 8, 9]]\n\n# tensor \'t\' is [[[1, 1], [2, 2]]\n#                [[3, 3], [4, 4]]]\n# tensor \'t\' has shape [2, 2, 2]\nreshape(t, [2, 4]) ==> [[1, 1, 2, 2]\n                        [3, 3, 4, 4]]\n\n# tensor \'t\' is [[[1, 1, 1],\n#                 [2, 2, 2]],\n#                [[3, 3, 3],\n#                 [4, 4, 4]],\n#                [[5, 5, 5],\n#                 [6, 6, 6]]]\n# tensor \'t\' has shape [3, 2, 3]\n# pass \'[-1]\' to flatten \'t\'\nreshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]\n# -1 can also be used with higher dimensional shapes\nreshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],\n                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]\n\n# tensor \'t\' is [7]\n# shape `[]` reshapes to a scalar\nreshape(t, []) ==> 7\n```"
+  description: "Given `tensor`, this operation returns a tensor that has the same values\nas `tensor` with shape `shape`.\n\nIf one component of `shape` is the special value -1, the size of that dimension\nis computed so that the total size remains constant.  In particular, a `shape`\nof `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.\n\nIf `shape` is 1-D or higher, then the operation returns a tensor with shape\n`shape` filled with the values of `tensor`. In this case, the number of elements\nimplied by `shape` must be the same as the number of elements in `tensor`.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [1, 2, 3, 4, 5, 6, 7, 8, 9]\n# tensor \'t\' has shape [9]\nreshape(t, [3, 3]) ==> [[1, 2, 3],\n                        [4, 5, 6],\n                        [7, 8, 9]]\n\n# tensor \'t\' is [[[1, 1], [2, 2]],\n#                [[3, 3], [4, 4]]]\n# tensor \'t\' has shape [2, 2, 2]\nreshape(t, [2, 4]) ==> [[1, 1, 2, 2],\n                        [3, 3, 4, 4]]\n\n# tensor \'t\' is [[[1, 1, 1],\n#                 [2, 2, 2]],\n#                [[3, 3, 3],\n#                 [4, 4, 4]],\n#                [[5, 5, 5],\n#                 [6, 6, 6]]]\n# tensor \'t\' has shape [3, 2, 3]\n# pass \'[-1]\' to flatten \'t\'\nreshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]\n\n# -1 can also be used to infer the shape\n\n# -1 is inferred to be 9:\nreshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],\n                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]\n# -1 is inferred to be 2:\nreshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],\n                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]\n# -1 is inferred to be 3:\nreshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],\n                              [2, 2, 2],\n                              [3, 3, 3]],\n                             [[4, 4, 4],\n                              [5, 5, 5],\n                              [6, 6, 6]]]\n\n# tensor \'t\' is [7]\n# shape `[]` reshapes to a scalar\nreshape(t, []) ==> 7\n```"
 }
 op {
   name: "ResizeArea"
@@ -8816,6 +9016,7 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -8859,6 +9060,7 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -8902,6 +9104,7 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -8941,6 +9144,7 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_HALF
         type: DT_DOUBLE
       }
     }
@@ -8982,6 +9186,7 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -9022,6 +9227,7 @@ op {
         type: DT_UINT8
         type: DT_INT8
         type: DT_INT32
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -9134,6 +9340,7 @@ op {
         type: DT_INT8
         type: DT_INT32
         type: DT_BOOL
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -9197,9 +9404,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -10024,9 +10230,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -10054,6 +10259,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -10078,9 +10284,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -10231,6 +10436,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -10452,7 +10658,7 @@ op {
     description: "The size of the spatial block."
   }
   summary: "SpaceToDepth for tensors of type T."
-  description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `input_depth * block_size * block_size`.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height/block_size, width/block_size, depth*block_size*block_size]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and a divisor of both the input `height` and `width`.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:\n\n```prettyprint\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```prettyprint\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```prettyprint\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```prettyprint\nx = [[ [1],   [2],  [5],  [6]],\n     [ [3],   [4],  [7],  [8]],\n     [ [9],  [10], [13],  [14]],\n     [ [11], [12], [15],  [16]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```prettyprint\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
+  description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `input_depth * block_size * block_size`.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height/block_size, width/block_size, depth*block_size*block_size]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and a divisor of both the input `height` and `width`.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:\n\n```prettyprint\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```prettyprint\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```prettyprint\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```prettyprint\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
 }
 op {
   name: "SparseAdd"
@@ -11000,6 +11206,58 @@ op {
   description: "Concatenation is with respect to the dense versions of these sparse tensors.\nIt is assumed that each input is a `SparseTensor` whose elements are ordered\nalong increasing dimension number.\n\nAll inputs\' shapes must match, except for the concat dimension.  The\n`indices`, `values`, and `shapes` lists must have the same length.\n\nThe output shape is identical to the inputs\', except along the concat\ndimension, where it is the sum of the inputs\' sizes along that dimension.\n\nThe output elements will be resorted to preserve the sort order along\nincreasing dimension number.\n\nThis op runs in `O(M log M)` time, where `M` is the total number of non-empty\nvalues across all inputs. This is due to the need for an internal sort in\norder to concatenate efficiently across an arbitrary dimension.\n\nFor example, if `concat_dim = 1` and the inputs are\n\n    sp_inputs[0]: shape = [2, 3]\n    [0, 2]: \"a\"\n    [1, 0]: \"b\"\n    [1, 1]: \"c\"\n\n    sp_inputs[1]: shape = [2, 4]\n    [0, 1]: \"d\"\n    [0, 2]: \"e\"\n\nthen the output will be\n\n    shape = [2, 7]\n    [0, 2]: \"a\"\n    [0, 4]: \"d\"\n    [0, 5]: \"e\"\n    [1, 0]: \"b\"\n    [1, 1]: \"c\"\n\nGraphically this is equivalent to doing\n\n    [    a] concat [  d e  ] = [    a   d e  ]\n    [b c  ]        [       ]   [b c          ]"
 }
 op {
+  name: "SparseDenseCwiseAdd"
+  input_arg {
+    name: "sp_indices"
+    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, possibly not in canonical ordering."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sp_values"
+    description: "1-D.  `N` non-empty values corresponding to `sp_indices`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sp_shape"
+    description: "1-D.  Shape of the input SparseTensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "dense"
+    description: "`R`-D.  The dense Tensor operand."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "1-D.  The `N` values that are operated on."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Adds up a SparseTensor and a dense Tensor, using these special rules:"
+  description: "(1) Broadcasts the dense side to have the same shape as the sparse side, if\n    eligible;\n(2) Then, only the dense values pointed to by the indices of the SparseTensor\n    participate in the cwise addition.\n\nBy these rules, the result is a logical SparseTensor with exactly the same\nindices and shape, but possibly with different non-zero values.  The output of\nthis Op is the resultant non-zero values."
+}
+op {
   name: "SparseDenseCwiseDiv"
   input_arg {
     name: "sp_indices"
@@ -11101,7 +11359,7 @@ op {
     }
   }
   summary: "Component-wise multiplies a SparseTensor by a dense Tensor."
-  description: "*Limitation*: this Op only broadcasts the dense side to the sparse side, but not\nthe other direction."
+  description: "The output locations corresponding to the implicitly zero elements in the sparse\ntensor will be zero (i.e., will not take up storage space), regardless of the\ncontents of the dense tensor (even if it\'s +/-INF and that INF*0 == NaN).\n\n*Limitation*: this Op only broadcasts the dense side to the sparse side, but not\nthe other direction."
 }
 op {
   name: "SparseMatMul"
@@ -11232,7 +11490,7 @@ op {
     }
   }
   summary: "Computes the sum of elements across dimensions of a SparseTensor."
-  description: "This Op takes a SparseTensor and is the sparse counterpart to\n`tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`\ninstead of a sparse one.\n\nReduces `sp_input` along the dimensions given in `reduction_axes`.  Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained\nwith length 1.\n\nIf `reduction_axes` has no entries, all dimensions are reduced, and a tensor\nwith a single element is returned."
+  description: "This Op takes a SparseTensor and is the sparse counterpart to\n`tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`\ninstead of a sparse one.\n\nReduces `sp_input` along the dimensions given in `reduction_axes`.  Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained\nwith length 1.\n\nIf `reduction_axes` has no entries, all dimensions are reduced, and a tensor\nwith a single element is returned.  Additionally, the axes can be negative,\nwhich are interpreted according to the indexing rules in Python."
 }
 op {
   name: "SparseReorder"
@@ -11454,6 +11712,37 @@ op {
   }
   summary: "Computes the sum along sparse segments of a tensor."
   description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```prettyprint\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n  ==> [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n  ==> [[ 1  2  3  4]\n       [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n  ==> [[0 0 0 0]\n       [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
+}
+op {
+  name: "SparseSoftmax"
+  input_arg {
+    name: "sp_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sp_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sp_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Applies softmax to a batched N-D `SparseTensor`."
+  description: "The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`\n(where `N >= 2`), and with indices sorted in the canonical lexicographic order.\n\nThis op is equivalent to applying the normal `tf.nn.softmax()` to each innermost\nlogical submatrix with shape `[B, C]`, but with the catch that *the implicitly\nzero elements do not participate*.  Specifically, the algorithm is equivalent"
 }
 op {
   name: "SparseSoftmaxCrossEntropyWithLogits"
@@ -11768,9 +12057,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -11796,8 +12084,9 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
-        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -11827,8 +12116,9 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
-        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -11989,14 +12279,14 @@ op {
   description: "The hash function is deterministic on the content of the string within the\nprocess.\n\nNote that the hash function may change from time to time."
   deprecation {
     version: 10
-    explanation: "Use tf.string_to_hash_bucket_fast()"
+    explanation: "Use `tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`"
   }
 }
 op {
   name: "StringToHashBucketFast"
   input_arg {
     name: "input"
-    description: "The strings to assing a hash bucket."
+    description: "The strings to assign a hash bucket."
     type: DT_STRING
   }
   output_arg {
@@ -12012,7 +12302,34 @@ op {
     minimum: 1
   }
   summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
-  description: "The hash function is deterministic on the content of the string within the\nprocess and will never change. However, it is not suitable for cryptography."
+  description: "The hash function is deterministic on the content of the string within the\nprocess and will never change. However, it is not suitable for cryptography.\nThis function may be used when CPU time is scarce and inputs are trusted or\nunimportant. There is a risk of adversaries constructing inputs that all hash\nto the same bucket. To prevent this problem, use a strong hash function with\n`tf.string_to_hash_bucket_strong`."
+}
+op {
+  name: "StringToHashBucketStrong"
+  input_arg {
+    name: "input"
+    description: "The strings to assign a hash bucket."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "A Tensor of the same shape as the input `string_tensor`."
+    type: DT_INT64
+  }
+  attr {
+    name: "num_buckets"
+    type: "int"
+    description: "The number of buckets."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "key"
+    type: "list(int)"
+    description: "The key for the keyed hash function passed as a list of two uint64\nelements."
+  }
+  summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
+  description: "The hash function is deterministic on the content of the string within the\nprocess. The hash function is a keyed hash function, where attribute `key`\ndefines the key of the hash function. `key` is an array of 2 elements.\n\nA strong hash is important when inputs may be malicious, e.g. URLs with\nadditional components. Adversaries could try to make their inputs hash to the\nsame bucket for a denial-of-service attack or to skew the results. A strong\nhash prevents this by making it dificult, if not infeasible, to compute inputs\nthat hash to the same bucket. This comes at a cost of roughly 4x higher compute\ntime than tf.string_to_hash_bucket_fast."
 }
 op {
   name: "StringToNumber"
@@ -12065,8 +12382,9 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
-        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -12229,9 +12547,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_COMPLEX64
-        type: DT_INT64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -13173,4 +13490,31 @@ op {
     type: "type"
   }
   summary: "Returns a tensor of zeros with the same shape and type as x."
+}
+op {
+  name: "Zeta"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "q"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Compute the Hurwitz zeta function \\\\(\\zeta(x, q)\\\\)."
+  description: "The Hurwitz zeta function is defined as:\n\n```\n\\zeta(x, q) = \\sum_{n=0}^{\\infty} (q + n)^{-x}\n```"
 }

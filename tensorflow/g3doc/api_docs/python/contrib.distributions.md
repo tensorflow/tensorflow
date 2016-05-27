@@ -219,10 +219,17 @@ Generate `n` samples.
 Base class for continuous probability distributions.
 
 `ContinuousDistribution` defines the API for the likelihood functions `pdf`
-and `log_pdf` of continuous probability distributions.
+and `log_pdf` of continuous probability distributions, and a property
+`is_reparameterized` (returning `True` or `False`) which describes
+whether the samples of this distribution are calculated in a differentiable
+way from a non-parameterized distribution.  For example, the `Normal`
+distribution with parameters `mu` and `sigma` is reparameterized as
 
-Subclasses must override both `pdf` and `log_pdf` but one can call this base
-class's implementation.
+```Normal(mu, sigma) = sigma * Normal(0, 1) + mu```
+
+Subclasses must override `pdf` and `log_pdf` but one can call this base
+class's implementation.  They must also override the `is_reparameterized`
+property.
 
 See `BaseDistribution` for more information on the API for probability
 distributions.
@@ -298,6 +305,13 @@ Same meaning as `batch_shape`. May be only partially defined.
 `TensorShape` available at graph construction time.
 
 Same meaning as `event_shape`. May be only partially defined.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousDistribution.is_reparameterized` {#ContinuousDistribution.is_reparameterized}
+
+
 
 
 - - -
@@ -526,28 +540,51 @@ with Chi2(df) = Gamma(df/2, 1/2).
 
 #### `tf.contrib.distributions.Chi2.alpha` {#Chi2.alpha}
 
-
+Shape parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.batch_shape(name='batch_shape')` {#Chi2.batch_shape}
 
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.beta` {#Chi2.beta}
 
-
+Inverse scale parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.cdf(x, name='cdf')` {#Chi2.cdf}
 
+CDF of observations `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: tensor of dtype `dtype`, the CDFs of `x`.
 
 
 - - -
@@ -561,7 +598,7 @@ with Chi2(df) = Gamma(df/2, 1/2).
 
 #### `tf.contrib.distributions.Chi2.dtype` {#Chi2.dtype}
 
-
+dtype of samples from this distribution.
 
 
 - - -
@@ -572,8 +609,10 @@ The entropy of Gamma distribution(s).
 
 This is defined to be
 
-```entropy = alpha - log(beta) + log(Gamma(alpha))
-             + (1-alpha)digamma(alpha)```
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
+             + (1-alpha)digamma(alpha)
+```
 
 where digamma(alpha) is the digamma function.
 
@@ -592,19 +631,47 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Chi2.event_shape(name='event_shape')` {#Chi2.event_shape}
 
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.get_batch_shape()` {#Chi2.get_batch_shape}
 
+`TensorShape` available at graph construction time.
 
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.get_event_shape()` {#Chi2.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.is_reparameterized` {#Chi2.is_reparameterized}
 
 
 
@@ -654,21 +721,37 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Chi2.mean` {#Chi2.mean}
 
-
+Mean of each batch member.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.name` {#Chi2.name}
 
-
+Name to prepend to all ops.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.pdf(x, name='pdf')` {#Chi2.pdf}
 
+Pdf of observations in `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `x` and `alpha` are different dtypes.
 
 
 - - -
@@ -695,7 +778,7 @@ Generate `n` samples.
 
 #### `tf.contrib.distributions.Chi2.variance` {#Chi2.variance}
 
-
+Variance of each batch member.
 
 
 
@@ -722,35 +805,58 @@ distribution, with Exponential(lam) = Gamma(1, lam).
 
 #### `tf.contrib.distributions.Exponential.alpha` {#Exponential.alpha}
 
-
+Shape parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.batch_shape(name='batch_shape')` {#Exponential.batch_shape}
 
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.beta` {#Exponential.beta}
 
-
+Inverse scale parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.cdf(x, name='cdf')` {#Exponential.cdf}
 
+CDF of observations `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: tensor of dtype `dtype`, the CDFs of `x`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.dtype` {#Exponential.dtype}
 
-
+dtype of samples from this distribution.
 
 
 - - -
@@ -761,8 +867,10 @@ The entropy of Gamma distribution(s).
 
 This is defined to be
 
-```entropy = alpha - log(beta) + log(Gamma(alpha))
-             + (1-alpha)digamma(alpha)```
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
+             + (1-alpha)digamma(alpha)
+```
 
 where digamma(alpha) is the digamma function.
 
@@ -781,19 +889,47 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Exponential.event_shape(name='event_shape')` {#Exponential.event_shape}
 
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.get_batch_shape()` {#Exponential.get_batch_shape}
 
+`TensorShape` available at graph construction time.
 
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.get_event_shape()` {#Exponential.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.is_reparameterized` {#Exponential.is_reparameterized}
 
 
 
@@ -850,48 +986,64 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Exponential.mean` {#Exponential.mean}
 
-
+Mean of each batch member.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.name` {#Exponential.name}
 
-
+Name to prepend to all ops.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.pdf(x, name='pdf')` {#Exponential.pdf}
 
+Pdf of observations in `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `x` and `alpha` are different dtypes.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.sample(n, seed=None, name=None)` {#Exponential.sample}
 
-Generate `n` samples.
+Sample `n` observations from the Exponential Distributions.
 
 ##### Args:
 
 
-*  <b>`n`</b>: scalar. Number of samples to draw from each distribution.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-      with values of type `self.dtype`.
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by the hyperparameters.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.variance` {#Exponential.variance}
 
-
+Variance of each batch member.
 
 
 
@@ -937,7 +1089,7 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 *  <b>`beta`</b>: `float` or `double` tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 ##### Raises:
 
@@ -949,35 +1101,58 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 
 #### `tf.contrib.distributions.Gamma.alpha` {#Gamma.alpha}
 
-
+Shape parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.batch_shape(name='batch_shape')` {#Gamma.batch_shape}
 
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.beta` {#Gamma.beta}
 
-
+Inverse scale parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.cdf(x, name='cdf')` {#Gamma.cdf}
 
+CDF of observations `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: tensor of dtype `dtype`, the CDFs of `x`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.dtype` {#Gamma.dtype}
 
-
+dtype of samples from this distribution.
 
 
 - - -
@@ -988,8 +1163,10 @@ The entropy of Gamma distribution(s).
 
 This is defined to be
 
-```entropy = alpha - log(beta) + log(Gamma(alpha))
-             + (1-alpha)digamma(alpha)```
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
+             + (1-alpha)digamma(alpha)
+```
 
 where digamma(alpha) is the digamma function.
 
@@ -1008,19 +1185,47 @@ where digamma(alpha) is the digamma function.
 
 #### `tf.contrib.distributions.Gamma.event_shape(name='event_shape')` {#Gamma.event_shape}
 
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.get_batch_shape()` {#Gamma.get_batch_shape}
 
+`TensorShape` available at graph construction time.
 
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.get_event_shape()` {#Gamma.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  `TensorShape` object.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.is_reparameterized` {#Gamma.is_reparameterized}
 
 
 
@@ -1070,21 +1275,37 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Gamma.mean` {#Gamma.mean}
 
-
+Mean of each batch member.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.name` {#Gamma.name}
 
-
+Name to prepend to all ops.
 
 
 - - -
 
 #### `tf.contrib.distributions.Gamma.pdf(x, name='pdf')` {#Gamma.pdf}
 
+Pdf of observations in `x` under these Gamma distribution(s).
 
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `x` and `alpha` are different dtypes.
 
 
 - - -
@@ -1111,15 +1332,15 @@ Generate `n` samples.
 
 #### `tf.contrib.distributions.Gamma.variance` {#Gamma.variance}
 
-
+Variance of each batch member.
 
 
 
 - - -
 
-### `class tf.contrib.distributions.Gaussian` {#Gaussian}
+### `class tf.contrib.distributions.Normal` {#Normal}
 
-The scalar Gaussian distribution with mean and stddev parameters mu, sigma.
+The scalar Normal distribution with mean and stddev parameters mu, sigma.
 
 #### Mathematical details
 
@@ -1132,15 +1353,15 @@ The PDF of this distribution is:
 Examples of initialization of one or a batch of distributions.
 
 ```python
-# Define a single scalar Gaussian distribution.
-dist = tf.contrib.distributions.Gaussian(mu=0, sigma=3)
+# Define a single scalar Normal distribution.
+dist = tf.contrib.distributions.Normal(mu=0, sigma=3)
 
 # Evaluate the cdf at 1, returning a scalar.
 dist.cdf(1)
 
-# Define a batch of two scalar valued Gaussians.
+# Define a batch of two scalar valued Normals.
 # The first has mean 1 and standard deviation 11, the second 2 and 22.
-dist = tf.contrib.distributions.Gaussian(mu=[1, 2.], sigma=[11, 22.])
+dist = tf.contrib.distributions.Normal(mu=[1, 2.], sigma=[11, 22.])
 
 # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
 # returning a length two tensor.
@@ -1153,9 +1374,9 @@ dist.sample(3)
 Arguments are broadcast when possible.
 
 ```python
-# Define a batch of two scalar valued Gaussians.
+# Define a batch of two scalar valued Normals.
 # Both have mean 1, but different standard deviations.
-dist = tf.contrib.distributions.Gaussian(mu=1, sigma=[11, 22.])
+dist = tf.contrib.distributions.Normal(mu=1, sigma=[11, 22.])
 
 # Evaluate the pdf of both distributions on the same point, 3.0,
 # returning a length 2 tensor.
@@ -1163,9 +1384,9 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Gaussian.__init__(mu, sigma, name=None)` {#Gaussian.__init__}
+#### `tf.contrib.distributions.Normal.__init__(mu, sigma, name=None)` {#Normal.__init__}
 
-Construct Gaussian distributions with mean and stddev `mu` and `sigma`.
+Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
 The parameters `mu` and `sigma` must be shaped in a way that supports
 broadcasting (e.g. `mu + sigma` is a valid operation).
@@ -1186,9 +1407,9 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.cdf(x, name=None)` {#Gaussian.cdf}
+#### `tf.contrib.distributions.Normal.cdf(x, name=None)` {#Normal.cdf}
 
-CDF of observations in `x` under these Gaussian distribution(s).
+CDF of observations in `x` under these Normal distribution(s).
 
 ##### Args:
 
@@ -1204,16 +1425,16 @@ CDF of observations in `x` under these Gaussian distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.dtype` {#Gaussian.dtype}
+#### `tf.contrib.distributions.Normal.dtype` {#Normal.dtype}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.entropy(name=None)` {#Gaussian.entropy}
+#### `tf.contrib.distributions.Normal.entropy(name=None)` {#Normal.entropy}
 
-The entropy of Gaussian distribution(s).
+The entropy of Normal distribution(s).
 
 ##### Args:
 
@@ -1228,9 +1449,16 @@ The entropy of Gaussian distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.log_cdf(x, name=None)` {#Gaussian.log_cdf}
+#### `tf.contrib.distributions.Normal.is_reparameterized` {#Normal.is_reparameterized}
 
-Log CDF of observations `x` under these Gaussian distribution(s).
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.log_cdf(x, name=None)` {#Normal.log_cdf}
+
+Log CDF of observations `x` under these Normal distribution(s).
 
 ##### Args:
 
@@ -1246,9 +1474,9 @@ Log CDF of observations `x` under these Gaussian distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.log_pdf(x, name=None)` {#Gaussian.log_pdf}
+#### `tf.contrib.distributions.Normal.log_pdf(x, name=None)` {#Normal.log_pdf}
 
-Log pdf of observations in `x` under these Gaussian distribution(s).
+Log pdf of observations in `x` under these Normal distribution(s).
 
 ##### Args:
 
@@ -1264,23 +1492,23 @@ Log pdf of observations in `x` under these Gaussian distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.mean` {#Gaussian.mean}
+#### `tf.contrib.distributions.Normal.mean` {#Normal.mean}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.mu` {#Gaussian.mu}
+#### `tf.contrib.distributions.Normal.mu` {#Normal.mu}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.pdf(x, name=None)` {#Gaussian.pdf}
+#### `tf.contrib.distributions.Normal.pdf(x, name=None)` {#Normal.pdf}
 
-The PDF of observations in `x` under these Gaussian distribution(s).
+The PDF of observations in `x` under these Normal distribution(s).
 
 ##### Args:
 
@@ -1296,9 +1524,9 @@ The PDF of observations in `x` under these Gaussian distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.sample(n, seed=None, name=None)` {#Gaussian.sample}
+#### `tf.contrib.distributions.Normal.sample(n, seed=None, name=None)` {#Normal.sample}
 
-Sample `n` observations from the Gaussian Distributions.
+Sample `n` observations from the Normal Distributions.
 
 ##### Args:
 
@@ -1316,7 +1544,7 @@ Sample `n` observations from the Gaussian Distributions.
 
 - - -
 
-#### `tf.contrib.distributions.Gaussian.sigma` {#Gaussian.sigma}
+#### `tf.contrib.distributions.Normal.sigma` {#Normal.sigma}
 
 
 
@@ -1461,6 +1689,13 @@ The entropy of Student t distribution(s).
 - - -
 
 #### `tf.contrib.distributions.StudentT.get_event_shape()` {#StudentT.get_event_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.is_reparameterized` {#StudentT.is_reparameterized}
 
 
 
@@ -1699,6 +1934,13 @@ The entropy of Uniform distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.is_reparameterized` {#Uniform.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.log_cdf(x, name='log_cdf')` {#Uniform.log_cdf}
 
 
@@ -1911,6 +2153,13 @@ The entropies of these Multivariate Normals.
 
 
 *  <b>`entropy`</b>: tensor of dtype `dtype`, the entropies.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormal.is_reparameterized` {#MultivariateNormal.is_reparameterized}
+
+
 
 
 - - -
@@ -2194,26 +2443,26 @@ probability includes a combinatorial coefficient.
 Functions that transform conjugate prior/likelihood pairs to distributions
 representing the posterior or posterior predictive.
 
-### Gaussian likelihood with conjugate prior.
+### Normal likelihood with conjugate prior.
 
 - - -
 
-### `tf.contrib.distributions.gaussian_conjugates_known_sigma_posterior(prior, sigma, s, n)` {#gaussian_conjugates_known_sigma_posterior}
+### `tf.contrib.distributions.normal_conjugates_known_sigma_posterior(prior, sigma, s, n)` {#normal_conjugates_known_sigma_posterior}
 
-Posterior Gaussian distribution with conjugate prior on the mean.
+Posterior Normal distribution with conjugate prior on the mean.
 
 This model assumes that `n` observations (with sum `s`) come from a
-Gaussian with unknown mean `mu` (described by the Gaussian `prior`)
+Normal with unknown mean `mu` (described by the Normal `prior`)
 and known variance `sigma^2`.  The "known sigma posterior" is
 the distribution of the unknown `mu`.
 
-Accepts a prior Gaussian distribution object, having parameters
+Accepts a prior Normal distribution object, having parameters
 `mu0` and `sigma0`, as well as known `sigma` values of the predictive
-distribution(s) (also assumed Gaussian),
+distribution(s) (also assumed Normal),
 and statistical estimates `s` (the sum(s) of the observations) and
 `n` (the number(s) of observations).
 
-Returns a posterior (also Gaussian) distribution object, with parameters
+Returns a posterior (also Normal) distribution object, with parameters
 `(mu', sigma'^2)`, where:
 
 ```
@@ -2228,7 +2477,7 @@ will broadcast in the case of multidimensional sets of parameters.
 ##### Args:
 
 
-*  <b>`prior`</b>: `Gaussian` object of type `dtype`:
+*  <b>`prior`</b>: `Normal` object of type `dtype`:
     the prior distribution having parameters `(mu0, sigma0)`.
 *  <b>`sigma`</b>: tensor of type `dtype`, taking values `sigma > 0`.
     The known stddev parameter(s).
@@ -2237,35 +2486,35 @@ will broadcast in the case of multidimensional sets of parameters.
 
 ##### Returns:
 
-  A new Gaussian posterior distribution object for the unknown observation
+  A new Normal posterior distribution object for the unknown observation
   mean `mu`.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if dtype of `s` does not match `dtype`, or `prior` is not a
-    Gaussian object.
+    Normal object.
 
 
 - - -
 
-### `tf.contrib.distributions.gaussian_congugates_known_sigma_predictive(prior, sigma, s, n)` {#gaussian_congugates_known_sigma_predictive}
+### `tf.contrib.distributions.normal_congugates_known_sigma_predictive(prior, sigma, s, n)` {#normal_congugates_known_sigma_predictive}
 
-Posterior predictive Gaussian distribution w. conjugate prior on the mean.
+Posterior predictive Normal distribution w. conjugate prior on the mean.
 
 This model assumes that `n` observations (with sum `s`) come from a
-Gaussian with unknown mean `mu` (described by the Gaussian `prior`)
+Normal with unknown mean `mu` (described by the Normal `prior`)
 and known variance `sigma^2`.  The "known sigma predictive"
 is the distribution of new observations, conditioned on the existing
 observations and our prior.
 
-Accepts a prior Gaussian distribution object, having parameters
+Accepts a prior Normal distribution object, having parameters
 `mu0` and `sigma0`, as well as known `sigma` values of the predictive
-distribution(s) (also assumed Gaussian),
+distribution(s) (also assumed Normal),
 and statistical estimates `s` (the sum(s) of the observations) and
 `n` (the number(s) of observations).
 
-Calculates the Gaussian distribution(s) `p(x | sigma^2)`:
+Calculates the Normal distribution(s) `p(x | sigma^2)`:
 
 ```
   p(x | sigma^2) = int N(x | mu, sigma^2) N(mu | prior.mu, prior.sigma^2) dmu
@@ -2287,7 +2536,7 @@ will broadcast in the case of multidimensional sets of parameters.
 ##### Args:
 
 
-*  <b>`prior`</b>: `Gaussian` object of type `dtype`:
+*  <b>`prior`</b>: `Normal` object of type `dtype`:
     the prior distribution having parameters `(mu0, sigma0)`.
 *  <b>`sigma`</b>: tensor of type `dtype`, taking values `sigma > 0`.
     The known stddev parameter(s).
@@ -2296,12 +2545,12 @@ will broadcast in the case of multidimensional sets of parameters.
 
 ##### Returns:
 
-  A new Gaussian predictive distribution object.
+  A new Normal predictive distribution object.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if dtype of `s` does not match `dtype`, or `prior` is not a
-    Gaussian object.
+    Normal object.
 
 

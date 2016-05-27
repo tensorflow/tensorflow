@@ -1,237 +1,218 @@
-"""Monitors to track model training, report on progress and request early stopping"""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Monitors to track training, report progress and request early stopping."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import sys
-import numpy as np
-
-from tensorflow.core.framework import summary_pb2
-from tensorflow.python.training import training as train
-from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_data_feeder
-
-# pylint: disable=too-many-instance-attributes
-# pylint: disable=too-few-public-methods
-# pylint: disable=too-many-arguments
-# pylint: disable=attribute-defined-outside-init
-
-
-def default_monitor(verbose=1):
-  """Returns very simple monitor object to summarize training progress.
-
-  Args:
-    verbose: Level of verbosity of output.
-
-  Returns:
-    Default monitor object.
-  """
-  return BaseMonitor(verbose=verbose)
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import summary_io
 
 
 class BaseMonitor(object):
-  """Base class for all learning monitors.
+  """Base class for Monitors.
 
-  Stores and reports training loss throughout learning
-
-  Parameters:
-    print_steps: Number of steps in between printing cost.
-    early_stopping_rounds:  Activates early stopping if this is not None.
-                            Loss needs to decrease at least every
-                            <early_stopping_rounds>
-                            round(s) to continue training. (default: None)
-    verbose: Level of verbosity of output.
-
+  Defines basic interfaces of Monitors.
   """
-
-  def __init__(self, print_steps=100, early_stopping_rounds=None, verbose=1):
-    self.print_steps = print_steps
-    self.early_stopping_rounds = early_stopping_rounds
-
-    self.converged = False
-    self.min_loss = np.inf
-    self.min_loss_i = 0
-    self.last_loss_seen = np.inf
-    self.steps = 0
-    self.print_train_loss_buffer = []
-    self.all_train_loss_buffer = []
-    self.verbose = verbose
-    self.epoch = None
-
-  def update(self, global_step, step_number, training_loss, sess,
-             feed_params_fn, loss_expression_tensor):
-    """Adds training_loss to monitor.
-
-    Triggers printed output if appropriate
-
-    Args:
-      global_step: global step number
-      step_number: current step in training
-      training_loss: float value of training loss
-      sess: session for computation (used to calculate validation loss)
-      feed_params_fn: function generating dict with information like
-        epoch. Sometimes None.
-      loss_expression_tensor: Tensor applied to validation data to
-        calculate val loss
-
-    """
-    self.steps = step_number
-    self.global_step = global_step
-    self.print_train_loss_buffer.append(training_loss)
-    self.all_train_loss_buffer.append(training_loss)
-    self.sess = sess
-    self.loss_expression_tensor = loss_expression_tensor
-    self._set_last_loss_seen()
-    if self.last_loss_seen < self.min_loss:
-      self.min_loss = self.last_loss_seen
-      self.min_loss_i = self.steps
-    self._set_epoch(feed_params_fn)
-    self.report()
-
-  def _set_last_loss_seen(self):
-    """Sets last_loss_seen attribute to most recent training error."""
-    self.last_loss_seen = self.all_train_loss_buffer[-1]
-    self._estimator = None
-
-  def report(self):
-    """Checks whether to report, and prints loss information if appropriate."""
-    if self.verbose and (self.steps % self.print_steps == 0):
-      self._set_training_summary()
-      print(self._summary_str)
 
   def set_estimator(self, estimator):
     self._estimator = estimator
 
-  def monitor_inducing_stop(self):
-    """Returns True if the monitor requests the model stop.
-
-    Returns:
-      True if the monitor requests the model stop (e.g. for early stopping).
-    """
-    if self.early_stopping_rounds is None:
-      return False
-    stop_now = (self.steps - self.min_loss_i >= self.early_stopping_rounds)
-    if stop_now:
-      sys.stderr.write("Stopping. Best step:\n step {} with loss {}\n"
-                       .format(self.min_loss_i, self.min_loss))
-    return stop_now
-
-  def create_val_feed_dict(self, inp, out):
-    """Validation requires access to TensorFlow placeholders.
-
-    Not used in this Monitor
+  def begin(self, max_steps=None):
+    """Callback at the beginning of training/evaluation.
 
     Args:
-      inp: not used
-      out: not used
+      max_steps: Maximum steps this training will run until.
     """
     pass
 
-  def _set_epoch(self, feed_params_fn):
-    """Sets self.epoch from a function providing this info in a dict."""
-    if feed_params_fn:
-      feed_params = feed_params_fn()
-      self.epoch = feed_params["epoch"] if "epoch" in feed_params else None
-
-  def _set_training_summary(self):
-    """Returns the string to be written describing training progress"""
-    avg_train_loss = np.mean(self.print_train_loss_buffer)
-    self.print_train_loss_buffer = []
-    if self.epoch:
-      self._summary_str = (
-          "Step #{step}, epoch #{epoch}, avg. train loss: {loss:.5f}"
-          .format(step=self.steps,
-                  loss=avg_train_loss,
-                  epoch=self.epoch))
-    else:
-      self._summary_str = ("Step #{step}, avg. train loss: {loss:.5f}"
-                           .format(step=self.global_step,
-                                   loss=avg_train_loss))
-    self._modify_summary_string()
-
-  def _modify_summary_string(self):
-    """Makes monitor specific changes to printed summary.
-
-    Nothing interesting in BaseMonitor
-    """
+  def end(self):
+    """Callback at the end of training/evaluation."""
     pass
 
+  def epoch_begin(self, epoch):
+    pass
 
-class ValidationMonitor(BaseMonitor):
-  """Monitor that reports validation score and uses it for early stopping.
+  def epoch_end(self, epoch):
+    pass
+
+  def step_begin(self, step, tensors):  # pylint: disable=unused-argument
+    """Callback before training step begins.
+
+    Use this callback to:
+     - override which tensors to run.
+
+    Args:
+      step: int, global step of the model.
+      tensors: list of `Tensors` that going to be passed to session.run.
+
+    Returns:
+      Dict of `Tensors` that going to be ran.
+    """
+    return tensors
+
+  def step_end(self, step, output):  # pylint: disable=unused-argument
+    """Callback after training step finished.
+
+    Use this callback to:
+     - log results.
+     - save checkpoints.
+     - compute validation score.
+     - perform early stopping.
+
+    Args:
+      step: `int`, global step of the model.
+      output: `dict` of `np.array` results executed.
+
+    Returns:
+      `bool`, `True` if model should stop, `False` or `None` if continue.
+    """
+    return False
+
+
+class EveryN(BaseMonitor):
+  """Base class for monitors that execute callbacks every n steps / seconds.
 
   Parameters:
-    val_X: Validation features
-    val_y: Validation labels
-    n_classes: Number of labels in output. 0 for regression
-    print_steps: Number of steps in between printing cost.
-    early_stopping_rounds:  Activates early stopping if this is not None.
-                            Loss needs to decrease at least every
-                            <early_stopping_rounds>
-                            round(s) to continue training. (default: None)
+    every_n_steps: int, calls `every_n_step_{begin,end}` every this many steps.
+    first_n_steps: int, calls `every_n_step_{begin,end}` for first n steps.
+
+  TODO(ipolosukhin): Add also every n seconds.
   """
 
-  def __init__(self,
-               val_X,
-               val_y,
-               n_classes=0,
-               print_steps=100,
-               early_stopping_rounds=None):
-    super(ValidationMonitor, self).__init__(
-        print_steps=print_steps,
-        early_stopping_rounds=early_stopping_rounds)
-    self.val_feeder = setup_train_data_feeder(val_X, val_y, n_classes, -1)
-    self.print_val_loss_buffer = []
-    self.all_val_loss_buffer = []
-    self._summary_writer = None
+  def __init__(
+      self, every_n_steps=100, first_n_steps=1):
+    self._every_n_steps = every_n_steps
+    self._first_n_steps = first_n_steps
+    self._max_steps = None
 
-  def create_val_feed_dict(self, inp, out):
-    """Set tensorflow placeholders and create validation data feed."""
-    self.val_feeder.set_placeholders(inp, out)
-    self.val_dict = self.val_feeder.get_feed_dict_fn()()
+  def begin(self, max_steps=None):
+    self._max_steps = max_steps
+
+  def every_n_step_begin(self, step, tensors):  # pylint: disable=unused-argument
+    return tensors
+
+  def every_n_step_end(self, step, outputs):  # pylint: disable=unused-argument
+    return False
+
+  def step_begin(self, step, tensors):
+    if (step <= self._first_n_steps or step % self._every_n_steps == 0 or
+        step == self._max_steps):
+      tensors = self.every_n_step_begin(step, tensors)
+    return tensors
+
+  def step_end(self, step, output):
+    to_stop = False
+    if (step <= self._first_n_steps or step % self._every_n_steps == 0 or
+        step == self._max_steps):
+      to_stop = self.every_n_step_end(step, output)
+    return to_stop
+
+
+class PrintTensor(EveryN):
+
+  def __init__(self, tensor_names, every_n=100, first_n=1):
+    super(PrintTensor, self).__init__(every_n, first_n)
+    self._tensor_names = tensor_names
+
+  def every_n_step_begin(self, unused_step, tensors):
+    return tensors + self._tensor_names
+
+  def every_n_step_end(self, step, outputs):
+    stats = []
+    for name in self._tensor_names:
+      if name in outputs:
+        stats.append("%s = %s" % (name, str(outputs[name])))
+    logging.info("Step %d: %s" % (step, ", ".join(stats)))
+
+
+class SummarySaver(EveryN):
+  """Saves summary every N seconds."""
+
+  def __init__(self, summary_op, save_steps=100, output_dir=None):
+    # TODO(ipolosukhin): Implement every N seconds.
+    super(SummarySaver, self).__init__(every_n_steps=save_steps)
+    self._summary_op = summary_op
+    self._summary_writer = None
+    if output_dir:
+      self._summary_writer = summary_io.SummaryWriter(output_dir)
 
   def set_estimator(self, estimator):
-    super(ValidationMonitor, self).set_estimator(estimator)
-    if estimator._output_dir is None:
-      return
-    self._summary_writer = train.SummaryWriter(os.path.join(estimator._output_dir, 'eval'))
+    super(SummarySaver, self).set_estimator(estimator)
+    self._summary_writer = summary_io.SummaryWriter(self._estimator.model_dir)
 
-  def _set_last_loss_seen(self):
-    """Sets self.last_loss_seen to most recent validation loss.
+  def every_n_step_begin(self, unused_step, tensors):
+    return tensors + [self._summary_op]
 
-    Also stores this value to appropriate buffers
-    """
-    [val_loss] = self.sess.run(
-        [self.loss_expression_tensor],
-        feed_dict=self.val_dict)
-    self.last_loss_seen = val_loss
-    self.all_val_loss_buffer.append(val_loss)
-    self.print_val_loss_buffer.append(val_loss)
-    if self._summary_writer is not None:
-      summary = summary_pb2.Summary()
-      value = summary.value.add()
-      value.tag = "loss"
-      value.simple_value = float(val_loss)
-      self._summary_writer.add_summary(summary, self.global_step)
+  def every_n_step_end(self, step, outputs):
+    summary_strs = outputs[self._summary_op.name]
+    if self._summary_writer:
+      self._summary_writer.add_summary(summary_strs, step)
+    return False
 
-  def _modify_summary_string(self):
-    """Flushes validation print buffer into summary string."""
-    avg_val_loss = np.mean(self.print_val_loss_buffer)
-    self.print_val_loss_buffer = []
-    val_loss_string = "avg. val loss: {val_loss:.5f}".format(
-        val_loss=avg_val_loss)
-    self._summary_str = (", ".join([self._summary_str, val_loss_string]))
+  def end(self):
+    self._summary_writer.flush()
+
+
+class ValidationMonitor(EveryN):
+  """Runs evaluation every n steps.
+
+  Can do early stopping on validation loss if `early_stopping_rounds` provided.
+
+  """
+
+  def __init__(self, x=None, y=None, input_fn=None,
+               every_n_steps=100, early_stopping_rounds=None):
+    super(ValidationMonitor, self).__init__(every_n_steps=every_n_steps)
+    if x is None and input_fn is None:
+      raise ValueError("Either x or input_fn should be provided.")
+    self.x = x
+    self.y = y
+    self.input_fn = input_fn
+    self.min_loss_step = 0
+    self.min_loss = None
+    self.early_stopping_rounds = early_stopping_rounds
+
+  def every_n_step_end(self, step, unused_outputs):
+    outputs = self._estimator.evaluate(
+        x=self.x, y=self.y, input_fn=self.input_fn)
+    stats = []
+    for name in outputs:
+      stats.append("%s = %s" % (name, str(outputs[name])))
+    logging.info("Validation (step %d): %s" % (step, ", ".join(stats)))
+    if self.early_stopping_rounds is not None:
+      if self.min_loss is None or outputs["loss"] < self.min_loss:
+        self.min_loss = outputs["loss"]
+        self.min_loss_step = step
+      stop_now = (step - self.min_loss_step >= self.early_stopping_rounds)
+      if stop_now:
+        logging.info("Stopping. Best step: {} with loss {}."
+                     .format(self.min_loss_step, self.min_loss))
+        return True
+    return False
+
+
+def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
+                         output_dir=None):
+  monitors = []
+  if loss_op is not None:
+    monitors.append(PrintTensor([loss_op.name]))
+  if summary_op is not None:
+    monitors.append(SummarySaver(summary_op, save_steps=save_summary_steps,
+                                 output_dir=output_dir))
+  return monitors

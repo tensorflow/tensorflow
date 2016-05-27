@@ -195,6 +195,11 @@ class SpaceToBatchErrorHandlingTest(tf.test.TestCase):
     with self.assertRaises(IndexError):
       _ = tf.space_to_batch(x_np, paddings, block_size)
 
+  def testUnknownShape(self):
+    t = tf.space_to_batch(tf.placeholder(tf.float32), tf.placeholder(tf.int32),
+                          block_size=4)
+    self.assertEqual(4, t.get_shape().ndims)
+
 
 class SpaceToBatchGradientTest(tf.test.TestCase):
 

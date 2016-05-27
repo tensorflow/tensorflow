@@ -112,9 +112,11 @@ class SupervisorTest(tf.test.TestCase):
     with tf.Graph().as_default():
       summ = tf.scalar_summary(["c1", "c2", "c3"], tf.constant([1.0, 2.0, 3.0]))
       sv = tf.train.Supervisor(logdir=logdir, summary_op=None)
-      with sv.managed_session("", close_summary_writer=True) as sess:
+      with sv.managed_session("", close_summary_writer=True,
+                              start_standard_services=False) as sess:
         sv.summary_computed(sess, sess.run(summ))
-      with sv.managed_session("", close_summary_writer=True) as sess:
+      with sv.managed_session("", close_summary_writer=True,
+                              start_standard_services=False) as sess:
         sv.summary_computed(sess, sess.run(summ))
     # The summary iterator should report the summary once as we closed
     # the summary writer across the 2 sessions.
@@ -125,6 +127,7 @@ class SupervisorTest(tf.test.TestCase):
 
     # The next one has the graph.
     ev = next(rr)
+    self.assertTrue(ev.graph_def)
 
     # The next one should have the values from the summary.
     # But only once.
@@ -147,10 +150,14 @@ class SupervisorTest(tf.test.TestCase):
     with tf.Graph().as_default():
       summ = tf.scalar_summary(["c1", "c2", "c3"], tf.constant([1.0, 2.0, 3.0]))
       sv = tf.train.Supervisor(logdir=logdir)
-      with sv.managed_session("", close_summary_writer=False) as sess:
+      with sv.managed_session("", close_summary_writer=False,
+                              start_standard_services=False) as sess:
         sv.summary_computed(sess, sess.run(summ))
-      with sv.managed_session("", close_summary_writer=False) as sess:
+      with sv.managed_session("", close_summary_writer=False,
+                              start_standard_services=False) as sess:
         sv.summary_computed(sess, sess.run(summ))
+    # Now close the summary writer to flush the events.
+    sv.summary_writer.close()
     # The summary iterator should report the summary twice as we reused
     # the same summary writer across the 2 sessions.
     rr = _summary_iterator(logdir)
@@ -160,6 +167,7 @@ class SupervisorTest(tf.test.TestCase):
 
     # The next one has the graph.
     ev = next(rr)
+    self.assertTrue(ev.graph_def)
 
     # The next one should have the values from the summary.
     ev = next(rr)
@@ -176,10 +184,6 @@ class SupervisorTest(tf.test.TestCase):
       value { tag: 'c2' simple_value: 2.0 }
       value { tag: 'c3' simple_value: 3.0 }
       """, ev.summary)
-
-    # The next one should be a stop message if we closed cleanly.
-    ev = next(rr)
-    self.assertEquals(tf.SessionLog.STOP, ev.session_log.status)
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))

@@ -1,4 +1,5 @@
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 <link rel="import" href="tf-graph-minimap.html">
 
 <!--
@@ -65,6 +66,34 @@
 ::content .node.meta.selected.expanded.highlighted > .annotation-node > rect {
   stroke: red;
   stroke-width: 4;
+}
+
+::content .faded,
+::content .faded rect,
+::content .faded ellipse,
+::content .faded path,
+::content #rectHatch line,
+::content #ellipseHatch line {
+  color: var(--tb-graph-faded) !important;
+  fill: white;
+  stroke: var(--tb-graph-faded) !important;
+}
+
+
+::content .faded path {
+  stroke-width: 1px !important;
+}
+
+::content .faded rect {
+  fill: url(#rectHatch) !important;
+}
+
+::content .faded ellipse {
+  fill: url(#ellipseHatch) !important;
+}
+
+::content .faded text {
+  opacity: 0;
 }
 
 
@@ -216,8 +245,16 @@
   marker-end: url(#annotation-arrowhead);
 }
 
+::content .faded .annotation > .annotation-edge {
+  marker-end: url(#annotation-arrowhead-faded);
+}
+
 ::content .annotation > .annotation-edge.refline {
   marker-start: url(#ref-annotation-arrowhead);
+}
+
+::content .faded .annotation > .annotation-edge.refline {
+  marker-start: url(#ref-annotation-arrowhead-faded);
 }
 
 ::content .annotation > .annotation-control-edge {
@@ -228,8 +265,16 @@
   fill: #aaa;
 }
 
+::content #annotation-arrowhead-faded {
+  fill: var(--tb-graph-faded);
+}
+
 ::content #ref-annotation-arrowhead {
   fill: #aaa;
+}
+
+::content #ref-annotation-arrowhead-faded {
+  fill: var(--tb-graph-faded);
 }
 
 ::content .annotation > .annotation-label {
@@ -387,7 +432,15 @@
       refX="5" refY="2.5" orient="auto">
       <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"/>
     </marker>
+    <marker id="annotation-arrowhead-faded" markerWidth="5" markerHeight="5"
+      refX="5" refY="2.5" orient="auto">
+      <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"/>
+    </marker>
     <marker id="ref-annotation-arrowhead" markerWidth="5" markerHeight="5"
+      refX="0" refY="2.5" orient="auto">
+      <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"/>
+    </marker>
+    <marker id="ref-annotation-arrowhead-faded" markerWidth="5" markerHeight="5"
       refX="0" refY="2.5" orient="auto">
       <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"/>
     </marker>
@@ -423,6 +476,14 @@
       by proportions of devices.
     -->
     <g id="linearGradients"></g>
+
+    <!-- Hatch patterns for faded out nodes. -->
+    <pattern id="rectHatch" patternTransform="rotate(45 0 0)" width="5" height="5" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="5" style="stroke-width: 1"/>
+    </pattern>
+    <pattern id="ellipseHatch" patternTransform="rotate(45 0 0)" width="2" height="2" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="2" style="stroke-width: 1"/>
+    </pattern>
   </defs>
   <!-- Make a large rectangle that fills the svg space so that
   zoom events get captured on safari -->

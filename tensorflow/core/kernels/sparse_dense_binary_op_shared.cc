@@ -171,7 +171,10 @@ class SparseDenseBinaryOpShared : public OpKernel {
                                                                              \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("SparseDenseCwiseDiv").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      SparseDenseBinaryOpShared<CPUDevice, T, functor::div<T>>)
+      SparseDenseBinaryOpShared<CPUDevice, T, functor::div<T>>)              \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("SparseDenseCwiseAdd").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SparseDenseBinaryOpShared<CPUDevice, T, functor::add<T>>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS

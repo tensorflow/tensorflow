@@ -31,6 +31,15 @@ config_setting(
     },
 )
 
+# Equivalent to using_clang && -c opt.
+config_setting(
+    name = "using_clang_opt",
+    values = {
+        "define": "using_cuda_clang=true",
+        "compilation_mode": "opt",
+    },
+)
+
 config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},

@@ -1138,11 +1138,33 @@ class SessionTest(test_util.TensorFlowTestCase):
         d = math_ops.mul(c, c)
       for step in xrange(120):
         run_metadata = config_pb2.RunMetadata()
-        sess.run(d, feed_dict={a: 1.0}, options=run_options, run_metadata=run_metadata)
+        sess.run(d, feed_dict={a: 1.0},
+                 options=run_options, run_metadata=run_metadata)
         if step == 99:
           self.assertTrue(run_metadata.HasField('cost_graph'))
         else:
           self.assertFalse(run_metadata.HasField('cost_graph'))
+
+  def testNonInteractiveSessionNesting(self):
+    sess1 = session.Session()
+    sess1_controller = sess1.as_default()
+    sess1_controller.__enter__()
+
+    sess2 = session.Session()
+    sess2_controller = sess2.as_default()
+    sess2_controller.__enter__()
+
+    with self.assertRaisesRegexp(AssertionError, 'Nesting violated'):
+      sess1_controller.__exit__(None, None, None)
+
+    ops._default_session_stack.reset()
+
+  def testInteractiveSessionNesting(self):
+    sess1 = session.InteractiveSession()
+    sess2 = session.InteractiveSession()
+    del sess1
+    del sess2
+
 
 if __name__ == '__main__':
   googletest.main()

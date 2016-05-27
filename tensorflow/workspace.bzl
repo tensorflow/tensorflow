@@ -5,27 +5,10 @@
 # local_repository rule (e.g. "@tf").
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
-    name = "gmock_archive",
-    url = "https://archive.openswitch.net/gmock-1.7.0.zip",
-    sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
-    build_file = path_prefix + "google/protobuf/gmock.BUILD",
-  )
-
-  native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/a5e9085a94e8.tar.gz",
-    sha256 = "967126237829c7c87abb6cd0e13a5a235b0377d51575522c390b9486aed13e71",
+    url = "https://bitbucket.org/eigen/eigen/get/f3a13643ac1f.tar.gz",
+    sha256 = "a9266e60366cddb371a23d86b11a297eee86372a89ef4b38a3509012f9cc37ec",
     build_file = path_prefix + "eigen.BUILD",
-  )
-
-  native.bind(
-    name = "gtest",
-    actual = "@gmock_archive//:gtest",
-  )
-
-  native.bind(
-    name = "gtest_main",
-    actual = "@gmock_archive//:gtest_main",
   )
 
   native.git_repository(
@@ -50,6 +33,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "farmhash",
     actual = "@farmhash//:farmhash",
+  )
+
+  native.git_repository(
+    name = "highwayhash",
+    remote = "https://github.com/google/highwayhash.git",
+    commit = "be5edafc2e1a455768e260ccd68ae7317b6690ee",
+    init_submodules = True,
   )
 
   native.new_http_archive(
@@ -78,16 +68,44 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@six_archive//:six",
   )
 
+  native.git_repository(
+    name = "protobuf",
+    remote = "https://github.com/google/protobuf",
+    commit = "ed87c1fe2c6e1633cadb62cf54b2723b2b25c280",
+  )
+
+  native.new_http_archive(
+    name = "gmock_archive",
+    url = "https://archive.openswitch.net/gmock-1.7.0.zip",
+    sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
+    build_file = path_prefix + "gmock.BUILD",
+  )
+
+  native.bind(
+    name = "gtest",
+    actual = "@gmock_archive//:gtest",
+  )
+
+  native.bind(
+    name = "gtest_main",
+    actual = "@gmock_archive//:gtest_main",
+  )
+
+  native.bind(
+      name = "python_headers",
+      actual = tf_repo_name + "//util/python:python_headers",
+  )
+
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
   # to point to the protobuf's compiler library.
   native.bind(
     name = "protobuf_clib",
-    actual = tf_repo_name + "//google/protobuf:protoc_lib",
+    actual = "@protobuf//:protoc_lib",
   )
 
   native.bind(
     name = "protobuf_compiler",
-    actual = tf_repo_name + "//google/protobuf:protoc_lib",
+    actual = "@protobuf//:protoc_lib",
   )
 
   native.git_repository(

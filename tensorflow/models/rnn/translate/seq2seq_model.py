@@ -83,17 +83,15 @@ class Seq2SeqModel(object):
     softmax_loss_function = None
     # Sampled softmax only makes sense if we sample less than vocabulary size.
     if num_samples > 0 and num_samples < self.target_vocab_size:
-      with tf.device("/cpu:0"):
-        w = tf.get_variable("proj_w", [size, self.target_vocab_size])
-        w_t = tf.transpose(w)
-        b = tf.get_variable("proj_b", [self.target_vocab_size])
+      w = tf.get_variable("proj_w", [size, self.target_vocab_size])
+      w_t = tf.transpose(w)
+      b = tf.get_variable("proj_b", [self.target_vocab_size])
       output_projection = (w, b)
 
       def sampled_loss(inputs, labels):
-        with tf.device("/cpu:0"):
-          labels = tf.reshape(labels, [-1, 1])
-          return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, num_samples,
-                                            self.target_vocab_size)
+        labels = tf.reshape(labels, [-1, 1])
+        return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, num_samples,
+                self.target_vocab_size)
       softmax_loss_function = sampled_loss
 
     # Create the internal multi-layer cell for our RNN.

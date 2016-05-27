@@ -231,6 +231,10 @@ class Uniform(ContinuousDistribution):
     """`b - a`."""
     return self.b - self.a
 
+  @property
+  def is_reparameterized(self):
+    return True
+
   # TODO(rsepassi): Find a more efficient way of doing the broadcasting in_ones
   # and _zeros.
   def _ones(self):

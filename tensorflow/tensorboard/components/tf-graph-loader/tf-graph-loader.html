@@ -51,16 +51,16 @@ Polymer({
   },
   observers: [
     '_selectedDatasetChanged(selectedDataset, datasets)',
-    '_readAndParseMetadata(selectedDataset, selectedMetadataTag, datasets)'
+    '_readAndParseMetadata(selectedMetadataTag)'
   ],
-  _readAndParseMetadata: function(datasetIndex, metadataIndex, datasets) {
-    if (metadataIndex == -1 || datasets[datasetIndex] == null ||
-        datasets[datasetIndex].runMetadata == null ||
-        datasets[datasetIndex].runMetadata[metadataIndex] == null) {
+  _readAndParseMetadata: function(metadataIndex) {
+    if (metadataIndex == -1 || this.datasets[this.selectedDataset] == null ||
+        this.datasets[this.selectedDataset].runMetadata == null ||
+        this.datasets[this.selectedDataset].runMetadata[metadataIndex] == null) {
       this._setOutStats(null);
       return;
     }
-    var path = datasets[datasetIndex].runMetadata[metadataIndex].path;
+    var path = this.datasets[this.selectedDataset].runMetadata[metadataIndex].path;
     // Reset the progress bar to 0.
     this.set('progress', {
       value: 0,

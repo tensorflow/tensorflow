@@ -305,7 +305,7 @@ Construct a new gradient descent optimizer.
 Optimizer that implements the Adadelta algorithm. 
 
 See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
-([pdf](http://arxiv.org/pdf/1212.5701.pdf))
+([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
 
 - - -
 
@@ -3078,7 +3078,7 @@ Merges all summaries collected in the default graph.
 ##### Returns:
 
   If no summaries were collected, returns None.  Otherwise returns a scalar
-  `Tensor` of type`string` containing the serialized `Summary` protocol
+  `Tensor` of type `string` containing the serialized `Summary` protocol
   buffer resulting from the merging.
 
 
@@ -3346,7 +3346,7 @@ global_step: 10
 
 ### `tf.train.write_graph(graph_def, logdir, name, as_text=True)` {#write_graph}
 
-Writes a graph proto on disk.
+Writes a graph proto to a file.
 
 The graph is written as a binary proto unless `as_text` is `True`.
 
@@ -3360,7 +3360,8 @@ tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
 
 
 *  <b>`graph_def`</b>: A `GraphDef` protocol buffer.
-*  <b>`logdir`</b>: Directory where to write the graph.
+*  <b>`logdir`</b>: Directory where to write the graph. This can refer to remote
+    filesystems, such as Google Cloud Storage (GCS).
 *  <b>`name`</b>: Filename for the graph.
 *  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
 

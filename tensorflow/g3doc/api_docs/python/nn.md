@@ -315,7 +315,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
 *  <b>`strides`</b>: A list of `ints`.
     1-D of length 4.  The stride of the sliding window for each dimension
@@ -418,6 +418,12 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If channel_multiplier * in_channels > out_channels,
+    which means that the separable convolution is overparameterized.
+
 
 - - -
 
@@ -450,15 +456,15 @@ the field of view of filters without increasing the number of parameters or
 the amount of computation.
 
 For a description of atrous convolution and how it can be used for dense
-feature extraction, please see: (Semantic Image Segmentation with Deep
-Convolutional Nets and Fully Connected CRFs)[http://arxiv.org/abs/1412.7062].
-The same operation is investigated further in (Multi-Scale Context Aggregation
-by Dilated Convolutions)[http://arxiv.org/abs/1511.07122]. Previous works
+feature extraction, please see: [Semantic Image Segmentation with Deep
+Convolutional Nets and Fully Connected CRFs](http://arxiv.org/abs/1412.7062).
+The same operation is investigated further in [Multi-Scale Context Aggregation
+by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
 that effectively use atrous convolution in different ways are, among others,
-(OverFeat: Integrated Recognition, Localization and Detection using
-Convolutional Networks) [http://arxiv.org/abs/1312.6229] and (Fast Image
-Scanning with Deep Max-Pooling Convolutional Neural Networks)
-[http://arxiv.org/abs/1302.1700]. Atrous convolution is also closely related
+[OverFeat: Integrated Recognition, Localization and Detection using
+Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
+Scanning with Deep Max-Pooling Convolutional Neural Networks]
+(http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
 to the so-called noble identities in multi-rate signal processing.
 
 There are many different ways to implement atrous convolution (see the refs
@@ -535,8 +541,8 @@ inputs are identical.
 
 The transpose of `conv2d`.
 
-This operation is sometimes called "deconvolution" after (Deconvolutional
-Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+This operation is sometimes called "deconvolution" after [Deconvolutional
+Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
 actually the transpose (gradient) of `conv2d` rather than an actual
 deconvolution.
 
@@ -824,13 +830,12 @@ convolutional neural networks (NIPS 2012)]
 
 - - -
 
-### `tf.nn.sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None)` {#sufficient_statistics}
+### `tf.nn.sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None)` {#sufficient_statistics}
 
 Calculate the sufficient statistics for the mean and variance of `x`.
 
 These sufficient statistics are computed using the one pass algorithm on
-an input that's optionally shifted using the value of the 1st element in `x`.
-See:
+an input that's optionally shifted. See:
 https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
 
 ##### Args:
@@ -838,7 +843,9 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
 
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: Array of ints. Axes along which to compute mean and variance.
-*  <b>`shift`</b>: If true, shift the data to provide more numerically stable results.
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
+    numerical stability, or `None` if no shift is to be performed. A shift
+    close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce statistics with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the sufficient stats.
 
@@ -848,7 +855,7 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
   * the count (number of elements to average over).
   * the (possibly shifted) sum of the elements in the array.
   * the (possibly shifted) sum of squares of the elements in the array.
-  * the shift by which the mean must be corrected or None if `shift` is False.
+  * the shift by which the mean must be corrected or None if `shift` is None.
 
 
 - - -
@@ -876,7 +883,7 @@ Calculate the mean and variance of based on the sufficient statistics.
 
 - - -
 
-### `tf.nn.moments(x, axes, name=None, keep_dims=False)` {#moments}
+### `tf.nn.moments(x, axes, shift=None, name=None, keep_dims=False)` {#moments}
 
 Calculate the mean and variance of `x`.
 
@@ -896,6 +903,9 @@ When using these moments for batch normalization (see
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
     variance.
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
+    numerical stability, or `None` if no shift is to be performed. A shift
+    close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 
@@ -1002,7 +1012,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
     2-D with shape `[batch_size, num_classes]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1024,7 +1034,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
     2-D with shape `[batch_size, num_classes]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1459,7 +1469,7 @@ This operation is for training only.  It is generally an underestimate of
 the full softmax loss.
 
 At inference time, you can compute full softmax probabilities with the
-expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
+expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
 
 See our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)

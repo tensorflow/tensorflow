@@ -271,6 +271,8 @@ class TileTest(tf.test.TestCase):
         "bool": (tf.bool, bool),
         "float32": (tf.float32, float),
         "float64": (tf.float64, float),
+        "complex64": (tf.complex64, complex),
+        "complex128": (tf.complex128, complex),
         "uint8": (tf.uint8, int),
         "int32": (tf.int32, int),
         "int64": (tf.int64, int),

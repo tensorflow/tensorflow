@@ -589,6 +589,10 @@ class BatchTest(tf.test.TestCase):
     batched = tf.train.batch([sparse], batch_size=2, enqueue_many=True)
     self.assertIs(batched.shape.get_shape().num_elements(), None)
 
+  def testSingleElementDict(self):
+    x = tf.train.batch({"c": [12, 12]}, batch_size=8)
+    self.assertEqual([8, 2], x["c"].get_shape().as_list())
+
 
 class BatchJoinTest(tf.test.TestCase):
 
@@ -764,6 +768,10 @@ class BatchJoinTest(tf.test.TestCase):
       x = tf.placeholder(dtype=tf.int64)
       with self.assertRaisesRegexp(ValueError, "Cannot infer Tensor's rank"):
         tf.train.batch_join([[x]], batch_size=2)
+
+  def testSingleElementDict(self):
+    x = tf.train.batch_join([{"c": [12, 12]}], batch_size=8)
+    self.assertEqual([8, 2], x["c"].get_shape().as_list())
 
 
 class ShuffleBatchTest(tf.test.TestCase):

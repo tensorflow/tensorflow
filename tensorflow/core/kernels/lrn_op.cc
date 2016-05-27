@@ -33,10 +33,10 @@ namespace tensorflow {
 
 namespace {
 
-// When the depth is large and beta_ is 0.5 or 1.0, MognetLRN is faster than the
-// main band matrix approach used below. Benchmarks suggest switching to
-// MognetLRN when depth > 384.
-const int kMognetLRNDepthCutoff = 384;
+// When the depth is large and beta_ is 0.5 or 1.0, Single-threaded
+// LRN is faster than the main band matrix approach used
+// below. Benchmarks suggest switching to SingleThreadedLRN when depth > 384.
+const int kSingleThreadedLRNDepthCutoff = 384;
 
 // Create a depth-by-depth band matrix with 1s along a swath of size (2 *
 // depth_radius + 1) around the diagonal.
@@ -88,10 +88,11 @@ class LRNOp : public OpKernel {
                        0, TensorShape({batch, rows, cols, depth}), &output));
 
 #if defined(__ANDROID__)
-    MognetLRN(in, batch, rows, cols, depth, output);
+    SingleThreadedLRN(in, batch, rows, cols, depth, output);
 #else
-    if (depth > kMognetLRNDepthCutoff && (beta_ == 0.5f || beta_ == 1.0f)) {
-      MognetLRN(in, batch, rows, cols, depth, output);
+    if (depth > kSingleThreadedLRNDepthCutoff &&
+        (beta_ == 0.5f || beta_ == 1.0f)) {
+      SingleThreadedLRN(in, batch, rows, cols, depth, output);
       return;
     }
 
@@ -124,8 +125,8 @@ class LRNOp : public OpKernel {
  private:
   typedef Eigen::Tensor<float, 1, Eigen::RowMajor>::DimensionPair DimPair;
 
-  void MognetLRN(const Tensor& in, const int batch, const int rows,
-                 const int cols, const int depth, Tensor* out) {
+  void SingleThreadedLRN(const Tensor& in, const int batch, const int rows,
+                         const int cols, const int depth, Tensor* out) {
     Eigen::Map<const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>>
     data_in(in.flat<float>().data(), depth, batch * rows * cols);
 

@@ -53,6 +53,7 @@ class _VariableStore(object):
   def __init__(self):
     """Create a variable store."""
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
+    self._partitioned_vars = {}  # A dict of the stored PartitionedVariables.
 
   def get_variable(self, name, shape=None, dtype=dtypes.float32,
                    initializer=None, regularizer=None, reuse=None,
@@ -74,7 +75,7 @@ class _VariableStore(object):
     it as a value and derive the shape from the initializer.
 
     If a partitioner is provided, first a sharded `Variable` is created
-    via `_get_partitioned_variable_list`, and the return value is a
+    via `_get_partitioned_variable`, and the return value is a
     `Tensor` composed of the shards concatenated along the partition axis.
 
     Some useful partitioners are available.  See, e.g.,
@@ -93,8 +94,6 @@ class _VariableStore(object):
         `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
       collections: List of graph collections keys to add the Variable to.
         Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
-        If partitioning is enabled and used, the concatenated return value
-        is also added to collection `GraphKeys.CONCATENATED_VARIABLES`.
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
@@ -115,51 +114,45 @@ class _VariableStore(object):
         when reusing a variable and specifying a conflicting shape,
         or when violating reuse during variable creation.
     """
+    # Partitioned variable case
     if partitioner is not None:
       if not callable(partitioner):
         raise ValueError(
             "Partitioner must be callable, but received: %s" % partitioner)
-
       with ops.name_scope(None):
-        variable_list, partitions = self._get_partitioned_variable_list(
-            name=name, shape=shape, dtype=dtype, initializer=initializer,
-            regularizer=regularizer, reuse=reuse, trainable=trainable,
-            collections=collections, caching_device=caching_device,
-            partitioner=partitioner, validate_shape=validate_shape)
+        return self._get_partitioned_variable(name=name,
+                                              shape=shape,
+                                              dtype=dtype,
+                                              initializer=initializer,
+                                              regularizer=regularizer,
+                                              reuse=reuse,
+                                              trainable=trainable,
+                                              collections=collections,
+                                              caching_device=caching_device,
+                                              partitioner=partitioner,
+                                              validate_shape=validate_shape)
 
-      if len(variable_list) == 1:
-        with ops.name_scope(None):
-          return array_ops.identity(variable_list[0], name=name)
-      else:
-        # After going through all the checks of _get_partitioned_variable_list,
-        # see if we've already cached this (in which case, we can
-        # bypass the concat)
-        for value in ops.get_collection(ops.GraphKeys.CONCATENATED_VARIABLES):
-          if value.op.name == name:
-            return value
-
-        if all([p < 2 for p in partitions]):
-          partition_ix = 0
-        else:
-          partition_ix = [i for i, p in enumerate(partitions) if p > 1][0]
-
-        with ops.name_scope(name + "/ConcatPartitions/"):
-          concatenated = array_ops.concat(partition_ix, variable_list)
-
-        # Return the proper named Tensor, for future lookup in the
-        # CONCATENATED_VARIABLES collection
-        with ops.name_scope(None):
-          concatenated_named = array_ops.identity(concatenated, name)
-        ops.add_to_collection(ops.GraphKeys.CONCATENATED_VARIABLES,
-                              concatenated_named)
-        return concatenated_named
+    # Special case for partitioned variable to allow reuse without having to
+    # specify partitioner.
+    if reuse is True and partitioner is None and name in self._partitioned_vars:
+      return self._get_partitioned_variable(name=name,
+                                            shape=shape,
+                                            dtype=dtype,
+                                            initializer=initializer,
+                                            regularizer=regularizer,
+                                            reuse=reuse,
+                                            trainable=trainable,
+                                            collections=collections,
+                                            caching_device=caching_device,
+                                            partitioner=None,
+                                            validate_shape=validate_shape)
 
     # Single variable case
-    if "%s_0" % name in self._vars:
+    if "%s/part_0" % name in self._vars:
       raise ValueError(
-          "No partitioner was provided, but an partitioned version of the "
-          "variable was found: %s_0.  Perhaps a variable of the same name was "
-          "already created with partitioning?" % name)
+          "No partitioner was provided, but a partitioned version of the "
+          "variable was found: %s/part _0. Perhaps a variable of the same name "
+          "was already created with partitioning?" % name)
 
     return self._get_single_variable(
         name=name, shape=shape, dtype=dtype,
@@ -167,7 +160,7 @@ class _VariableStore(object):
         trainable=trainable, collections=collections,
         caching_device=caching_device, validate_shape=validate_shape)
 
-  def _get_partitioned_variable_list(
+  def _get_partitioned_variable(
       self, name, partitioner, shape=None, dtype=dtypes.float32,
       initializer=None, regularizer=None, reuse=None,
       trainable=True, collections=None, caching_device=None,
@@ -239,11 +232,9 @@ class _VariableStore(object):
         sharded variable exists for the given name but with different sharding.
     """
 
-    initializing_from_value = False
-    if initializer is not None and isinstance(initializer, ops.Tensor):
-      initializing_from_value = True
-
-    shape = tensor_shape.as_shape(shape)
+    initializing_from_value = initializer is not None and isinstance(
+        initializer, ops.Tensor)
+    reuse_without_partition = reuse is True and partitioner is None
 
     if name in self._vars:
       raise ValueError(
@@ -251,31 +242,70 @@ class _VariableStore(object):
           "variable was found: %s.  Perhaps a variable of the same name was "
           "already created without partitioning?" % name)
 
+    shape = tensor_shape.as_shape(shape)
     if initializing_from_value:
       shape = initializer.get_shape()
 
-    if not shape.is_fully_defined():
-      raise ValueError("Shape of a new partitioned variable (%s) must be "
-                       "fully defined, but instead was %s." % (name, shape))
+    if not reuse_without_partition:
+      if not shape.is_fully_defined():
+        raise ValueError("Shape of a new partitioned variable (%s) must be "
+                         "fully defined, but instead was %s." % (name, shape))
 
-    if shape.ndims < 1:
-      raise ValueError("A partitioned Variable must have rank at least 1, "
-                       "shape: %s" % shape)
+      if shape.ndims < 1:
+        raise ValueError("A partitioned Variable must have rank at least 1, "
+                         "shape: %s" % shape)
 
-    partitions = partitioner(shape=shape, dtype=dtype)
+      partitions = partitioner(shape=shape, dtype=dtype)
 
-    if not isinstance(partitions, collections_lib.Sequence):
-      raise ValueError("Partitioner must return a sequence, but saw: %s"
-                       % partitions)
+      if not isinstance(partitions, collections_lib.Sequence):
+        raise ValueError("Partitioner must return a sequence, but saw: %s"
+                         % partitions)
 
-    if len(partitions) != shape.ndims:
-      raise ValueError(
-          "Partitioner returned a partition list that does not match the "
-          "Variable's rank: %s vs. %s" % (partitions, shape))
+      if len(partitions) != shape.ndims:
+        raise ValueError(
+            "Partitioner returned a partition list that does not match the "
+            "Variable's rank: %s vs. %s" % (partitions, shape))
 
-    if any([p < 1 for p in partitions]):
-      raise ValueError(
-          "Partitioner returned zero partitions for some axes: %s" % partitions)
+      if any([p < 1 for p in partitions]):
+        raise ValueError(
+            "Partitioner returned zero partitions for some axes: %s" %
+            partitions)
+
+    should_check = reuse is not None
+
+    if name in self._partitioned_vars:
+      if should_check and not reuse:
+        raise ValueError(
+            "Partitioned variable with name %s already exists. Did you mean to "
+            "set reuse=True in VarScope?"
+            % name)
+
+      existing_var = self._partitioned_vars[name]
+      if not shape.is_compatible_with(existing_var.get_shape()):
+        raise ValueError(
+            "Trying to reuse partitioned variable %s, but specified shape %s "
+            "and found shape %s."
+            % (name, shape, existing_var.get_shape()))
+      if not dtype.is_compatible_with(existing_var.dtype):
+        raise ValueError(
+            "Trying to reuse partitioned variable %s, but specified dtype %s "
+            "and found dtype %s."
+            % (name, dtype.name, existing_var.dtype.name))
+
+      # pylint: disable=protected-access
+      if (not reuse_without_partition and
+          existing_var._get_partitions() != partitions):
+        raise ValueError(
+            "Trying to reuse partitioned variable %s, but specified partitions "
+            "%s and found partitions %s." %
+            (name, partitions, existing_var._get_partitions()))
+      # pylint: enable=protected-access
+
+      return existing_var
+
+    if should_check and reuse:
+      raise ValueError("PartitionedVariable %s does not exist, disallowed."
+                       " Did you mean to set reuse=None in VarScope?" % name)
 
     slice_dim, slice_shape = _compute_slice_dim_and_shape(
         shape.as_list(), partitions)
@@ -286,18 +316,18 @@ class _VariableStore(object):
 
     slice_offset = [0] * shape.ndims
 
-    if "%s_0" % name in self._vars:
-      if "%s_%d" % (name, num_slices - 1) not in self._vars:
+    if "%s/part_0" % name in self._vars:
+      if "%s/part_%d" % (name, num_slices - 1) not in self._vars:
         raise ValueError(
             "Partitioner returned a different partitioning than what was "
-            "already found.  Partitioner returned %d shards, and shard %s_0 "
-            "was found, but %s_%d was not."
+            "already found.  Partitioner returned %d shards, and shard "
+            "%s/part_0 was found, but %s/part_%d was not."
             % (num_slices, name, name, num_slices - 1))
-      if "%s_%d" % (name, num_slices) in self._vars:
+      if "%s/part_%d" % (name, num_slices) in self._vars:
         raise ValueError(
             "Partitioner returned a different partitioning than what was "
-            "already found.  Partitioner returned %d shards, and shard %s_0 "
-            "was found, but so was the extra shard %s_%d."
+            "already found.  Partitioner returned %d shards, and shard "
+            "%s/part_0 was found, but so was the extra shard %s/part_%d."
             % (num_slices, name, name, num_slices))
 
     for i in xrange(num_slices):
@@ -307,7 +337,8 @@ class _VariableStore(object):
         var_shape[slice_dim] += 1
       slice_offset[slice_dim] += var_shape[slice_dim]
 
-      with ops.op_scope([], name + "/PartitionedVariableList"):
+      var_full_name = "%s/part_%d" % (name, i)
+      with ops.op_scope([], var_full_name + "/Initializer"):
         if initializer is None:
           init = init_ops.uniform_unit_scaling_initializer(
               full_shape=shape.as_list())
@@ -327,7 +358,7 @@ class _VariableStore(object):
 
       with ops.name_scope(None):
         var = self._get_single_variable(
-            name="%s_%d" % (name, i),
+            name=var_full_name,
             shape=init_shape,
             dtype=dtype,
             initializer=init,
@@ -341,10 +372,19 @@ class _VariableStore(object):
       # pylint: disable=protected-access
       var._set_save_slice_info(variables.Variable.SaveSliceInfo(
           name, shape.as_list(), var_offset, var_shape))
-      # pylint: enable=protected-access
       vs.append(var)
+      # pylint: enable=protected-access
 
-    return (vs, partitions)
+    # pylint: disable=protected-access
+    partitioned_var = variables._PartitionedVariable(name=name,
+                                                     shape=shape,
+                                                     dtype=dtype,
+                                                     variable_list=vs,
+                                                     partitions=partitions)
+    # pylint: enable=protected-access
+
+    self._partitioned_vars[name] = partitioned_var
+    return partitioned_var
 
   def _get_single_variable(self, name, shape=None, dtype=dtypes.float32,
                            initializer=None, regularizer=None, reuse=None,
@@ -555,7 +595,7 @@ class VariableScope(object):
           collections=collections, caching_device=caching_device,
           partitioner=partitioner, validate_shape=validate_shape)
 
-  def _get_partitioned_variable_list(
+  def _get_partitioned_variable(
       self, var_store, name,
       shape=None, dtype=dtypes.float32,
       initializer=None, regularizer=None,
@@ -574,13 +614,21 @@ class VariableScope(object):
     if partitioner is None:
       raise ValueError("No partitioner was specified")
 
-    full_name = self.name + "/" + name if self.name else name
+    # This allows the variable scope name to be used as the variable name if
+    # this function is invoked with an empty name arg, for backward
+    # compatibility with create_partitioned_variables().
+    full_name_list = []
+    if self.name:
+      full_name_list.append(self.name)
+    if name:
+      full_name_list.append(name)
+    full_name = "/".join(full_name_list)
 
     # Variable names only depend on variable_scope (full_name here),
     # not name_scope, so we reset it below for the time of variable creation.
     with ops.name_scope(None):
       # pylint: disable=protected-access
-      return var_store._get_partitioned_variable_list(
+      return var_store._get_partitioned_variable(
           full_name, shape=shape, dtype=dtype, initializer=initializer,
           regularizer=regularizer, reuse=self.reuse, trainable=trainable,
           collections=collections, caching_device=caching_device,
@@ -639,7 +687,7 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
   then by default no regularization is performed).
 
   If a partitioner is provided, first a sharded `Variable` is created
-  via `_get_partitioned_variable_list`, and the return value is a
+  via `_get_partitioned_variable`, and the return value is a
   `Tensor` composed of the shards concatenated along the partition axis.
 
   Some useful partitioners are available.  See, e.g.,
@@ -657,8 +705,6 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     collections: List of graph collections keys to add the Variable to.
       Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
-      If partitioning is enabled and used, the concatenated return value
-      is also added to collection `GraphKeys.CONCATENATED_VARIABLES`.
     caching_device: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.  If not `None`, caches on another device.  Typical use is to
@@ -686,7 +732,7 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       partitioner=partitioner, validate_shape=validate_shape)
 
 
-def _get_partitioned_variable_list(
+def _get_partitioned_variable(
     name, shape=None, dtype=dtypes.float32, initializer=None,
     regularizer=None, trainable=True, collections=None,
     caching_device=None, partitioner=None, validate_shape=True):
@@ -754,7 +800,7 @@ def _get_partitioned_variable_list(
       `variable_scope`.
   """
   # pylint: disable=protected-access
-  return get_variable_scope()._get_partitioned_variable_list(
+  return get_variable_scope()._get_partitioned_variable(
       _get_default_variable_store(), name, shape=shape, dtype=dtype,
       initializer=initializer, regularizer=regularizer, trainable=trainable,
       collections=collections, caching_device=caching_device,

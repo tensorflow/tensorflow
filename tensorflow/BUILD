@@ -77,7 +77,7 @@ filegroup(
         "//tensorflow/contrib/ctc:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/ffmpeg:all_files",
-        "//tensorflow/contrib/ffmpeg/kernels:all_files",
+        "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",

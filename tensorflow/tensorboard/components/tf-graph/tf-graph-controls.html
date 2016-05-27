@@ -2,6 +2,7 @@
 <link rel="import" href="../paper-menu/paper-menu.html">
 <link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
 <link rel="import" href="../paper-radio-group/paper-radio-group.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 
 <dom-module id="tf-graph-controls">
 <template>
@@ -89,6 +90,7 @@ svg.icon {
   fill: #D9D9D9;
 }
 .domainValues {
+  margin-bottom: 10px;
   width: 165px;
 }
 .domainStart {
@@ -127,8 +129,31 @@ svg.icon {
   padding: 8px 0;
 }
 
-.color-text {
-  padding: 0 0 0 49px;
+.color-legend-row {
+  clear: both;
+  height: 20px;
+  margin-top: 5px;
+  position: relative;
+}
+
+.color-legend-row svg {
+  position: absolute;
+  top: -1px;
+  width: 40px;
+}
+
+.color-legend-row span.color-legend-value {
+  margin-left: 60px;
+}
+
+#grey-rect {
+  fill: #eee;
+  stroke: #a6a6a6;
+}
+
+#faded-rect {
+  fill: url(#rectHatch);
+  stroke: var(--tb-graph-faded);
 }
 
 .button-text {
@@ -171,6 +196,21 @@ span.counter {
   color: gray;
 }
 </style>
+<svg width="0" height="0">
+  <defs>
+    <g id="legend-rect">
+      <rect x="1" y="1" stroke-width="2px" height="14" width="35" rx="5" ry="5"></rect>
+    </g>
+    <g id="grey-rect">
+       <use xmlns:xlink="http://www.w3.org/1999/xlink"
+            xlink:href="#legend-rect"/>
+     </g>
+     <g id="faded-rect">
+       <use xmlns:xlink="http://www.w3.org/1999/xlink"
+            xlink:href="#legend-rect"/>
+     </g>
+  </defs>
+</svg>
 <div class="allcontrols">
   <div class="control-holder">
     <paper-icon-button icon="aspect-ratio" class="iconbutton" on-click="fit" alt="Fit to screen">
@@ -244,11 +284,23 @@ span.counter {
         <div class="domainStart">[[_currentGradientParams.minValue]]</div>
         <div class="domainEnd">[[_currentGradientParams.maxValue]]</div>
       </div>
+      <br style="clear: both">
     </template>
     <template is="dom-if" if="[[_equals(colorBy, 'structure')]]">
       <div class="color-text">
-        color: same substructure<br/>
-        gray: unique substructure
+        <div class="color-legend-row">
+          <div style="position: absolute;">
+            colors
+          </div>
+          <span class="color-legend-value">same substructure</span>
+        </div>
+        <div class="color-legend-row">
+          <svg>
+            <use xmlns:xlink="http://www.w3.org/1999/xlink"
+                 xlink:href="#grey-rect" x="0" y="0"/>
+          </svg>
+          <span class="color-legend-value">unique substructure</span>
+        </div>
       </div>
     </template>
     <template is="dom-if" if="[[_equals(colorBy, 'device')]]">
@@ -268,7 +320,22 @@ span.counter {
           </table>
         </div>
         <br/>
-        gray: unknown device
+        <div class="color-legend-row">
+          <svg>
+            <use xmlns:xlink="http://www.w3.org/1999/xlink"
+                 xlink:href="#grey-rect" x="0" y="0"/>
+          </svg>
+          <span class="color-legend-value">unknown device</span>
+        </div>
+      </div>
+    </template>
+    <template is="dom-if" if="[[_statsNotNull(stats)]]">
+      <div class="color-legend-row">
+        <svg>
+          <use xmlns:xlink="http://www.w3.org/1999/xlink"
+                xlink:href="#faded-rect" x="0" y="0"/>
+        </svg>
+        <span class="color-legend-value">unused substructure</span>
       </div>
     </template>
   </div>

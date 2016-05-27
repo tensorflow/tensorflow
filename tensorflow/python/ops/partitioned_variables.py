@@ -65,7 +65,7 @@ __all__ = ["create_partitioned_variables", "variable_axis_size_partitioner"]
 
 
 def variable_axis_size_partitioner(
-    max_shard_bytes, axis=0, bytes_per_string_element=16):
+    max_shard_bytes, axis=0, bytes_per_string_element=16, max_shards=None):
   """Get a partitioner for VariableScope to keep shards below `max_shard_bytes`.
 
   This partitioner will shard a Variable along one axis, attempting to keep
@@ -73,6 +73,10 @@ def variable_axis_size_partitioner(
   always possible when sharding along only one axis.  When this happens,
   this axis is sharded as much as possible (i.e., every dimension becomes
   a separate shard).
+
+  If the partitioner hits the `max_shards` limit, then each shard may end up
+  larger than `max_shard_bytes`. By default `max_shards` equals `None` and no
+  limit on the number of shards is enforced.
 
   One reasonable value for `max_shard_bytes` is `(64 << 20) - 1`, or almost
   `64MB`, to keep below the protobuf byte limit.
@@ -82,6 +86,8 @@ def variable_axis_size_partitioner(
     axis: The axis to partition along.  Default: outermost axis.
     bytes_per_string_element: If the `Variable` is of type string, this provides
       an estimate of how large each scalar in the `Variable` is.
+    max_shards: The maximum number of shards in int created taking precedence
+      over `max_shard_bytes`.
 
   Returns:
     A partition function usable as the `partitioner` argument to
@@ -93,6 +99,9 @@ def variable_axis_size_partitioner(
   if max_shard_bytes < 1 or bytes_per_string_element < 1:
     raise ValueError(
         "Both max_shard_bytes and bytes_per_string_element must be positive.")
+  if max_shards and max_shards < 1:
+    raise ValueError(
+        "max_shards must be positive.")
 
   def _partitioner(shape, dtype):
     """Partitioner that partitions shards to have max_shard_bytes total size.
@@ -129,8 +138,11 @@ def variable_axis_size_partitioner(
     # How many shards do we need for axis given that each shard fits
     # slices_per_shard slices from a total of shape[axis].value slices?
     axis_shards = int(math.ceil(1.0 * shape[axis].value / slices_per_shard))
+    if max_shards:
+      axis_shards = min(max_shards, axis_shards)
 
     partitions[axis] = axis_shards
+
     return partitions
 
   return _partitioner
@@ -198,20 +210,15 @@ def create_partitioned_variables(
   partitioner = lambda **unused_kwargs: slicing
 
   with variable_scope.variable_op_scope(
-      [], name, "PartitionedVariable", reuse=reuse) as scope:
-
+      [], name, "PartitionedVariable", reuse=reuse):
     # pylint: disable=protected-access
-    vs, _ = variable_scope._get_partitioned_variable_list(
-        name="part",
+    partitioned_var = variable_scope._get_partitioned_variable(
+        name=None,
         shape=shape,
         dtype=dtype,
         initializer=initializer,
         trainable=trainable,
         partitioner=partitioner,
         collections=collections)
-
-    for var in vs:
-      var._save_slice_info.full_name = scope.name
+    return partitioned_var._get_variable_list()
     # pylint: enable=protected-access
-
-  return vs

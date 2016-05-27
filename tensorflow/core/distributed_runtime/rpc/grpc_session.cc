@@ -82,8 +82,11 @@ void ReEncodeConsts(GraphDef* gdef) {
 
 Status GrpcSession::CreateImpl(CallOptions* call_options,
                                const GraphDef& graph) {
-  if (!handle_.empty()) {
-    return errors::InvalidArgument("A session is alive.");
+  {
+    mutex_lock l(mu_);
+    if (!handle_.empty()) {
+      return errors::InvalidArgument("A session is alive.");
+    }
   }
   CreateSessionRequest req;
   *req.mutable_config() = options_.config;
@@ -114,7 +117,12 @@ Status GrpcSession::Create(const RunOptions& run_options,
 
 Status GrpcSession::ExtendImpl(CallOptions* call_options,
                                const GraphDef& graph) {
-  if (handle_.empty()) {
+  bool handle_is_empty;
+  {
+    mutex_lock l(mu_);
+    handle_is_empty = handle_.empty();
+  }
+  if (handle_is_empty) {
     // Session was unitialized, so simply initialize the session with 'graph'.
     return Create(graph);
   }
@@ -213,11 +221,14 @@ Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
 
 Status GrpcSession::RunProto(CallOptions* call_options, RunStepRequest* req,
                              RunStepResponse* resp) {
-  if (handle_.empty()) {
-    return errors::InvalidArgument("A session is not created yet....");
-  }
+  {
+    mutex_lock l(mu_);
+    if (handle_.empty()) {
+      return errors::InvalidArgument("A session is not created yet....");
+    }
 
-  req->set_session_handle(handle_);
+    req->set_session_handle(handle_);
+  }
   return master_->RunStep(call_options, req, resp);
 }
 
@@ -236,12 +247,15 @@ Status GrpcSession::PRun(const string& handle,
 }
 
 Status GrpcSession::Close() {
-  if (handle_.empty()) {
-    return errors::InvalidArgument("A session is not created yet....");
-  }
   CloseSessionRequest req;
-  req.set_session_handle(handle_);
-  handle_.clear();
+  {
+    mutex_lock l(mu_);
+    if (handle_.empty()) {
+      return errors::InvalidArgument("A session is not created yet....");
+    }
+    req.set_session_handle(handle_);
+    handle_.clear();
+  }
   CloseSessionResponse resp;
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());

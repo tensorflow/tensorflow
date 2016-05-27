@@ -48,7 +48,7 @@ static std::vector<std::string> g_label_strings;
 static bool g_compute_graph_initialized = false;
 //static mutex g_compute_graph_mutex(base::LINKER_INITIALIZED);
 
-static int g_tensorflow_input_size;  // The image size for the mognet input.
+static int g_tensorflow_input_size;  // The image size for the model input.
 static int g_image_mean;  // The image mean.
 static std::unique_ptr<StatSummarizer> g_stats;
 
@@ -82,11 +82,9 @@ inline static int64 CurrentThreadTimeUs() {
   return tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
-JNIEXPORT jint JNICALL
-TENSORFLOW_METHOD(initializeTensorflow)(
-    JNIEnv* env, jobject thiz, jobject java_asset_manager,
-    jstring model, jstring labels,
-    jint num_classes, jint mognet_input_size, jint image_mean) {
+JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
+    JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model,
+    jstring labels, jint num_classes, jint model_input_size, jint image_mean) {
   g_num_runs = 0;
   g_timing_total_us = 0;
   g_frequency_start.Reset();
@@ -103,7 +101,7 @@ TENSORFLOW_METHOD(initializeTensorflow)(
   const char* const model_cstr = env->GetStringUTFChars(model, NULL);
   const char* const labels_cstr = env->GetStringUTFChars(labels, NULL);
 
-  g_tensorflow_input_size = mognet_input_size;
+  g_tensorflow_input_size = model_input_size;
   g_image_mean = image_mean;
 
   LOG(INFO) << "Loading Tensorflow.";

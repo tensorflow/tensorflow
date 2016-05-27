@@ -317,16 +317,10 @@ class SufficientStatisticsTest(tf.test.TestCase):
 
   def _npSuffStats(self, x, axes, shift, keep_dims):
     axis = tuple(axes)
-    if shift:
-      shift_value = x[[slice(None) if i not in set(axis) else slice(0, 1)
-                       for i in xrange(x.ndim)]]
-      m_ss = np.sum(x - shift_value, axis=axis, keepdims=keep_dims)
-      v_ss = np.sum(
-          (x - shift_value) * (x - shift_value),
-          axis=axis,
-          keepdims=keep_dims)
+    if shift is not None:
+      m_ss = np.sum(x - shift, axis=axis, keepdims=keep_dims)
+      v_ss = np.sum((x - shift) * (x - shift), axis=axis, keepdims=keep_dims)
     else:
-      shift_value = None
       m_ss = np.sum(x, axis=axis, keepdims=keep_dims)
       v_ss = np.sum(x * x, axis=axis, keepdims=keep_dims)
     count = 1.0
@@ -334,8 +328,8 @@ class SufficientStatisticsTest(tf.test.TestCase):
       if d in set(axes):
         count *= x.shape[d]
     if not keep_dims:
-      shift_value = np.squeeze(shift_value, axis=axis)
-    return count, m_ss, v_ss, shift_value
+      shift = np.squeeze(shift, axis=axis)
+    return count, m_ss, v_ss, shift
 
   def _opSuffStats(self, x, axes, shift, keep_dims):
     return tf.nn.sufficient_statistics(x, axes, shift, keep_dims)
@@ -375,7 +369,7 @@ class SufficientStatisticsTest(tf.test.TestCase):
   def testSuffStats(self):
     for has_shape in [True, False]:
       for keep_dims in [True, False]:
-        for shift in [True, False]:
+        for shift in [None, 1.0]:
           self._testSuffStats([2, 3], [1], shift, keep_dims, has_shape)
           self._testSuffStats([2, 3], [0], shift, keep_dims, has_shape)
           self._testSuffStats([1, 2, 3], [0, 2], shift, keep_dims, has_shape)
@@ -419,7 +413,7 @@ class NormalizeMomentsTest(tf.test.TestCase):
         self.assertAllClose(npv, tfv, atol=0.000001)
 
   def testNormalizeMoments(self):
-    for shift in [True, False]:
+    for shift in [None, 4.0]:
       self._testNormalizeMoments([3], shift)
       self._testNormalizeMoments([2, 3], shift)
 

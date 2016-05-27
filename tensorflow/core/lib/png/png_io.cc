@@ -255,7 +255,6 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
 
   png_set_packing(context->png_ptr);
   context->num_passes = png_set_interlace_handling(context->png_ptr);
-  png_read_update_info(context->png_ptr, context->info_ptr);
 
 #ifdef IS_LITTLE_ENDIAN
   if (desired_channel_bits > 8) png_set_swap(context->png_ptr);
@@ -278,6 +277,9 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
     if (is_gray)
       png_set_gray_to_rgb(context->png_ptr);  // Enable gray -> RGB conversion
   }
+
+  // Must come last to incorporate all requested transformations.
+  png_read_update_info(context->png_ptr, context->info_ptr);
   return true;
 }
 

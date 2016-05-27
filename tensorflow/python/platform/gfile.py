@@ -291,7 +291,11 @@ def MakeDirs(path, mode=0o755):  # pylint: disable=invalid-name
   # NOTE(mrry): MakeDirs("") should be a no-op to match other
   # implementations of tf.gfile.
   if path:
-    os.makedirs(path, mode)
+    try:
+      os.makedirs(path, mode)
+    except OSError as e:
+      if e.errno != errno.EEXIST:
+        raise
 
 
 def RmDir(directory):   # pylint: disable=invalid-name

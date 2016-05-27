@@ -206,6 +206,27 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual("s1/nested_1/dummy:0", v1.name)
     self.assertEqual("s1_2/nested_1/dummy:0", v3.name)
 
+  def test_immediate_scope_creation(self):
+    # Create templates in scope a then call in scope b. make_template should
+    # capture the scope the first time it is called, and make_immediate_template
+    # should capture the scope at construction time.
+    with tf.variable_scope("ctor_scope"):
+      tmpl_immed = template.make_template(
+          "a", var_scoped_function, True)  # create scope here
+      tmpl_defer = template.make_template(
+          "b", var_scoped_function, False)  # default: create scope at __call__
+    with tf.variable_scope("call_scope"):
+      inner_imm_var = tmpl_immed()
+      inner_defer_var = tmpl_defer()
+    outer_imm_var = tmpl_immed()
+    outer_defer_var = tmpl_defer()
+
+    self.assertNotEqual(inner_imm_var, inner_defer_var)
+    self.assertEqual(outer_imm_var, inner_imm_var)
+    self.assertEqual(outer_defer_var, inner_defer_var)
+
+    self.assertEqual("ctor_scope/a/dummy:0", inner_imm_var.name)
+    self.assertEqual("call_scope/b/dummy:0", inner_defer_var.name)
 
 if __name__ == "__main__":
   tf.test.main()

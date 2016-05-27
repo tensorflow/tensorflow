@@ -211,6 +211,7 @@ cc_library(
         "platform/mutex.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
+        "platform/strong_hash.h",
         "platform/thread_annotations.h",
         "platform/types.h",
     ],
@@ -1230,6 +1231,10 @@ cc_test(
 # higher level tests
 tf_cc_tests(
     size = "small",
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = glob(
         [
@@ -1292,6 +1297,7 @@ tf_cc_tests_gpu(
         exclude = [
             # Run by tests below
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
+            "common_runtime/gpu/gpu_debug_allocator_test.cc",
             "common_runtime/gpu/gpu_stream_util_test.cc",
             "common_runtime/gpu/gpu_tracer_test.cc",
         ],
@@ -1479,6 +1485,30 @@ tf_cc_test_gpu(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+    ],
+)
+
+tf_cc_test_gpu(
+    name = "common_runtime/gpu/gpu_debug_allocator_test.cc",
+    size = "medium",
+    args = ["\"--gtest_death_test_style=threadsafe\""],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

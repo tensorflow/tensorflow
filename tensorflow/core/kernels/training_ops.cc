@@ -173,7 +173,7 @@ std::vector<mutex_lock> MaybeLockMutexesInOrder(
             [&mutexes](int a, int b) { return mutexes[a] < mutexes[b]; });
 
   for (auto input : acquire_order) {
-    locks.push_back(mutex_lock(*ctx->input_ref_mutex(input)));
+    locks.emplace_back(*ctx->input_ref_mutex(input));
   }
   return locks;
 }
