@@ -31,9 +31,6 @@ py_library(
          "//tensorflow/python:ops",
          "//tensorflow/python:pywrap_tensorflow",
     ],
-    data = [
-         "python/immediate/ops_history.v0.pbtxt"
-    ]
 )
 
 
