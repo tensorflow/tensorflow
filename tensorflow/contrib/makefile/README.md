@@ -81,6 +81,14 @@ This will build the library and the benchmark program. Since the benchmark is
 command-line only, you'll need to load the static library into an Xcode app
 project to use it.
 
+To build a complete universal library for iOS, containing all architectures,
+you will need to run `compile_ios_protobuf.sh` followed by
+`compile_ios_tensorflow.sh`. This creates a library in 
+`tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a` that you can link any
+xcode project against. You will need to use -force_load in the linker flags
+section of the build settings to pull in the global constructors that are used
+to register ops and kernels.
+
 ## Dependencies
 
 The Makefile loads in a list of dependencies stored in text files. These files

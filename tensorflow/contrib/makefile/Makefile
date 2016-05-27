@@ -149,8 +149,21 @@ ifeq ($(TARGET),IOS)
 	--show-sdk-path)
 	IOS_SDK_VERSION=$(shell xcrun --sdk iphoneos --show-sdk-version)
 	MIN_SDK_VERSION=9.2
-# Override IOS_ARCH with ARMV7S, ARM64, or I386.
+# Override IOS_ARCH with ARMV7, ARMV7S, ARM64, or I386.
 	IOS_ARCH=X86_64
+	ifeq ($(IOS_ARCH),ARMV7)
+		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
+		-arch armv7 \
+		-D__thread= \
+		-Wno-c++11-narrowing \
+		-isysroot \
+		${IPHONEOS_SYSROOT}
+		LDFLAGS = -arch armv7 \
+		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-all_load \
+		-L$(GENDIR)protobuf_ios/lib \
+		-lz
+	endif
 	ifeq ($(IOS_ARCH),ARMV7S)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7s \
@@ -207,7 +220,8 @@ endif
 
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
-LIB_NAME = $(LIBDIR)tf_lib.a
+LIB_NAME = libtensorflow-core.a
+LIB_PATH = $(LIBDIR)$(LIB_NAME)
 
 # A small example program that shows how to link against the library.
 BENCHMARK_NAME = $(BINDIR)benchmark
@@ -233,20 +247,20 @@ BENCHMARK_OBJS = $(addprefix $(OBJDIR), $(BENCHMARK_SRCS:.cc=.o))
 .PHONY: clean
 
 # The target that's compiled if there's no command-line arguments.
-all: $(LIB_NAME) $(BENCHMARK_NAME)
+all: $(LIB_PATH) $(BENCHMARK_NAME)
 
 # Rules for target compilation.
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
-$(LIB_NAME): $(LIB_OBJS)
+$(LIB_PATH): $(LIB_OBJS)
 	@mkdir -p $(dir $@)
-	$(AR) $(ARFLAGS) $(LIB_NAME) $(LIB_OBJS)
+	$(AR) $(ARFLAGS) $(LIB_PATH) $(LIB_OBJS)
 
-$(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_NAME)
+$(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_PATH)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(BENCHMARK_NAME) $(BENCHMARK_OBJS) \
-	$(LIBFLAGS) $(LIB_NAME) $(LDFLAGS) $(LIBS)
+	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
 
 # Matches on the normal hand-written TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc 
@@ -311,3 +325,10 @@ $(HOST_GENDIR)%.pb.cc $(HOST_GENDIR)%.pb.h: %.proto
 # Gets rid of all generated files.
 clean:
 	rm -rf $(MAKEFILE_DIR)/gen
+
+# Gets rid of target files only, leaving the host alone. Also leaves the lib
+# directory untouched deliberately, so we can persist multiple architectures
+# across builds for iOS.
+cleantarget:
+	rm -rf $(OBJDIR)
+	rm -rf $(BINDIR)
