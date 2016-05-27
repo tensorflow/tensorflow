@@ -43,6 +43,7 @@ include(png)
 include(jpeg)
 include(re2)
 include(eigen)
+include(jsoncpp)
 
 # Let's get to work!
 include(tf_core_framework.cmake)

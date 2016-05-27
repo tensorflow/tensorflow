@@ -87,6 +87,9 @@ target_include_directories(tf_core_lib PUBLIC
     ${tensorflow_source_dir}
     ${jpeg_INCLUDE_DIR}
     ${png_INCLUDE_DIR}
+    ${eigen_INCLUDE_DIRS}
+    ${re2_EXTRA_INCLUDE_DIR}
+    ${jsoncpp_INCLUDE_DIR}
 )
 #target_link_libraries(tf_core_lib
 #    ${CMAKE_THREAD_LIBS_INIT}
@@ -109,6 +112,7 @@ add_dependencies(tf_core_lib
     re2_copy_headers_to_destination
     eigen
     tf_protos_cc
+    jsoncpp
 )
 
 
