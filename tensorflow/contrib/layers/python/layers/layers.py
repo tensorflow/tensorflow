@@ -50,6 +50,7 @@ __all__ = ['avg_pool2d',
            'fully_connected',
            'max_pool2d',
            'one_hot_encoding',
+           'stack',
            'legacy_convolution2d',
            'legacy_fully_connected',
            'legacy_linear',
@@ -598,6 +599,49 @@ def _apply_activation(y, activation_fn, output_collections):
   ops.add_to_collections(list(output_collections or []) +
                          [ops.GraphKeys.ACTIVATIONS], y)
   return y
+
+
+def stack(inputs, layer, stack_args, **kwargs):
+  """Builds a stack of layers by applying layer repeatedly using stack_args.
+
+  `stack` allows you to repeatedly apply the same operation with different
+  arguments `stack_args[i]`. For each application of the layer, `stack` creates
+  a new scope appended with an increasing number. For example:
+
+  ```python
+    stack(x, fully_connected, [32, 64, 128], scope='fc')
+    # It is equivalent to:
+
+    x = fully_connected(x, 32, scope='fc/fc_1')
+    x = fully_connected(x, 64, scope='fc/fc_2')
+    x = fully_connected(x, 128, scope='fc/fc_3')
+  ```
+
+  Args:
+    inputs: A `Tensor` suitable for layer.
+    layer: A layer(inputs, *args, **kwargs)
+    stack_args: A list/tuple of parameters for each call of layer.
+    **kwargs: Extra kwargs for the layer.
+
+  Returns:
+    a `Tensor` result of applying the stacked layers.
+
+  Raises:
+    ValueError: if the op is unknown or wrong.
+  """
+  scope = kwargs.pop('scope', None)
+  if not isinstance(stack_args, (list, tuple)):
+    raise ValueError('stack_args need to be a list or tuple')
+  with variable_scope.variable_op_scope([inputs], scope, 'Stack'):
+    outputs = inputs
+    scope = scope or layer.__name__
+    for i in range(len(stack_args)):
+      kwargs['scope'] = scope + '_' + str(i+1)
+      layer_args = stack_args[i]
+      if not isinstance(layer_args, (list, tuple)):
+        layer_args = [layer_args]
+      outputs = layer(outputs, *layer_args, **kwargs)
+    return outputs
 
 
 def legacy_fully_connected(x,

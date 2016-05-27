@@ -878,6 +878,44 @@ class OneHotEncodingTest(tf.test.TestCase):
       self.assertAllClose(output.eval(), one_hot_labels.eval())
 
 
+class StackTests(tf.test.TestCase):
+
+  def testStackFullyConnected(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height * width * 3), seed=1, name='images')
+      output = tf.contrib.layers.stack(images,
+                                       tf.contrib.layers.fully_connected,
+                                       [10, 20, 30])
+      self.assertEquals(output.op.name, 'Stack/fully_connected_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
+  def testStackConvolution2d(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1, name='images')
+      output = tf.contrib.layers.stack(images,
+                                       tf.contrib.layers.convolution2d,
+                                       [10, 20, 30],
+                                       kernel_size=[3, 3],
+                                       padding='SAME')
+      self.assertEquals(output.op.name, 'Stack/convolution2d_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 30])
+
+  def testStackWithScope(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1, name='images')
+      output = tf.contrib.layers.stack(images,
+                                       tf.contrib.layers.convolution2d,
+                                       [10, 20, 30],
+                                       kernel_size=[3, 3],
+                                       padding='SAME',
+                                       scope='conv1')
+      self.assertEquals(output.op.name, 'conv1/conv1_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 30])
+
+
 # TODO(b/28426988): Add separate tests for non-legacy versions.
 class LegacyFullyConnectedTest(tf.test.TestCase):
 
