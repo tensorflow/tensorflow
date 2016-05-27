@@ -38,6 +38,7 @@ class IOTest(tf.test.TestCase):
 
   def test_pandas_dataframe(self):
     if HAS_PANDAS:
+      import pandas as pd
       random.seed(42)
       iris = datasets.load_iris()
       data = pd.DataFrame(iris.data)
@@ -51,6 +52,7 @@ class IOTest(tf.test.TestCase):
 
   def test_pandas_series(self):
     if HAS_PANDAS:
+      import pandas as pd
       random.seed(42)
       iris = datasets.load_iris()
       data = pd.DataFrame(iris.data)
@@ -62,6 +64,7 @@ class IOTest(tf.test.TestCase):
 
   def test_string_data_formats(self):
     if HAS_PANDAS:
+      import pandas as pd
       with self.assertRaises(ValueError):
         learn.io.extract_pandas_data(pd.DataFrame({"Test": ["A", "B"]}))
       with self.assertRaises(ValueError):
@@ -69,6 +72,8 @@ class IOTest(tf.test.TestCase):
 
   def test_dask_io(self):
     if HAS_DASK and HAS_PANDAS:
+      import pandas as pd
+      import dask.dataframe as dd
       # test dask.dataframe
       df = pd.DataFrame(
           dict(a=list("aabbcc"), b=list(range(6))),
@@ -95,6 +100,8 @@ class IOTest(tf.test.TestCase):
 
   def test_dask_iris_classification(self):
     if HAS_DASK and HAS_PANDAS:
+      import pandas as pd
+      import dask.dataframe as dd
       random.seed(42)
       iris = datasets.load_iris()
       data = pd.DataFrame(iris.data)
