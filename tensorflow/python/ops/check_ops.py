@@ -481,7 +481,7 @@ def assert_rank(x, rank, data=None, summarize=None, name=None):
     if e.args[0] == 'Static rank condition failed':
       raise ValueError(
           'Tensor %s must have rank %d.  Received rank %d, shape %s' %
-          (x.name, e.args[1], e.args[2], x.get_shape()))
+          (x.name, e.args[2], e.args[1], x.get_shape()))
     else:
       raise
 
@@ -536,7 +536,7 @@ def assert_rank_at_least(x, rank, data=None, summarize=None, name=None):
     if e.args[0] == 'Static rank condition failed':
       raise ValueError(
           'Tensor %s must have rank at least %d.  Received rank %d, shape %s' %
-          (x.name, e.args[1], e.args[2], x.get_shape()))
+          (x.name, e.args[2], e.args[1], x.get_shape()))
     else:
       raise
 

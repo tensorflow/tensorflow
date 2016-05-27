@@ -295,7 +295,7 @@ class AssertRankTest(tf.test.TestCase):
     with self.test_session():
       tensor = tf.constant(1, name="my_tensor")
       desired_rank = 1
-      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*must have rank 1"):
         with tf.control_dependencies([tf.assert_rank(tensor, desired_rank)]):
           tf.identity(tensor).eval()
 
@@ -404,7 +404,7 @@ class AssertRankAtLeastTest(tf.test.TestCase):
     with self.test_session():
       tensor = tf.constant(1, name="my_tensor")
       desired_rank = 1
-      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank at least 1"):
         with tf.control_dependencies([tf.assert_rank_at_least(tensor,
                                                               desired_rank)]):
           tf.identity(tensor).eval()
