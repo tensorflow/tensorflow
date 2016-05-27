@@ -207,6 +207,24 @@ class ValidationMonitor(EveryN):
     return False
 
 
+class CaptureVariable(EveryN):
+  """Capture a variable value into a `list`.
+
+  It's useful for unit testing.
+  """
+
+  def __init__(self, var_name, every_n=100, first_n=1):
+    super(CaptureVariable, self).__init__(every_n, first_n)
+    self.var_name = var_name
+    self.var_values = []
+
+  def every_n_step_begin(self, unused_step, tensors):
+    return tensors + [self.var_name]
+
+  def every_n_step_end(self, step, outputs):
+    self.var_values.append(outputs[self.var_name])
+
+
 def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
                          output_dir=None):
   monitors = []
