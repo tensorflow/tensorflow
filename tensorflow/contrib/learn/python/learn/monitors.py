@@ -144,12 +144,13 @@ class PrintTensor(EveryN):
 class SummarySaver(EveryN):
   """Saves summary every N seconds."""
 
-  def __init__(self, summary_op, save_steps=100, output_dir=None):
+  def __init__(self, summary_op, save_steps=100, output_dir=None,
+               summary_writer=None):
     # TODO(ipolosukhin): Implement every N seconds.
     super(SummarySaver, self).__init__(every_n_steps=save_steps)
     self._summary_op = summary_op
-    self._summary_writer = None
-    if output_dir:
+    self._summary_writer = summary_writer
+    if summary_writer is None and output_dir:
       self._summary_writer = summary_io.SummaryWriter(output_dir)
 
   def set_estimator(self, estimator):
@@ -226,11 +227,12 @@ class CaptureVariable(EveryN):
 
 
 def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
-                         output_dir=None):
+                         output_dir=None, summary_writer=None):
   monitors = []
   if loss_op is not None:
     monitors.append(PrintTensor([loss_op.name]))
   if summary_op is not None:
     monitors.append(SummarySaver(summary_op, save_steps=save_summary_steps,
-                                 output_dir=output_dir))
+                                 output_dir=output_dir,
+                                 summary_writer=summary_writer))
   return monitors

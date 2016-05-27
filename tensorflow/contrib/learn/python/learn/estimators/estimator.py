@@ -381,7 +381,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       monitors += monitors_lib.get_default_monitors(
           loss_op=loss_op,
           summary_op=logging_ops.get_summary_op(),
-          save_summary_steps=100)
+          save_summary_steps=100,
+          summary_writer=graph_actions.get_summary_writer(self._model_dir))
 
       is_chief = self._config.task == 0
       if not is_chief:
