@@ -16,7 +16,6 @@ py_library(
         "python/immediate/env.py",
         "python/immediate/tensor.py",
         "python/immediate/op.py",
-        "python/immediate/ops_helper.py",
         "python/immediate/wrapping_util.py",
 	"python/immediate/module_rewriter.py",
         "__init__.py",
@@ -83,21 +82,6 @@ py_test(
     ],
 )
 
-
-py_test(
-    name = "ops_helper_test",
-    size = "small",
-    srcs = ["python/immediate/ops_helper_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":immediate_py",
-	":immediate_test_lib",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:extra_py_tests_deps",
-    ],
-)
 
 py_test(
     name = "module_rewriter_test",
