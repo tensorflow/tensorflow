@@ -33,6 +33,7 @@ from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -487,20 +488,16 @@ class BaseEstimator(sklearn.BaseEstimator):
         preds = infer(checkpoint_path, predictions)
       else:
         preds = {}
-        while True:
-          try:
-            feed_dict = feed_fn()
-          except StopIteration:
-            break
-          if feed_dict is None:
-            break
-          outputs = infer(checkpoint_path, predictions, feed_dict=feed_dict)
-          for key in outputs:
-            if key not in preds:
-              preds[key] = []
-            preds[key].append(outputs[key])
-        for key in preds:
-          preds[key] = np.concatenate(preds[key], axis=0)
+        def _feed_fn():
+          while True:
+            yield feed_fn()
+        outputs = graph_actions.run_feeds(
+            output_dict=predictions,
+            feed_dicts=_feed_fn(),
+            restore_checkpoint_path=checkpoint_path)
+        for key in predictions:
+          preds[key] = np.concatenate(
+              [output[key] for output in outputs], axis=0)
       if return_dict:
         return preds
       return preds['predictions']
