@@ -20,6 +20,7 @@ Hence, the `SparseTensor` result has exactly the same non-zero indices and
 shape.
 
 Example:
+
 ```python
 # First batch:
 # [?   e.]

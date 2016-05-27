@@ -349,6 +349,7 @@
   * [`sparse_concat`](../../api_docs/python/sparse_ops.md#sparse_concat)
   * [`sparse_fill_empty_rows`](../../api_docs/python/sparse_ops.md#sparse_fill_empty_rows)
   * [`sparse_merge`](../../api_docs/python/sparse_ops.md#sparse_merge)
+  * [`sparse_reduce_sum`](../../api_docs/python/sparse_ops.md#sparse_reduce_sum)
   * [`sparse_reorder`](../../api_docs/python/sparse_ops.md#sparse_reorder)
   * [`sparse_reset_shape`](../../api_docs/python/sparse_ops.md#sparse_reset_shape)
   * [`sparse_retain`](../../api_docs/python/sparse_ops.md#sparse_retain)
