@@ -856,7 +856,7 @@ backprops: The gradients: `gradients / (1 + abs(-features)) ** 2`.
 REGISTER_OP("Softmax")
     .Input("logits: T")
     .Output("softmax: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Doc(R"doc(
 Computes softmax activations.
 
@@ -873,7 +873,7 @@ softmax: Same shape as `logits`.
 REGISTER_OP("LogSoftmax")
     .Input("logits: T")
     .Output("logsoftmax: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .Doc(R"doc(
 Computes log softmax activations.
 
