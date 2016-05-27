@@ -410,13 +410,13 @@ using pip. You'll need pip for that, so install it as described
 ### Clone the TensorFlow repository
 
 ```bash
-$ git clone --recurse-submodules https://github.com/tensorflow/tensorflow
+$ git clone https://github.com/tensorflow/tensorflow
 ```
 
-`--recurse-submodules` is required to fetch the protobuf library that TensorFlow
-depends on. Note that these instructions will install the latest master branch
+Note that these instructions will install the latest master branch
 of tensorflow. If you want to install a specific branch (such as a release branch),
-pass `-b <branchname>` to the `git clone` command.
+pass `-b <branchname>` to the `git clone` command and `--recurse-submodules` for
+r0.8 and earlier to fetch the protobuf library that TensorFlow depends on. 
 
 ### Installation for Linux
 
