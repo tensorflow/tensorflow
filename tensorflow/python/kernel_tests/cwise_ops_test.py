@@ -1188,7 +1188,7 @@ class SelectOpTest(tf.test.TestCase):
     x = np.random.rand(1, 3, 2) * 100
     y = np.random.rand(2, 5, 3) * 100
     for t in [np.float16, np.float32, np.float64, np.int32, np.int64,
-              np.complex64]:
+              np.complex64, np.complex128]:
       xt = x.astype(t)
       yt = y.astype(t)
       with self.assertRaises(ValueError):

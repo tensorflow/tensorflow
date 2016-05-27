@@ -364,6 +364,7 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
   HANDLE_TYPE(DT_INT8);
   HANDLE_TYPE(DT_STRING);
   HANDLE_TYPE(DT_COMPLEX64);
+  HANDLE_TYPE(DT_COMPLEX128);
   HANDLE_TYPE(DT_INT64);
   HANDLE_TYPE(DT_BOOL);
   HANDLE_TYPE(DT_QINT8);
@@ -371,7 +372,6 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
   HANDLE_TYPE(DT_QINT32);
   HANDLE_TYPE(DT_QINT16);
   HANDLE_TYPE(DT_QUINT16);
-  HANDLE_TYPE(DT_COMPLEX128);
 #undef HANDLE_TYPE
   return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
                                parent.dtype());
@@ -393,6 +393,7 @@ Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
   HANDLE_TYPE(DT_INT8);
   HANDLE_TYPE(DT_STRING);
   HANDLE_TYPE(DT_COMPLEX64);
+  HANDLE_TYPE(DT_COMPLEX128);
   HANDLE_TYPE(DT_INT64);
   HANDLE_TYPE(DT_BOOL);
   HANDLE_TYPE(DT_QINT8);
@@ -400,7 +401,6 @@ Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
   HANDLE_TYPE(DT_QINT32);
   HANDLE_TYPE(DT_QINT16);
   HANDLE_TYPE(DT_QUINT16);
-  HANDLE_TYPE(DT_COMPLEX128);
 #undef HANDLE_TYPE
   return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
                                element.dtype());

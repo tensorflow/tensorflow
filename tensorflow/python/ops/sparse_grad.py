@@ -141,8 +141,7 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   if a_type != b_type:
     raise TypeError("SparseTensorDenseMatMul op received operands with "
                     "different types: ", a_type, " and ", b_type)
-  is_complex = a_type == ops.dtypes.complex64
-  if is_complex:
+  if a_type in (ops.dtypes.complex64, ops.dtypes.complex128):
     raise NotImplementedError("SparseTensorDenseMatMul op does not support "
                               "complex gradients.")
 
