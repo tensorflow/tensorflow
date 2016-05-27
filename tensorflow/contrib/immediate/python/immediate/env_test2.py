@@ -15,11 +15,8 @@ class EnvTest2(test_util.ImmediateTestCase):
 
   def testAdd(self):
     with self.test_env(tf) as env:
-      x_dim = 40
-      y_dim = 30
-      keep_prob = 0.5
-      t = env.tf.constant(1.0, shape=[x_dim, y_dim], dtype=tf.float32)
-      env.tf.nn.dropout(t, keep_prob, noise_shape=[x_dim, y_dim + 10])
+      self.assertEqual(env.tf.add(1, 2), 3)
+
       
 if __name__ == "__main__":
   tf.test.main()
