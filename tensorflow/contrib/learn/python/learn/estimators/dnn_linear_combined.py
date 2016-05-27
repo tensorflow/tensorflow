@@ -327,8 +327,8 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     if self._n_classes < 2:
       loss_vec = math_ops.square(logits - math_ops.to_float(target))
     elif self._n_classes == 2:
-      loss_vec = nn.sigmoid_cross_entropy_with_logits(logits,
-                                                      math_ops.to_float(target))
+      loss_vec = nn.sigmoid_cross_entropy_with_logits(
+          logits, array_ops.reshape(math_ops.to_float(target), [-1, 1]))
     else:
       loss_vec = nn.sparse_softmax_cross_entropy_with_logits(
           logits, array_ops.reshape(target, [-1]))
