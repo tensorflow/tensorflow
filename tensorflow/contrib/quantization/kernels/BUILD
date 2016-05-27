@@ -14,6 +14,7 @@ load(
     "tf_custom_op_library",
     "tf_kernel_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 filegroup(
     name = "android_ops",
@@ -50,6 +51,7 @@ tf_kernel_library(
     name = "quantized_ops",
     srcs = [
         "dequantize_op.cc",
+        "quantize_and_dequantize_op.cc",
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",
         "quantized_activation_ops.cc",
@@ -62,7 +64,12 @@ tf_kernel_library(
     ],
     hdrs = [
         "quantization_utils.h",
+        "quantize_and_dequantize_op.h",
         "reference_gemm.h",
+    ],
+    gpu_srcs = [
+        "quantize_and_dequantize_op_gpu.cu.cc",
+        "quantize_and_dequantize_op.h",
     ],
     deps = [
         "@gemmlowp//:eight_bit_int_gemm",
@@ -284,6 +291,26 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:batch_norm_op",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "quantize_and_dequantize_op_test",
+    size = "small",
+    deps = [
+        ":quantized_ops",
+        "//tensorflow/contrib/quantization:cc_array_ops",
+        "//tensorflow/contrib/quantization:cc_math_ops",
+        "//tensorflow/contrib/quantization:cc_nn_ops",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
         "//third_party/eigen3",
     ],
