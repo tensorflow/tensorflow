@@ -6,6 +6,9 @@
 * TensorBoard scalar charts now show tooltips with more information
 * TensorBoard now supports run filtering
 * TensorBoard has color changes: the same run always gets the same hue
+* Tensorboard graph visualizer now supports run metadata. Clicking on nodes
+  while viewing a stats for a particular run will show runtime statistics, such
+  as memory or compute usage. Unused nodes will be faded out.
 
 ## Bug Fixes and Other Changes
 * TensorBoard now displays graphs with only one data point
