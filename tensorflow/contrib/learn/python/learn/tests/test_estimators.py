@@ -1,23 +1,27 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Custom optimizer tests."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 import random
+import tensorflow as tf
 
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import datasets
@@ -26,12 +30,13 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test
 
 
 class CustomOptimizer(tf.test.TestCase):
+  """Custom optimizer tests."""
 
   def testIrisMomentum(self):
     random.seed(42)
 
     iris = datasets.load_iris()
-    X_train, X_test, y_train, y_test = train_test_split(iris.data,
+    x_train, x_test, y_train, y_test = train_test_split(iris.data,
                                                         iris.target,
                                                         test_size=0.2,
                                                         random_state=42)
@@ -50,8 +55,8 @@ class CustomOptimizer(tf.test.TestCase):
                                                steps=400,
                                                learning_rate=exp_decay,
                                                optimizer=custom_optimizer)
-    classifier.fit(X_train, y_train)
-    score = accuracy_score(y_test, classifier.predict(X_test))
+    classifier.fit(x_train, y_train)
+    score = accuracy_score(y_test, classifier.predict(x_test))
 
     self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
 

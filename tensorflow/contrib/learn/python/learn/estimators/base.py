@@ -1,16 +1,18 @@
-#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 
 """Base estimator class."""
 
@@ -22,37 +24,15 @@ import json
 import os
 from six import string_types
 
-from google.protobuf import text_format
-from tensorflow.python.platform import gfile
-
-from tensorflow.python.client import session
-from tensorflow.core.framework import graph_pb2
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import importer
-from tensorflow.python.framework import random_seed
-from tensorflow.python.ops import array_ops as array_ops_
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import constant_op
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import variables
-from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.training import training as train
-
-from tensorflow.contrib.layers import optimizers
+from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_data_feeder
-from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_predict_data_feeder
-from tensorflow.contrib.learn.python.learn.ops.dropout_ops import DROPOUTS
-from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
-from tensorflow.contrib.learn.python.learn.estimators import estimator
-from tensorflow.contrib.learn.python.learn.estimators import _sklearn
-from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import constant_op
+from tensorflow.python.platform import gfile
 
 
 def _write_with_backup(filename, content):
@@ -81,6 +61,12 @@ def _new_tf_model_fn(model_fn, class_weight):
   Specifically:
    * dropout and batch norm should work via update ops.
    * class weights should be retrieved from weights column or hparams.
+
+  Args:
+    model_fn: Core model function.
+    class_weight: Class weight.
+  Returns:
+    Model function.
   """
   def _model_fn(features, targets, mode):
     ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
@@ -151,8 +137,7 @@ class TensorFlowEstimator(estimator.Estimator):
     self._data_feeder = None
 
   def fit(self, x, y, steps=None, monitors=None, logdir=None):
-    """Builds a neural network model given provided `model_fn` and training
-    data X and y.
+    """Neural network model from provided `model_fn` and training data.
 
     Note: called first time constructs the graph and initializers
     variables. Consecutives times it will continue training the same model.
@@ -346,9 +331,9 @@ class TensorFlowEstimator(estimator.Estimator):
     """
     raise NotImplementedError
 
-  # pylint: disable=unused-argument
   @classmethod
   def restore(cls, path, config=None):
+    # pylint: disable=unused-argument
     """Restores model from give path.
 
     Args:
@@ -359,6 +344,9 @@ class TensorFlowEstimator(estimator.Estimator):
 
     Returns:
       Estimator, object of the subclass of TensorFlowEstimator.
+
+    Raises:
+      ValueError: if `path` does not contain a model definition.
     """
     model_def_filename = os.path.join(path, 'model.def')
     if not os.path.exists(model_def_filename):
@@ -381,28 +369,34 @@ class TensorFlowEstimator(estimator.Estimator):
     class_name = model_def.pop('class_name')
     if class_name == 'TensorFlowEstimator':
       custom_estimator = TensorFlowEstimator(model_fn=None, **model_def)
+      # pylint: disable=protected-access
       custom_estimator._restore(path)
       return custom_estimator
 
     # To avoid cyclical dependencies, import inside the function instead of
     # the beginning of the file.
+    # pylint: disable=g-import-not-at-top
     from tensorflow.contrib.learn.python.learn import estimators
     # Estimator must be one of the defined estimators in the __init__ file.
-    estimator = getattr(estimators, class_name)(**model_def)
-    estimator._restore(path)
-    return estimator
+    result = getattr(estimators, class_name)(**model_def)
+    # pylint: disable=protected-access
+    result._restore(path)
+    return result
 
 
 class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
-    """TensorFlow Base Transformer class."""
-    def transform(self, X):
-        """Transform X using trained transformer."""
-        return(super(TensorFlowBaseTransformer, self).predict(X, axis=1, batch_size=None))
+  """TensorFlow Base Transformer class."""
 
-    def fit(self, X, y=None, monitor=None, logdir=None):
-        """Fit a transformer."""
-        return(super(TensorFlowBaseTransformer, self).fit(X, y, monitors=None, logdir=None))
+  def transform(self, X):
+    """Transform X using trained transformer."""
+    return(super(TensorFlowBaseTransformer, self).predict(
+        X, axis=1, batch_size=None))
 
-    def fit_transform(self, X, y=None, monitor=None, logdir=None):
-        """Fit transformer and transform X using trained transformer."""
-        return(self.fit(X, y, monitor=None, logdir=None).transform(X))
+  def fit(self, X, y=None, monitor=None, logdir=None):
+    """Fit a transformer."""
+    return(super(TensorFlowBaseTransformer, self).fit(
+        X, y, monitors=None, logdir=None))
+
+  def fit_transform(self, X, y=None, monitor=None, logdir=None):
+    """Fit transformer and transform X using trained transformer."""
+    return self.fit(X, y, monitor=None, logdir=None).transform(X)
