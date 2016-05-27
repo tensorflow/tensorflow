@@ -25,6 +25,11 @@ namespace functor {
 template <typename Device, class Distribution>
 struct FillPhiloxRandom;
 
+// TODO(zongheng): migrate Multinomial out of random_op.
+// Generic helper functor for the Multinomial Op.
+template <typename Device, typename T>
+struct MultinomialFunctor;
+
 }  // namespace functor
 }  // namespace tensorflow
 

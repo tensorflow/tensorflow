@@ -145,8 +145,14 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       # pylint: enable=cell-var-from-loop
       if sequence_length is not None:
         (output, state) = _rnn_step(
-            time, sequence_length, min_sequence_length, max_sequence_length,
-            zero_output, state, call_cell)
+            time=time,
+            sequence_length=sequence_length,
+            min_sequence_length=min_sequence_length,
+            max_sequence_length=max_sequence_length,
+            zero_output=zero_output,
+            state=state,
+            call_cell=call_cell,
+            state_size=cell.state_size)
       else:
         (output, state) = call_cell()
 
@@ -226,7 +232,7 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
 
 def _rnn_step(
     time, sequence_length, min_sequence_length, max_sequence_length,
-    zero_output, state, call_cell, skip_conditionals=False):
+    zero_output, state, call_cell, state_size, skip_conditionals=False):
   """Calculate one step of a dynamic RNN minibatch.
 
   Returns an (output, state) pair conditioned on the sequence_lengths.
@@ -259,15 +265,16 @@ def _rnn_step(
     state: Either a single `Tensor` matrix of shape `[batch_size, state_size]`,
       or a list/tuple of such tensors.
     call_cell: lambda returning tuple of (new_output, new_state) where
-      new_output is a `Tensor` matrix of shape [batch_size, output_size]
-      new_state is a `Tensor` matrix of shape [batch_size, state_size]
+      new_output is a `Tensor` matrix of shape `[batch_size, output_size]`.
+      new_state is a `Tensor` matrix of shape `[batch_size, state_size]`.
+    state_size: The `cell.state_size` associated with the state.
     skip_conditionals: Python bool, whether to skip using the conditional
-      calculations.  This is useful for dynamic_rnn, where the input tensor
-      matches max_sequence_length, and using conditionals just slows
+      calculations.  This is useful for `dynamic_rnn`, where the input tensor
+      matches `max_sequence_length`, and using conditionals just slows
       everything down.
 
   Returns:
-    A tuple of (final_output, final_state) as given by the pseudocode above:
+    A tuple of (`final_output`, `final_state`) as given by the pseudocode above:
       final_output is a `Tensor` matrix of shape [batch_size, output_size]
       final_state is either a single `Tensor` matrix, or a tuple of such
         matrices (matching length and shapes of input `state`).
@@ -278,7 +285,6 @@ def _rnn_step(
   """
 
   state_is_tuple = _is_sequence(state)
-  orig_state = state
   # Convert state to a list for ease of use
   state = list(_unpacked_state(state)) if state_is_tuple else [state]
   state_shape = [s.get_shape() for s in state]
@@ -345,7 +351,7 @@ def _rnn_step(
   if state_is_tuple:
     return (
         final_output,
-        _packed_state(structure=orig_state, state=final_state))
+        _packed_state(structure=state_size, state=final_state))
   else:
     return (final_output, final_state[0])
 
@@ -681,12 +687,14 @@ def _dynamic_rnn_loop(
           zero_output=zero_output,
           state=state,
           call_cell=call_cell,
+          state_size=state_size,
           skip_conditionals=True)
     else:
       (output, new_state) = call_cell()
 
     # Pack state if using state tuples
-    new_state = _unpacked_state(new_state) if state_is_tuple else (new_state,)
+    new_state = (
+        tuple(_unpacked_state(new_state)) if state_is_tuple else (new_state,))
 
     output_ta_t = output_ta_t.write(time, output)
 
@@ -695,7 +703,7 @@ def _dynamic_rnn_loop(
   final_loop_vars = control_flow_ops.while_loop(
       cond=lambda time, *_: time < time_steps,
       body=_time_step,
-      loop_vars=(time, output_ta) + state,
+      loop_vars=(time, output_ta) + tuple(state),
       parallel_iterations=parallel_iterations,
       swap_memory=swap_memory)
 
@@ -708,6 +716,7 @@ def _dynamic_rnn_loop(
 
   # Unpack final state if not using state tuples.
   final_state = (
-      _unpacked_state(final_state) if state_is_tuple else final_state[0])
+      _packed_state(structure=cell.state_size, state=final_state)
+      if state_is_tuple else final_state[0])
 
   return (final_outputs, final_state)

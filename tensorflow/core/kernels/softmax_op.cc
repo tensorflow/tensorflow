@@ -40,6 +40,9 @@ struct SoftmaxFunctor<CPUDevice, T> {
 };
 }  // namespace functor
 
+REGISTER_KERNEL_BUILDER(
+    Name("Softmax").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    SoftmaxOp<CPUDevice, Eigen::half>);
 REGISTER_KERNEL_BUILDER(Name("Softmax")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T"),
@@ -48,24 +51,30 @@ REGISTER_KERNEL_BUILDER(Name("Softmax")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<double>("T"),
                         SoftmaxOp<CPUDevice, double>);
-REGISTER_KERNEL_BUILDER(Name("LogSoftmax")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        SoftmaxOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("LogSoftmax").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    SoftmaxOp<CPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("LogSoftmax").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    SoftmaxOp<CPUDevice, float>);
 REGISTER_KERNEL_BUILDER(Name("LogSoftmax")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<double>("T"),
                         SoftmaxOp<CPUDevice, double>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("Softmax")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        SoftmaxOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("LogSoftmax")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        SoftmaxOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    SoftmaxOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    SoftmaxOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    SoftmaxOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    SoftmaxOp<GPUDevice, float>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

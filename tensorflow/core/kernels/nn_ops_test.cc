@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -55,13 +56,22 @@ limitations under the License.
 namespace tensorflow {
 
 static void SetConstOp(const string& name, std::initializer_list<int64> dims,
-                       NodeDef* node) {
-  Tensor tensor(DT_FLOAT, TensorShape(dims));
+                       DataType data_type, NodeDef* node) {
+  Tensor tensor(data_type, TensorShape(dims));
   for (int64 i = 0; i < tensor.NumElements(); ++i) {
-    tensor.flat<float>()(i) = i / 10.0f;
+    switch (data_type) {
+      case DT_FLOAT:
+        tensor.flat<float>()(i) = i / 10.0f;
+        break;
+      case DT_HALF:
+        tensor.flat<Eigen::half>()(i) = Eigen::half(i / 10.0f);
+        break;
+      default:
+        LOG(FATAL) << "Unknown data type " << data_type;
+    }
   }
   TF_CHECK_OK(NodeDefBuilder(name, "Const")
-                  .Attr("dtype", DT_FLOAT)
+                  .Attr("dtype", data_type)
                   .Attr("value", tensor)
                   .Finalize(node));
 }
@@ -93,7 +103,8 @@ enum CONV_OP {
 static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
                          int out_depth, int filter_rows, int filter_cols,
                          CONV_OP op, int num_threads, int stride,
-                         Padding padding, bool use_gpu, const string& label) {
+                         Padding padding, bool use_gpu, DataType data_type,
+                         const string& label) {
   if (!IsGoogleCudaEnabled() && use_gpu) {
     testing::SetLabel(
         strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
@@ -132,11 +143,12 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
               static_cast<int64>(rows * cols) * 2;
   }
 
-  SetConstOp("input", {batch, rows, cols, in_depth}, graph.add_node());
+  SetConstOp("input", {batch, rows, cols, in_depth}, data_type,
+             graph.add_node());
   SetConstOp("filter", {filter_rows, filter_cols, in_depth, out_depth},
-             graph.add_node());
+             data_type, graph.add_node());
   SetConstOp("output_backprop", {batch, out_rows, out_cols, out_depth},
-             graph.add_node());
+             data_type, graph.add_node());
   SetConstSizesOp("input_sizes",
                   std::vector<int32>({batch, rows, cols, in_depth}),
                   graph.add_node());
@@ -149,8 +161,8 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
   switch (op) {
     case CONV_OP_FORWARD:
       TF_CHECK_OK(NodeDefBuilder("conv2d", "Conv2D")
-                      .Input("input", 0, DT_FLOAT)
-                      .Input("filter", 0, DT_FLOAT)
+                      .Input("input", 0, data_type)
+                      .Input("filter", 0, data_type)
                       .Attr("strides", {1, stride, stride, 1})
                       .Attr("padding", padding == VALID ? "VALID" : "SAME")
                       .Finalize(conv));
@@ -158,17 +170,17 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
     case CONV_OP_BACKPROP_INPUT:
       TF_CHECK_OK(NodeDefBuilder("conv2d", "Conv2DBackpropInput")
                       .Input("input_sizes", 0, DT_INT32)
-                      .Input("filter", 0, DT_FLOAT)
-                      .Input("output_backprop", 0, DT_FLOAT)
+                      .Input("filter", 0, data_type)
+                      .Input("output_backprop", 0, data_type)
                       .Attr("strides", {1, stride, stride, 1})
                       .Attr("padding", padding == VALID ? "VALID" : "SAME")
                       .Finalize(conv));
       break;
     case CONV_OP_BACKPROP_FILTER:
       TF_CHECK_OK(NodeDefBuilder("conv2d", "Conv2DBackpropFilter")
-                      .Input("input", 0, DT_FLOAT)
+                      .Input("input", 0, data_type)
                       .Input("filter_sizes", 0, DT_INT32)
-                      .Input("output_backprop", 0, DT_FLOAT)
+                      .Input("output_backprop", 0, data_type)
                       .Attr("strides", {1, stride, stride, 1})
                       .Attr("padding", padding == VALID ? "VALID" : "SAME")
                       .Finalize(conv));
@@ -190,28 +202,35 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
 // OD: output_depth
 // KR: kernel_rows
 // KC: kernel_cols
-#define BM_ConvFloatFwd(BS, R, C, ID, OD, KR, KC, STR, PAD, LABEL)           \
-  static void BM_ConvFloatFwdCPU1_##LABEL(int iters) {                       \
-    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FORWARD, 1, STR,   \
-                 PAD, false,                                                 \
-                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",  \
-                                 KR, "_", KC, "_", STR, "_", PAD, "_cpu1")); \
-  }                                                                          \
-  static void BM_ConvFloatFwdCPU4_##LABEL(int iters) {                       \
-    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FORWARD, 4, STR,   \
-                 PAD, false,                                                 \
-                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",  \
-                                 KR, "_", KC, "_", STR, "_", PAD, "_cpu4")); \
-  }                                                                          \
-  static void BM_ConvFloatFwdGPU_##LABEL(int iters) {                        \
-    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FORWARD, 1, STR,   \
-                 PAD, true,                                                  \
-                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",  \
-                                 KR, "_", KC, "_", STR, "_", PAD, "_gpu"));  \
-  }                                                                          \
-  BENCHMARK(BM_ConvFloatFwdCPU1_##LABEL);                                    \
-  BENCHMARK(BM_ConvFloatFwdCPU4_##LABEL);                                    \
-  BENCHMARK(BM_ConvFloatFwdGPU_##LABEL)
+#define BM_ConvFloatFwd(BS, R, C, ID, OD, KR, KC, STR, PAD, LABEL)             \
+  static void BM_ConvFloatFwdCPU1_##LABEL(int iters) {                         \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FORWARD, 1, STR,     \
+                 PAD, false, DT_FLOAT,                                         \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_f_cpu1")); \
+  }                                                                            \
+  static void BM_ConvFloatFwdCPU4_##LABEL(int iters) {                         \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FORWARD, 4, STR,     \
+                 PAD, false, DT_FLOAT,                                         \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_f_cpu4")); \
+  }                                                                            \
+  static void BM_ConvFloatFwdGPU_##LABEL(int iters) {                          \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FORWARD, 1, STR,     \
+                 PAD, true, DT_FLOAT,                                          \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_f_gpu"));  \
+  }                                                                            \
+  static void BM_ConvHalfFwdGPU_##LABEL(int iters) {                           \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FORWARD, 1, STR,     \
+                 PAD, true, DT_HALF,                                           \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_h_gpu"));  \
+  }                                                                            \
+  BENCHMARK(BM_ConvFloatFwdCPU1_##LABEL);                                      \
+  BENCHMARK(BM_ConvFloatFwdCPU4_##LABEL);                                      \
+  BENCHMARK(BM_ConvFloatFwdGPU_##LABEL);                                       \
+  BENCHMARK(BM_ConvHalfFwdGPU_##LABEL)
 
 BM_ConvFloatFwd(32, 5, 5, 1248, 128, 1, 1, 1, SAME, conv0);
 BM_ConvFloatFwd(32, 8, 8, 384, 384, 1, 3, 1, SAME, conv1);
@@ -272,37 +291,49 @@ BM_ConvFloatFwd(32, 147, 147, 24, 64, 1, 1, 1, VALID, conv54);
 #define BM_ConvFloatBkInAndFilter(BS, R, C, ID, OD, KR, KC, STR, PAD, LABEL)  \
   static void BM_ConvFloatBkInCPU1_##LABEL(int iters) {                       \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_INPUT, 1,  \
-                 STR, PAD, false,                                             \
+                 STR, PAD, false, DT_FLOAT,                                   \
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",   \
                                  KR, "_", KC, "_", STR, "_", PAD, "_cpu1"));  \
   }                                                                           \
   static void BM_ConvFloatBkInCPU4_##LABEL(int iters) {                       \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_INPUT, 4,  \
-                 STR, PAD, false,                                             \
+                 STR, PAD, false, DT_FLOAT,                                   \
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",   \
                                  KR, "_", KC, "_", STR, "_", PAD, "_cpu4"));  \
   }                                                                           \
   static void BM_ConvFloatBkInGPU_##LABEL(int iters) {                        \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_INPUT, 1,  \
-                 STR, PAD, true,                                              \
+                 STR, PAD, true, DT_FLOAT,                                    \
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",   \
                                  KR, "_", KC, "_", STR, "_", PAD, "_gpu"));   \
   }                                                                           \
   static void BM_ConvFloatBkFilterCPU1_##LABEL(int iters) {                   \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_FILTER, 1, \
-                 STR, PAD, false,                                             \
+                 STR, PAD, false, DT_FLOAT,                                   \
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",   \
                                  KR, "_", KC, "_", STR, "_", PAD, "_cpu1"));  \
   }                                                                           \
   static void BM_ConvFloatBkFilterCPU4_##LABEL(int iters) {                   \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_FILTER, 4, \
-                 STR, PAD, false,                                             \
+                 STR, PAD, false, DT_FLOAT,                                   \
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",   \
                                  KR, "_", KC, "_", STR, "_", PAD, "_cpu4"));  \
   }                                                                           \
   static void BM_ConvFloatBkFilterGPU_##LABEL(int iters) {                    \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_FILTER, 1, \
-                 STR, PAD, true,                                              \
+                 STR, PAD, true, DT_FLOAT,                                    \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",   \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_gpu"));   \
+  }                                                                           \
+  static void BM_ConvHalfBkInGPU_##LABEL(int iters) {                         \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_INPUT, 1,  \
+                 STR, PAD, true, DT_HALF,                                     \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",   \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_gpu"));   \
+  }                                                                           \
+  static void BM_ConvHalfBkFilterGPU_##LABEL(int iters) {                     \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_FILTER, 1, \
+                 STR, PAD, true, DT_HALF,                                     \
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",   \
                                  KR, "_", KC, "_", STR, "_", PAD, "_gpu"));   \
   }                                                                           \
@@ -311,7 +342,9 @@ BM_ConvFloatFwd(32, 147, 147, 24, 64, 1, 1, 1, VALID, conv54);
   BENCHMARK(BM_ConvFloatBkInGPU_##LABEL);                                     \
   BENCHMARK(BM_ConvFloatBkFilterCPU1_##LABEL);                                \
   BENCHMARK(BM_ConvFloatBkFilterCPU4_##LABEL);                                \
-  BENCHMARK(BM_ConvFloatBkFilterGPU_##LABEL)
+  BENCHMARK(BM_ConvFloatBkFilterGPU_##LABEL);                                 \
+  BENCHMARK(BM_ConvHalfBkInGPU_##LABEL);                                      \
+  BENCHMARK(BM_ConvHalfBkFilterGPU_##LABEL)
 
 // Benchmarks from the inception model
 
@@ -376,10 +409,10 @@ BM_ConvFloatBkInAndFilter(32, 147, 147, 24, 64, 1, 1, 1, VALID, conv54);
       BM_ConvFloatBkFCPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC##_##TH(  \
           int iters) {                                                         \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_FILTER, TH, \
-                 1, VALID, false, LABEL);                                      \
+                 1, VALID, false, DT_FLOAT, LABEL);                            \
   }                                                                            \
   BENCHMARK(                                                                   \
-      BM_ConvFloatBkFCPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC##_##TH)
+      BM_ConvFloatBkFCPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC##_##TH);
 
 // Benchmarks from https://github.com/soumith/convnet-benchmarks
 BM_ConvFloatBkFCPU(128, 128, 128, 3, 96, 11, 11, 4, "convnet-layer1");
@@ -392,9 +425,15 @@ BM_ConvFloatBkFCPU(128, 13, 13, 384, 384, 3, 3, 4, "convnet-layer5");
   static void BM_ConvFloatBkFGPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC( \
       int iters) {                                                             \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_FILTER, 1,  \
-                 1, VALID, true, LABEL);                                       \
+                 1, VALID, true, DT_FLOAT, LABEL);                             \
   }                                                                            \
-  BENCHMARK(BM_ConvFloatBkFGPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC)
+  static void BM_ConvHalfBkFGPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC(  \
+      int iters) {                                                             \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_BACKPROP_FILTER, 1,  \
+                 1, VALID, true, DT_HALF, LABEL);                              \
+  }                                                                            \
+  BENCHMARK(BM_ConvFloatBkFGPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC);  \
+  BENCHMARK(BM_ConvHalfBkFGPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC)
 
 // Benchmarks from https://github.com/soumith/convnet-benchmarks
 BM_ConvFloatBkFGPU(128, 128, 128, 3, 96, 11, 11, "convnet-layer1");
@@ -463,12 +502,14 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
               (stride * stride);
   }
 
-  SetConstOp("input", {batch, rows, cols, in_depth}, graph.add_node());
+  // FIXME
+  SetConstOp("input", {batch, rows, cols, in_depth}, DT_FLOAT,
+             graph.add_node());
   SetConstOp("depthwise_filter",
-             {filter_rows, filter_cols, in_depth, depth_multiplier},
+             {filter_rows, filter_cols, in_depth, depth_multiplier}, DT_FLOAT,
              graph.add_node());
   SetConstOp("output_backprop", {batch, out_rows, out_cols, out_depth},
-             graph.add_node());
+             DT_FLOAT, graph.add_node());
   SetConstSizesOp("input_sizes",
                   std::vector<int32>({batch, rows, cols, in_depth}),
                   graph.add_node());

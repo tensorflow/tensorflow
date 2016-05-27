@@ -1449,6 +1449,7 @@ namespace functor {
   extern template struct PadInput<GPUDevice, T, int, 4>;
 
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -1462,6 +1463,16 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .TypeConstraint<float>("T")
                             .HostMemory("filter_sizes"),
                         Conv2DSlowBackpropFilterOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
+                            .HostMemory("input_sizes"),
+                        Conv2DSlowBackpropInputOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
+                            .HostMemory("filter_sizes"),
+                        Conv2DSlowBackpropFilterOp<GPUDevice, Eigen::half>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

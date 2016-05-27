@@ -44,6 +44,37 @@ native_sampler = random_ops.multinomial
 
 
 class MultinomialTest(tf.test.TestCase):
+  use_gpu = False
+
+  def testSmallEntropy(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      # A logit value of -10 corresponds to a probability of ~5e-5.
+      logits = tf.constant([[-10., 10., -10.], [-10., -10., 10.]])
+      num_samples = 1000
+      samples = tf.multinomial(logits, num_samples).eval()
+      self.assertAllEqual([[1] * num_samples, [2] * num_samples], samples)
+
+  def testOneOpMultipleStepsIndependent(self):
+    with self.test_session(use_gpu=self.use_gpu) as sess:
+      sample_op1, _ = self._make_ops(10)
+      # Consecutive runs shouldn't yield identical output.
+      sample1a = sess.run(sample_op1)
+      sample1b = sess.run(sample_op1)
+      self.assertFalse(np.equal(sample1a, sample1b).all())
+
+  def testTwoOpsIndependent(self):
+    with self.test_session(use_gpu=self.use_gpu) as sess:
+      sample_op1, sample_op2 = self._make_ops(32)
+      sample1, sample2 = sess.run([sample_op1, sample_op2])
+      # We expect sample1 and sample2 to be independent.
+      # 1 in 2^32 chance of this assertion failing.
+      self.assertFalse(np.equal(sample1, sample2).all())
+
+  def testTwoOpsSameSeedDrawSameSequences(self):
+    with self.test_session(use_gpu=self.use_gpu) as sess:
+      sample_op1, sample_op2 = self._make_ops(1000, seed=1)
+      sample1, sample2 = sess.run([sample_op1, sample_op2])
+      self.assertAllEqual(sample1, sample2)
 
   def testSamplingCorrectness(self):
     np.random.seed(1618)  # Make it reproducible.
@@ -73,34 +104,6 @@ class MultinomialTest(tf.test.TestCase):
       check(native_chi2)
       check(composed_native_chi2)
 
-  def testOneOpMultipleStepsIndependent(self):
-    with self.test_session() as sess:
-      sample_op1, _ = self._make_ops(10)
-      # Consecutive runs shouldn't yield identical output.
-      sample1a = sess.run(sample_op1)
-      sample1b = sess.run(sample_op1)
-      self.assertFalse(np.equal(sample1a, sample1b).all())
-
-  def testTwoOpsIndependent(self):
-    with self.test_session() as sess:
-      sample_op1, sample_op2 = self._make_ops(32)
-      sample1, sample2 = sess.run([sample_op1, sample_op2])
-      # We expect sample1 and sample2 to be independent.
-      # 1 in 2^32 chance of this assertion failing.
-      self.assertFalse(np.equal(sample1, sample2).all())
-
-  def testTwoOpsSameSeedDrawSameSequences(self):
-    with self.test_session() as sess:
-      sample_op1, sample_op2 = self._make_ops(1000, seed=1)
-      sample1, sample2 = sess.run([sample_op1, sample_op2])
-      self.assertAllEqual(sample1, sample2)
-
-  def testZeroEntropy(self):
-    with self.test_session():
-      logits = tf.constant([[-1., 1., -1.], [-1., -1., 1.]])*100000.
-      samples = tf.multinomial(logits, 1).eval()
-      self.assertAllEqual([[1], [2]], samples)
-
   def _make_ops(self, num_samples, seed=None):
     prob_dist = tf.constant([[0.15, 0.5, 0.3, 0.05]])
     logits = tf.log(prob_dist)
@@ -125,7 +128,7 @@ class MultinomialTest(tf.test.TestCase):
     Returns:
       Frequencies from sampled classes; shape [batch_size, num_classes].
     """
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=self.use_gpu) as sess:
       tf.set_random_seed(1618)
       op = sampler(tf.constant(logits), num_samples)
       d = sess.run(op)
@@ -134,6 +137,11 @@ class MultinomialTest(tf.test.TestCase):
     freqs_mat = []
     for i in range(batch_size):
       cnts = dict(collections.Counter(d[i, :]))
+
+      # Requires drawn class labels be in range.
+      self.assertLess(max(cnts.keys()), num_classes)
+      self.assertGreaterEqual(min(cnts.keys()), 0)
+
       freqs = [(cnts[k] * 1. / num_samples if k in cnts else 0)
                for k in range(num_classes)]
       freqs_mat.append(freqs)
@@ -148,16 +156,25 @@ class MultinomialTest(tf.test.TestCase):
     return chi2
 
 
+class MultinomialGpuTest(MultinomialTest):
+  use_gpu = True
+
+
 # Benchmarking code
 def native_op_vs_composed_ops(batch_size, num_classes, num_samples, num_iters):
   np.random.seed(1618)  # Make it reproducible.
   shape = [batch_size, num_classes]
   logits_np = np.random.randn(*shape).astype(np.float32)
 
-  with tf.Session() as sess:
+  # No CSE/CF.
+  optimizer_options = tf.OptimizerOptions(opt_level=tf.OptimizerOptions.L0)
+  config = tf.ConfigProto(
+      graph_options=tf.GraphOptions(optimizer_options=optimizer_options))
+
+  with tf.Session(config=config) as sess:
     logits = tf.constant(logits_np, shape=shape)
-    native_op = native_sampler(logits, num_samples)
-    composed_op = composed_sampler(logits, num_samples)
+    native_op = tf.group(native_sampler(logits, num_samples))
+    composed_op = tf.group(composed_sampler(logits, num_samples))
 
     native_dt = timeit.timeit(lambda: sess.run(native_op), number=num_iters)
     composed_dt = timeit.timeit(lambda: sess.run(composed_op), number=num_iters)
@@ -167,15 +184,15 @@ def native_op_vs_composed_ops(batch_size, num_classes, num_samples, num_iters):
 class MultinomialBenchmark(tf.test.Benchmark):
 
   def benchmarkNativeOpVsComposedOps(self):
-    num_iters = 5
+    num_iters = 50
     print("Composition of existing ops vs. Native Multinomial op [%d iters]" %
           num_iters)
     print("BatchSize\tNumClasses\tNumSamples\tsec(composed)\tsec(native)\t"
           "speedup")
 
-    for batch_size in [1, 32, 128]:
+    for batch_size in [32, 128]:
       for num_classes in [10000, 100000]:
-        for num_samples in [1, 4, 128]:
+        for num_samples in [1, 4, 32]:
           n_dt, c_dt = native_op_vs_composed_ops(batch_size, num_classes,
                                                  num_samples, num_iters)
           print("%d\t%d\t%d\t%.3f\t%.3f\t%.2f" % (batch_size, num_classes,
@@ -188,6 +205,7 @@ class MultinomialBenchmark(tf.test.Benchmark):
           self.report_benchmark(name="composed_batch%d_classes%d_s%d" %
                                 (batch_size, num_classes, num_samples),
                                 iters=num_iters, wall_time=c_dt)
+
 
 if __name__ == "__main__":
   tf.test.main()
