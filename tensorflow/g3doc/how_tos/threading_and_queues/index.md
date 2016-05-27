@@ -3,7 +3,7 @@
 Queues are a powerful mechanism for asynchronous computation using TensorFlow.
 
 Like everything in TensorFlow, a queue is a node in a TensorFlow graph. It's a
-stateful node, like variable: other nodes can modify its content. In
+stateful node, like a variable: other nodes can modify its content. In
 particular, nodes can enqueue new items in to the queue, or dequeue existing
 items from the queue.
 
