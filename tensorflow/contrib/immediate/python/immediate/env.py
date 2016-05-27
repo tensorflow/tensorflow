@@ -102,7 +102,8 @@ class Env(object):
                            np.dtype('bool'), np.dtype("|S3")}
 
   def __init__(self, tf_namespace, config=None):
-    print("Creating Env")
+    if _ENABLE_DEBUG_LOGGING:
+      print("Creating Env")
     global _global_default_env
     self.g = ops.Graph()
     self.sess = session.Session(config=config, graph=self.g)

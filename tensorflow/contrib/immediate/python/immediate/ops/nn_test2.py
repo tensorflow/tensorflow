@@ -49,6 +49,7 @@ env = immediate.Env({"tf": tf, "gen_nn_ops": gen_nn_ops})
 tf = env.tf
 gen_nn_ops = env.gen_nn_ops
 
+
 # NOTE(yaroslavvb): SampledLogits don't work because
 # embedding ops use generators, and my module rewriter doesn't follow
 # references in generators

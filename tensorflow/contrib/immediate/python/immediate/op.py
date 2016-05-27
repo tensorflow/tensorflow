@@ -7,6 +7,7 @@ __all__ = ["Op", "OpFactory", "OpWrapper"]
 from .tensor import Tensor
 from .tensor import _ENABLE_DEBUG_LOGGING
 from .wrapping_util import get_op_input_argnames_argtypes
+from .wrapping_util import get_op_input_argnames_argtypes_from_opdeflib
 
 from tensorflow.python.framework import ops as tf_ops
 
@@ -216,7 +217,7 @@ class OpWrapper(object):
     return "OpWrapper(%s, %s)"%(self.env, self.symbol)
 
 
-op_input_argnames, op_input_argtypes = get_op_input_argnames_argtypes()
+#op_input_argnames, op_input_argtypes = get_op_input_argnames_argtypes()
 
 class OpDefLibraryWrapper(object):
   def __init__(self, env, original_op_def_library):
@@ -244,8 +245,10 @@ class OpDefLibraryWrapper(object):
     # becomes immediate.Tensor([1])), immediate.Tensor objects are unchanged
     itensor_args = {} 
     converted_tensors = {}
-    input_names = op_input_argnames[op_type_name]
-    input_types = op_input_argtypes[op_type_name]
+    #    input_names = op_input_argnames[op_type_name]
+    #    input_types = op_input_argtypes[op_type_name]
+
+    input_names,input_types = get_op_input_argnames_argtypes_from_opdeflib(self.original_op_def_library, op_type_name)
 
     if _ENABLE_DEBUG_LOGGING:
       print("OpFactory __call__: %s(%s)" % (op_type_name, keywords))
@@ -276,8 +279,10 @@ class OpDefLibraryWrapper(object):
                          (itensor, op_type_name))
       try:
         result = self.env.numpy_to_tensor(itensor, dtype)
-        print("Converting %s to %s, result is %s" %(itensor, dtype, result.dtype))
+        if _ENABLE_DEBUG_LOGGING:
+          print("Converting %s to %s, result is %s" %(itensor, dtype, result.dtype))
         return result
+
       except ValueError as e:
         raise ValueError("Couldn't convert input argument %s=%s to immediate "
                          "tensor (%s)" % (input_name, itensor,
@@ -368,14 +373,4 @@ class ConvertToTensorWrapper(object):
     if isinstance(value, Tensor):
       return value
     return self.env.numpy_to_tensor(value, dtype)
-
-
-class MockGraph(tf_ops.Graph):
-  def __init__(self):
-    super(MockGraph, self).__init__()
-
-  def create_op(self, op_type, inputs, dtypes,
-                input_types=None, name=None, attrs=None, op_def=None,
-                compute_shapes=True, compute_device=True):
-    print("Intercepted create_op %s %s %s" %(op_type, op_def, attrs))
 

@@ -33,3 +33,17 @@ def get_op_input_argnames_argtypes():
     argtypes[op.name] = argtypes0
 
   return argnames, argtypes
+
+def get_op_input_argnames_argtypes_from_opdeflib(op_def_lib, name):
+  """Get input argnames/types from op_def_lib object."""
+
+  op = op_def_lib._ops[name].op_def
+  argnames0 = [arg.name for arg in op.input_arg]
+  argtypes0 = {}
+  for arg in op.input_arg:
+    if arg.number_attr or arg.type_list_attr:
+      argtypes0[arg.name] = "list"
+    else:
+      argtypes0[arg.name] = "single"
+
+  return argnames0, argtypes0
