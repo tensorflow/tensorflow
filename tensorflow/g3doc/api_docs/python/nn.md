@@ -315,7 +315,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
 *  <b>`strides`</b>: A list of `ints`.
     1-D of length 4.  The stride of the sliding window for each dimension
