@@ -183,9 +183,9 @@ class ExampleParserOp : public OpKernel {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
     // Estimate the cost of parsing each batch element.
-    int64 work_unit_size = 100 + 100 * num_sparse_;
+    int64 work_unit_size = 1000 + 100 * num_sparse_;
     for (int d = 0; d < num_dense_; ++d) {
-      work_unit_size += dense_shapes_[d].num_elements();
+      work_unit_size += 100 + dense_shapes_[d].num_elements();
     }
 
     mutex mu;

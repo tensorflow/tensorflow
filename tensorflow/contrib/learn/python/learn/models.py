@@ -1,16 +1,18 @@
-#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 
 """Various high level TF models."""
 
@@ -31,6 +33,7 @@ from tensorflow.python.ops import variable_scope as vs
 
 
 def linear_regression_zero_init(X, y):
+  # pylint: disable=invalid-name
   """Linear regression subgraph with zero-value initial weights and bias.
 
   Args:
@@ -44,6 +47,7 @@ def linear_regression_zero_init(X, y):
 
 
 def logistic_regression_zero_init(X, y):
+  # pylint: disable=invalid-name
   """Logistic regression subgraph with zero-value initial weights and bias.
 
   Args:
@@ -57,6 +61,7 @@ def logistic_regression_zero_init(X, y):
 
 
 def linear_regression(X, y, init_mean=None, init_stddev=1.0):
+  # pylint: disable=invalid-name
   """Creates linear regression TensorFlow subgraph.
 
   Args:
@@ -105,6 +110,7 @@ def logistic_regression(X,
                         class_weight=None,
                         init_mean=None,
                         init_stddev=1.0):
+  # pylint: disable=invalid-name
   """Creates logistic regression TensorFlow subgraph.
 
   Args:
@@ -182,6 +188,7 @@ def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
   """
 
   def dnn_estimator(X, y):
+    # pylint: disable=invalid-name
     """DNN estimator with target predictor function on top."""
     layers = dnn_ops.dnn(X, hidden_units, dropout=dropout)
     return target_predictor_fn(layers, y)
@@ -212,6 +219,7 @@ def get_autoencoder_model(hidden_units, target_predictor_fn,
       A function that creates the subgraph.
   """
   def dnn_autoencoder_estimator(X):
+    # pylint: disable=invalid-name
     """Autoencoder estimator with target predictor function on top."""
     encoder, decoder = autoencoder_ops.dnn_autoencoder(
         X, hidden_units, activation,
@@ -357,6 +365,7 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
   """
 
   def rnn_estimator(X, y):
+    # pylint: disable=invalid-name
     """RNN estimator with target predictor function on top."""
     X = input_op_fn(X)
     if cell_type == 'rnn':
