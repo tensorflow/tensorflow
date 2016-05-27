@@ -24,8 +24,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowRegressor.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -221,6 +220,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -245,9 +249,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
