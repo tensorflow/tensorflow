@@ -385,7 +385,7 @@ class DropoutTest(tf.test.TestCase):
       num_elem = tf.reduce_mean(tf.to_float(output > 0))
       sess.run(tf.initialize_all_variables())
       num_elem = sess.run(num_elem)
-      self.assertLess(num_elem, 0.3)
+      self.assertLess(num_elem, 0.5)
       self.assertGreater(num_elem, 0.1)
 
 
