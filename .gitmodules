@@ -1,3 +1,0 @@
-[submodule "google/protobuf"]
-	path = google/protobuf
-	url = https://github.com/google/protobuf.git
