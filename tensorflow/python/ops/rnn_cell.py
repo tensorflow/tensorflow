@@ -43,6 +43,18 @@ def _is_sequence(seq):
           and not isinstance(seq, six.string_types))
 
 
+def _sequence_like(instance, args):
+  try:
+    assert isinstance(instance, tuple)
+    assert isinstance(instance._fields, collections.Sequence)
+    assert all(isinstance(f, six.string_types) for f in instance._fields)
+    # This is a namedtuple
+    return type(instance)(*args)
+  except (AssertionError, AttributeError):
+    # Not a namedtuple
+    return type(instance)(args)
+
+
 def _packed_state_with_indices(structure, flat, index):
   """Helper function for _packed_state.
 
@@ -66,7 +78,7 @@ def _packed_state_with_indices(structure, flat, index):
   for s in structure:
     if _is_sequence(s):
       new_index, child = _packed_state_with_indices(s, flat, index)
-      packed.append(type(s)(child))
+      packed.append(_sequence_like(s, child))
       index = new_index
     else:
       packed.append(flat[index])
@@ -86,7 +98,7 @@ def _yield_unpacked_state(state):
 def _unpacked_state(state):
   if not _is_sequence(state):
     raise TypeError("state must be a sequence")
-  return type(state)(_yield_unpacked_state(state))
+  return list(_yield_unpacked_state(state))
 
 
 def _packed_state(structure, state):
@@ -117,7 +129,7 @@ def _packed_state(structure, state):
         % (len(flat_structure), len(state), structure, state))
 
   (_, packed) = _packed_state_with_indices(structure, state, 0)
-  return type(structure)(packed)
+  return _sequence_like(structure, packed)
 
 
 class RNNCell(object):
@@ -256,6 +268,19 @@ class GRUCell(RNNCell):
     return new_h, new_h
 
 
+_LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
+
+
+class LSTMStateTuple(_LSTMStateTuple):
+  """Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
+
+  Stores two elements: `(c, h)`, in that order.
+
+  Only used when `state_is_tuple=True`.
+  """
+  __slots__ = ()
+
+
 class BasicLSTMCell(RNNCell):
   """Basic LSTM recurrent network cell.
 
@@ -296,8 +321,8 @@ class BasicLSTMCell(RNNCell):
 
   @property
   def state_size(self):
-    return ((self._num_units, self._num_units) if self._state_is_tuple
-            else 2 * self._num_units)
+    return (LSTMStateTuple(self._num_units, self._num_units)
+            if self._state_is_tuple else 2 * self._num_units)
 
   @property
   def output_size(self):
@@ -321,7 +346,7 @@ class BasicLSTMCell(RNNCell):
       new_h = self._activation(new_c) * sigmoid(o)
 
       if self._state_is_tuple:
-        new_state = (new_c, new_h)
+        new_state = LSTMStateTuple(new_c, new_h)
       else:
         new_state = array_ops.concat(1, [new_c, new_h])
       return new_h, new_state
@@ -434,11 +459,13 @@ class LSTMCell(RNNCell):
 
     if num_proj:
       self._state_size = (
-          (num_units, num_proj) if state_is_tuple else num_units + num_proj)
+          LSTMStateTuple(num_units, num_proj)
+          if state_is_tuple else num_units + num_proj)
       self._output_size = num_proj
     else:
       self._state_size = (
-          (num_units, num_units) if state_is_tuple else 2 * num_units)
+          LSTMStateTuple(num_units, num_units)
+          if state_is_tuple else 2 * num_units)
       self._output_size = num_units
 
   @property
@@ -534,7 +561,8 @@ class LSTMCell(RNNCell):
 
         m = math_ops.matmul(m, concat_w_proj)
 
-    new_state = (c, m) if self._state_is_tuple else array_ops.concat(1, [c, m])
+    new_state = (LSTMStateTuple(c, m) if self._state_is_tuple
+                 else array_ops.concat(1, [c, m]))
     return m, new_state
 
 

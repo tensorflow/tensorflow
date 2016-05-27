@@ -40,6 +40,9 @@ dimension, and dense along all other dimensions.
 @@sparse_reset_shape
 @@sparse_fill_empty_rows
 
+## Reduction
+@@sparse_reduce_sum
+
 ## Math Operations
 @@sparse_add
 @@sparse_softmax
@@ -1373,6 +1376,7 @@ def sparse_softmax(sp_input, name=None):
   shape.
 
   Example:
+
   ```python
   # First batch:
   # [?   e.]

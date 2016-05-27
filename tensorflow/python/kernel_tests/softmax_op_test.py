@@ -50,13 +50,13 @@ class SoftmaxTest(tf.test.TestCase):
       else:
         tf_softmax = tf.nn.softmax(np_features, name=name)
       out = tf_softmax.eval()
-    self.assertAllClose(np_softmax, out)
+    self.assertAllCloseAccordingToType(np_softmax, out)
     self.assertShapeEqual(np_softmax, tf_softmax)
     if not log:
       # Bonus check: the softmaxes should add to one in each
       # batch element.
-      self.assertAllClose(np.ones(out.shape[0]),
-                          np.sum(out, axis=1))
+      self.assertAllCloseAccordingToType(np.ones(out.shape[0]),
+                                         np.sum(out, axis=1))
 
   def _testAll(self, features):
     self._testSoftmax(features, use_gpu=False)
@@ -117,6 +117,10 @@ class SoftmaxTest(tf.test.TestCase):
   def testFloat(self):
     self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float32))
+
+  def testHalf(self):
+    self._testAll(
+        np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16))
 
   def testDouble(self):
     self._testSoftmax(

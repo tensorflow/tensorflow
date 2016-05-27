@@ -3459,15 +3459,15 @@ def _eval_using_default_session(tensors, feed_dict, graph, session=None):
   if session is None:
     session = get_default_session()
     if session is None:
-      raise ValueError("Cannot evaluate tensor using eval(): No default "
+      raise ValueError("Cannot evaluate tensor using `eval()`: No default "
                        "session is registered. Use `with "
                        "sess.as_default()` or pass an explicit session to "
-                       "eval(session=sess)")
+                       "`eval(session=sess)`")
     if session.graph is not graph:
       raise ValueError("Cannot use the default session to evaluate tensor: "
                        "the tensor's graph is different from the session's "
                        "graph. Pass an explicit session to "
-                       "eval(session=sess).")
+                       "`eval(session=sess)`.")
   else:
     if session.graph is not graph:
       raise ValueError("Cannot use the given session to evaluate tensor: "
@@ -3494,15 +3494,15 @@ def _run_using_default_session(operation, feed_dict, graph, session=None):
   if session is None:
     session = get_default_session()
     if session is None:
-      raise ValueError("Cannot execute operation using Run(): No default "
-                       "session is registered. Use 'with "
-                       "default_session(sess)' or pass an explicit session to "
-                       "Run(session=sess)")
+      raise ValueError("Cannot execute operation using `run()`: No default "
+                       "session is registered. Use `with "
+                       "sess.as_default():` or pass an explicit session to "
+                       "`run(session=sess)`")
     if session.graph is not graph:
       raise ValueError("Cannot use the default session to execute operation: "
                        "the operation's graph is different from the "
                        "session's graph. Pass an explicit session to "
-                       "Run(session=sess).")
+                       "run(session=sess).")
   else:
     if session.graph is not graph:
       raise ValueError("Cannot use the given session to execute operation: "

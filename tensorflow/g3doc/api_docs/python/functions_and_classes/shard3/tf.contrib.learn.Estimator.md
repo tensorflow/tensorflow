@@ -188,9 +188,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -

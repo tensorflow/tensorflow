@@ -177,9 +177,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -397,9 +407,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -465,8 +485,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowClassifier.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowClassifier.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -662,6 +681,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -686,9 +710,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -772,8 +806,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowDNNClassifier.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowDNNClassifier.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -969,6 +1002,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -993,9 +1031,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -1079,8 +1127,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowDNNRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowDNNRegressor.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -1276,6 +1323,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -1300,9 +1352,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -1386,8 +1448,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowEstimator.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowEstimator.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -1583,6 +1644,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -1607,9 +1673,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -1663,8 +1739,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowLinearClassifier.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowLinearClassifier.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -1860,6 +1935,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -1884,9 +1964,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -1947,8 +2037,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowLinearRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowLinearRegressor.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -2144,6 +2233,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -2168,9 +2262,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -2264,8 +2368,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowRNNClassifier.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowRNNClassifier.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -2461,6 +2564,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -2485,9 +2593,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -2581,8 +2699,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowRNNRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowRNNRegressor.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -2778,6 +2895,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -2802,9 +2924,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -2865,8 +2997,7 @@ See base class.
 
 #### `tf.contrib.learn.TensorFlowRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowRegressor.fit}
 
-Builds a neural network model given provided `model_fn` and training
-data X and y.
+Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
@@ -3062,6 +3193,11 @@ Restores model from give path.
 
   Estimator, object of the subclass of TensorFlowEstimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+
 
 - - -
 
@@ -3086,9 +3222,19 @@ The method works on simple estimators as well as on nested objects
 ``<component>__<parameter>`` so that it's possible to update each
 component of a nested object.
 
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
 ##### Returns:
 
   self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -3363,28 +3509,28 @@ Queue and read batched input data.
 
 ### `tf.contrib.learn.extract_dask_data(data)` {#extract_dask_data}
 
-Extract data from dask.Series or dask.DataFrame for predictors
+Extract data from dask.Series or dask.DataFrame for predictors.
 
 
 - - -
 
 ### `tf.contrib.learn.extract_dask_labels(labels)` {#extract_dask_labels}
 
-Extract data from dask.Series for labels
+Extract data from dask.Series for labels.
 
 
 - - -
 
 ### `tf.contrib.learn.extract_pandas_data(data)` {#extract_pandas_data}
 
-Extract data from pandas.DataFrame for predictors
+Extract data from pandas.DataFrame for predictors.
 
 
 - - -
 
 ### `tf.contrib.learn.extract_pandas_labels(labels)` {#extract_pandas_labels}
 
-Extract data from pandas.DataFrame for labels
+Extract data from pandas.DataFrame for labels.
 
 
 - - -

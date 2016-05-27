@@ -110,6 +110,42 @@ class RNNCellTest(tf.test.TestCase):
                                     m.name: 0.1 * np.ones([1, 4])})
         self.assertEqual(len(res), 2)
 
+  def testBasicLSTMCellStateTupleType(self):
+    with self.test_session():
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([1, 2])
+        m0 = (tf.zeros([1, 2]),) * 2
+        m1 = (tf.zeros([1, 2]),) * 2
+        cell = tf.nn.rnn_cell.MultiRNNCell(
+            [tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)] * 2,
+            state_is_tuple=True)
+        self.assertTrue(isinstance(cell.state_size, tuple))
+        self.assertTrue(isinstance(cell.state_size[0],
+                                   tf.nn.rnn_cell.LSTMStateTuple))
+        self.assertTrue(isinstance(cell.state_size[1],
+                                   tf.nn.rnn_cell.LSTMStateTuple))
+
+        # Pass in regular tuples
+        _, (out_m0, out_m1) = cell(x, (m0, m1))
+        self.assertTrue(isinstance(out_m0,
+                                   tf.nn.rnn_cell.LSTMStateTuple))
+        self.assertTrue(isinstance(out_m1,
+                                   tf.nn.rnn_cell.LSTMStateTuple))
+
+        # Pass in LSTMStateTuples
+        tf.get_variable_scope().reuse_variables()
+        zero_state = cell.zero_state(1, tf.float32)
+        self.assertTrue(isinstance(zero_state, tuple))
+        self.assertTrue(isinstance(zero_state[0],
+                                   tf.nn.rnn_cell.LSTMStateTuple))
+        self.assertTrue(isinstance(zero_state[1],
+                                   tf.nn.rnn_cell.LSTMStateTuple))
+        _, (out_m0, out_m1) = cell(x, zero_state)
+        self.assertTrue(
+            isinstance(out_m0, tf.nn.rnn_cell.LSTMStateTuple))
+        self.assertTrue(
+            isinstance(out_m1, tf.nn.rnn_cell.LSTMStateTuple))
+
   def testBasicLSTMCellWithStateTuple(self):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
@@ -146,8 +182,9 @@ class RNNCellTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([batch_size, input_size])
         m = tf.zeros([batch_size, state_size])
-        output, state = tf.nn.rnn_cell.LSTMCell(
-            num_units=num_units, num_proj=num_proj, forget_bias=1.0)(x, m)
+        cell = tf.nn.rnn_cell.LSTMCell(
+            num_units=num_units, num_proj=num_proj, forget_bias=1.0)
+        output, state = cell(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([output, state],
                        {x.name: np.array([[1., 1.], [2., 2.], [3., 3.]]),

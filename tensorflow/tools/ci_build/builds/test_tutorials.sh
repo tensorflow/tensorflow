@@ -149,10 +149,12 @@ test_mnist_with_summaries() {
     --data_dir="${TUT_TEST_DATA_DIR}/mnist" --summaries_dir="${SUMMARIES_DIR}"
 
   # Verify final accuracy
-  FINAL_ACCURACY=$(tail -1 "${LOG_FILE}" | awk '{print $NF}')
+  FINAL_ACCURACY=$(grep "Accuracy at step" "${LOG_FILE}" \
+                   | tail -1 | awk '{print $NF}')
   if [[ $(python -c "print(${FINAL_ACCURACY}>0.85)") != "True" ]] ||
      [[ $(python -c "print(${FINAL_ACCURACY}<=1.00)") != "True" ]]; then
-    echo "mnist_with_summaries accuracy check FAILED: ${FINAL_ACCURACY}<0.90"
+    echo "mnist_with_summaries accuracy check FAILED: final accuracy = "\
+"${FINAL_ACCURACY}"
     return 1
   fi
 

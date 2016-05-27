@@ -28,8 +28,10 @@ from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
 
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
@@ -38,11 +40,16 @@ from tensorflow.python.training import moving_averages
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
-__all__ = ['bias_add',
+__all__ = ['avg_pool2d',
            'batch_norm',
+           'bias_add',
            'conv2d',
            'convolution2d',
+           'dropout',
+           'flatten',
            'fully_connected',
+           'max_pool2d',
+           'one_hot_encoding',
            'legacy_convolution2d',
            'legacy_fully_connected',
            'legacy_linear',
@@ -50,59 +57,41 @@ __all__ = ['bias_add',
            'legacy_relu6']
 
 
-def _apply_activation(y, activation_fn, output_collections):
-  if activation_fn:
-    y = activation_fn(y)
-  ops.add_to_collections(list(output_collections or []) +
-                         [ops.GraphKeys.ACTIVATIONS], y)
-  return y
-
-
 @add_arg_scope
-def bias_add(inputs,
-             activation_fn=None,
-             initializer=init_ops.zeros_initializer,
-             regularizer=None,
-             reuse=None,
-             variables_collections=None,
-             outputs_collections=None,
-             scope=None):
-  """Adds a bias to the inputs.
+def avg_pool2d(inputs,
+               kernel_size,
+               stride=2,
+               padding='VALID',
+               outputs_collections=None,
+               scope=None):
+  """Adds a Avg Pooling op.
 
-  Can be used as a normalizer function for conv2d and fully_connected.
+  It is assumed by the wrapper that the pooling is only done per image and not
+  in depth or batch.
 
   Args:
-    inputs: a tensor of with at least rank 2 and value for the last dimension,
-      e.g. `[batch_size, depth]`, `[None, None, None, depth]`.
-    activation_fn: Optional activation function.
-    initializer: An initializer for the bias, defaults to 0.
-    regularizer: A regularizer like the result of
-      `l1_regularizer` or `l2_regularizer`.
-    reuse: whether or not the layer and its variables should be reused. To be
-      able to reuse the layer scope must be given.
-    variables_collections: optional collections for the variables.
-    outputs_collections: collections to add the outputs.
-    scope: Optional scope for variable_op_scope.
+    inputs: a tensor of size [batch_size, height, width, depth].
+    kernel_size: a list of length 2: [kernel_height, kernel_width] of the
+      pooling kernel over which the op is computed. Can be an int if both
+      values are the same.
+    stride: a list of length 2: [stride_height, stride_width].
+      Can be an int if both strides are the same.  Note that presently
+      both strides must have the same value.
+    padding: the padding method, either 'VALID' or 'SAME'.
+    outputs_collections: collection to add the outputs.
+    scope: Optional scope for op_scope.
 
   Returns:
-    a tensor representing the result of adding biases to the inputs.
+    a tensor representing the results of the pooling operation.
   """
-  with variable_scope.variable_op_scope([inputs],
-                                        scope, 'BiasAdd', reuse=reuse) as sc:
-    dtype = inputs.dtype.base_dtype
-    num_features = utils.last_dimension(inputs.get_shape(), min_rank=2)
-    biases_collections = utils.get_variable_collections(variables_collections,
-                                                        'biases')
-    biases = variables.model_variable('biases',
-                                      shape=[num_features,],
-                                      dtype=dtype,
-                                      initializer=initializer,
-                                      regularizer=regularizer,
-                                      collections=biases_collections)
-    outputs = nn.bias_add(inputs, biases)
-    if activation_fn:
-      outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+  with ops.op_scope([inputs], scope, 'AvgPool2D') as sc:
+    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
+    stride_h, stride_w = utils.two_element_tuple(stride)
+    outputs = nn.avg_pool(inputs,
+                          ksize=[1, kernel_h, kernel_w, 1],
+                          strides=[1, stride_h, stride_w, 1],
+                          padding=padding)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
 @add_arg_scope
@@ -229,6 +218,53 @@ def batch_norm(inputs,
 
 
 @add_arg_scope
+def bias_add(inputs,
+             activation_fn=None,
+             initializer=init_ops.zeros_initializer,
+             regularizer=None,
+             reuse=None,
+             variables_collections=None,
+             outputs_collections=None,
+             scope=None):
+  """Adds a bias to the inputs.
+
+  Can be used as a normalizer function for conv2d and fully_connected.
+
+  Args:
+    inputs: a tensor of with at least rank 2 and value for the last dimension,
+      e.g. `[batch_size, depth]`, `[None, None, None, depth]`.
+    activation_fn: Optional activation function.
+    initializer: An initializer for the bias, defaults to 0.
+    regularizer: A regularizer like the result of
+      `l1_regularizer` or `l2_regularizer`.
+    reuse: whether or not the layer and its variables should be reused. To be
+      able to reuse the layer scope must be given.
+    variables_collections: optional collections for the variables.
+    outputs_collections: collections to add the outputs.
+    scope: Optional scope for variable_op_scope.
+
+  Returns:
+    a tensor representing the result of adding biases to the inputs.
+  """
+  with variable_scope.variable_op_scope([inputs],
+                                        scope, 'BiasAdd', reuse=reuse) as sc:
+    dtype = inputs.dtype.base_dtype
+    num_features = utils.last_dimension(inputs.get_shape(), min_rank=2)
+    biases_collections = utils.get_variable_collections(variables_collections,
+                                                        'biases')
+    biases = variables.model_variable('biases',
+                                      shape=[num_features,],
+                                      dtype=dtype,
+                                      initializer=initializer,
+                                      regularizer=regularizer,
+                                      collections=biases_collections)
+    outputs = nn.bias_add(inputs, biases)
+    if activation_fn:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
+@add_arg_scope
 def convolution2d(inputs,
                   num_outputs,
                   kernel_size,
@@ -237,7 +273,7 @@ def convolution2d(inputs,
                   activation_fn=nn.relu,
                   normalizer_fn=None,
                   normalizer_params=None,
-                  weights_initializer=None,
+                  weights_initializer=initializers.xavier_initializer(),
                   weights_regularizer=None,
                   biases_initializer=init_ops.zeros_initializer,
                   biases_regularizer=None,
@@ -304,8 +340,6 @@ def convolution2d(inputs,
                         padding=padding)
     if normalizer_fn:
       normalizer_params = normalizer_params or {}
-      normalizer_params['variables_collections'] = normalizer_params.get(
-          'variables_collections', variables_collections)
       outputs = normalizer_fn(outputs, **normalizer_params)
     else:
       if biases_initializer is not None:
@@ -324,12 +358,76 @@ def convolution2d(inputs,
 
 
 @add_arg_scope
+def dropout(inputs,
+            keep_prob=0.5,
+            noise_shape=None,
+            is_training=True,
+            outputs_collections=None,
+            scope=None):
+  """Returns a dropout op applied to the input.
+
+  With probability `keep_prob`, outputs the input element scaled up by
+  `1 / keep_prob`, otherwise outputs `0`.  The scaling is so that the expected
+  sum is unchanged.
+
+  Args:
+    inputs: the tensor to pass to the nn.dropout op.
+    keep_prob: A scalar `Tensor` with the same type as x. The probability
+      that each element is kept.
+    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+      shape for randomly generated keep/drop flags.
+    is_training: A bool `Tensor` indicating whether or not the model
+      is in training mode. If so, dropout is applied and values scaled.
+      Otherwise, inputs is returned.
+    outputs_collections: collection to add the outputs.
+    scope: Optional scope for op_scope.
+
+  Returns:
+    a tensor representing the output of the operation.
+  """
+  with ops.op_scope([inputs], scope, 'Dropout') as sc:
+    is_training = ops.convert_to_tensor(is_training)
+    outputs = control_flow_ops.cond(
+        is_training,
+        lambda: nn.dropout(inputs, keep_prob, noise_shape),
+        lambda: inputs)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
+def flatten(inputs,
+            outputs_collections=None,
+            scope=None):
+  """Flattens the input while maintaining the batch_size.
+
+    Assumes that the first dimension represents the batch.
+
+  Args:
+    inputs: a tensor of size [batch_size, ...].
+    outputs_collections: collection to add the outputs.
+    scope: Optional scope for op_scope.
+
+  Returns:
+    a flattened tensor with shape [batch_size, k].
+  Raises:
+    ValueError: if inputs.shape is wrong.
+  """
+  if len(inputs.get_shape()) < 2:
+    raise ValueError('Inputs must be have a least 2 dimensions')
+  dims = inputs.get_shape()[1:]
+  k = dims.num_elements()
+  with ops.op_scope([inputs], scope, 'Flatten') as sc:
+    outputs = array_ops.reshape(inputs, [-1, k])
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
 def fully_connected(inputs,
                     num_outputs,
                     activation_fn=nn.relu,
                     normalizer_fn=None,
                     normalizer_params=None,
-                    weights_initializer=None,
+                    weights_initializer=initializers.xavier_initializer(),
                     weights_regularizer=None,
                     biases_initializer=init_ops.zeros_initializer,
                     biases_regularizer=None,
@@ -377,7 +475,9 @@ def fully_connected(inputs,
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
   with variable_scope.variable_op_scope([inputs],
-                                        scope, 'FC', reuse=reuse) as sc:
+                                        scope,
+                                        'fully_connected',
+                                        reuse=reuse) as sc:
     dtype = inputs.dtype.base_dtype
     num_input_units = utils.last_dimension(inputs.get_shape(), min_rank=2)
 
@@ -402,8 +502,6 @@ def fully_connected(inputs,
     outputs = standard_ops.matmul(inputs, weights)
     if normalizer_fn:
       normalizer_params = normalizer_params or {}
-      normalizer_params['variables_collections'] = normalizer_params.get(
-          'variables_collections', variables_collections)
       outputs = normalizer_fn(outputs, **normalizer_params)
     else:
       if biases_initializer is not None:
@@ -423,6 +521,83 @@ def fully_connected(inputs,
     if activation_fn:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
+@add_arg_scope
+def max_pool2d(inputs,
+               kernel_size,
+               stride=2,
+               padding='VALID',
+               outputs_collections=None,
+               scope=None):
+  """Adds a Max Pooling op.
+
+  It is assumed by the wrapper that the pooling is only done per image and not
+  in depth or batch.
+
+  Args:
+    inputs: a tensor of size [batch_size, height, width, depth].
+    kernel_size: a list of length 2: [kernel_height, kernel_width] of the
+      pooling kernel over which the op is computed. Can be an int if both
+      values are the same.
+    stride: a list of length 2: [stride_height, stride_width].
+      Can be an int if both strides are the same.  Note that presently
+      both strides must have the same value.
+    padding: the padding method, either 'VALID' or 'SAME'.
+    outputs_collections: collection to add the outputs.
+    scope: Optional scope for op_scope.
+
+  Returns:
+    a tensor representing the results of the pooling operation.
+  Raises:
+    ValueError: if 'kernel_size' is not a 2-D list
+  """
+  with ops.op_scope([inputs], scope, 'MaxPool2D') as sc:
+    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
+    stride_h, stride_w = utils.two_element_tuple(stride)
+    outputs = nn.max_pool(inputs,
+                          ksize=[1, kernel_h, kernel_w, 1],
+                          strides=[1, stride_h, stride_w, 1],
+                          padding=padding)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
+def one_hot_encoding(labels,
+                     num_classes,
+                     on_value=1.0,
+                     off_value=0.0,
+                     outputs_collections=None,
+                     scope=None):
+  """Transform numeric labels into onehot_labels using tf.one_hot.
+
+  Args:
+    labels: [batch_size] target labels.
+    num_classes: total number of classes.
+    on_value: A scalar defining the on-value.
+    off_value: A scalar defining the off-value.
+    outputs_collections: collection to add the outputs.
+    scope: Optional scope for op_scope.
+
+  Returns:
+    one hot encoding of the labels.
+  """
+  with ops.op_scope([labels, num_classes], scope, 'OneHotEncoding') as sc:
+    if labels.dtype == dtypes.int32:
+      labels = standard_ops.to_int64(labels)
+    outputs = standard_ops.one_hot(labels,
+                                   num_classes,
+                                   on_value=on_value,
+                                   off_value=off_value)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+def _apply_activation(y, activation_fn, output_collections):
+  if activation_fn:
+    y = activation_fn(y)
+  ops.add_to_collections(list(output_collections or []) +
+                         [ops.GraphKeys.ACTIVATIONS], y)
+  return y
 
 
 def legacy_fully_connected(x,
