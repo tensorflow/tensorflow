@@ -159,6 +159,7 @@ ifeq ($(TARGET),IOS)
 		-arch armv7 \
 		-D__thread= \
 		-Wno-c++11-narrowing \
+		-mno-thumb \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7 \
@@ -172,6 +173,7 @@ ifeq ($(TARGET),IOS)
 		-arch armv7s \
 		-D__thread= \
 		-Wno-c++11-narrowing \
+		-mno-thumb \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7s \
