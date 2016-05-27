@@ -90,6 +90,7 @@ target_include_directories(tf_core_lib PUBLIC
     ${eigen_INCLUDE_DIRS}
     ${re2_EXTRA_INCLUDE_DIR}
     ${jsoncpp_INCLUDE_DIR}
+    ${boringssl_INCLUDE_DIR}
 )
 #target_link_libraries(tf_core_lib
 #    ${CMAKE_THREAD_LIBS_INIT}
@@ -113,6 +114,7 @@ add_dependencies(tf_core_lib
     eigen
     tf_protos_cc
     jsoncpp
+    boringssl
 )
 
 

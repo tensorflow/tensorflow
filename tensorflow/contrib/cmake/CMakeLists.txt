@@ -44,6 +44,7 @@ include(jpeg)
 include(re2)
 include(eigen)
 include(jsoncpp)
+include(boringssl)
 
 # Let's get to work!
 include(tf_core_framework.cmake)
