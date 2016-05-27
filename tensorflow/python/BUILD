@@ -134,7 +134,7 @@ cc_binary(
     }),
     linkshared = 1,
     deps = [
-        "//google/protobuf",
+        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
     ],
 )
@@ -885,7 +885,7 @@ py_library(
     name = "util",
     srcs = glob(["util/**/*.py"]),
     srcs_version = "PY2AND3",
-    deps = ["//google/protobuf:protobuf_python"],
+    deps = ["@protobuf//:protobuf_python"],
 )
 
 tf_proto_library(

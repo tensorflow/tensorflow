@@ -61,8 +61,9 @@ function main() {
 
   # protobuf pip package doesn't ship with header files. Copy the headers
   # over so user defined ops can be compiled.
+  mkdir -p ${TMPDIR}/google
   rsync --include "*/" --include "*.h" --exclude "*" --prune-empty-dirs -a \
-    $RUNFILES/google ${TMPDIR}
+    $RUNFILES/external/protobuf ${TMPDIR}/google
   rsync -a $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
