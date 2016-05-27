@@ -152,5 +152,35 @@ class ReverseTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
 
+class MeshgridTest(test_util.TensorFlowTestCase):
+
+  def _compare(self, n, np_dtype, use_gpu):
+    inputs = []
+    for i in range(n):
+      x = np.linspace(-10, 10, 5, dtype=np_dtype)
+      if np_dtype in (np.complex64, np.complex128):
+        x += 1j
+      inputs.append(x)
+
+    numpy_out = np.meshgrid(*inputs)
+    with self.test_session(use_gpu=use_gpu):
+      tf_out = array_ops.meshgrid(*inputs)
+      for X, _X in zip(numpy_out, tf_out):
+        print(X, _X)
+        self.assertAllEqual(X, _X.eval())
+
+  def testCompare(self):
+    for t in (np.float16, np.float32, np.float64, np.int32, np.int64,
+            np.complex64, np.complex128):
+      self._compare(1, t, False)
+      self._compare(2, t, False)
+      self._compare(3, t, False)
+      self._compare(4, t, False)
+      self._compare(5, t, False)
+
+    with self.assertRaises(ValueError):
+      self._compare(6, np.float32, False)
+
+
 if __name__ == "__main__":
   googletest.main()

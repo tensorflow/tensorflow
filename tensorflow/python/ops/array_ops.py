@@ -38,6 +38,7 @@ of a tensor and change the shape of a tensor.
 @@reshape
 @@squeeze
 @@expand_dims
+@@meshgrid
 
 ## Slicing and Joining
 
@@ -984,6 +985,62 @@ def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invali
                                      mode="SYMMETRIC",
                                      name=name)
   raise ValueError("Unknown padding mode: %s" % mode)
+
+
+def meshgrid(*args, indexing="xy", name="meshgrid"):
+  """Broadcasts parameters for evaluation on an N-D grid.
+
+  Given N one-dimensional coordinate arrays `*args`, returns a list `outputs`
+  of N-D coordinate arrays for evaluating expressions on an N-D grid.
+
+  For example:
+
+  Calling `X, Y = meshgrid(x, y)` with the tensors
+  ```prettyprint
+    x = [1, 2, 3]
+    y = [4, 5, 6]
+  ```
+  results in
+  ```prettyprint
+    X = [[1, 1, 1],
+         [2, 2, 2],
+         [3, 3, 3]]
+    Y = [[4, 5, 6],
+         [4, 5, 6],
+         [4, 5, 6]]
+  ```
+
+  Args:
+    *args: `Tensor`s with rank 1
+
+  Returns:
+    outputs: A list of N `Tensor`s with rank N
+
+  """
+  if indexing not in ("xy", "ij"):
+    raise ValueError("indexing parameter must be either 'xy' or 'ij'")
+
+  num_inputs = len(args)
+
+  if num_inputs > 5:
+    raise ValueError("meshgrid only supports up to 5 dimensions")
+
+  ones = (1,) * num_inputs
+
+  with ops.op_scope(args, name, "meshgrid") as name:
+    # Prepare reshape by inserting dimensions with size 1 where needed
+    shapes = [ones[:i] + (-1,) + ones[i + 1:] for i in range(num_inputs)]
+    # Create parameters for broadcasting each tensor to the full size
+    sizes = [shape(x)[0] for x in args]
+    bcast = [sizes[:i] + [1] + sizes[i + 1:] for i in range(num_inputs)]
+
+    # By default, the numpy version swaps the instructions
+    # for the first and second dimension
+    if indexing == "xy" and num_inputs > 1:
+      shapes[0], shapes[1] = shapes[1], shapes[0]
+      bcast[0], bcast[1] = bcast[1], bcast[0]
+
+    return [tile(reshape(a, r), e) for a, r, e in zip(args, shapes, bcast)]
 
 
 @ops.RegisterShape("Placeholder")
