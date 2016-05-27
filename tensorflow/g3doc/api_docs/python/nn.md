@@ -1012,7 +1012,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
     2-D with shape `[batch_size, num_classes]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1034,7 +1034,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
     2-D with shape `[batch_size, num_classes]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
