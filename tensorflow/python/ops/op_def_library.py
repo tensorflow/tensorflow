@@ -408,25 +408,10 @@ class OpDefLibrary(object):
             values = ops.convert_n_to_tensor(
                 values, name=input_arg.name, dtype=dtype if dtype else None,
                 as_ref=input_arg.is_ref)
-<<<<<<< HEAD
             if input_arg.number_attr and len(
                 set(v.dtype.base_dtype for v in values)) > 1:
               raise TypeError()  # All types should match.
           except (TypeError, ValueError):
-=======
-          except (TypeError, ValueError) as e:
-            import sys, traceback
-
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            print("*** print_tb:")
-            traceback.print_tb(exc_traceback, limit=1, file=sys.stdout)
-            print("*** print_exception:")
-            traceback.print_exception(exc_type, exc_value, exc_traceback,
-                                      limit=2, file=sys.stdout)
- 
-            assert dtype is not None, "Should not fail if dtype is None"
-            assert input_arg.number_attr, "Should be number_attr case"
->>>>>>> e12c766adb75f9ab94c41ef00e3d19f4a0e89d5d
             # What types does the conversion function think values have?
             observed_types = []
             for value in values:
