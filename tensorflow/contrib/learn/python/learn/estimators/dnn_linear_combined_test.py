@@ -235,7 +235,6 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
   def testPredict(self):
     """Tests weight column in evaluation."""
-
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1], [0], [0], [0]])
@@ -284,6 +283,45 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     predictions = classifier.predict(input_fn=_input_fn_train)
     self.assertEqual(_sklearn.accuracy_score([1, 0, 0, 0], predictions),
                      scores['my_accuracy'])
+
+  def testVariableQuery(self):
+    """Tests bias is centered or not."""
+    def _input_fn_train():
+      # Create 4 rows, three (y = x), one (y=Not(x))
+      target = tf.constant([[1], [1], [1], [0]])
+      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      return features, target
+
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_hidden_units=[3, 3])
+
+    classifier.train(input_fn=_input_fn_train, steps=500)
+    var_names = classifier.get_variable_names()
+    self.assertGreater(len(var_names), 3)
+    for name in var_names:
+      classifier.get_variable_value(name)
+
+  def testCenteredBias(self):
+    """Tests bias is centered or not."""
+    def _input_fn_train():
+      # Create 4 rows, three (y = x), one (y=Not(x))
+      target = tf.constant([[1], [1], [1], [0]])
+      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      return features, target
+
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_hidden_units=[3, 3])
+
+    classifier.train(input_fn=_input_fn_train, steps=500)
+    # logodds(0.75) = 1.09861228867
+    self.assertAlmostEqual(
+        1.0986,
+        float(classifier.get_variable_value('centered_bias_weight')[0]),
+        places=2)
 
 
 class DNNLinearCombinedRegressorTest(tf.test.TestCase):

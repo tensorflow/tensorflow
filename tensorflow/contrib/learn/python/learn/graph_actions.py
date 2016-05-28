@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import itertools
 import sys
+import threading
 import time
 
 import numpy as np
@@ -53,6 +54,30 @@ from tensorflow.python.training import supervisor as tf_supervisor
 Supervisor = tf_supervisor.Supervisor
 Coordinator = coordinator.Coordinator
 SummaryWriter = summary_io.SummaryWriter
+
+# Singletone for SummaryWriter per logdir folder.
+_SUMMARY_WRITERS = {}
+
+# Lock protecting _SUMMARY_WRITERS
+_summary_writer_lock = threading.Lock()
+
+
+def get_summary_writer(logdir):
+  """Returns single SummaryWriter per logdir in current run.
+
+  Args:
+    logdir: str, folder to write summaries.
+
+  Returns:
+    Existing `SummaryWriter` object or new one if never wrote to given
+    directory.
+  """
+  _summary_writer_lock.acquire()
+  if logdir not in _SUMMARY_WRITERS:
+    _SUMMARY_WRITERS[logdir] = SummaryWriter(logdir,
+                                             graph=ops.get_default_graph())
+  _summary_writer_lock.release()
+  return _SUMMARY_WRITERS[logdir]
 
 
 class NanLossDuringTrainingError(RuntimeError):
@@ -196,6 +221,8 @@ def train(graph,
   if global_step_tensor is None:
     raise ValueError('No "global_step" was provided or found in the graph.')
 
+  summary_writer = get_summary_writer(output_dir)
+
   # TODO(ipolosukhin): Replace all functionality of Supervisor with Monitors.
   if not supervisor_is_chief:
     # monitors should run only in supervisor.
@@ -205,7 +232,7 @@ def train(graph,
         loss_op=loss_op,
         summary_op=logging_ops.get_summary_op(),
         save_summary_steps=supervisor_save_summaries_steps,
-        output_dir=output_dir)
+        summary_writer=summary_writer)
 
   # Start monitors, can create graph parts.
   for monitor in monitors:
@@ -220,6 +247,7 @@ def train(graph,
       saver=_make_saver(graph),
       global_step=global_step_tensor,
       summary_op=None,
+      summary_writer=summary_writer,
       save_model_secs=supervisor_save_model_secs,
       init_fn=init_fn)
   session = supervisor.PrepareSession(master=supervisor_master,
@@ -500,9 +528,7 @@ def evaluate(graph,
         if summary_op is not None and feed_fn is None:
           summary_writer = None
           try:
-            summary_writer = SummaryWriter(output_dir,
-                                           graph_def=session.graph_def)
-
+            summary_writer = get_summary_writer(output_dir)
             summary_str = session.run(summary_op)
             if summary_str:
               summary_writer.add_summary(summary_str, current_global_step)

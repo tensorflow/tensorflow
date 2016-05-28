@@ -1,0 +1,71 @@
+{
+  "type": "record",
+  "name": "Example",
+  "fields": [
+    {
+      "name": "features",
+      "type": {
+        "type": "record",
+        "name": "Features",
+        "fields": [
+          {
+            "name": "feature",
+            "type": {
+              "type": "map",
+              "values": {
+                "type": "record",
+                "name": "Feature",
+                "fields": [
+                  {
+                    "name": "values",
+                    "type": [
+                      {
+                        "type": "record",
+                        "name": "BytesList",
+                        "fields": [
+                          {
+                            "name": "value",
+                            "type": {
+                              "type": "array",
+                              "items": "bytes"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "record",
+                        "name": "FloatList",
+                        "fields": [
+                          {
+                            "name": "value",
+                            "type": {
+                              "type": "array",
+                              "items": "float"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "record",
+                        "name": "Int64List",
+                        "fields": [
+                          {
+                            "name": "value",
+                            "type": {
+                              "type": "array",
+                              "items": "long"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
