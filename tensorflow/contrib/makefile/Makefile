@@ -94,6 +94,7 @@ PROTOGENDIR := $(GENDIR)proto/
 
 # Settings for the target compiler.
 CXX := gcc
+OPTFLAGS := -O0
 CXXFLAGS := --std=c++11
 LDFLAGS := \
 -L/usr/local/lib
