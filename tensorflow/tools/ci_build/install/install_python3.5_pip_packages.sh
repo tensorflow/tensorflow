@@ -34,8 +34,6 @@ make install
 rm -f /usr/bin/swig
 ln -s /usr/local/bin/swig /usr/bin/swig
 
-which swig
-
 popd
 
 rm -rf swig-3.0.8
@@ -61,3 +59,4 @@ pip3.5 install --upgrade scikit-learn
 # Install recent-enough version of wheel for Python 3.5 wheel builds
 pip3.5 install wheel==0.29.0
 
+pip3.5 install --upgrade pandas==0.18.1
