@@ -42,6 +42,7 @@ from tensorflow.contrib.learn.python.learn.graph_actions import evaluate
 from tensorflow.contrib.learn.python.learn.graph_actions import infer
 from tensorflow.contrib.learn.python.learn.graph_actions import train
 from tensorflow.contrib.learn.python.learn.io import data_feeder
+from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -263,6 +264,27 @@ class BaseEstimator(sklearn.BaseEstimator):
       Numpy array of predicted classes or regression values.
     """
     return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
+
+  def get_variable_value(self, name):
+    """Returns value of the variable given by name.
+
+    Args:
+      name: string, name of the tensor.
+
+    Returns:
+      Numpy array - value of the tensor.
+    """
+    if name.endswith(':0'):
+      name = name[:-2]
+    return checkpoints.load_variable(self.model_dir, name)
+
+  def get_variable_names(self):
+    """Returns list of all variable names in this model.
+
+    Returns:
+      List of names.
+    """
+    return [name for name, _ in checkpoints.list_variables(self.model_dir)]
 
   @property
   def model_dir(self):
