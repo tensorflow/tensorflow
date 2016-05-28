@@ -17,7 +17,7 @@ fi
 
 make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARMV7S LIB_NAME=${LIB_PREFIX}-armv7s.a OPTFLAGS=$1
+TARGET=IOS IOS_ARCH=ARMV7S LIB_NAME=${LIB_PREFIX}-armv7s.a OPTFLAGS="$1"
 if [ $? -ne 0 ]
 then
   echo "arm7vs compilation failed."
