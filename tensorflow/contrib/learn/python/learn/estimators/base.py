@@ -33,7 +33,6 @@ from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_data_feeder
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
@@ -262,27 +261,6 @@ class TensorFlowEstimator(estimator.Estimator):
       Tensor.
     """
     return self._graph.get_tensor_by_name(name)
-
-  def get_tensor_value(self, name):
-    """Returns value of the tensor give by name.
-
-    Args:
-      name: string, name of the tensor.
-
-    Returns:
-      Numpy array - value of the tensor.
-    """
-    if name.endswith(':0'):
-      name = name[:-2]
-    return checkpoints.load_variable(self.model_dir, name)
-
-  def get_variable_names(self):
-    """Returns list of all variable names in this model.
-
-    Returns:
-      List of names.
-    """
-    return [name for name, _ in checkpoints.list_variables(self.model_dir)]
 
   def save(self, path):
     """Saves checkpoints and graph to given path.
