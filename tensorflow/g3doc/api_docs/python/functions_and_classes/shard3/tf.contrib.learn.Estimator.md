@@ -101,6 +101,33 @@ Get parameters for this estimator.
 
 - - -
 
+#### `tf.contrib.learn.Estimator.get_variable_names()` {#Estimator.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.get_variable_value(name)` {#Estimator.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
 #### `tf.contrib.learn.Estimator.model_dir` {#Estimator.model_dir}
 
 
