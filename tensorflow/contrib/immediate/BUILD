@@ -126,6 +126,7 @@ py_test(
 py_test(
     name = "math_ops_test",
     srcs = ["python/immediate/ops/math_ops_test.py"],
+    size = "small",
     deps = [
            ":immediate_py",
            ":immediate_test_lib",
@@ -182,6 +183,7 @@ py_test(
 py_test(
     name = "nn_test",
     srcs = ["python/immediate/ops/nn_test.py"],
+    size = "medium",
     deps = [
            ":immediate_py",
            ":immediate_test_lib",
@@ -196,6 +198,7 @@ py_test(
 py_test(
     name = "nn_test2",
     srcs = ["python/immediate/ops/nn_test2.py"],
+    size = "medium",
     deps = [
            ":immediate_py",
            ":immediate_test_lib",
@@ -210,6 +213,7 @@ py_test(
 py_test(
     name = "batchnorm_test",
     srcs = ["python/immediate/ops/batchnorm_test.py"],
+    size = "medium",
     deps = [
            ":immediate_py",
            ":immediate_test_lib",

@@ -7,6 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import imp
+import inspect
 import re
 import sys
 import types
@@ -44,6 +45,7 @@ def get_symbol_name(symbol):
 def copy_function(old_func, updated_module):
   """Copies a function, updating it to point to given module."""
 
+  # TODO(yaroslavvb): also copy defaults and closure
   # Decorators don't set __module__ to the current function
   # detect this case and return it unchanged
   if old_func.__globals__ != sys.modules[old_func.__module__].__dict__:
@@ -69,11 +71,16 @@ class ModuleRewriter(object):
     indirectly. If symbol-rewriter returns non-None value, the entire module
     is copied, the affected symbol is replaced with output of symbol rewriter
     and all references to old module are updated to point to new module. If
-    module is not affected by symbol-rewriter, original reference is returned.
+    symbol-rewriter always returns None, module is not affected and original
+    reference is returned. If module is copied, any modules referencing it
+    will also be copied, and the references will be updated to point to new
+    copy.
 
-    Only function/module references are followed. This means that while object
-    and type references are retained in new module, their respective references
-    are not updated and they will continue point to the old module hierarchy.
+    Only function/module references are followed, which includes decorator-
+    wrapped functions. References inside objects and types are not followed. 
+    This means that while object and type references are retained in new module,
+    references they rely on are not updated and will continue pointing to the
+    old module hierarchy.
 
     Args:
       symbol_rewriter: callable object that implements symbol rewriting. It
@@ -136,10 +143,11 @@ class ModuleRewriter(object):
                                              original_module.__name__))
 
       # Case 2: symbol is a module which may be affected by symbol_rewriter
-      elif isinstance(symbol, types.ModuleType):
-        if get_symbol_file(symbol) not in self._module_stack:
+      elif isinstance(symbol, types.ModuleType):  # prevent infinite recursion
+        if get_symbol_file(symbol) not in self._module_stack: 
           new_symbol = self._rewrite_module(symbol)
 
+          # copied modules always get a new name (prefixed with module_prefix)
           if new_symbol.__name__ != symbol.__name__:
             updated_symbols[symbol_name] = new_symbol
 

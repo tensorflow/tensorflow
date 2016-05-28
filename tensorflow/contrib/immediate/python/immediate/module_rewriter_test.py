@@ -60,8 +60,8 @@ class ModuleRewriterTest(tf.test.TestCase):
 
 
   def testOpDefLibRewriter(self):
-
     import pdb, traceback, sys
+
 
     try:
       env = immediate.Env(tf)

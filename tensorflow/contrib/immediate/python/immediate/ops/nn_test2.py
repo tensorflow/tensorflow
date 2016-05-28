@@ -57,112 +57,112 @@ gen_nn_ops = env.gen_nn_ops
 #    with ops.colocate_with(params[0]):
 
 
-# class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
+class ComputeSampledLogitsTest(test_util.TensorFlowTestCase):
 
-#   def setUp(self):
-#     self._num_classes = 5
-#     self._dim = 10
-#     self._batch_size = 3
-#     self._num_shards = 3
+  def setUp(self):
+    self._num_classes = 5
+    self._dim = 10
+    self._batch_size = 3
+    self._num_shards = 3
 
-#   def _GenerateTestInputs(self):
-#     np.random.seed(0)
-#     weights = np.random.randn(self._num_classes, self._dim).astype(np.float32)
-#     biases = np.random.randn(self._num_classes).astype(np.float32)
-#     hidden_acts = np.random.randn(self._batch_size, self._dim).astype(
-#         np.float32)
-#     sharded_weights = [
-#         weights[[row for row in range(self._num_classes)
-#                  if row % self._num_shards == shard]]
-#         for shard in range(self._num_shards)]
-#     return weights, biases, hidden_acts, sharded_weights
+  def _GenerateTestInputs(self):
+    np.random.seed(0)
+    weights = np.random.randn(self._num_classes, self._dim).astype(np.float32)
+    biases = np.random.randn(self._num_classes).astype(np.float32)
+    hidden_acts = np.random.randn(self._batch_size, self._dim).astype(
+        np.float32)
+    sharded_weights = [
+        weights[[row for row in range(self._num_classes)
+                 if row % self._num_shards == shard]]
+        for shard in range(self._num_shards)]
+    return weights, biases, hidden_acts, sharded_weights
 
-#   def _ComputeSampledLogitsNP(self, true_w, true_b, sampled_w, sampled_b,
-#                               hidden_acts,
-#                               num_true=1,
-#                               true_expected=None,
-#                               sampled_expected=None):
+  def _ComputeSampledLogitsNP(self, true_w, true_b, sampled_w, sampled_b,
+                              hidden_acts,
+                              num_true=1,
+                              true_expected=None,
+                              sampled_expected=None):
 
-#     batch_size, dim = hidden_acts.shape
-#     true_logits = np.sum(
-#         hidden_acts.reshape((batch_size, 1, dim)) * true_w.reshape(
-#             (batch_size, num_true, dim)),
-#         axis=2)
-#     true_b = true_b.reshape((batch_size, num_true))
-#     true_logits += true_b
-#     sampled_logits = np.dot(hidden_acts, sampled_w.T) + sampled_b
+    batch_size, dim = hidden_acts.shape
+    true_logits = np.sum(
+        hidden_acts.reshape((batch_size, 1, dim)) * true_w.reshape(
+            (batch_size, num_true, dim)),
+        axis=2)
+    true_b = true_b.reshape((batch_size, num_true))
+    true_logits += true_b
+    sampled_logits = np.dot(hidden_acts, sampled_w.T) + sampled_b
 
-#     if true_expected is not None:
-#       true_logits -= np.log(true_expected)
-#     if sampled_expected is not None:
-#       sampled_logits -= np.log(sampled_expected[np.newaxis, :])
+    if true_expected is not None:
+      true_logits -= np.log(true_expected)
+    if sampled_expected is not None:
+      sampled_logits -= np.log(sampled_expected[np.newaxis, :])
 
-#     out_logits = np.concatenate([true_logits, sampled_logits], axis=1)
-#     out_labels = np.hstack((np.ones_like(true_logits) / num_true,
-#                             np.zeros_like(sampled_logits)))
+    out_logits = np.concatenate([true_logits, sampled_logits], axis=1)
+    out_labels = np.hstack((np.ones_like(true_logits) / num_true,
+                            np.zeros_like(sampled_logits)))
 
-#     return out_logits, out_labels
+    return out_logits, out_labels
 
-#   def _ComputeSampledLogitsTF(self, weights, biases, hidden_acts, labels,
-#                               num_sampled, num_classes, num_true, sampled_vals,
-#                               subtract_log_q, remove_accidental_hits,
-#                               name="sampled_loss_TF"):
-#     # Should be called from within a `with test_session():` block
-#     if isinstance(weights, list):
-#       weights_tf = [tf.constant(shard) for shard in weights]
-#     else:
-#       weights_tf = tf.constant(weights)
-#     biases_tf = tf.constant(biases)
-#     hidden_acts_tf = tf.constant(hidden_acts,
-#                                  shape=(self._batch_size, self._dim))
-#     labels_tf = tf.constant(labels,
-#                             dtype=tf.int64,
-#                             shape=(self._batch_size, num_true))
+  def _ComputeSampledLogitsTF(self, weights, biases, hidden_acts, labels,
+                              num_sampled, num_classes, num_true, sampled_vals,
+                              subtract_log_q, remove_accidental_hits,
+                              name="sampled_loss_TF"):
+    # Should be called from within a `with test_session():` block
+    if isinstance(weights, list):
+      weights_tf = [tf.constant(shard) for shard in weights]
+    else:
+      weights_tf = tf.constant(weights)
+    biases_tf = tf.constant(biases)
+    hidden_acts_tf = tf.constant(hidden_acts,
+                                 shape=(self._batch_size, self._dim))
+    labels_tf = tf.constant(labels,
+                            dtype=tf.int64,
+                            shape=(self._batch_size, num_true))
 
-#     pred_logits_tf, pred_labels_tf = tf.nn._compute_sampled_logits(
-#         weights_tf,
-#         biases_tf,
-#         hidden_acts_tf,
-#         labels_tf,
-#         num_sampled,
-#         num_classes,
-#         num_true,
-#         sampled_vals,
-#         subtract_log_q=subtract_log_q,
-#         remove_accidental_hits=remove_accidental_hits,
-#         name=name)
-#     return pred_logits_tf, pred_labels_tf
+    pred_logits_tf, pred_labels_tf = tf.nn._compute_sampled_logits(
+        weights_tf,
+        biases_tf,
+        hidden_acts_tf,
+        labels_tf,
+        num_sampled,
+        num_classes,
+        num_true,
+        sampled_vals,
+        subtract_log_q=subtract_log_q,
+        remove_accidental_hits=remove_accidental_hits,
+        name=name)
+    return pred_logits_tf, pred_labels_tf
 
-#   def testComputeSampledLogitsShapes(self):
-#     # We just check that the shapes of the returned values are correct.
-#     weights, biases, hidden_acts, _ = self._GenerateTestInputs()
-#     sampled = [1, 0, 2, 3]
-#     num_sampled = len(sampled)
-#     true_exp = sampled_exp = [1., 1., 1., 1.]
-#     test_sampled_vals = (sampled, true_exp, sampled_exp)
-#     sampled_w, sampled_b = weights[sampled], biases[sampled]
+  def testComputeSampledLogitsShapes(self):
+    # We just check that the shapes of the returned values are correct.
+    weights, biases, hidden_acts, _ = self._GenerateTestInputs()
+    sampled = [1, 0, 2, 3]
+    num_sampled = len(sampled)
+    true_exp = sampled_exp = [1., 1., 1., 1.]
+    test_sampled_vals = (sampled, true_exp, sampled_exp)
+    sampled_w, sampled_b = weights[sampled], biases[sampled]
 
-#     with self.test_session() as sess:
-#       for num_true_test in range(1, 5):
-#         labels = np.random.randint(low=0, high=self._num_classes,
-#                                    size=self._batch_size * num_true_test)
-#         true_w, true_b = weights[labels], biases[labels]
+    with self.test_session() as sess:
+      for num_true_test in range(1, 5):
+        labels = np.random.randint(low=0, high=self._num_classes,
+                                   size=self._batch_size * num_true_test)
+        true_w, true_b = weights[labels], biases[labels]
 
-#         logits_np, labels_np = self._ComputeSampledLogitsNP(
-#             true_w, true_b, sampled_w, sampled_b, hidden_acts,
-#             num_true=num_true_test)
+        logits_np, labels_np = self._ComputeSampledLogitsNP(
+            true_w, true_b, sampled_w, sampled_b, hidden_acts,
+            num_true=num_true_test)
 
-#         logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-#             weights, biases, hidden_acts, labels, num_sampled,
-#             self._num_classes,
-#             num_true=num_true_test,
-#             sampled_vals=test_sampled_vals,
-#             remove_accidental_hits=True,
-#             subtract_log_q=False)
+        logits_tf, labels_tf = self._ComputeSampledLogitsTF(
+            weights, biases, hidden_acts, labels, num_sampled,
+            self._num_classes,
+            num_true=num_true_test,
+            sampled_vals=test_sampled_vals,
+            remove_accidental_hits=True,
+            subtract_log_q=False)
 
-#       logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
-#       self.assertEqual(logits_np.shape, logits_tf_val.shape)
-#       self.assertEqual(labels_np.shape, labels_tf_val.shape)
+      logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
+      self.assertEqual(logits_np.shape, logits_tf_val.shape)
+      self.assertEqual(labels_np.shape, labels_tf_val.shape)
 
 #   def testComputeSampledLogitsValues(self):
 #     # Here we check the actual numerics.
