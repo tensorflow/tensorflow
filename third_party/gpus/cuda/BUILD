@@ -178,7 +178,7 @@ genrule(
     ],
     cmd = if_cuda(
         # Under cuda config, create all the symbolic links to the actual cuda files
-        "OUTPUTDIR=`{} -f $(@D)/../../..`; cd third_party/gpus/cuda; OUTPUTDIR=$$OUTPUTDIR ./cuda_config.sh --check;".format(readlink_command()),
+        "OUTPUTDIR=`{} -f $(@D)/../../..`; cd `dirname $(location :cuda_config.sh)`; OUTPUTDIR=$$OUTPUTDIR ./cuda_config.sh --check;".format(readlink_command()),
 
         # Under non-cuda config, create all dummy files to make the build go through
         ";".join([

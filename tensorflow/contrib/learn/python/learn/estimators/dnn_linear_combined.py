@@ -28,7 +28,7 @@ import six
 
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
-from tensorflow.contrib.framework.python.ops import variables as variables
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -39,6 +39,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.training import training
 
 
 # TODO(ispir): Increase test coverage
@@ -107,6 +109,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       self._dnn_activation_fn = nn.relu
     self._dnn_weight_collection = "DNNLinearCombined_dnn"
     self._linear_weight_collection = "DNNLinearCombined_linear"
+    self._centered_bias_weight_collection = "centered_bias"
 
   def predict(self, x=None, input_fn=None, batch_size=None):
     """Returns predictions for given features.
@@ -141,10 +144,12 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
   def _get_train_ops(self, features, targets):
     """See base class."""
-    global_step = variables.get_global_step()
+    global_step = contrib_variables.get_global_step()
     assert global_step
-    loss = self._loss(
-        self._logits(features), targets, self._get_weight_tensor(features))
+    logits = self._logits(features)
+    with ops.control_dependencies([self._centered_bias_step(
+        targets, self._get_weight_tensor(features))]):
+      loss = self._loss(logits, targets, self._get_weight_tensor(features))
     logging_ops.scalar_summary("loss", loss)
 
     linear_vars = self._get_linear_vars()
@@ -274,6 +279,26 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       return features
     return {"": features}
 
+  def _centered_bias(self):
+    centered_bias = variables.Variable(
+        array_ops.zeros([self._num_label_columns()]),
+        collections=[self._centered_bias_weight_collection,
+                     ops.GraphKeys.VARIABLES],
+        name="centered_bias_weight")
+    # TODO(zakaria): Create summaries for centered_bias
+    return centered_bias
+
+  def _centered_bias_step(self, targets, weight_tensor):
+    centered_bias = ops.get_collection(self._centered_bias_weight_collection)
+    batch_size = array_ops.size(targets)
+    logits = array_ops.reshape(
+        array_ops.tile(centered_bias[0], [batch_size]),
+        [-1, self._num_label_columns()])
+    loss = self._loss(logits, targets, weight_tensor)
+    # Learn central bias by an optimizer. 0.1 is a convervative lr for a single
+    # variable.
+    return training.AdagradOptimizer(0.1).minimize(loss, var_list=centered_bias)
+
   def _logits(self, features):
     if not (self._get_linear_feature_columns() or
             self._get_dnn_feature_columns()):
@@ -282,11 +307,13 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
     features = self._get_feature_dict(features)
     if self._get_linear_feature_columns() and self._get_dnn_feature_columns():
-      return self._linear_logits(features) + self._dnn_logits(features)
+      logits = self._linear_logits(features) + self._dnn_logits(features)
     elif self._get_dnn_feature_columns():
-      return self._dnn_logits(features)
+      logits = self._dnn_logits(features)
     else:
-      return self._linear_logits(features)
+      logits = self._linear_logits(features)
+
+    return nn.bias_add(logits, self._centered_bias())
 
   def _get_weight_tensor(self, features):
     if not self._weight_column_name:
@@ -300,8 +327,8 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     if self._n_classes < 2:
       loss_vec = math_ops.square(logits - math_ops.to_float(target))
     elif self._n_classes == 2:
-      loss_vec = nn.sigmoid_cross_entropy_with_logits(logits,
-                                                      math_ops.to_float(target))
+      loss_vec = nn.sigmoid_cross_entropy_with_logits(
+          logits, array_ops.reshape(math_ops.to_float(target), [-1, 1]))
     else:
       loss_vec = nn.sparse_softmax_cross_entropy_with_logits(
           logits, array_ops.reshape(target, [-1]))

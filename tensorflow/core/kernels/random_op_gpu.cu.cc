@@ -151,17 +151,8 @@ __global__ void MultinomialKernel(int32 nthreads, const int32 num_classes,
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
     const int maxima_idx = index / num_classes;
     if (ldg(maxima + maxima_idx) == ldg(scores + index)) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
-      // The uint64 overload of atomicMax() only works for a compute capability
-      // of >= 3.5.  If not satisfied, we resort to using atomicExch() which
-      // does not guarantee deterministic results across runs (in the presence
-      // of multiple winners).
       CudaAtomicMax(reinterpret_cast<uint64*>(output + maxima_idx),
                     static_cast<uint64>(index % num_classes));
-#else
-      CudaAtomicExch(reinterpret_cast<uint64*>(output + maxima_idx),
-                     static_cast<uint64>(index % num_classes));
-#endif
     }
   }
 }

@@ -204,7 +204,7 @@ class PhiloxRandom {
   PHILOX_DEVICE_INLINE
   static void MultiplyHighLow(uint32 a, uint32 b, uint32* result_low,
                               uint32* result_high) {
-#ifndef __GCUDACC__
+#ifndef __CUDA_ARCH__
     const uint64 product = static_cast<uint64>(a) * b;
     *result_low = static_cast<uint32>(product);
     *result_high = static_cast<uint32>(product >> 32);
