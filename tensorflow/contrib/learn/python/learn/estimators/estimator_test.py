@@ -96,6 +96,47 @@ class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
 class EstimatorTest(tf.test.TestCase):
 
+  def testUntrained(self):
+    boston = tf.contrib.learn.datasets.load_boston()
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    with self.assertRaises(tf.contrib.learn.NotFittedError):
+      scores = est.evaluate(
+          x=boston.data,
+          y=boston.target.astype(np.float32))
+    with self.assertRaises(tf.contrib.learn.NotFittedError):
+      est.predict(x=boston.data)
+
+  def testContinueTraining(self):
+    boston = tf.contrib.learn.datasets.load_boston()
+    output_dir = tempfile.mkdtemp()
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
+    est.fit(x=boston.data, y=boston.target.astype(np.float32), steps=50)
+    scores = est.evaluate(
+        x=boston.data,
+        y=boston.target.astype(np.float32),
+        metrics={'mean_squared_error': tf.contrib.metrics.streaming_mean_squared_error})
+    del est
+    # Create another estimator object with the same output dir.
+    est2 = tf.contrib.learn.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
+
+    # Check we can evaluate and predict.
+    scores2 = est2.evaluate(
+        x=boston.data,
+        y=boston.target.astype(np.float32),
+        metrics={'mean_squared_error': tf.contrib.metrics.streaming_mean_squared_error})
+    self.assertAllClose(scores2['mean_squared_error'], scores['mean_squared_error'])
+    predictions = est2.predict(x=boston.data)
+    other_score = _sklearn.mean_squared_error(predictions, boston.target)
+    self.assertAllClose(other_score, scores['mean_squared_error'])
+
+    # Check we can keep training.
+    est2.fit(x=boston.data, y=boston.target.astype(np.float32), steps=100)
+    scores3 = est2.evaluate(
+        x=boston.data,
+        y=boston.target.astype(np.float32),
+        metrics={'mean_squared_error': tf.contrib.metrics.streaming_mean_squared_error})
+    self.assertLess(scores3['mean_squared_error'], scores['mean_squared_error'])
+
   def testBostonAll(self):
     boston = tf.contrib.learn.datasets.load_boston()
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)

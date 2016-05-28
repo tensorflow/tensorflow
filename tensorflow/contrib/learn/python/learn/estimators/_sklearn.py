@@ -129,7 +129,7 @@ class _TransformerMixin():
   """Mixin class for all transformer estimators."""
 
 
-class _NotFittedError(ValueError, AttributeError):
+class NotFittedError(ValueError, AttributeError):
   """Exception class to raise if estimator is used before fitting.
 
   This class inherits from both ValueError and AttributeError to help with
@@ -199,14 +199,13 @@ if TRY_IMPORT_SKLEARN:
     try:
       from sklearn.utils.validation import NotFittedError
     except ImportError:
-      NotFittedError = _NotFittedError
+      pass
 else:
   # Naive implementations of sklearn classes and functions.
   BaseEstimator = _BaseEstimator
   ClassifierMixin = _ClassifierMixin
   RegressorMixin = _RegressorMixin
   TransformerMixin = _TransformerMixin
-  NotFittedError = _NotFittedError
   accuracy_score = _accuracy_score
   log_loss = None
   mean_squared_error = _mean_squared_error

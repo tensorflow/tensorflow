@@ -37,6 +37,7 @@ from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
+from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.graph_actions import evaluate
 from tensorflow.contrib.learn.python.learn.graph_actions import infer
 from tensorflow.contrib.learn.python.learn.graph_actions import train
@@ -48,18 +49,9 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import gfile
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
-
-
-# Default metrics for evaluation.
-_EVAL_METRICS = {
-    'regression': {
-        'mean_squared_error': metrics_lib.streaming_mean_squared_error,
-    },
-    'classification': {
-        'logistic': losses.sigmoid_cross_entropy,
-    },}
 
 
 class ModeKeys(object):
@@ -465,9 +457,16 @@ class BaseEstimator(sklearn.BaseEstimator):
     if self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset'):
       return
 
+    # Check that model has been trained.
     checkpoint_path = self._model_dir
+    latest_path = saver.latest_checkpoint(checkpoint_path)
+    if not latest_path:
+      raise NotFittedError("Couldn't find trained model at %s."
+                           % checkpoint_path)
+    # Setup output directory.
     eval_dir = os.path.join(self._model_dir, 'eval' if not name else
                             'eval_' + name)
+
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
@@ -499,7 +498,12 @@ class BaseEstimator(sklearn.BaseEstimator):
     if x is not None:
       input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
 
+    # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      raise NotFittedError("Couldn't find trained model at %s."
+                           % self._model_dir)
+
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
