@@ -381,6 +381,7 @@ void CostModel::InitFromGraph(const Graph& g) {
 void CostModel::AddToCostGraphDef(const Graph* graph,
                                   CostGraphDef* cost_graph) const {
   std::vector<const Edge*> inputs;
+  std::vector<const Edge*> control_inputs;
   for (const Node* n : graph->nodes()) {
     CostGraphDef::Node* cnode = cost_graph->add_node();
     cnode->set_name(n->name());
@@ -389,11 +390,18 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
 
     inputs.clear();
     inputs.resize(n->num_inputs(), nullptr);
+    control_inputs.clear();
     for (const Edge* e : n->in_edges()) {
-      if (!e->IsControlEdge()) {
+      if (e->IsControlEdge()) {
+        control_inputs.push_back(e);
+      } else {
         inputs[e->dst_input()] = e;
       }
     }
+    std::sort(control_inputs.begin(), control_inputs.end(),
+              [this](Edge const* a, Edge const* b) {
+                return Id(a->src()) < Id(b->src());
+              });
 
     for (const Edge* e : inputs) {
       CostGraphDef::Node::InputInfo* input_info = cnode->add_input_info();
@@ -414,6 +422,10 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
         }
       }
       output_info->set_alias_input_port(alias_to_input);
+    }
+
+    for (const Edge* e : control_inputs) {
+      cnode->add_control_input(Id(e->src()));
     }
 
     cnode->set_temporary_memory_size(TempMemorySize(n).value());

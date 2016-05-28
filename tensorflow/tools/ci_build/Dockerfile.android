@@ -18,6 +18,7 @@ ENV BAZELRC /root/.bazelrc
 # Install extra libraries for android sdk.
 # (see http://stackoverflow.com/questions/33427893/can-not-run-android-sdk-build-tools-23-0-2-aapt)
 RUN apt-get update && apt-get install -y \
+        python-numpy \
         lib32stdc++6 \
         lib32z1 \
         && \

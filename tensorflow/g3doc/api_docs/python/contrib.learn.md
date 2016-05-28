@@ -110,6 +110,33 @@ Get parameters for this estimator.
 
 - - -
 
+#### `tf.contrib.learn.BaseEstimator.get_variable_names()` {#BaseEstimator.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.BaseEstimator.get_variable_value(name)` {#BaseEstimator.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
 #### `tf.contrib.learn.BaseEstimator.model_dir` {#BaseEstimator.model_dir}
 
 
@@ -316,6 +343,33 @@ Get parameters for this estimator.
 
   params : mapping of string to any
   Parameter names mapped to their values.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.get_variable_names()` {#Estimator.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.get_variable_value(name)` {#Estimator.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -576,6 +630,22 @@ Returns list of all variable names in this model.
 ##### Returns:
 
   List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowClassifier.get_variable_value(name)` {#TensorFlowClassifier.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -901,6 +971,22 @@ Returns list of all variable names in this model.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNClassifier.get_variable_value(name)` {#TensorFlowDNNClassifier.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNClassifier.model_dir` {#TensorFlowDNNClassifier.model_dir}
 
 
@@ -1218,6 +1304,22 @@ Returns list of all variable names in this model.
 ##### Returns:
 
   List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.get_variable_value(name)` {#TensorFlowDNNRegressor.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -1543,6 +1645,22 @@ Returns list of all variable names in this model.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowEstimator.get_variable_value(name)` {#TensorFlowEstimator.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowEstimator.model_dir` {#TensorFlowEstimator.model_dir}
 
 
@@ -1830,6 +1948,22 @@ Returns list of all variable names in this model.
 ##### Returns:
 
   List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearClassifier.get_variable_value(name)` {#TensorFlowLinearClassifier.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -2128,6 +2262,22 @@ Returns list of all variable names in this model.
 ##### Returns:
 
   List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.get_variable_value(name)` {#TensorFlowLinearRegressor.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -2463,6 +2613,22 @@ Returns list of all variable names in this model.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNClassifier.get_variable_value(name)` {#TensorFlowRNNClassifier.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNClassifier.model_dir` {#TensorFlowRNNClassifier.model_dir}
 
 
@@ -2794,6 +2960,22 @@ Returns list of all variable names in this model.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.get_variable_value(name)` {#TensorFlowRNNRegressor.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.model_dir` {#TensorFlowRNNRegressor.model_dir}
 
 
@@ -3088,6 +3270,22 @@ Returns list of all variable names in this model.
 ##### Returns:
 
   List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRegressor.get_variable_value(name)` {#TensorFlowRegressor.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
 
 
 - - -

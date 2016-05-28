@@ -21,8 +21,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
-import tensorflow.contrib.learn.python.learn.dataframe.queues.feeding_queue_runner as fqr
+
+from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_queue_runner as fqr
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.training import queue_runner
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -111,12 +115,13 @@ def enqueue_data(data,
   """
   # TODO(jamieas): create multithreaded version of enqueue_data.
   if isinstance(data, np.ndarray):
-    dtypes = [tf.int64, tf.as_dtype(data.dtype)]
+    types = [dtypes.int64, dtypes.as_dtype(data.dtype)]
     shapes = [(), data.shape[1:]]
     get_feed_fn = _ArrayFeedFn
   elif HAS_PANDAS and isinstance(data, pd.DataFrame):
-    dtypes = [tf.as_dtype(dt) for dt in [data.index.dtype] + list(data.dtypes)]
-    shapes = [() for _ in dtypes]
+    types = [dtypes.as_dtype(dt)
+             for dt in [data.index.dtype] + list(data.dtypes)]
+    shapes = [() for _ in types]
     get_feed_fn = _PandasFeedFn
   else:
     raise TypeError(
@@ -124,22 +129,22 @@ def enqueue_data(data,
         "installed; got {}".format(
             type(data).__name__))
 
-  placeholders = [tf.placeholder(*type_and_shape)
-                  for type_and_shape in zip(dtypes, shapes)]
+  placeholders = [array_ops.placeholder(*type_and_shape)
+                  for type_and_shape in zip(types, shapes)]
   if shuffle:
     min_after_dequeue = (capacity / 4 if min_after_dequeue is None else
                          min_after_dequeue)
-    queue = tf.RandomShuffleQueue(capacity,
-                                  min_after_dequeue,
-                                  dtypes=dtypes,
-                                  shapes=shapes,
-                                  seed=seed)
+    queue = data_flow_ops.RandomShuffleQueue(capacity,
+                                             min_after_dequeue,
+                                             dtypes=types,
+                                             shapes=shapes,
+                                             seed=seed)
   else:
-    queue = tf.FIFOQueue(capacity, dtypes=dtypes, shapes=shapes)
+    queue = data_flow_ops.FIFOQueue(capacity, dtypes=types, shapes=shapes)
   enqueue_op = queue.enqueue(placeholders)
   feed_fn = get_feed_fn(placeholders, data)
-  queue_runner = fqr.FeedingQueueRunner(queue=queue,
-                                        enqueue_ops=[enqueue_op],
-                                        feed_fn=feed_fn)
-  tf.train.add_queue_runner(queue_runner)
+  runner = fqr.FeedingQueueRunner(queue=queue,
+                                  enqueue_ops=[enqueue_op],
+                                  feed_fn=feed_fn)
+  queue_runner.add_queue_runner(runner)
   return queue

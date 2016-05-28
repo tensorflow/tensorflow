@@ -1269,7 +1269,7 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
         np_array = np.random.randint(-10, 10, shape)
         if dtype == tf.bool:
           np_array = np_array > 0
-        elif dtype == tf.complex64:
+        elif dtype in (tf.complex64, tf.complex128):
           np_array = np.sqrt(np_array.astype(np_dtype))
         else:
           np_array = np_array.astype(np_dtype)

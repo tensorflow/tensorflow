@@ -145,3 +145,32 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     remote = "https://boringssl.googlesource.com/boringssl",
     build_file = path_prefix + "boringssl.BUILD",
   )
+
+  native.new_http_archive(
+    name = "avro_archive",
+    url = "http://www-us.apache.org/dist/avro/avro-1.8.0/cpp/avro-cpp-1.8.0.tar.gz",
+    sha256 = "ec6e2ec957e95ca07f70cc25f02f5c416f47cb27bd987a6ec770dcbe72527368",
+    build_file = path_prefix + "avro.BUILD",
+  )
+
+  native.new_http_archive(
+    name = "boost_archive",
+    url = "http://pilotfiber.dl.sourceforge.net/project/boost/boost/1.61.0/boost_1_61_0.tar.gz",
+    sha256 = "a77c7cc660ec02704c6884fbb20c552d52d60a18f26573c9cee0788bf00ed7e6",
+    build_file = path_prefix + "boost.BUILD",
+  )
+
+  native.new_http_archive(
+    name = "bzip2_archive",
+    url = "http://www.bzip.org/1.0.6/bzip2-1.0.6.tar.gz",
+    sha256 = "a2848f34fcd5d6cf47def00461fcb528a0484d8edef8208d6d2e2909dc61d9cd",
+    build_file = path_prefix + "bzip2.BUILD",
+  )
+
+  native.new_http_archive(
+    name = "zlib_archive",
+    url = "http://zlib.net/zlib-1.2.8.tar.gz",
+    sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
+    build_file = path_prefix + "zlib.BUILD",
+  )
+

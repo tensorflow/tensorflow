@@ -26,9 +26,8 @@ namespace internal {
 // since they are both very similar.
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
           typename ArgType, typename Device, typename Scalar_, typename Index,
-          typename nocontract_t, typename contract_t, int Side,
-          size_t packet_size, bool inner_dim_contiguous,
-          bool inner_dim_reordered, int Alignment>
+          typename nocontract_t, typename contract_t, int Side, int packet_size,
+          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
 class TensorContractionInputMapper<
     Scalar_, Index, Side,
     TensorEvaluator<
@@ -456,9 +455,8 @@ class TensorContractionInputMapper<
 
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
           typename ArgType, typename Device, typename Scalar, typename Index,
-          typename nocontract_t, typename contract_t, int Side,
-          size_t packet_size, bool inner_dim_contiguous,
-          bool inner_dim_reordered, int Alignment>
+          typename nocontract_t, typename contract_t, int Side, int packet_size,
+          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
 class TensorContractionSubMapper<
     Scalar, Index, Side,
     TensorEvaluator<
@@ -627,7 +625,7 @@ class TensorContractionSubMapper<
 
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
           typename ArgType, typename Device, typename Scalar, typename Index,
-          typename nocontract_t, typename contract_t, size_t packet_size,
+          typename nocontract_t, typename contract_t, int packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment,
           int nr>
 struct gemm_pack_rhs<

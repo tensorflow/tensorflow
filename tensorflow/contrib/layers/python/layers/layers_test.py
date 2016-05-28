@@ -385,7 +385,7 @@ class DropoutTest(tf.test.TestCase):
       num_elem = tf.reduce_mean(tf.to_float(output > 0))
       sess.run(tf.initialize_all_variables())
       num_elem = sess.run(num_elem)
-      self.assertLess(num_elem, 0.3)
+      self.assertLess(num_elem, 0.5)
       self.assertGreater(num_elem, 0.1)
 
 
@@ -876,6 +876,44 @@ class OneHotEncodingTest(tf.test.TestCase):
                                     [0, 0, 1]])
       output = tf.contrib.layers.one_hot_encoding(labels, num_classes=3)
       self.assertAllClose(output.eval(), one_hot_labels.eval())
+
+
+class StackTests(tf.test.TestCase):
+
+  def testStackFullyConnected(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height * width * 3), seed=1, name='images')
+      output = tf.contrib.layers.stack(images,
+                                       tf.contrib.layers.fully_connected,
+                                       [10, 20, 30])
+      self.assertEquals(output.op.name, 'Stack/fully_connected_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
+  def testStackConvolution2d(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1, name='images')
+      output = tf.contrib.layers.stack(images,
+                                       tf.contrib.layers.convolution2d,
+                                       [10, 20, 30],
+                                       kernel_size=[3, 3],
+                                       padding='SAME')
+      self.assertEquals(output.op.name, 'Stack/convolution2d_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 30])
+
+  def testStackWithScope(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1, name='images')
+      output = tf.contrib.layers.stack(images,
+                                       tf.contrib.layers.convolution2d,
+                                       [10, 20, 30],
+                                       kernel_size=[3, 3],
+                                       padding='SAME',
+                                       scope='conv1')
+      self.assertEquals(output.op.name, 'conv1/conv1_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 30])
 
 
 # TODO(b/28426988): Add separate tests for non-legacy versions.
