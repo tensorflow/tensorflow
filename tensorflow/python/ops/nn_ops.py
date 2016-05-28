@@ -296,7 +296,7 @@ def bias_add(value, bias, data_format=None, name=None):
 
   Args:
     value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-      `int16`, `int8`, or `complex64`.
+      `int16`, `int8`, `complex64`, or `complex128`.
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
@@ -330,7 +330,7 @@ def bias_add_v1(value, bias, name=None):
 
   Args:
     value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-      `int16`, `int8`, or `complex64`.
+      `int16`, `int8`, `complex64`, or `complex128`.
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.

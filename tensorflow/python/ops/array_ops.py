@@ -742,7 +742,7 @@ def zeros_like(tensor, dtype=None, name=None):
   Args:
     tensor: A `Tensor`.
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
-    `int8`, `int16`, `int32`, `int64`, `uint8`, or `complex64`.
+    `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -775,7 +775,7 @@ def ones_like(tensor, dtype=None, name=None):
   Args:
     tensor: A `Tensor`.
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
-    `int8`, `int16`, `int32`, `int64`, `uint8`, or `complex64`.
+    `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
