@@ -63,11 +63,18 @@ def boston_eval_fn():
 
 
 def linear_model_fn(features, target, unused_mode):
-  return tf.contrib.learn.models.linear_regression_zero_init(features, target)
+  prediction, loss = tf.contrib.learn.models.linear_regression_zero_init(features, target)
+  train_op = tf.contrib.layers.optimize_loss(
+    loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+  return prediction, loss, train_op
 
 
 def logistic_model_fn(features, target, unused_mode):
-  return tf.contrib.learn.models.logistic_regression_zero_init(features, target)
+  prediction, loss = tf.contrib.learn.models.logistic_regression_zero_init(features, target)
+  train_op = tf.contrib.layers.optimize_loss(
+    loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+  return prediction, loss, train_op
+
 
 
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
@@ -92,42 +99,38 @@ class EstimatorTest(tf.test.TestCase):
 
   def testBostonAll(self):
     boston = tf.contrib.learn.datasets.load_boston()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                     classification=False)
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     est.fit(x=boston.data, y=boston.target.astype(np.float32), steps=100)
     scores = est.evaluate(
         x=boston.data,
-        y=boston.target.astype(np.float32))
+        y=boston.target.astype(np.float32),
+        metrics={'mean_squared_error': tf.contrib.metrics.streaming_mean_squared_error})
     predictions = est.predict(x=boston.data)
     other_score = mean_squared_error(predictions, boston.target)
     self.assertAllClose(other_score, scores['mean_squared_error'])
 
-  def testIrisAll(self):
+  def testIrisInputFn(self):
     iris = tf.contrib.learn.datasets.load_iris()
-    est = tf.contrib.learn.Estimator(model_fn=logistic_model_fn,
-                                     classification=True)
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_fn)
     est.train(input_fn=iris_input_fn, steps=100)
     _ = est.evaluate(input_fn=iris_input_fn, steps=1)
     predictions = est.predict(x=iris.data)
     self.assertEqual(predictions.shape[0], iris.target.shape[0])
 
   def testTrainInputFn(self):
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                     classification=False)
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     est.train(input_fn=boston_input_fn, steps=1)
     _ = est.evaluate(input_fn=boston_eval_fn, steps=1)
 
   def testPredict(self):
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                     classification=False)
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     boston = tf.contrib.learn.datasets.load_boston()
     est.train(input_fn=boston_input_fn, steps=1)
     output = est.predict(boston.data)
     self.assertEqual(output.shape[0], boston.target.shape[0])
 
   def testPredictFn(self):
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                     classification=False)
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     boston = tf.contrib.learn.datasets.load_boston()
     est.train(input_fn=boston_input_fn, steps=1)
     output = est.predict(input_fn=boston_input_fn)
@@ -136,16 +139,13 @@ class EstimatorTest(tf.test.TestCase):
   def testWrongInput(self):
     def other_input_fn():
       return {'other': tf.constant([0, 0, 0])}, tf.constant([0, 0, 0])
-    output_dir = tempfile.mkdtemp()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                     classification=False, model_dir=output_dir)
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     est.train(input_fn=boston_input_fn, steps=1)
     with self.assertRaises(ValueError):
       est.train(input_fn=other_input_fn, steps=1)
 
   def testMonitors(self):
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                     classification=False)
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     est.train(input_fn=boston_input_fn, steps=21,
               monitors=[CheckCallsMonitor()])
 

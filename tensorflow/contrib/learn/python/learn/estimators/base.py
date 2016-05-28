@@ -54,28 +54,6 @@ def _copy_dir(dir_in, dir_out):
       gfile.Copy(name_in, name_out, overwrite=True)
 
 
-def _new_tf_model_fn(model_fn, class_weight):
-  """Backward compatibility way of adding class weight and IS_TRAINING.
-
-  TODO(ipolosukhin): Remove this function after new layers are available.
-  Specifically:
-   * dropout and batch norm should work via update ops.
-   * class weights should be retrieved from weights column or hparams.
-
-  Args:
-    model_fn: Core model function.
-    class_weight: Class weight.
-  Returns:
-    Model function.
-  """
-  def _model_fn(features, targets, mode):
-    ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
-    if class_weight is not None:
-      constant_op.constant(class_weight, name='class_weight')
-    return model_fn(features, targets)
-  return _model_fn
-
-
 class TensorFlowEstimator(estimator.Estimator):
   """Base class for all TensorFlow estimators.
 
@@ -122,9 +100,12 @@ class TensorFlowEstimator(estimator.Estimator):
                continue_training=False,
                config=None,
                verbose=1):
+    self._class_weight = class_weight
+    self._learning_rate = learning_rate
+    self._clip_gradients = clip_gradients
+    self._optimizer = optimizer
     super(TensorFlowEstimator, self).__init__(
-        model_fn=_new_tf_model_fn(model_fn, class_weight),
-        classification=n_classes > 1,
+        model_fn=self._get_model_fn(model_fn),
         learning_rate=learning_rate,
         optimizer=optimizer,
         clip_gradients=clip_gradients,
@@ -382,6 +363,41 @@ class TensorFlowEstimator(estimator.Estimator):
     # pylint: disable=protected-access
     result._restore(path)
     return result
+
+    def _get_model_fn(self, model_fn):
+      """Backward compatibility way of adding class weight and IS_TRAINING.
+
+      TODO(ipolosukhin): Remove this function after new layers are available.
+      Specifically:
+       * dropout and batch norm should work via update ops.
+       * class weights should be retrieved from weights column or hparams.
+
+      Args:
+        model_fn: Core model function.
+      Returns:
+        Model function.
+      """
+      def _model_fn(features, targets, mode):
+        ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
+        if self.class_weight is not None:
+          constant_op.constant(self.class_weight, name='class_weight')
+        predictions, loss = model_fn(features, targets)
+        if isinstance(self.learning_rate, types.FunctionType):
+          learning_rate = self.learning_rate(contrib_framework.get_global_step())
+        else:
+          learning_rate = self.learning_rate
+        if isinstance(self.optimizer, types.FunctionType):
+          optimizer = self.optimizer(learning_rate)
+        else:
+          optimizer = self.optimizer
+        train_op = layers.optimize_loss(
+            loss,
+            contrib_framework.get_global_step(),
+            learning_rate=learning_rate,
+            optimizer=optimizer,
+            clip_gradients=self.clip_gradients)
+        return predictions, loss, train_op
+      return _model_fn
 
 
 class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
