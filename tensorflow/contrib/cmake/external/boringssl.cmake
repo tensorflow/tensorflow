@@ -4,9 +4,13 @@ set(boringssl_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/boringssl/src/boringssl/in
 #set(boringssl_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/boringssl/src)
 set(boringssl_URL https://boringssl.googlesource.com/boringssl)
 set(boringssl_TAG e72df93)
-set(boringssl_BUILD ${CMAKE_BINARY_DIR}/boringssl/src)
-set(boringssl_LIBRARIES ${boringssl_BUILD}/obj/so/libboringssl.so)
-get_filename_component(boringssl_STATIC_LIBRARIES ${boringssl_BUILD}/libboringssl.a ABSOLUTE)
+set(boringssl_BUILD ${CMAKE_BINARY_DIR}/boringssl/src/boringssl-build)
+#set(boringssl_LIBRARIES ${boringssl_BUILD}/obj/so/libboringssl.so)
+set(boringssl_STATIC_LIBRARIES
+    ${boringssl_BUILD}/ssl/libssl.a
+    ${boringssl_BUILD}/crypto/libcrypto.a
+    ${boringssl_BUILD}/decrepit/libdecrepit.a
+)
 set(boringssl_INCLUDES ${boringssl_BUILD})
 
 set(boringssl_HEADERS
