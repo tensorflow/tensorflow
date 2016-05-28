@@ -25,6 +25,10 @@ limitations under the License.
 #define EIGEN_HAS_CUDA_FP16
 #endif
 
+#if CUDA_VERSION >= 8000
+#define CUBLAS_DATA_HALF CUDA_R_16F
+#endif
+
 #include "tensorflow/stream_executor/cuda/cuda_blas.h"
 
 #include <dlfcn.h>
