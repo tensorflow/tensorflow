@@ -636,12 +636,12 @@ environment variables by adding the following to your `~/.bash_profile`:
 ```bash
 export CUDA_HOME=/usr/local/cuda
 export DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH:$CUDA_HOME/lib"
-export PATH = $CUDA_HOME/bin:$PATH
+export PATH="$CUDA_HOME/bin:$PATH"
 ```
 
 Finally, you will also want to install the [CUDA Deep Neural
-Network](https://developer.nvidia.com/cudnn) library which currently requires
-an [Accelerated Computing Developer
+Network](https://developer.nvidia.com/cudnn) (cuDNN) library which currently
+requires an [Accelerated Computing Developer
 Program](https://developer.nvidia.com/accelerated-computing-developer) account.
 Once you have it downloaded locally, you can unzip and move the header and
 libraries to your local CUDA Toolkit folder:
