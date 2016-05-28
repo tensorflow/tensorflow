@@ -162,6 +162,18 @@ py_test(
 )
 
 py_test(
+    name = "test_batch",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/test_batch.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "test_early_stopping",
     size = "medium",
     srcs = ["python/learn/tests/test_early_stopping.py"],
