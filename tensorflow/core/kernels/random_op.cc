@@ -199,88 +199,46 @@ struct MultinomialFunctor<CPUDevice, T> {
                   typename TTypes<int64>::Matrix output) {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
-    // Gumbel-max trick: https://en.wikipedia.org/wiki/Gumbel_distribution
+    // The implementation only parallelizes by batch.
     //
-    // Given logits matrix X, we first sample matrix U iid from [0, 1).  Then,
-    // argmax(X-ln(-ln(U))) is equivalent to taking one sample from the
-    // distribution defined by X.  We take a total of BatchSize*NumSamples
-    // samples.
-    //
-    // The implementation is tailored for NumClasses >> NumSamples.  We
-    // horizontally partition the work: each worker looks at
-    // logits[start_row..limit_row, :], and fills in
-    // samples_[start_row..limit_row, :].
-    //
-    // This takes O(BatchSize * NumSamples * NumClasses) CPU time.
+    // This takes O(BatchSize * NumSamples * log(NumClasses) + NumClasses) CPU
+    // time.
     auto DoWork = [num_samples, num_classes, &gen, &output, &logits](
         int64 start_row, int64 limit_row) {
       // Capturing "gen" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.
       random::PhiloxRandom gen_copy = gen;
-      gen_copy.Skip(start_row * num_classes * num_samples / 4);
+      // Skip takes units of 128 bytes.  +3 is so rounding doesn't lead to
+      // us using the same state in different batches.
+      gen_copy.Skip(start_row * (num_samples + 3) / 4);
       random::SimplePhilox simple_philox(&gen_copy);
 
-      // (max score, max idx)
-      // Microbenchmarks showed that InlinedVector<*,4> is up to 1.8% faster
-      // than using std::vector here, since we expect num_samples to be small (1
-      // to O(100)).
-      gtl::InlinedVector<float, 4> curr_max(num_samples);
-      gtl::InlinedVector<int64, 4> curr_max_idx(num_samples);
-
-      const float kLowest = std::numeric_limits<float>::lowest();
-      static constexpr int kStride = 4;  // for loop unrolling
+      std::vector<float> cdf(num_classes);
 
       for (int64 b = start_row; b < limit_row; ++b) {
-        std::fill_n(curr_max.data(), num_samples, kLowest);
         const auto* logits_row = &logits(b, 0);
 
+        // Precompute cumulative probability distribution across classes.
+        // Note: This isn't normalized.
+        float running_total = 0;
         for (int64 j = 0; j < num_classes; ++j) {
-          // Each class contributes to all `num_samples` running max values.  We
-          // manually unroll the loop with stride 4.
-          // TODO(zongheng): on avx2/avx512 it might be worthwhile to unroll
-          // more.  Should investigate if this CPU kernel is
-          // performance-critical first, though.
-          int i = 0, repeat = num_samples / kStride;
-          while (repeat--) {
-            // Number of entries to unroll must == kStride.
-            const float s0 = -std::log(-std::log(simple_philox.RandFloat())) +
-                             static_cast<float>(logits_row[j]);
-            const float s1 = -std::log(-std::log(simple_philox.RandFloat())) +
-                             static_cast<float>(logits_row[j]);
-            const float s2 = -std::log(-std::log(simple_philox.RandFloat())) +
-                             static_cast<float>(logits_row[j]);
-            const float s3 = -std::log(-std::log(simple_philox.RandFloat())) +
-                             static_cast<float>(logits_row[j]);
-
-#define UPDATE(s, unroll_idx)         \
-  if (s > curr_max[i + unroll_idx]) { \
-    curr_max[i + unroll_idx] = s;     \
-    curr_max_idx[i + unroll_idx] = j; \
-  }
-            UPDATE(s0, 0);
-            UPDATE(s1, 1);
-            UPDATE(s2, 2);
-            UPDATE(s3, 3);
-
-            i += kStride;
+          if (std::isfinite(static_cast<float>(logits_row[j]))) {
+            running_total += std::exp(static_cast<float>(logits_row[j]));
           }
-
-          while (i < num_samples) {
-            const float s0 = -std::log(-std::log(simple_philox.RandFloat())) +
-                             static_cast<float>(logits_row[j]);
-            UPDATE(s0, 0);
-            ++i;
-          }
-#undef UPDATE
+          cdf[j] = running_total;
         }
-        std::memcpy(&output(b, 0), curr_max_idx.data(),
-                    sizeof(int64) * num_samples);
+        // Generate each sample.
+        for (int64 j = 0; j < num_samples; ++j) {
+          float to_find = simple_philox.RandFloat() * running_total;
+          auto found_iter = std::upper_bound(cdf.begin(), cdf.end(), to_find);
+          output(b, j) = std::distance(cdf.begin(), found_iter);
+        }
       }
     };
-    // Rough estimate, log2() takes from 58-680 cycles on Haswell.
-    // The functor here calls log twice for each element.
-    const int64 cost = 500 * num_samples * num_classes;
+    // Incredibly rough estimate of clock cycles for DoWork();
+    const int64 cost =
+        50 * (num_samples * std::log2(num_classes) + num_classes);
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size, cost,
           DoWork);
   }
@@ -438,8 +396,9 @@ class MultinomialOp : public OpKernel {
                    DT_FLOAT, TensorShape({batch_size, num_samples}), &scratch));
     }
 
-    auto rng = generator_.ReserveRandomOutputs(
-        batch_size * num_classes * num_samples, 256);
+    const int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
+    auto rng =
+        generator_.ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
     functor::MultinomialFunctor<Device, T>()(
         ctx, ctx->eigen_device<Device>(), logits_t.matrix<T>(),
         noises.flat<float>(), scores.flat<float>(), scratch.flat<float>(),

@@ -53,6 +53,7 @@ static Graph* Multinomial(int batch_size, int num_classes, int num_samples) {
 
 BM_MultinomialBCS(1, 10000, 4);
 BM_MultinomialBCS(1, 10000, 128);
+BM_MultinomialBCS(1, 10000, 10000);
 BM_MultinomialBCS(1, 100000, 4);
 BM_MultinomialBCS(1, 100000, 128);
 
