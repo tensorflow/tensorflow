@@ -24,6 +24,7 @@ import json
 import os
 import types
 
+import six
 from six import string_types
 
 from tensorflow.contrib import framework as contrib_framework
@@ -107,12 +108,14 @@ class TensorFlowEstimator(estimator.Estimator):
     self.class_weight = class_weight
     self.learning_rate = learning_rate
     self.clip_gradients = clip_gradients
+    if isinstance(optimizer, six.string_types):
+      if optimizer not in layers.OPTIMIZER_CLS_NAMES:
+        raise ValueError(
+            'Optimizer name should be one of [%s], you provided %s.' %
+            (', '.join(layers.OPTIMIZER_CLS_NAMES), optimizer))
     self.optimizer = optimizer
     super(TensorFlowEstimator, self).__init__(
         model_fn=self._get_model_fn(model_fn),
-        learning_rate=learning_rate,
-        optimizer=optimizer,
-        clip_gradients=clip_gradients,
         config=config)
     self.n_classes = n_classes
     self.batch_size = batch_size

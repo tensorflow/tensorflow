@@ -249,18 +249,21 @@ class BaseEstimator(sklearn.BaseEstimator):
                                 metrics=metrics,
                                 name=name)
 
-  def predict(self, x=None, input_fn=None, batch_size=None):
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None):
     """Returns predictions for given features.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict. 
+               If `None`, returns all.
 
     Returns:
       Numpy array of predicted classes or regression values.
     """
-    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
+    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size,
+      outputs=outputs)
 
   @property
   def model_dir(self):
@@ -467,7 +470,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       return result[0]
     return result
 
-  def _infer_model(self, x=None, input_fn=None, feed_fn=None, batch_size=None):
+  def _infer_model(self, x=None, input_fn=None, feed_fn=None, batch_size=None,
+                   outputs=None):
     # Converts inputs into tf.DataFrame / tf.Series.
     batch_size = -1 if batch_size is None else batch_size
     if x is not None:
@@ -479,9 +483,18 @@ class BaseEstimator(sklearn.BaseEstimator):
       contrib_framework.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
       predictions = self._get_predict_ops(features)
+      # If predictions is single output - wrap it into dict, and remember to
+      # return not a dict.
       return_dict = True
       if not isinstance(predictions, dict):
         predictions, return_dict = {'predictions': predictions}, False
+      # Filter what to run predictions on, if outputs provided.
+      if outputs:
+        existing_keys = predictions.keys()
+        predictions = {key: value for key, value in predictions.items() if key in outputs}
+        if not predictions:
+          raise ValueError("Expected to run at least one output from %s, "
+                           "provided %s." % (existing_keys, outputs))
       if feed_fn is None:
         preds = infer(checkpoint_path, predictions)
       else:
@@ -513,37 +526,15 @@ class Estimator(BaseEstimator):
               tensors and returns predictions and loss tensors.
               E.g. `(features, targets) -> (predictions, loss, train_op)`.
     model_dir: Directory to save model parameters, graph and etc.
-    classification: boolean, true if classification problem.
-    learning_rate: learning rate for the model.
-    optimizer: optimizer for the model, can be:
-               string: name of optimizer, like 'SGD', 'Adam', 'Adagrad', 'Ftl',
-                 'Momentum', 'RMSProp', 'Momentum').
-                 Full list in contrib/layers/optimizers.py
-               class: sub-class of Optimizer
-                 (like tf.train.GradientDescentOptimizer).
-    clip_gradients: clip_norm value for call to `clip_by_global_norm`. None
-                    denotes no gradient clipping.
     config: Configuration object.
   """
 
   def __init__(self,
                model_fn=None,
                model_dir=None,
-               learning_rate=0.1,
-               optimizer='Adagrad',
-               clip_gradients=None,
                config=None):
     super(Estimator, self).__init__(model_dir=model_dir, config=config)
-
     self._model_fn = model_fn
-    if isinstance(optimizer, six.string_types):
-      if optimizer not in layers.OPTIMIZER_CLS_NAMES:
-        raise ValueError(
-            'Optimizer name should be one of [%s], you provided %s.' %
-            (', '.join(layers.OPTIMIZER_CLS_NAMES), optimizer))
-    self.optimizer = optimizer
-    self.learning_rate = learning_rate
-    self.clip_gradients = clip_gradients
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -584,8 +575,12 @@ class Estimator(BaseEstimator):
       # Unpack single target into just tensor.
       targets = targets[targets.keys()[0]]
     for name, metric in six.iteritems(metrics):
-      # TODO(ipolosukhin): Add support for multi-head metrics.
-      result[name] = metric(predictions, targets)
+      if isinstance(name, tuple):
+        # Multi-head metrics.
+        result[name[0]] = metric(predictions[name[1]], targets)
+      else:
+        # Single head metrics.
+        result[name] = metric(predictions, targets)
     return result
 
   def _get_predict_ops(self, features):

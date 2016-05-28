@@ -175,7 +175,7 @@ def _train_test_split(*args, **options):
     train_size = 0.75
   elif train_size is None:
     train_size = 1 - test_size
-  train_size *= args[0].shape[0]
+  train_size = int(train_size * args[0].shape[0])
 
   np.random.seed(random_state)
   indices = np.random.permutation(args[0].shape[0])

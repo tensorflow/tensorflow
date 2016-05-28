@@ -25,8 +25,7 @@ import tempfile
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.contrib.learn.python.learn.estimators._sklearn import mean_squared_error
-
+from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 
 def boston_input_fn():
   boston = tf.contrib.learn.datasets.load_boston()
@@ -46,7 +45,7 @@ def iris_input_fn():
           tf.constant(iris.data), [-1, 4]), tf.float32)
   target = tf.cast(
       tf.reshape(
-          tf.constant(iris.target), [-1, 1]), tf.int32)
+          tf.constant(iris.target), [-1]), tf.int32)
   return features, target
 
 
@@ -70,11 +69,11 @@ def linear_model_fn(features, target, unused_mode):
 
 
 def logistic_model_fn(features, target, unused_mode):
+  target = tf.one_hot(target, 3, 1, 0)
   prediction, loss = tf.contrib.learn.models.logistic_regression_zero_init(features, target)
   train_op = tf.contrib.layers.optimize_loss(
     loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
-  return prediction, loss, train_op
-
+  return {'class': tf.argmax(prediction, 1), 'prob': prediction}, loss, train_op
 
 
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
@@ -106,15 +105,31 @@ class EstimatorTest(tf.test.TestCase):
         y=boston.target.astype(np.float32),
         metrics={'mean_squared_error': tf.contrib.metrics.streaming_mean_squared_error})
     predictions = est.predict(x=boston.data)
-    other_score = mean_squared_error(predictions, boston.target)
+    other_score = _sklearn.mean_squared_error(predictions, boston.target)
     self.assertAllClose(other_score, scores['mean_squared_error'])
+
+  def testIrisAll(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_fn)
+    est.fit(iris.data, iris.target, steps=100)
+    scores = est.evaluate(
+      x=iris.data, 
+      y=iris.target,
+      metrics={('accuracy', 'class'): tf.contrib.metrics.streaming_accuracy})
+    predictions = est.predict(x=iris.data)
+    predictions_class = est.predict(x=iris.data, outputs=['class'])
+    self.assertEqual(predictions['class'].shape[0], iris.target.shape[0])
+    self.assertAllClose(predictions['class'], predictions_class['class'])
+    self.assertAllClose(predictions['class'], np.argmax(predictions['prob'], axis=1))
+    other_score = _sklearn.accuracy_score(iris.target, predictions['class'])
+    self.assertAllClose(other_score, scores['accuracy'])
 
   def testIrisInputFn(self):
     iris = tf.contrib.learn.datasets.load_iris()
     est = tf.contrib.learn.Estimator(model_fn=logistic_model_fn)
     est.train(input_fn=iris_input_fn, steps=100)
     _ = est.evaluate(input_fn=iris_input_fn, steps=1)
-    predictions = est.predict(x=iris.data)
+    predictions = est.predict(x=iris.data)['class']
     self.assertEqual(predictions.shape[0], iris.target.shape[0])
 
   def testTrainInputFn(self):
