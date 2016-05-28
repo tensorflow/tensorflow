@@ -243,6 +243,7 @@ def conv2d_transpose(value,
     strides: A list of ints. The stride of the sliding window for each
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: Optional name for the returned tensor.
 
   Returns:
@@ -490,6 +491,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
@@ -517,6 +519,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     strides: A list of ints that has length >= 4.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
