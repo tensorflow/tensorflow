@@ -157,7 +157,7 @@ cc_library(
 # This rule checks if Cuda libraries in the source tree has been properly configured.
 # The output list makes bazel runs this rule first if the Cuda files are missing.
 # This gives us an opportunity to check and print a meaningful error message.
-# But we will need to create the output file list to make bazel happy in a successfull run.
+# But we will need to create the output file list to make bazel happy in a successful run.
 genrule(
     name = "cuda_check",
     srcs = [

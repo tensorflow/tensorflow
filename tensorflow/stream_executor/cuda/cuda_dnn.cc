@@ -457,6 +457,7 @@ class ScopedFilterDescriptor {
                  << ToString(status);
     }
 
+#if CUDNN_VERSION >= 5000
     // TODO(b/23032134): Even if the filter layout is not supported,
     // cudnnSetFilter4DDescriptor_v4 will return CUDNN_STATUS_SUCCESS because it
     // does not take layout as an input. Maybe force cuDNN by giving wrong
@@ -471,6 +472,7 @@ class ScopedFilterDescriptor {
                    << FilterLayoutString(filter_descriptor.layout());
         break;
     }
+#endif
 
     std::vector<int> dims(2 + filter_descriptor.ndims());
     dims[0] = filter_descriptor.output_feature_map_count();
@@ -666,7 +668,7 @@ class ScopedActivationDescriptor {
         mode = CUDNN_ACTIVATION_TANH;
         break;
       default:
-        LOG(ERROR) << "unrecognized activation mode: "
+        LOG(FATAL) << "unrecognized activation mode: "
                    << static_cast<int>(activation_mode);
     }
 
@@ -1916,6 +1918,7 @@ bool CudnnSupport::DoNormalize(
     Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
     const DeviceMemory<float>& input_data, DeviceMemory<float>* output_data) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
+  return false;
 }
 
 bool CudnnSupport::DoDepthConcatenate(
@@ -1977,6 +1980,7 @@ bool CudnnSupport::DoElementwiseOperate(
     const dnn::BatchDescriptor& output_dimensions,
     DeviceMemory<float>* output_data) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
+  return false;
 }
 
 bool CudnnSupport::DoXYPad(Stream* stream,
@@ -1985,6 +1989,7 @@ bool CudnnSupport::DoXYPad(Stream* stream,
                            int64 left_pad, int64 right_pad, int64 top_pad,
                            int64 bottom_pad, DeviceMemory<float>* output_data) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
+  return false;
 }
 
 bool CudnnSupport::DoXYSlice(Stream* stream,
@@ -1994,6 +1999,7 @@ bool CudnnSupport::DoXYSlice(Stream* stream,
                              int64 bottom_trim,
                              DeviceMemory<float>* output_data) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
+  return false;
 }
 
 bool CudnnSupport::DoMemcpyD2HQuantized(

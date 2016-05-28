@@ -50,10 +50,6 @@ string StackTraceIfVLOG10() {
   }
 }
 
-// Maximum stack depth to report when generating backtrace on mem allocation
-// (for GPU memory leak checker)
-static const int kMaxStackDepth = 256;
-
 // Make sure the executor is done with its work; we know (because this isn't
 // publicly visible) that all enqueued work is quick.
 void BlockOnThreadExecutor(port::ThreadPool *executor) {

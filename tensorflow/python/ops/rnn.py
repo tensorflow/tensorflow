@@ -126,7 +126,8 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       state = initial_state
     else:
       if not dtype:
-        raise ValueError("If no initial_state is provided, dtype must be.")
+        raise ValueError("If no initial_state is provided, "
+                           "dtype must be specified")
       state = cell.zero_state(batch_size, dtype)
 
     if sequence_length is not None:  # Prepare variables

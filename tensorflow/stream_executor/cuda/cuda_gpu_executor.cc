@@ -235,6 +235,8 @@ bool CUDAExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
   }
 
   if (on_disk_spec != nullptr) {
+    LOG(WARNING) << "loading CUDA kernel from disk is not supported";
+    return false;
   } else if (spec.has_cuda_ptx_in_memory()) {
     kernelname = &spec.cuda_ptx_in_memory().kernelname();
 
