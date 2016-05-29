@@ -118,16 +118,16 @@ def res_net(x, y, activation=tf.nn.relu):
       # residual function (identity shortcut)
       net = conv + net
 
-      try:
-        # upscale to the next block size
-        next_block = blocks[block_i + 1]
-        with tf.variable_scope('block_%d/conv_upscale' % block_i):
-          net = learn.ops.conv2d(net, next_block.num_filters,
-                                 [1, 1], [1, 1, 1, 1],
-                                 bias=False,
-                                 padding='SAME')
-      except IndexError:
-        pass
+    try:
+      # upscale to the next block size
+      next_block = blocks[block_i + 1]
+      with tf.variable_scope('block_%d/conv_upscale' % block_i):
+        net = learn.ops.conv2d(net, next_block.num_filters,
+                                [1, 1], [1, 1, 1, 1],
+                                bias=False,
+                                padding='SAME')
+    except IndexError:
+      pass
 
   net_shape = net.get_shape().as_list()
   net = tf.nn.avg_pool(net,
