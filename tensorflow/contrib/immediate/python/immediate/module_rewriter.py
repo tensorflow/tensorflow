@@ -21,6 +21,11 @@ from .tensor import _ENABLE_DEBUG_LOGGING
 
 __all__ = ["ModuleRewriter"]
 
+# TODO(yaroslavvb): unify use of get_symbol_file and inspect.getsourcefile
+# using "get_source_file" for module stack checking results in infinite
+# recursion, meanwhile, need to use inspect.getsourcefile to lookup true
+# locations of contextlib wrappers
+
 def get_symbol_file(symbol):
   """Returns filename of symbol definition, empty string if not available."""
 
@@ -101,9 +106,33 @@ class ModuleRewriter(object):
     self._done_modules = {}  # dict of old_module->new_module
     self._module_stack = []  # stack of modules to detect cycles
 
+    # initialize dictionary of modules and their filenames
+    # this is needed for contextlib wrapped functions because they change
+    # __module__ to __module__ of original function, so in order to update
+    # references properly, we need to lookup their module using combination
+    # of inspect.getsourcefile() and pre-computed dict
+    _module_fname_dict = {}
+    for name, module in sys.modules.items():
+      if hasattr(module, "__file__"):
+        if module.__file__:
+          _module_fname_dict[__file__] = module
+    self._module_fname_dict = _module_fname_dict
+    
+
 
   def __call__(self, original_module):
     return self._rewrite_module(original_module)
+
+  def _lookup_module_by_fname(self, fname):
+    return self._module_fname_dict.get(fname, "")
+  
+  def _is_contextlib_function(self, symbol):
+    try:
+      fname = inspect.getsourcefile(symbol)
+      if fname.endswith('contextlib.py') or fname.endswith('contextlib.pyc'):
+        return True
+    finally:
+      return False
 
   def _rewrite_module(self, original_module):
     """Apply symbol_rewriter to given module and its dependencies recursively
@@ -126,6 +155,7 @@ class ModuleRewriter(object):
     if original_module in self._done_modules:
       return self._done_modules[original_module]
 
+    #    print("Rewriting module "+original_module.__file__)
     #    self._module_stack.append(get_symbol_file(original_module))
     self._module_stack.append(original_module.__file__)
     updated_symbols = {}  # symbols that got touched
@@ -155,6 +185,13 @@ class ModuleRewriter(object):
       # by symbol rewriter
       elif hasattr(symbol, "__module__") and isinstance(symbol,
                                                         types.FunctionType):
+        # special handling for contextlib wrappers because they overwrite
+        # __module__ attribute
+        # TODO: avoid modifying __module__ for global namespace
+        # TODO: figure out why things aren't being updated with proper refs
+        if self._is_contextlib_function(symbol):
+          self.__module__ = 'contextlib'
+
         if symbol.__module__ != original_module.__name__:
           symbol_file = get_symbol_file(symbol)
           if symbol_file and symbol_file not in self._module_stack:
