@@ -8,11 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		59A3D0011CF4E68100C4259F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFF21CF4E68100C4259F /* AppDelegate.mm */; };
-		59A3D0021CF4E68100C4259F /* cropped_panda.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF41CF4E68100C4259F /* cropped_panda.jpg */; };
 		59A3D0031CF4E68100C4259F /* grace_hopper.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */; };
-		59A3D0041CF4E68100C4259F /* imagenet_2012_challenge_label_map_proto.pbtxt in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF61CF4E68100C4259F /* imagenet_2012_challenge_label_map_proto.pbtxt */; };
 		59A3D0051CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF71CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt */; };
-		59A3D0061CF4E68100C4259F /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF81CF4E68100C4259F /* LICENSE */; };
 		59A3D0071CF4E68100C4259F /* tensorflow_inception_graph.pb in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF91CF4E68100C4259F /* tensorflow_inception_graph.pb */; };
 		59A3D0081CF4E68100C4259F /* ios_image_load.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */; };
 		59A3D0091CF4E68100C4259F /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFC1CF4E68100C4259F /* main.mm */; };
@@ -172,9 +169,6 @@
 				59A3D0051CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt in Resources */,
 				59A3D0071CF4E68100C4259F /* tensorflow_inception_graph.pb in Resources */,
 				59A3D0031CF4E68100C4259F /* grace_hopper.jpg in Resources */,
-				59A3D0021CF4E68100C4259F /* cropped_panda.jpg in Resources */,
-				59A3D0041CF4E68100C4259F /* imagenet_2012_challenge_label_map_proto.pbtxt in Resources */,
-				59A3D0061CF4E68100C4259F /* LICENSE in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -283,21 +277,21 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				HEADER_SEARCH_PATHS = (
-					/Users/petewarden/projects/tensorflow4prs/,
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/downloads/protobuf/src/,
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/downloads,
-					"/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/downloads/eigen-eigen-a5e9085a94e8",
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/gen/proto,
+					"$(SRCROOT)/../../..",
+					"$(SRCROOT)/../makefile/downloads/protobuf/src/",
+					"$(SRCROOT)/../makefile/downloads",
+					"$(SRCROOT)/../makefile/downloads/eigen-eigen-f3a13643ac1f",
+					"$(SRCROOT)/../makefile/gen/proto",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				LIBRARY_SEARCH_PATHS = (
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/gen/protobuf_ios/lib,
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/gen/lib,
+					"$(SRCROOT)/../makefile/gen/protobuf_ios/lib",
+					"$(SRCROOT)/../makefile/gen/lib",
 				);
 				OTHER_LDFLAGS = (
 					"-force_load",
-					"/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a",
+					"$(SRCROOT)/../makefile/gen/lib/libtensorflow-core.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -310,21 +304,21 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				HEADER_SEARCH_PATHS = (
-					/Users/petewarden/projects/tensorflow4prs/,
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/downloads/protobuf/src/,
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/downloads,
-					"/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/downloads/eigen-eigen-a5e9085a94e8",
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/gen/proto,
+					"$(SRCROOT)/../../..",
+					"$(SRCROOT)/../makefile/downloads/protobuf/src/",
+					"$(SRCROOT)/../makefile/downloads",
+					"$(SRCROOT)/../makefile/downloads/eigen-eigen-f3a13643ac1f",
+					"$(SRCROOT)/../makefile/gen/proto",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				LIBRARY_SEARCH_PATHS = (
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/gen/protobuf_ios/lib,
-					/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/gen/lib,
+					"$(SRCROOT)/../makefile/gen/protobuf_ios/lib",
+					"$(SRCROOT)/../makefile/gen/lib",
 				);
 				OTHER_LDFLAGS = (
 					"-force_load",
-					"/Users/petewarden/projects/tensorflow4prs/tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a",
+					"$(SRCROOT)/../makefile/gen/lib/libtensorflow-core.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
 				PRODUCT_NAME = "$(TARGET_NAME)";
