@@ -811,7 +811,7 @@ REGISTER_OP("SegmentSum")
     .Input("data: T")
     .Input("segment_ids: Tindices")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
@@ -867,7 +867,7 @@ REGISTER_OP("SegmentProd")
     .Input("data: T")
     .Input("segment_ids: Tindices")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Doc(R"doc(
 Computes the product along segments of a tensor.
@@ -951,7 +951,7 @@ REGISTER_OP("UnsortedSegmentSum")
     .Input("segment_ids: Tindices")
     .Input("num_segments: int32")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
