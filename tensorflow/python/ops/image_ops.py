@@ -900,6 +900,7 @@ def _ResizeShape(op):
 
 @ops.RegisterShape('DecodeJpeg')
 @ops.RegisterShape('DecodePng')
+@ops.RegisterShape('DecodeGif')
 def _ImageDecodeShape(op):
   """Shape function for image decoding ops."""
   unused_input_shape = op.inputs[0].get_shape().merge_with(
