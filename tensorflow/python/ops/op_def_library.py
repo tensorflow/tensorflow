@@ -320,7 +320,7 @@ class OpDefLibrary(object):
       ValueError: On some errors.
     """
 
-    print("Called apply op with %s %s %s"%(self, op_type_name, keywords))
+    #    print("Called apply op with %s %s %s"%(self, op_type_name, keywords))
     #import pdb; pdb.set_trace()
     #    try:
     #      raise TypeError("hi")
