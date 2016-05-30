@@ -167,6 +167,20 @@ py_test(
     ],
 )
 
+py_test(
+    name = "tensor_handle_working_test",
+    size = "small",
+    srcs = ["python/immediate/tensor_handle_working_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":immediate_py",
+	":immediate_test_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 
 # py_test(
 #     name = "histogram_ops_test",
