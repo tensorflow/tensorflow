@@ -57,6 +57,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
+    name = "freeimage_archive",
+    url = "http://downloads.sourceforge.net/freeimage/FreeImage3131.zip",
+    sha256 = "329bd2036e97d5e527ac2f1fdade4a2029bb06ce4cee0e8bca12e211fd7397c6",
+    build_file = path_prefix + "freeimage.BUILD"
+  )
+
+  native.new_http_archive(
     name = "six_archive",
     url = "https://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz#md5=34eed507548117b2ab523ab14b2f8b55",
     sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
