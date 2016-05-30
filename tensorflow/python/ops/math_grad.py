@@ -388,6 +388,51 @@ def _CosGrad(op, grad):
     return -grad * math_ops.sin(x)
 
 
+@ops.RegisterGradient("Tan")
+def _TanGrad(op, grad):
+  """Returns grad * 1/sec^2(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    secx = math_ops.inv(math_ops.cos(x))
+    secx2 = math_ops.square(secx)
+    return grad * secx2
+
+
+@ops.RegisterGradient("Asin")
+def _AsinGrad(op, grad):
+  """Returns grad * 1/sqrt(1-x^2)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x2 = math_ops.square(x)
+    one = constant_op.constant(1, dtype=grad.dtype)
+    den = math_ops.sqrt(math_ops.sub(one, x2))
+    inv = math_ops.inv(den)
+    return grad * inv
+
+
+@ops.RegisterGradient("Acos")
+def _AcosGrad(op, grad):
+  """Returns grad * -1/sqrt(1-x^2)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x2 = math_ops.square(x)
+    one = constant_op.constant(1, dtype=grad.dtype)
+    den = math_ops.sqrt(math_ops.sub(one, x2))
+    inv = math_ops.inv(den)
+    return -grad * inv
+
+
+@ops.RegisterGradient("Atan")
+def _AtanGrad(op, grad):
+  """Returns grad * 1/ (1 + x^2)"""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x2 = math_ops.square(x)
+    one = constant_op.constant(1, dtype=grad.dtype)
+    inv = math_ops.inv(math_ops.add(one, x2))
+    return grad * inv
+
+
 @ops.RegisterGradient("AddN")
 def _AddNGrad(op, grad):
   """Copies the gradient to all inputs."""

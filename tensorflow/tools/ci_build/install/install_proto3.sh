@@ -16,19 +16,18 @@
 
 set -e
 
-# Select bazel version.
+# Install protobuf3.
+
+# Select protobuf version.
 PROTOBUF_VERSION="3.0.0-beta-2"
 
-# Install protobuf3.
-mkdir /protobuf
-cd /protobuf
-curl -fSsL -O https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-cpp-$PROTOBUF_VERSION.tar.gz
-tar zxf protobuf-cpp-$PROTOBUF_VERSION.tar.gz
-cd protobuf-$PROTOBUF_VERSION
-./autogen.sh
-./configure
-make
-make install
-make clean
-ldconfig
-cd /; rm -rf /protobuf
+PROTOBUF_URL="https://github.com/google/protobuf/releases/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.zip"
+PROTOBUF_ZIP=$(basename "${PROTOBUF_URL}")
+UNZIP_DEST="google-protobuf"
+
+wget -q "${PROTOBUF_URL}"
+unzip "${PROTOBUF_ZIP}" -d "${UNZIP_DEST}"
+cp "${UNZIP_DEST}/protoc" /usr/local/bin/
+
+rm -f "${PROTOBUF_ZIP}"
+rm -rf "${UNZIP_DEST}"

@@ -243,6 +243,30 @@ REGISTER_OP("Cos")
 Computes cos of x element-wise.
 )doc");
 
+REGISTER_OP("Tan")
+    .UNARY()
+    .Doc(R"doc(
+Computes tan of x element-wise.
+)doc");
+
+REGISTER_OP("Asin")
+    .UNARY()
+    .Doc(R"doc(
+Computes asin of x element-wise.
+)doc");
+
+REGISTER_OP("Acos")
+    .UNARY()
+    .Doc(R"doc(
+Computes acos of x element-wise.
+)doc");
+
+REGISTER_OP("Atan")
+    .UNARY()
+    .Doc(R"doc(
+Computes atan of x element-wise.
+)doc");
+
 #undef UNARY
 #undef UNARY_REAL
 #undef UNARY_COMPLEX
@@ -787,7 +811,7 @@ REGISTER_OP("SegmentSum")
     .Input("data: T")
     .Input("segment_ids: Tindices")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
@@ -843,7 +867,7 @@ REGISTER_OP("SegmentProd")
     .Input("data: T")
     .Input("segment_ids: Tindices")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Doc(R"doc(
 Computes the product along segments of a tensor.
@@ -927,7 +951,7 @@ REGISTER_OP("UnsortedSegmentSum")
     .Input("segment_ids: Tindices")
     .Input("num_segments: int32")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.

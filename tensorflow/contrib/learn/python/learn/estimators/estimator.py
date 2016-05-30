@@ -33,6 +33,7 @@ from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -41,6 +42,7 @@ from tensorflow.contrib.learn.python.learn.graph_actions import evaluate
 from tensorflow.contrib.learn.python.learn.graph_actions import infer
 from tensorflow.contrib.learn.python.learn.graph_actions import train
 from tensorflow.contrib.learn.python.learn.io import data_feeder
+from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -263,6 +265,27 @@ class BaseEstimator(sklearn.BaseEstimator):
     """
     return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
 
+  def get_variable_value(self, name):
+    """Returns value of the variable given by name.
+
+    Args:
+      name: string, name of the tensor.
+
+    Returns:
+      Numpy array - value of the tensor.
+    """
+    if name.endswith(':0'):
+      name = name[:-2]
+    return checkpoints.load_variable(self.model_dir, name)
+
+  def get_variable_names(self):
+    """Returns list of all variable names in this model.
+
+    Returns:
+      List of names.
+    """
+    return [name for name, _ in checkpoints.list_variables(self.model_dir)]
+
   @property
   def model_dir(self):
     return self._model_dir
@@ -380,7 +403,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       monitors += monitors_lib.get_default_monitors(
           loss_op=loss_op,
           summary_op=logging_ops.get_summary_op(),
-          save_summary_steps=100)
+          save_summary_steps=100,
+          summary_writer=graph_actions.get_summary_writer(self._model_dir))
 
       is_chief = self._config.task == 0
       if not is_chief:
@@ -487,20 +511,16 @@ class BaseEstimator(sklearn.BaseEstimator):
         preds = infer(checkpoint_path, predictions)
       else:
         preds = {}
-        while True:
-          try:
-            feed_dict = feed_fn()
-          except StopIteration:
-            break
-          if feed_dict is None:
-            break
-          outputs = infer(checkpoint_path, predictions, feed_dict=feed_dict)
-          for key in outputs:
-            if key not in preds:
-              preds[key] = []
-            preds[key].append(outputs[key])
-        for key in preds:
-          preds[key] = np.concatenate(preds[key], axis=0)
+        def _feed_fn():
+          while True:
+            yield feed_fn()
+        outputs = graph_actions.run_feeds(
+            output_dict=predictions,
+            feed_dicts=_feed_fn(),
+            restore_checkpoint_path=checkpoint_path)
+        for key in predictions:
+          preds[key] = np.concatenate(
+              [output[key] for output in outputs], axis=0)
       if return_dict:
         return preds
       return preds['predictions']

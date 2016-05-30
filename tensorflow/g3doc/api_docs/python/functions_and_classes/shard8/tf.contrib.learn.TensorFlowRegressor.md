@@ -119,6 +119,22 @@ Returns list of all variable names in this model.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRegressor.get_variable_value(name)` {#TensorFlowRegressor.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRegressor.model_dir` {#TensorFlowRegressor.model_dir}
 
 

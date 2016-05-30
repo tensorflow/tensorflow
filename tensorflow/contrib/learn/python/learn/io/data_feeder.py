@@ -232,7 +232,7 @@ class DataFeeder(object):
                                                             n_classes,
                                                             batch_size)
     # Input dtype matches dtype of X.
-    self.input_dtype = self.X.dtype
+    self.input_dtype = x_dtype
     # self.n_classes is None means we're passing in raw target indices
     if n_classes is not None or y is None:
       self.output_dtype = np.float32

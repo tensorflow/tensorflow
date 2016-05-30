@@ -77,17 +77,58 @@ TARGET=IOS \
 IOS_ARCH=ARM64
 ```
 
-This will build the library and the benchmark program. Since the benchmark is
-command-line only, you'll need to load the static library into an Xcode app
-project to use it.
+This will build the library for a single architecture, and the benchmark
+program. Since the benchmark is command-line only, you'll need to load the
+static library into an Xcode app project to use it.
 
 To build a complete universal library for iOS, containing all architectures,
 you will need to run `compile_ios_protobuf.sh` followed by
 `compile_ios_tensorflow.sh`. This creates a library in 
 `tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a` that you can link any
-xcode project against. You will need to use -force_load in the linker flags
+xcode project against. Here are complete build instructions:
+
+Grab the source code for TensorFlow:
+
+```bash
+git clone https://github.com/tensorflow/tensorflow
+cd tensorflow
+```
+
+Download dependencies like Eigen and Protobuf:
+
+```bash
+tensorflow/contrib/makefile/download_dependencies.sh
+```
+
+Build and install the host (OS X) copy of protobuf.
+
+```bash
+cd tensorflow/contrib/makefile/downloads/protobuf/
+./autogen.sh
+./configure
+make
+sudo make install
+cd ../../../../..
+```
+
+Build the iOS native versions of protobuf:
+
+```bash
+tensorflow/contrib/makefile/compile_ios_protobuf.sh
+```
+
+Build all iOS architectures for TensorFlow:
+
+```bash
+tensorflow/contrib/makefile/compile_ios_tensorflow.sh
+```
+
+You will need to use -force_load in the linker flags
 section of the build settings to pull in the global constructors that are used
-to register ops and kernels.
+to register ops and kernels. 
+
+The example Xcode project in tensorflow/contrib/ios_example shows how to use the
+static library in a simple app.
 
 ## Dependencies
 

@@ -116,6 +116,9 @@ message MachineConfiguration {
   // Host name of machine that ran the benchmark.
   string hostname = 1;
 
+  // Unique serial number of the machine.
+  string serial_identifier = 7;
+
   // Additional platform information.
   PlatformInfo platform_info = 2;
 

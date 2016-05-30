@@ -148,10 +148,7 @@ class DataFrame(object):
       target_keys = []
 
     if feature_keys is None:
-      if target_keys:
-        feature_keys = self.columns() - set(target_keys)
-      else:
-        feature_keys = self.columns()
+      feature_keys = self.columns() - set(target_keys)
     else:
       in_both = set(feature_keys) & set(target_keys)
       if in_both:
