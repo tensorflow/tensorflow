@@ -23,13 +23,15 @@ import math
 import numpy as np
 import tensorflow as tf
 
-def rmsprop_update_numpy(var, g, rms, mom, lr, decay, momentum, epsilon):
- rms_t = rms * decay + (1-decay) * g * g
- mom_t = momentum * mom + lr * g / np.sqrt(rms_t + epsilon)
- var_t = var - mom_t
- return var_t, rms_t, mom_t
 
 class RMSPropOptimizerTest(tf.test.TestCase):
+
+  def _rmsprop_update_numpy(self, var, g, rms, mom, lr, decay, momentum, 
+      epsilon):
+    rms_t = rms * decay + (1-decay) * g * g
+    mom_t = momentum * mom + lr * g / np.sqrt(rms_t + epsilon)
+    var_t = var - mom_t
+    return var_t, rms_t, mom_t
 
   def testSparseWithMomentum(self):
     for dtype in [tf.half, tf.float32]:
@@ -77,10 +79,10 @@ class RMSPropOptimizerTest(tf.test.TestCase):
         for t in range(1, 5):
           update.run()
 
-          var0_np, rms0_np, mom0_np = rmsprop_update_numpy(var0_np, grads0_np, 
-              rms0_np, mom0_np, 2.0, 0.9, 0.5, 1e-5)
-          var1_np, rms1_np, mom1_np = rmsprop_update_numpy(var1_np, grads1_np, 
-              rms1_np, mom1_np, 2.0, 0.9, 0.5, 1e-5)
+          var0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(var0_np, 
+              grads0_np, rms0_np, mom0_np, 2.0, 0.9, 0.5, 1e-5)
+          var1_np, rms1_np, mom1_np = self._rmsprop_update_numpy(var1_np, 
+              grads1_np, rms1_np, mom1_np, 2.0, 0.9, 0.5, 1e-5)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(rms0_np, rms0.eval())
@@ -136,10 +138,10 @@ class RMSPropOptimizerTest(tf.test.TestCase):
         for t in range(1, 5):
           update.run()
 
-          var0_np, rms0_np, mom0_np = rmsprop_update_numpy(var0_np, grads0_np, 
-              rms0_np, mom0_np, 2.0, 0.9, 0.0, 1.0)
-          var1_np, rms1_np, mom1_np = rmsprop_update_numpy(var1_np, grads1_np, 
-              rms1_np, mom1_np, 2.0, 0.9, 0.0, 1.0)
+          var0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(var0_np, 
+              grads0_np, rms0_np, mom0_np, 2.0, 0.9, 0.0, 1.0)
+          var1_np, rms1_np, mom1_np = self._rmsprop_update_numpy(var1_np, 
+              grads1_np, rms1_np, mom1_np, 2.0, 0.9, 0.0, 1.0)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(rms0_np, rms0.eval())
