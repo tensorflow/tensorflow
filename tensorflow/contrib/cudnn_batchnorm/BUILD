@@ -33,7 +33,7 @@ tf_gen_op_wrapper_py(
   deps = ["//tensorflow/contrib/cudnn_batchnorm:cudnn_batchnorm_op_lib"]
 )
 
-tf_kernel_library(
+cc_library(
     name = "cudnn_batchnorm_kernels",
 
     deps = [
