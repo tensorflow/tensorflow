@@ -1222,7 +1222,6 @@ cc_test(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
         ":test",
         ":test_main",
     ],

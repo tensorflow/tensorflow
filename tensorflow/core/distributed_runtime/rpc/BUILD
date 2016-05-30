@@ -220,7 +220,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:graph_mgr",
         "//tensorflow/core/distributed_runtime:master_env",
         "//tensorflow/core/distributed_runtime:master_session",
