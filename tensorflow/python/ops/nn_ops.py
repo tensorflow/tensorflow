@@ -165,13 +165,15 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     # zero-padded value tensor are multiples of rate.
 
     # Spatial dimensions of original input
-    in_height = int(value_shape[1])
-    in_width = int(value_shape[2])
+    value_shape = tf.shape(value)
+    in_height = value_shape[1]
+    in_width = value_shape[2]
 
     # Spatial dimensions of the filters and the upsampled filters in which we
     # introduce (rate - 1) zeros between consecutive filter values.
-    filter_height = int(filter_shape[0])
-    filter_width = int(filter_shape[1])
+    filter_shape = tf.shape(filters)
+    filter_height = filter_shape[0]
+    filter_width = filter_shape[1]
     filter_height_up = filter_height + (filter_height - 1) * (rate - 1)
     filter_width_up = filter_width + (filter_width - 1) * (rate - 1)
 
@@ -186,24 +188,32 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       raise ValueError("Invalid padding")
     # When padding is "SAME" and the pad_height (pad_width) is odd, we pad more
     # to bottom (right), following the same convention as conv2d().
-    pad_top = pad_height // 2
+    pad_top = tf.floordiv(pad_height, 2)
     pad_bottom = pad_height - pad_top
-    pad_left = pad_width // 2
+    pad_left = tf.floordiv(pad_width, 2)
     pad_right = pad_width - pad_left
 
     # More padding so that rate divides the height and width of the input value
     in_height = in_height + pad_top + pad_bottom
     in_width = in_width + pad_left + pad_right
-    pad_bottom_extra = 0 if in_height % rate == 0 else rate - in_height % rate
-    pad_right_extra = 0 if in_width % rate == 0 else rate - in_width % rate
+
+    mod_height = tf.mod(in_height, rate)
+    mod_width = tf.mod(in_width, rate)
+    null = tf.constant(0)
+    pad_bottom_extra = tf.cond(tf.equal(mod_height, 0), lambda: null, lambda: rate - mod_height)
+    pad_right_extra = tf.cond(tf.equal(mod_width, 0), lambda: null, lambda: rate - mod_width)
 
     # The paddings argument to space_to_batch includes both padding components
-    space_to_batch_pad = [[pad_top, pad_bottom + pad_bottom_extra],
-                          [pad_left, pad_right + pad_right_extra]]
+    pad_bottom = pad_bottom + pad_bottom_extra
+    pad_right = pad_right + pad_right_extra
+
+    v = tf.expand_dims(tf.pack([pad_top, pad_bottom]),1)
+    h = tf.expand_dims(tf.pack([pad_left, pad_right]),1)   
+    space_to_batch_pad = tf.concat(1, [v,h])
     value = array_ops.space_to_batch(input=value,
                                      paddings=space_to_batch_pad,
                                      block_size=rate)
-
+        
     value = gen_nn_ops.conv2d(input=value,
                               filter=filters,
                               strides=[1, 1, 1, 1],
@@ -211,7 +221,9 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
                               name=name)
 
     # The crops argument to batch_to_space is just the extra padding component
-    batch_to_space_crop = [[0, pad_bottom_extra], [0, pad_right_extra]]
+    v = tf.expand_dims(tf.pack([0, pad_bottom_extra]),1)
+    h = tf.expand_dims(tf.pack([0, pad_right_extra]),1)   
+    batch_to_space_crop = tf.concat(1, [v,h])        
     value = array_ops.batch_to_space(input=value,
                                      crops=batch_to_space_crop,
                                      block_size=rate)
