@@ -172,6 +172,7 @@ class Env(object):
       TensorHandle corresponding to given numpy array.
     """
 
+    print("Numpy to handle", array)
     with self.g.as_default():
       holder = array_ops.placeholder(dtype=array.dtype)
       tensor_handle_op = session_ops.get_session_handle(holder)

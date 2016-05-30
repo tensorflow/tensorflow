@@ -23,9 +23,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
-_sparse_feature_cross_op = load_library.load_op_library(
+try:
+  _sparse_feature_cross_op = load_library.load_op_library(
     resource_loader.get_path_to_datafile("_sparse_feature_cross_op.so"))
-assert _sparse_feature_cross_op, "Could not load _sparse_feature_cross_op.so."
+# module_patcher hack
+except:
+  pass
 
 
 def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,

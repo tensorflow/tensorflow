@@ -319,6 +319,15 @@ class OpDefLibrary(object):
       TypeError: On some errors.
       ValueError: On some errors.
     """
+
+    print("Called apply op with %s %s %s"%(self, op_type_name, keywords))
+    #import pdb; pdb.set_trace()
+    #    try:
+    #      raise TypeError("hi")
+    #    except Exception, err:
+    #      import traceback
+    #      traceback.print_exc()
+
     op_info = self._ops.get(op_type_name, None)
     if op_info is None:
       raise RuntimeError("Unrecognized Op name " + op_type_name)

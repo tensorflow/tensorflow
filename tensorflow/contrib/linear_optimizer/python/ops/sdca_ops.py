@@ -38,9 +38,12 @@ from tensorflow.python.platform import resource_loader
 
 __all__ = ['SdcaModel']
 
-_sdca_ops = load_op_library(resource_loader.get_path_to_datafile(
-    '_sdca_ops.so'))
-assert _sdca_ops, 'Could not load _sdca_ops.so'
+# module_patcher hack
+try:
+  _sdca_ops = load_op_library(resource_loader.get_path_to_datafile(
+      '_sdca_ops.so'))
+except:
+  pass
 
 
 # TODO(sibyl-Aix6ihai): add op_scope to appropriate methods.
