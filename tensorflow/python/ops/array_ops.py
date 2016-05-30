@@ -993,7 +993,13 @@ def meshgrid(*args, indexing="xy", name="meshgrid"):
   Given N one-dimensional coordinate arrays `*args`, returns a list `outputs`
   of N-D coordinate arrays for evaluating expressions on an N-D grid.
 
-  For example:
+  Notes:
+
+  `meshgrid` supports cartesian ('xy') and matrix ('ij') indexing conventions.
+  When the `indexing` argument is set to 'xy' (the default), the broadcasting
+  instructions for the first two dimensions are swapped.
+
+  Examples:
 
   Calling `X, Y = meshgrid(x, y)` with the tensors
   ```prettyprint
@@ -1012,26 +1018,27 @@ def meshgrid(*args, indexing="xy", name="meshgrid"):
 
   Args:
     *args: `Tensor`s with rank 1
+    indexing: Either 'xy' or 'ij' (default: 'xy')
 
   Returns:
     outputs: A list of N `Tensor`s with rank N
-
   """
   if indexing not in ("xy", "ij"):
     raise ValueError("indexing parameter must be either 'xy' or 'ij'")
 
-  num_inputs = len(args)
-
-  if num_inputs > 5:
-    raise ValueError("meshgrid only supports up to 5 dimensions")
-
-  ones = (1,) * num_inputs
-
   with ops.op_scope(args, name, "meshgrid") as name:
+    num_inputs = len(args)
+    ones = (1,) * num_inputs
+
+    asserts = [logging_ops.Assert(
+                 gen_math_ops.equal(rank(x), 1),
+                 ["Input %d needs to have rank 1: " % i, rank(x)],
+               ) for i, x in enumerate(args)]
+
     # Prepare reshape by inserting dimensions with size 1 where needed
     shapes = [ones[:i] + (-1,) + ones[i + 1:] for i in range(num_inputs)]
     # Create parameters for broadcasting each tensor to the full size
-    sizes = [shape(x)[0] for x in args]
+    sizes = [size(x) for x in args]
     bcast = [sizes[:i] + [1] + sizes[i + 1:] for i in range(num_inputs)]
 
     # By default, the numpy version swaps the instructions
@@ -1040,7 +1047,12 @@ def meshgrid(*args, indexing="xy", name="meshgrid"):
       shapes[0], shapes[1] = shapes[1], shapes[0]
       bcast[0], bcast[1] = bcast[1], bcast[0]
 
-    return [tile(reshape(a, r), e) for a, r, e in zip(args, shapes, bcast)]
+    results = []
+    for a, r, e in zip(args, shapes, bcast):
+      with ops.control_dependencies(asserts):
+        results.append(tile(reshape(a, r), e))
+
+    return results
 
 
 @ops.RegisterShape("Placeholder")

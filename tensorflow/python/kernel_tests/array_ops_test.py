@@ -166,7 +166,6 @@ class MeshgridTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=use_gpu):
       tf_out = array_ops.meshgrid(*inputs)
       for X, _X in zip(numpy_out, tf_out):
-        print(X, _X)
         self.assertAllEqual(X, _X.eval())
 
   def testCompare(self):
@@ -178,8 +177,12 @@ class MeshgridTest(test_util.TensorFlowTestCase):
       self._compare(4, t, False)
       self._compare(5, t, False)
 
-    with self.assertRaises(ValueError):
-      self._compare(6, np.float32, False)
+    # Test for inputs with rank not equal to 1
+    x = [[1, 1], [1, 1]]
+    with self.assertRaises(errors.InvalidArgumentError):
+      with self.test_session():
+        X, _ = array_ops.meshgrid(x, x)
+        X.eval()
 
 
 if __name__ == "__main__":
