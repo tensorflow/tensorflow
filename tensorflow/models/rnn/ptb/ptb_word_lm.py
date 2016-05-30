@@ -89,11 +89,11 @@ class PTBModel(object):
     # Slightly better results can be obtained with forget gate biases
     # initialized to 1 but the hyperparameters of the model would need to be
     # different than reported in the paper.
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size, forget_bias=0.0)
+    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size, forget_bias=0.0, state_is_tuple=True)
     if is_training and config.keep_prob < 1:
       lstm_cell = tf.nn.rnn_cell.DropoutWrapper(
           lstm_cell, output_keep_prob=config.keep_prob)
-    cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers)
+    cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers, state_is_tuple=True)
 
     self._initial_state = cell.zero_state(batch_size, tf.float32)
 
@@ -239,26 +239,39 @@ class TestConfig(object):
   vocab_size = 10000
 
 
-def run_epoch(session, m, data, eval_op, verbose=False):
+def run_epoch(session, model, data, eval_op, verbose=False):
   """Runs the model on the given data."""
-  epoch_size = ((len(data) // m.batch_size) - 1) // m.num_steps
+  epoch_size = ((len(data) // model.batch_size) - 1) // model.num_steps
   start_time = time.time()
   costs = 0.0
   iters = 0
-  state = m.initial_state.eval()
-  for step, (x, y) in enumerate(reader.ptb_iterator(data, m.batch_size,
-                                                    m.num_steps)):
-    cost, state, _ = session.run([m.cost, m.final_state, eval_op],
-                                 {m.input_data: x,
-                                  m.targets: y,
-                                  m.initial_state: state})
+  state = []
+  for c, m in model.initial_state: # initial_state: ((c1, m1), (c2, m2))
+    state.append((c.eval(), m.eval()))
+  for step, (x, y) in enumerate(reader.ptb_iterator(data, model.batch_size,
+                                                    model.num_steps)):
+    fetches = []
+    fetches.append(model.cost)
+    fetches.append(eval_op)
+    for c, m in model.final_state: # final_state: ((c1, m1), (c2, m2))
+      fetches.append(c)
+      fetches.append(m)
+    feed_dict = {}
+    feed_dict[model.input_data] = x
+    feed_dict[model.targets] = y
+    for i, (c, m) in enumerate(model.initial_state):
+      feed_dict[c], feed_dict[m] = state[i]
+    res = session.run(fetches, feed_dict)
+    cost = res[0]
+    state_flat = res[2:] # [c1, m1, c2, m2]
+    state = [state_flat[i:i+2] for i in range(0, len(state_flat), 2)]
     costs += cost
-    iters += m.num_steps
+    iters += model.num_steps
 
     if verbose and step % (epoch_size // 10) == 10:
       print("%.3f perplexity: %.3f speed: %.0f wps" %
             (step * 1.0 / epoch_size, np.exp(costs / iters),
-             iters * m.batch_size / (time.time() - start_time)))
+             iters * model.batch_size / (time.time() - start_time)))
 
   return np.exp(costs / iters)
 
