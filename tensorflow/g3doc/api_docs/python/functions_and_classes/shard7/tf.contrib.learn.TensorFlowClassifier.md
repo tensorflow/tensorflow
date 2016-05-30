@@ -92,22 +92,6 @@ Returns tensor by name.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.get_tensor_value(name)` {#TensorFlowClassifier.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowClassifier.get_variable_names()` {#TensorFlowClassifier.get_variable_names}
 
 Returns list of all variable names in this model.

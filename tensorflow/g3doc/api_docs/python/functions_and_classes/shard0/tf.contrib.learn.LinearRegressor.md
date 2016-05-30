@@ -1,21 +1,65 @@
-Estimator class is the basic TensorFlow model trainer/evaluator.
+Linear regressor model.
+
+  Example:
+  ```
+  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
+  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+
+  installed_x_impression = crossed_column(
+      [installed_app_id, impression_app_id])
+
+  estimator = LinearRegressor(
+      feature_columns=[impression_app_id, installed_x_impression])
+
+  # Input builders
+  def input_fn_train: # returns X, Y
+    ...
+  def input_fn_eval: # returns X, Y
+    ...
+  estimator.train(input_fn_train)
+  estimator.evaluate(input_fn_eval)
+  estimator.predict(x)
+  ```
+
+  Input of `fit`, `train`, and `evaluate` should have following features,
+    otherwise there will be a KeyError:
+      if `weight_column_name` is not None:
+        key=weight_column_name, value=a `Tensor`
+      for column in `feature_columns`:
+      - if isinstance(column, `SparseColumn`):
+          key=column.name, value=a `SparseTensor`
+      - if isinstance(column, `RealValuedColumn`):
+          key=column.name, value=a `Tensor`
+      - if `feauture_columns` is None:
+          input must contains only real valued `Tensor`.
 
 Parameters:
-  model_fn: Model function, takes features and targets tensors or dicts of
-            tensors and returns predictions and loss tensors.
-            E.g. `(features, targets) -> (predictions, loss, train_op)`.
+  feature_columns: An iterable containing all the feature columns used by the
+    model. All items in the set should be instances of classes derived from
+    `FeatureColumn`.
   model_dir: Directory to save model parameters, graph and etc.
-  config: Configuration object.
+  weight_column_name: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
+    will use an Ftrl optimizer.
 - - -
 
-#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None)` {#Estimator.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None)` {#LinearRegressor.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#Estimator.evaluate}
+#### `tf.contrib.learn.LinearRegressor.bias_` {#LinearRegressor.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#LinearRegressor.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -47,7 +91,7 @@ Evaluates given model with provided evaluation data.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.fit(x, y, steps, batch_size=32, monitors=None)` {#Estimator.fit}
+#### `tf.contrib.learn.LinearRegressor.fit(x, y, steps, batch_size=32, monitors=None)` {#LinearRegressor.fit}
 
 Trains a model given training data X and y.
 
@@ -72,7 +116,7 @@ Trains a model given training data X and y.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.get_params(deep=True)` {#Estimator.get_params}
+#### `tf.contrib.learn.LinearRegressor.get_params(deep=True)` {#LinearRegressor.get_params}
 
 Get parameters for this estimator.
 
@@ -91,7 +135,7 @@ Get parameters for this estimator.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.get_variable_names()` {#Estimator.get_variable_names}
+#### `tf.contrib.learn.LinearRegressor.get_variable_names()` {#LinearRegressor.get_variable_names}
 
 Returns list of all variable names in this model.
 
@@ -102,7 +146,7 @@ Returns list of all variable names in this model.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.get_variable_value(name)` {#Estimator.get_variable_value}
+#### `tf.contrib.learn.LinearRegressor.get_variable_value(name)` {#LinearRegressor.get_variable_value}
 
 Returns value of the variable given by name.
 
@@ -118,14 +162,28 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.model_dir` {#Estimator.model_dir}
+#### `tf.contrib.learn.LinearRegressor.linear_bias_` {#LinearRegressor.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.linear_weights_` {#LinearRegressor.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.model_dir` {#LinearRegressor.model_dir}
 
 
 
 
 - - -
 
-#### `tf.contrib.learn.Estimator.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#Estimator.partial_fit}
+#### `tf.contrib.learn.LinearRegressor.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#LinearRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -158,7 +216,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#Estimator.predict}
+#### `tf.contrib.learn.LinearRegressor.predict(x=None, input_fn=None, batch_size=None)` {#LinearRegressor.predict}
 
 Returns predictions for given features.
 
@@ -168,8 +226,6 @@ Returns predictions for given features.
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
-*  <b>`outputs`</b>: list of `str`, name of the output to predict.
-           If `None`, returns all.
 
 ##### Returns:
 
@@ -178,7 +234,25 @@ Returns predictions for given features.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.set_params(**params)` {#Estimator.set_params}
+#### `tf.contrib.learn.LinearRegressor.predict_proba(x=None, input_fn=None, batch_size=None)` {#LinearRegressor.predict_proba}
+
+Returns prediction probabilities for given features (classification).
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted probabilities.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.set_params(**params)` {#LinearRegressor.set_params}
 
 Set the parameters of this estimator.
 
@@ -204,7 +278,7 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.train(input_fn, steps, monitors=None)` {#Estimator.train}
+#### `tf.contrib.learn.LinearRegressor.train(input_fn, steps, monitors=None)` {#LinearRegressor.train}
 
 Trains a model given input builder function.
 
@@ -220,5 +294,12 @@ Trains a model given input builder function.
 ##### Returns:
 
   Returns self.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.weights_` {#LinearRegressor.weights_}
+
+
 
 

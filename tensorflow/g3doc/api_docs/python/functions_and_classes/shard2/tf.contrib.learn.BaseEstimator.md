@@ -4,7 +4,6 @@ Concrete implementation of this class should provide following functions:
   * _get_train_ops
   * _get_eval_ops
   * _get_predict_ops
-It may override _get_default_metric_functions.
 
 `Estimator` implemented below is a good example of how to use this class.
 
@@ -41,7 +40,7 @@ Evaluates given model with provided evaluation data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
 
 ##### Raises:
 
@@ -71,7 +70,7 @@ Trains a model given training data X and y.
 
 ##### Returns:
 
-  Returns self.
+  Returns final loss.
 
 
 - - -
@@ -157,12 +156,12 @@ to converge, and you want to split up training into subparts.
 
 ##### Returns:
 
-  Returns self.
+  Returns final loss.
 
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None)` {#BaseEstimator.predict}
+#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#BaseEstimator.predict}
 
 Returns predictions for given features.
 
@@ -172,6 +171,8 @@ Returns predictions for given features.
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+           If `None`, returns all.
 
 ##### Returns:
 
