@@ -24,20 +24,17 @@ import abc
 import os
 import tempfile
 import time
-import types
 
 import numpy as np
 import six
 
 from tensorflow.contrib import framework as contrib_framework
-from tensorflow.contrib import layers
-from tensorflow.contrib import losses
-from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
+from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.graph_actions import evaluate
 from tensorflow.contrib.learn.python.learn.graph_actions import infer
 from tensorflow.contrib.learn.python.learn.graph_actions import train
@@ -51,16 +48,6 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
-
-
-# Default metrics for evaluation.
-_EVAL_METRICS = {
-    'regression': {
-        'mean_squared_error': metrics_lib.streaming_mean_squared_error,
-    },
-    'classification': {
-        'logistic': losses.sigmoid_cross_entropy,
-    },}
 
 
 class ModeKeys(object):
@@ -98,7 +85,6 @@ class BaseEstimator(sklearn.BaseEstimator):
     * _get_train_ops
     * _get_eval_ops
     * _get_predict_ops
-  It may override _get_default_metric_functions.
 
   `Estimator` implemented below is a good example of how to use this class.
 
@@ -155,7 +141,7 @@ class BaseEstimator(sklearn.BaseEstimator):
                 inside the training loop.
 
     Returns:
-      Returns self.
+      Returns final loss.
     """
     input_fn, feed_fn = _get_input_fn(x, y, batch_size)
     return self._train_model(input_fn=input_fn,
@@ -202,7 +188,7 @@ class BaseEstimator(sklearn.BaseEstimator):
                 inside the training loop.
 
     Returns:
-      Returns self.
+      Returns final loss.
     """
     input_fn, feed_fn = _get_input_fn(x, y, batch_size)
     return self._train_model(input_fn=input_fn,
@@ -236,7 +222,7 @@ class BaseEstimator(sklearn.BaseEstimator):
         different data sets, such as evaluate on training data vs test data.
 
     Returns:
-      Returns self.
+      Returns `dict` with evaluation results.
 
     Raises:
       ValueError: If x or y are not None while input_fn or feed_fn is not None.
@@ -252,18 +238,21 @@ class BaseEstimator(sklearn.BaseEstimator):
                                 metrics=metrics,
                                 name=name)
 
-  def predict(self, x=None, input_fn=None, batch_size=None):
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None):
     """Returns predictions for given features.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+               If `None`, returns all.
 
     Returns:
       Numpy array of predicted classes or regression values.
     """
-    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
+    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size,
+                             outputs=outputs)
 
   def get_variable_value(self, name):
     """Returns value of the variable given by name.
@@ -374,6 +363,7 @@ class BaseEstimator(sklearn.BaseEstimator):
                    monitors=None,
                    log_every_steps=100,
                    fail_on_nan_loss=True):
+    # TODO(wicke): This is a hack and needs to go.
     if self._config.execution_mode not in ('all', 'train'):
       return
 
@@ -462,12 +452,20 @@ class BaseEstimator(sklearn.BaseEstimator):
                       feed_fn=None,
                       metrics=None,
                       name=''):
+    # TODO(wicke): This is a hack and needs to go.
     if self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset'):
       return
 
+    # Check that model has been trained.
     checkpoint_path = self._model_dir
+    latest_path = saver.latest_checkpoint(checkpoint_path)
+    if not latest_path:
+      raise NotFittedError("Couldn't find trained model at %s."
+                           % checkpoint_path)
+    # Setup output directory.
     eval_dir = os.path.join(self._model_dir, 'eval' if not name else
                             'eval_' + name)
+
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
@@ -492,21 +490,38 @@ class BaseEstimator(sklearn.BaseEstimator):
       return result[0]
     return result
 
-  def _infer_model(self, x=None, input_fn=None, feed_fn=None, batch_size=None):
+  def _infer_model(self, x=None, input_fn=None, feed_fn=None, batch_size=None,
+                   outputs=None):
     # Converts inputs into tf.DataFrame / tf.Series.
     batch_size = -1 if batch_size is None else batch_size
     if x is not None:
       input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
 
+    # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      raise NotFittedError("Couldn't find trained model at %s."
+                           % self._model_dir)
+
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
       predictions = self._get_predict_ops(features)
+      # If predictions is single output - wrap it into dict, and remember to
+      # return not a dict.
       return_dict = True
       if not isinstance(predictions, dict):
         predictions, return_dict = {'predictions': predictions}, False
+      # Filter what to run predictions on, if outputs provided.
+      if outputs:
+        existing_keys = predictions.keys()
+        predictions = {
+            key: value for key, value in predictions.items() if key in outputs
+        }
+        if not predictions:
+          raise ValueError('Expected to run at least one output from %s, '
+                           'provided %s.' % (existing_keys, outputs))
       if feed_fn is None:
         preds = infer(checkpoint_path, predictions)
       else:
@@ -532,80 +547,17 @@ class Estimator(BaseEstimator):
   Parameters:
     model_fn: Model function, takes features and targets tensors or dicts of
               tensors and returns predictions and loss tensors.
-              E.g. `(features, targets) -> (predictions, loss)`.
+              E.g. `(features, targets) -> (predictions, loss, train_op)`.
     model_dir: Directory to save model parameters, graph and etc.
-    classification: boolean, true if classification problem.
-    learning_rate: learning rate for the model.
-    optimizer: optimizer for the model, can be:
-               string: name of optimizer, like 'SGD', 'Adam', 'Adagrad', 'Ftl',
-                 'Momentum', 'RMSProp', 'Momentum').
-                 Full list in contrib/layers/optimizers.py
-               class: sub-class of Optimizer
-                 (like tf.train.GradientDescentOptimizer).
-    clip_gradients: clip_norm value for call to `clip_by_global_norm`. None
-                    denotes no gradient clipping.
     config: Configuration object.
   """
 
   def __init__(self,
                model_fn=None,
                model_dir=None,
-               classification=True,
-               learning_rate=0.1,
-               optimizer='Adagrad',
-               clip_gradients=None,
                config=None):
     super(Estimator, self).__init__(model_dir=model_dir, config=config)
-
     self._model_fn = model_fn
-    self._classification = classification
-    if isinstance(optimizer, six.string_types):
-      if optimizer not in layers.OPTIMIZER_CLS_NAMES:
-        raise ValueError(
-            'Optimizer name should be one of [%s], you provided %s.' %
-            (', '.join(layers.OPTIMIZER_CLS_NAMES), optimizer))
-    self.optimizer = optimizer
-    self.learning_rate = learning_rate
-    self.clip_gradients = clip_gradients
-
-  def predict(self, x=None, input_fn=None, axis=None, batch_size=None):
-    """Returns predictions for given features.
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
-      axis: Axis on which to argmax (for classification).
-            Last axis is used by default.
-      batch_size: Override default batch size.
-
-    Returns:
-      Numpy array of predicted classes or regression values.
-    """
-    predictions = self._infer_model(x=x,
-                                    input_fn=input_fn,
-                                    batch_size=batch_size)
-    if self._classification:
-      if isinstance(predictions, dict):
-        for key in predictions:
-          cur_axis = (len(predictions[key].shape) - 1) if axis is None else axis
-          predictions[key] = np.argmax(predictions[key], axis=cur_axis)
-      else:
-        cur_axis = (len(predictions.shape) - 1) if axis is None else axis
-        predictions = np.argmax(predictions, axis=cur_axis)
-    return predictions
-
-  def predict_proba(self, x=None, input_fn=None, batch_size=None):
-    """Returns prediction probabilities for given features (classification).
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x and y must be None.
-      batch_size: Override default batch size.
-
-    Returns:
-      Numpy array of predicted probabilities.
-    """
-    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -621,26 +573,7 @@ class Estimator(BaseEstimator):
     Returns:
       Tuple of train `Operation` and loss `Tensor`.
     """
-    _, loss = self._model_fn(features, targets, ModeKeys.TRAIN)
-    # TODO(ipolosukhin): Move this to TensorFlowEstimator when
-    # moving out training.
-    if isinstance(self.learning_rate, types.FunctionType):
-      learning_rate = self.learning_rate(contrib_framework.get_global_step())
-    else:
-      learning_rate = self.learning_rate
-    if isinstance(self.optimizer, types.FunctionType):
-      optimizer = self.optimizer(learning_rate)
-    else:
-      optimizer = self.optimizer
-    train_op = layers.optimize_loss(
-        loss,
-        contrib_framework.get_global_step(),
-        learning_rate=learning_rate,
-        optimizer=optimizer,
-        clip_gradients=self.clip_gradients)
-    # Add update ops.
-    train_op = control_flow_ops.group(
-        train_op, *ops.get_collection('update_ops'))
+    _, loss, train_op = self._model_fn(features, targets, ModeKeys.TRAIN)
     return train_op, loss
 
   def _get_eval_ops(self, features, targets, metrics):
@@ -658,17 +591,19 @@ class Estimator(BaseEstimator):
     Returns:
       metrics: `dict` of `Tensor` objects.
     """
-    predictions, loss = self._model_fn(features, targets, ModeKeys.EVAL)
+    predictions, loss, _ = self._model_fn(features, targets, ModeKeys.EVAL)
     result = {'loss': loss}
-    if metrics is None:
-      metrics = _EVAL_METRICS[
-          'classification' if self._classification else 'regression']
+    metrics = metrics or {}
     if isinstance(targets, dict) and len(targets) == 1:
       # Unpack single target into just tensor.
       targets = targets[targets.keys()[0]]
     for name, metric in six.iteritems(metrics):
-      # TODO(ipolosukhin): Add support for multi-head metrics.
-      result[name] = metric(predictions, targets)
+      if isinstance(name, tuple):
+        # Multi-head metrics.
+        result[name[0]] = metric(predictions[name[1]], targets)
+      else:
+        # Single head metrics.
+        result[name] = metric(predictions, targets)
     return result
 
   def _get_predict_ops(self, features):
@@ -686,7 +621,7 @@ class Estimator(BaseEstimator):
     """
     targets = tensor_signature.create_placeholders_from_signatures(
         self._targets_info)
-    predictions, _ = self._model_fn(features, targets, ModeKeys.INFER)
+    predictions, _, _ = self._model_fn(features, targets, ModeKeys.INFER)
     return predictions
 
   def _get_feature_ops_from_example(self, examples_batch):
@@ -705,3 +640,4 @@ class Estimator(BaseEstimator):
     """
     raise NotImplementedError('_get_feature_ops_from_example not yet '
                               'implemented')
+

@@ -25,9 +25,13 @@ Train and evaluate TensorFlow models.
 @@Estimator
 @@ModeKeys
 @@TensorFlowClassifier
+@@DNNClassifier
+@@DNNRegressor
 @@TensorFlowDNNClassifier
 @@TensorFlowDNNRegressor
 @@TensorFlowEstimator
+@@LinearClassifier
+@@LinearRegressor
 @@TensorFlowLinearClassifier
 @@TensorFlowLinearRegressor
 @@TensorFlowRNNClassifier

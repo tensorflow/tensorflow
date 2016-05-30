@@ -221,6 +221,18 @@ py_test(
 )
 
 py_test(
+    name = "classifier_test",
+    size = "small",
+    srcs = ["python/learn/estimators/classifier_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "dnn_linear_combined_test",
     size = "medium",
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],

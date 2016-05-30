@@ -20,9 +20,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.estimators.autoencoder import TensorFlowDNNAutoencoder
 from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowBaseTransformer
 from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowEstimator
+from tensorflow.contrib.learn.python.learn.estimators.classifier import Classifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.dnn import TensorFlowDNNClassifier

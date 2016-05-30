@@ -137,8 +137,8 @@ def logistic_regression(X,
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('logistic_regression'):
-    logging_ops.histogram_summary('logistic_regression.X', X)
-    logging_ops.histogram_summary('logistic_regression.y', y)
+    logging_ops.histogram_summary('%s.X' % vs.get_variable_scope().name, X)
+    logging_ops.histogram_summary('%s.y' % vs.get_variable_scope().name, y)
     # Set up the requested initialization.
     if init_mean is None:
       weights = vs.get_variable('weights',
@@ -152,8 +152,10 @@ def logistic_regression(X,
       bias = vs.get_variable('bias', [y.get_shape()[-1]],
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev))
-    logging_ops.histogram_summary('logistic_regression.weights', weights)
-    logging_ops.histogram_summary('logistic_regression.bias', bias)
+    logging_ops.histogram_summary('%s.weights' % vs.get_variable_scope().name,
+                                  weights)
+    logging_ops.histogram_summary('%s.bias' % vs.get_variable_scope().name,
+                                  bias)
     # If no class weight provided, try to retrieve one from pre-defined
     # tensor name in the graph.
     if not class_weight:

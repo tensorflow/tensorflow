@@ -245,7 +245,7 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
         config=config,
         verbose=verbose)
 
-  def _model_fn(self, X, y):
+  def _model_fn(self, X, y):  # pylint: disable=invalid-name
     return models.get_dnn_model(self.hidden_units,
                                 models.logistic_regression,
                                 dropout=self.dropout)(X, y)
@@ -253,18 +253,19 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
   @property
   def weights_(self):
     """Returns weights of the DNN weight layers."""
-    return [self.get_tensor_value(w.name)
+    return [self.get_variable_value(w.name)
             for w in self._graph.get_collection('dnn_weights')
-           ] + [self.get_tensor_value('logistic_regression/weights')]
+           ] + [self.get_variable_value('logistic_regression/weights')]
 
   @property
   def bias_(self):
     """Returns bias of the DNN's bias layers."""
-    return [self.get_tensor_value(b.name)
+    return [self.get_variable_value(b.name)
             for b in self._graph.get_collection('dnn_biases')
-           ] + [self.get_tensor_value('logistic_regression/bias')]
+           ] + [self.get_variable_value('logistic_regression/bias')]
 
 
+# TODO(ipolosukhin): Deprecate this class in favor of DNNRegressor.
 class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
   """TensorFlow DNN Regressor model.
 
@@ -318,7 +319,7 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
         config=config,
         verbose=verbose)
 
-  def _model_fn(self, X, y):
+  def _model_fn(self, X, y):  # pylint: disable=invalid-name
     return models.get_dnn_model(self.hidden_units,
                                 models.linear_regression,
                                 dropout=self.dropout)(X, y)
@@ -326,13 +327,13 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
   @property
   def weights_(self):
     """Returns weights of the DNN weight layers."""
-    return [self.get_tensor_value(w.name)
+    return [self.get_variable_value(w.name)
             for w in self._graph.get_collection('dnn_weights')
-           ] + [self.get_tensor_value('linear_regression/weights')]
+           ] + [self.get_variable_value('linear_regression/weights')]
 
   @property
   def bias_(self):
     """Returns bias of the DNN's bias layers."""
-    return [self.get_tensor_value(b.name)
+    return [self.get_variable_value(b.name)
             for b in self._graph.get_collection('dnn_biases')
-           ] + [self.get_tensor_value('linear_regression/bias')]
+           ] + [self.get_variable_value('linear_regression/bias')]

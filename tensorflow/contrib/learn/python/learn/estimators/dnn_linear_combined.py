@@ -142,6 +142,24 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     """
     return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
 
+  @property
+  def linear_weights_(self):
+    """Returns weights per feature of the linear part."""
+    all_variables = self.get_variable_names()
+    values = {}
+    for name in all_variables:
+      if (name.startswith("linear/") and name.rfind("/") == 6 and
+          name != "linear/bias_weight"):
+        values[name] = self.get_variable_value(name)
+    if len(values) == 1:
+      return values[values.keys()[0]]
+    return values
+
+  @property
+  def linear_bias_(self):
+    """Returns bias of the linear part."""
+    return self.get_variable_value("linear/bias_weight")
+
   def _get_train_ops(self, features, targets):
     """See base class."""
     global_step = contrib_variables.get_global_step()

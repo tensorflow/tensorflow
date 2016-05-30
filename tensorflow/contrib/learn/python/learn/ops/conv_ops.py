@@ -49,6 +49,8 @@ def conv2d(tensor_in,
     strides: A list of ints, 1-D of length 4. The stride of the sliding
       window for each dimension of input.
     padding: A string: 'SAME' or 'VALID'. The type of padding algorthim to use.
+      See the [comment here]
+      (https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     bias: Boolean, if to add bias.
     activation: Activation Op, optional. If provided applied on the output.
     batch_norm: Whether to apply batch normalization.

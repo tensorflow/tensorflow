@@ -454,8 +454,10 @@ def evaluate(graph,
   # one existing already or it's a string.
   existing_tags = [tensor_util.constant_value(summary.op.inputs[0])
                    for summary in ops.get_collection(ops.GraphKeys.SUMMARIES)]
+  existing_tags = [name.tolist() if isinstance(name, np.ndarray) else name
+                   for name in existing_tags]
   for key, value in eval_dict.items():
-    if key in existing_tags:
+    if key.encode() in existing_tags:
       continue
     if isinstance(value, ops.Tensor):
       summaries.summarize_tensor(value, tag=key)
@@ -490,33 +492,37 @@ def evaluate(graph,
     eval_results = None
     # TODO(amodei): Fix this to run through the eval set exactly once.
     step = 0
+    eval_step = None
+    feed_dict = None
     logging.info('Eval steps [%d,%s) for training step %d.', step,
                  'inf' if max_steps is None
                  else str(max_steps), current_global_step)
     try:
       try:
         while (max_steps is None) or (step < max_steps):
+          step += 1
           start_time = time.time()
           feed_dict = feed_fn() if feed_fn is not None else None
-          eval_results = None
           if update_op is not None:
             session.run(update_op, feed_dict=feed_dict)
           else:
             eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
+            eval_step = step
 
           # TODO(wicke): We should assert that the global step hasn't changed.
-          step += 1
           if step % log_every_steps == 0:
-            if eval_results is None:
+            if eval_step is None or step != eval_step:
               eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
+              eval_step = step
             duration = time.time() - start_time
             logging.info('Results after %d steps (%.3f sec/batch): %s.',
                          step, float(duration),
                          ', '.join('%s = %s' % (k, v)
                                    for k, v in eval_results.items()))
       finally:
-        if eval_results is None:
+        if eval_results is None or step != eval_step:
           eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
+          eval_step = step
         # Stop queue runners.
         coord.request_stop()
         coord.join(threads, stop_grace_period_secs=120)
