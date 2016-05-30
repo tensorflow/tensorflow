@@ -25,12 +25,13 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_REVERSE(DIM)                                \
-  template struct functor::Reverse<GPUDevice, uint8, DIM>; \
-  template struct functor::Reverse<GPUDevice, int8, DIM>;  \
-  template struct functor::Reverse<GPUDevice, int32, DIM>; \
-  template struct functor::Reverse<GPUDevice, bool, DIM>;  \
-  template struct functor::Reverse<GPUDevice, float, DIM>; \
+#define DEFINE_REVERSE(DIM)                                      \
+  template struct functor::Reverse<GPUDevice, uint8, DIM>;       \
+  template struct functor::Reverse<GPUDevice, int8, DIM>;        \
+  template struct functor::Reverse<GPUDevice, int32, DIM>;       \
+  template struct functor::Reverse<GPUDevice, bool, DIM>;        \
+  template struct functor::Reverse<GPUDevice, Eigen::half, DIM>; \
+  template struct functor::Reverse<GPUDevice, float, DIM>;       \
   template struct functor::Reverse<GPUDevice, double, DIM>;
 DEFINE_REVERSE(0)
 DEFINE_REVERSE(1)

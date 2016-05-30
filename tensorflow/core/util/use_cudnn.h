@@ -21,6 +21,7 @@ limitations under the License.
 namespace tensorflow {
 
 bool CanUseCudnn();
+bool CudnnUseAutotune();
 
 }  // namespace tensorflow
 

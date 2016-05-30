@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/types.h"
 
 #define CUDA_1D_KERNEL_LOOP(i, n)                            \
@@ -31,9 +32,9 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 struct CudaLaunchConfig {
-  // Logical number of thread that works on the elements. If each logic thread
-  // works on exactly a single element, this is the same as the working element
-  // count.
+  // Logical number of thread that works on the elements. If each logical
+  // thread works on exactly a single element, this is the same as the working
+  // element count.
   int virtual_thread_count = -1;
   // Number of threads per block.
   int thread_per_block = -1;
@@ -73,19 +74,44 @@ __device__ __host__ inline T ldg(const T* address) {
 
 // CUDA provides atomic ops, but not for all types.  We provide wrappers
 // for some ops and provide implementation for all reasonable types.
-#define CUDA_ATOMIC_WRAPPER(op, T)                                      \
+#define CUDA_ATOMIC_WRAPPER(op, T) \
   __device__ __forceinline__ T CudaAtomic##op(T* address, T val)
 
-#define USE_CUDA_ATOMIC(op, T)       \
-  CUDA_ATOMIC_WRAPPER(op, T) {       \
-    return atomic##op(address, val); \
-  }
+// Reason of guarding: NVCC cannot compile the "::" in "cuda_builtin::atomicOp".
+#ifdef __GCUDACC__
+#define USE_CUDA_ATOMIC(op, T) \
+  CUDA_ATOMIC_WRAPPER(op, T) { return cuda_builtin::atomic##op(address, val); }
+#else
+#define USE_CUDA_ATOMIC(op, T) \
+  CUDA_ATOMIC_WRAPPER(op, T) { return atomic##op(address, val); }
+#endif
 
 // For atomicAdd.
 USE_CUDA_ATOMIC(Add, int32);
 USE_CUDA_ATOMIC(Add, uint32);
 USE_CUDA_ATOMIC(Add, uint64);
 USE_CUDA_ATOMIC(Add, float);
+
+// For atomicMax.
+USE_CUDA_ATOMIC(Max, int32);
+USE_CUDA_ATOMIC(Max, uint32);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+USE_CUDA_ATOMIC(Max, uint64);
+#else
+// The uint64 overload of atomicMax() is only available for __CUDA_ARCH__ >=
+// 350.  If not satisfied, we provide a custom implementation using atomicCAS().
+CUDA_ATOMIC_WRAPPER(Max, uint64) {
+  uint64* address_as_ull = (uint64*)address;
+  uint64 old = *address_as_ull, assumed;
+
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed, max(val, assumed));
+  } while (assumed != old);
+
+  return old;
+}
+#endif
 
 // Custom implementation of atomicAdd for double.
 // This implementation is copied from CUDA manual.
@@ -104,6 +130,78 @@ CUDA_ATOMIC_WRAPPER(Add, double) {
   return __longlong_as_double(old);
 }
 
+// Helper functions for CudaAtomicAdd(half*, half), below.
+//
+// Note that if __CUDA_ARCH__ >= 530, we could probably use __hadd2()
+// for a more efficient implementation, assuming that adding -0.0
+// will never harm the neighboring value. In this version, we take special
+// care to guarantee the bits of the untouched value are unchanged.
+inline __device__ uint32 add_to_low_half(uint32 val, float x) {
+  Eigen::half low_half;
+  low_half.x = static_cast<uint16>(val & 0xffffu);
+  low_half = static_cast<Eigen::half>(static_cast<float>(low_half) + x);
+  return (val & 0xffff0000u) | low_half.x;
+}
+
+inline __device__ uint32 add_to_high_half(uint32 val, float x) {
+  Eigen::half high_half;
+  high_half.x = static_cast<uint16>(val >> 16);
+  high_half = static_cast<Eigen::half>(static_cast<float>(high_half) + x);
+  return (val & 0xffffu) | (high_half.x << 16);
+}
+
+// Custom implementation of atomicAdd for half. Note that we don't have
+// atomicCAS() for anything less than 32 bits, so we need to include the
+// other 16 bits in the operation.
+//
+// Unlike the other atomic adds, this version is going to be very slow
+// under high concurrency, since most threads will be spinning on failing
+// their compare-and-swap tests. (The fact that we get false sharing on the
+// neighboring fp16 makes this even worse.) If you are doing a large reduction,
+// you are much better off with doing the intermediate steps in fp32 and then
+// switching to fp16 as late as you can in the calculations.
+//
+// Note: Assumes little endian.
+CUDA_ATOMIC_WRAPPER(Add, Eigen::half) {
+  float val_as_float(val);
+  intptr_t address_int = reinterpret_cast<intptr_t>(address);
+  if ((address_int & 0x2) == 0) {
+    // The half is in the first part of the uint32 (lower 16 bits).
+    uint32* address_as_uint32 = reinterpret_cast<uint32*>(address);
+    assert(((intptr_t)address_as_uint32 & 0x3) == 0);
+    uint32 old = *address_as_uint32, assumed;
+
+    do {
+      assumed = old;
+      old = atomicCAS(address_as_uint32, assumed,
+                      add_to_low_half(assumed, val_as_float));
+
+      // Note: uses integer comparison to avoid hang in case of NaN
+    } while (assumed != old);
+
+    Eigen::half ret;
+    ret.x = old & 0xffffu;
+    return ret;
+  } else {
+    // The half is in the second part of the uint32 (upper 16 bits).
+    uint32* address_as_uint32 = reinterpret_cast<uint32*>(address_int - 2);
+    assert(((intptr_t)address_as_uint32 & 0x3) == 0);
+    uint32 old = *address_as_uint32, assumed;
+
+    do {
+      assumed = old;
+      old = atomicCAS(address_as_uint32, assumed,
+                      add_to_high_half(assumed, val_as_float));
+
+      // Note: uses integer comparison to avoid hang in case of NaN
+    } while (assumed != old);
+
+    Eigen::half ret;
+    ret.x = old >> 16;
+    return ret;
+  }
+}
+
 template <typename T>
 __global__ void SetZero(const int nthreads, T* bottom_diff) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) { *(bottom_diff + index) = T(0); }
@@ -112,10 +210,8 @@ __global__ void SetZero(const int nthreads, T* bottom_diff) {
 // For atomicSub.
 
 // Custom implementation for sub by just negating the value.
-#define WRAPPED_ATOMIC_SUB(T)                       \
-  CUDA_ATOMIC_WRAPPER(Sub, T) {                     \
-    return CudaAtomicAdd(address, -val);            \
-  }
+#define WRAPPED_ATOMIC_SUB(T) \
+  CUDA_ATOMIC_WRAPPER(Sub, T) { return CudaAtomicAdd(address, -val); }
 
 WRAPPED_ATOMIC_SUB(uint64);
 WRAPPED_ATOMIC_SUB(int32);

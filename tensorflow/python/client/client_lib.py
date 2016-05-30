@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=unused-import
 """This library contains classes for launching graphs and executing operations.
 
 The [basic usage](../../get_started/index.md#basic-usage) guide has
@@ -51,6 +50,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=unused-import
 from tensorflow.python.client.session import InteractiveSession
 from tensorflow.python.client.session import Session
 

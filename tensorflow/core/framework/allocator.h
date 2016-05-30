@@ -295,10 +295,9 @@ Allocator* cpu_allocator();
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
 
-// If 'enable' is true, the process-wide cpu allocator collects
-// detailed statistics. This can be slow, so this is disabled by
-// default.
-void EnableCPUAllocatorDetailedStats(bool enable);
+// If 'enable' is true, the process-wide cpu allocator collects full
+// statistics. By default, it's disabled.
+void EnableCPUAllocatorFullStats(bool enable);
 
 // Abstract interface of an object that does the underlying suballoc/free of
 // memory for a higher-level allocator.

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """A simple MNIST classifier which displays summaries in TensorBoard.
 
  This is an unimpressive MNIST model, but it is a good example of using
@@ -29,7 +28,6 @@ import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
 
-
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
@@ -43,7 +41,8 @@ flags.DEFINE_string('summaries_dir', '/tmp/mnist_logs', 'Summaries directory')
 
 def train():
   # Import data
-  mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True,
+  mnist = input_data.read_data_sets(FLAGS.data_dir,
+                                    one_hot=True,
                                     fake_data=FLAGS.fake_data)
 
   sess = tf.InteractiveSession()
@@ -53,11 +52,11 @@ def train():
   # Input placehoolders
   with tf.name_scope('input'):
     x = tf.placeholder(tf.float32, [None, 784], name='x-input')
+    y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
+
+  with tf.name_scope('input_reshape'):
     image_shaped_input = tf.reshape(x, [-1, 28, 28, 1])
     tf.image_summary('input', image_shaped_input, 10)
-    y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
-    keep_prob = tf.placeholder(tf.float32)
-    tf.scalar_summary('dropout_keep_probability', keep_prob)
 
   # We can't initialize these variables to 0 - the network will get stuck.
   def weight_variable(shape):
@@ -86,8 +85,8 @@ def train():
     """Reusable code for making a simple neural net layer.
 
     It does a matrix multiply, bias add, and then uses relu to nonlinearize.
-    It also sets up name scoping so that the resultant graph is easy to read, and
-    adds a number of summary ops.
+    It also sets up name scoping so that the resultant graph is easy to read,
+    and adds a number of summary ops.
     """
     # Adding a name scope ensures logical grouping of the layers in the graph.
     with tf.name_scope(layer_name):
@@ -106,9 +105,13 @@ def train():
       return activations
 
   hidden1 = nn_layer(x, 784, 500, 'layer1')
-  dropped = tf.nn.dropout(hidden1, keep_prob)
-  y = nn_layer(dropped, 500, 10, 'layer2', act=tf.nn.softmax)
 
+  with tf.name_scope('dropout'):
+    keep_prob = tf.placeholder(tf.float32)
+    tf.scalar_summary('dropout_keep_probability', keep_prob)
+    dropped = tf.nn.dropout(hidden1, keep_prob)
+
+  y = nn_layer(dropped, 500, 10, 'layer2', act=tf.nn.softmax)
 
   with tf.name_scope('cross_entropy'):
     diff = y_ * tf.log(y)
@@ -117,8 +120,8 @@ def train():
     tf.scalar_summary('cross entropy', cross_entropy)
 
   with tf.name_scope('train'):
-    train_step = tf.train.AdamOptimizer(
-        FLAGS.learning_rate).minimize(cross_entropy)
+    train_step = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(
+        cross_entropy)
 
   with tf.name_scope('accuracy'):
     with tf.name_scope('correct_prediction'):
@@ -129,7 +132,8 @@ def train():
 
   # Merge all the summaries and write them out to /tmp/mnist_logs (by default)
   merged = tf.merge_all_summaries()
-  train_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/train', sess.graph)
+  train_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/train',
+                                        sess.graph)
   test_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/test')
   tf.initialize_all_variables().run()
 
@@ -152,15 +156,28 @@ def train():
       summary, acc = sess.run([merged, accuracy], feed_dict=feed_dict(False))
       test_writer.add_summary(summary, i)
       print('Accuracy at step %s: %s' % (i, acc))
-    else: # Record train set summarieis, and train
-      summary, _ = sess.run([merged, train_step], feed_dict=feed_dict(True))
-      train_writer.add_summary(summary, i)
+    else:  # Record train set summaries, and train
+      if i % 100 == 99:  # Record execution stats
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        summary, _ = sess.run([merged, train_step],
+                              feed_dict=feed_dict(True),
+                              options=run_options,
+                              run_metadata=run_metadata)
+        train_writer.add_run_metadata(run_metadata, 'step%d' % i)
+        train_writer.add_summary(summary, i)
+        print('Adding run metadata for', i)
+      else:  # Record a summary
+        summary, _ = sess.run([merged, train_step], feed_dict=feed_dict(True))
+        train_writer.add_summary(summary, i)
+
 
 def main(_):
   if tf.gfile.Exists(FLAGS.summaries_dir):
     tf.gfile.DeleteRecursively(FLAGS.summaries_dir)
   tf.gfile.MakeDirs(FLAGS.summaries_dir)
   train()
+
 
 if __name__ == '__main__':
   tf.app.run()

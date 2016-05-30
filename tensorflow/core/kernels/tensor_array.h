@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/aggregate_ops.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -63,6 +64,31 @@ TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 #endif  // GOOGLE_CUDA
 
 #undef TENSOR_ARRAY_WRITE_OR_ADD
+
+template <typename Device, typename T>
+Status TensorSetZero(OpKernelContext* ctx, Tensor* value) {
+  return errors::InvalidArgument(
+      "tensor_array::TensorSetZero type not supported: ",
+      DataTypeString(DataTypeToEnum<T>::value));
+};
+
+#define TENSOR_ARRAY_SET_ZERO(Device, T) \
+  template <>                            \
+  Status TensorSetZero<Device, T>(OpKernelContext * ctx, Tensor * value);
+
+#define TENSOR_ARRAY_SET_ZERO_CPU(T) TENSOR_ARRAY_SET_ZERO(CPUDevice, T)
+TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU)
+#undef TENSOR_ARRAY_SET_ZERO_CPU
+
+#if GOOGLE_CUDA
+
+#define TENSOR_ARRAY_SET_ZERO_GPU(T) TENSOR_ARRAY_SET_ZERO(GPUDevice, T)
+TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
+#undef TENSOR_ARRAY_SET_ZERO_GPU
+
+#endif  // GOOGLE_CUDA
+
+#undef TENSOR_ARRAY_SET_ZERO
 
 }  // namespace tensor_array
 
@@ -176,17 +202,21 @@ class TensorArray : public ResourceBase {
   //  * The reference to the underlying Tensor at 'index' is copied to
   //    the returned '*value'.
   //  * The index is marked as read (it cannot be rewritten to).
-  Status Read(const int32 index, PersistentTensor* value) {
+  template <typename Device, typename T>
+  Status Read(OpKernelContext* ctx, const int32 index,
+              PersistentTensor* value) {
     mutex_lock l(mu_);
-    return LockedRead(index, value);
+    return LockedRead<Device, T>(ctx, index, value);
   }
 
-  Status ReadMany(std::vector<PersistentTensor>* values) {
+  template <typename Device, typename T>
+  Status ReadMany(OpKernelContext* ctx, std::vector<PersistentTensor>* values) {
     mutex_lock l(mu_);
     values->clear();
     values->resize(tensors_.size());
     for (std::size_t i = 0; i < tensors_.size(); ++i) {
-      TF_RETURN_IF_ERROR(LockedRead(i, &(*values)[i]));
+      Status s = LockedRead<Device, T>(ctx, i, &(*values)[i]);
+      if (!s.ok()) return s;
     }
     return Status::OK();
   }
@@ -229,6 +259,15 @@ class TensorArray : public ResourceBase {
     return !gradients_disallowed_;
   }
 
+  // Copy the TensorShapes from another TensorArray into this one.
+  // The sizes of the two TensorArrays must match and this one
+  // may not have any entries filled in.  This performs a "soft copy",
+  // essentially filling the current TensorArray with virtual
+  // zero-tensors, which will be replaced by future aggregate writes,
+  // or instantiated by future reads.  Requires a non-const pointer
+  // to the rhs to access its mutex.
+  Status CopyShapesFrom(TensorArray* rhs);
+
   // Clear the TensorArray, including any Tensor references, and mark as closed.
   void ClearAndMarkClosed() {
     mutex_lock l(mu_);
@@ -248,8 +287,9 @@ class TensorArray : public ResourceBase {
                                 PersistentTensor* value)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status LockedRead(const int32 index, PersistentTensor* value)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  template <typename Device, typename T>
+  Status LockedRead(OpKernelContext* ctx, const int32 index,
+                    PersistentTensor* value) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status LockedReturnIfClosed() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
@@ -363,6 +403,14 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
           " but the new input shape is ", value_t->shape().DebugString(), ".");
     }
 
+    if (!t.tensor.IsInitialized()) {
+      // If existing_t == nullptr but written == true, then what was stored
+      // was just a shape, which just means zeros.  So all we must do in this
+      // case is copy the reference over and return early.
+      t.tensor = *value;
+      return Status::OK();
+    }
+
     Tensor* existing_t = t.tensor.AccessTensor(ctx);
 
     if (t.local_copy) {
@@ -389,6 +437,52 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
     t.shape = value_t->shape();
     t.written = true;
   }
+  return Status::OK();
+}
+
+template <typename Device, typename T>
+Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
+                               PersistentTensor* value) {
+  TF_RETURN_IF_ERROR(LockedReturnIfClosed());
+  if (index < 0 || static_cast<size_t>(index) >= tensors_.size()) {
+    return errors::InvalidArgument("Tried to read from index ", index,
+                                   " but array size is: ", tensors_.size());
+  }
+  TensorAndState& t = tensors_[index];
+  if (!t.written) {
+    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+                                   ": Could not read from TensorArray index ",
+                                   index,
+                                   " because it has not yet been written to.");
+  }
+  if (t.cleared) {
+    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+                                   ": Could not read index ", index,
+                                   " twice because it was cleared after a "
+                                   "previous read (perhaps try setting "
+                                   "clear_after_read = false?).");
+  }
+
+  if (!t.tensor.IsInitialized()) {
+    // We stored just a shape, but no value.  This means create and
+    // return zeros of the appropriate shape.
+    Tensor* tensor_t;
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_persistent(dtype_, t.shape, &t.tensor, &tensor_t));
+    if (t.shape.num_elements() > 0) {
+      Status s = tensor_array::TensorSetZero<Device, T>(ctx, tensor_t);
+      if (!s.ok()) return s;
+    }
+  }
+
+  // Data is available inside the tensor, copy the reference over.
+  *value = t.tensor;
+
+  if (clear_after_read_) {
+    t.tensor = PersistentTensor();
+    t.cleared = true;
+  }
+  t.read = true;
   return Status::OK();
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2016 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -38,6 +39,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
+using random::PhiloxRandom;
+using random::SingleSampleAdapter;
 
 // The default implementation of the functor, which should never be invoked
 // But we still need to provide implementation for now for the linker to work,
@@ -51,6 +54,18 @@ struct FillPhiloxRandom {
   }
 };
 
+template <typename Device, typename T>
+struct MultinomialFunctor {
+  void operator()(OpKernelContext* ctx, const Device& d,
+                  typename TTypes<T>::ConstMatrix logits,
+                  typename TTypes<float>::Flat noises,
+                  typename TTypes<float>::Flat scores,
+                  typename TTypes<float>::Flat scratch, int batch_size,
+                  int num_classes, int num_samples,
+                  const random::PhiloxRandom& gen,
+                  typename TTypes<int64>::Matrix output);
+};
+
 #if GOOGLE_CUDA
 // Declaration for the partial specialization with GPU
 template <class Distribution>
@@ -60,7 +75,6 @@ struct FillPhiloxRandom<GPUDevice, Distribution> {
                   random::PhiloxRandom gen, T* data, int64 size,
                   Distribution dist);
 };
-
 #endif
 
 // A class to fill a specified range of random groups
@@ -89,7 +103,7 @@ struct FillPhiloxRandomTask<Distribution, false> {
 
     // If there are any remaining elements that need to be filled, process them
     if (limit_group_full < limit_group) {
-      int remaining_size = size - limit_group_full * kGroupSize;
+      int64 remaining_size = size - limit_group_full * kGroupSize;
       auto samples = dist(&gen);
       std::copy(&samples[0], &samples[0] + remaining_size, data + offset);
     }
@@ -105,9 +119,6 @@ struct FillPhiloxRandomTask<Distribution, true> {
 
   static void Run(random::PhiloxRandom base_gen, T* data, int64 size,
                   int64 start_group, int64 limit_group, Distribution dist) {
-    using random::PhiloxRandom;
-    using random::SingleSampleAdapter;
-
     const int kGroupSize = Distribution::kResultElementCount;
 
     static const int kGeneratorSkipPerOutputGroup =
@@ -139,7 +150,7 @@ struct FillPhiloxRandomTask<Distribution, true> {
       gen.Skip(group_index * kGeneratorSkipPerOutputGroup);
       SingleSampleAdapter<PhiloxRandom> single_samples(&gen);
 
-      int remaining_size = size - limit_group_full * kGroupSize;
+      int64 remaining_size = size - limit_group_full * kGroupSize;
       auto samples = dist(&single_samples);
       std::copy(&samples[0], &samples[0] + remaining_size, data + offset);
     }
@@ -160,10 +171,11 @@ struct FillPhiloxRandom<CPUDevice, Distribution> {
 
     int64 total_group_count = (size + kGroupSize - 1) / kGroupSize;
 
-    // Limit to maximum six threads for now. The performance scaling is very
-    // sub-linear. Too many threads causes a much worse overall performance.
-    int num_workers = 6;
-    Shard(num_workers, worker_threads.workers, total_group_count, kGroupSize,
+    const int kGroupCost =
+        random::PhiloxRandom::kResultElementCount *
+        (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
+    Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
+          kGroupCost,
           [&gen, data, size, dist](int64 start_group, int64 limit_group) {
             FillPhiloxRandomTask<
                 Distribution,
@@ -174,6 +186,106 @@ struct FillPhiloxRandom<CPUDevice, Distribution> {
           });
   }
 };
+
+template <typename T>
+struct MultinomialFunctor<CPUDevice, T> {
+  void operator()(OpKernelContext* ctx, const CPUDevice& d,
+                  typename TTypes<T>::ConstMatrix logits,
+                  typename TTypes<float>::Flat /* noises */,
+                  typename TTypes<float>::Flat /* scores */,
+                  typename TTypes<float>::Flat /* scratch */, int batch_size,
+                  int num_classes, int num_samples,
+                  const random::PhiloxRandom& gen,
+                  typename TTypes<int64>::Matrix output) {
+    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+
+    // Gumbel-max trick: https://en.wikipedia.org/wiki/Gumbel_distribution
+    //
+    // Given logits matrix X, we first sample matrix U iid from [0, 1).  Then,
+    // argmax(X-ln(-ln(U))) is equivalent to taking one sample from the
+    // distribution defined by X.  We take a total of BatchSize*NumSamples
+    // samples.
+    //
+    // The implementation is tailored for NumClasses >> NumSamples.  We
+    // horizontally partition the work: each worker looks at
+    // logits[start_row..limit_row, :], and fills in
+    // samples_[start_row..limit_row, :].
+    //
+    // This takes O(BatchSize * NumSamples * NumClasses) CPU time.
+    auto DoWork = [num_samples, num_classes, &gen, &output, &logits](
+        int64 start_row, int64 limit_row) {
+      // Capturing "gen" by-value would only make a copy for the _shared_
+      // lambda.  Since we want to let each worker have its own copy, we pass
+      // "gen" by reference and explicitly do a copy assignment here.
+      random::PhiloxRandom gen_copy = gen;
+      gen_copy.Skip(start_row * num_classes * num_samples / 4);
+      random::SimplePhilox simple_philox(&gen_copy);
+
+      // (max score, max idx)
+      // Microbenchmarks showed that InlinedVector<*,4> is up to 1.8% faster
+      // than using std::vector here, since we expect num_samples to be small (1
+      // to O(100)).
+      gtl::InlinedVector<float, 4> curr_max(num_samples);
+      gtl::InlinedVector<int64, 4> curr_max_idx(num_samples);
+
+      const float kLowest = std::numeric_limits<float>::lowest();
+      static constexpr int kStride = 4;  // for loop unrolling
+
+      for (int64 b = start_row; b < limit_row; ++b) {
+        std::fill_n(curr_max.data(), num_samples, kLowest);
+        const auto* logits_row = &logits(b, 0);
+
+        for (int64 j = 0; j < num_classes; ++j) {
+          // Each class contributes to all `num_samples` running max values.  We
+          // manually unroll the loop with stride 4.
+          // TODO(zongheng): on avx2/avx512 it might be worthwhile to unroll
+          // more.  Should investigate if this CPU kernel is
+          // performance-critical first, though.
+          int i = 0, repeat = num_samples / kStride;
+          while (repeat--) {
+            // Number of entries to unroll must == kStride.
+            const float s0 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+            const float s1 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+            const float s2 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+            const float s3 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+
+#define UPDATE(s, unroll_idx)         \
+  if (s > curr_max[i + unroll_idx]) { \
+    curr_max[i + unroll_idx] = s;     \
+    curr_max_idx[i + unroll_idx] = j; \
+  }
+            UPDATE(s0, 0);
+            UPDATE(s1, 1);
+            UPDATE(s2, 2);
+            UPDATE(s3, 3);
+
+            i += kStride;
+          }
+
+          while (i < num_samples) {
+            const float s0 = -std::log(-std::log(simple_philox.RandFloat())) +
+                             static_cast<float>(logits_row[j]);
+            UPDATE(s0, 0);
+            ++i;
+          }
+#undef UPDATE
+        }
+        std::memcpy(&output(b, 0), curr_max_idx.data(),
+                    sizeof(int64) * num_samples);
+      }
+    };
+    // Rough estimate, log2() takes from 58-680 cycles on Haswell.
+    // The functor here calls log twice for each element.
+    const int64 cost = 500 * num_samples * num_classes;
+    Shard(worker_threads.num_threads, worker_threads.workers, batch_size, cost,
+          DoWork);
+  }
+};
+
 }  // namespace functor
 
 namespace {
@@ -203,14 +315,6 @@ static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
   return Status::OK();
 }
 
-// Reserve enough random samples in the generator for the given output count.
-// Note that the 256 multiplier is repeated above; do not change it just here.
-static random::PhiloxRandom ReserveRandomOutputs(GuardedPhiloxRandom& generator,
-                                                 int64 output_count) {
-  int64 conservative_sample_count = output_count << 8;
-  return generator.ReserveSamples128(conservative_sample_count);
-}
-
 // For now, use the same interface as RandomOp, so we can choose either one
 // at the run-time.
 template <typename Device, class Distribution>
@@ -228,7 +332,9 @@ class PhiloxRandomOp : public OpKernel {
     auto output_flat = output->flat<T>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),
-        ReserveRandomOutputs(generator_, output_flat.size()),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(output_flat.size(), 256),
         output_flat.data(), output_flat.size(), Distribution());
   }
 
@@ -271,7 +377,9 @@ class RandomUniformIntOp : public OpKernel {
     auto output_flat = output->flat<IntType>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),
-        ReserveRandomOutputs(generator_, output_flat.size()),
+        // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
+        // it just here.
+        generator_.ReserveRandomOutputs(output_flat.size(), 256),
         output_flat.data(), output_flat.size(), dist);
   }
 
@@ -279,32 +387,100 @@ class RandomUniformIntOp : public OpKernel {
   GuardedPhiloxRandom generator_;
 };
 
+// Samples from a multinomial distribution.
+template <typename Device, typename T>
+class MultinomialOp : public OpKernel {
+ public:
+  explicit MultinomialOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, generator_.Init(context));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& logits_t = ctx->input(0);
+    const Tensor& num_samples_t = ctx->input(1);
+
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(logits_t.shape()),
+        errors::InvalidArgument("Input logits should be a matrix, got shape: ",
+                                logits_t.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(num_samples_t.shape()),
+                errors::InvalidArgument(
+                    "Input num_samples should be a scalar, got shape: ",
+                    num_samples_t.shape().DebugString()));
+
+    const int num_samples = num_samples_t.scalar<int>()();
+    OP_REQUIRES(ctx, num_samples > 0,
+                errors::InvalidArgument(
+                    "Input num_samples should be a positive integer, got: ",
+                    num_samples));
+
+    const int batch_size = static_cast<int>(logits_t.dim_size(0));
+    const int num_classes = static_cast<int>(logits_t.dim_size(1));
+
+    Tensor* samples_t;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output(0, TensorShape({batch_size, num_samples}),
+                                  &samples_t));
+    Tensor noises, scores, scratch;  // Scratch space only used for GPU.
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES_OK(
+          ctx,
+          ctx->allocate_temp(
+              DT_FLOAT, TensorShape({batch_size, num_samples, num_classes}),
+              &noises));
+      OP_REQUIRES_OK(
+          ctx,
+          ctx->allocate_temp(
+              DT_FLOAT, TensorShape({batch_size, num_samples, num_classes}),
+              &scores));
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(
+                   DT_FLOAT, TensorShape({batch_size, num_samples}), &scratch));
+    }
+
+    auto rng = generator_.ReserveRandomOutputs(
+        batch_size * num_classes * num_samples, 256);
+    functor::MultinomialFunctor<Device, T>()(
+        ctx, ctx->eigen_device<Device>(), logits_t.matrix<T>(),
+        noises.flat<float>(), scores.flat<float>(), scratch.flat<float>(),
+        batch_size, num_classes, num_samples, rng, samples_t->matrix<int64>());
+  }
+
+ private:
+  GuardedPhiloxRandom generator_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(MultinomialOp);
+};
+
 }  // namespace
 
-#define REGISTER(TYPE)                                              \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("RandomUniform")                                         \
-          .Device(DEVICE_CPU)                                       \
-          .HostMemory("shape")                                      \
-          .TypeConstraint<TYPE>("dtype"),                           \
-      PhiloxRandomOp<CPUDevice, random::UniformDistribution<        \
-                                    random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("RandomStandardNormal")                                  \
-          .Device(DEVICE_CPU)                                       \
-          .HostMemory("shape")                                      \
-          .TypeConstraint<TYPE>("dtype"),                           \
-      PhiloxRandomOp<CPUDevice, random::NormalDistribution<         \
-                                    random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("TruncatedNormal")                                       \
-          .Device(DEVICE_CPU)                                       \
-          .HostMemory("shape")                                      \
-          .TypeConstraint<TYPE>("dtype"),                           \
-      PhiloxRandomOp<                                               \
-          CPUDevice,                                                \
-          random::TruncatedNormalDistribution<                      \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >)
+#define REGISTER(TYPE)                                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("RandomUniform")                                                \
+          .Device(DEVICE_CPU)                                              \
+          .HostMemory("shape")                                             \
+          .TypeConstraint<TYPE>("dtype"),                                  \
+      PhiloxRandomOp<CPUDevice, random::UniformDistribution<               \
+                                    random::PhiloxRandom, TYPE> >);        \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("RandomStandardNormal")                                         \
+          .Device(DEVICE_CPU)                                              \
+          .HostMemory("shape")                                             \
+          .TypeConstraint<TYPE>("dtype"),                                  \
+      PhiloxRandomOp<CPUDevice, random::NormalDistribution<                \
+                                    random::PhiloxRandom, TYPE> >);        \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("TruncatedNormal")                                              \
+          .Device(DEVICE_CPU)                                              \
+          .HostMemory("shape")                                             \
+          .TypeConstraint<TYPE>("dtype"),                                  \
+      PhiloxRandomOp<                                                      \
+          CPUDevice,                                                       \
+          random::TruncatedNormalDistribution<                             \
+              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >); \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("Multinomial").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),    \
+      MultinomialOp<CPUDevice, TYPE>)
 
 #define REGISTER_INT(IntType)                                   \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")              \
@@ -326,33 +502,38 @@ REGISTER_INT(int64);
 
 #if GOOGLE_CUDA
 
-#define REGISTER(TYPE)                                              \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("RandomUniform")                                         \
-          .Device(DEVICE_GPU)                                       \
-          .HostMemory("shape")                                      \
-          .TypeConstraint<int32>("T")                               \
-          .TypeConstraint<TYPE>("dtype"),                           \
-      PhiloxRandomOp<GPUDevice, random::UniformDistribution<        \
-                                    random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("RandomStandardNormal")                                  \
-          .Device(DEVICE_GPU)                                       \
-          .HostMemory("shape")                                      \
-          .TypeConstraint<int32>("T")                               \
-          .TypeConstraint<TYPE>("dtype"),                           \
-      PhiloxRandomOp<GPUDevice, random::NormalDistribution<         \
-                                    random::PhiloxRandom, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("TruncatedNormal")                                       \
-          .Device(DEVICE_GPU)                                       \
-          .HostMemory("shape")                                      \
-          .TypeConstraint<int32>("T")                               \
-          .TypeConstraint<TYPE>("dtype"),                           \
-      PhiloxRandomOp<                                               \
-          GPUDevice,                                                \
-          random::TruncatedNormalDistribution<                      \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >)
+#define REGISTER(TYPE)                                                    \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("RandomUniform")                                               \
+          .Device(DEVICE_GPU)                                             \
+          .HostMemory("shape")                                            \
+          .TypeConstraint<int32>("T")                                     \
+          .TypeConstraint<TYPE>("dtype"),                                 \
+      PhiloxRandomOp<GPUDevice, random::UniformDistribution<              \
+                                    random::PhiloxRandom, TYPE> >);       \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("RandomStandardNormal")                                        \
+          .Device(DEVICE_GPU)                                             \
+          .HostMemory("shape")                                            \
+          .TypeConstraint<int32>("T")                                     \
+          .TypeConstraint<TYPE>("dtype"),                                 \
+      PhiloxRandomOp<GPUDevice, random::NormalDistribution<               \
+                                    random::PhiloxRandom, TYPE> >);       \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("TruncatedNormal")                                             \
+          .Device(DEVICE_GPU)                                             \
+          .HostMemory("shape")                                            \
+          .TypeConstraint<int32>("T")                                     \
+          .TypeConstraint<TYPE>("dtype"),                                 \
+      PhiloxRandomOp<                                                     \
+          GPUDevice,                                                      \
+          random::TruncatedNormalDistribution<                            \
+              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >) \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                             \
+                              .Device(DEVICE_GPU)                         \
+                              .HostMemory("num_samples")                  \
+                              .TypeConstraint<TYPE>("T"),                 \
+                          MultinomialOp<GPUDevice, TYPE>)
 
 #define REGISTER_INT(IntType)                                   \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")              \

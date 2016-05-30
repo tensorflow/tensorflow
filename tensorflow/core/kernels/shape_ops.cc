@@ -224,7 +224,9 @@ class ExpandDimsOp : public OpKernel {
                                 " dimensions."));
 
     auto existing_dims = ctx->input(0).shape().dim_sizes();
-    std::vector<int64> new_shape(existing_dims.size());
+    // Safe - # elements in tensor dims bounded.
+    const int existing_dims_size = static_cast<int>(existing_dims.size());
+    std::vector<int64> new_shape(existing_dims_size);
     for (size_t i = 0; i < new_shape.size(); ++i) {
       new_shape[i] = existing_dims[i];
     }
@@ -236,7 +238,7 @@ class ExpandDimsOp : public OpKernel {
     }
 
     // Clamp to the end if needed.
-    dim = std::min<int32>(dim, existing_dims.size());
+    dim = std::min<int32>(dim, existing_dims_size);
     new_shape.emplace(new_shape.begin() + dim, 1);
     const TensorShape output_shape(new_shape);
 
@@ -284,6 +286,7 @@ class SqueezeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     auto existing_dims = ctx->input(0).shape().dim_sizes();
+    const int existing_dims_size = static_cast<int>(existing_dims.size());
     std::vector<int64> new_shape;
 
     std::unordered_set<int32> wrapped_squeeze_dims;
@@ -297,13 +300,13 @@ class SqueezeOp : public OpKernel {
                                   " dimensions."));
       // If dim is < 0, we wrap around (-1 means the last element).
       if (dim < 0) {
-        dim = existing_dims.size() + dim;
+        dim = existing_dims_size + dim;
       }
 
       wrapped_squeeze_dims.insert(dim);
     }
 
-    for (size_t i = 0; i < existing_dims.size(); ++i) {
+    for (int i = 0; i < existing_dims_size; ++i) {
       auto existing_dim = existing_dims[i];
 
       // If squeeze_set is non-empty, only squeeze those dimensions.

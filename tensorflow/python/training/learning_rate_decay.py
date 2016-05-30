@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import control_flow_ops
 
 
 def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
@@ -84,3 +85,62 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
     if staircase:
       p = math_ops.floor(p)
     return math_ops.mul(learning_rate, math_ops.pow(decay_rate, p), name=name)
+
+
+def piecewise_constant(x, boundaries, values, name=None):
+  """ Piecewise constant from boundaries and interval values.
+  
+  Example: use a learning rate that's 1.0 for the first 100000 steps, 0.5
+    for steps 100001 to 110000, and 0.1 for any additional steps.
+  
+  ```python
+  global_step = tf.Variable(0, trainable=False)
+  boundaries = [100000, 110000]
+  values = [1.0, 0.5, 0.1]
+  learning_rate = tf.train.piecewise_constant(global_step, boundaries, values)
+  
+  # Later, whenever we perform an optimization step, we increment global_step.
+  ```
+  
+  Args:
+    x: A 0-D scalar `Tensor`. Must be one of the following types: `float32`,
+      `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`.
+    boundaries: A list of `Tensor`s or `int`s or `float`s with strictly
+      increasing entries, and with all elements having the same type as `x`.
+    values: A list of `Tensor`s or float`s or `int`s that specifies the values
+      for the intervals defined by `boundaries`. It should have one more element
+      than `boundaries`, and all elements should have the same type.
+    name: A string. Optional name of the operation. Defaults to
+      'PiecewiseConstant'.
+  
+  Returns:
+    A 0-D Tensor. Its value is `values[0]` when `x <= boundaries[0]`,
+    `values[1]` when `x > boundaries[0]` and `x <= boundaries[1]`, ...,
+    and values[-1] when `x > boundaries[-1]`.
+  """
+  
+  with ops.op_scope([x, boundaries, values, name],
+                    name, 'PiecewiseConstant') as name:
+    x = ops.convert_to_tensor(x)
+    # Avoid explicit conversion to x's dtype. This could result in faulty
+    # comparisons, for example if floats are converted to integers.
+    boundaries = ops.convert_n_to_tensor(boundaries)
+    if not all(b.dtype == x.dtype for b in boundaries):
+      raise ValueError('boundaries must have the same dtype as x.')
+    # TODO(rdipietro): Ensure that boundaries' elements are strictly increasing.
+    values = ops.convert_n_to_tensor(values)
+    if not all(v.dtype == values[0].dtype for v in values):
+      raise ValueError('values must have elements all with the same dtype.')
+    
+    pred_fn_pairs = {}
+    pred_fn_pairs[x <= boundaries[0]] = lambda: values[0]
+    pred_fn_pairs[x > boundaries[-1]] = lambda: values[-1]
+    for low, high, v in zip(boundaries[:-1], boundaries[1:], values[1:-1]):
+      # Need to bind v here; can do this with lambda v=v: ...
+      pred = (x > low) & (x <= high)
+      pred_fn_pairs[pred] = lambda v=v: v
+      
+    # The default isn't needed here because our conditions are mutually
+    # exclusive and exhaustive, but tf.case requires it.
+    default = lambda: values[0]
+    return control_flow_ops.case(pred_fn_pairs, default, exclusive=True)

@@ -596,7 +596,7 @@ This is just a shortcut for `initialize_variables(local_variables())`
 
 ### `tf.is_variable_initialized(variable)` {#is_variable_initialized}
 
-Returns an Op to check if a variable has been initialized.
+Tests if a variable has been initialized.
 
 ##### Args:
 
@@ -605,7 +605,30 @@ Returns an Op to check if a variable has been initialized.
 
 ##### Returns:
 
-  An operation to check whether a variable has been initialized.
+  Returns a scalar boolean Tensor, `True` if the variable has been
+  initialized, `False` otherwise.
+
+
+- - -
+
+### `tf.report_uninitialized_variables(var_list=None, name='report_uninitialized_variables')` {#report_uninitialized_variables}
+
+Adds ops to list the names of uninitialized variables.
+
+When run, it returns a 1-D tensor containing the names of uninitialized
+variables if there are any, or an empty array if there are none.
+
+##### Args:
+
+
+*  <b>`var_list`</b>: List of `Variable` objects to check. Defaults to the
+    value of `all_variables() + local_variables()`
+*  <b>`name`</b>: Optional name of the `Operation`.
+
+##### Returns:
+
+  A 1-D tensor containing names of the unintialized variables, or an empty 1-D
+  tensor if there are no variables or no uninitialized variables.
 
 
 - - -
@@ -613,6 +636,9 @@ Returns an Op to check if a variable has been initialized.
 ### `tf.assert_variables_initialized(var_list=None)` {#assert_variables_initialized}
 
 Returns an Op to check if variables are initialized.
+
+NOTE: This function is obsolete and will be removed in 6 months.  Please
+change your implementation to use `report_uninitialized_variables()`.
 
 When run, the returned Op will raise the exception `FailedPreconditionError`
 if any of the variables has not yet been initialized.
@@ -1369,7 +1395,7 @@ Returns the current variable scope.
 
 - - -
 
-### `tf.make_template(name_, func_, **kwargs)` {#make_template}
+### `tf.make_template(name_, func_, create_scope_now_=False, **kwargs)` {#make_template}
 
 Given an arbitrary function, wrap it so that it does variable sharing.
 
@@ -1439,10 +1465,14 @@ with tf.variable_scope(vs, reuse=True):
   w2 = scale_by_y2(input2)
 ```
 
-Note: The full variable scope is captured at the time of the first call.
+Depending on the value of `create_scope_now_`, the full variable scope may be
+captured either at the time of first call or at the time of construction. If
+this option is set to True, then all Tensors created by repeated calls to the
+template will have an extra trailing _N+1 to their name, as the first time the
+scope is entered in the Template constructor no Tensors are created.
 
-Note: `name_` and `func_` have a following underscore to reduce the likelihood
-of collisions with kwargs.
+Note: `name_`, `func_` and `create_scope_now_` have a trailing underscore to
+reduce the likelihood of collisions with kwargs.
 
 ##### Args:
 
@@ -1450,14 +1480,20 @@ of collisions with kwargs.
 *  <b>`name_`</b>: A name for the scope created by this template. If necessary, the name
     will be made unique by appending `_N` to the name.
 *  <b>`func_`</b>: The function to wrap.
+*  <b>`create_scope_now_`</b>: Boolean controlling whether the scope should be created
+    when the template is constructed or when the template is called. Default
+    is False, meaning the scope is created when the template is called.
 *  <b>`**kwargs`</b>: Keyword arguments to apply to `func_`.
 
 ##### Returns:
 
-  A function that will enter a `variable_scope` before calling `func_`. The
-  first time it is called, it will create a non-reusing scope so that the
-  variables will be unique.  On each subsequent call, it will reuse those
-  variables.
+  A function to encapsulate a set of variables which should be created once
+  and reused. An enclosing scope will created, either where `make_template`
+  is called, or wherever the result is called, depending on the value of
+  `create_scope_now_`. Regardless of the value, the first time the template
+  is called it will enter the scope with no reuse, and call `func_` to create
+  variables, which are guaranteed to be unique. All subsequent calls will
+  re-enter the scope and reuse those variables.
 
 ##### Raises:
 
@@ -1656,7 +1692,7 @@ An adaptor for ones() to match the Initializer spec.
 
 - - -
 
-### `tf.variable_axis_size_partitioner(max_shard_bytes, axis=0, bytes_per_string_element=16)` {#variable_axis_size_partitioner}
+### `tf.variable_axis_size_partitioner(max_shard_bytes, axis=0, bytes_per_string_element=16, max_shards=None)` {#variable_axis_size_partitioner}
 
 Get a partitioner for VariableScope to keep shards below `max_shard_bytes`.
 
@@ -1665,6 +1701,10 @@ the maximum shard size below `max_shard_bytes`.  In practice, this is not
 always possible when sharding along only one axis.  When this happens,
 this axis is sharded as much as possible (i.e., every dimension becomes
 a separate shard).
+
+If the partitioner hits the `max_shards` limit, then each shard may end up
+larger than `max_shard_bytes`. By default `max_shards` equals `None` and no
+limit on the number of shards is enforced.
 
 One reasonable value for `max_shard_bytes` is `(64 << 20) - 1`, or almost
 `64MB`, to keep below the protobuf byte limit.
@@ -1676,6 +1716,8 @@ One reasonable value for `max_shard_bytes` is `(64 << 20) - 1`, or almost
 *  <b>`axis`</b>: The axis to partition along.  Default: outermost axis.
 *  <b>`bytes_per_string_element`</b>: If the `Variable` is of type string, this provides
     an estimate of how large each scalar in the `Variable` is.
+*  <b>`max_shards`</b>: The maximum number of shards in int created taking precedence
+    over `max_shard_bytes`.
 
 ##### Returns:
 

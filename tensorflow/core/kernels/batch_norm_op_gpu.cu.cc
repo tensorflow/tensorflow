@@ -25,7 +25,9 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 template struct functor::BatchNorm<GPUDevice, float>;
+template struct functor::BatchNorm<GPUDevice, Eigen::half>;
 template struct functor::BatchNormGrad<GPUDevice, float>;
+template struct functor::BatchNormGrad<GPUDevice, Eigen::half>;
 
 }  // namespace tensorflow
 

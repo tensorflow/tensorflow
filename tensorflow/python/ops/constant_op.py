@@ -94,8 +94,8 @@ print(sess.run(var))
 @@random_uniform
 @@random_shuffle
 @@random_crop
+@@multinomial
 @@set_random_seed
-
 """
 
 # Must be separate from array_ops to avoid a cyclic dependency.

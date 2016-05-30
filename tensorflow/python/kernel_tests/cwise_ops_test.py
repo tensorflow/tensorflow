@@ -64,12 +64,8 @@ class UnaryOpTest(tf.test.TestCase):
       else:
         self.assertAllClose(np_ans, tf_cpu)
 
-      # TODO(ebrevdo): consider adding polygamma function
-      if tf_func in (tf.digamma,):
-        return  # Return early
-
-      if x.dtype == np.complex64 and tf_func in (
-          tf.sign, tf.sqrt, tf.rsqrt, tf.log):
+      if (x.dtype in (np.complex64, np.complex128) and
+            tf_func in (tf.sign, tf.sqrt, tf.rsqrt, tf.log)):
         return  # Return early
 
       if x.dtype == np.float16:
@@ -89,7 +85,7 @@ class UnaryOpTest(tf.test.TestCase):
                                               x_init_value=xf)
         jacob_n = jacob_n.astype(np.float16)
         self.assertAllClose(jacob_t, jacob_n, rtol=5e-3, atol=5e-3)
-      elif x.dtype == np.float32 or x.dtype == np.complex64:
+      elif x.dtype in (np.float32, np.complex64):
         s = list(np.shape(x))
         jacob_t, jacob_n = tf.test.compute_gradient(inx,
                                                     s,
@@ -97,7 +93,7 @@ class UnaryOpTest(tf.test.TestCase):
                                                     s,
                                                     x_init_value=x)
         self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-      elif x.dtype == np.float64:
+      elif x.dtype in (np.float64, np.complex128):
         s = list(np.shape(x))
         jacob_t, jacob_n = tf.test.compute_gradient(inx,
                                                     s,
@@ -145,6 +141,8 @@ class UnaryOpTest(tf.test.TestCase):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
     y = (x + .5).astype(np.float32)     # no zero
     z = (x + 15.5).astype(np.float32)   # all positive
+    k = np.arange(-0.90, 0.90, 0.25).astype(np.float32) # between -1 and 1
+
     self._compareBoth(x, np.abs, tf.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
@@ -160,6 +158,10 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(y, np.sign, tf.sign)
     self._compareBoth(x, np.sin, tf.sin)
     self._compareBoth(x, np.cos, tf.cos)
+    self._compareBoth(k, np.arcsin, tf.asin)
+    self._compareBoth(k, np.arccos, tf.acos)
+    self._compareBoth(x, np.arctan, tf.atan)
+    self._compareBoth(x, np.tan, tf.tan)
     self._compareBoth(
         y,
         np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
@@ -194,11 +196,16 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.sign, tf.lgamma)
     self._compareBoth(x, np.sign, tf.erf)
     self._compareBoth(x, np.sign, tf.erfc)
+    self._compareBoth(x, np.tan, tf.tan)
+    self._compareBoth(x, np.arcsin, tf.asin)
+    self._compareBoth(x, np.arccos, tf.acos)
+    self._compareBoth(x, np.arctan, tf.atan)
 
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
     y = (x + .5).astype(np.float64)    # no zero
     z = (x + 15.5).astype(np.float64)  # all positive
+    k = np.arange(-0.90, 0.90, 0.35).reshape(1, 3, 2).astype(np.float64) # between -1 and 1
     self._compareBoth(x, np.abs, tf.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, tf.neg)
@@ -220,6 +227,10 @@ class UnaryOpTest(tf.test.TestCase):
         tf.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), tf.erf)
     self._compareBoth(x, np.vectorize(math.erfc), tf.erfc)
+    self._compareBoth(x, np.arctan, tf.atan)
+    self._compareBoth(k, np.arcsin, tf.asin)
+    self._compareBoth(k, np.arccos, tf.acos)
+    self._compareBoth(k, np.tan, tf.tan)
 
   def testHalfBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float16)
@@ -271,6 +282,29 @@ class UnaryOpTest(tf.test.TestCase):
         np.complex64)
     y = x + 0.5  # no zeros
     self._compareCpu(x, np.abs, tf.complex_abs)
+    self._compareCpu(x, np.abs, _ABS)
+    self._compareCpu(x, np.negative, tf.neg)
+    self._compareCpu(x, np.negative, _NEG)
+    self._compareCpu(y, self._inv, tf.inv)
+    self._compareCpu(x, np.square, tf.square)
+    self._compareCpu(x, np.sqrt, tf.sqrt)
+    self._compareCpu(y, self._rsqrt, tf.rsqrt)
+    self._compareCpu(x, np.exp, tf.exp)
+    self._compareCpu(y, np.log, tf.log)
+    self._compareCpu(x, np.tanh, tf.tanh)
+    self._compareCpu(x, self._sigmoid, tf.sigmoid)
+    self._compareCpu(x, np.sin, tf.sin)
+    self._compareCpu(x, np.cos, tf.cos)
+    # Numpy uses an incorrect definition of sign; use the right one instead.
+    def complex_sign(x):
+      return x / np.abs(x)
+    self._compareCpu(y, complex_sign, tf.sign)
+
+  def testComplex128Basic(self):
+    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
+        np.complex128)
+    y = x + 0.5  # no zeros
+    self._compareCpu(x, np.abs, tf.abs)
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, tf.neg)
     self._compareCpu(x, np.negative, _NEG)
@@ -397,10 +431,10 @@ class BinaryOpTest(tf.test.TestCase):
   def _compareBoth(self, x, y, np_func, tf_func):
     self._compareCpu(x, y, np_func, tf_func)
     if x.dtype in (np.float16, np.float32, np.float64):
-      if tf_func not in (_FLOORDIV, tf.floordiv, tf.igamma, tf.igammac):
+      if tf_func not in (_FLOORDIV, tf.floordiv, tf.igamma, tf.igammac, tf.zeta, tf.polygamma):
         self._compareGradientX(x, y, np_func, tf_func)
         self._compareGradientY(x, y, np_func, tf_func)
-      if tf_func in (tf.igamma, tf.igammac):
+      if tf_func in (tf.igamma, tf.igammac, tf.zeta, tf.polygamma):
         # These methods only support gradients in the second parameter
         self._compareGradientY(x, y, np_func, tf_func)
       self._compareGpu(x, y, np_func, tf_func)
@@ -424,6 +458,10 @@ class BinaryOpTest(tf.test.TestCase):
       x_pos_small = np.linspace(0.1, 10, 15).reshape(1, 3, 5).astype(np.float32)
       self._compareBoth(a_pos_small, x_pos_small, special.gammainc, tf.igamma)
       self._compareBoth(a_pos_small, x_pos_small, special.gammaincc, tf.igammac)
+      # Need x > 1
+      self._compareBoth(x_pos_small + 1, a_pos_small, special.zeta, tf.zeta)
+      n_small = np.arange(0, 15).reshape(1, 3, 5).astype(np.float32)
+      self._compareBoth(n_small, x_pos_small, special.polygamma, tf.polygamma)
     except ImportError as e:
       tf.logging.warn("Cannot test special functions: %s" % str(e))
 
@@ -491,6 +529,9 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareBoth(x, y, np.true_divide, _TRUEDIV)
     self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
     self._compareBoth(x, y, np.mod, _MOD)
+    # _compareBoth tests on GPU only for floating point types, so test
+    # _MOD for int32 on GPU by calling _compareGpu
+    self._compareGpu(x, y, np.mod, _MOD)
 
   def testInt64Basic(self):
     x = np.arange(1 << 40, 13 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
@@ -511,6 +552,20 @@ class BinaryOpTest(tf.test.TestCase):
         np.complex64)
     y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
         np.complex64)
+    self._compareCpu(x, y, np.add, tf.add)
+    self._compareCpu(x, y, np.subtract, tf.sub)
+    self._compareCpu(x, y, np.multiply, tf.mul)
+    self._compareCpu(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareCpu(x, y, np.add, _ADD)
+    self._compareCpu(x, y, np.subtract, _SUB)
+    self._compareCpu(x, y, np.multiply, _MUL)
+    self._compareCpu(x, y + 0.1, np.true_divide, _TRUEDIV)
+
+  def testComplex128Basic(self):
+    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
+        np.complex128)
+    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
+        np.complex128)
     self._compareCpu(x, y, np.add, tf.add)
     self._compareCpu(x, y, np.subtract, tf.sub)
     self._compareCpu(x, y, np.multiply, tf.mul)
@@ -571,11 +626,13 @@ class BinaryOpTest(tf.test.TestCase):
         np.float64,
         np.int32,
         np.int64,
-        np.complex64
+        np.complex64,
+        np.complex128,
     ]
     for dtype in dtypes:
       for (np_func, tf_func) in funcs:
-        if dtype == np.complex64 and tf_func in (_FLOORDIV, tf.floordiv):
+        if (dtype in (np.complex64, np.complex128) and
+              tf_func in (_FLOORDIV, tf.floordiv)):
           continue  # floordiv makes no sense for complex numbers
         self._compareBCast(xs, ys, dtype, np_func, tf_func)
         self._compareBCast(ys, xs, dtype, np_func, tf_func)
@@ -827,18 +884,18 @@ class ComparisonOpTest(tf.test.TestCase):
     for t in dtypes:
       for x in data:
         for y in data:
-          self.assertEqual(self._compare(tf.less, x, y, t),
-                           x < y)
-          self.assertEqual(self._compare(tf.less_equal, x, y, t),
-                           x <= y)
-          self.assertEqual(self._compare(tf.greater, x, y, t),
-                           x > y)
-          self.assertEqual(self._compare(tf.greater_equal, x, y, t),
-                           x >= y)
-          self.assertEqual(self._compare(tf.equal, x, y, t),
-                           x == y)
-          self.assertEqual(self._compare(tf.not_equal, x, y, t),
-                           x != y)
+          self.assertEqual(self._compare(tf.less, x, y, t), x < y)
+          self.assertEqual(self._compare(tf.less_equal, x, y, t), x <= y)
+          self.assertEqual(self._compare(tf.greater, x, y, t), x > y)
+          self.assertEqual(self._compare(tf.greater_equal, x, y, t), x >= y)
+          self.assertEqual(self._compare(tf.equal, x, y, t), x == y)
+          self.assertEqual(self._compare(tf.not_equal, x, y, t), x != y)
+    data = [-1, 0, 1, -1j, 1j, 1 + 1j, 1 - 1j]
+    for t in [np.complex64, np.complex128]:
+      for x in data:
+        for y in data:
+          self.assertEqual(self._compare(tf.equal, x, y, t), x == y)
+          self.assertEqual(self._compare(tf.not_equal, x, y, t), x != y)
 
   def _compareCpu(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
@@ -872,10 +929,9 @@ class ComparisonOpTest(tf.test.TestCase):
       self._compareBoth(xt, yt, np.equal, tf.equal)
       self._compareBoth(xt, yt, np.not_equal, tf.not_equal)
     # TODO(zhifengc): complex64 doesn't work on GPU yet.
-    self._compareCpu(x.astype(np.complex64), y.astype(np.complex64),
-                     np.equal, tf.equal)
-    self._compareCpu(x.astype(np.complex64), y.astype(np.complex64),
-                     np.not_equal, tf.not_equal)
+    for t in [np.complex64, np.complex128]:
+      self._compareCpu(x.astype(t), y.astype(t), np.equal, tf.equal)
+      self._compareCpu(x.astype(t), y.astype(t), np.not_equal, tf.not_equal)
 
   def _compareBCast(self, xs, ys, dtype, np_func, tf_func):
     x = np.linspace(-15, 15, np.prod(xs)).astype(dtype).reshape(xs)
@@ -1115,7 +1171,7 @@ class SelectOpTest(tf.test.TestCase):
     x = np.random.rand(1, 3, 2) * 100
     y = np.random.rand(1, 3, 2) * 100
     for t in [np.float16, np.float32, np.float64, np.int32, np.int64,
-              np.complex64]:
+              np.complex64, np.complex128]:
       xt = x.astype(t)
       yt = y.astype(t)
       self._compare(c, xt, yt, use_gpu=False)
@@ -1146,7 +1202,7 @@ class SelectOpTest(tf.test.TestCase):
     x = np.random.rand(1, 3, 2) * 100
     y = np.random.rand(2, 5, 3) * 100
     for t in [np.float16, np.float32, np.float64, np.int32, np.int64,
-              np.complex64]:
+              np.complex64, np.complex128]:
       xt = x.astype(t)
       yt = y.astype(t)
       with self.assertRaises(ValueError):
@@ -1242,7 +1298,7 @@ class BatchSelectOpTest(tf.test.TestCase):
     x = np.random.rand(16, 2, 8) * 100
     y = np.random.rand(16, 2, 8) * 100
     for t in [np.float16, np.float32, np.float64, np.int32, np.int64,
-              np.complex64]:
+              np.complex64, np.complex128]:
       xt = x.astype(t)
       yt = y.astype(t)
       self._compare(c, xt, yt, use_gpu=False)
@@ -1273,7 +1329,7 @@ class BatchSelectOpTest(tf.test.TestCase):
     x = np.random.rand(16, 3, 2) * 100
     y = np.random.rand(16, 3, 2) * 100
     for t in [np.float16, np.float32, np.float64, np.int32, np.int64,
-              np.complex64]:
+              np.complex64, np.complex128]:
       xt = x.astype(t)
       yt = y.astype(t)
       with self.assertRaises(ValueError):
@@ -1394,6 +1450,7 @@ class MathOpsOverloadTest(tf.test.TestCase):
         tf.int32,
         tf.int64,
         tf.complex64,
+        tf.complex128,
     ]
     funcs = [
         (np.add, _ADD),
@@ -1405,7 +1462,7 @@ class MathOpsOverloadTest(tf.test.TestCase):
     ]
     for dtype in dtypes:
       for np_func, tf_func in funcs:
-        if dtype == tf.complex64 and tf_func == _FLOORDIV:
+        if dtype in (tf.complex64, tf.complex128) and tf_func == _FLOORDIV:
           continue  # floordiv makes no sense for complex
         self._compareBinary(10, 5, dtype, np_func, tf_func)
     # Mod only works for int32 and int64.
@@ -1433,6 +1490,8 @@ class MathOpsOverloadTest(tf.test.TestCase):
         (np.logical_and, _AND),
         (np.logical_or, _OR),
         (np.logical_xor, _XOR),
+        (np.equal, tf.equal),
+        (np.not_equal, tf.not_equal)
     ]
     for np_func, tf_func in logical_funcs:
       self._compareBinary(True, False, tf.bool, np_func, tf_func)
@@ -1535,10 +1594,17 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
     self.assertShapeEqual(np_real, tf_real)
     self.assertShapeEqual(np_imag, tf_imag)
 
-  def testRealImag(self):
+  def testRealImag64(self):
     real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float32)
     imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float32)
-    cplx = real + (1j) * imag
+    cplx = real + 1j * imag
+    self._compareRealImag(cplx, use_gpu=False)
+    self._compareRealImag(cplx, use_gpu=True)
+
+  def testRealImag128(self):
+    real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float64)
+    imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float64)
+    cplx = real + 1j * imag
     self._compareRealImag(cplx, use_gpu=False)
     self._compareRealImag(cplx, use_gpu=True)
 
@@ -1551,10 +1617,17 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
     self.assertAllEqual(np_ans, tf_ans)
     self.assertShapeEqual(np_ans, tf_conj)
 
-  def testConj(self):
+  def testConj64(self):
     real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float32)
     imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float32)
-    cplx = real + (1j) * imag
+    cplx = real + 1j * imag
+    self._compareConj(cplx, use_gpu=False)
+    self._compareConj(cplx, use_gpu=True)
+
+  def testConj128(self):
+    real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float64)
+    imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float64)
+    cplx = real + 1j * imag
     self._compareConj(cplx, use_gpu=False)
     self._compareConj(cplx, use_gpu=True)
 
@@ -1583,7 +1656,11 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
     self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
   def testGradient(self):
+    # complex64
     data = np.arange(1, 2, 0.10).reshape([5, 2]).astype(np.float32)
+    self._compareGradient(data)
+    # complex128
+    data = np.arange(1, 2, 0.10).reshape([5, 2]).astype(np.float64)
     self._compareGradient(data)
 
   def _compareMulGradient(self, data):

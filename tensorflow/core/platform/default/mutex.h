@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 namespace tensorflow {
 
+#undef mutex_lock
+
 enum LinkerInitialized { LINKER_INITIALIZED };
 
 // A class that wraps around the std::mutex implementation, only adding an
@@ -52,6 +54,9 @@ class SCOPED_LOCKABLE mutex_lock : public std::unique_lock<std::mutex> {
       : std::unique_lock<std::mutex>(std::move(ml)) {}
   ~mutex_lock() RELEASE() {}
 };
+
+// Catch bug where variable name is omitted, e.g. mutex_lock (mu);
+#define mutex_lock(x) static_assert(0, "mutex_lock_decl_missing_var_name");
 
 using std::condition_variable;
 

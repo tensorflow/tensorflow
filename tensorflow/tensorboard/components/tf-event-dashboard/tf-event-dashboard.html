@@ -1,7 +1,7 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="tf-run-selector.html">
 <link rel="import" href="tf-x-type-selector.html">
-<link rel="import" href="tf-color-scale.html">
+<link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
 <link rel="import" href="tf-chart.html">
 <link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
@@ -33,7 +33,6 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
         id="colorScale"
         runs="[[runs]]"
         out-color-scale="{{colorScale}}"
-        out-class-scale="{{classScale}}"
       ></tf-color-scale>
     </div>
 
@@ -60,7 +59,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           <tf-run-selector
             id="runSelector"
             runs="[[runs]]"
-            class-scale="[[classScale]]"
+            color-scale="[[colorScale]]"
             out-selected="{{selectedRuns}}"
           ></tf-run-selector>
         </div>
@@ -137,6 +136,10 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
         },
         _show_download_links: Boolean,
+        colorScale: {
+          type: Object,
+          notify: true,
+        },
       },
       attached: function() {
         this.async(function() {

@@ -163,7 +163,7 @@ case where both types are quantized.
 
 
 *  <b>`value`</b>: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-    `int16`, `int8`, or `complex64`.
+    `int16`, `int8`, `complex64` or `complex128`.
 *  <b>`bias`</b>: A 1-D `Tensor` with size matching the last dimension of `value`.
     Must be the same type as `value` unless `value` is a quantized type,
     in which case a different quantized type may be used.
@@ -186,7 +186,7 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `complex128`, `int64`,
     or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -205,7 +205,7 @@ Computes hyperbolic tangent of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
+*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `complex128`, `int64`,
     or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -315,7 +315,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
 *  <b>`strides`</b>: A list of `ints`.
     1-D of length 4.  The stride of the sliding window for each dimension
@@ -418,6 +418,12 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If channel_multiplier * in_channels > out_channels,
+    which means that the separable convolution is overparameterized.
+
 
 - - -
 
@@ -450,15 +456,15 @@ the field of view of filters without increasing the number of parameters or
 the amount of computation.
 
 For a description of atrous convolution and how it can be used for dense
-feature extraction, please see: (Semantic Image Segmentation with Deep
-Convolutional Nets and Fully Connected CRFs)[http://arxiv.org/abs/1412.7062].
-The same operation is investigated further in (Multi-Scale Context Aggregation
-by Dilated Convolutions)[http://arxiv.org/abs/1511.07122]. Previous works
+feature extraction, please see: [Semantic Image Segmentation with Deep
+Convolutional Nets and Fully Connected CRFs](http://arxiv.org/abs/1412.7062).
+The same operation is investigated further in [Multi-Scale Context Aggregation
+by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
 that effectively use atrous convolution in different ways are, among others,
-(OverFeat: Integrated Recognition, Localization and Detection using
-Convolutional Networks) [http://arxiv.org/abs/1312.6229] and (Fast Image
-Scanning with Deep Max-Pooling Convolutional Neural Networks)
-[http://arxiv.org/abs/1302.1700]. Atrous convolution is also closely related
+[OverFeat: Integrated Recognition, Localization and Detection using
+Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
+Scanning with Deep Max-Pooling Convolutional Neural Networks]
+(http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
 to the so-called noble identities in multi-rate signal processing.
 
 There are many different ways to implement atrous convolution (see the refs
@@ -535,8 +541,8 @@ inputs are identical.
 
 The transpose of `conv2d`.
 
-This operation is sometimes called "deconvolution" after (Deconvolutional
-Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+This operation is sometimes called "deconvolution" after [Deconvolutional
+Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
 actually the transpose (gradient) of `conv2d` rather than an actual
 deconvolution.
 
@@ -564,6 +570,38 @@ deconvolution.
 
 *  <b>`ValueError`</b>: If input/output depth does not match `filter`'s shape, or if
     padding is other than `'VALID'` or `'SAME'`.
+
+
+- - -
+
+### `tf.nn.conv3d(input, filter, strides, padding, name=None)` {#conv3d}
+
+Computes a 3-D convolution given 5-D `input` and `filter` tensors.
+
+In signal processing, cross-correlation is a measure of similarity of
+two waveforms as a function of a time-lag applied to one of them. This
+is also known as a sliding dot product or sliding inner-product.
+
+Our Conv3D implements a form of cross-correlation.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    Shape `[batch, in_depth, in_height, in_width, in_channels]`.
+*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
+    Shape `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.
+    `in_channels` must match between `input` and `filter`.
+*  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
+    1-D tensor of length 5. The stride of the sliding window for each
+    dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
 
 
 
@@ -667,6 +705,59 @@ The indices in `argmax` are flattened, so that a maximum value at position
 *  <b>`argmax`</b>: A `Tensor` of type `Targmax`. 4-D.  The flattened indices of the max values chosen for each output.
 
 
+- - -
+
+### `tf.nn.avg_pool3d(input, ksize, strides, padding, name=None)` {#avg_pool3d}
+
+Performs 3D average pooling on the input.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
+*  <b>`ksize`</b>: A list of `ints` that has length `>= 5`.
+    1-D tensor of length 5. The size of the window for each dimension of
+    the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+*  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
+    1-D tensor of length 5. The stride of the sliding window for each
+    dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  The average pooled output tensor.
+
+
+- - -
+
+### `tf.nn.max_pool3d(input, ksize, strides, padding, name=None)` {#max_pool3d}
+
+Performs 3D max pooling on the input.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
+*  <b>`ksize`</b>: A list of `ints` that has length `>= 5`.
+    1-D tensor of length 5. The size of the window for each dimension of
+    the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+*  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
+    1-D tensor of length 5. The stride of the sliding window for each
+    dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`. The max pooled output tensor.
+
+
 
 ## Normalization
 
@@ -739,13 +830,12 @@ convolutional neural networks (NIPS 2012)]
 
 - - -
 
-### `tf.nn.sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None)` {#sufficient_statistics}
+### `tf.nn.sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None)` {#sufficient_statistics}
 
 Calculate the sufficient statistics for the mean and variance of `x`.
 
 These sufficient statistics are computed using the one pass algorithm on
-an input that's optionally shifted using the value of the 1st element in `x`.
-See:
+an input that's optionally shifted. See:
 https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
 
 ##### Args:
@@ -753,7 +843,9 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
 
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: Array of ints. Axes along which to compute mean and variance.
-*  <b>`shift`</b>: If true, shift the data to provide more numerically stable results.
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
+    numerical stability, or `None` if no shift is to be performed. A shift
+    close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce statistics with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the sufficient stats.
 
@@ -763,7 +855,7 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
   * the count (number of elements to average over).
   * the (possibly shifted) sum of the elements in the array.
   * the (possibly shifted) sum of squares of the elements in the array.
-  * the shift by which the mean must be corrected or None if `shift` is False.
+  * the shift by which the mean must be corrected or None if `shift` is None.
 
 
 - - -
@@ -791,7 +883,7 @@ Calculate the mean and variance of based on the sufficient statistics.
 
 - - -
 
-### `tf.nn.moments(x, axes, name=None, keep_dims=False)` {#moments}
+### `tf.nn.moments(x, axes, shift=None, name=None, keep_dims=False)` {#moments}
 
 Calculate the mean and variance of `x`.
 
@@ -811,6 +903,9 @@ When using these moments for batch normalization (see
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
     variance.
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
+    numerical stability, or `None` if no shift is to be performed. A shift
+    close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 
@@ -873,7 +968,14 @@ For brevity, let `x = logits`, `z = targets`.  The logistic loss is
     = (1 - z) * x + log(1 + exp(-x))
     = x - x * z + log(1 + exp(-x))
 
-To ensure stability and avoid overflow, the implementation uses
+For x < 0, to avoid overflow in exp(-x), we reformulate the above
+
+      x - x * z + log(1 + exp(-x))
+    = log(exp(x)) - x * z + log(1 + exp(-x))
+    = - x * z + log(1 + exp(x))
+
+Hence, to ensure stability and avoid overflow, the implementation uses this
+equivalent formulation
 
     max(x, 0) - x * z + log(1 + exp(-abs(x)))
 
@@ -910,7 +1012,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
     2-D with shape `[batch_size, num_classes]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -932,7 +1034,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
     2-D with shape `[batch_size, num_classes]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1367,7 +1469,7 @@ This operation is for training only.  It is generally an underestimate of
 the full softmax loss.
 
 At inference time, you can compute full softmax probabilities with the
-expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
+expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
 
 See our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)
@@ -1419,14 +1521,14 @@ classes when using one of the sampled loss functions above.
 Samples a set of classes using a uniform base distribution.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from
 the base distribution.
 
 The base distribution for this operation is the uniform distribution
-over the range of integers `[0, range_max]`.
+over the range of integers `[0, range_max)`.
 
 In addition, this operation returns tensors `true_expected_count`
 and `sampled_expected_count` representing the number of times each
@@ -1471,7 +1573,7 @@ compute them approximately.
 Samples a set of classes using a log-uniform (Zipfian) base distribution.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from
@@ -1530,7 +1632,7 @@ compute them approximately.
 Samples a set of classes from a distribution learned during training.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from
@@ -1538,7 +1640,7 @@ the base distribution.
 
 The base distribution for this operation is constructed on the fly
 during training.  It is a unigram distribution over the target
-classes seen so far during training.  Every integer in `[0, range_max]`
+classes seen so far during training.  Every integer in `[0, range_max)`
 begins with a weight of 1, and is incremented by 1 each time it is
 seen as a target class.  The base distribution is not saved to checkpoints,
 so it is reset when the model is reloaded.
@@ -1586,7 +1688,7 @@ compute them approximately.
 Samples a set of classes using the provided (fixed) base distribution.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from

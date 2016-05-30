@@ -34,7 +34,7 @@ TEST(SessionTest, InvalidTargetReturnsNull) {
   EXPECT_TRUE(
       StringPiece(s.error_message())
           .contains(
-              "No session factory registered for the given session options."));
+              "No session factory registered for the given session options"));
 }
 
 // Register a fake session factory to test error handling paths in

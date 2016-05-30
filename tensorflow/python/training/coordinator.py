@@ -187,11 +187,13 @@ class Coordinator(object):
       if not self._stop_event.is_set():
         if ex and self._exc_info_to_raise is None:
           if isinstance(ex, tuple):
-            logging.info("Error reported to Coordinator: %s",
+            logging.info("Error reported to Coordinator: %s, %s",
+                         type(ex[1]),
                          compat.as_str_any(ex[1]))
             self._exc_info_to_raise = ex
           else:
-            logging.info("Error reported to Coordinator: %s",
+            logging.info("Error reported to Coordinator: %s, %s",
+                         type(ex),
                          compat.as_str_any(ex))
             self._exc_info_to_raise = sys.exc_info()
           # self._exc_info_to_raise should contain a tuple containing exception
@@ -341,7 +343,8 @@ class LooperThread(threading.Thread):
   You typically pass looper threads to the supervisor `Join()` method.
   """
 
-  def __init__(self, coord, timer_interval_secs, target=None, args=None):
+  def __init__(self, coord, timer_interval_secs, target=None, args=None,
+               kwargs=None):
     """Create a LooperThread.
 
     Args:
@@ -350,6 +353,7 @@ class LooperThread(threading.Thread):
         if it should be called back to back.
       target: Optional callable object that will be executed in the thread.
       args: Optional arguments to pass to `target` when calling it.
+      kwargs: Optional keyword arguments to pass to `target` when calling it.
 
     Raises:
       ValueError: If one of the arguments is invalid.
@@ -362,15 +366,14 @@ class LooperThread(threading.Thread):
     self._timer_interval_secs = timer_interval_secs
     self._target = target
     if self._target:
-      if args is None:
-        self._args = ()
-      else:
-        self._args = args
-    elif args:
-      raise ValueError("'args' argument require that you also pass 'target'")
+      self._args = args or ()
+      self._kwargs = kwargs or {}
+    elif args or kwargs:
+      raise ValueError("'args' and 'kwargs' argument require that you also "
+                       "pass 'target'")
 
   @staticmethod
-  def loop(coord, timer_interval_secs, target, args=None):
+  def loop(coord, timer_interval_secs, target, args=None, kwargs=None):
     """Start a LooperThread that calls a function periodically.
 
     If `timer_interval_secs` is None the thread calls `target(args)`
@@ -383,11 +386,13 @@ class LooperThread(threading.Thread):
       timer_interval_secs: Number. Time boundaries at which to call `target`.
       target: A callable object.
       args: Optional arguments to pass to `target` when calling it.
+      kwargs: Optional keyword arguments to pass to `target` when calling it.
 
     Returns:
       The started thread.
     """
-    looper = LooperThread(coord, timer_interval_secs, target=target, args=args)
+    looper = LooperThread(coord, timer_interval_secs, target=target, args=args,
+                          kwargs=kwargs)
     looper.start()
     return looper
 
@@ -417,4 +422,4 @@ class LooperThread(threading.Thread):
   def run_loop(self):
     """Called at 'timer_interval_secs' boundaries."""
     if self._target:
-      self._target(*self._args)
+      self._target(*self._args, **self._kwargs)

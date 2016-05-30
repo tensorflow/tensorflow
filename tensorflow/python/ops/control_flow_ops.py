@@ -1295,9 +1295,8 @@ class WhileContext(ControlFlowContext):
       with ops.control_dependencies(None):
         enter = _Enter(result, self._name, is_constant=True,
                        parallel_iterations=self._parallel_iterations)
-      # pylint: disable=protected-access
-      enter.op._set_control_flow_context(self)
-      # pylint: enable=protected-access
+      # Fix the control inputs and control flow context of these enter ops.
+      self._FixControlInputsAndContext([enter])
 
       # Add `enter` in this context.
       self._values.add(enter.name)
@@ -1332,18 +1331,16 @@ class WhileContext(ControlFlowContext):
   def _AddOpInternal(self, op):
     """Add `op` to the current context."""
     if not op.inputs:
-      if not op.control_inputs:
+      control_inputs = [x for x in op.control_inputs
+                        if x._get_control_flow_context() == self]
+      if len(control_inputs) != len(op.control_inputs):
+        del op.control_inputs[:]
+        op._add_control_inputs(control_inputs)
+      if not control_inputs:
         # Add a control edge from the control pivot to this op.
         # pylint: disable=protected-access
         op._add_control_input(self.GetControlPivot().op)
         # pylint: enable=protected-access
-      else:
-        # Control edges must be in the same context.
-        for x in op.control_inputs:
-
-          assert x._get_control_flow_context() == self, (
-              "Control inputs must come from Operations in the same while "
-              "loop context (not an outer context)." + str(x))
       for x in op.outputs:
         self._values.add(x.name)
     else:
@@ -1534,7 +1531,7 @@ class WhileContext(ControlFlowContext):
 
     # Keep original_loop_vars to identify which are TensorArrays
     original_loop_vars = loop_vars
-    # Connvert TensorArrays to their flow variables
+    # Convert TensorArrays to their flow variables
     loop_vars = _convert_tensorarrays_to_flows(loop_vars)
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     # Let the context know the loop variabes so the loop variables
@@ -1547,8 +1544,8 @@ class WhileContext(ControlFlowContext):
       enter_vars = [_Enter(x, self._name, is_constant=False,
                            parallel_iterations=self._parallel_iterations)
                     for x in real_vars]
-    for x in enter_vars:
-      x.op._set_control_flow_context(self)  # pylint: disable=protected-access
+    # Fix the control inputs and control flow context of these enter ops.
+    self._FixControlInputsAndContext(enter_vars)
     self._values = set([x.name for x in enter_vars])
 
     merge_vars = [merge([x, x])[0] for x in enter_vars]
@@ -1580,7 +1577,9 @@ class WhileContext(ControlFlowContext):
     next_vars = [_NextIteration(x) for x in result]
 
     # Add the back edges to complete the loop.
-    assert len(merge_vars) == len(next_vars)
+    if len(merge_vars) != len(next_vars):
+      raise ValueError("Number of inputs and outputs of body must match "
+                       "loop_vars: %d, %d" % (len(merge_vars), len(next_vars)))
     for x in zip(merge_vars, next_vars):
       x[0].op._update_input(1, x[1])
 
@@ -1589,8 +1588,8 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = exit_vars
 
     for m_var, n_var, e_var in zip(merge_vars, next_vars, exit_vars):
-      if m_var.get_shape().is_compatible_with(n_var.get_shape()):
-        e_var.set_shape(m_var.get_shape().merge_with(n_var.get_shape()))
+      if not m_var.get_shape() == n_var.get_shape():
+        e_var._shape = tensor_shape.unknown_shape()
 
     # Exit the loop.
     self.ExitResult(exit_vars)
@@ -1603,15 +1602,28 @@ class WhileContext(ControlFlowContext):
             if len(exit_vars) == 1
             else exit_vars_with_tensor_arrays)
 
+  def _FixControlInputsAndContext(self, input_tensors):
+    # pylint: disable=protected-access
+    graph = ops.get_default_graph()
+    control_inputs = graph._control_dependencies_for_inputs(input_tensors)
+    control_inputs = [op for op in control_inputs
+                      if op._get_control_flow_context() != self]
+    for x in input_tensors:
+      x.op._set_control_flow_context(self)
+      x.op._add_control_inputs(control_inputs)
+      graph._record_op_seen_by_control_dependencies(x.op)
+    # pylint: enable=protected-access
+
 
 def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
                swap_memory=False, name=None):
   """Repeat `body` while the condition `cond` is true.
 
-  `cond` is a callable taking a list of tensors and returning a boolean scalar
-  tensor. `body` is a callable taking a list of tensors and returning a list of
-  tensors of the same length and with the same types as the input. `loop_vars`
-  is a list of tensors that is passed to both `cond` and `body`.
+  `cond` is a callable returning a boolean scalar tensor. `body` is a callable
+  returning a list of tensors of the same length and with the same types as
+  `loop_vars`. `loop_vars` is a list of tensors that is passed to both `cond`
+  and `body`. `cond` and `body` both take as many arguments as there are
+  `loop_vars`.
 
   In addition to regular Tensors or IndexedSlices, the body may accept and
   return TensorArray objects.  The flows of the TensorArray objects will
@@ -1633,7 +1645,7 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
   sequences and large batches.
 
   Args:
-    cond: The termination condition of the loop.
+    cond: A callable that represents the termination condition of the loop.
     body: A callable that represents the loop body.
     loop_vars: The list of variable input tensors.
     parallel_iterations: The number of iterations allowed to run in parallel.
@@ -1973,29 +1985,64 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     for i, p in enumerate(preds):
       with ops.name_scope("not_%d" % i):
         not_preds.append(math_ops.logical_not(p))
-    and_not_preds = [constant_op.constant(True, name="and_not_true")]
-    for i, notp in enumerate(not_preds[:-1]):
+    and_not_preds = [constant_op.constant(True, name="always_true")]
+    for i, notp in enumerate(not_preds):
       with ops.name_scope("and_not_%d" % i):
         and_not_preds.append(math_ops.logical_and(and_not_preds[-1], notp))
 
     # preds = [p1, p2, p3]
     # fns = [f1, f2, f3]
     # not_preds = [~p1, ~p2, ~p3]
-    # case_preds = [p1 & True,
+    # and_not_preds = [True, ~p1, ~p1 & ~p2, ~p1 & ~p2 & ~p3]
+    # case_preds = [p1,
     #               p2 & ~p1,
-    #               p3 & ~p1 & ~ p2]
+    #               p3 & ~p2 & ~p1,
+    #              ~p3 & ~p2 & ~p1]
+
     case_preds = []
-    for i, (p, and_not_p_prev) in enumerate(zip(preds, and_not_preds)):
+    for i, (p, and_not_p_prev) in enumerate(zip(preds, and_not_preds[:-1])):
       with ops.name_scope("case_%d" % i):
         case_preds.append(math_ops.logical_and(p, and_not_p_prev))
+    with ops.name_scope("case_none_are_true"):
+      case_preds.append(and_not_preds[-1])
 
-    # case_sequence = [cond(p3 & ..., f3, default),
-    #                  cond(p2 & ..., f2, lambda: case_sequence[0]),
-    #                  ...
-    #                  cond(p1 & True, f1, lambda: case_sequence[i-1])]
-    # and prev_case_seq will loop from case_sequence[0] to case_sequence[-1]
+    # Create an empty tensor, or list, with the right type and shape
+    with ops.name_scope("case_create_empty"):
+      dummy_value = default()
+      def _correct_empty(v):
+        if isinstance(v, ops.Operation):
+          return no_op()
+        elif v.dtype == dtypes.string:
+          return array_ops.constant("")
+        else:
+          return array_ops.constant(v.dtype.as_numpy_dtype())
+
+      if isinstance(dummy_value, collections.Sequence):
+        dummy_type = type(dummy_value)
+        empty = lambda: dummy_type(_correct_empty(v) for v in dummy_value)
+      else:
+        empty = lambda: _correct_empty(dummy_value)
+
+    # case_sequence = [
+    #   cond(~p3 & ~p2 & ~p1, default, empty),
+    #   cond(p3 & ~p2 & ~p1, f3, lambda: case_sequence[0]),
+    #   cond(p2 & ~p1, f2, lambda: case_sequence[1]),
+    #   cond(p1, f1, lambda: case_sequence[2])
+    # ]
+    #
+    # And the return value will be case_sequence[-1]
+    def _build_case():
+      all_fns = [fn for fn in fns]
+      all_fns.append(default)
+      prev_case = None
+      for i, (cp, fn) in enumerate(list(zip(case_preds, all_fns))[::-1]):
+        prev_case = cond(
+            cp, fn,
+            empty if i == 0 else lambda: prev_case,
+            name="If_%d" % i)
+      return prev_case
+
     if exclusive:
-      # TODO(ebrevdo): Add Where() for DT_BOOL, replace with Size(Where(preds))
       preds_c = array_ops.pack(preds, name="preds_c")
       num_true_conditions = math_ops.reduce_sum(
           math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
@@ -2010,21 +2057,11 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       with ops.control_dependencies([
           logging_ops.Assert(condition=at_most_one_true_condition,
                              data=error_msg, summarize=len(preds))]):
-        prev_case_seq = None
-        for i, (cp, fn) in enumerate(list(zip(case_preds, fns))[::-1]):
-          prev_case_seq = cond(
-              cp, fn,
-              default if i == 0 else lambda: prev_case_seq,
-              name="If_%d" % i)
+        case_seq = _build_case()
     else:
-      prev_case_seq = None
-      for i, (cp, fn) in enumerate(list(zip(case_preds, fns))[::-1]):
-        prev_case_seq = cond(
-            cp, fn,
-            default if i == 0 else lambda: prev_case_seq,
-            name="If_%d" % i)
+      case_seq = _build_case()
 
-    return prev_case_seq
+    return case_seq
 
 
 ops.RegisterShape("Enter")(common_shapes.unchanged_shape)

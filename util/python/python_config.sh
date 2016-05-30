@@ -16,11 +16,16 @@
 
 set -e -o errexit
 
-# Prefix expected paths with ./ locally and external/reponame/ for remote repos.
-# TODO(kchodorow): remove once runfiles paths are fixed, see
-# https://github.com/bazelbuild/bazel/issues/848.
-script_path=$(dirname $(dirname $(dirname "$0")))
-script_path=${script_path:-.}
+if [ -d "../org_tensorflow" ]; then
+  script_path="../org_tensorflow"
+else
+  # Prefix expected paths with ./ locally and external/reponame/ for remote repos.
+  # TODO(kchodorow): remove once runfiles paths are fixed, see
+  # https://github.com/bazelbuild/bazel/issues/848.
+  script_path=$(dirname $(dirname $(dirname "$0")))
+  script_path=${script_path:-.}
+fi
+
 EXPECTED_PATHS="$script_path/util/python/python_include"\
 " $script_path/util/python/python_lib"\
 " $script_path/third_party/py/numpy/numpy_include"

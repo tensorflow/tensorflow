@@ -32,17 +32,39 @@ function main() {
     echo "Could not find bazel-bin.  Did you run from the root of the build tree?"
     exit 1
   fi
-  cp -R \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/{tensorflow,external} \
-    ${TMPDIR}
+
+  if [ ! -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow ]; then
+    # Really old (0.2.1-) runfiles, without workspace name.
+    cp -R \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/{tensorflow,external} \
+      "${TMPDIR}"
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
+  else
+    if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
+      # Old-style runfiles structure (--legacy_external_runfiles).
+      cp -R \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/{tensorflow,external} \
+        "${TMPDIR}"
+    else
+      # New-style runfiles structure (--nolegacy_external_runfiles).
+      cp -R \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
+        "${TMPDIR}"
+      mkdir "${TMPDIR}/external"
+      # Note: this makes an extra copy of org_tensorflow.
+      cp -R \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
+        "${TMPDIR}/external"
+    fi
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
+  fi
+
   # protobuf pip package doesn't ship with header files. Copy the headers
   # over so user defined ops can be compiled.
+  mkdir -p ${TMPDIR}/google
   rsync --include "*/" --include "*.h" --exclude "*" --prune-empty-dirs -a \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/google \
-    ${TMPDIR}
-  rsync -a \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/third_party/eigen3 \
-    ${TMPDIR}/third_party
+    $RUNFILES/external/protobuf ${TMPDIR}/google
+  rsync -a $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}

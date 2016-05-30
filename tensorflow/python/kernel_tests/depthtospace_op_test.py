@@ -180,6 +180,10 @@ class DepthToSpaceTest(tf.test.TestCase):
     with self.assertRaises(IndexError):
       _ = tf.space_to_depth(x_np, block_size)
 
+  def testUnknownShape(self):
+    t = tf.depth_to_space(tf.placeholder(tf.float32), block_size=4)
+    self.assertEqual(4, t.get_shape().ndims)
+
 
 class DepthToSpaceGradientTest(tf.test.TestCase):
 

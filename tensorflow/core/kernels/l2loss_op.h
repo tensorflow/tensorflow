@@ -29,7 +29,7 @@ struct L2Loss {
                   typename TTypes<T>::Scalar output) {
     // We flatten the input tensor and reduce on dimension 0, producing
     // a single number which is Mul(Sum(x^2), 0.5).
-    output.device(d) = input.square().sum() * static_cast<T>(0.5);
+    output.device(d) = (input.square() * static_cast<T>(0.5)).sum();
   }
 };
 

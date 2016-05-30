@@ -60,8 +60,8 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       np.int64: fast_tensor_util.AppendInt64ArrayToTensorProto,
       np.uint8: fast_tensor_util.AppendUInt8ArrayToTensorProto,
       np.uint16: fast_tensor_util.AppendUInt16ArrayToTensorProto,
-      np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
       np.int8: fast_tensor_util.AppendInt8ArrayToTensorProto,
+      np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
       np.complex64: fast_tensor_util.AppendComplex64ArrayToTensorProto,
       np.complex128: fast_tensor_util.AppendComplex128ArrayToTensorProto,
       np.object: fast_tensor_util.AppendObjectArrayToTensorProto,
@@ -69,6 +69,10 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       dtypes.qint8.as_numpy_dtype:
           fast_tensor_util.AppendInt8ArrayToTensorProto,
       dtypes.quint8.as_numpy_dtype:
+          fast_tensor_util.AppendUInt8ArrayToTensorProto,
+      dtypes.qint16.as_numpy_dtype:
+          fast_tensor_util.AppendInt8ArrayToTensorProto,
+      dtypes.quint16.as_numpy_dtype:
           fast_tensor_util.AppendUInt8ArrayToTensorProto,
       dtypes.qint32.as_numpy_dtype:
           fast_tensor_util.AppendInt32ArrayToTensorProto,
@@ -115,14 +119,16 @@ else:
       np.int64: SlowAppendInt64ArrayToTensorProto,
       np.uint8: SlowAppendIntArrayToTensorProto,
       np.uint16: SlowAppendIntArrayToTensorProto,
-      np.int16: SlowAppendIntArrayToTensorProto,
       np.int8: SlowAppendIntArrayToTensorProto,
+      np.int16: SlowAppendIntArrayToTensorProto,
       np.complex64: SlowAppendComplex64ArrayToTensorProto,
       np.complex128: SlowAppendComplex128ArrayToTensorProto,
       np.object: SlowAppendObjectArrayToTensorProto,
       np.bool: SlowAppendBoolArrayToTensorProto,
       dtypes.qint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       dtypes.quint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.qint16.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.quint16.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       dtypes.qint32.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
@@ -182,7 +188,8 @@ def _FlattenToStrings(nested_strings):
 
 _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
-    dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint32,
+    dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint16,
+    dtypes.quint16, dtypes.qint32,
 ])
 
 
@@ -252,21 +259,23 @@ def _FilterNotTensor(v):
 
 
 _TF_TO_IS_OK = {
+    dtypes.bool: _FilterBool,
+    dtypes.complex128: _FilterComplex,
+    dtypes.complex64: _FilterComplex,
     dtypes.float32: _FilterFloat,
     dtypes.float64: _FilterFloat,
-    dtypes.int32: _FilterInt,
-    dtypes.uint8: _FilterInt,
-    dtypes.uint16: _FilterInt,
     dtypes.int16: _FilterInt,
-    dtypes.int8: _FilterInt,
-    dtypes.string: _FilterStr,
-    dtypes.complex64: _FilterComplex,
-    dtypes.complex128: _FilterComplex,
+    dtypes.int32: _FilterInt,
     dtypes.int64: _FilterInt,
-    dtypes.bool: _FilterBool,
+    dtypes.int8: _FilterInt,
+    dtypes.qint16: _FilterInt,
     dtypes.qint32: _FilterInt,
-    dtypes.quint8: _FilterInt,
     dtypes.qint8: _FilterInt,
+    dtypes.quint16: _FilterInt,
+    dtypes.quint8: _FilterInt,
+    dtypes.string: _FilterStr,
+    dtypes.uint16: _FilterInt,
+    dtypes.uint8: _FilterInt,
 }
 
 
@@ -323,7 +332,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
   if dtype:
     dtype = dtypes.as_dtype(dtype)
 
-  is_quantized = (dtype in [dtypes.qint8, dtypes.quint8, dtypes.qint32])
+  is_quantized = (dtype in [dtypes.qint8, dtypes.quint8, dtypes.qint16,
+                            dtypes.quint16, dtypes.qint32])
 
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
@@ -459,7 +469,7 @@ def MakeNdarray(tensor):
       return np.fromiter(tensor.double_val, dtype=dtype).reshape(shape)
   elif tensor_dtype in [dtypes.int32, dtypes.uint8, dtypes.uint16, dtypes.int16,
                         dtypes.int8, dtypes.qint32, dtypes.quint8, dtypes.qint8,
-                        dtypes.bfloat16]:
+                        dtypes.qint16, dtypes.quint16, dtypes.bfloat16]:
     if len(tensor.int_val) == 1:
       return np.repeat(np.array(tensor.int_val[0], dtype=dtype),
                        num_elements).reshape(shape)

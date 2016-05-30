@@ -284,12 +284,27 @@ bool DataTypeIsQuantized(DataType dt) {
   }
 }
 
+bool DataTypeIsInteger(DataType dt) {
+  switch (dt) {
+    case DT_INT8:
+    case DT_UINT8:
+    case DT_INT16:
+    case DT_UINT16:
+    case DT_INT32:
+    case DT_INT64:
+      return true;
+    default:
+      return false;
+  }
+}
+
 int DataTypeSize(DataType dt) {
 #define CASE(T)                  \
   case DataTypeToEnum<T>::value: \
     return sizeof(T);
   switch (dt) {
     TF_CALL_POD_TYPES(CASE);
+    TF_CALL_QUANTIZED_TYPES(CASE);
     default:
       return 0;
   }

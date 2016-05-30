@@ -215,7 +215,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
               array_ops.identity(v * scale, name="%s_%d" % (name, i)))
 
     list_clipped = [
-        ops.IndexedSlices(c_v, t.indices)
+        ops.IndexedSlices(c_v, t.indices, t.dense_shape)
         if isinstance(t, ops.IndexedSlices)
         else c_v
         for (c_v, t) in zip(values_clipped, t_list)]

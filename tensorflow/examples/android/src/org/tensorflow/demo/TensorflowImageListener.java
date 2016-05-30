@@ -50,8 +50,7 @@ public class TensorflowImageListener implements OnImageAvailableListener {
   private static final int INPUT_SIZE = 224;
   private static final int IMAGE_MEAN = 117;
 
-  // TODO(andrewharp): Get orientation programatically.
-  private final int screenRotation = 90;
+  private Integer sensorOrientation;
 
   private final TensorflowClassifier tensorflow = new TensorflowClassifier();
 
@@ -70,11 +69,14 @@ public class TensorflowImageListener implements OnImageAvailableListener {
   public void initialize(
       final AssetManager assetManager,
       final RecognitionScoreView scoreView,
-      final Handler handler) {
+      final Handler handler,
+      final Integer sensorOrientation) {
+    Assert.assertNotNull(sensorOrientation);
     tensorflow.initializeTensorflow(
         assetManager, MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN);
     this.scoreView = scoreView;
     this.handler = handler;
+    this.sensorOrientation = sensorOrientation;
   }
 
   private void drawResizedBitmap(final Bitmap src, final Bitmap dst) {
@@ -92,9 +94,9 @@ public class TensorflowImageListener implements OnImageAvailableListener {
     matrix.postScale(scaleFactor, scaleFactor);
 
     // Rotate around the center if necessary.
-    if (screenRotation != 0) {
+    if (sensorOrientation != 0) {
       matrix.postTranslate(-dst.getWidth() / 2.0f, -dst.getHeight() / 2.0f);
-      matrix.postRotate(screenRotation);
+      matrix.postRotate(sensorOrientation);
       matrix.postTranslate(dst.getWidth() / 2.0f, dst.getHeight() / 2.0f);
     }
 

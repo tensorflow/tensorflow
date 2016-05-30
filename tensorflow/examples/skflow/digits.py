@@ -18,8 +18,8 @@ from __future__ import print_function
 from sklearn import datasets, cross_validation, metrics
 import tensorflow as tf
 
-from tensorflow.contrib import skflow
-from tensorflow.contrib.skflow import monitors
+from tensorflow.contrib import learn
+from tensorflow.contrib.learn import monitors
 
 # Load dataset
 
@@ -45,13 +45,13 @@ X_train, X_val, y_train, y_val = cross_validation.train_test_split(X_train,
 
 def conv_model(X, y):
     X = tf.expand_dims(X, 3)
-    features = tf.reduce_max(skflow.ops.conv2d(X, 12, [3, 3]), [1, 2])
+    features = tf.reduce_max(learn.ops.conv2d(X, 12, [3, 3]), [1, 2])
     features = tf.reshape(features, [-1, 12])
-    return skflow.models.logistic_regression(features, y)
+    return learn.models.logistic_regression(features, y)
 
-val_monitor = monitors.ValidationMonitor(X_val, y_val, n_classes=10, print_steps=50)
+val_monitor = monitors.ValidationMonitor(X_val, y_val, every_n_steps=50)
 # Create a classifier, train and predict.
-classifier = skflow.TensorFlowEstimator(model_fn=conv_model, n_classes=10,
+classifier = learn.TensorFlowEstimator(model_fn=conv_model, n_classes=10,
                                         steps=1000, learning_rate=0.05,
                                         batch_size=128)
 classifier.fit(X_train, y_train, val_monitor)

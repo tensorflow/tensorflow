@@ -1,10 +1,9 @@
-FROM nvidia/cuda:7.5-cudnn4-runtime
+FROM nvidia/cuda:7.5-cudnn4-devel
 
 MAINTAINER Craig Citro <craigcitro@google.com>
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y \
-        bc \
         curl \
         libfreetype6-dev \
         libpng12-dev \
@@ -28,10 +27,18 @@ RUN pip --no-cache-dir install \
         && \
     python -m ipykernel.kernelspec
 
-# Install TensorFlow GPU version.
 ENV TENSORFLOW_VERSION 0.8.0
+
+# --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
+# These lines will be edited automatically by parameterized_docker_build.sh. #
+# COPY _PIP_FILE_ /
+# RUN pip --no-cache-dir install /_PIP_FILE_
+# RUN rm -f /_PIP_FILE_
+
+# Install TensorFlow GPU version.
 RUN pip --no-cache-dir install \
     http://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-${TENSORFLOW_VERSION}-cp27-none-linux_x86_64.whl
+# --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/

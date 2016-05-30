@@ -108,6 +108,7 @@ concatenated.
 @@separable_conv2d
 @@atrous_conv2d
 @@conv2d_transpose
+@@conv3d
 
 ## Pooling
 
@@ -127,6 +128,8 @@ to the `Convolution` section for details about the padding calculation.
 @@avg_pool
 @@max_pool
 @@max_pool_with_argmax
+@@avg_pool3d
+@@max_pool3d
 
 ## Normalization
 
@@ -264,7 +267,14 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
       = (1 - z) * x + log(1 + exp(-x))
       = x - x * z + log(1 + exp(-x))
 
-  To ensure stability and avoid overflow, the implementation uses
+  For x < 0, to avoid overflow in exp(-x), we reformulate the above
+
+        x - x * z + log(1 + exp(-x))
+      = log(exp(x)) - x * z + log(1 + exp(-x))
+      = - x * z + log(1 + exp(x))
+
+  Hence, to ensure stability and avoid overflow, the implementation uses this
+  equivalent formulation
 
       max(x, 0) - x * z + log(1 + exp(-abs(x)))
 
@@ -296,10 +306,16 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
     #   x - x * z + log(1 + exp(-x))
     # For x < 0, a more numerically stable formula is
     #   -x * z + log(1 + exp(x))
-    # To avoid branching, we use the combined version
+    # Note that these two expressions can be combined into the following:
     #   max(x, 0) - x * z + log(1 + exp(-abs(x)))
-    return math_ops.add(nn_ops.relu(logits) - logits * targets,
-                        math_ops.log(1 + math_ops.exp(-math_ops.abs(logits))),
+    # To allow computing gradients at zero, we define custom versions of max and
+    # abs functions.
+    zeros = array_ops.zeros_like(logits, dtype=logits.dtype)
+    cond = (logits >= zeros)
+    relu_logits = math_ops.select(cond, logits, zeros)
+    neg_abs_logits = math_ops.select(cond, -logits, logits)
+    return math_ops.add(relu_logits - logits * targets,
+                        math_ops.log(1 + math_ops.exp(neg_abs_logits)),
                         name=name)
 
 
@@ -474,6 +490,7 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:
@@ -539,10 +556,15 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:
     A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
+
+  Raises:
+    ValueError: If channel_multiplier * in_channels > out_channels,
+      which means that the separable convolution is overparameterized.
   """
   with ops.op_scope([input, depthwise_filter, pointwise_filter],
                    name, "separable_conv2d") as name:
@@ -560,8 +582,13 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
         channel_multiplier = depthwise_filter.get_shape()[3]
         in_channels = input.get_shape()[3]
         out_channels = pointwise_filter.get_shape()[3]
-        # This would mean the separable convolutions is over-parametrized.
-        assert channel_multiplier * in_channels < out_channels
+        if channel_multiplier * in_channels > out_channels:
+          raise ValueError(
+              ("Refusing to perform an overparameterized separable "
+               "convolution: channel_multiplier * in_channels = "
+               "%d * %d = %d > %d = out_channels" %
+               (channel_multiplier, in_channels,
+                channel_multiplier * in_channels, out_channels)))
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
@@ -571,18 +598,19 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
                          padding="VALID", name=name)
 
 
-def sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None):
+def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
 
   These sufficient statistics are computed using the one pass algorithm on
-  an input that's optionally shifted using the value of the 1st element in `x`.
-  See:
+  an input that's optionally shifted. See:
   https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
 
   Args:
     x: A `Tensor`.
     axes: Array of ints. Axes along which to compute mean and variance.
-    shift: If true, shift the data to provide more numerically stable results.
+    shift: A `Tensor` containing the value by which to shift the data for
+      numerical stability, or `None` if no shift is to be performed. A shift
+      close to the true mean provides the most numerically stable results.
     keep_dims: produce statistics with the same dimensionality as the input.
     name: Name used to scope the operations that compute the sufficient stats.
 
@@ -591,9 +619,9 @@ def sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None):
     * the count (number of elements to average over).
     * the (possibly shifted) sum of the elements in the array.
     * the (possibly shifted) sum of squares of the elements in the array.
-    * the shift by which the mean must be corrected or None if `shift` is False.
+    * the shift by which the mean must be corrected or None if `shift` is None.
   """
-  with ops.op_scope([x, axes], name, "sufficient_statistics"):
+  with ops.op_scope([x, axes, shift], name, "sufficient_statistics"):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
     if x_shape.is_fully_defined():
@@ -616,23 +644,16 @@ def sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None):
           math_ops.reduce_prod(x_shape / m_shape),
           x.dtype,
           name="count")
-    if shift:
-      shift_value = array_ops.slice(x, array_ops.zeros_like(m_shape), m_shape)
-      m_ss = math_ops.sub(x, shift_value)
-      v_ss = math_ops.squared_difference(x, shift_value)
-      if keep_dims:
-        shift_value = array_ops.identity(shift_value, name="shift")
-      else:
-        shift_value = array_ops.squeeze(shift_value,
-                                        squeeze_dims=axes,
-                                        name="shift")
-    else:  # not shift.
+    if shift is not None:
+      shift = ops.convert_to_tensor(shift, name="shift")
+      m_ss = math_ops.sub(x, shift)
+      v_ss = math_ops.squared_difference(x, shift)
+    else:  # no shift.
       m_ss = x
       v_ss = math_ops.square(x)
-      shift_value = None
     m_ss = math_ops.reduce_sum(m_ss, axes, keep_dims=keep_dims, name="mean_ss")
     v_ss = math_ops.reduce_sum(v_ss, axes, keep_dims=keep_dims, name="var_ss")
-  return counts, m_ss, v_ss, shift_value
+  return counts, m_ss, v_ss, shift
 
 
 def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
@@ -666,7 +687,7 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   return (mean, variance)
 
 
-def moments(x, axes, name=None, keep_dims=False):
+def moments(x, axes, shift=None, name=None, keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
@@ -683,15 +704,19 @@ def moments(x, axes, name=None, keep_dims=False):
     x: A `Tensor`.
     axes: array of ints.  Axes along which to compute mean and
       variance.
+    shift: A `Tensor` containing the value by which to shift the data for
+      numerical stability, or `None` if no shift is to be performed. A shift
+      close to the true mean provides the most numerically stable results.
     keep_dims: produce moments with the same dimensionality as the input.
     name: Name used to scope the operations that compute the moments.
 
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.op_scope([x, axes], name, "moments"):
+  with ops.op_scope([x, axes, shift], name, "moments"):
     counts, m_ss, v_ss, shift = sufficient_statistics(x,
                                                       axes,
+                                                      shift=shift,
                                                       keep_dims=keep_dims,
                                                       name=name)
     return normalize_moments(counts, m_ss, v_ss, shift, name=name)
@@ -1046,7 +1071,7 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   the full softmax loss.
 
   At inference time, you can compute full softmax probabilities with the
-  expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
+  expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
 
   See our [Candidate Sampling Algorithms Reference]
   (../../extras/candidate_sampling.pdf)

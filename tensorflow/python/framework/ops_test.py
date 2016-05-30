@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
@@ -61,19 +62,23 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     indices = [[1, 2], [2, 0], [3, 4]]
     values = [b"a", b"b", b"c"]
     shape = [4, 5]
-    sp = ops.SparseTensor(indices, values, shape)
-    self.assertEqual(sp.indices.dtype, dtypes.int64)
-    self.assertEqual(sp.values.dtype, dtypes.string)
-    self.assertEqual(sp.shape.dtype, dtypes.int64)
-    with self.test_session() as sess:
-      value = sp.eval()
-      self.assertAllEqual(indices, value.indices)
-      self.assertAllEqual(values, value.values)
-      self.assertAllEqual(shape, value.shape)
-      sess_run_value = sess.run(sp)
-      self.assertAllEqual(sess_run_value.indices, value.indices)
-      self.assertAllEqual(sess_run_value.values, value.values)
-      self.assertAllEqual(sess_run_value.shape, value.shape)
+    sp_value = ops.SparseTensorValue(indices, values, shape)
+    for sp in [
+        ops.SparseTensor(indices, values, shape),
+        ops.SparseTensor.from_value(sp_value)]:
+      self.assertEqual(sp.indices.dtype, dtypes.int64)
+      self.assertEqual(sp.values.dtype, dtypes.string)
+      self.assertEqual(sp.shape.dtype, dtypes.int64)
+
+      with self.test_session() as sess:
+        value = sp.eval()
+        self.assertAllEqual(indices, value.indices)
+        self.assertAllEqual(values, value.values)
+        self.assertAllEqual(shape, value.shape)
+        sess_run_value = sess.run(sp)
+        self.assertAllEqual(sess_run_value.indices, value.indices)
+        self.assertAllEqual(sess_run_value.values, value.values)
+        self.assertAllEqual(sess_run_value.shape, value.shape)
 
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
@@ -1416,8 +1421,57 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
       old = test_ops.old()
       g.graph_def_versions.producer = versions.GRAPH_DEF_VERSION
       with self.test_session(graph=g):
-        with self.assertRaisesRegexp(RuntimeError, self._error()):
+        with self.assertRaisesRegexp(errors.UnimplementedError, self._error()):
           old.run()
+
+
+class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
+
+  def testSuccess(self):
+    op = ops.Operation(ops._NodeDef("noop", "myop"), ops.Graph(),
+                       [], [dtypes.float32])
+    t = op.outputs[0]
+    self.assertTrue(ops.is_dense_tensor_like(t))
+
+    v = variables.Variable([17])
+    self.assertTrue(ops.is_dense_tensor_like(v))
+
+  class BadClassNoName(object):
+    pass
+
+  class BadClassBadName(object):
+
+    def name(self):
+      pass
+
+  class BadClassNoDtype(object):
+
+    @property
+    def name(self):
+      pass
+
+  class BadClassBadDtype(object):
+
+    @property
+    def name(self):
+      pass
+
+    def dtype(self):
+      pass
+
+  def testBadClass(self):
+    with self.assertRaisesRegexp(TypeError, "`name`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassNoName)
+    with self.assertRaisesRegexp(TypeError, "`name`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassBadName)
+    with self.assertRaisesRegexp(TypeError, "`dtype`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassNoDtype)
+    with self.assertRaisesRegexp(TypeError, "`dtype`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassBadDtype)
 
 
 if __name__ == "__main__":

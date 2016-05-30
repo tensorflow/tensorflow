@@ -20,7 +20,7 @@ from sklearn import datasets, metrics, cross_validation
 import pandas as pd
 import dask.dataframe as dd
 
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 # Sometimes when your dataset is too large to hold in the memory
 # you may want to load it into a out-of-core dataframe as provided by dask library
@@ -41,7 +41,7 @@ X_train, y_train, X_test, y_test = [pd.DataFrame(data) for data in [X_train, y_t
 X_train, y_train, X_test, y_test = [dd.from_pandas(data, npartitions=2) for data in [X_train, y_train, X_test, y_test]]
 
 # Initialize a TensorFlow linear classifier
-classifier = skflow.TensorFlowLinearClassifier(n_classes=3)
+classifier = learn.TensorFlowLinearClassifier(n_classes=3)
 
 # Fit the model using training set
 classifier.fit(X_train, y_train)

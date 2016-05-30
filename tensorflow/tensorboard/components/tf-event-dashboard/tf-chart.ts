@@ -17,26 +17,23 @@ module TF {
       Promise<Array<Backend.Datum>>;
 
   let Y_TOOLTIP_FORMATTER_PRECISION = 4;
-  let STEP_AXIS_FORMATTER_PRECISION = 4;
+  let STEP_FORMATTER_PRECISION = 4;
   let Y_AXIS_FORMATTER_PRECISION = 3;
-  let TOOLTIP_Y_PIXEL_OFFSET = 15;
-  let TOOLTIP_X_PIXEL_OFFSET = 0;
-  let TOOLTIP_CIRCLE_SIZE = 3;
-  let TOOLTIP_CLOSEST_CIRCLE_SIZE = 6;
+  let TOOLTIP_Y_PIXEL_OFFSET = 20;
+  let TOOLTIP_CIRCLE_SIZE = 4;
+  let NAN_SYMBOL_SIZE = 6;
 
   interface Point {
-    run: string;
     x: number;  // pixel space
     y: number;  // pixel space
     datum: TF.Backend.ScalarDatum;
+    dataset: Plottable.Dataset;
   }
-
-  type CrosshairResult = {[runName: string]: Point};
 
   export class BaseChart {
     protected dataFn: DataFn;
     protected tag: string;
-    private datasets: {[run: string]: Plottable.Dataset};
+    private run2datasets: {[run: string]: Plottable.Dataset};
     protected runs: string[];
 
     protected xAccessor: Plottable.Accessor<number | Date>;
@@ -50,14 +47,13 @@ module TF {
     protected yLabel: Plottable.Components.AxisLabel;
     protected outer: Plottable.Components.Table;
     protected colorScale: Plottable.Scales.Color;
-    protected xTooltipFormatter: (d: number) => string;
     protected tooltip: d3.Selection<any>;
     protected dzl: Plottable.DragZoomLayer;
     constructor(
         tag: string, dataFn: DataFn, xType: string,
         colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
       this.dataFn = dataFn;
-      this.datasets = {};
+      this.run2datasets = {};
       this.tag = tag;
       this.colorScale = colorScale;
       this.tooltip = tooltip;
@@ -88,11 +84,11 @@ module TF {
     }
 
     protected getDataset(run: string) {
-      if (this.datasets[run] === undefined) {
-        this.datasets[run] =
+      if (this.run2datasets[run] === undefined) {
+        this.run2datasets[run] =
             new Plottable.Dataset([], {run: run, tag: this.tag});
       }
-      return this.datasets[run];
+      return this.run2datasets[run];
     }
 
     protected buildChart(xType: string) {
@@ -104,7 +100,6 @@ module TF {
       this.xScale = xComponents.scale;
       this.xAxis = xComponents.axis;
       this.xAxis.margin(0).tickLabelPadding(3);
-      this.xTooltipFormatter = xComponents.tooltipFormatter;
       this.yScale = new Plottable.Scales.Linear();
       this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
       let yFormatter = multiscaleFormatter(Y_AXIS_FORMATTER_PRECISION);
@@ -144,21 +139,117 @@ module TF {
   }
 
   export class LineChart extends BaseChart {
-    private plot: Plottable.Plots.Line<number | Date>;
+    private linePlot: Plottable.Plots.Line<number|Date>;
+    private scatterPlot: Plottable.Plots.Scatter<number|Date, Number>;
+    private nanDisplay: Plottable.Plots.Scatter<number|Date, Number>;
     private yAccessor: Plottable.Accessor<number>;
+    private lastPointsDataset: Plottable.Dataset;
+    private datasets: Plottable.Dataset[];
+    private updateSpecialDatasets;
+    private nanDataset: Plottable.Dataset;
 
+    constructor(
+        tag: string, dataFn: DataFn, xType: string,
+        colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
+      this.datasets = [];
+      // lastPointDataset is a dataset that contains just the last point of
+      // every dataset we're currently drawing.
+      this.lastPointsDataset = new Plottable.Dataset();
+      this.nanDataset = new Plottable.Dataset();
+      // need to do a single bind, so we can deregister the callback from
+      // old Plottable.Datasets. (Deregistration is done by identity checks.)
+      this.updateSpecialDatasets = this._updateSpecialDatasets.bind(this);
+      super(tag, dataFn, xType, colorScale, tooltip);
+    }
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
       this.yAccessor = (d: Backend.ScalarDatum) => d.scalar;
-      let plot = new Plottable.Plots.Line<number|Date>();
-      plot.x(xAccessor, xScale);
-      plot.y(this.yAccessor, yScale);
-      plot.attr(
+      let linePlot = new Plottable.Plots.Line<number|Date>();
+      linePlot.x(xAccessor, xScale);
+      linePlot.y(this.yAccessor, yScale);
+      linePlot.attr(
           'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
-                        dataset.metadata().run,
-          this.colorScale);
-      this.plot = plot;
-      let group = this.setupTooltips(plot);
-      return group;
+                        this.colorScale.scale(dataset.metadata().run));
+      this.linePlot = linePlot;
+      let group = this.setupTooltips(linePlot);
+
+      // The scatterPlot will display the last point for each dataset.
+      // This way, if there is only one datum for the series, it is still
+      // visible. We hide it when tooltips are active to keep things clean.
+      let scatterPlot = new Plottable.Plots.Scatter<number|Date, number>();
+      scatterPlot.x(xAccessor, xScale);
+      scatterPlot.y(this.yAccessor, yScale);
+      scatterPlot.attr('fill', (d: any) => this.colorScale.scale(d.run));
+      scatterPlot.attr('opacity', 1);
+      scatterPlot.size(TOOLTIP_CIRCLE_SIZE * 2);
+      scatterPlot.datasets([this.lastPointsDataset]);
+      this.scatterPlot = scatterPlot;
+
+      let nanDisplay = new Plottable.Plots.Scatter<number|Date, number>();
+      nanDisplay.x(xAccessor, xScale);
+      nanDisplay.y((x) => x.displayY, yScale);
+      nanDisplay.attr('fill', (d: any) => this.colorScale.scale(d.run));
+      nanDisplay.attr('opacity', 1);
+      nanDisplay.size(NAN_SYMBOL_SIZE * 2);
+      nanDisplay.datasets([this.nanDataset]);
+      nanDisplay.symbol(Plottable.SymbolFactories.triangleUp);
+      this.nanDisplay = nanDisplay;
+      return new Plottable.Components.Group([nanDisplay, scatterPlot, group]);
+    }
+
+    /** Constructs special datasets. Each special dataset contains exceptional
+     * values from all of the regular datasetes, e.g. last points in series, or
+     * NaN values. Those points will have a `run` and `relative` property added
+     * (since usually those are context in the surrounding dataset).
+     */
+    private _updateSpecialDatasets() {
+      let lastPointsData =
+          this.datasets
+              .map((d) => {
+                let datum = null;
+                // filter out NaNs to ensure last point is a clean one
+                let nonNanData = d.data().filter((x) => !isNaN(x.scalar));
+                if (nonNanData.length > 0) {
+                  let idx = nonNanData.length - 1;
+                  datum = nonNanData[idx];
+                  datum.run = d.metadata().run;
+                  datum.relative = relativeAccessor(datum, -1, d);
+                }
+                return datum;
+              })
+              .filter((x) => x != null);
+      this.lastPointsDataset.data(lastPointsData);
+
+      // Take a dataset, return an array of NaN data points
+      // the NaN points will have a "displayY" property which is the
+      // y-value of a nearby point that was not NaN (0 if all points are NaN)
+      let datasetToNaNData = (d: Plottable.Dataset) => {
+        let displayY = null;
+        let data = d.data();
+        let i = 0;
+        while (i < data.length && displayY == null) {
+          if (!isNaN(data[i].scalar)) {
+            displayY = data[i].scalar;
+          }
+          i++;
+        }
+        if (displayY == null) {
+          displayY = 0;
+        }
+        let nanData = [];
+        for (i = 0; i < data.length; i++) {
+          if (!isNaN(data[i].scalar)) {
+            displayY = data[i].scalar;
+          } else {
+            data[i].run = d.metadata().run;
+            data[i].displayY = displayY;
+            data[i].relative = relativeAccessor(data[i], -1, d);
+            nanData.push(data[i]);
+          }
+        }
+        return nanData;
+      };
+      let nanData = _.flatten(this.datasets.map(datasetToNaNData));
+      this.nanDataset.data(nanData);
     }
 
     private setupTooltips(plot: Plottable.XYPlot<number|Date, number>):
@@ -172,6 +263,7 @@ module TF {
 
       let hideTooltips = () => {
         this.tooltip.style('opacity', 0);
+        this.scatterPlot.attr('opacity', 1);
         pointsComponent.content().selectAll('.point').remove();
       };
 
@@ -190,39 +282,32 @@ module TF {
           return;
         }
         let target: Point = {
-          run: null,
           x: p.x,
           y: p.y,
           datum: null,
+          dataset: null,
         };
 
         let centerBBox: SVGRect =
             (<any>this.gridlines.content().node()).getBBox();
-        let points =
-            plot.datasets()
-                .map((dataset) => this.findClosestPoint(target, dataset))
-                .filter((p) => {
-                  // Only choose Points that are within window (if we zoomed)
-                  return Plottable.Utils.DOM.intersectsBBox(
-                      p.x, p.y, centerBBox);
-                });
-        points.reverse();  // if multiple points are equidistant, choose 1st run
-        let closestPoint: Point = _.min(points, (p: Point) => dist(p, target));
-
-        points.reverse();  // draw 1st run last, to get the right occlusions
+        let points = plot.datasets().map(
+            (dataset) => this.findClosestPoint(target, dataset));
+        let pointsToCircle = points.filter(
+            (p) => p != null &&
+                Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox));
         let pts: any = pointsComponent.content().selectAll('.point').data(
-            points, (p: Point) => p.run);
+            pointsToCircle, (p: Point) => p.dataset.metadata().run);
         if (points.length !== 0) {
           pts.enter().append('circle').classed('point', true);
-          pts.attr(
-                 'r', (p) => p === closestPoint ? TOOLTIP_CLOSEST_CIRCLE_SIZE :
-                                                  TOOLTIP_CIRCLE_SIZE)
+          pts.attr('r', TOOLTIP_CIRCLE_SIZE)
               .attr('cx', (p) => p.x)
               .attr('cy', (p) => p.y)
               .style('stroke', 'none')
-              .attr('fill', (p) => this.colorScale.scale(p.run));
+              .attr(
+                  'fill',
+                  (p) => this.colorScale.scale(p.dataset.metadata().run));
           pts.exit().remove();
-          this.drawTooltips(closestPoint);
+          this.drawTooltips(points, target);
         } else {
           hideTooltips();
         }
@@ -233,32 +318,82 @@ module TF {
       return group;
     }
 
-    private drawTooltips(closestPoint: Point) {
+    private drawTooltips(points: Point[], target: Point) {
       // Formatters for value, step, and wall_time
+      this.scatterPlot.attr('opacity', 0);
       let valueFormatter = multiscaleFormatter(Y_TOOLTIP_FORMATTER_PRECISION);
-      let stepFormatter = stepX().tooltipFormatter;
-      let wall_timeFormatter = wallX().tooltipFormatter;
 
-      let datum = closestPoint.datum;
-      this.tooltip.select('#headline')
-          .text(closestPoint.run)
-          .style('color', this.colorScale.scale(closestPoint.run));
-      let step = stepFormatter(datum.step);
-      let date = wall_timeFormatter(+datum.wall_time);
-      let value = valueFormatter(datum.scalar);
-      this.tooltip.select('#step').text(step);
-      this.tooltip.select('#time').text(date);
-      this.tooltip.select('#value').text(value);
+      let dist = (p: Point) =>
+          Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
+      let closestDist = _.min(points.map(dist));
+      points = _.sortBy(points, (d) => d.dataset.metadata().run);
 
-      this.tooltip.style('top', closestPoint.y + TOOLTIP_Y_PIXEL_OFFSET + 'px')
+      let rows = this.tooltip.select('tbody')
+                     .html('')
+                     .selectAll('tr')
+                     .data(points)
+                     .enter()
+                     .append('tr');
+      // Grey out the point if any of the following are true:
+      // - The cursor is outside of the x-extent of the dataset
+      // - The point is rendered above or below the screen
+      // - The point's y value is NaN
+      rows.classed('distant', (d) => {
+        let firstPoint = d.dataset.data()[0];
+        let lastPoint = _.last(d.dataset.data());
+        let firstX =
+            this.xScale.scale(this.xAccessor(firstPoint, 0, d.dataset));
+        let lastX = this.xScale.scale(this.xAccessor(lastPoint, 0, d.dataset));
+        let s = d.datum.scalar;
+        let yD = this.yScale.domain();
+        return target.x < firstX || target.x > lastX || s < yD[0] ||
+            s > yD[1] || isNaN(s);
+      });
+      rows.classed('closest', (p) => dist(p) === closestDist);
+      // It is a bit hacky that we are manually applying the width to the swatch
+      // and the nowrap property to the text here. The reason is as follows:
+      // the style gets updated asynchronously by Polymer scopeSubtree observer.
+      // Which means we would get incorrect sizing information since the text
+      // would wrap by default. However, we need correct measurements so that
+      // we can stop the text from falling off the edge of the screen.
+      // therefore, we apply the size-critical styles directly.
+      rows.style('white-space', 'nowrap');
+      rows.append('td')
+          .append('span')
+          .classed('swatch', true)
           .style(
-              'left', () => this.yAxis.width() + TOOLTIP_X_PIXEL_OFFSET +
-                  closestPoint.x + 'px')
-          .style('opacity', 1);
+              'background-color',
+              (d) => this.colorScale.scale(d.dataset.metadata().run));
+      rows.append('td').text((d) => d.dataset.metadata().run);
+      rows.append('td').text(
+          (d) =>
+              isNaN(d.datum.scalar) ? 'NaN' : valueFormatter(d.datum.scalar));
+      rows.append('td').text((d) => stepFormatter(d.datum.step));
+      rows.append('td').text((d) => timeFormatter(d.datum.wall_time));
+      rows.append('td').text(
+          (d) => relativeFormatter(relativeAccessor(d.datum, -1, d.dataset)));
+
+      // compute left position
+      let documentWidth = document.body.clientWidth;
+      let node: any = this.tooltip.node();
+      let parentRect = node.parentElement.getBoundingClientRect();
+      let nodeRect = node.getBoundingClientRect();
+      // prevent it from falling off the right side of the screen
+      let left =
+          Math.min(0, documentWidth - parentRect.left - nodeRect.width - 60);
+      this.tooltip.style('left', left + 'px');
+      // compute top position
+      if (parentRect.bottom + nodeRect.height + TOOLTIP_Y_PIXEL_OFFSET <
+          document.body.clientHeight) {
+        this.tooltip.style('top', parentRect.bottom + TOOLTIP_Y_PIXEL_OFFSET);
+      } else {
+        this.tooltip.style('bottom', parentRect.top - TOOLTIP_Y_PIXEL_OFFSET);
+      }
+
+      this.tooltip.style('opacity', 1);
     }
 
     private findClosestPoint(target: Point, dataset: Plottable.Dataset): Point {
-      let run: string = dataset.metadata().run;
       let points: Point[] = dataset.data().map((d, i) => {
         let x = this.xAccessor(d, i, dataset);
         let y = this.yAccessor(d, i, dataset);
@@ -266,7 +401,7 @@ module TF {
           x: this.xScale.scale(x),
           y: this.yScale.scale(y),
           datum: d,
-          run: run,
+          dataset: dataset,
         };
       });
       let idx: number = _.sortedIndex(points, target, (p: Point) => p.x);
@@ -285,9 +420,11 @@ module TF {
 
     public changeRuns(runs: string[]) {
       super.changeRuns(runs);
-      let datasets = runs.map((r) => this.getDataset(r));
-      datasets.reverse();  // draw first run on top
-      this.plot.datasets(datasets);
+      runs.reverse();  // draw first run on top
+      this.datasets.forEach((d) => d.offUpdate(this.updateSpecialDatasets));
+      this.datasets = runs.map((r) => this.getDataset(r));
+      this.datasets.forEach((d) => d.onUpdate(this.updateSpecialDatasets));
+      this.linePlot.datasets(this.datasets);
     }
   }
 
@@ -318,12 +455,10 @@ module TF {
         p.y0(y0);
         p.attr(
             'fill', (d: any, i: number, dataset: Plottable.Dataset) =>
-                        dataset.metadata().run,
-            this.colorScale);
+                        this.colorScale.scale(dataset.metadata().run));
         p.attr(
             'stroke', (d: any, i: number, dataset: Plottable.Dataset) =>
-                          dataset.metadata().run,
-            this.colorScale);
+                          this.colorScale.scale(dataset.metadata().run));
         p.attr('stroke-weight', (d: any, i: number, m: any) => '0.5px');
         p.attr('stroke-opacity', () => opacities[i]);
         p.attr('fill-opacity', () => opacities[i]);
@@ -334,7 +469,8 @@ module TF {
       medianPlot.x(xAccessor, xScale);
       medianPlot.y(medianAccessor, yScale);
       medianPlot.attr(
-          'stroke', (d: any, i: number, m: any) => m.run, this.colorScale);
+          'stroke',
+          (d: any, i: number, m: any) => this.colorScale.scale(m.run));
 
       this.plots = plots;
       return new Plottable.Components.Group(plots);
@@ -373,69 +509,82 @@ module TF {
     scale: Plottable.Scales.Linear | Plottable.Scales.Time,
     axis: Plottable.Axes.Numeric | Plottable.Axes.Time,
     accessor: Plottable.Accessor<number | Date>,
-    tooltipFormatter: (d: number) => string;
     /* tslint:enable */
   }
 
+  let stepFormatter = Plottable.Formatters.siSuffix(STEP_FORMATTER_PRECISION);
   function stepX(): XComponents {
     let scale = new Plottable.Scales.Linear();
     let axis = new Plottable.Axes.Numeric(scale, 'bottom');
-    let formatter =
-        Plottable.Formatters.siSuffix(STEP_AXIS_FORMATTER_PRECISION);
-    axis.formatter(formatter);
+    axis.formatter(stepFormatter);
     return {
       scale: scale,
       axis: axis,
       accessor: (d: Backend.Datum) => d.step,
-      tooltipFormatter: formatter,
     };
   }
 
+  let timeFormatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
+
   function wallX(): XComponents {
     let scale = new Plottable.Scales.Time();
-    let formatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
     return {
       scale: scale,
       axis: new Plottable.Axes.Time(scale, 'bottom'),
       accessor: (d: Backend.Datum) => d.wall_time,
-      tooltipFormatter: (d: number) => formatter(new Date(d)),
     };
   }
+  let relativeAccessor =
+      (d: any, index: number, dataset: Plottable.Dataset) => {
+        // We may be rendering the final-point datum for scatterplot.
+        // If so, we will have already provided the 'relative' property
+        if (d.relative != null) {
+          return d.relative;
+        }
+        let data = dataset.data();
+        // I can't imagine how this function would be called when the data is
+        // empty (after all, it iterates over the data), but lets guard just
+        // to be safe.
+        let first = data.length > 0 ? +data[0].wall_time : 0;
+        return (+d.wall_time - first) / (60 * 60 * 1000);  // ms to hours
+      };
 
+  let relativeFormatter = (n: number) => {
+    // we will always show 2 units of precision, e.g days and hours, or
+    // minutes and seconds, but not hours and minutes and seconds
+    let ret = '';
+    let days = Math.floor(n / 24);
+    n -= (days * 24);
+    if (days) {
+      ret += days + 'd ';
+    }
+    let hours = Math.floor(n);
+    n -= hours;
+    n *= 60;
+    if (hours || days) {
+      ret += hours + 'h ';
+    }
+    let minutes = Math.floor(n);
+    n -= minutes;
+    n *= 60;
+    if (minutes || hours || days) {
+      ret += minutes + 'm ';
+    }
+    let seconds = Math.floor(n);
+    return ret + seconds + 's';
+  };
   function relativeX(): XComponents {
     let scale = new Plottable.Scales.Linear();
-    let formatter = (n: number) => {
-      let days = Math.floor(n / 24);
-      n -= (days * 24);
-      let hours = Math.floor(n);
-      n -= hours;
-      n *= 60;
-      let minutes = Math.floor(n);
-      n -= minutes;
-      n *= 60;
-      let seconds = Math.floor(n);
-      return days + 'd ' + hours + 'h ' + minutes + 'm ' + seconds + 's';
-    };
     return {
       scale: scale,
       axis: new Plottable.Axes.Numeric(scale, 'bottom'),
-      accessor:
-          (d: Backend.Datum, index: number, dataset: Plottable.Dataset) => {
-            let data = dataset.data();
-            // I can't imagine how this function would be called when the data
-            // is empty
-            // (after all, it iterates over the data), but lets guard just to be
-            // safe.
-            let first = data.length > 0 ? +data[0].wall_time : 0;
-            return (+d.wall_time - first) / (60 * 60 * 1000);  // ms to hours
-          },
-      tooltipFormatter: formatter,
+      accessor: relativeAccessor,
     };
   }
 
-  function dist(p1: Point, p2: Point): number {
-    return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-  }
+  // a very literal definition of NaN: true for NaN for a non-number type
+  // or null, etc. False for Infinity or -Infinity
+  let isNaN = (x) => +x !== x;
 
   function getXComponents(xType: string): XComponents {
     switch (xType) {

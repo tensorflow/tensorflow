@@ -25,12 +25,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+template <class T>
 class DrawBoundingBoxesOp : public OpKernel {
  public:
   explicit DrawBoundingBoxesOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->MatchSignature({DT_FLOAT, DT_FLOAT}, {DT_FLOAT}));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -57,8 +56,8 @@ class DrawBoundingBoxesOp : public OpKernel {
         context->allocate_output(
             0, TensorShape({batch_size, height, width, depth}), &output));
 
-    output->tensor<float, 4>() = images.tensor<float, 4>();
-    auto canvas = output->tensor<float, 4>();
+    output->tensor<T, 4>() = images.tensor<T, 4>();
+    auto canvas = output->tensor<T, 4>();
 
     for (int64 b = 0; b < batch_size; ++b) {
       const int64 num_boxes = boxes.dim_size(1);
@@ -122,29 +121,35 @@ class DrawBoundingBoxesOp : public OpKernel {
         // Draw top line.
         if (min_box_row >= 0) {
           for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-            canvas(b, min_box_row, j, 0) = nanf("");
+            canvas(b, min_box_row, j, 0) = T(nanf(""));
         }
         // Draw bottom line.
         if (max_box_row < height) {
           for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-            canvas(b, max_box_row, j, 0) = nanf("");
+            canvas(b, max_box_row, j, 0) = T(nanf(""));
         }
         // Draw left line.
         if (min_box_col >= 0) {
           for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-            canvas(b, i, min_box_col, 0) = nanf("");
+            canvas(b, i, min_box_col, 0) = T(nanf(""));
         }
         // Draw right line.
         if (max_box_col < width) {
           for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-            canvas(b, i, max_box_col, 0) = nanf("");
+            canvas(b, i, max_box_col, 0) = T(nanf(""));
         }
       }
     }
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("DrawBoundingBoxes").Device(DEVICE_CPU),
-                        DrawBoundingBoxesOp);
+REGISTER_KERNEL_BUILDER(
+    Name("DrawBoundingBoxes").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DrawBoundingBoxesOp<float>);
+
+REGISTER_KERNEL_BUILDER(Name("DrawBoundingBoxes")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        DrawBoundingBoxesOp<Eigen::half>);
 
 }  // namespace tensorflow

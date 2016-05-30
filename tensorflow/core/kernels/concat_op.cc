@@ -76,7 +76,7 @@ class ConcatOp : public OpKernel {
     for (int d = 0; d < concat_dim; ++d) {
       inputs_flat_dim0 *= input_shape.dim_size(d);
     }
-    int output_concat_dim = 0;
+    int64 output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
       const auto in = values[i];
@@ -145,6 +145,8 @@ class ConcatOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
+REGISTER_CONCAT(quint16);
+REGISTER_CONCAT(qint16);
 REGISTER_CONCAT(qint32);
 REGISTER_CONCAT(bfloat16);
 

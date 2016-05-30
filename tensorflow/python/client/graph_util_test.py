@@ -149,15 +149,33 @@ class DeviceFunctionsTest(tf.test.TestCase):
   def testConvertVariablesToConsts(self):
     with tf.Graph().as_default():
       variable_node = tf.Variable(1.0, name="variable_node")
+      _ = tf.Variable(1.0, name="unused_variable_node")
       output_node = tf.mul(variable_node, 2.0, name="output_node")
       with tf.Session() as sess:
-        init = tf.initialize_all_variables()
+        init = tf.initialize_variables([variable_node])
         sess.run(init)
         output = sess.run(output_node)
         self.assertNear(2.0, output, 0.00001)
         variable_graph_def = sess.graph.as_graph_def()
+        # First get the constant_graph_def when variable_names_whitelist is set,
+        # note that if variable_names_whitelist is not set an error will be
+        # thrown because unused_variable_node is not initialized.
         constant_graph_def = graph_util.convert_variables_to_constants(
-            sess, variable_graph_def, ["output_node"])
+            sess, variable_graph_def, ["output_node"],
+            variable_names_whitelist=set(["variable_node"]))
+
+        # Then initialize the unused variable, and get another
+        # constant_graph_def when variable_names_whitelist is not set.
+        sess.run(tf.initialize_all_variables())
+        constant_graph_def_without_variable_whitelist = (
+            graph_util.convert_variables_to_constants(
+                sess, variable_graph_def, ["output_node"]))
+
+        # The unused variable should be cleared so the two graphs should be
+        # equivalent.
+        self.assertEqual(str(constant_graph_def),
+                         str(constant_graph_def_without_variable_whitelist))
+
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.
     with tf.Graph().as_default():

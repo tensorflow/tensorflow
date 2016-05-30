@@ -123,7 +123,8 @@ void ConcatCPU(DeviceBase* d,
       }
     }
   };
-  Shard(num_threads, worker_threads->workers, output->size(), sizeof(T), work);
+  Shard(worker_threads->num_threads, worker_threads->workers, output->size(),
+        sizeof(T), work);
 }
 
 #define REGISTER(T)                                                            \
@@ -134,6 +135,8 @@ void ConcatCPU(DeviceBase* d,
 TF_CALL_ALL_TYPES(REGISTER)
 REGISTER(quint8)
 REGISTER(qint8)
+REGISTER(quint16)
+REGISTER(qint16)
 REGISTER(qint32)
 REGISTER(bfloat16)
 

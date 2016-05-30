@@ -3,7 +3,7 @@
 Queues are a powerful mechanism for asynchronous computation using TensorFlow.
 
 Like everything in TensorFlow, a queue is a node in a TensorFlow graph. It's a
-stateful node, like variable: other nodes can modify its content. In
+stateful node, like a variable: other nodes can modify its content. In
 particular, nodes can enqueue new items in to the queue, or dequeue existing
 items from the queue.
 
@@ -167,10 +167,10 @@ try:
             break
         sess.run(train_op)
 except Exception, e:
-   # Report exceptions to the coordinator.
-   coord.request_stop(e)
-
-# Terminate as usual.  It is innocuous to request stop twice.
-coord.request_stop()
-coord.join(threads)
+    # Report exceptions to the coordinator.
+    coord.request_stop(e)
+finally:
+    # Terminate as usual.  It is innocuous to request stop twice.
+    coord.request_stop()
+    coord.join(threads)
 ```

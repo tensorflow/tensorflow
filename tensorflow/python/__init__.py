@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Import core names of TensorFlow.
 
 Programs that want to build TensorFlow Ops and Graphs without having to import
@@ -116,19 +115,18 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 
-
 # Don't export modules except for the few we really want
-_whitelist = set([app, compat, contrib, errors, flags, gfile, image,
-                  logging, nn, python_io, resource_loader, sysconfig, test,
-                  train, user_ops])
+_whitelist = set([app, compat, contrib, errors, flags, gfile, image, logging,
+                  nn, python_io, resource_loader, sysconfig, test, train,
+                  user_ops])
 
 # Export all symbols directly accessible from 'tf.' by drawing on the doc
 # strings of other modules.
-__all__ = make_all(__name__,
-                   [framework_lib, array_ops, client_lib, check_ops,
-                    constant_op, control_flow_ops, functional_ops,
-                    histogram_ops, io_ops, math_ops, nn, script_ops,
-                    session_ops, sparse_ops, state_ops, string_ops, train])
+__all__ = make_all(__name__, [framework_lib, array_ops, client_lib, check_ops,
+                              constant_op, control_flow_ops, functional_ops,
+                              histogram_ops, io_ops, math_ops, nn, script_ops,
+                              session_ops, sparse_ops, state_ops, string_ops,
+                              train])
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
@@ -184,27 +182,48 @@ __all__.extend([
 # TODO(cwhipkey): expose these through documentation.
 __all__.extend([
     'QUANTIZED_DTYPES',
-    'bfloat16', 'bfloat16_ref',
-    'bool', 'bool_ref',
-    'complex64', 'complex64_ref',
-    'complex128', 'complex128_ref',
-    'double', 'double_ref',
-    'half', 'half_ref',
-    'float16', 'float16_ref',
-    'float32', 'float32_ref',
-    'float64', 'float64_ref',
-    'int16', 'int16_ref',
-    'int32', 'int32_ref',
-    'int64', 'int64_ref',
-    'int8', 'int8_ref',
-    'qint16', 'qint16_ref',
-    'qint32', 'qint32_ref',
-    'qint8', 'qint8_ref',
-    'quint16', 'quint16_ref',
-    'quint8', 'quint8_ref',
-    'string', 'string_ref',
-    'uint16', 'uint16_ref',
-    'uint8', 'uint8_ref',
+    'bfloat16',
+    'bfloat16_ref',
+    'bool',
+    'bool_ref',
+    'complex64',
+    'complex64_ref',
+    'complex128',
+    'complex128_ref',
+    'double',
+    'double_ref',
+    'half',
+    'half_ref',
+    'float16',
+    'float16_ref',
+    'float32',
+    'float32_ref',
+    'float64',
+    'float64_ref',
+    'int16',
+    'int16_ref',
+    'int32',
+    'int32_ref',
+    'int64',
+    'int64_ref',
+    'int8',
+    'int8_ref',
+    'qint16',
+    'qint16_ref',
+    'qint32',
+    'qint32_ref',
+    'qint8',
+    'qint8_ref',
+    'quint16',
+    'quint16_ref',
+    'quint8',
+    'quint8_ref',
+    'string',
+    'string_ref',
+    'uint16',
+    'uint16_ref',
+    'uint8',
+    'uint8_ref',
 ])
 
 # Export modules.

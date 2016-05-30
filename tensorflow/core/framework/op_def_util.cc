@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/types.h"
@@ -24,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -317,9 +320,19 @@ Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
           graph_def_version, ". It has been removed in version ", dep.version(),
           ". ", dep.explanation(), ".");
     } else {
-      LOG(WARNING) << "Op is deprecated."
-                   << " It will cease to work in GraphDef version "
-                   << dep.version() << ". " << dep.explanation() << ".";
+      // Warn only once for each op name, and do it in a threadsafe manner.
+      static mutex mu;
+      static std::unordered_set<string> warned;
+      bool warn;
+      {
+        mutex_lock lock(mu);
+        warn = warned.insert(op_def.name()).second;
+      }
+      if (warn) {
+        LOG(WARNING) << "Op " << op_def.name() << " is deprecated."
+                     << " It will cease to work in GraphDef version "
+                     << dep.version() << ". " << dep.explanation() << ".";
+      }
     }
   }
   return Status::OK();
@@ -384,6 +397,62 @@ string SummarizeOpDef(const OpDef& op_def) {
 }
 
 namespace {
+
+// Returns true if every element of `sub` is contained in `super`.
+template <class T>
+bool IsSubsetOf(const T& sub, const T& super) {
+  for (const auto& o : sub) {
+    bool found = false;
+    for (const auto& n : super) {
+      if (o == n) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+bool MoreRestrictive(const OpDef::AttrDef& old_attr,
+                     const OpDef::AttrDef& new_attr) {
+  // Anything -> no restriction : not more restrictive.
+  if (!new_attr.has_allowed_values()) return false;
+  // No restriction -> restriction : more restrictive.
+  if (!old_attr.has_allowed_values()) return true;
+  // If anything that was previously allowed is no longer allowed:
+  // more restrictive.
+  if (!IsSubsetOf(old_attr.allowed_values().list().type(),
+                  new_attr.allowed_values().list().type())) {
+    return true;
+  }
+  if (!IsSubsetOf(old_attr.allowed_values().list().s(),
+                  new_attr.allowed_values().list().s())) {
+    return true;
+  }
+  return false;
+}
+
+string AllowedStr(const OpDef::AttrDef& attr) {
+  if (!attr.has_allowed_values()) return "no restriction";
+  return SummarizeAttrValue(attr.allowed_values());
+}
+
+bool HigherMinimum(const OpDef::AttrDef& old_attr,
+                   const OpDef::AttrDef& new_attr) {
+  // Anything -> no restriction : not more restrictive.
+  if (!new_attr.has_minimum()) return false;
+  // No restriction -> restriction : more restrictive.
+  if (!old_attr.has_minimum()) return true;
+  // If anything that was previously allowed is no longer allowed:
+  // more restrictive.
+  return new_attr.minimum() > old_attr.minimum();
+}
+
+string MinStr(const OpDef::AttrDef& attr) {
+  if (!attr.has_minimum()) return "no minimum";
+  return strings::StrCat(attr.minimum());
+}
 
 typedef std::unordered_map<string, const OpDef::AttrDef*> AttrMap;
 void FillAttrMap(const OpDef& op_def, AttrMap* attr_map) {
@@ -514,6 +583,12 @@ Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
     VALIDATE(old_attr.type() == new_attr->type(), "Attr '", old_attr.name(),
              "' changed type '", old_attr.type(), "' -> '", new_attr->type(),
              "'");
+    VALIDATE(!MoreRestrictive(old_attr, *new_attr), "Attr '", old_attr.name(),
+             "' has a stricter set of allowed values; from ",
+             AllowedStr(old_attr), " to ", AllowedStr(*new_attr));
+    VALIDATE(!HigherMinimum(old_attr, *new_attr), "Attr '", old_attr.name(),
+             "' has a higher minimum; from ", MinStr(old_attr), " to ",
+             MinStr(*new_attr));
   }
 
   for (const auto& new_attr : new_op.attr()) {

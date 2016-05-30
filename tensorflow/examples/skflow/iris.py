@@ -1,4 +1,4 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -17,15 +17,15 @@ from __future__ import print_function
 
 from sklearn import metrics, cross_validation
 
-from tensorflow.contrib import skflow
+from tensorflow.contrib import learn
 
 # Load dataset.
-iris = skflow.datasets.load_dataset('iris')
+iris = learn.datasets.load_dataset('iris')
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
     test_size=0.2, random_state=42)
 
 # Build 3 layer DNN with 10, 20, 10 units respectively.
-classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
     n_classes=3, steps=200)
 
 # Fit and predict.

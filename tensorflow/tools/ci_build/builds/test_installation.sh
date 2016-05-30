@@ -92,6 +92,7 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 
 # Test blacklist: GPU-only
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
+"tensorflow/python/client/session_test.py:"\
 "tensorflow/python/framework/function_test.py:"\
 "tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"
 
@@ -229,6 +230,12 @@ cp -r tensorflow/core/lib/jpeg ${PY_TEST_DIR}/tensorflow/core/lib
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/png
 cp -r tensorflow/core/lib/png ${PY_TEST_DIR}/tensorflow/core/lib
 
+# Copy test data from tensorflow/contrib/ffmpeg
+
+mkdir -p ${PY_TEST_DIR}/tensorflow/contrib/ffmpeg
+rm -rf ${PY_TEST_DIR}/tensorflow/contrib/ffmpeg/testdata
+cp -r tensorflow/contrib/ffmpeg/testdata ${PY_TEST_DIR}
+
 # Run tests
 DIR0=$(pwd)
 ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
@@ -295,7 +302,7 @@ while true; do
   ITER_COUNTER=0
   while true; do
     # Break if the end is reached
-    if [[ $(echo "${TEST_COUNTER} >= ${PY_TEST_COUNT}" | bc -l) == "1" ]]; then
+    if [[ "${TEST_COUNTER}" -ge "${PY_TEST_COUNT}" ]]; then
       break;
     fi
 
@@ -343,16 +350,16 @@ while true; do
     "${SCRIPT_DIR}/py_test_delegate.sh" \
       "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
 
-    if [[ $(echo "${TEST_COUNTER} >= ${N_PAR_TESTS}" | bc -l) == "1" ]]; then
+    if [[ "${TEST_COUNTER}" -ge "${N_PAR_TESTS}" ]]; then
       # Run in exclusive mode
-      if [[ $(echo "${TEST_COUNTER} > ${N_PAR_TESTS}" | bc -l) == "1" ]]; then
+      if [[ "${TEST_COUNTER}" -gt "${N_PAR_TESTS}" ]]; then
         echo "Run test exclusively: ${PY_TEST_DIR}/${TEST_BASENAME}"
       fi
       break
     fi
 
-    if [[ $(echo "${ITER_COUNTER} >= ${N_JOBS}" | bc -l) == "1" ]] ||
-       [[ $(echo "${TEST_COUNTER} >= ${PY_TEST_COUNT}" | bc -l) == "1" ]]; then
+    if [[ "${ITER_COUNTER}" -ge "${N_JOBS}" ]] ||
+       [[ "${TEST_COUNTER}" -ge "${PY_TEST_COUNT}" ]]; then
       break
     fi
 
@@ -400,7 +407,7 @@ while true; do
   done
 
   # Stop if the end is reached
-  if [[ $(echo "${TEST_COUNTER} >= ${PY_TEST_COUNT}" | bc -l) == "1" ]]; then
+  if [[ "${TEST_COUNTER}" -ge "${PY_TEST_COUNT}" ]]; then
     break;
   fi
 done
@@ -410,6 +417,7 @@ rm -rf ${TF_INSTALL_PATH}/python/tools
 rm -rf ${TF_INSTALL_PATH}/examples/image_retraining
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/jpeg
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/png
+rm -rf ${PY_TEST_DIR}/testdata
 
 echo ""
 echo "${PY_TEST_COUNT} Python test(s):" \

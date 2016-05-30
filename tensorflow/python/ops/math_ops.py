@@ -51,6 +51,10 @@ mathematical functions to your graph.
 @@cos
 @@sin
 @@lbeta
+@@tan
+@@acos
+@@asin
+@@atan
 @@lgamma
 @@digamma
 @@erf
@@ -58,6 +62,8 @@ mathematical functions to your graph.
 @@squared_difference
 @@igamma
 @@igammac
+@@zeta
+@@polygamma
 
 ## Matrix Math Functions
 
@@ -84,6 +90,8 @@ functions on matrices to your graph.
 
 @@cholesky
 @@batch_cholesky
+@@cholesky_solve
+@@batch_cholesky_solve
 
 @@self_adjoint_eig
 @@batch_self_adjoint_eig
@@ -203,6 +211,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import state_ops
 # go/tf-wildcard-import
@@ -237,9 +246,34 @@ def abs(x, name=None):
   """
   with ops.op_scope([x], name, "Abs") as name:
     x = ops.convert_to_tensor(x, name="x")
-    if x.dtype == dtypes.complex64:
-      return gen_math_ops.complex_abs(x, name=name)
+    if x.dtype in (dtypes.complex64, dtypes.complex128):
+      return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
     return gen_math_ops._abs(x, name=name)
+
+
+def complex_abs(x, name=None):
+  r"""Computes the complex absolute value of a tensor.
+
+  Given a tensor `x` of complex numbers, this operation returns a tensor of type
+  `float` or `double` that is the absolute value of each element in `x`. All
+  elements in `x` must be complex numbers of the form \\(a + bj\\). The
+  absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
+
+  For example:
+
+  ```
+  # tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
+  tf.complex_abs(x) ==> [5.25594902, 6.60492229]
+  ```
+
+  Args:
+    x: A `Tensor` of type `complex64` or `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32` or `float64`.
+  """
+  return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
 
 
 def scalar_mul(scalar, x):
@@ -283,8 +317,10 @@ def pow(x, y, name=None):
   ```
 
   Args:
-    x: A `Tensor` of type `float`, `double`, `int32`, `complex64`, or `int64`.
-    y: A `Tensor` of type `float`, `double`, `int32`, `complex64`, or `int64`.
+    x: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
+     `complex128`.
+    y: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
+     `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -299,29 +335,94 @@ def complex(real, imag, name=None):
 
   Given a tensor `real` representing the real part of a complex number, and a
   tensor `imag` representing the imaginary part of a complex number, this
-  operation computes complex numbers elementwise of the form \\\\(a + bj\\\\),
-  where *a* represents the `real` part and *b* represents the `imag` part.
+  operation returns complex numbers elementwise of the form \\(a + bj\\), where
+  *a* represents the `real` part and *b* represents the `imag` part.
 
-  The input tensors `real` and `imag` must be the same shape.
+  The input tensors `real` and `imag` must have the same shape.
 
   For example:
 
   ```
   # tensor 'real' is [2.25, 3.25]
   # tensor `imag` is [4.75, 5.75]
-  tf.complex(real, imag) ==> [[2.25 + 4.74j], [3.25 + 5.75j]]
+  tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
   ```
 
   Args:
-    real: A `Tensor` of type `float`.
-    imag: A `Tensor` of type `float`.
+    real: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    imag: A `Tensor`. Must have the same type as `real`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `complex64`.
+    A `Tensor` of type `complex64` or `complex128`.
   """
+  real = ops.convert_to_tensor(real, name="real")
+  imag = ops.convert_to_tensor(imag, name="imag")
   with ops.op_scope([real, imag], name, "Complex") as name:
-    return gen_math_ops._complex(real, imag, name=name)
+    input_types = (real.dtype, imag.dtype)
+    if input_types == (dtypes.float64, dtypes.float64):
+      Tout = dtypes.complex128
+    elif input_types == (dtypes.float32, dtypes.float32):
+      Tout = dtypes.complex64
+    else:
+      raise TypeError("real and imag have incorrect types: "
+                      "{} {}".format(real.dtype.name, imag.dtype.name))
+    return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
+
+
+def real(input, name=None):
+  """Returns the real part of a complex number.
+
+  Given a tensor `input` of complex numbers, this operation returns a tensor of
+  type `float` or `double` that is the real part of each element in `input`.
+  All elements in `input` must be complex numbers of the form \\(a + bj\\),
+  where *a* is the real part returned by this operation and *b* is the
+  imaginary part.
+
+  For example:
+
+  ```
+  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+  tf.real(input) ==> [-2.25, 3.25]
+  ```
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `complex64`,
+         `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float` or `double`.
+  """
+  with ops.op_scope([input], name, "Real") as name:
+    return gen_math_ops.real(input, Tout=input.dtype.real_dtype, name=name)
+
+
+def imag(input, name=None):
+  """Returns the imaginary part of a complex number.
+
+  Given a tensor `input` of complex numbers, this operation returns a tensor of
+  type `float` or `double` that is the imaginary part of each element in
+  `input`. All elements in `input` must be complex numbers of the form \\(a +
+  bj\\), where *a* is the real part and *b* is the imaginary part returned by
+  this operation.
+
+  For example:
+
+  ```
+  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+  tf.imag(input) ==> [4.75, 5.75]
+  ```
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float` or `double`.
+  """
+  with ops.op_scope([input], name, "Imag") as name:
+    return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
 
 
 def round(x, name=None):
@@ -505,31 +606,44 @@ ops.Tensor._override_operator("__abs__", abs)
 ops.Tensor._override_operator("__invert__", gen_math_ops.logical_not)
 
 
-def _OverrideBinaryOperatorHelper(func, op_name):
+def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   """Register operators with different tensor and scalar versions.
+
+  If `clazz_object` is `SparseTensor`, assumes `func` takes `(sp_indices,
+  sp_values, sp_shape, dense)` and outputs `(new_sp_values)`.
 
   Args:
     func: the operator
     op_name: name of the operator being overridden
+    clazz_object: class to override for.  Either `Tensor` or `SparseTensor`.
   """
-
   def binary_op_wrapper(x, y):
     with ops.op_scope([x, y], None, op_name) as name:
-      assert isinstance(x, ops.Tensor)
-      y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+      if not isinstance(y, ops.SparseTensor):
+        y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
       return func(x, y, name=name)
 
-  ops.Tensor._override_operator("__%s__" % op_name, binary_op_wrapper)
-  del binary_op_wrapper
+  def binary_op_wrapper_sparse(sp_x, y):
+    with ops.op_scope([sp_x, y], None, op_name) as name:
+      y = ops.convert_to_tensor(y, dtype=sp_x.dtype.base_dtype, name="y")
+      return ops.SparseTensor(sp_x.indices, func(sp_x.indices, sp_x.values,
+                                                 sp_x.shape, y, name=name),
+                              sp_x.shape)
 
   def r_binary_op_wrapper(y, x):
     with ops.op_scope([x, y], None, op_name) as name:
-      assert isinstance(y, ops.Tensor)
       x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
       return func(x, y, name=name)
 
-  ops.Tensor._override_operator("__r%s__" % op_name, r_binary_op_wrapper)
-  del r_binary_op_wrapper
+  if clazz_object is ops.Tensor:
+    clazz_object._override_operator("__%s__" % op_name, binary_op_wrapper)
+    del binary_op_wrapper
+    clazz_object._override_operator("__r%s__" % op_name, r_binary_op_wrapper)
+    del r_binary_op_wrapper
+  else:
+    clazz_object._override_operator("__%s__" % op_name,
+                                    binary_op_wrapper_sparse)
+    del binary_op_wrapper_sparse
 
 
 # Conversion table for __truediv__.  None entries mean no conversion required.
@@ -543,7 +657,33 @@ _TRUEDIV_TABLE = {
     dtypes.float32: None,
     dtypes.float64: None,
     dtypes.complex64: None,
+    dtypes.complex128: None,
 }
+
+
+# NOTE: the support of "sparse (true)div dense" is currently not baked in into
+# "tf.(true_)div()".  Until such an API decision is made, the supported usage is
+# to explicitly use the "/" operator to invoke either truediv or div.
+def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
+  """Internal helper function for 'sp_t / dense_t'."""
+  with ops.op_scope([sp_indices, sp_values, sp_shape, y],
+                    name, "truediv") as name:
+    sp_values = ops.convert_to_tensor(sp_values, name="sp_values")
+    y = ops.convert_to_tensor(y, name="y")
+    x_dtype = sp_values.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError("x and y must have the same dtype, got %r != %r" %
+                      (x_dtype, y_dtype))
+    try:
+      dtype = _TRUEDIV_TABLE[x_dtype]
+    except KeyError:
+      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
+    if dtype is not None:
+      sp_values = cast(sp_values, dtype)
+      y = cast(y, dtype)
+    return gen_sparse_ops.sparse_dense_cwise_div(sp_indices, sp_values,
+                                                 sp_shape, y, name=name)
 
 
 def truediv(x, y, name=None):
@@ -626,9 +766,29 @@ def floordiv(x, y, name=None):
       return gen_math_ops.div(x, y, name=name)
 
 
+def _mul_dispatch(x, y, name=None):
+  """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
+  is_tensor_y = isinstance(y, ops.Tensor)
+  if is_tensor_y:
+    return gen_math_ops.mul(x, y, name=name)
+  else:
+    assert isinstance(y, ops.SparseTensor)  # Case: Dense * Sparse.
+    new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
+                                                     y.shape, x, name)
+    return ops.SparseTensor(y.indices, new_vals, y.shape)
+
+
+_OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_div, "div",
+                              ops.SparseTensor)
+_OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
+                              ops.SparseTensor)
+_OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
+                              ops.SparseTensor)
+
+
 _OverrideBinaryOperatorHelper(gen_math_ops.add, "add")
 _OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
-_OverrideBinaryOperatorHelper(gen_math_ops.mul, "mul")
+_OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(gen_math_ops.div, "div")
 _OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
@@ -1028,7 +1188,14 @@ def matmul(a, b,
   with ops.op_scope([a, b], name, "MatMul") as name:
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
-    if a.dtype == dtypes.float32 and (a_is_sparse or b_is_sparse):
+    sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
+    use_sparse_matmul = (a.dtype in sparse_matmul_types and
+                         b.dtype in sparse_matmul_types and
+                         (a_is_sparse or b_is_sparse))
+    if dtypes.bfloat16 in (a.dtype, b.dtype):
+      # matmul currently doesn't handle bfloat16 inputs.
+      use_sparse_matmul = True
+    if use_sparse_matmul:
       return sparse_matmul(a, b,
                            transpose_a=transpose_a,
                            transpose_b=transpose_b,
@@ -1261,6 +1428,9 @@ def tanh(x, name=None):
 
 
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
+ops.RegisterShape("Acos")(common_shapes.unchanged_shape)
+ops.RegisterShape("Asin")(common_shapes.unchanged_shape)
+ops.RegisterShape("Atan")(common_shapes.unchanged_shape)
 ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
 ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cos")(common_shapes.unchanged_shape)
@@ -1283,6 +1453,7 @@ ops.RegisterShape("Sqrt")(common_shapes.unchanged_shape)
 ops.RegisterShape("Square")(common_shapes.unchanged_shape)
 ops.RegisterShape("Sigmoid")(common_shapes.unchanged_shape)
 ops.RegisterShape("Tanh")(common_shapes.unchanged_shape)
+ops.RegisterShape("Tan")(common_shapes.unchanged_shape)
 ops.RegisterShape("Lgamma")(common_shapes.unchanged_shape)
 ops.RegisterShape("Digamma")(common_shapes.unchanged_shape)
 ops.RegisterShape("Erf")(common_shapes.unchanged_shape)
@@ -1311,6 +1482,8 @@ ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
 @ops.RegisterShape("GreaterEqual")
 @ops.RegisterShape("Igamma")
 @ops.RegisterShape("Igammac")
+@ops.RegisterShape("Zeta")
+@ops.RegisterShape("Polygamma")
 @ops.RegisterShape("Less")
 @ops.RegisterShape("LessEqual")
 @ops.RegisterShape("LogicalAnd")
@@ -1366,6 +1539,15 @@ def _BroadcastShape(op):
       raise ValueError("Incompatible shapes for broadcasting: %s and %s"
                        % (shape_x, shape_y))
   return [tensor_shape.TensorShape(return_dims)]
+
+
+@ops.RegisterShape("SparseDenseCwiseMul")
+@ops.RegisterShape("SparseDenseCwiseDiv")
+@ops.RegisterShape("SparseDenseCwiseAdd")
+def _SparseDenseBinaryOpShape(op):  # pylint: disable=invalid-name
+  """Common shape for 'sparse <binary cwise op> dense -> sparse' operators."""
+  nnz = op.inputs[1].get_shape()[0]
+  return [tensor_shape.TensorShape(nnz)]
 
 
 @ops.RegisterShape("AddN")
@@ -1451,9 +1633,13 @@ def _ReductionShape(op):
   reduction_indices = np.ravel(reduction_indices)
 
   for reduction_index in reduction_indices:
-    if reduction_index < 0 or reduction_index >= input_shape.ndims:
+    if (reduction_index < -input_shape.ndims or
+        reduction_index >= input_shape.ndims):
       raise ValueError("Invalid reduction dimension %d for input with %d "
                        "dimensions" % (reduction_index, input_shape.ndims))
+
+  reduction_indices = set([(x + input_shape.ndims) % input_shape.ndims
+                           for x in reduction_indices])
 
   returned_dims = []
   if keep_dims:
@@ -1548,6 +1734,7 @@ def reduced_shape(input_shape, axes):
   axes = to_int32(axes)                     # [1, 2]
 
   input_rank = array_ops.size(input_shape)  # 4
+  axes = (axes + input_rank) % input_rank
   axes_shape = array_ops.shape(axes)        # [2]
   return gen_data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
       [range(input_rank),                   # [0, 1, 2, 3]

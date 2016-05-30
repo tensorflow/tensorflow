@@ -22,6 +22,21 @@ namespace perftools {
 namespace gputools {
 namespace dnn {
 
+bool DnnSupport::GetConvolveAlgorithms(
+    std::vector<AlgorithmType>* out_algorithms) {
+  return false;
+}
+
+bool DnnSupport::GetConvolveBackwardDataAlgorithms(
+    std::vector<AlgorithmType>* out_algorithms) {
+  return false;
+}
+
+bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
+    std::vector<AlgorithmType>* out_algorithms) {
+  return false;
+}
+
 string QuantizedActivationModeString(QuantizedActivationMode mode) {
   switch (mode) {
     case dnn::QuantizedActivationMode::k8Bit:

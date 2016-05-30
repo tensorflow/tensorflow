@@ -184,6 +184,10 @@ class CheckNumericsOp<GPUDevice, T> : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
                             .Device(DEVICE_CPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        CheckNumericsOp<CPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
+                            .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T"),
                         CheckNumericsOp<CPUDevice, float>);
 REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
@@ -191,6 +195,10 @@ REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
                             .TypeConstraint<double>("T"),
                         CheckNumericsOp<CPUDevice, double>);
 #if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        CheckNumericsOp<GPUDevice, Eigen::half>);
 REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T"),

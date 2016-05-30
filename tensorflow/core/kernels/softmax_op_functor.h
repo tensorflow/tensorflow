@@ -63,31 +63,34 @@ struct SoftmaxEigenImpl {
     Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;
     one_by_class.set(1, num_classes);
 #endif
-    //shifted_logits = logits - max(logits along classes);
-    auto shifted_logits = (logits - logits.maximum(along_class)
-                                      .eval()
-                                      .reshape(batch_by_one)
-                                      .broadcast(one_by_class));
+    // shifted_logits = logits - max(logits along classes);
+    auto shifted_logits = (logits -
+                           logits.maximum(along_class)
+                               .eval()
+                               .reshape(batch_by_one)
+                               .broadcast(one_by_class));
     if (log) {
       // Calculate the log of the softmax
       // softmax = logits - max(logits along classes);
       softmax.device(d) = shifted_logits;
       // softmax = softmax - log(sum(exp(softmax along classes)));
       softmax.device(d) = (softmax -
-                           softmax.exp().sum(along_class)
-                              .eval()
-                              .reshape(batch_by_one)
-                              .broadcast(one_by_class)
-                              .log());
+                           softmax.exp()
+                               .sum(along_class)
+                               .eval()
+                               .reshape(batch_by_one)
+                               .log()
+                               .broadcast(one_by_class));
     } else {
       // NOTE(touts): If you modify this implementation please run
       // the BM_ImageNetSoftmaxFwd benchmark in nn_ops_test.cc.
       //
       // softmax = exp(logits - max(logits along classes));
       softmax.device(d) = shifted_logits.exp();
-      // softmax = softmax / sum(softmax along classes);
-      softmax.device(d) = (softmax /
+      // softmax = softmax * (1 / sum(softmax along classes));
+      softmax.device(d) = (softmax *
                            softmax.sum(along_class)
+                               .inverse()
                                .eval()
                                .reshape(batch_by_one)
                                .broadcast(one_by_class));

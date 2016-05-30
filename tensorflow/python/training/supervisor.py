@@ -57,7 +57,7 @@ class Supervisor(object):
       # Use the session to train the graph.
       while not sv.should_stop():
         sess.run(<my_train_op>)
-   ```
+  ```
 
   Within the `with sv.managed_session()` block all variables in the graph have
   been initialized.  In addition, a few services have been started to
@@ -232,12 +232,11 @@ class Supervisor(object):
         default `Graph`.  The supervisor may add operations to the graph before
         creating a session, but the graph should not be modified by the caller
         after passing it to the supervisor.
-      ready_op: `Operation` to check if the model is initialized.  This
-        operation is run by supervisors in `prepare_or_wait_for_session()` to
-        check if the model is ready to use. The model is considered ready if
-        that operation succeeds.  Defaults to the operation returned from
-        `tf.assert_variables_initialized()`  If `None`, the model is not checked
-        for readiness.
+      ready_op: 1-D string `Tensor`.  This tensor is evaluated by supervisors in
+        `prepare_or_wait_for_session()` to check if the model is ready to use.
+        The model is considered ready if it returns an empty array.  Defaults to
+        the tensor returned from `tf.report_uninitialized_variables()`  If
+        `None`, the model is not checked for readiness.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
         on a chief supervisor for inits and restore.
@@ -329,6 +328,7 @@ class Supervisor(object):
           self._summary_writer = summary_io.SummaryWriter(self._logdir)
       else:
         self._summary_writer = summary_writer
+      self._graph_added_to_summary = False
 
     self._init_session_manager(session_manager=session_manager)
     self._verify_setup()
@@ -369,16 +369,15 @@ class Supervisor(object):
     """Initializes ready_op.
 
     Args:
-      ready_op: `Operation` to check if the model is initialized.
+      ready_op: `Tensor` to check if the model is initialized.
         If it's set to USE_DEFAULT, creates an op that checks all
         the variables are initialized.
     """
     if ready_op is Supervisor.USE_DEFAULT:
       ready_op = self._get_first_op_from_collection(ops.GraphKeys.READY_OP)
       if ready_op is None:
-        ready_op = variables.assert_variables_initialized()
-        if ready_op is not None:
-          ops.add_to_collection(ops.GraphKeys.READY_OP, ready_op)
+        ready_op = variables.report_uninitialized_variables()
+        ops.add_to_collection(ops.GraphKeys.READY_OP, ready_op)
     self._ready_op = ready_op
 
   def _init_init_op(self, init_op=USE_DEFAULT, init_feed_dict=None):
@@ -461,6 +460,15 @@ class Supervisor(object):
         if global_step is not None:
           ops.add_to_collection(ops.GraphKeys.GLOBAL_STEP, global_step)
     self._global_step = global_step
+
+  @property
+  def is_chief(self):
+    """Return True if this is a chief supervisor.
+
+    Returns:
+      A bool.
+    """
+    return self._is_chief
 
   @property
   def session_manager(self):
@@ -577,10 +585,11 @@ class Supervisor(object):
     """Writes graph_def to `logdir` and adds it to summary if applicable."""
     assert self._is_chief
     if self._logdir:
-      training_util.write_graph(self._graph.as_graph_def(),
+      training_util.write_graph(self._graph.as_graph_def(add_shapes=True),
                                 self._logdir, "graph.pbtxt")
-    if self._summary_writer:
+    if self._summary_writer and not self._graph_added_to_summary:
       self._summary_writer.add_graph(self._graph)
+      self._graph_added_to_summary = True
 
   def start_standard_services(self, sess):
     """Start the standard services for 'sess'.
@@ -710,11 +719,11 @@ class Supervisor(object):
     self._started_threads.extend(threads)
     return threads
 
-  def loop(self, timer_interval_secs, target, args=None):
+  def loop(self, timer_interval_secs, target, args=None, kwargs=None):
     """Start a LooperThread that calls a function periodically.
 
-    If `timer_interval_secs` is None the thread calls `target(args)`
-    repeatedly.  Otherwise `target(args)` is called every `timer_interval_secs`
+    If `timer_interval_secs` is None the thread calls `target(*args, **kwargs)`
+    repeatedly.  Otherwise it calls it every `timer_interval_secs`
     seconds.  The thread terminates when a stop is requested.
 
     The started thread is added to the list of threads managed by the supervisor
@@ -724,12 +733,13 @@ class Supervisor(object):
       timer_interval_secs: Number. Time boundaries at which to call `target`.
       target: A callable object.
       args: Optional arguments to pass to `target` when calling it.
+      kwargs: Optional keyword arguments to pass to `target` when calling it.
 
     Returns:
       The started thread.
     """
     looper = coordinator.LooperThread(self._coord, timer_interval_secs,
-                                      target=target, args=args)
+                                      target=target, args=args, kwargs=kwargs)
     looper.start()
     self._started_threads.append(looper)
     return looper
@@ -763,6 +773,7 @@ class Supervisor(object):
       # since the session may have already terminated.
       self._summary_writer.add_session_log(SessionLog(status=SessionLog.STOP))
       self._summary_writer.close()
+      self._graph_added_to_summary = False
 
     self._started_threads = []
 
@@ -854,7 +865,8 @@ class Supervisor(object):
   # pylint: disable=g-doc-return-or-yield,broad-except
   @contextlib.contextmanager
   def managed_session(self, master="", config=None,
-                      start_standard_services=True):
+                      start_standard_services=True,
+                      close_summary_writer=True):
     """Returns a context manager for a managed session.
 
     This context manager creates and automatically recovers a session.  It
@@ -905,6 +917,8 @@ class Supervisor(object):
         Passed as-is to create the session.
       start_standard_services: Whether to start the standard services,
         such as checkpoint, summary and step counter.
+      close_summary_writer: Whether to close the summary writer when
+        closing the session.  Defaults to True.
 
     Returns:
       A context manager that yields a `Session` restored from the latest
@@ -925,7 +939,7 @@ class Supervisor(object):
         # Passing stop_grace_period_secs is for blocked enqueue/dequeue
         # threads which are not checking for `should_stop()`.  They
         # will be stopped when we close the session further down.
-        self.stop()
+        self.stop(close_summary_writer=close_summary_writer)
       finally:
         # Close the session to finish up all pending calls.  We do not care
         # about exceptions raised when closing.  This takes care of

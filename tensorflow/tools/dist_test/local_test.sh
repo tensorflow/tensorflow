@@ -140,7 +140,7 @@ while true; do
   sleep 1
 
   ((COUNTER++))
-  if [[ $(echo "${COUNTER}>=${MAX_SERVER_POLLING_ATTEMPTS}" | bc -l) == "1" ]]; then
+  if [[ "${COUNTER}" -ge "${MAX_SERVER_POLLING_ATTEMPTS}" ]]; then
     die "Reached maximum number of attempts (${MAX_SERVER_POLLING_ATTEMPTS}) "\
 "while waiting for docker-in-docker for local k8s TensorFlow cluster to start"
   fi
