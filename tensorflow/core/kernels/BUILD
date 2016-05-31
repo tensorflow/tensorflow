@@ -581,6 +581,18 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "dynamicsplit_ops",
+    prefix = "dynamicsplit",
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:dynamicsplit_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_cc_test(
     name = "control_flow_ops_test",
     size = "small",
