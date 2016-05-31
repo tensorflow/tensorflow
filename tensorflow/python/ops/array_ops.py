@@ -1024,8 +1024,12 @@ def meshgrid(*args, **kwargs):
   Returns:
     outputs: A list of N `Tensor`s with rank N
   """
-  indexing = kwargs.get("indexing", "xy")
-  name = kwargs.get("name", "meshgrid")
+  indexing = kwargs.pop("indexing", "xy")
+  name = kwargs.pop("name", "meshgrid")
+  if len(kwargs) > 0:
+    key = list(kwargs.keys())[0]
+    raise TypeError("'{}' is an invalid keyword argument "
+                    "for this function".format(key))
 
   if indexing not in ("xy", "ij"):
     raise ValueError("indexing parameter must be either 'xy' or 'ij'")
