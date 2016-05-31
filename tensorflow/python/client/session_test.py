@@ -182,6 +182,12 @@ class SessionTest(test_util.TensorFlowTestCase):
       a_val, b_val = s.run([a, b])  # Test multiple fetches.
       self.assertAllEqual([[1.0, 1.0]], a_val)
       self.assertAllEqual([[2.0, 2.0, 2.0], [2.0, 2.0, 2.0]], b_val)
+      results_with_dict = s.run({'a': [a], 'b': b, 'z': [a, b]})
+      self.assertAllEqual([[1.0, 1.0]], results_with_dict['a'][0])
+      self.assertAllEqual([[2.0, 2.0, 2.0], [2.0, 2.0, 2.0]],
+                          results_with_dict['b'])
+      self.assertAllEqual(results_with_dict['a'][0], results_with_dict['z'][0])
+      self.assertAllEqual(results_with_dict['b'], results_with_dict['z'][1])
 
   def testFetchScalar(self):
     with session.Session() as s:
@@ -197,6 +203,10 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertEqual(x + y, xy)
         # List fetch
         xy, = s.run([tf_xy])
+        self.assertEqual(scalar, type(xy))
+        self.assertEqual(x + y, xy)
+        # Dict fetch
+        xy = s.run({'xy': tf_xy})['xy']
         self.assertEqual(scalar, type(xy))
         self.assertEqual(x + y, xy)
 
@@ -240,6 +250,21 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(shape_out, shape)
       # List fetch, use as SparseTensorValue
       sp_out, = s.run([sp])
+      self.assertAllEqual(sp_out.indices, indices)
+      self.assertAllEqual(sp_out.values, values)
+      self.assertAllEqual(sp_out.shape, shape)
+      # Dict fetch (single value), use as tuple
+      indices_out, values_out, shape_out = s.run({'sp': sp})['sp']
+      self.assertAllEqual(indices_out, indices)
+      self.assertAllEqual(values_out, values)
+      self.assertAllEqual(shape_out, shape)
+      # Dict fetch (list value), use as tuple
+      (indices_out, values_out, shape_out), = s.run({'sp': [sp]})['sp']
+      self.assertAllEqual(indices_out, indices)
+      self.assertAllEqual(values_out, values)
+      self.assertAllEqual(shape_out, shape)
+      # Dict fetch, use as SparseTensorValue
+      sp_out = s.run({'sp': sp})['sp']
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
       self.assertAllEqual(sp_out.shape, shape)
