@@ -1018,7 +1018,8 @@ def meshgrid(*args, **kwargs):
 
   Args:
     *args: `Tensor`s with rank 1
-    indexing: Either 'xy' or 'ij' (default: 'xy')
+    indexing: Either 'xy' or 'ij' (optional, default: 'xy')
+    name: A name for the operation (optional).
 
   Returns:
     outputs: A list of N `Tensor`s with rank N
