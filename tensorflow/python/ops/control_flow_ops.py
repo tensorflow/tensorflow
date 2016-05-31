@@ -353,6 +353,18 @@ def _IsLoopExit(op):
   return op.type == "Exit" or op.type == "RefExit"
 
 
+def _ShapeIntersection(shape1, shape2):
+  if shape1.dims is None or shape1.ndims != shape2.ndims:
+    return tensor_shape.unknown_shape()
+  rdims = []
+  for dim1, dim2 in zip(shape1.dims, shape2.dims):
+    if dim1 == dim2:
+      rdims.append(dim1)
+    else:
+      rdims.append(tensor_shape.Dimension(None))
+  return tensor_shape.TensorShape(rdims)
+
+
 class GradLoopState(object):
   """The state used for constructing the gradient graph for a while loop.
 
@@ -1628,8 +1640,7 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = exit_vars
 
     for m_var, n_var, e_var in zip(merge_vars, next_vars, exit_vars):
-      if not m_var.get_shape() == n_var.get_shape():
-        e_var._shape = tensor_shape.unknown_shape()
+      e_var._shape = _ShapeIntersection(m_var.get_shape(), n_var.get_shape())
 
     # Exit the loop.
     self.ExitResult(exit_vars)

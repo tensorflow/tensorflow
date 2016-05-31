@@ -603,6 +603,19 @@ class ControlFlowTest(tf.test.TestCase):
       r = r[1] * tf.ones([8, 8])
       self.assertAllEqual(np.ones((8, 8)), r.eval())
 
+  def testWhileShapeInference(self):
+    with self.test_session():
+      i = tf.constant(0)
+      m = tf.ones([2, 2])
+      c = lambda i, j: tf.less(i, 2)
+      def _b(i, j):
+        new_i = tf.add(i, 1)
+        new_j = tf.concat(0, [j, j])
+        return [new_i, new_j]
+      r = tf.while_loop(c, _b, [i, m])
+      self.assertTrue(r[1].get_shape()[0].value is None)
+      self.assertEqual(r[1].get_shape()[1], tf.Dimension(2))
+
   def _testNestedWhile_1(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       n = tf.constant(0)
