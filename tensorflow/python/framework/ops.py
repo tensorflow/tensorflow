@@ -611,6 +611,7 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
+
   error_prefix = "" if name is None else "%s: " % name
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -661,7 +662,8 @@ def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
   ret = []
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
-    ret.append(convert_to_tensor(value, dtype=dtype, name=n, as_ref=as_ref))
+    ttt = convert_to_tensor(value, dtype=dtype, name=n, as_ref=as_ref)
+    ret.append(ttt)
   return ret
 
 

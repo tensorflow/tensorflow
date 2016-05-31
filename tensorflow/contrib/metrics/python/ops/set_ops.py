@@ -25,9 +25,12 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader
 
 
-_set_ops = load_library.load_op_library(
+# module_patcher hack
+try:
+  _set_ops = load_library.load_op_library(
     resource_loader.get_path_to_datafile("_set_ops.so"))
-assert _set_ops, "Could not load _set_ops.so."
+except:
+  pass
 
 
 _VALID_DTYPES = set([

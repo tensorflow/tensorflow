@@ -860,6 +860,7 @@ def placeholder(dtype, shape=None, name=None):
       dtype=dtype,
       shape=dim_list,
       name=name)
+   
   ret.set_shape(shape)
   return ret
 
