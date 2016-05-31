@@ -239,7 +239,7 @@ struct MultinomialFunctor<CPUDevice, T> {
     };
     // Incredibly rough estimate of clock cycles for DoWork();
     const int64 cost =
-        50 * (num_samples * std::log2(num_classes) + num_classes);
+        50 * (num_samples * std::log(num_classes) / std::log(2) + num_classes);
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size, cost,
           DoWork);
   }
