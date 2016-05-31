@@ -421,7 +421,9 @@ class DeprecatedMixin(object):
     if 'optimizer' in kwargs or 'learning_rate' in kwargs:
       self.learning_rate = kwargs.pop('learning_rate', 0.1)
       self.optimizer = kwargs.pop('optimizer', 'Adagrad')
-    class_weight = kwargs.pop('class_weight', None)
+    if 'class_weight' in kwargs:
+      raise ValueError('Sorry we switched interface for providing class weights. '
+                       'Please use weight column instead.')
     _ = kwargs.pop('clip_gradients', 5.0)
     _ = kwargs.pop('continue_training', False)
     super(DeprecatedMixin, self).__init__(*args, **kwargs)

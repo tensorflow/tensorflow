@@ -55,26 +55,26 @@ class BaseTest(tf.test.TestCase):
 
   def testIrisClassWeight(self):
     iris = datasets.load_iris()
-    classifier = learn.TensorFlowLinearClassifier(n_classes=3,
-                                                  class_weight=[0.1, 0.8, 0.1])
-    classifier.fit(iris.data, iris.target)
-    score = accuracy_score(iris.target, classifier.predict(iris.data))
-    self.assertLess(score, 0.7, "Failed with score = {0}".format(score))
+    with self.assertRaises(ValueError):
+      classifier = learn.TensorFlowLinearClassifier(n_classes=3,
+                                                    class_weight=[0.1, 0.8, 0.1])
+      classifier.fit(iris.data, iris.target)
+      score = accuracy_score(iris.target, classifier.predict(iris.data))
+      self.assertLess(score, 0.7, "Failed with score = {0}".format(score))
 
   def testIrisAllVariables(self):
     iris = datasets.load_iris()
     classifier = learn.TensorFlowLinearClassifier(n_classes=3)
-    classifier.fit(iris.data, [float(x) for x in iris.target])
+    classifier.fit(iris.data, iris.target)
     self.assertEqual(
         classifier.get_variable_names(),
-        ["OptimizeLoss/learning_rate",
-         "OptimizeLoss/logistic_regression/bias/Adagrad",
-         "OptimizeLoss/logistic_regression/softmax_classifier/"
-         "softmax_cross_entropy_loss/value/avg",
-         "OptimizeLoss/logistic_regression/weights/Adagrad",
-         "global_step",
-         "logistic_regression/bias",
-         "logistic_regression/weights"])
+        ['global_step',
+         'linear/_weight',
+         'linear/_weight/Ftrl',
+         'linear/_weight/Ftrl_1',
+         'linear/bias_weight',
+         'linear/bias_weight/Ftrl',
+         'linear/bias_weight/Ftrl_1'])
 
   def testIrisSummaries(self):
     iris = datasets.load_iris()
