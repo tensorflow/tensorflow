@@ -661,6 +661,9 @@ string Tensor::SummarizeValue(int64 max_entries) const {
   }
   const char* data = limit > 0 ? tensor_data().data() : nullptr;
   switch (dtype()) {
+    case DT_HALF:
+      return SummarizeArray<Eigen::half>(limit, num_elts, data);
+      break;
     case DT_FLOAT:
       return SummarizeArray<float>(limit, num_elts, data);
       break;

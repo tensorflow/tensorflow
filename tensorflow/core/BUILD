@@ -216,7 +216,9 @@ cc_library(
         "platform/types.h",
     ],
     visibility = ["//visibility:public"],
-    deps = [":lib_internal"],
+    deps = [
+        ":lib_internal",
+    ],
 )
 
 # Test support library needed for all tests
@@ -1187,6 +1189,7 @@ tf_cc_tests(
         ":protos_all_cc",
         ":test",
         ":test_main",
+        "//third_party/eigen3",
     ],
 )
 
