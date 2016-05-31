@@ -1035,6 +1035,36 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(r, v)
       self.assertAllClose(1.0, r[0].eval())
 
+  def testWhileGrad_NoDependency(self):
+    with self.test_session() as sess:
+      variable = tf.Variable(tf.ones([2, 3]))
+      time = tf.zeros([], dtype=tf.int32)
+      def cond(time, tensor, _):
+        return time < 10
+      def body(time, tensor, _):
+        return (time+1, tensor, tensor)
+      loop_vars = [time, variable, variable]
+      tensors = tf.while_loop(cond=cond, body=body, loop_vars=loop_vars)
+      cost = tf.reduce_sum(tensors[2])
+      grad = tf.gradients(cost, [variable])
+      tf.initialize_all_variables().run()
+      self.assertAllClose(np.ones([2, 3]), sess.run(grad[0]))
+
+  def testWhileGrad_Const(self):
+    with self.test_session() as sess:
+      c0 = tf.constant(0.0, name="c0")
+      c1 = tf.constant(1.0, name="c1")
+      time = tf.constant(0, name="t")
+      def cond(time, _):
+        return time < 1
+      def body(time, tensor):
+        return time+1, c1
+      loop_vars = [time, c0]
+      tensors = tf.while_loop(cond=cond, body=body, loop_vars=loop_vars)
+      cost = tf.reduce_sum(tensors[1])
+      grad = tf.gradients(cost, [c0])
+      self.assertAllClose(0.0, sess.run(grad[0]))
+
   def testWhileGrad_SerialTwoLoops(self):
     with self.test_session():
       i = tf.constant(0, name="i")

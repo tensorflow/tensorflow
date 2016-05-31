@@ -854,6 +854,35 @@ class ControlFlowState(object):
       result = array_ops.zeros(shape, val.dtype)
     return result
 
+  def PostProcessing(self):
+    """Perform postprocessing at the end of gradients().
+
+    We have created the gradient graph at this point. So this function
+    can be used to perform any postprocessing on the gradient graph.
+    We currently perform the following postprocessing:
+      1. Patch the gradient graph if the output of a loop variable
+         doesn't depend on its input.
+    """
+    for _, grad_state in self._map.items():
+      for _, b_merge in grad_state.switch_map.items():
+        if b_merge.inputs[0] == b_merge.inputs[1]:
+          # The value of this loop variable at iteration i+1 doesn't
+          # depend on its value at iteration i. So use zeros as the
+          # gradients for all iterations > 0.
+          dtype = b_merge.inputs[0].dtype
+          shape = b_merge.inputs[0].get_shape()
+          if not shape.is_fully_defined():
+            shape = None
+          grad_state.grad_context.Enter()
+          grad_val = constant_op.constant(0, dtype=dtype, shape=shape)
+          grad_val = _NextIteration(grad_val)
+          grad_state.grad_context.Exit()
+          # pylint: disable=protected-access
+          if not shape:
+            grad_val._shape = b_merge.inputs[0].get_shape()
+          b_merge._update_input(1, grad_val)
+          # pylint: enable=protected-access
+
 
 def MaybeCreateControlFlowState(between_op_list, between_ops):
   """Create the state for all the while loops involved in one gradients().
@@ -1223,7 +1252,7 @@ class WhileContext(ControlFlowContext):
     self._pivot = None
     # The list of exit tensors for loop variables.
     self._loop_exits = None
-    # The gradient loop state
+    # The gradient loop state.
     self._grad_state = grad_state
 
   @property
@@ -1350,14 +1379,25 @@ class WhileContext(ControlFlowContext):
         real_x = self._external_values.get(x.name)
         if real_x is not None:
           op._update_input(index, real_x)
-          # Add a control dependency to prevent loop invariants from
-          # enabling ops that should not be executed.
-          if real_x.op.type == "RefEnter" and real_x.op.get_attr("is_constant"):
-            # pylint: disable=protected-access
-            op._add_control_input(self.GetControlPivot().op)
-            # pylint: enable=protected-access
+      # Add a control dependency to prevent loop invariants from
+      # enabling ops that should not be executed.
+      self._MaybeAddControlDependency(op)
       for x in op.outputs:
         self._values.add(x.name)
+
+  def _MaybeAddControlDependency(self, op):
+    """Add a control input to the op if it only depends on loop invariants."""
+    def _IsOpFree(op):
+      if op.control_inputs:
+        return False
+      for x in op.inputs:
+        if not _IsLoopConstantEnter(x.op):
+          return False
+      return True
+    if _IsOpFree(op):
+      # pylint: disable=protected-access
+      op._add_control_input(self.GetControlPivot().op)
+      # pylint: enable=protected-access
 
   def AddForwardCounter(self):
     """Adds a loop that counts the number of iterations.
