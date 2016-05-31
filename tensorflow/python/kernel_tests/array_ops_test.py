@@ -179,7 +179,7 @@ class MeshgridTest(test_util.TensorFlowTestCase):
 
     # Test for inputs with rank not equal to 1
     x = [[1, 1], [1, 1]]
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, "needs to have rank 1"):
       with self.test_session():
         X, _ = array_ops.meshgrid(x, x)
         X.eval()

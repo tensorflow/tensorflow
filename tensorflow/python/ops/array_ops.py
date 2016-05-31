@@ -1048,8 +1048,8 @@ def meshgrid(*args, indexing="xy", name="meshgrid"):
       bcast[0], bcast[1] = bcast[1], bcast[0]
 
     results = []
-    for a, r, e in zip(args, shapes, bcast):
-      with ops.control_dependencies(asserts):
+    with ops.control_dependencies(asserts):
+      for a, r, e in zip(args, shapes, bcast):
         results.append(tile(reshape(a, r), e))
 
     return results
