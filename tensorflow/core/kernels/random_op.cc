@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/random_op.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 
 #include "tensorflow/core/framework/op_kernel.h"
