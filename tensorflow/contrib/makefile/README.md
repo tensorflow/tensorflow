@@ -130,6 +130,27 @@ to register ops and kernels.
 The example Xcode project in tensorflow/contrib/ios_example shows how to use the
 static library in a simple app.
 
+## Raspberry Pi
+
+The easiest way to build for the Raspberry Pi is to cross-compile from Linux.
+To use this makefile to do that, you first need to install the right version of
+the compiler to target the Pi, using a command like this on your Linux machine:
+
+```bash
+sudo apt-get install g++-arm-linux-gnueabihf
+```
+
+After that, run `tensorflow/contrib/makefile/compile_pi_protobuf.sh` to build a
+version of the protobuf library aimed at the Pi. Then you should be able to run:
+
+```bash
+make -f tensorflow/contrib/makefile/Makefile TARGET=PI
+```
+
+This will build the static library, and the example benchmark executable. You
+can then copy the `tensorflow/contrib/makefile/gen/bin/benchmark` program over
+to your Raspberry Pi, and run it there.
+
 ## Dependencies
 
 The Makefile loads in a list of dependencies stored in text files. These files
