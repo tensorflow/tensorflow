@@ -987,7 +987,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invali
   raise ValueError("Unknown padding mode: %s" % mode)
 
 
-def meshgrid(*args, indexing="xy", name="meshgrid"):
+def meshgrid(*args, **kwargs):
   """Broadcasts parameters for evaluation on an N-D grid.
 
   Given N one-dimensional coordinate arrays `*args`, returns a list `outputs`
@@ -1023,6 +1023,9 @@ def meshgrid(*args, indexing="xy", name="meshgrid"):
   Returns:
     outputs: A list of N `Tensor`s with rank N
   """
+  indexing = kwargs.get("indexing", "xy")
+  name = kwargs.get("name", "meshgrid")
+
   if indexing not in ("xy", "ij"):
     raise ValueError("indexing parameter must be either 'xy' or 'ij'")
 
