@@ -313,6 +313,7 @@ tf_kernel_libraries(
         "one_hot_op",
         "pack_op",
         "pad_op",
+        "quantize_and_dequantize_op",
         "random_shuffle_op",
         "reshape_op",
         "reverse_op",
@@ -441,6 +442,23 @@ tf_cc_test(
         ":identity_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "quantize_and_dequantize_op_test",
+    size = "small",
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantize_and_dequantize_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -19,7 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/contrib/quantization/kernels/quantize_and_dequantize_op.h"
+#include "tensorflow/core/kernels/quantize_and_dequantize_op.h"
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -107,21 +107,23 @@ struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
 };
 }  // namespace functor
 
-REGISTER_KERNEL_BUILDER(
-    Name("QuantizeAndDequantize").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    QuantizeAndDequantizeOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<float>("T"),
+                        QuantizeAndDequantizeOp<CPUDevice, float>);
 
-REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantize")
+REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<double>("T"),
                         QuantizeAndDequantizeOp<CPUDevice, double>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(
-    Name("QuantizeAndDequantize").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    QuantizeAndDequantizeOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<float>("T"),
+                        QuantizeAndDequantizeOp<GPUDevice, float>);
 
-REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantize")
+REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<double>("T"),
                         QuantizeAndDequantizeOp<GPUDevice, double>);
