@@ -141,7 +141,7 @@ class BaseEstimator(sklearn.BaseEstimator):
                 inside the training loop.
 
     Returns:
-      Returns final loss.
+      Final loss.
     """
     input_fn, feed_fn = _get_input_fn(x, y, batch_size)
     return self._train_model(input_fn=input_fn,
@@ -149,6 +149,8 @@ class BaseEstimator(sklearn.BaseEstimator):
                              steps=steps,
                              monitors=monitors)
 
+  # TODO(ptucker,ipolosukhin): Consider returning self and saving loss in
+  # attribute. Ditto for evaluate.
   def train(self, input_fn, steps, monitors=None):
     """Trains a model given input builder function.
 
@@ -160,7 +162,7 @@ class BaseEstimator(sklearn.BaseEstimator):
                 inside the training loop.
 
     Returns:
-      Returns self.
+      Final loss.
     """
     return self._train_model(input_fn=input_fn, steps=steps, monitors=monitors)
 
@@ -188,7 +190,7 @@ class BaseEstimator(sklearn.BaseEstimator):
                 inside the training loop.
 
     Returns:
-      Returns final loss.
+      Final loss.
     """
     input_fn, feed_fn = _get_input_fn(x, y, batch_size)
     return self._train_model(input_fn=input_fn,
