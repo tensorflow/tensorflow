@@ -236,9 +236,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       return math_ops.argmax(logits, 1)
 
   def _get_feature_ops_from_example(self, examples_batch):
-    column_types = layers.create_dict_for_parse_example(
-        (self._get_linear_feature_columns() or []) +
-        (self._get_dnn_feature_columns() or []))
+    column_types = layers.create_feature_spec_for_parsing((
+        self._get_linear_feature_columns() or []) + (
+            self._get_dnn_feature_columns() or []))
     features = parsing_ops.parse_example(examples_batch, column_types)
     return features
 
