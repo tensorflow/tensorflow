@@ -48,8 +48,12 @@ class ReshapeTest(tf.test.TestCase):
     x = np.arange(1., 7.).reshape([1, 6]).astype(np.int32)
     self._testBothReshape(x, [2, 3])
 
-  def testSComplexBasic(self):
+  def testComplex64Basic(self):
     x = np.arange(1., 7.).reshape([1, 6]).astype(np.complex64)
+    self._testBothReshape(x, [2, 3])
+
+  def testComplex128Basic(self):
+    x = np.arange(1., 7.).reshape([1, 6]).astype(np.complex128)
     self._testBothReshape(x, [2, 3])
 
   def testFloatReshapeThreeDimensions(self):

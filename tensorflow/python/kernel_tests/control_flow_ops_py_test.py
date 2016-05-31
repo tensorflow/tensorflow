@@ -1256,16 +1256,49 @@ class ControlFlowTest(tf.test.TestCase):
 
       def break_run_twice(ix):
         def _break():
-          assert not ran_once[ix]
           ran_once[ix] = True
           return tf.constant(ix)
         return _break
 
       # Should not fail - each conditional gets called exactly once
+      # except default.  Default gets called twice: once to create an
+      # empty output and once for the actual cond switch.
       r6 = tf.case([(x < y, break_run_twice(0)), (x > y, break_run_twice(1))],
-                   default=break_run_twice(2))
+                   default=lambda: tf.constant(2))
 
       self.assertAllEqual(r6.eval(), 0)
+
+  def testCaseSideEffects(self):
+    with self.test_session() as sess:
+      v0 = tf.Variable(-1)
+      v1 = tf.Variable(-1)
+      v2 = tf.Variable(-1)
+
+      a = lambda: control_flow_ops.with_dependencies([tf.assign(v0, 0)], 0)
+      b = lambda: control_flow_ops.with_dependencies([tf.assign(v1, 1)], 1)
+      c = lambda: control_flow_ops.with_dependencies([tf.assign(v2, 2)], 2)
+
+      x = tf.constant(1)
+      y = tf.constant(2)
+
+      r0 = tf.case(((x < y, a), (x > y, b)), default=c, exclusive=True)
+      r1 = tf.case(((x > y, a), (x < y, b)), default=c, exclusive=True)
+      r2 = tf.case(((x > y, a), (x > y, b)), default=c, exclusive=True)
+
+      tf.initialize_all_variables().run()
+      self.assertAllEqual(sess.run([v0, v1, v2]), [-1] * 3)
+      self.assertEqual(2, r2.eval())
+      self.assertAllEqual(sess.run([v0, v1, v2]), [-1, -1, 2])
+
+      tf.initialize_all_variables().run()
+      self.assertAllEqual(sess.run([v0, v1, v2]), [-1] * 3)
+      self.assertEqual(1, r1.eval())
+      self.assertAllEqual(sess.run([v0, v1, v2]), [-1, 1, -1])
+
+      tf.initialize_all_variables().run()
+      self.assertAllEqual(sess.run([v0, v1, v2]), [-1] * 3)
+      self.assertEqual(0, r0.eval())
+      self.assertAllEqual(sess.run([v0, v1, v2]), [0, -1, -1])
 
   def testOneOpCond(self):
     with self.test_session():

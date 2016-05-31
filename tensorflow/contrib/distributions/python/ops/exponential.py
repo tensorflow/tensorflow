@@ -20,7 +20,11 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import gamma
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 
 
 class Exponential(gamma.Gamma):
@@ -45,3 +49,36 @@ class Exponential(gamma.Gamma):
   @property
   def lam(self):
     return self._lam
+
+  @property
+  def is_reparameterized(self):
+    # While the Gamma distribution is not reparameterizeable, the
+    # exponential distribution is.
+    return True
+
+  def sample(self, n, seed=None, name=None):
+    """Sample `n` observations from the Exponential Distributions.
+
+    Args:
+      n: `Scalar`, type int32, the number of observations to sample.
+      seed: Python integer, the random seed.
+      name: The name to give this op.
+
+    Returns:
+      samples: `[n, ...]`, a `Tensor` of `n` samples for each
+        of the distributions determined by the hyperparameters.
+    """
+    broadcast_shape = self._lam.get_shape()
+    with ops.op_scope([self.lam, n], name, "ExponentialSample"):
+      n = ops.convert_to_tensor(n, name="n")
+      shape = array_ops.concat(
+          0, [array_ops.pack([n]), array_ops.shape(self._lam)])
+      sampled = random_ops.random_uniform(
+          shape, maxval=math_ops.cast(1.0, dtype=self.dtype),
+          dtype=self.dtype)
+
+      n_val = tensor_util.constant_value(n)
+      final_shape = tensor_shape.vector(n_val).concatenate(broadcast_shape)
+      sampled.set_shape(final_shape)
+
+      return -math_ops.log(sampled) / self._lam

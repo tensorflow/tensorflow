@@ -1,22 +1,28 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Non-linear estimator tests."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import random
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import datasets
@@ -25,6 +31,7 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import mean_squar
 
 
 class NonLinearTest(tf.test.TestCase):
+  """Non-linear estimator tests."""
 
   def testIrisDNN(self):
     random.seed(42)
@@ -48,7 +55,7 @@ class NonLinearTest(tf.test.TestCase):
     regressor = learn.TensorFlowDNNRegressor(hidden_units=[10, 20, 10],
                                              n_classes=0,
                                              batch_size=boston.data.shape[0],
-                                             steps=200,
+                                             steps=300,
                                              learning_rate=0.001)
     regressor.fit(boston.data, boston.target)
     score = mean_squared_error(boston.target, regressor.predict(boston.data))
@@ -79,6 +86,7 @@ class NonLinearTest(tf.test.TestCase):
                                                dropout=0.1)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
+    # If the quality is lower - dropout is not working.
     self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
 
   def testDNNDropout0_9(self):
@@ -94,7 +102,6 @@ class NonLinearTest(tf.test.TestCase):
 
   def testRNN(self):
     random.seed(42)
-    import numpy as np
     data = np.array(
         list([[2, 1, 2, 2, 3], [2, 2, 3, 4, 5], [3, 3, 1, 2, 1], [2, 4, 5, 4, 1]
              ]),
@@ -103,32 +110,36 @@ class NonLinearTest(tf.test.TestCase):
     labels = np.array(list([1, 0, 1, 0]), dtype=np.float32)
     # targets for regression
     targets = np.array(list([10, 16, 10, 16]), dtype=np.float32)
-    test_data = np.array(list([[1, 3, 3, 2, 1], [2, 3, 4, 5, 6]]))
+    test_data = np.array(list([[1, 3, 3, 2, 1], [2, 3, 4, 5, 6]]),
+                         dtype=np.float32)
 
-    def input_fn(X):
+    def _input_fn(X):
+      # pylint: disable=invalid-name
       return tf.split(1, 5, X)
 
     # Classification
     classifier = learn.TensorFlowRNNClassifier(rnn_size=2,
                                                cell_type="lstm",
                                                n_classes=2,
-                                               input_op_fn=input_fn)
+                                               input_op_fn=_input_fn)
     classifier.fit(data, labels)
+    # pylint: disable=pointless-statement
     classifier.weights_
     classifier.bias_
+    # pylint: enable=pointless-statement
     predictions = classifier.predict(test_data)
     self.assertAllClose(predictions, np.array([1, 0]))
 
     classifier = learn.TensorFlowRNNClassifier(rnn_size=2,
                                                cell_type="rnn",
                                                n_classes=2,
-                                               input_op_fn=input_fn,
+                                               input_op_fn=_input_fn,
                                                num_layers=2)
     classifier.fit(data, labels)
     classifier = learn.TensorFlowRNNClassifier(rnn_size=2,
                                                cell_type="invalid_cell_type",
                                                n_classes=2,
-                                               input_op_fn=input_fn,
+                                               input_op_fn=_input_fn,
                                                num_layers=2)
     with self.assertRaises(ValueError):
       classifier.fit(data, labels)
@@ -136,44 +147,49 @@ class NonLinearTest(tf.test.TestCase):
     # Regression
     regressor = learn.TensorFlowRNNRegressor(rnn_size=2,
                                              cell_type="gru",
-                                             input_op_fn=input_fn)
+                                             input_op_fn=_input_fn)
     regressor.fit(data, targets)
+    # pylint: disable=pointless-statement
     regressor.weights_
     regressor.bias_
+    # pylint: enable=pointless-statement
     predictions = regressor.predict(test_data)
 
   def testBidirectionalRNN(self):
     random.seed(42)
-    import numpy as np
     data = np.array(
         list([[2, 1, 2, 2, 3], [2, 2, 3, 4, 5], [3, 3, 1, 2, 1], [2, 4, 5, 4, 1]
              ]),
         dtype=np.float32)
     labels = np.array(list([1, 0, 1, 0]), dtype=np.float32)
 
-    def input_fn(X):
+    def _input_fn(X):
+      # pylint: disable=invalid-name
       return tf.split(1, 5, X)
 
     # Classification
     classifier = learn.TensorFlowRNNClassifier(rnn_size=2,
                                                cell_type="lstm",
                                                n_classes=2,
-                                               input_op_fn=input_fn,
+                                               input_op_fn=_input_fn,
                                                bidirectional=True)
     classifier.fit(data, labels)
-    predictions = classifier.predict(np.array(list([[1, 3, 3, 2, 1], [2, 3, 4,
-                                                                      5, 6]])))
+    test_data = np.array(list([[1, 3, 3, 2, 1], [2, 3, 4,
+                                                 5, 6]]), dtype=np.float32)
+    predictions = classifier.predict(test_data)
     self.assertAllClose(predictions, np.array([1, 0]))
 
-  def testDNNAutoencoder(self):
-    import numpy as np
-    iris = datasets.load_iris()
-    autoencoder = learn.TensorFlowDNNAutoencoder(hidden_units=[10, 20])
-    transformed = autoencoder.fit_transform(iris.data[1:2])
-    expected = np.array([[ -3.57627869e-07, 1.17000043e+00, 1.01902664e+00, 1.19209290e-07,
-                            0.00000000e+00, 1.19209290e-07, -5.96046448e-08, -2.38418579e-07,
-                            9.74681854e-01, 1.19209290e-07]])
-    self.assertAllClose(transformed, expected)
+  # TODO(ipolosukhin): Restore or remove this.
+  # def testDNNAutoencoder(self):
+  #   import numpy as np
+  #   iris = datasets.load_iris()
+  #   autoencoder = learn.TensorFlowDNNAutoencoder(hidden_units=[10, 20])
+  #   transformed = autoencoder.fit_transform(iris.data[1:2])
+  #   expected = np.array([[
+  #       -3.57627869e-07, 1.17000043e+00, 1.01902664e+00, 1.19209290e-07,
+  #       0.00000000e+00, 1.19209290e-07, -5.96046448e-08, -2.38418579e-07,
+  #       9.74681854e-01, 1.19209290e-07]])
+  #   self.assertAllClose(transformed, expected)
 
 
 if __name__ == "__main__":

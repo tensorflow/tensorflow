@@ -136,6 +136,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_ADDN_CPU);
 #undef REGISTER_ADDN_CPU
 
 #if GOOGLE_CUDA
+REGISTER_ADDN(Eigen::half, GPU);
 REGISTER_ADDN(float, GPU);
 
 // A special GPU kernel for int32.

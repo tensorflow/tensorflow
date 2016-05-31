@@ -17,7 +17,44 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
+
+
+class AssertProperIterableTest(tf.test.TestCase):
+
+  def test_single_tensor_raises(self):
+    tensor = tf.constant(1)
+    with self.assertRaisesRegexp(TypeError, "proper"):
+      tf.assert_proper_iterable(tensor)
+
+  def test_single_sparse_tensor_raises(self):
+    ten = tf.SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
+    with self.assertRaisesRegexp(TypeError, "proper"):
+      tf.assert_proper_iterable(ten)
+
+  def test_single_ndarray_raises(self):
+    array = np.array([1, 2, 3])
+    with self.assertRaisesRegexp(TypeError, "proper"):
+      tf.assert_proper_iterable(array)
+
+  def test_single_string_raises(self):
+    mystr = "hello"
+    with self.assertRaisesRegexp(TypeError, "proper"):
+      tf.assert_proper_iterable(mystr)
+
+  def test_non_iterable_object_raises(self):
+    non_iterable = 1234
+    with self.assertRaisesRegexp(TypeError, "to be iterable"):
+      tf.assert_proper_iterable(non_iterable)
+
+  def test_list_does_not_raise(self):
+    list_of_stuff = [tf.constant([11, 22]), tf.constant([1, 2])]
+    tf.assert_proper_iterable(list_of_stuff)
+
+  def test_generator_does_not_raise(self):
+    generator_of_stuff = (tf.constant([11, 22]), tf.constant([1, 2]))
+    tf.assert_proper_iterable(generator_of_stuff)
 
 
 class AssertEqualTest(tf.test.TestCase):
@@ -258,7 +295,7 @@ class AssertRankTest(tf.test.TestCase):
     with self.test_session():
       tensor = tf.constant(1, name="my_tensor")
       desired_rank = 1
-      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*must have rank 1"):
         with tf.control_dependencies([tf.assert_rank(tensor, desired_rank)]):
           tf.identity(tensor).eval()
 
@@ -330,6 +367,36 @@ class AssertRankTest(tf.test.TestCase):
         with self.assertRaisesOpError("my_tensor.*rank"):
           tf.identity(tensor).eval(feed_dict={tensor: [1, 2]})
 
+  def test_raises_if_rank_is_not_scalar_static(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      with self.assertRaisesRegexp(ValueError, "Rank must be a scalar"):
+        tf.assert_rank(tensor, np.array([], dtype=np.int32))
+
+  def test_raises_if_rank_is_not_scalar_dynamic(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], dtype=tf.float32, name="my_tensor")
+      rank_tensor = tf.placeholder(tf.int32, name="rank_tensor")
+      with self.assertRaisesOpError("Rank must be a scalar"):
+        with tf.control_dependencies([tf.assert_rank(tensor, rank_tensor)]):
+          tf.identity(tensor).eval(feed_dict={rank_tensor: [1, 2]})
+
+  def test_raises_if_rank_is_not_integer_static(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], name="my_tensor")
+      with self.assertRaisesRegexp(ValueError,
+                                   "must be of type <dtype: 'int32'>"):
+        tf.assert_rank(tensor, .5)
+
+  def test_raises_if_rank_is_not_integer_dynamic(self):
+    with self.test_session():
+      tensor = tf.constant([1, 2], dtype=tf.float32, name="my_tensor")
+      rank_tensor = tf.placeholder(tf.float32, name="rank_tensor")
+      with self.assertRaisesRegexp(ValueError,
+                                   "must be of type <dtype: 'int32'>"):
+        with tf.control_dependencies([tf.assert_rank(tensor, rank_tensor)]):
+          tf.identity(tensor).eval(feed_dict={rank_tensor: .5})
+
 
 class AssertRankAtLeastTest(tf.test.TestCase):
 
@@ -337,7 +404,7 @@ class AssertRankAtLeastTest(tf.test.TestCase):
     with self.test_session():
       tensor = tf.constant(1, name="my_tensor")
       desired_rank = 1
-      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank at least 1"):
         with tf.control_dependencies([tf.assert_rank_at_least(tensor,
                                                               desired_rank)]):
           tf.identity(tensor).eval()

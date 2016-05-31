@@ -1,16 +1,21 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""tf.learn IO operation tests."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,15 +25,20 @@ import random
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python import learn
-from tensorflow.contrib.learn.python.learn.io import *
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
+# pylint: disable=wildcard-import
+from tensorflow.contrib.learn.python.learn.io import *
+# pylint: enable=wildcard-import
 
 
 class IOTest(tf.test.TestCase):
+  # pylint: disable=undefined-variable
+  """tf.learn IO operation tests."""
 
   def test_pandas_dataframe(self):
     if HAS_PANDAS:
+      import pandas as pd
       random.seed(42)
       iris = datasets.load_iris()
       data = pd.DataFrame(iris.data)
@@ -42,6 +52,7 @@ class IOTest(tf.test.TestCase):
 
   def test_pandas_series(self):
     if HAS_PANDAS:
+      import pandas as pd
       random.seed(42)
       iris = datasets.load_iris()
       data = pd.DataFrame(iris.data)
@@ -53,6 +64,7 @@ class IOTest(tf.test.TestCase):
 
   def test_string_data_formats(self):
     if HAS_PANDAS:
+      import pandas as pd
       with self.assertRaises(ValueError):
         learn.io.extract_pandas_data(pd.DataFrame({"Test": ["A", "B"]}))
       with self.assertRaises(ValueError):
@@ -60,6 +72,8 @@ class IOTest(tf.test.TestCase):
 
   def test_dask_io(self):
     if HAS_DASK and HAS_PANDAS:
+      import pandas as pd
+      import dask.dataframe as dd
       # test dask.dataframe
       df = pd.DataFrame(
           dict(a=list("aabbcc"), b=list(range(6))),
@@ -86,6 +100,8 @@ class IOTest(tf.test.TestCase):
 
   def test_dask_iris_classification(self):
     if HAS_DASK and HAS_PANDAS:
+      import pandas as pd
+      import dask.dataframe as dd
       random.seed(42)
       iris = datasets.load_iris()
       data = pd.DataFrame(iris.data)

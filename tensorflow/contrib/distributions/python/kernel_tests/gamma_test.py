@@ -137,6 +137,14 @@ class GammaTest(tf.test.TestCase):
       self.assertEqual(gamma.entropy().get_shape(), (3,))
       self.assertAllClose(gamma.entropy().eval(), expected_entropy)
 
+  def testGammaNonPositiveInitializationParamsRaises(self):
+    with tf.Session():
+      alpha_v = tf.constant(0.0, name='alpha')
+      beta_v = tf.constant(1.0, name='beta')
+      gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
+      with self.assertRaisesOpError('alpha'):
+        gamma.mean.eval()
+
 
 if __name__ == '__main__':
   tf.test.main()

@@ -102,7 +102,7 @@ class GrpcSession : public Session {
   mutex mu_;
 
   // handle_ returned by the master to identify this session.
-  string handle_;
+  string handle_ GUARDED_BY(mu_);
 
   // The current version of the graph.
   int64 current_graph_version_ GUARDED_BY(mu_);

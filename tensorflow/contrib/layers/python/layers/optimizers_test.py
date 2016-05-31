@@ -132,6 +132,25 @@ class OptimizersTest(tf.test.TestCase):
     tf.contrib.layers.optimize_loss(
         loss, global_step, learning_rate=0.1, optimizer="SGD")
 
+  def testUpdateOp(self):
+    optimizers = ["SGD", tf.train.GradientDescentOptimizer,
+                  tf.train.GradientDescentOptimizer(learning_rate=0.1)]
+    for optimizer in optimizers:
+      with tf.Graph().as_default() as g:
+        with self.test_session(graph=g) as session:
+          x, var, loss, global_step = _setup_model()
+          update_op = tf.assign(var, 20)
+          train = tf.contrib.layers.optimize_loss(loss,
+                                                  global_step,
+                                                  learning_rate=0.1,
+                                                  optimizer=optimizer,
+                                                  update_ops=[update_op])
+          tf.initialize_all_variables().run()
+          session.run(train, feed_dict={x: 5})
+          var_value, global_step_value = session.run([var, global_step])
+          # 19.5, due to update of var to 20 before loss computation.
+          self.assertEqual(var_value, 19.5)
+          self.assertEqual(global_step_value, 1)
 
 if __name__ == "__main__":
   tf.test.main()

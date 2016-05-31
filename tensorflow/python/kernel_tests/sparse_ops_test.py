@@ -25,6 +25,7 @@ import tensorflow as tf
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import googletest
@@ -234,6 +235,101 @@ class SparseRetainTest(test_util.TensorFlowTestCase):
         sparse_ops.sparse_retain(sp_input, to_retain)
 
 
+class SparseResetShapeTest(test_util.TensorFlowTestCase):
+
+  _IND_2_5_6 = np.array([[0, 0, 0], [0, 1, 0], [0, 1, 3], [1, 1, 4],
+                         [1, 3, 2], [1, 3, 3]], dtype=np.int64)
+  _VAL_2_5_6 = np.array([0, 10, 13, 14, 32, 33], dtype=np.int32)
+  _SHP_2_5_6 = np.array([2, 5, 6], dtype=np.int64)
+
+  def _SparseTensor_2x5x6(self):
+    return ops.SparseTensor(
+        constant_op.constant(self._IND_2_5_6, dtypes.int64),
+        constant_op.constant(self._VAL_2_5_6, dtypes.int32),
+        constant_op.constant(self._SHP_2_5_6, dtypes.int64))
+
+  def _SparseTensorValue_2x5x6(self):
+    return ops.SparseTensorValue(self._IND_2_5_6, self._VAL_2_5_6,
+                                 self._SHP_2_5_6)
+
+  def testBasic(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensor_2x5x6()
+      new_shape = np.array([3, 6, 7], dtype=np.int64)
+      sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      output = sess.run(sp_output)
+
+      self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0],
+                                           [0, 1, 3], [1, 1, 4],
+                                           [1, 3, 2], [1, 3, 3]])
+      self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
+      self.assertAllEqual(output.shape, [3, 6, 7])
+
+  def testInputUnavaibleInGraphConstructionOk(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = array_ops.sparse_placeholder(dtype=dtypes.int32)
+      new_shape = np.array([3, 6, 7], dtype=np.int64)
+      sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      output = sess.run(sp_output,
+                        feed_dict={sp_input: self._SparseTensorValue_2x5x6()})
+
+      self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0],
+                                           [0, 1, 3], [1, 1, 4],
+                                           [1, 3, 2], [1, 3, 3]])
+      self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
+      self.assertAllEqual(output.shape, [3, 6, 7])
+
+  def testTightBoundingBox(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensor_2x5x6()
+      sp_output = sparse_ops.sparse_reset_shape(sp_input)
+
+      output = sess.run(sp_output)
+
+      self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0],
+                                           [0, 1, 3], [1, 1, 4],
+                                           [1, 3, 2], [1, 3, 3]])
+      self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
+      self.assertAllEqual(output.shape, [2, 4, 5])
+
+  def testInvalidRank(self):
+    with self.test_session(use_gpu=False):
+      sp_input = self._SparseTensor_2x5x6()
+      new_shape = np.array([3, 7], dtype=np.int64)
+
+      with self.assertRaises(ValueError):
+        sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+  def testInvalidRankNewShapeUnavaibleInGraphConstruction(self):
+    with self.test_session(use_gpu=False) as sess:
+      new_shape = array_ops.placeholder(dtype=dtypes.int64)
+      sp_input = self._SparseTensor_2x5x6()
+      out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      with self.assertRaisesOpError("x == y did not hold element-wise"):
+        sess.run(out, feed_dict={new_shape: np.array([3, 7], dtype=np.int64)})
+
+  def testInvalidDimensionSize(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensor_2x5x6()
+      new_shape = np.array([3, 7, 5], dtype=np.int64)
+      out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      with self.assertRaisesOpError("x <= y did not hold element-wise"):
+        sess.run(out)
+
+  def testInvalidDimensionSizeInputUnavailableInGraphConstruction(self):
+    sp_input = array_ops.sparse_placeholder(dtype=dtypes.int32)
+    with self.test_session(use_gpu=False) as sess:
+      new_shape = np.array([3, 7, 5], dtype=np.int64)
+      out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+      with self.assertRaisesOpError("x <= y did not hold element-wise"):
+        sess.run(out, feed_dict={sp_input: self._SparseTensorValue_2x5x6()})
+
+
 class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
 
   def _SparseTensor_5x6(self):
@@ -321,16 +417,27 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
 
 class SparseReduceSumTest(test_util.TensorFlowTestCase):
 
-  def _compare(self, sp_t, reduction_axes, keep_dims):
+  # [[1, ?, 1]
+  #  [?, 1, ?]]
+  # where ? is implictly-zero.
+  ind = np.array([[0, 0], [0, 2], [1, 1]]).astype(np.int64)
+  vals = np.array([1, 1, 1]).astype(np.int32)
+  shape = np.array([2, 3]).astype(np.int64)
+
+  def _compare(self, sp_t, reduction_axes, ndims, keep_dims):
     densified = sparse_ops.sparse_tensor_to_dense(sp_t).eval()
 
     np_ans = densified
     if reduction_axes is None:
       np_ans = np.sum(np_ans, keepdims=keep_dims)
     else:
-      if isinstance(reduction_axes, list):
-        reduction_axes = sorted(reduction_axes)  # loop below depends on sorted
+      if not isinstance(reduction_axes, list):  # Single scalar.
+        reduction_axes = [reduction_axes]
       reduction_axes = np.array(reduction_axes).astype(np.int32)
+      # Handles negative axes.
+      reduction_axes = (reduction_axes + ndims) % ndims
+      # Loop below depends on sorted.
+      reduction_axes.sort()
       for ra in reduction_axes.ravel()[::-1]:
         np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
 
@@ -340,25 +447,21 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(np_ans, out)
 
-  def _compare_all(self, sp_t, reduction_axes):
-    self._compare(sp_t, reduction_axes, False)
-    self._compare(sp_t, reduction_axes, True)
+  def _compare_all(self, sp_t, reduction_axes, ndims):
+    self._compare(sp_t, reduction_axes, ndims, False)
+    self._compare(sp_t, reduction_axes, ndims, True)
 
   def testSimpleAndRandomInputs(self):
-    # [[1, ?, 1]
-    #  [?, 1, ?]]
-    # where ? is implictly-zero.
-    ind = np.array([[0, 0], [0, 2], [1, 1]]).astype(np.int64)
-    vals = np.array([1, 1, 1]).astype(np.int32)
-    shape = np.array([2, 3]).astype(np.int64)
-    sp_t = ops.SparseTensor(ind, vals, shape)
+    sp_t = ops.SparseTensor(self.ind, self.vals, self.shape)
 
     with self.test_session(use_gpu=False):
-      self._compare_all(sp_t, None)
-      self._compare_all(sp_t, 0)
-      self._compare_all(sp_t, [1])
-      self._compare_all(sp_t, [0, 1])
-      self._compare_all(sp_t, [1, 0])
+      self._compare_all(sp_t, None, ndims=2)
+      self._compare_all(sp_t, 0, ndims=2)
+      self._compare_all(sp_t, [1], ndims=2)
+      self._compare_all(sp_t, [0, 1], ndims=2)
+      self._compare_all(sp_t, [1, 0], ndims=2)
+      self._compare_all(sp_t, [-1], ndims=2)
+      self._compare_all(sp_t, [1, -2], ndims=2)
 
     np.random.seed(1618)
     test_dims = [(1618, 1, 11, 7, 1), (1,), (1, 1, 1)]
@@ -366,11 +469,19 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
       for dims in test_dims:
         sp_t, unused_nnz = _sparsify(np.random.randn(*dims))
         # reduce all using None
-        self._compare_all(sp_t, None)
+        self._compare_all(sp_t, None, ndims=len(dims))
         # reduce random axes from 1D to N-D
         for d in range(1, len(dims) + 1):
           axes = np.random.choice(len(dims), size=d, replace=False).tolist()
-          self._compare_all(sp_t, axes)
+          self._compare_all(sp_t, axes, ndims=len(dims))
+
+  def testInvalidAxes(self):
+    sp_t = ops.SparseTensor(self.ind, self.vals, self.shape)
+    with self.test_session(use_gpu=False):
+      with self.assertRaisesOpError("Invalid reduction dimension -3"):
+        sparse_ops.sparse_reduce_sum(sp_t, -3).eval()
+      with self.assertRaisesOpError("Invalid reduction dimension 2"):
+        sparse_ops.sparse_reduce_sum(sp_t, 2).eval()
 
   def testGradient(self):
     np.random.seed(8161)
@@ -387,17 +498,25 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
                                                reduced.eval().shape)
           self.assertLess(err, 1e-3)
 
+        # Tests for negative axes.
+        reduced = sparse_ops.sparse_reduce_sum(sp_t, -1)
+        err = tf.test.compute_gradient_error(sp_t.values, (nnz,), reduced,
+                                             reduced.eval().shape)
+        self.assertLess(err, 1e-3)
+
 
 class SparseMathOpsTest(test_util.TensorFlowTestCase):
 
   def _check(self, result_tensor, result_np, input_sp_t):
+    self.assertTrue(isinstance(result_tensor, ops.SparseTensor))
+    self.assertTrue(isinstance(input_sp_t, ops.SparseTensor))
     self.assertAllEqual(input_sp_t.indices.eval(), result_tensor.indices.eval())
     self.assertAllEqual(input_sp_t.shape.eval(), result_tensor.shape.eval())
 
     res_densified = sparse_ops.sparse_to_dense(result_tensor.indices,
                                                result_tensor.shape,
                                                result_tensor.values).eval()
-    self.assertAllEqual(res_densified, result_np)
+    self.assertAllEqual(result_np, res_densified)
 
   def testCwiseDivAndMul(self):
     np.random.seed(1618)
@@ -421,6 +540,23 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
           if dtype in [np.int32, np.int64]:
             res = sp_t / dense_t  # should invoke "__truediv__"
             self.assertEqual(res.values.eval().dtype, np.float64)
+
+  def testCwiseAdd(self):
+    with self.test_session(use_gpu=False):
+      # Identity(2) + AllOnes(2,2).  Should be equal to 2 * Identity(2).
+      indices = [[0, 0], [1, 1]]
+      vals = [1, 1]
+      shape = (2, 2)
+
+      sp_t = tf.SparseTensor(indices, vals, shape)
+      dense_t = tf.ones(shape, dtype=dtypes.int32)
+      self._check(sparse_ops.sparse_dense_cwise_add(sp_t, dense_t),
+                  np.identity(2) * 2, sp_t)
+
+      # Variant of above, but broadcasts the dense side.
+      dense_t = tf.ones([1], dtype=dtypes.int32)
+      self._check(sparse_ops.sparse_dense_cwise_add(sp_t, dense_t),
+                  np.identity(2) * 2, sp_t)
 
   def testGradients(self):
     np.random.seed(1618)
@@ -449,6 +585,68 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
                                                cdiv.values, (nnz,),
                                                x_init_value=dense_vals_np)
           self.assertLess(err, 2e-4)
+
+
+class SparseSoftmaxTest(test_util.TensorFlowTestCase):
+
+  def testEquivalentToDensified(self):
+    np.random.seed(1618)
+    n, m = np.random.choice(20, size=2)
+
+    for dtype in [np.float32, np.float64]:
+      sp_vals_np = np.random.rand(n, m).astype(dtype)
+
+      batched_sp_t, unused_nnz1 = _sparsify(
+          sp_vals_np.reshape((1, n, m)), thresh=0.)  # No masking.
+
+      with self.test_session(use_gpu=False):
+        densified = tf.constant(sp_vals_np)
+
+        sp_result = sparse_ops.sparse_softmax(
+            batched_sp_t).eval().values.reshape((n, m))
+        dense_result = tf.nn.softmax(densified)
+
+        self.assertAllClose(dense_result.eval(), sp_result)
+
+  def testHigherRanks(self):
+    # For the first shape:
+    # First batch:
+    # [?   e.]
+    # [1.  ? ]
+    # Second batch:
+    # [e   ? ]
+    # [e   e ]
+    #
+    # The softmax results should be:
+    # [?   1.]     [1    ?]
+    # [1.  ? ] and [.5  .5]
+    # where ? means implicitly zero.
+    #
+    # The second shape: same input data, but with a higher-rank shape.
+    shapes = [[2, 2, 2], [2, 1, 2, 2]]
+    for shape in shapes:
+      values = np.asarray(
+          [0., np.e, 1., 0., np.e, 0., np.e, np.e]).reshape(shape)
+      sp_t, unused_nnz = _sparsify(values, thresh=1e-2)
+      expected_values = [1., 1., 1., .5, .5]
+
+      with self.test_session(use_gpu=False):
+        result = sparse_ops.sparse_softmax(sp_t).eval()
+
+        self.assertAllEqual(expected_values, result.values)
+        self.assertAllEqual(sp_t.indices.eval(), result.indices)
+        self.assertAllEqual(shape, result.shape)
+
+  def testGradient(self):
+    x_shape = [2, 5, 10]
+    with self.test_session(use_gpu=False):
+      for dtype in [np.float32, np.float64]:
+        x_np = np.random.randn(*x_shape).astype(dtype)
+        x_tf, nnz = _sparsify(x_np)
+        y_tf = tf.sparse_softmax(x_tf)
+        err = tf.test.compute_gradient_error(x_tf.values, (nnz,), y_tf.values,
+                                             (nnz,))
+        self.assertLess(err, 1e-4)
 
 
 if __name__ == "__main__":

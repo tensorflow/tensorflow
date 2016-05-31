@@ -93,7 +93,7 @@ creates a part of the graph and returns output tensors.
  put the arguments with names of the collections right before `name` argument.
 
 * Tensor arguments should be either a single tensor or an iterable of tensors.
- *Not a "Tensor or list of Tensors".*
+  E.g. a "Tensor or list of Tensors" is too broad. See `assert_proper_iterable`.
 
 * Operations that take tensors as arguments should call `convert_to_tensor`
  to convert non-tensor inputs into tensors if they are using C++ operations.

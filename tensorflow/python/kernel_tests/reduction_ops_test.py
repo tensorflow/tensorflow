@@ -171,6 +171,11 @@ class SumReductionTest(tf.test.TestCase):
     self._compare(np_arr, [], False)
     self._compare(np_arr, [0], False)
 
+  def testComplex128Reduce1D(self):
+    np_arr = np.arange(1, 6).reshape([5]).astype(np.complex128)
+    self._compare(np_arr, [], False)
+    self._compare(np_arr, [0], False)
+
   def testInvalidIndex(self):
     np_arr = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = tf.convert_to_tensor(np_arr)

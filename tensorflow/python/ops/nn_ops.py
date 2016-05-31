@@ -243,6 +243,7 @@ def conv2d_transpose(value,
     strides: A list of ints. The stride of the sliding window for each
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: Optional name for the returned tensor.
 
   Returns:
@@ -296,7 +297,7 @@ def bias_add(value, bias, data_format=None, name=None):
 
   Args:
     value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-      `int16`, `int8`, or `complex64`.
+      `int16`, `int8`, `complex64`, or `complex128`.
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
@@ -330,7 +331,7 @@ def bias_add_v1(value, bias, name=None):
 
   Args:
     value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-      `int16`, `int8`, or `complex64`.
+      `int16`, `int8`, `complex64`, or `complex128`.
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
@@ -490,6 +491,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
@@ -517,6 +519,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     strides: A list of ints that has length >= 4.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
@@ -750,6 +753,41 @@ def _calc_conv_weight_params(graph, node):
   filter_out_depth = int(filter_shape[3])
   return ops.OpStats("weight_parameters", (filter_height * filter_width *
                                            filter_in_depth * filter_out_depth))
+
+
+@ops.RegisterStatistics("DepthwiseConv2dNative", "flops")
+def _calc_depthwise_conv_flops(graph, node):
+  """Calculates the compute resources needed for DepthwiseConv2dNative."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
+                                                            node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_height = int(filter_shape[0])
+  filter_width = int(filter_shape[1])
+  output_count = np.prod(output_shape.as_list())
+  return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
+
+
+@ops.RegisterStatistics("DepthwiseConv2dNative", "weight_parameters")
+def _calc_depthwise_conv_weight_params(graph, node):
+  """Calculates the on-disk size of the weights for DepthwiseConv2dNative."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
+                                                            node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_height = int(filter_shape[0])
+  filter_width = int(filter_shape[1])
+  filter_in_depth = int(filter_shape[2])
+  filter_channel_multiplier = int(filter_shape[3])
+  return ops.OpStats("weight_parameters", (filter_height * filter_width *
+                                           filter_in_depth *
+                                           filter_channel_multiplier))
 
 
 @ops.RegisterShape("Conv3D")

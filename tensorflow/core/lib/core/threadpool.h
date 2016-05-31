@@ -51,12 +51,11 @@ class ThreadPool {
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
   // indexed 0, 1, ..., total - 1. Each shard contains 1 or more units of work
   // and the total cost of each shard is roughly the same.
-  // Max_parallelism optionally caps the number of threads used.
-  //
-  // REQUIRES: max_parallelism > 0.
   void ParallelFor(int64 total, int64 cost_per_unit,
-                   std::function<void(int64, int64)> fn,
-                   int32 max_parallelism = kint32max);
+                   std::function<void(int64, int64)> fn);
+
+  // Returns the number of threads in the pool.
+  int NumThreads() const;
 
   struct Impl;
 

@@ -33,6 +33,8 @@ _always_drop_symbol_re = re.compile("_[_a-zA-Z0-9]")
 _anchor_re = re.compile(r"^[\w.]+$")
 _member_mark = "@@"
 _indiv_dir = "functions_and_classes"
+_num_subdirs = 10
+_subdir_prefix = "shard"
 
 
 class Document(object):
@@ -163,6 +165,14 @@ def _get_anchor(module_to_name, fullname):
   return anchor
 
 
+def _stable_hash(s):
+  """A simple string hash that won't change from run to run."""
+  ret = 0
+  for c in s:
+    ret = ret * 97 + ord(c)
+  return ret
+
+
 class Library(Document):
   """An automatically generated document for a set of functions and classes."""
 
@@ -249,6 +259,24 @@ class Library(Document):
       if ((is_method and member.__name__ == "__init__")
           or self._should_include_member(name)):
         yield name, ("%s.%s" % (cls_name, name), member)
+
+  def shard_dir(self, name):
+    """Returns the path of the doc subdirectory for member `name`.
+
+    When generating individual files for each function and class, we shard
+    the files across several directories to avoid hitting the limit for
+    files per directory. This function determines the subdirectory for
+    a member based on a stable hash of its name.
+
+    Args:
+      name: string. The name of a function or class.
+
+    Returns:
+      The path to a subdirectory of the api docs directory.
+    """
+    index = _stable_hash(name) % _num_subdirs
+    return os.path.join(self.functions_and_classes_dir,
+                        _subdir_prefix + str(index))
 
   def set_functions_and_classes_dir(self, dirname):
     """Sets the name of the directory for function and class markdown files.
@@ -400,7 +428,7 @@ class Library(Document):
       # Write an individual file for each function.
       if inspect.isfunction(member):
         indivf = open(
-            os.path.join(self.functions_and_classes_dir, name + ".md"), "w+")
+            os.path.join(self.shard_dir(name), name + ".md"), "w+")
         self._print_function(indivf, prefix, name, member)
     elif inspect.isclass(member):
       print("- - -", file=f)
@@ -414,7 +442,7 @@ class Library(Document):
 
       # Write an individual file for each class.
       indivf = open(
-          os.path.join(self.functions_and_classes_dir, name + ".md"), "w+")
+          os.path.join(self.shard_dir(name), name + ".md"), "w+")
       self._write_class_markdown_to_file(indivf, name, member)
     else:
       raise RuntimeError("Member %s has unknown type %s" % (name, type(member)))
@@ -547,10 +575,16 @@ def write_libraries(output_dir, libraries):
   files = [open(os.path.join(output_dir, k), "w") for k, _ in libraries]
 
   # Set the directory in which to save individual class and function md files,
-  # creating it if it doesn't exist.
+  # creating it if it doesn't exist. Create subdirectories to avoid hitting
+  # the limit for number of files in a directory.
   indiv_dir = os.path.join(output_dir, _indiv_dir)
   if not os.path.exists(indiv_dir):
     os.makedirs(indiv_dir)
+
+  for i in range(0, _num_subdirs):
+    subdir = os.path.join(indiv_dir, _subdir_prefix + str(i))
+    if not os.path.exists(subdir):
+      os.makedirs(subdir)
 
   # Document mentioned symbols for all libraries
   for f, (_, v) in zip(files, libraries):

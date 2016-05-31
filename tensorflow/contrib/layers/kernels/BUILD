@@ -11,7 +11,7 @@ cc_library(
     name = "bucketization_kernel",
     srcs = ["bucketization_kernel.cc"],
     deps = [
-        "//google/protobuf",
+        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
@@ -22,7 +22,7 @@ cc_library(
     name = "sparse_feature_cross_kernel",
     srcs = ["sparse_feature_cross_kernel.cc"],
     deps = [
-        "//google/protobuf",
+        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],

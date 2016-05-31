@@ -242,9 +242,9 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the dimensions of `predictions` and `labels` don't match or
-    if `weight` is not `None` and its shape doesn't match `predictions` or
-    if either `metrics_collections` or `updates_collections` are not
-    a list or tuple.
+    if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 
 
 - - -
@@ -295,9 +295,9 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the dimensions of `predictions` and `labels` don't match or
-    if `weight` is not `None` and its shape doesn't match `predictions` or
-    if either `metrics_collections` or `updates_collections` are not
-    a list or tuple.
+    if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 
 
 - - -
@@ -321,12 +321,12 @@ numbers of thresholds more closely approximating the true AUC.
 
 To faciliate the estimation of the AUC over a stream of data, the function
 creates an `update_op` operation whose behavior is dependent on the value of
-`weights`. If `weights` is None, then `update_op` increments the
+`ignore_mask`. If `ignore_mask` is None, then `update_op` increments the
 `true_positives`, `true_negatives`, `false_positives` and `false_negatives`
 counts with the number of each found in the current `predictions` and `labels`
-`Tensors`. If `weights` is not `None`, then the increment is performed using
-only the elements of `predictions` and `labels` whose corresponding value
-in `ignore_mask` is `False`. In addition to performing the updates,
+`Tensors`. If `ignore_mask` is not `None`, then the increment is performed
+using only the elements of `predictions` and `labels` whose corresponding
+value in `ignore_mask` is `False`. In addition to performing the updates,
 `update_op` also returns the `auc`.
 
 ##### Args:
@@ -347,7 +347,7 @@ in `ignore_mask` is `False`. In addition to performing the updates,
 ##### Returns:
 
 
-*  <b>`auc`</b>: A tensor representing the current area-under-curve.
+*  <b>`auc`</b>: A scalar tensor representing the current area-under-curve.
 *  <b>`update_op`</b>: An operation that increments the `true_positives`,
     `true_negatives`, `false_positives` and `false_negatives` variables
     appropriately and whose value matches `auc`.
@@ -356,9 +356,9 @@ in `ignore_mask` is `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the shape of `predictions` and `labels` do not match or if
-    `weights` is not `None` and its shape doesn't match `values`
-    or if either `metrics_collections` or `updates_collections` are not a list
-    or tuple.
+    `ignore_mask` is not `None` and its shape doesn't match `predictions` or
+    if either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
 
 
 - - -
@@ -411,9 +411,9 @@ recall value.
 
 
 *  <b>`ValueError`</b>: If the dimensions of `predictions` and `labels` don't match or
-    if `weight` is not `None` and its shape doesn't match `predictions` or if
-    either `metrics_collections` or `updates_collections` are not a list or
-    tuple.
+    if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 
 
 - - -
@@ -917,15 +917,15 @@ Computes the percentage of times that predictions matches labels.
 
 - - -
 
-### `tf.contrib.metrics.confusion_matrix(predictions, targets, num_classes=None, name=None)` {#confusion_matrix}
+### `tf.contrib.metrics.confusion_matrix(predictions, labels, num_classes=None, name=None)` {#confusion_matrix}
 
-Computes the confusion matrix from predictions and targets
+Computes the confusion matrix from predictions and labels
 
 Calculate the Confusion Matrix for a pair of prediction and
-target 1-D int arrays.
+label 1-D int arrays.
 
 Considering a prediction array such as: `[1, 2, 3]`
-And a target array such as: `[2, 2, 3]`
+And a label array such as: `[2, 2, 3]`
 
 ##### The confusion matrix returned would be the following one:
 
@@ -935,9 +935,9 @@ And a target array such as: `[2, 2, 3]`
      [0, 0, 1]]
 
 Where the matrix rows represent the prediction labels and the columns
-represents the target labels. The confusion matrix is always a 2-D array
+represents the real labels. The confusion matrix is always a 2-D array
 of shape [n, n], where n is the number of valid labels for a given
-classification task. Both prediction and target must be 1-D arrays of
+classification task. Both prediction and labels must be 1-D arrays of
 the same shape in order for this function to work.
 
 ##### Args:
@@ -945,10 +945,10 @@ the same shape in order for this function to work.
 
 *  <b>`predictions`</b>: A 1-D array represeting the predictions for a given
                classification.
-*  <b>`targets`</b>: A 1-D represeting the real labels for the classification task.
+*  <b>`labels`</b>: A 1-D represeting the real labels for the classification task.
 *  <b>`num_classes`</b>: The possible number of labels the classification task can
                have. If this value is not provided, it will be calculated
-               using both predictions and targets array.
+               using both predictions and labels array.
 *  <b>`name`</b>: Scope name.
 
 ##### Returns:
@@ -959,7 +959,7 @@ the same shape in order for this function to work.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If both predictions and targets are not 1-D vectors and do not
+*  <b>`ValueError`</b>: If both predictions and labels are not 1-D vectors and do not
               have the same size.
 
 

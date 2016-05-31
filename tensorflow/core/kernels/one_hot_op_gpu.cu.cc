@@ -21,17 +21,24 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/one_hot_op.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_GPU_SPEC(T)                   \
-  template class generator::OneGenerator<T>; \
-  template struct functor::OneHot<GPUDevice, T>;
+#define DEFINE_GPU_SPEC_INDEX(T, TI)                   \
+  template class generator::OneGenerator<T, TI>;       \
+  template struct functor::OneHot<GPUDevice, T, TI>;
+
+#define DEFINE_GPU_SPEC(T)           \
+  DEFINE_GPU_SPEC_INDEX(T, int32);   \
+  DEFINE_GPU_SPEC_INDEX(T, int64)
+
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
 
+#undef DEFINE_GPU_SPEC_INDEX
 #undef DEFINE_GPU_SPEC
 
 }  // end namespace tensorflow

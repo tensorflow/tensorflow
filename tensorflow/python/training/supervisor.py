@@ -328,6 +328,7 @@ class Supervisor(object):
           self._summary_writer = summary_io.SummaryWriter(self._logdir)
       else:
         self._summary_writer = summary_writer
+      self._graph_added_to_summary = False
 
     self._init_session_manager(session_manager=session_manager)
     self._verify_setup()
@@ -586,8 +587,9 @@ class Supervisor(object):
     if self._logdir:
       training_util.write_graph(self._graph.as_graph_def(add_shapes=True),
                                 self._logdir, "graph.pbtxt")
-    if self._summary_writer:
+    if self._summary_writer and not self._graph_added_to_summary:
       self._summary_writer.add_graph(self._graph)
+      self._graph_added_to_summary = True
 
   def start_standard_services(self, sess):
     """Start the standard services for 'sess'.
@@ -771,6 +773,7 @@ class Supervisor(object):
       # since the session may have already terminated.
       self._summary_writer.add_session_log(SessionLog(status=SessionLog.STOP))
       self._summary_writer.close()
+      self._graph_added_to_summary = False
 
     self._started_threads = []
 
@@ -936,13 +939,13 @@ class Supervisor(object):
         # Passing stop_grace_period_secs is for blocked enqueue/dequeue
         # threads which are not checking for `should_stop()`.  They
         # will be stopped when we close the session further down.
-        self.stop()
+        self.stop(close_summary_writer=close_summary_writer)
       finally:
         # Close the session to finish up all pending calls.  We do not care
         # about exceptions raised when closing.  This takes care of
         # blocked enqueue/dequeue calls.
         try:
-          sess.close(close_summary_writer=close_summary_writer)
+          sess.close()
         except Exception:
           # Silently ignore exceptions raised by close().
           pass

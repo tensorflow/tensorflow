@@ -200,7 +200,8 @@ handle these situations gracefully.
       var name = e.srcElement.name;
       var checked = e.srcElement.checked;
       this.runToIsCheckedMapping[name] = checked;
-      this.notifyPath("runToIsCheckedMapping." + name, checked);
+      // n.b. notifyPath won't work because run names may have periods.
+      this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
     },
     _isChecked: function(item, outSelectedChange) {
       return this.runToIsCheckedMapping[item];

@@ -18,6 +18,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
+#include <tuple>
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
@@ -63,8 +64,7 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
       return perftools::gputools::port::StatusOr<
-          perftools::gputools::DeviceMemory<uint8>>(
-          AsDeviceMemory<uint8>(nullptr, 0));
+          perftools::gputools::DeviceMemory<uint8>>();
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
@@ -95,8 +95,18 @@ struct ConvParameters {
   int64 padding_cols;
   int device_id;
 
+  typedef std::tuple<int64, int64, int64, int64, int64, int64, int64, int64,
+                     int64, int64, int64, int>
+      DataType;
+
+  DataType get_data_as_tuple() const {
+    return std::make_tuple(batch, in_depths, in_rows, in_cols, out_depths,
+                           filter_rows, filter_cols, stride_rows, stride_cols,
+                           padding_rows, padding_cols, device_id);
+  }
+
   bool operator==(const ConvParameters& other) const {
-    return memcmp(this, &other, sizeof(ConvParameters)) == 0;
+    return this->get_data_as_tuple() == other.get_data_as_tuple();
   }
 
   bool operator!=(const ConvParameters& other) const {
@@ -104,7 +114,7 @@ struct ConvParameters {
   }
 
   bool operator<(const ConvParameters& other) const {
-    return memcmp(this, &other, sizeof(ConvParameters)) < 0;
+    return this->get_data_as_tuple() < other.get_data_as_tuple();
   }
 };
 

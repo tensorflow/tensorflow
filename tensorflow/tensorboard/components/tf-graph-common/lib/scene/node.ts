@@ -420,7 +420,12 @@ export function buildShape(nodeGroup, d, nodeClass: string) {
         stampType =
             groupNodeInfo.node.hasNonControlEdges ? 'vertical' : 'horizontal';
       }
-      scene.selectOrCreateChild(shapeGroup, 'use', Class.Node.COLOR_TARGET)
+      scene
+          .selectOrCreateChild(
+              shapeGroup, 'use',
+              Class.Node.COLOR_TARGET + ' ' + groupNodeInfo.isFadedOut ?
+                  'faded-ellipse' :
+                  '')
           .attr('xlink:href', '#op-series-' + stampType + '-stamp');
       scene.selectOrCreateChild(shapeGroup, 'rect', Class.Node.COLOR_TARGET)
           .attr({rx: d.radius, ry: d.radius});
@@ -590,10 +595,12 @@ export function stylize(nodeGroup, renderInfo: render.RenderNodeInfo,
   let isSelected = sceneElement.isNodeSelected(renderInfo.node.name);
   let isExtract = renderInfo.isInExtract || renderInfo.isOutExtract;
   let isExpanded = renderInfo.expanded;
+  let isFadedOut = renderInfo.isFadedOut;
   nodeGroup.classed('highlighted', isHighlighted);
   nodeGroup.classed('selected', isSelected);
   nodeGroup.classed('extract', isExtract);
   nodeGroup.classed('expanded', isExpanded);
+  nodeGroup.classed('faded', isFadedOut);
 
   // Main node always exists here and it will be reached before subscene,
   // so d3 selection is fine here.

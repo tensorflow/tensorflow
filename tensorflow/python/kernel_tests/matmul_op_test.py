@@ -95,6 +95,7 @@ class MatMulTest(tf.test.TestCase):
     x = np.arange(1., 5.).reshape([4, 1]).astype(np.float64)
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.float64)
     self._testCpuMatmul(x, y)
+    self._testGpuMatmul(x, y)
 
   def testHalfBasic(self):
     x = np.arange(1., 5.).reshape([4, 1]).astype(np.float16)
@@ -135,6 +136,7 @@ class MatMulTest(tf.test.TestCase):
       x = self._randMatrix(n, k, np.float64)
       y = self._randMatrix(k, m, np.float64)
       self._testCpuMatmul(x, y)
+      self._testGpuMatmul(x, y)
 
   def testHalfRandom(self):
     for _ in range(10):
@@ -156,14 +158,14 @@ class MatMulTest(tf.test.TestCase):
 
   def testComplex64Random(self):
     for _ in range(10):
-      n, k, m = np.random.randint(1, 100, size=3)
+      n, k, m = np.random.randint(1, 10, size=3)  # Smaller range than float
       x = self._randMatrix(n, k, np.complex64)
       y = self._randMatrix(k, m, np.complex64)
       self._testCpuMatmul(x, y)
 
   def testComplex128Random(self):
     for _ in range(10):
-      n, k, m = np.random.randint(1, 100, size=3)
+      n, k, m = np.random.randint(1, 10, size=3)  # Smaller range than float
       x = self._randMatrix(n, k, np.complex128)
       y = self._randMatrix(k, m, np.complex128)
       self._testCpuMatmul(x, y)
@@ -185,6 +187,7 @@ class MatMulTest(tf.test.TestCase):
       x = self._randMatrix(k, n, np.float64)
       y = self._randMatrix(m, k, np.float64)
       self._testCpuMatmul(x, y, True, True)
+      self._testGpuMatmul(x, y, True, True)
 
   def testHalfRandomTransposeBoth(self):
     for _ in range(10):

@@ -178,9 +178,13 @@ message ConfigProto {
 
 // EXPERIMENTAL. Options for a single Run() call.
 message RunOptions {
+  // TODO(pbar) Turn this into a TraceOptions proto which allows
+  // tracing to be controlled in a more orthogonal manner?
   enum TraceLevel {
     NO_TRACE = 0;
-    FULL_TRACE = 1;
+    SOFTWARE_TRACE = 1;
+    HARDWARE_TRACE = 2;
+    FULL_TRACE = 3;
   }
   TraceLevel trace_level = 1;
 

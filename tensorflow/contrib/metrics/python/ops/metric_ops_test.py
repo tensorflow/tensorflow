@@ -713,6 +713,266 @@ class StreamingAUCTest(tf.test.TestCase):
       self.assertAlmostEqual(expected_auc, auc.eval(), 2)
 
 
+class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    prec, _ = tf.contrib.metrics.streaming_precision_at_thresholds(
+        predictions=tf.ones((10, 1)),
+        labels=tf.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0],
+        metrics_collections=[my_collection_name])
+    rec, _ = tf.contrib.metrics.streaming_recall_at_thresholds(
+        predictions=tf.ones((10, 1)),
+        labels=tf.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0],
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [prec, rec])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, precision_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+        predictions=tf.ones((10, 1)),
+        labels=tf.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0],
+        updates_collections=[my_collection_name])
+    _, recall_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+        predictions=tf.ones((10, 1)),
+        labels=tf.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0],
+        updates_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name),
+                         [precision_op, recall_op])
+
+  def testValueTensorIsIdempotent(self):
+    predictions = tf.random_uniform((10, 3), maxval=1, dtype=tf.float32, seed=1)
+    labels = tf.random_uniform((10, 3), maxval=1, dtype=tf.int64, seed=1)
+    thresholds = [0, 0.5, 1.0]
+    prec, prec_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+        predictions, labels, thresholds)
+    rec, rec_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+        predictions, labels, thresholds)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+
+      # Run several updates, then verify idempotency.
+      sess.run([prec_op, rec_op])
+      initial_prec = prec.eval()
+      initial_rec = rec.eval()
+      for _ in range(10):
+        sess.run([prec_op, rec_op])
+        self.assertAllClose(initial_prec, prec.eval())
+        self.assertAllClose(initial_rec, rec.eval())
+
+  def testEffectivelyEquivalentShapes(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+
+    with self.test_session() as sess:
+      predictions = tf.constant(inputs, dtype=tf.float32, shape=(100,))
+      labels = tf.constant(inputs, shape=(100, 1))
+      thresholds = [0.5]
+      prec, prec_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+          predictions, labels, thresholds)
+      rec, rec_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(tf.initialize_local_variables())
+      sess.run([prec_op, rec_op])
+
+      self.assertEqual(1, prec.eval())
+      self.assertEqual(1, rec.eval())
+
+  def testAllCorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+
+    with self.test_session() as sess:
+      predictions = tf.constant(inputs, dtype=tf.float32)
+      labels = tf.constant(inputs)
+      thresholds = [0.5]
+      prec, prec_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+          predictions, labels, thresholds)
+      rec, rec_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(tf.initialize_local_variables())
+      sess.run([prec_op, rec_op])
+
+      self.assertEqual(1, prec.eval())
+      self.assertEqual(1, rec.eval())
+
+  def testSomeCorrect(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([1, 0, 1, 0], shape=(1, 4), dtype=tf.float32)
+      labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
+      thresholds = [0.5]
+      prec, prec_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+          predictions, labels, thresholds)
+      rec, rec_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(tf.initialize_local_variables())
+      sess.run([prec_op, rec_op])
+
+      self.assertAlmostEqual(0.5, prec.eval())
+      self.assertAlmostEqual(0.5, rec.eval())
+
+  def testAllIncorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+
+    with self.test_session() as sess:
+      predictions = tf.constant(inputs, dtype=tf.float32)
+      labels = tf.constant(1 - inputs, dtype=tf.float32)
+      thresholds = [0.5]
+      prec, prec_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+          predictions, labels, thresholds)
+      rec, rec_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(tf.initialize_local_variables())
+      sess.run([prec_op, rec_op])
+
+      self.assertAlmostEqual(0, prec.eval())
+      self.assertAlmostEqual(0, rec.eval())
+
+  def testIgnoreMask(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([[1, 0], [1, 0]], shape=(2, 2),
+                                dtype=tf.float32)
+      labels = tf.constant([[0, 1], [1, 0]], shape=(2, 2))
+      ignore_mask = tf.constant([[True, True], [False, False]], shape=(2, 2))
+      thresholds = [0.5, 1.1]
+      prec, prec_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+          predictions, labels, thresholds, ignore_mask=ignore_mask)
+      rec, rec_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+          predictions, labels, thresholds, ignore_mask=ignore_mask)
+
+      [prec_low, prec_high] = tf.split(0, 2, prec)
+      prec_low = tf.reshape(prec_low, shape=())
+      prec_high = tf.reshape(prec_high, shape=())
+      [rec_low, rec_high] = tf.split(0, 2, rec)
+      rec_low = tf.reshape(rec_low, shape=())
+      rec_high = tf.reshape(rec_high, shape=())
+
+      sess.run(tf.initialize_local_variables())
+      sess.run([prec_op, rec_op])
+
+      self.assertAlmostEqual(1.0, prec_low.eval(), places=5)
+      self.assertAlmostEqual(0.0, prec_high.eval(), places=5)
+      self.assertAlmostEqual(1.0, rec_low.eval(), places=5)
+      self.assertAlmostEqual(0.0, rec_high.eval(), places=5)
+
+  def testExtremeThresholds(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([1, 0, 1, 0], shape=(1, 4), dtype=tf.float32)
+      labels = tf.constant([0, 1, 1, 1], shape=(1, 4))
+      thresholds = [-1.0, 2.0]  # lower/higher than any values
+      prec, prec_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+          predictions, labels, thresholds)
+      rec, rec_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+          predictions, labels, thresholds)
+
+      [prec_low, prec_high] = tf.split(0, 2, prec)
+      [rec_low, rec_high] = tf.split(0, 2, rec)
+
+      sess.run(tf.initialize_local_variables())
+      sess.run([prec_op, rec_op])
+
+      self.assertAlmostEqual(0.75, prec_low.eval())
+      self.assertAlmostEqual(0.0, prec_high.eval())
+      self.assertAlmostEqual(1.0, rec_low.eval())
+      self.assertAlmostEqual(0.0, rec_high.eval())
+
+  def testZeroLabelsPredictions(self):
+    with self.test_session() as sess:
+      predictions = tf.zeros([4], dtype=tf.float32)
+      labels = tf.zeros([4])
+      thresholds = [0.5]
+      prec, prec_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+          predictions, labels, thresholds)
+      rec, rec_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(tf.initialize_local_variables())
+      sess.run([prec_op, rec_op])
+
+      self.assertAlmostEqual(0, prec.eval(), 6)
+      self.assertAlmostEqual(0, rec.eval(), 6)
+
+  def testWithMultipleUpdates(self):
+    num_samples = 5000
+    batch_size = 10
+    num_batches = num_samples / batch_size
+
+    # Create the labels and data.
+    labels = np.random.randint(0, 2, size=(num_samples, 1))
+    noise = np.random.normal(0.0, scale=0.2, size=(num_samples, 1))
+    predictions = 0.4 + 0.2 * labels + noise
+    predictions[predictions > 1] = 1
+    predictions[predictions < 0] = 0
+    thresholds = [0.3]
+
+    tp = 0
+    fp = 0
+    fn = 0
+    tn = 0
+    for i in range(num_samples):
+      if predictions[i] > thresholds[0]:
+        if labels[i] == 1:
+          tp += 1
+        else:
+          fp += 1
+      else:
+        if labels[i] == 1:
+          fn += 1
+        else:
+          tn += 1
+    epsilon = 1e-7
+    expected_prec = tp / (epsilon + tp + fp)
+    expected_rec = tp / (epsilon + tp + fn)
+
+    labels = labels.astype(np.float32)
+    predictions = predictions.astype(np.float32)
+
+    with self.test_session() as sess:
+      # Reshape the data so its easy to queue up:
+      predictions_batches = predictions.reshape((batch_size, num_batches))
+      labels_batches = labels.reshape((batch_size, num_batches))
+
+      # Enqueue the data:
+      predictions_queue = tf.FIFOQueue(num_batches, dtypes=tf.float32,
+                                       shapes=(batch_size,))
+      labels_queue = tf.FIFOQueue(num_batches, dtypes=tf.float32,
+                                  shapes=(batch_size,))
+
+      for i in range(int(num_batches)):
+        tf_prediction = tf.constant(predictions_batches[:, i])
+        tf_label = tf.constant(labels_batches[:, i])
+        sess.run([predictions_queue.enqueue(tf_prediction),
+                  labels_queue.enqueue(tf_label)])
+
+      tf_predictions = predictions_queue.dequeue()
+      tf_labels = labels_queue.dequeue()
+
+      prec, prec_op = tf.contrib.metrics.streaming_precision_at_thresholds(
+          tf_predictions, tf_labels, thresholds)
+      rec, rec_op = tf.contrib.metrics.streaming_recall_at_thresholds(
+          tf_predictions, tf_labels, thresholds)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(int(num_samples / batch_size)):
+        sess.run([prec_op, rec_op])
+      # Since this is only approximate, we can't expect a 6 digits match.
+      # Although with higher number of samples/thresholds we should see the
+      # accuracy improving
+      self.assertAlmostEqual(expected_prec, prec.eval(), 2)
+      self.assertAlmostEqual(expected_rec, rec.eval(), 2)
+
+
 class StreamingRecallAtKTest(tf.test.TestCase):
 
   def setUp(self):
@@ -1546,7 +1806,7 @@ class StreamingMeanRelativeErrorTest(tf.test.TestCase):
                   np_labels))
 
     predictions = tf.constant(np_predictions, shape=(1, 4), dtype=tf.float32)
-    labels = tf.constant([1, 3, 2, 3], shape=(1, 4), dtype=tf.float32)
+    labels = tf.constant(np_labels, shape=(1, 4))
 
     error, update_op = tf.contrib.metrics.streaming_mean_relative_error(
         predictions, labels, normalizer=labels)
@@ -1555,6 +1815,20 @@ class StreamingMeanRelativeErrorTest(tf.test.TestCase):
       sess.run(tf.initialize_local_variables())
       sess.run(update_op)
       self.assertEqual(expected_error, error.eval())
+
+  def testSingleUpdateNormalizedByZeros(self):
+    np_predictions = np.asarray([2, 4, 6, 8], dtype=np.float32)
+
+    predictions = tf.constant(np_predictions, shape=(1, 4), dtype=tf.float32)
+    labels = tf.constant([1, 3, 2, 3], shape=(1, 4), dtype=tf.float32)
+
+    error, update_op = tf.contrib.metrics.streaming_mean_relative_error(
+        predictions, labels, normalizer=tf.zeros_like(labels))
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+      sess.run(update_op)
+      self.assertEqual(0.0, error.eval())
 
 
 class StreamingMeanSquaredErrorTest(tf.test.TestCase):

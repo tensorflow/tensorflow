@@ -37,10 +37,15 @@ dimension, and dense along all other dimensions.
 @@sparse_reorder
 @@sparse_split
 @@sparse_retain
+@@sparse_reset_shape
 @@sparse_fill_empty_rows
+
+## Reduction
+@@sparse_reduce_sum
 
 ## Math Operations
 @@sparse_add
+@@sparse_softmax
 @@sparse_tensor_dense_matmul
 """
 from __future__ import absolute_import
@@ -55,6 +60,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
@@ -64,18 +71,26 @@ from tensorflow.python.ops.gen_sparse_ops import *
 
 
 # pylint: disable=protected-access
-def sparse_concat(concat_dim, sp_inputs, name=None):
+def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
   """Concatenates a list of `SparseTensor` along the specified dimension.
 
   Concatenation is with respect to the dense versions of each sparse input.
   It is assumed that each inputs is a `SparseTensor` whose elements are ordered
   along increasing dimension number.
 
-  All inputs' shapes must match, except for the concat dimension.  The
-  `indices`, `values`, and `shapes` lists must have the same length.
+  If expand_nonconcat_dim is False, all inputs' shapes must match, except for
+  the concat dimension. If expand_nonconcat_dim is True, then inputs' shapes are
+  allowd to vary among all inputs.
 
-  The output shape is identical to the inputs', except along the concat
-  dimension, where it is the sum of the inputs' sizes along that dimension.
+  The `indices`, `values`, and `shapes` lists must have the same length.
+
+  If expand_nonconcat_dim is False, then the output shape is identical to the
+  inputs', except along the concat dimension, where it is the sum of the inputs'
+  sizes along that dimension.
+
+  If expand_nonconcat_dim is True, then the output shape along the non-concat
+  dimensions will be expand to be the largest among all inputs, and it is the
+  sum of the inputs sizes along the concat dimension.
 
   The output elements will be resorted to preserve the sort order along
   increasing dimension number.
@@ -109,10 +124,40 @@ def sparse_concat(concat_dim, sp_inputs, name=None):
       [    a] concat [  d e  ] = [    a   d e  ]
       [b c  ]        [       ]   [b c          ]
 
+  Another example, if 'concat_dim = 1' and the inputs are
+
+      sp_inputs[0]: shape = [3, 3]
+      [0, 2]: "a"
+      [1, 0]: "b"
+      [2, 1]: "c"
+
+      sp_inputs[1]: shape = [2, 4]
+      [0, 1]: "d"
+      [0, 2]: "e"
+
+  if expand_nonconcat_dim = False, this will result in an error. But if
+  expand_nonconcat_dim = True, this will result in:
+
+      shape = [3, 7]
+      [0, 2]: "a"
+      [0, 4]: "d"
+      [0, 5]: "e"
+      [1, 0]: "b"
+      [2, 1]: "c"
+
+  Graphically this is equivalent to doing
+
+      [    a] concat [  d e  ] = [    a   d e  ]
+      [b    ]        [       ]   [b            ]
+      [  c  ]                    [  c          ]
+
+
   Args:
     concat_dim: Dimension to concatenate along.
     sp_inputs: List of `SparseTensor` to concatenate.
     name: A name prefix for the returned tensors (optional).
+    expand_nonconcat_dim: Whether to allow the expansion in the non-concat
+      dimensions. Defaulted to False.
 
   Returns:
     A `SparseTensor` with the concatenated output.
@@ -131,6 +176,14 @@ def sparse_concat(concat_dim, sp_inputs, name=None):
   inds = [sp_input.indices for sp_input in sp_inputs]
   vals = [sp_input.values for sp_input in sp_inputs]
   shapes = [sp_input.shape for sp_input in sp_inputs]
+
+  if expand_nonconcat_dim:
+    max_shape = math_ops.reduce_max(array_ops.concat(0, [array_ops.reshape(
+        shape, [1, -1]) for shape in shapes]), 0)
+    shapes = [array_ops.concat(0, [max_shape[:concat_dim],
+                                   shape[concat_dim:concat_dim + 1],
+                                   max_shape[concat_dim + 1:]])
+              for shape in shapes]
 
   output_ind, output_val, output_shape = (
       gen_sparse_ops._sparse_concat(inds,
@@ -224,6 +277,31 @@ def _SparseAddShape(op):  # pylint: disable=invalid-name
       tensor_shape.unknown_shape(1),
       input_shape_shape
   ]
+
+
+def sparse_dense_cwise_add(sp_t, dense_t):
+  """Adds up a SparseTensor and a dense Tensor, using these special rules:
+
+  (1) Broadcasts the dense side to have the same shape as the sparse side, if
+      eligible;
+  (2) Then, only the dense values pointed to by the indices of the SparseTensor
+      participate in the cwise addition.
+
+  By the rules, the result is a logical SparseTensor with exactly the same
+  indices and shape, but possibly with different non-zero values.  The output of
+  this Op is the resultant non-zero values.
+
+  Args:
+    sp_t: the SparseTensor operand.
+    dense_t: the dense Tensor operand; must have the same dtype and a
+      broadcast-compatible shape as `sp_t`.
+
+  Returns:
+    output: the SparseTensor output.
+  """
+  result = gen_sparse_ops.sparse_dense_cwise_add(sp_t.indices, sp_t.values,
+                                                 sp_t.shape, dense_t)
+  return ops.SparseTensor(sp_t.indices, result, sp_t.shape)
 
 
 @ops.RegisterShape("SparseTensorDenseAdd")
@@ -473,7 +551,8 @@ def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
   with length 1.
 
   If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
-  with a single element is returned.
+  with a single element is returned.  Additionally, the axes can be negative,
+  similar to the indexing rules in Python.
 
   For example:
 
@@ -483,7 +562,7 @@ def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
   # where ? is implictly-zero.
   tf.sparse_reduce_sum(x) ==> 3
   tf.sparse_reduce_sum(x, 0) ==> [1, 1, 1]
-  tf.sparse_reduce_sum(x, 1) ==> [2, 1]
+  tf.sparse_reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
   tf.sparse_reduce_sum(x, 1, keep_dims=True) ==> [[2], [1]]
   tf.sparse_reduce_sum(x, [0, 1]) ==> 3
   ```
@@ -763,6 +842,91 @@ def sparse_retain(sp_input, to_retain):
   new_values = array_ops.gather(sp_input.values, where_true)
   return ops.SparseTensor(new_indices, new_values,
                           array_ops.identity(sp_input.shape))
+
+
+def sparse_reset_shape(sp_input, new_shape=None):
+  """Resets the shape of a `SparseTensor` with indices and values unchanged.
+
+  If `new_shape` is None, returns a copy of `sp_input` with its shape reset
+  to the tight bounding box of `sp_input`.
+
+  If `new_shape` is provided, then it must be larger or equal in all dimensions
+  compared to the shape of `sp_input`. When this condition is met, the returned
+  SparseTensor will have its shape reset to `new_shape` and its indices and
+  values unchanged from that of `sp_input.`
+
+  For example:
+
+    Consider a `sp_input` with shape [2, 3, 5]:
+
+      [0, 0, 1]: a
+      [0, 1, 0]: b
+      [0, 2, 2]: c
+      [1, 0, 3]: d
+
+    - It is an error to set `new_shape` as [3, 7] since this represents a
+      rank-2 tensor while `sp_input` is rank-3. This is either a ValueError
+      during graph construction (if both shapes are known) or an OpError during
+      run time.
+
+    - Setting `new_shape` as [2, 3, 6] will be fine as this shape is larger or
+      eqaul in every dimension compared to the original shape [2, 3, 5].
+
+    - On the other hand, setting new_shape as [2, 3, 4] is also an error: The
+      third dimension is smaller than the original shape [2, 3, 5] (and an
+      `InvalidArgumentError` will be raised).
+
+    - If `new_shape` is None, the returned SparseTensor will have a shape
+      [2, 3, 4], which is the tight bounding box of `sp_input`.
+
+  Args:
+    sp_input: The input `SparseTensor`.
+    new_shape: None or a vector representing the new shape for the returned
+      `SpraseTensor`.
+
+  Returns:
+    A `SparseTensor` indices and values unchanged from `input_sp`. Its shape is
+      `new_shape` if that is set. Otherwise it is  the tight bounding box of
+       `input_sp`
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+    ValueError: If `new_shape` represents a tensor with a different rank from
+      that of `sp_input` (if shapes are known when graph is constructed).
+    OpError:
+      - If `new_shape` has dimension sizes that are too small.
+      - If shapes are not known during graph construction time, and during run
+        time it is found out that the ranks do not match.
+  """
+  if not isinstance(sp_input, ops.SparseTensor):
+    raise TypeError("Input must be a SparseTensor")
+
+  in_indices = array_ops.identity(sp_input.indices)
+  in_values = array_ops.identity(sp_input.values)
+  in_shape = array_ops.identity(sp_input.shape)
+
+  if new_shape is None:
+    dim_low_bound = math_ops.reduce_max(in_indices, 0)
+    output_shape_tensor = math_ops.add(dim_low_bound,
+                                       array_ops.ones_like(in_shape))
+  else:
+    output_shape_tensor = ops.convert_to_tensor(new_shape)
+    output_shape_tensor.get_shape().assert_has_rank(1)
+    output_shape_tensor = math_ops.cast(output_shape_tensor, dtypes.int64)
+    # For cases when shape is known during graph construction, this catches the
+    # error before the ops.SparseTensor catches it.
+    output_shape_tensor.get_shape()[0].merge_with(in_shape.get_shape()[0])
+
+    # For cases where shape is not known during graph construction.
+    output_shape_tensor = control_flow_ops.with_dependencies(
+        [check_ops.assert_equal(array_ops.shape(in_shape),
+                                array_ops.shape(output_shape_tensor))],
+        output_shape_tensor)
+    output_shape_tensor = control_flow_ops.with_dependencies(
+        [check_ops.assert_less_equal(in_shape, output_shape_tensor)],
+        output_shape_tensor)
+
+  return ops.SparseTensor(in_indices, in_values, output_shape_tensor)
 
 
 def sparse_fill_empty_rows(sp_input, default_value, name=None):
@@ -1189,3 +1353,67 @@ def _SparseTensorDenseMatMulShape(op):  # pylint: disable=invalid-name
   b_shape = op.inputs[3].get_shape().with_rank(2)
   output_shape_right = b_shape[0] if adjoint_b else b_shape[1]
   return [tensor_shape.matrix(None, output_shape_right)]
+
+
+def sparse_softmax(sp_input, name=None):
+  """Applies softmax to a batched N-D `SparseTensor`.
+
+  The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
+  (where `N >= 2`), and with indices sorted in the canonical lexicographic
+  order.
+
+  This op is equivalent to applying the normal `tf.nn.softmax()` to each
+  innermost logical submatrix with shape `[B, C]`, but with the catch that *the
+  implicitly zero elements do not participate*.  Specifically, the algorithm is
+  equivalent to:
+
+    (1) Applies `tf.nn.softmax()` to a densified view of each innermost
+        submatrix with shape `[B, C]`, along the size-C dimension;
+    (2) Masks out the original implicitly-zero locations;
+    (3) Renormalizes the remaining elements.
+
+  Hence, the `SparseTensor` result has exactly the same non-zero indices and
+  shape.
+
+  Example:
+
+  ```python
+  # First batch:
+  # [?   e.]
+  # [1.  ? ]
+  # Second batch:
+  # [e   ? ]
+  # [e   e ]
+  shape = [2, 2, 2]  # 3-D SparseTensor
+  values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
+  indices = np.vstack(np.where(values)).astype(np.int64).T
+
+  result = tf.sparse_softmax(tf.SparseTensor(indices, values, shape))
+  # ...returning a 3-D SparseTensor, equivalent to:
+  # [?   1.]     [1    ?]
+  # [1.  ? ] and [.5  .5]
+  # where ? means implicitly zero.
+  ```
+
+  Args:
+    sp_input: N-D `SparseTensor`, where `N >= 2`.
+    name: optional name of the operation.
+  Returns:
+    output: N-D `SparseTensor` representing the results.
+  """
+  with ops.op_scope([sp_input.indices, sp_input.values], name,
+                    "SparseSoftmax") as name:
+    out_vals = gen_sparse_ops.sparse_softmax(sp_input.indices,
+                                             sp_input.values,
+                                             sp_input.shape)
+    return ops.SparseTensor(sp_input.indices, out_vals, sp_input.shape)
+
+
+@ops.RegisterShape("SparseSoftmax")
+def _SparseSoftmaxShape(op):  # pylint: disable=invalid-name
+  """Shape function for SparseSoftmax op."""
+  unused_indices_shape = op.inputs[0].get_shape().with_rank(2)
+  values_shape = op.inputs[1].get_shape().with_rank(1)
+  unused_shape_shape = op.inputs[2].get_shape().with_rank(1)
+  nnz = values_shape[0]
+  return [tensor_shape.vector(nnz)]

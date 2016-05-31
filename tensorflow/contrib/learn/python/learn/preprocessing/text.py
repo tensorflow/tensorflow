@@ -1,34 +1,39 @@
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Implements a number of text preprocessing utilities."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import re
-import six
-
-try:
-  import cPickle as pickle
-except ImportError:
-  import pickle
-
 import numpy as np
+import six
 
 from tensorflow.python.platform import gfile
 
 from .categorical_vocabulary import CategoricalVocabulary
+
+try:
+  # pylint: disable=g-import-not-at-top
+  import cPickle as pickle
+except ImportError:
+  # pylint: disable=g-import-not-at-top
+  import pickle
 
 TOKENIZER_RE = re.compile(r"[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+",
                           re.UNICODE)
@@ -69,7 +74,7 @@ class ByteProcessor(object):
       X: iterator or matrix of integers.
         Document representation in bytes.
 
-    Returns:
+    Yields:
       Iterators of utf-8 strings.
     """
     for data in X:
@@ -86,7 +91,8 @@ class ByteProcessor(object):
       X: iterator or list of input documents.
         Documents can be bytes or unicode strings, which will be encoded as
         utf-8 to map to bytes. Note, in Python2 str and bytes is the same type.
-    Returns:
+
+    Yields:
       iterator of byte ids.
     """
     if six.PY3:
@@ -173,7 +179,7 @@ class VocabularyProcessor(object):
     Args:
       raw_documents: An iterable which yield either str or unicode.
 
-    Returns:
+    Yields:
       X: iterable, [n_samples, max_document_length]
           Word-id matrix.
     """

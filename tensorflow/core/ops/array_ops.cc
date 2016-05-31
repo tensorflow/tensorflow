@@ -367,7 +367,7 @@ REGISTER_OP("Reverse")
     .Input("tensor: T")
     .Input("dims: bool")
     .Output("output: T")
-    .Attr("T: {uint8, int8, int32, bool, float, double}")
+    .Attr("T: {uint8, int8, int32, bool, half, float, double}")
     .Doc(R"Doc(
 Reverses specific dimensions of a tensor.
 
@@ -1733,13 +1733,14 @@ dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 )doc");
 
 REGISTER_OP("OneHot")
-    .Input("indices: int64")
+    .Input("indices: TI")
     .Input("depth: int32")
     .Input("on_value: T")
     .Input("off_value: T")
     .Attr("axis: int = -1")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("TI: {int32, int64} = DT_INT64")
     .Doc(R"doc(
 Returns a one-hot tensor.
 

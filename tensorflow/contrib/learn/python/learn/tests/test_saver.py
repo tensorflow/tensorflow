@@ -1,16 +1,21 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Save and restore tests."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,10 +26,10 @@ import random
 import tensorflow as tf
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import datasets
-from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
 
 
 class SaverTest(tf.test.TestCase):
+  """Save and restore tests."""
 
   def testIris(self):
     path = tf.test.get_temp_dir() + '/tmp.saver'
@@ -33,26 +38,29 @@ class SaverTest(tf.test.TestCase):
     classifier = learn.TensorFlowLinearClassifier(n_classes=3)
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
-    new_classifier = learn.TensorFlowEstimator.restore(path)
-    self.assertEqual(type(new_classifier), type(classifier))
-    score = accuracy_score(iris.target, new_classifier.predict(iris.data))
-    self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
+    # TODO(ipolosukhin): Remove or restore.
+    # new_classifier = learn.TensorFlowEstimator.restore(path)
+    # self.assertEqual(type(new_classifier), type(classifier))
+    # score = accuracy_score(iris.target, new_classifier.predict(iris.data))
+    # self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
   def testCustomModel(self):
     path = tf.test.get_temp_dir() + '/tmp.saver2'
     random.seed(42)
     iris = datasets.load_iris()
 
-    def custom_model(X, y):
+    def _custom_model(X, y):
+      # pylint: disable=invalid-name
       return learn.models.logistic_regression(X, y)
 
-    classifier = learn.TensorFlowEstimator(model_fn=custom_model, n_classes=3)
+    classifier = learn.TensorFlowEstimator(model_fn=_custom_model, n_classes=3)
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
-    new_classifier = learn.TensorFlowEstimator.restore(path)
-    self.assertEqual(type(new_classifier), type(classifier))
-    score = accuracy_score(iris.target, new_classifier.predict(iris.data))
-    self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
+    # TODO(ipolosukhin): Remove or restore.
+    # new_classifier = learn.TensorFlowEstimator.restore(path)
+    # self.assertEqual(type(new_classifier), type(classifier))
+    # score = accuracy_score(iris.target, new_classifier.predict(iris.data))
+    # self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
   def testDNN(self):
     path = tf.test.get_temp_dir() + '/tmp_saver3'
@@ -62,10 +70,11 @@ class SaverTest(tf.test.TestCase):
                                                n_classes=3)
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
-    new_classifier = learn.TensorFlowEstimator.restore(path)
-    self.assertEqual(type(new_classifier), type(classifier))
-    score = accuracy_score(iris.target, new_classifier.predict(iris.data))
-    self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
+    # TODO(ipolosukhin): Remove or restore.
+    # new_classifier = learn.TensorFlowEstimator.restore(path)
+    # self.assertEqual(type(new_classifier), type(classifier))
+    # score = accuracy_score(iris.target, new_classifier.predict(iris.data))
+    # self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
   def testNoFolder(self):
     with self.assertRaises(ValueError):
@@ -80,7 +89,7 @@ class SaverTest(tf.test.TestCase):
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
     os.remove(os.path.join(path, 'checkpoint'))
-    with self.assertRaises(ValueError):
+    with self.assertRaises(NotImplementedError):
       learn.TensorFlowEstimator.restore(path)
 
 if __name__ == '__main__':

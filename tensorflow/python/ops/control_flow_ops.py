@@ -1985,29 +1985,64 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     for i, p in enumerate(preds):
       with ops.name_scope("not_%d" % i):
         not_preds.append(math_ops.logical_not(p))
-    and_not_preds = [constant_op.constant(True, name="and_not_true")]
-    for i, notp in enumerate(not_preds[:-1]):
+    and_not_preds = [constant_op.constant(True, name="always_true")]
+    for i, notp in enumerate(not_preds):
       with ops.name_scope("and_not_%d" % i):
         and_not_preds.append(math_ops.logical_and(and_not_preds[-1], notp))
 
     # preds = [p1, p2, p3]
     # fns = [f1, f2, f3]
     # not_preds = [~p1, ~p2, ~p3]
-    # case_preds = [p1 & True,
+    # and_not_preds = [True, ~p1, ~p1 & ~p2, ~p1 & ~p2 & ~p3]
+    # case_preds = [p1,
     #               p2 & ~p1,
-    #               p3 & ~p1 & ~ p2]
+    #               p3 & ~p2 & ~p1,
+    #              ~p3 & ~p2 & ~p1]
+
     case_preds = []
-    for i, (p, and_not_p_prev) in enumerate(zip(preds, and_not_preds)):
+    for i, (p, and_not_p_prev) in enumerate(zip(preds, and_not_preds[:-1])):
       with ops.name_scope("case_%d" % i):
         case_preds.append(math_ops.logical_and(p, and_not_p_prev))
+    with ops.name_scope("case_none_are_true"):
+      case_preds.append(and_not_preds[-1])
 
-    # case_sequence = [cond(p3 & ..., f3, default),
-    #                  cond(p2 & ..., f2, lambda: case_sequence[0]),
-    #                  ...
-    #                  cond(p1 & True, f1, lambda: case_sequence[i-1])]
-    # and prev_case_seq will loop from case_sequence[0] to case_sequence[-1]
+    # Create an empty tensor, or list, with the right type and shape
+    with ops.name_scope("case_create_empty"):
+      dummy_value = default()
+      def _correct_empty(v):
+        if isinstance(v, ops.Operation):
+          return no_op()
+        elif v.dtype == dtypes.string:
+          return array_ops.constant("")
+        else:
+          return array_ops.constant(v.dtype.as_numpy_dtype())
+
+      if isinstance(dummy_value, collections.Sequence):
+        dummy_type = type(dummy_value)
+        empty = lambda: dummy_type(_correct_empty(v) for v in dummy_value)
+      else:
+        empty = lambda: _correct_empty(dummy_value)
+
+    # case_sequence = [
+    #   cond(~p3 & ~p2 & ~p1, default, empty),
+    #   cond(p3 & ~p2 & ~p1, f3, lambda: case_sequence[0]),
+    #   cond(p2 & ~p1, f2, lambda: case_sequence[1]),
+    #   cond(p1, f1, lambda: case_sequence[2])
+    # ]
+    #
+    # And the return value will be case_sequence[-1]
+    def _build_case():
+      all_fns = [fn for fn in fns]
+      all_fns.append(default)
+      prev_case = None
+      for i, (cp, fn) in enumerate(list(zip(case_preds, all_fns))[::-1]):
+        prev_case = cond(
+            cp, fn,
+            empty if i == 0 else lambda: prev_case,
+            name="If_%d" % i)
+      return prev_case
+
     if exclusive:
-      # TODO(ebrevdo): Add Where() for DT_BOOL, replace with Size(Where(preds))
       preds_c = array_ops.pack(preds, name="preds_c")
       num_true_conditions = math_ops.reduce_sum(
           math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
@@ -2022,21 +2057,11 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       with ops.control_dependencies([
           logging_ops.Assert(condition=at_most_one_true_condition,
                              data=error_msg, summarize=len(preds))]):
-        prev_case_seq = None
-        for i, (cp, fn) in enumerate(list(zip(case_preds, fns))[::-1]):
-          prev_case_seq = cond(
-              cp, fn,
-              default if i == 0 else lambda: prev_case_seq,
-              name="If_%d" % i)
+        case_seq = _build_case()
     else:
-      prev_case_seq = None
-      for i, (cp, fn) in enumerate(list(zip(case_preds, fns))[::-1]):
-        prev_case_seq = cond(
-            cp, fn,
-            default if i == 0 else lambda: prev_case_seq,
-            name="If_%d" % i)
+      case_seq = _build_case()
 
-    return prev_case_seq
+    return case_seq
 
 
 ops.RegisterShape("Enter")(common_shapes.unchanged_shape)

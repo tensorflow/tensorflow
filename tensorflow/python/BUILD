@@ -15,6 +15,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
 
 py_library(
     name = "python",
@@ -133,7 +134,7 @@ cc_binary(
     }),
     linkshared = 1,
     deps = [
-        "//google/protobuf",
+        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
     ],
 )
@@ -884,7 +885,7 @@ py_library(
     name = "util",
     srcs = glob(["util/**/*.py"]),
     srcs_version = "PY2AND3",
-    deps = ["//google/protobuf:protobuf_python"],
+    deps = ["@protobuf//:protobuf_python"],
 )
 
 tf_proto_library(
@@ -983,6 +984,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_writer.i",
         "platform/base.i",
         "platform/numpy.i",
+        "training/saver_io.i",
         "training/server_lib.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
@@ -994,12 +996,12 @@ tf_py_wrap_cc(
         ":py_record_writer_lib",
         ":python_op_gen",
         ":tf_session_helper",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime:server_lib",
         "//util/python:python_headers",
-    ],
+    ] + tf_additional_lib_deps(),
 )
 
 py_library(
@@ -1144,7 +1146,6 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/matrix_solve_op_test.py",
     "kernel_tests/matrix_triangular_solve_op_test.py",
     "kernel_tests/matrix_solve_ls_op_test.py",
-    "kernel_tests/multinomial_op_test.py",
     "kernel_tests/mutex_ops_test.py",
     "kernel_tests/parsing_ops_test.py",
     "kernel_tests/partitioned_variables_test.py",

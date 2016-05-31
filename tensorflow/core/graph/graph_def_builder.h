@@ -50,10 +50,10 @@ namespace tensorflow {
 // You call it like:
 //   GraphDefBuilder b;
 //   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-//   Node* a = Const(7, b.opts());
+//   Node* na = Const(7, b.opts());
 //   // Note: WithName() returns a copy, opts is unchanged.
-//   Node* b = Const(5, b.opts().WithName("control-input"));
-//   Node* c = Identity(a, b.opts().WithControlInput(b));
+//   Node* nb = Const(5, b.opts().WithName("control-input"));
+//   Node* nc = Identity(na, b.opts().WithControlInput(nb));
 //   GraphDef graph_def;
 //   Status status = b.ToGraphDef(&graph_def);
 //   if (!status.ok()) { /* Handle error */ }

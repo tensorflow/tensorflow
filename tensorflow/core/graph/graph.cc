@@ -49,6 +49,8 @@ Node::Node()
     : id_(-1),
       cost_id_(-1),
       class_(NC_UNINITIALIZED),
+      is_host_send_(false),
+      is_host_recv_(false),
       props_(nullptr),
       assigned_device_name_() {}
 
@@ -102,6 +104,12 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
     class_ = NC_OTHER;  // Catch all
   }
 #undef SET_CLASS
+
+  if (ts == "_HostSend") {
+    is_host_send_ = true;
+  } else if (ts == "_HostRecv") {
+    is_host_recv_ = true;
+  }
 }
 
 void Node::Clear() {

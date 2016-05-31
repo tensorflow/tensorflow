@@ -146,8 +146,10 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_rela
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_squared_error
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_percentage_less
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_precision
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_precision_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall_at_k
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_root_mean_squared_error
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_recall_at_k

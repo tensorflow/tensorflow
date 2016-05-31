@@ -161,9 +161,14 @@ class PadOpTest(tf.test.TestCase):
                     [[1, 0], [2, 3], [0, 2]])
 
   def testFloatTypes(self):
-    for t in [np.float32, np.float64, np.complex64]:
+    for t in [np.float32, np.float64]:
       self._testAll(np.random.rand(2, 5).astype(t),
                     [[1, 0], [2, 0]])
+
+  def testComplexTypes(self):
+    for t in [np.complex64, np.complex128]:
+      x = np.random.rand(2, 5).astype(t)
+      self._testAll(x + 1j *x, [[1, 0], [2, 0]])
 
   def testShapeFunctionEdgeCases(self):
     # Unknown paddings shape.

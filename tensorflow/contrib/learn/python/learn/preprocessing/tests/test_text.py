@@ -1,18 +1,22 @@
+# pylint: disable=g-bad-file-header
 # encoding: utf-8
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+"""Text processor tests."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,15 +24,16 @@ from __future__ import unicode_literals
 
 import tensorflow as tf
 
-from tensorflow.contrib.learn.python.learn.preprocessing import text
 from tensorflow.contrib.learn.python.learn.preprocessing import CategoricalVocabulary
+from tensorflow.contrib.learn.python.learn.preprocessing import text
 
 
 class TextTest(tf.test.TestCase):
+  """Text processor tests."""
 
   def testTokenizer(self):
-    words = text.tokenizer(["a b c", "a\nb\nc", "a, b - c", "фыв выф", "你好 怎么样"
-                           ])
+    words = text.tokenizer(
+        ["a b c", "a\nb\nc", "a, b - c", "фыв выф", "你好 怎么样"])
     self.assertEqual(
         list(words), [["a", "b", "c"], ["a", "b", "c"], ["a", "b", "-", "c"],
                       ["фыв", "выф"], ["你好", "怎么样"]])
