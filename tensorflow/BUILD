@@ -85,6 +85,7 @@ filegroup(
         "//tensorflow/contrib/quantization/kernels:all_files",
         "//tensorflow/contrib/quantization/tools:all_files",
         "//tensorflow/contrib/skflow:all_files",
+        "//tensorflow/contrib/slim:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/util:all_files",
