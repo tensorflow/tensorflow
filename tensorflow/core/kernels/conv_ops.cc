@@ -248,7 +248,9 @@ class Conv2DOp : public BinaryOp<T> {
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     Conv2DOp<CPUDevice, float>);
-
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    Conv2DOp<CPUDevice, Eigen::half>);
 #if GOOGLE_CUDA
 
 int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,

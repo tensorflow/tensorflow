@@ -625,18 +625,32 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("Conv2DBackpropInput").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     Conv2DCustomBackpropInputOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        Conv2DCustomBackpropInputOp<CPUDevice, Eigen::half>);
 
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .Device(DEVICE_CPU)
                             .Label("custom")
                             .TypeConstraint<float>("T"),
                         Conv2DCustomBackpropInputOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
+                            .Device(DEVICE_CPU)
+                            .Label("custom")
+                            .TypeConstraint<Eigen::half>("T"),
+                        Conv2DCustomBackpropInputOp<CPUDevice, Eigen::half>);
 
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .Device(DEVICE_CPU)
                             .Label("eigen_tensor")
                             .TypeConstraint<float>("T"),
                         Conv2DFastBackpropInputOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
+                            .Device(DEVICE_CPU)
+                            .Label("eigen_tensor")
+                            .TypeConstraint<Eigen::half>("T"),
+                        Conv2DFastBackpropInputOp<CPUDevice, Eigen::half>);
 
 template <typename Device, class T>
 class Conv2DFastBackpropFilterOp : public OpKernel {
@@ -856,18 +870,32 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("Conv2DBackpropFilter").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     Conv2DCustomBackpropFilterOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        Conv2DCustomBackpropFilterOp<CPUDevice, Eigen::half>);
 
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .Device(DEVICE_CPU)
                             .Label("custom")
                             .TypeConstraint<float>("T"),
                         Conv2DCustomBackpropFilterOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
+                            .Device(DEVICE_CPU)
+                            .Label("custom")
+                            .TypeConstraint<Eigen::half>("T"),
+                        Conv2DCustomBackpropFilterOp<CPUDevice, Eigen::half>);
 
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .Device(DEVICE_CPU)
                             .Label("eigen_tensor")
                             .TypeConstraint<float>("T"),
                         Conv2DFastBackpropFilterOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
+                            .Device(DEVICE_CPU)
+                            .Label("eigen_tensor")
+                            .TypeConstraint<Eigen::half>("T"),
+                        Conv2DFastBackpropFilterOp<CPUDevice, Eigen::half>);
 
 // GPU definitions of both ops.
 #if GOOGLE_CUDA
