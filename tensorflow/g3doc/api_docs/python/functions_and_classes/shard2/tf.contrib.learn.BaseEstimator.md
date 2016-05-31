@@ -70,7 +70,7 @@ Trains a model given training data X and y.
 
 ##### Returns:
 
-  Returns final loss.
+  Final loss.
 
 
 - - -
@@ -156,7 +156,7 @@ to converge, and you want to split up training into subparts.
 
 ##### Returns:
 
-  Returns final loss.
+  Final loss.
 
 
 - - -
@@ -222,6 +222,6 @@ Trains a model given input builder function.
 
 ##### Returns:
 
-  Returns self.
+  Final loss.
 
 

@@ -314,7 +314,7 @@ Trains a model given input builder function.
 
 ##### Returns:
 
-  Returns self.
+  Final loss.
 
 
 - - -
