@@ -237,7 +237,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
   def _logits_to_predictions(self, logits, proba=False):
     if self._n_classes < 2:
-      return array_ops.reshape(logits, [-1])
+      return logits
 
     if self._n_classes == 2:
       logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
@@ -255,7 +255,16 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     return features
 
   def _num_label_columns(self):
-    return 1 if self._n_classes <= 2 else self._n_classes
+    # TODO(ispir): Add target column support.
+    if self._n_classes <= 1:
+      assert self._targets_info is not None
+      if len(self._targets_info.shape) == 1:
+        return 1
+      return int(self._targets_info.shape[1])
+    elif self._n_classes == 1:
+      return 1
+    else:
+      return self._n_classes
 
   def _get_linear_feature_columns(self):
     return sorted(

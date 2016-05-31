@@ -423,7 +423,10 @@ class StreamingDataFeeder(DataFeeder):
     if n_classes > 0:
       self.output_dtype = np.float32
     elif y is not None:
-      self.output_dtype = np.dtype(type(y_first_el))
+      if isinstance(y_first_el, list) or isinstance(y_first_el, np.ndarray):
+        self.output_dtype = np.dtype(type(y_first_el[0]))
+      else:
+        self.output_dtype = np.dtype(type(y_first_el))
 
   def get_feed_params(self):
     """Function returns a dict with data feed params while training.

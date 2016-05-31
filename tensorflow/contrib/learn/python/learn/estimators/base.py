@@ -416,7 +416,7 @@ class DeprecatedMixin(object):
         this_class, alternative_class)
     # Handle deprecated arguments.
     self.__deprecated_n_classes = kwargs.get('n_classes', 0)
-    if self.__deprecated_n_classes < 1:
+    if self.__deprecated_n_classes < 1 and 'n_classes' in kwargs:
       kwargs.pop('n_classes')
     self.batch_size = kwargs.pop('batch_size', 32)
     self.steps = kwargs.pop('steps', 200)
@@ -425,7 +425,8 @@ class DeprecatedMixin(object):
       self.optimizer = kwargs.pop('optimizer', 'Adagrad')
     if 'class_weight' in kwargs:
       raise ValueError('Sorry we switched interface for providing class weights. '
-                       'Please use weight column instead.')
+                       'Please use weight column instead which provides more '
+                       'granular control (per example).')
     kwargs.pop('clip_gradients', 5.0)
     if 'continue_training' in kwargs:
       logging.info('continue_training argument in %s is now ignored.' %
@@ -461,4 +462,12 @@ class DeprecatedMixin(object):
     return self.predict(x=x, input_fn=input_fn, batch_size=batch_size,
                         outputs=outputs, axis=None)
 
+  def save(self, path):
+    """Saves checkpoints and graph to given path.
+
+    Args:
+      path: Folder to save model to.
+    """
+    # Copy model dir into new path.
+    _copy_dir(self.model_dir, path)
 
