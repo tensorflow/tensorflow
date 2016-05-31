@@ -46,6 +46,7 @@ include(eigen)
 include(jsoncpp)
 include(boringssl)
 include(farmhash)
+include(highwayhash)
 
 # Let's get to work!
 include(tf_core_framework.cmake)
