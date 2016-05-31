@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import tempfile
 
 import numpy as np
 import tensorflow as tf
@@ -48,7 +49,7 @@ class BaseTest(tf.test.TestCase):
   def testIris(self):
     iris = datasets.load_iris()
     classifier = learn.TensorFlowLinearClassifier(n_classes=3)
-    classifier.fit(iris.data, [float(x) for x in iris.target])
+    classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
 
@@ -78,9 +79,11 @@ class BaseTest(tf.test.TestCase):
   def testIrisSummaries(self):
     iris = datasets.load_iris()
     classifier = learn.TensorFlowLinearClassifier(n_classes=3)
-    classifier.fit(iris.data, iris.target, logdir="/tmp/learn_tests/")
+    output_dir = tempfile.mkdtemp() + "learn_tests/"
+    classifier.fit(iris.data, iris.target, logdir=output_dir)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+    # TODO(ipolosukhin): Check that summaries are correclty written.
 
   def testIrisContinueTraining(self):
     iris = datasets.load_iris()

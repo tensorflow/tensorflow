@@ -254,9 +254,19 @@ class BaseEstimator(sklearn.BaseEstimator):
 
     Returns:
       Numpy array of predicted classes or regression values.
+
+    Raises:
+      ValueError: If x and input_fn are both provided or both `None`.
     """
-    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size,
-      outputs=outputs)
+    if x is None and input_fn is None:
+      raise ValueError('Either x or input_fn must be provided.')
+    if x is not None and input_fn is not None:
+      raise VaueError('Either x or input_fn must be None.')
+    feed_fn = None
+    if x is not None:
+      batch_size = -1 if batch_size is None else batch_size
+      input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
+    return self._infer_model(input_fn=input_fn, feed_fn=feed_fn, outputs=outputs)
 
   @property
   def model_dir(self):
@@ -491,13 +501,7 @@ class BaseEstimator(sklearn.BaseEstimator):
       return result[0]
     return result
 
-  def _infer_model(self, x=None, input_fn=None, feed_fn=None, batch_size=None,
-                   outputs=None):
-    # Converts inputs into tf.DataFrame / tf.Series.
-    batch_size = -1 if batch_size is None else batch_size
-    if x is not None:
-      input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
-
+  def _infer_model(self, input_fn, feed_fn=None, outputs=None):
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:

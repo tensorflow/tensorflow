@@ -27,6 +27,8 @@ import types
 import six
 from six import string_types
 
+import numpy as np
+
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
@@ -37,6 +39,7 @@ from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_dat
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _write_with_backup(filename, content):
@@ -401,3 +404,54 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
   def fit_transform(self, X, y=None, monitor=None, logdir=None):
     """Fit transformer and transform X using trained transformer."""
     return self.fit(X, y, monitor=None, logdir=None).transform(X)
+
+
+class DeprecatedMixin(object):
+
+  def __init__(self, *args, **kwargs):
+    this_class = type(self).__name__
+    alternative_class = this_class[len('TensorFlow'):]
+    logging.warn(
+        "%s class is deprecated. Please consider using %s as an alternative.",
+        this_class, alternative_class)
+    # Handle deprecated arguments.
+    self.__deprecated_n_classes = kwargs.get('n_classes', 0)
+    self.batch_size = kwargs.pop('batch_size', 32)
+    self.steps = kwargs.pop('steps', 200)
+    if 'optimizer' in kwargs or 'learning_rate' in kwargs:
+      self.learning_rate = kwargs.pop('learning_rate', 0.1)
+      self.optimizer = kwargs.pop('optimizer', 'Adagrad')
+    class_weight = kwargs.pop('class_weight', None)
+    _ = kwargs.pop('clip_gradients', 5.0)
+    _ = kwargs.pop('continue_training', False)
+    super(DeprecatedMixin, self).__init__(*args, **kwargs)
+
+  def fit(self, x, y, steps=None, batch_size=None, monitors=None, logdir=None):
+    if logdir is not None:
+      self._model_dir = logdir
+    return super(DeprecatedMixin, self).fit(x=x, y=y, steps=steps or self.steps,
+      batch_size=batch_size or self.batch_size, monitors=monitors)
+
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              axis=1):
+    if x is not None:
+      predict_data_feeder = setup_train_data_feeder(
+          x, None, n_classes=None,
+          batch_size=batch_size or self.batch_size,
+          shuffle=False, epochs=1)
+      result = super(DeprecatedMixin, self)._infer_model(
+        input_fn=predict_data_feeder.input_builder,
+        feed_fn=predict_data_feeder.get_feed_dict_fn(),
+        outputs=outputs)
+    else:
+      result = super(DeprecatedMixin, self)._infer_model(
+      input_fn=input_fn, outputs=outputs)
+    if self.__deprecated_n_classes > 1 and axis is not None:
+      return np.argmax(result, axis)
+    return result
+
+  def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None):
+    return self.predict(x=x, input_fn=input_fn, batch_size=batch_size,
+                        outputs=outputs, axis=None)
+
+
