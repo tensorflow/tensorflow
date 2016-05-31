@@ -75,6 +75,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If `None`,
       will use `tf.nn.relu`.
+    dnn_dropout: When not None, the probability we will drop out a given coordinate.
     config: RunConfig object to configure the runtime settings.
 
     Raises:
@@ -92,6 +93,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
                dnn_optimizer=None,
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
+               dnn_dropout=None,
                config=None):
     super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir,
                                                           config=config)
@@ -105,6 +107,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     self._dnn_activation_fn = dnn_activation_fn
     if self._dnn_activation_fn is None:
       self._dnn_activation_fn = nn.relu
+    self._dnn_dropout = dnn_dropout
     self._dnn_weight_collection = "DNNLinearCombined_dnn"
     self._linear_weight_collection = "DNNLinearCombined_linear"
 
@@ -157,12 +160,26 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     """Returns bias of the linear part."""
     return self.get_variable_value('linear/bias_weight')
 
+  @property
+  def dnn_weights_(self):
+    """Returns weights of deep neural network part."""
+    return [self.get_variable_value('hiddenlayer_%d/weights' % i)
+            for i, _ in enumerate(self._dnn_hidden_units)] + [
+            self.get_variable_value('dnn_logit/weights')]
+
+  @property
+  def dnn_bias_(self):
+    """Returns bias of deep neural network part."""
+    return [self.get_variable_value('hiddenlayer_%d/bias' % i)
+            for i, _ in enumerate(self._dnn_hidden_units)] + [
+            self.get_variable_value('dnn_logit/bias')]
+
   def _get_train_ops(self, features, targets):
     """See base class."""
     global_step = variables.get_global_step()
     assert global_step
     loss = self._loss(
-        self._logits(features), targets, self._get_weight_tensor(features))
+        self._logits(features, is_training=True), targets, self._get_weight_tensor(features))
     logging_ops.scalar_summary("loss", loss)
 
     linear_vars = self._get_linear_vars()
@@ -249,7 +266,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     return sorted(set(
         self._dnn_feature_columns)) if self._dnn_feature_columns else None
 
-  def _dnn_logits(self, features):
+  def _dnn_logits(self, features, is_training=False):
     net = layers.input_from_feature_columns(
         features,
         self._get_dnn_feature_columns(),
@@ -262,6 +279,11 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
           weight_collections=[self._dnn_weight_collection],
           bias_collections=[self._dnn_weight_collection],
           name="hiddenlayer_%d" % layer_id)
+      if self._dnn_dropout is not None:
+        net = layers.dropout(
+            net,
+            keep_prob=(1.0 - self._dnn_dropout),
+            is_training=is_training)
       self._add_hidden_layer_summary(net, "hiddenlayer_%d" % layer_id)
     logit = layers.legacy_fully_connected(
         net,
@@ -292,7 +314,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       return features
     return {"": features}
 
-  def _logits(self, features):
+  def _logits(self, features, is_training=False):
     if not (self._get_linear_feature_columns() or
             self._get_dnn_feature_columns()):
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
@@ -300,9 +322,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
     features = self._get_feature_dict(features)
     if self._get_linear_feature_columns() and self._get_dnn_feature_columns():
-      return self._linear_logits(features) + self._dnn_logits(features)
+      return self._linear_logits(features) + self._dnn_logits(
+          features, is_training=is_training)
     elif self._get_dnn_feature_columns():
-      return self._dnn_logits(features)
+      return self._dnn_logits(features, is_training=is_training)
     else:
       return self._linear_logits(features)
 
@@ -441,6 +464,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If `None`,
       will use `tf.nn.relu`.
+    dnn_dropout: When not None, the probability we will drop out a given coordinate.
     config: RunConfig object to configure the runtime settings.
 
     Raises:
@@ -459,6 +483,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
                dnn_optimizer=None,
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
+               dnn_dropout=None,
                config=None):
     if n_classes < 2:
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
@@ -474,6 +499,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,
         dnn_activation_fn=dnn_activation_fn,
+        dnn_dropout=dnn_dropout,
         config=config)
 
 
@@ -543,6 +569,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If None, will
       use `tf.nn.relu`.
+    dnn_dropout: When not None, the probability we will drop out a given coordinate.
     config: RunConfig object to configure the runtime settings.
 
     Raises:
@@ -559,6 +586,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                dnn_optimizer=None,
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
+               dnn_dropout=None,
                config=None):
     super(DNNLinearCombinedRegressor, self).__init__(
         model_dir=model_dir,
@@ -570,4 +598,5 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,
         dnn_activation_fn=dnn_activation_fn,
+        dnn_dropout=dnn_dropout,
         config=config)

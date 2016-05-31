@@ -25,6 +25,7 @@ from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowEstimator
+from tensorflow.contrib.learn.python.learn.estimators.base import DeprecatedMixin
 from tensorflow.python.ops import nn
 
 
@@ -86,6 +87,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       will use an Adagrad optimizer.
     activation_fn: Activation function applied to each layer. If `None`, will
       use `tf.nn.relu`.
+    dropout: When not None, the probability we will drop out a given coordinate.
   """
 
   def __init__(self,
@@ -95,19 +97,29 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                n_classes=2,
                weight_column_name=None,
                optimizer=None,
-               activation_fn=nn.relu):
+               activation_fn=nn.relu,
+               dropout=None):
     super(DNNClassifier, self).__init__(n_classes=n_classes,
                                         weight_column_name=weight_column_name,
                                         dnn_feature_columns=feature_columns,
                                         dnn_optimizer=optimizer,
                                         dnn_hidden_units=hidden_units,
-                                        dnn_activation_fn=activation_fn)
+                                        dnn_activation_fn=activation_fn,
+                                        dnn_dropout=dropout)
 
   def _get_train_ops(self, features, targets):
     """See base class."""
     if self._dnn_feature_columns is None:
       self._dnn_feature_columns = layers.infer_real_valued_columns(features)
     return super(DNNClassifier, self)._get_train_ops(features, targets)
+
+  @property
+  def weights_(self):
+   return self.dnn_weights_
+  
+  @property
+  def bias_(self):
+    return self.dnn_bias_
 
 
 class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
@@ -167,7 +179,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       will use an Adagrad optimizer.
     activation_fn: Activation function applied to each layer. If `None`, will
       use `tf.nn.relu`.
-  """
+    dropout: When not None, the probability we will drop out a given coordinate.
+ """
 
   def __init__(self,
                hidden_units,
@@ -175,12 +188,14 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                model_dir=None,
                weight_column_name=None,
                optimizer=None,
-               activation_fn=nn.relu):
+               activation_fn=nn.relu,
+               dropout=None):
     super(DNNRegressor, self).__init__(weight_column_name=weight_column_name,
                                        dnn_feature_columns=feature_columns,
                                        dnn_optimizer=optimizer,
                                        dnn_hidden_units=hidden_units,
-                                       dnn_activation_fn=activation_fn)
+                                       dnn_activation_fn=activation_fn,
+                                       dnn_dropout=dropout)
 
   def _get_train_ops(self, features, targets):
     """See base class."""
@@ -188,7 +203,15 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       self._dnn_feature_columns = layers.infer_real_valued_columns(features)
     return super(DNNRegressor, self)._get_train_ops(features, targets)
 
+  @property
+  def weights_(self):
+   return self.dnn_weights_
+  
+  @property
+  def bias_(self):
+    return self.dnn_bias_
 
+'''
 # TODO(ipolosukhin): Deprecate this class in favor of DNNClassifier.
 class TensorFlowDNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
   """TensorFlow DNN Classifier model.
@@ -336,3 +359,14 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
     return [self.get_variable_value(b.name)
             for b in self._graph.get_collection('dnn_biases')
            ] + [self.get_variable_value('linear_regression/bias')]
+'''
+
+class TensorFlowDNNClassifier(DeprecatedMixin, DNNClassifier,
+                             _sklearn.ClassifierMixin):
+  pass
+
+
+class TensorFlowDNNRegressor(DeprecatedMixin, DNNRegressor,
+                             _sklearn.RegressorMixin):
+  pass
+

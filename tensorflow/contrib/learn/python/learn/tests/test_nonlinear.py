@@ -98,6 +98,7 @@ class NonLinearTest(tf.test.TestCase):
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.3, "Failed with score = {0}".format(score))
+    # if the quality is higher - dropout is not working.
     self.assertLess(score, 0.4, "Failed with score = {0}".format(score))
 
   def testRNN(self):

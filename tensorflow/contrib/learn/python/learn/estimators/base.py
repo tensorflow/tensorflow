@@ -416,6 +416,8 @@ class DeprecatedMixin(object):
         this_class, alternative_class)
     # Handle deprecated arguments.
     self.__deprecated_n_classes = kwargs.get('n_classes', 0)
+    if self.__deprecated_n_classes < 1:
+      kwargs.pop('n_classes')
     self.batch_size = kwargs.pop('batch_size', 32)
     self.steps = kwargs.pop('steps', 200)
     if 'optimizer' in kwargs or 'learning_rate' in kwargs:
@@ -424,8 +426,11 @@ class DeprecatedMixin(object):
     if 'class_weight' in kwargs:
       raise ValueError('Sorry we switched interface for providing class weights. '
                        'Please use weight column instead.')
-    _ = kwargs.pop('clip_gradients', 5.0)
-    _ = kwargs.pop('continue_training', False)
+    kwargs.pop('clip_gradients', 5.0)
+    if 'continue_training' in kwargs:
+      logging.info('continue_training argument in %s is now ignored.' %
+                   this_class)
+      kwargs.pop('continue_training', False)
     super(DeprecatedMixin, self).__init__(*args, **kwargs)
 
   def fit(self, x, y, steps=None, batch_size=None, monitors=None, logdir=None):
