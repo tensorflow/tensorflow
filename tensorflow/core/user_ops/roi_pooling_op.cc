@@ -33,7 +33,7 @@ class RoiPoolingOp : public OpKernel {
         // ROIs should be passed in batch, ROI index order
         // ROIs for same image in a batch are the same - so no "channel"
         // Then x, y, height, width
-        int num_rois = roi_tensor.dim_size(1);;
+        int num_rois = roi_tensor.dim_size(1);
 
 
         // Get the input dimensions
@@ -206,11 +206,11 @@ class RoiPoolingGradOp : public OpKernel {
             
             // Get the location to put this value
             int location = argmax_array[i];
-            LOG(INFO) << "i: " << i << " location : " << location;
+            //LOG(INFO) << "i: " << i << " location : " << location;
             
             // make sure the value is valid
             if (location >= 0) {
-                LOG(INFO) << "writing: " << grad_array[i];
+                //LOG(INFO) << "writing: " << grad_array[i];
                 // Put the grad value in the output
                 output_array[location] = grad_array[i];
             }
