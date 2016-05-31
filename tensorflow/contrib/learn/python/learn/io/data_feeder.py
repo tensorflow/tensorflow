@@ -111,7 +111,7 @@ def setup_train_data_feeder(
     if y is not None and not _is_iterable(y):
       raise ValueError('Both X and y should be iterators for '
                        'streaming learning to work.')
-    data_feeder_cls = StreamingDataFeeder
+    return StreamingDataFeeder(X, y, n_classes, batch_size)
   return data_feeder_cls(
       X, y, n_classes, batch_size, shuffle=shuffle, epochs=epochs)
 
@@ -223,6 +223,8 @@ class DataFeeder(object):
       self.y = (None if y is None else check_array(y, dtype=y_dtype))
     else:
       self.y = y
+      if isinstance(self.y, list):
+        self.y = np.array(y)
     self.n_classes = n_classes
     self.batch_size = batch_size
     self.max_epochs = epochs
@@ -237,7 +239,7 @@ class DataFeeder(object):
     if n_classes is not None or y is None:
       self.output_dtype = np.float32
     else:
-      self.output_dtype = y.dtype
+      self.output_dtype = self.y.dtype
     self.shuffle = shuffle
     self.random_state = np.random.RandomState(
         42) if random_state is None else random_state
@@ -396,7 +398,7 @@ class StreamingDataFeeder(DataFeeder):
     output_dtype: dtype of output.
   """
 
-  def __init__(self, X, y, n_classes, batch_size, shuffle=False, epochs=None):
+  def __init__(self, X, y, n_classes, batch_size):
     X_first_el = six.next(X)
     self.X = itertools.chain([X_first_el], X)
     if y is not None:
@@ -418,7 +420,10 @@ class StreamingDataFeeder(DataFeeder):
     if self.input_dtype == np.float64:
       self.input_dtype = np.float32
     # Output types are floats, due to both softmaxes and regression req.
-    self.output_dtype = np.float32
+    if n_classes > 0:
+      self.output_dtype = np.float32
+    elif y is not None:
+      self.output_dtype = np.dtype(type(y_first_el))
 
   def get_feed_params(self):
     """Function returns a dict with data feed params while training.
@@ -530,6 +535,7 @@ class DaskDataFeeder(object):
                                                             batch_size)
     # self.X.dtypes[0], self.y.dtypes[self.y_columns]
     self.input_dtype, self.output_dtype = np.float32, np.float32
+    self.shuffle = shuffle
     if random_state is None:
       self.random_state = 66
     else:

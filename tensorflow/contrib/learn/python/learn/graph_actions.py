@@ -454,6 +454,8 @@ def evaluate(graph,
   # one existing already or it's a string.
   existing_tags = [tensor_util.constant_value(summary.op.inputs[0])
                    for summary in ops.get_collection(ops.GraphKeys.SUMMARIES)]
+  existing_tags = [name.tolist() if isinstance(name, np.ndarray) else name 
+                   for name in existing_tags]
   for key, value in eval_dict.items():
     if key in existing_tags:
       continue

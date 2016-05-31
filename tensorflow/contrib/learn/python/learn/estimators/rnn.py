@@ -117,12 +117,12 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
   @property
   def bias_(self):
     """Returns bias of the rnn layer."""
-    return self.get_tensor_value('logistic_regression/bias')
+    return self.get_variable_value('logistic_regression/bias')
 
   @property
   def weights_(self):
     """Returns weights of the rnn layer."""
-    return self.get_tensor_value('logistic_regression/weights')
+    return self.get_variable_value('logistic_regression/weights')
 
 
 class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
@@ -208,9 +208,9 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
   @property
   def bias_(self):
     """Returns bias of the rnn layer."""
-    return self.get_tensor_value('linear_regression/bias')
+    return self.get_variable_value('linear_regression/bias')
 
   @property
   def weights_(self):
     """Returns weights of the rnn layer."""
-    return self.get_tensor_value('linear_regression/weights')
+    return self.get_variable_value('linear_regression/weights')

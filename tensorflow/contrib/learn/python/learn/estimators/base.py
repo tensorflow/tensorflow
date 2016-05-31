@@ -22,17 +22,24 @@ from __future__ import print_function
 
 import json
 import os
+import types
+
+import six
 from six import string_types
 
+import numpy as np
+
+from tensorflow.contrib import framework as contrib_framework
+from tensorflow.contrib import layers
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_data_feeder
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _write_with_backup(filename, content):
@@ -52,28 +59,6 @@ def _copy_dir(dir_in, dir_out):
       _copy_dir(name_in, name_out)
     else:
       gfile.Copy(name_in, name_out, overwrite=True)
-
-
-def _new_tf_model_fn(model_fn, class_weight):
-  """Backward compatibility way of adding class weight and IS_TRAINING.
-
-  TODO(ipolosukhin): Remove this function after new layers are available.
-  Specifically:
-   * dropout and batch norm should work via update ops.
-   * class weights should be retrieved from weights column or hparams.
-
-  Args:
-    model_fn: Core model function.
-    class_weight: Class weight.
-  Returns:
-    Model function.
-  """
-  def _model_fn(features, targets, mode):
-    ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
-    if class_weight is not None:
-      constant_op.constant(class_weight, name='class_weight')
-    return model_fn(features, targets)
-  return _model_fn
 
 
 class TensorFlowEstimator(estimator.Estimator):
@@ -122,12 +107,17 @@ class TensorFlowEstimator(estimator.Estimator):
                continue_training=False,
                config=None,
                verbose=1):
+    self.class_weight = class_weight
+    self.learning_rate = learning_rate
+    self.clip_gradients = clip_gradients
+    if isinstance(optimizer, six.string_types):
+      if optimizer not in layers.OPTIMIZER_CLS_NAMES:
+        raise ValueError(
+            'Optimizer name should be one of [%s], you provided %s.' %
+            (', '.join(layers.OPTIMIZER_CLS_NAMES), optimizer))
+    self.optimizer = optimizer
     super(TensorFlowEstimator, self).__init__(
-        model_fn=_new_tf_model_fn(model_fn, class_weight),
-        classification=n_classes > 1,
-        learning_rate=learning_rate,
-        optimizer=optimizer,
-        clip_gradients=clip_gradients,
+        model_fn=self._get_model_fn(model_fn),
         config=config)
     self.n_classes = n_classes
     self.batch_size = batch_size
@@ -275,27 +265,6 @@ class TensorFlowEstimator(estimator.Estimator):
     """
     return self._graph.get_tensor_by_name(name)
 
-  def get_tensor_value(self, name):
-    """Returns value of the tensor give by name.
-
-    Args:
-      name: string, name of the tensor.
-
-    Returns:
-      Numpy array - value of the tensor.
-    """
-    if name.endswith(':0'):
-      name = name[:-2]
-    return checkpoints.load_variable(self.model_dir, name)
-
-  def get_variable_names(self):
-    """Returns list of all variable names in this model.
-
-    Returns:
-      List of names.
-    """
-    return [name for name, _ in checkpoints.list_variables(self.model_dir)]
-
   def save(self, path):
     """Saves checkpoints and graph to given path.
 
@@ -383,6 +352,41 @@ class TensorFlowEstimator(estimator.Estimator):
     result._restore(path)
     return result
 
+  def _get_model_fn(self, model_fn):
+    """Backward compatibility way of adding class weight and IS_TRAINING.
+
+    TODO(ipolosukhin): Remove this function after new layers are available.
+    Specifically:
+     * dropout and batch norm should work via update ops.
+     * class weights should be retrieved from weights column or hparams.
+
+    Args:
+      model_fn: Core model function.
+    Returns:
+      Model function.
+    """
+    def _model_fn(features, targets, mode):
+      ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
+      if self.class_weight is not None:
+        constant_op.constant(self.class_weight, name='class_weight')
+      predictions, loss = model_fn(features, targets)
+      if isinstance(self.learning_rate, types.FunctionType):
+        learning_rate = self.learning_rate(contrib_framework.get_global_step())
+      else:
+        learning_rate = self.learning_rate
+      if isinstance(self.optimizer, types.FunctionType):
+        optimizer = self.optimizer(learning_rate)
+      else:
+        optimizer = self.optimizer
+      train_op = layers.optimize_loss(
+          loss,
+          contrib_framework.get_global_step(),
+          learning_rate=learning_rate,
+          optimizer=optimizer,
+          clip_gradients=self.clip_gradients)
+      return predictions, loss, train_op
+    return _model_fn
+
 
 class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
   """TensorFlow Base Transformer class."""
@@ -400,3 +404,56 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
   def fit_transform(self, X, y=None, monitor=None, logdir=None):
     """Fit transformer and transform X using trained transformer."""
     return self.fit(X, y, monitor=None, logdir=None).transform(X)
+
+
+class DeprecatedMixin(object):
+
+  def __init__(self, *args, **kwargs):
+    this_class = type(self).__name__
+    alternative_class = this_class[len('TensorFlow'):]
+    logging.warn(
+        "%s class is deprecated. Please consider using %s as an alternative.",
+        this_class, alternative_class)
+    # Handle deprecated arguments.
+    self.__deprecated_n_classes = kwargs.get('n_classes', 0)
+    self.batch_size = kwargs.pop('batch_size', 32)
+    self.steps = kwargs.pop('steps', 200)
+    if 'optimizer' in kwargs or 'learning_rate' in kwargs:
+      self.learning_rate = kwargs.pop('learning_rate', 0.1)
+      self.optimizer = kwargs.pop('optimizer', 'Adagrad')
+    if 'class_weight' in kwargs:
+      raise ValueError('Sorry we switched interface for providing class weights. '
+                       'Please use weight column instead.')
+    _ = kwargs.pop('clip_gradients', 5.0)
+    _ = kwargs.pop('continue_training', False)
+    super(DeprecatedMixin, self).__init__(*args, **kwargs)
+
+  def fit(self, x, y, steps=None, batch_size=None, monitors=None, logdir=None):
+    if logdir is not None:
+      self._model_dir = logdir
+    return super(DeprecatedMixin, self).fit(x=x, y=y, steps=steps or self.steps,
+      batch_size=batch_size or self.batch_size, monitors=monitors)
+
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              axis=1):
+    if x is not None:
+      predict_data_feeder = setup_train_data_feeder(
+          x, None, n_classes=None,
+          batch_size=batch_size or self.batch_size,
+          shuffle=False, epochs=1)
+      result = super(DeprecatedMixin, self)._infer_model(
+        input_fn=predict_data_feeder.input_builder,
+        feed_fn=predict_data_feeder.get_feed_dict_fn(),
+        outputs=outputs)
+    else:
+      result = super(DeprecatedMixin, self)._infer_model(
+      input_fn=input_fn, outputs=outputs)
+    if self.__deprecated_n_classes > 1 and axis is not None:
+      return np.argmax(result, axis)
+    return result
+
+  def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None):
+    return self.predict(x=x, input_fn=input_fn, batch_size=batch_size,
+                        outputs=outputs, axis=None)
+
+
