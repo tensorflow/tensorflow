@@ -665,7 +665,7 @@ class StreamingAUCTest(tf.test.TestCase):
     return np.sum(tp[labels == 0] / num_negatives)
 
   def testWithMultipleUpdates(self):
-    num_samples = 5000
+    num_samples = 1000
     batch_size = 10
     num_batches = int(num_samples / batch_size)
 
@@ -904,7 +904,7 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       self.assertAlmostEqual(0, rec.eval(), 6)
 
   def testWithMultipleUpdates(self):
-    num_samples = 5000
+    num_samples = 1000
     batch_size = 10
     num_batches = num_samples / batch_size
 
