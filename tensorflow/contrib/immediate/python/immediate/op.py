@@ -2,16 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-__all__ = ["Op", "OpFactory", "OpWrapper"]
+import sys
 
 from .tensor import Tensor
 from .tensor import _ENABLE_DEBUG_LOGGING
-from .wrapping_util import get_op_input_argnames_argtypes
-from .wrapping_util import get_op_input_argnames_argtypes_from_opdeflib
 
 from tensorflow.python.framework import ops as tf_ops
-
-import sys, types
 
 # Implementation of Immediate Op with keyword call arguments
 class Op(object):
@@ -21,7 +17,7 @@ class Op(object):
   underlying op in env's session and wraps resulting TensorHandles in immediate
   Tensors."""
 
-  def __init__(self, env, input_holders, output_handle):
+  def __init__(self, env, input_holders, output_handle, name="op"):
     """Initialize Op.
 
     Args:
@@ -32,6 +28,7 @@ class Op(object):
     self.env = env   # used to issue .run calls
     self.input_holders = input_holders
     self.output_handle = output_handle   # tensorflow.TensorHandle
+    self.name = name
 
   def __call__(self, **kwargs):
 
@@ -40,7 +37,7 @@ class Op(object):
       if isinstance(itensor, list):
         holder_list = self.input_holders[argname]
         tensor_list = itensor
-        for holder,subtensor in zip(holder_list, tensor_list):
+        for holder, subtensor in zip(holder_list, tensor_list):
           feed_dict[holder] = subtensor.tf_handle
       else:
         feed_dict[self.input_holders[argname]] = itensor.tf_handle
@@ -52,177 +49,33 @@ class Op(object):
       return Tensor(self.env, tensor_handle)
 
   def __str__(self):
-    return "Op%s" % (str(self.key))
+    return "Op%s" % (str(self.name))
 
   def __repr__(self):
     return self.__str__()
 
 
-def _fixup_args(symbol_name, *args, **kwargs):
-  #  print("calling fixup_args for %s, %s, %s" % (symbol_name, args, kwargs))
-  
-  if symbol_name == 'gen_math_ops._sum':
-    # handle gen_math_ops._sum(tensor,tensor,keep_dims)
-    if len(args)==3:
-      kwargs['keep_dims'] = args[2]
-      return args[:-1], kwargs
-
-  # handle gen_random_ops._random_uniform(shape, dtype)
-  # move dtype to keyword argument
-  if symbol_name == 'gen_random_ops._random_uniform':
-    if len(args)==2:
-      kwargs['dtype'] = args[1]
-      return args[:-1], kwargs
-    
-  # handle _split(num_split=3, split_dim=1, value=itensor)
-  if symbol_name == "gen_array_ops._split":
-    if 'value' in kwargs:
-      new_args = args+(kwargs['value'],)
-      del kwargs['value']
-      return new_args, kwargs
-
-  return args, kwargs
-
-def _unfixup_args(symbol_name, *args, **kwargs):
-  # for a native function that expects Tensor arguments to be positional
-  # move those kwargs back to be positional arguments
-  new_args = list(args)
-
-  # handle following usage: gen_array_ops._split(value, split_dim=..)
-  # move "value" back into keyword argument
-  if symbol_name == 'gen_array_ops._split':
-    if 'split_dim' in kwargs and len(args)==1:
-      kwargs['value'] = args[0]
-      return (), kwargs
-
-  return args, kwargs
-
-# Implementating of OpFactory with graph caching
-# TODO(yaroslavvb): get rid of "symbol_name" argument
-# TODO(yaroslavvb): store graph separately?
-class OpFactory(object):
-  """ This object contains the logic needed to wrap TensorFlow native
-  operations into versions that operate on persistent tensor handles. It has
-  the following state:
-  1. Tensorflow Graph. It grows the graph when necessary, but returns existing
-      nodes from the graph when possible
-  2. immedate.Env -- it defers to Env to convert arguments to immediate tensors
-      when user calls it with Python types instead of immediate.Tensors
-
-  The interface is meant to mirror original tf function calls:
-  ie, to get functionality of tf.add(1,2), one would call
-      result_op = op_factory(tf.add, 1, 2)
-
-  result_op is an immediate.Op object op that can be given immediate.Tensors
-  to produce immediate.Tensor result
-      result = result_op(immediate.Tensor(1), immediate.Tensor(2))
-
-  Main functionality is in __call__ which goes through following:
-  1. Figure out what OpDef corresponds to given op/argument combination
-  2. Check if this OpDef has already been created in the graph
-  3. If not, call the op to construct the OpDef and connect it to
-      tensor handle version ops to get functionality that works on tensor
-      handles. Wrap the result in immediate.Op object. Add it to cache.
-  4. Retrieve corresponding immediate.Op from cache and return it.
- """
-
-  def __init__(self, env):
-    self.env = env
-    self.cache = {}
-
-  def __call__(self, symbol_name, symbol, *args, **kwargs):
-    if _ENABLE_DEBUG_LOGGING:
-      print("OpFactory __call__: %s(%s, %s)" % (symbol_name, args, kwargs))
-    
-    # create the key to see if the op has been created before
-    key = [symbol_name]
-
-    # converted_args stores args converted to Tensors, ie, Python list [1]
-    # becomes immediate.Tensor([1])), immediate.Tensor objects are unchanged
-    assert len(args) == 0
-    converted_args = []  
-    converted_tensors = {}
-    for i,itensor in enumerate(args):
-      if not isinstance(itensor, Tensor):
-        try:
-          itensor = self.env.numpy_to_tensor(itensor)
-          converted_tensors[i] = itensor
-        except ValueError as e:
-          raise ValueError("All positional arguments must be immediate "
-                           "Tensors, or convertible to immediate Tensors "
-                           "instead we see %s (numpy error: %s)" % (
-                            str(itensor), sys.exc_info()[0]))
-      converted_args.append(itensor)
-      key.append(itensor.dtype)
-
-    # TODO(yaroslavvb): use signature binding to fill out default kwargs
-    # otherwise may get cache miss
-    for kwarg_key in sorted(kwargs.keys()):
-      key.append(kwarg_key)
-      key.append(str(kwargs[kwarg_key]))
-    
-    # convert to tuple to make it hashable
-    key = tuple(key)
-
-    if key in self.cache:
-      return self.cache[key]
-    
-    # create the op
-    with self.env.g.as_default():
-      # convert args to TensorHandles
-      # connect up things
-      input_tensors = []
-      input_holders = []
-      for itensor in converted_args:
-        holder, tensor = self.env.get_session_tensor(itensor.dtype)
-        input_holders.append(holder)
-        input_tensors.append(tensor)
-
-      if _ENABLE_DEBUG_LOGGING:
-        print("OpFactory redirect: %s(%s, %s)" % (symbol_name, args, kwargs))
-      output = symbol(*input_tensors, **kwargs)
-
-      if isinstance(output, list):
-        output_handle = [self.env.get_session_handle(o) for o in output]
-      else:
-        output_handle = self.env.get_session_handle(output)
-
-    op = Op(self.env, input_holders, output_handle)
-    self.cache[key] = op
-
-    return op
-
-
-  def _create_key(self, opname, *args, **kwargs):
-    return opname
-
-
-# TODO(yaroslavvb): copy __doc__ and __file__ from the original fun object
-class OpWrapper(object):
-  """A callable object that mirrors TF generated wrapper, but with immediate
-  execution semantics."""
-
-  def __init__(self, env, symbol):
-    self.env = env
-    self.symbol = symbol  # function object
-  
-  def __call__(self, *args, **kwargs):
-    op = self.env.op_factory(self.symbol.__name__, self.symbol, *args, **kwargs)
-    return op(*args)
-
-  def __str__(self):
-    return self.__repr__()
-
-  def __repr__(self):
-    return "OpWrapper(%s, %s)"%(self.env, self.symbol)
-
-
-#op_input_argnames, op_input_argtypes = get_op_input_argnames_argtypes()
-
 class OpDefLibraryWrapper(object):
+  """Wrapper class that replaces OpDefLibrary instances in all gen.*ops
+  modules."""
+
   def __init__(self, env, original_op_def_library):
     self.env = env
     self.original_op_def_library = original_op_def_library
+
+  def get_op_info(self, name):
+    """Get input argnames/types from op_def_lib object."""
+
+    op = self.original_op_def_library._ops[name].op_def
+    argnames0 = [arg.name for arg in op.input_arg]
+    argtypes0 = {}
+    for arg in op.input_arg:
+      if arg.number_attr or arg.type_list_attr:
+        argtypes0[arg.name] = "list"
+      else:
+        argtypes0[arg.name] = "single"
+
+    return argnames0, argtypes0
 
   def apply_op(self, op_type_name, name=None, **keywords):
     """
@@ -248,56 +101,44 @@ class OpDefLibraryWrapper(object):
     #    input_names = op_input_argnames[op_type_name]
     #    input_types = op_input_argtypes[op_type_name]
 
-    input_names,input_types = get_op_input_argnames_argtypes_from_opdeflib(self.original_op_def_library, op_type_name)
+    input_names, input_types = self.get_op_info(op_type_name)
 
     if _ENABLE_DEBUG_LOGGING:
       print("OpFactory __call__: %s(%s)" % (op_type_name, keywords))
       print("OpFactory inputs: %s" % (input_names))
-      print("OpFactory types: %s" % [type(keywords[name]) for name in input_names])
-    old_tensor_inputs = {}
+
     key = [op_type_name]
 
-    # TODO(yaroslavvb): check that attributes are not tensors
-    # NOTE(yaroslavvb): by converting to tensor here I can get dtype
-    # but that potentially gets a different dtype than what convert_to_tensor
-    # would've called because it uses attribute inference to determine
-    # types when flexible (Python) objects are provided. A better
-    # solution would call logic in op_def_library to determine types
-    # and skip the conversion step here
-    # self.original_op_def_library.apply_op
-    #    with MockGraph().as_default():
-    #      self.original_op_def_library.apply_op(op_type_name,
-    #                                            **keywords)
-      
-
+    # NOTE(yaroslavvb): this doesn't do attribute inference so for Python
+    # types it can potentially create different dtype than native TF
     def try_convert_to_itensor(itensor, dtype=None):
       if isinstance(itensor, Tensor):
         return itensor
 
       if isinstance(itensor, tf_ops.Tensor):
-        raise ValueError("Trying to feed a non-immediate Tensor %s to immediate op %s" %
+        raise ValueError("Trying to feed a non-immediate Tensor %s to "
+                         "immediate op %s" %
                          (itensor, op_type_name))
       try:
         result = self.env.numpy_to_tensor(itensor, dtype)
         if _ENABLE_DEBUG_LOGGING:
-          print("Converting %s to %s, result is %s" %(itensor, dtype, result.dtype))
+          print("Converting %s to %s, result is %s" %(itensor, dtype,
+                                                      result.dtype))
         return result
 
-      except ValueError as e:
+      except ValueError:
         raise ValueError("Couldn't convert input argument %s=%s to immediate "
                          "tensor (%s)" % (input_name, itensor,
                                           sys.exc_info()))
-        
-    # TODO(yaroslavvb): replace with common type lookup
-    # or move to op_def_lib parsing
+
+    # TODO(yaroslavvb): replace with more generic logic to support other
+    # ops that accept lists of arguments
     list_dtype = None
     if op_type_name == "Concat":
       for maybe_itensor in keywords["values"]:
-        print("Examining %s of type %s"%(repr(maybe_itensor), type(maybe_itensor)))
         if isinstance(maybe_itensor, Tensor):
           list_dtype = maybe_itensor.dtype
           break
-      
 
     for input_name in input_names:
       itensor = keywords[input_name]
@@ -309,10 +150,8 @@ class OpDefLibraryWrapper(object):
             itensor[i] = try_convert_to_itensor(itensor[i])
       else:
         itensor = try_convert_to_itensor(itensor)
-          
+
       itensor_args[input_name] = itensor
-      # TODO(yaroslavvb): do something about caching with attribute lists
-      #      key.append(itensor.dtype)
 
     with self.env.g.as_default():
       input_holders = {}
@@ -327,10 +166,10 @@ class OpDefLibraryWrapper(object):
           keywords[input_name] = tensor_list
           input_holders[input_name] = holder_list
         else:
-          holder, tensor = self.env.get_session_tensor(itensor_args[input_name].dtype)
+          input_dtype = itensor_args[input_name].dtype
+          holder, tensor = self.env.get_session_tensor(input_dtype)
           input_holders[input_name] = holder
           keywords[input_name] = tensor
-            
 
       output = self.original_op_def_library.apply_op(op_type_name,
                                                      **keywords)
@@ -348,17 +187,14 @@ class OpDefLibraryWrapper(object):
     #    self.cache[key] = op
 
 
-# TODO(yaroslavvb): factor out into SimpleWrapper
-
 class ConstantOpWrapper(object):
   """A callable object that mirrors tf.constant."""
 
   def __init__(self, env, old_symbol):
     self.env = env
     self.old_symbol = old_symbol
-    
+
   def __call__(self, *args, **kwargs):
-    print("Calling ConstantOpWrapper")
     return self.env.constant(*args, **kwargs)
 
 class ConvertToTensorWrapper(object):
@@ -369,151 +205,10 @@ class ConvertToTensorWrapper(object):
   def __init__(self, env, old_symbol):
     self.env = env
     self.old_symbol = old_symbol
-    
-  def __call__(self, value, dtype=None, name=None, as_ref=False):
-    print("Calling ConvertToTensorWrapper, %s"%(value))
 
+  def __call__(self, value, dtype=None, name=None, as_ref=False):
     if isinstance(value, Tensor):
       return value
     return self.env.numpy_to_tensor(value, dtype)
 
 
-# wrapper for module_patcher. We have a single object for all op_def_libraries
-def ApplyOpWrapper(env, original_apply_op):
-  # capture env in closure, and return result
-  def wrapper(original_op_def_library, op_type_name, *args, **keywords):
-    """
-    stuff
-    Retrieves op from the cache.
-    op = env.get_op(op_type_name, keywords)
-    return op(keywords)
-
-    get_op(op_type_name, keywords):
-
-    key = self.get_key(op_type_name, keywords)
-    if key in cache:
-      return cache[key]
-    else:
-      op_def = self.get_op_def(op_type_name, keywords)
-      ...
-    """
-
-    print("Applying opdef with %s, %s, len(args)=%s, keys=%s"%(original_op_def_library,
-                                                op_type_name,
-                                                len(args), keywords.keys()))
-#    print("Applying opdef lib with %s and %s, %s" %(original_op_def_library,args,
-#                                                keywords))
-
-    # converted_args stores args converted to Tensors, ie, Python list [1]
-    # becomes immediate.Tensor([1])), immediate.Tensor objects are unchanged
-    itensor_args = {} 
-    converted_tensors = {}
-    #    input_names = op_input_argnames[op_type_name]
-    #    input_types = op_input_argtypes[op_type_name]
-
-    input_names,input_types = get_op_input_argnames_argtypes_from_opdeflib(original_op_def_library, op_type_name)
-
-    if _ENABLE_DEBUG_LOGGING:
-      print("OpFactory __call__: %s(%s)" % (op_type_name, keywords))
-      print("OpFactory inputs: %s" % (input_names))
-      print("OpFactory types: %s" % [type(keywords[name]) for name in input_names])
-    old_tensor_inputs = {}
-    key = [op_type_name]
-
-    # TODO(yaroslavvb): check that attributes are not tensors
-    # NOTE(yaroslavvb): by converting to tensor here I can get dtype
-    # but that potentially gets a different dtype than what convert_to_tensor
-    # would've called because it uses attribute inference to determine
-    # types when flexible (Python) objects are provided. A better
-    # solution would call logic in op_def_library to determine types
-    # and skip the conversion step here
-    # self.original_op_def_library.apply_op
-    #    with MockGraph().as_default():
-    #      self.original_op_def_library.apply_op(op_type_name,
-    #                                            **keywords)
-      
-
-    def try_convert_to_itensor(itensor, dtype=None):
-      if isinstance(itensor, Tensor):
-        return itensor
-
-      if isinstance(itensor, tf_ops.Tensor):
-        raise ValueError("Trying to feed a non-immediate Tensor %s to immediate op %s" %
-                         (itensor, op_type_name))
-      try:
-        result = env.numpy_to_tensor(itensor, dtype)
-        if _ENABLE_DEBUG_LOGGING:
-          print("Converting %s to %s, result is %s" %(itensor, dtype, result.dtype))
-        return result
-
-      except ValueError as e:
-        raise ValueError("Couldn't convert input argument %s=%s to immediate "
-                         "tensor (%s)" % (input_name, itensor,
-                                          sys.exc_info()))
-        
-    # TODO(yaroslavvb): replace with common type lookup
-    # or move to op_def_lib parsing
-    list_dtype = None
-    if op_type_name == "Concat":
-      for maybe_itensor in keywords["values"]:
-        print("Examining %s of type %s"%(repr(maybe_itensor), type(maybe_itensor)))
-        if isinstance(maybe_itensor, Tensor):
-          list_dtype = maybe_itensor.dtype
-          break
-      
-
-    for input_name in input_names:
-      itensor = keywords[input_name]
-      if input_types[input_name] == "list":
-        for i in range(len(itensor)):
-          if op_type_name == "Concat":
-            itensor[i] = try_convert_to_itensor(itensor[i], list_dtype)
-          else:
-            itensor[i] = try_convert_to_itensor(itensor[i])
-      else:
-        itensor = try_convert_to_itensor(itensor)
-          
-      itensor_args[input_name] = itensor
-      # TODO(yaroslavvb): do something about caching with attribute lists
-      #      key.append(itensor.dtype)
-
-    with env.g.as_default():
-      input_holders = {}
-      for input_name in input_names:
-        if isinstance(itensor_args[input_name], list):
-          holder_list = []
-          tensor_list = []
-          for subtensor in itensor_args[input_name]:
-            holder, tensor = env.get_session_tensor(subtensor.dtype)
-            holder_list.append(holder)
-            tensor_list.append(tensor)
-          keywords[input_name] = tensor_list
-          input_holders[input_name] = holder_list
-        else:
-          holder, tensor = env.get_session_tensor(itensor_args[input_name].dtype)
-          input_holders[input_name] = holder
-          keywords[input_name] = tensor
-            
-
-      print("Calling original apply op with %s, %s, %s" % (original_op_def_library, op_type_name, keywords))
-      #      output = original_apply_op(original_op_def_library,
-      #                                 op_type_name=op_type_name, **keywords)
-      bound_op = types.MethodType(original_apply_op, original_op_def_library)
-      bound_op(op_type_name, **keywords)
-#      bound_op(op_type_name, x=keywords["x"], **keywords)
-#      bound_op(op_type_name, aaa=2, x=keywords["x"], y=keywords["y"], 
- #              a=5,b=2,z=4,xx=2)
-
-      if isinstance(output, list) or isinstance(output, tuple):
-        output_handle = [env.get_session_handle(o) for o in output]
-      elif isinstance(output, tf_ops.Tensor):
-        output_handle = env.get_session_handle(output)
-      else:
-        raise ValueError("Op %s gave output (%s) of unexpected type (%s)"
-                         % (op_type_name, output, type(output)))
-
-    op = Op(env, input_holders, output_handle)
-    return op(**itensor_args)
-    #    self.cache[key] = op
-
-  return wrapper

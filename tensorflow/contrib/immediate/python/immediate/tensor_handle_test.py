@@ -3,8 +3,7 @@
 import tensorflow as tf
 import numpy as np
 import tensorflow.contrib.immediate as immediate
-
-#from tensorflow.contrib.immediate.python.immediate import test_util
+from tensorflow.contrib.immediate.python.immediate import test_util
 
 class EnvTest(tf.test.TestCase):
 

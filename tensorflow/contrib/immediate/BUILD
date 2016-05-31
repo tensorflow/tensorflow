@@ -16,9 +16,7 @@ py_library(
         "python/immediate/env.py",
         "python/immediate/tensor.py",
         "python/immediate/op.py",
-        "python/immediate/wrapping_util.py",
 	"python/immediate/module_rewriter.py",
-	"python/immediate/module_patcher.py",
         "__init__.py",
         "python/__init__.py",
         "python/immediate/__init__.py",
@@ -32,7 +30,6 @@ py_library(
          "//tensorflow/python:pywrap_tensorflow",
     ],
 )
-
 
 py_library(
     name = "immediate_test_lib",
@@ -52,7 +49,6 @@ py_library(
     ],
 )
 
-
 py_test(
     name = "env_test",
     size = "small",
@@ -62,27 +58,20 @@ py_test(
         ":immediate_py",
 	":immediate_test_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
 
 py_test(
-    name = "env_test2",
+    name = "env_extra_test",
     size = "small",
-    srcs = ["python/immediate/env_test2.py"],
+    srcs = ["python/immediate/env_extra_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":immediate_py",
 	":immediate_test_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
-
 
 py_test(
     name = "module_rewriter_test",
@@ -91,23 +80,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":immediate_py",
+        ":immediate_test_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-
-py_test(
-    name = "module_patcher_test",
-    size = "small",
-    srcs = ["python/immediate/module_patcher_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":immediate_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -118,39 +92,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":immediate_py",
+        ":immediate_test_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
     ],
-)
-
-py_test(
-    name = "op_test",
-    size = "small",
-    srcs = ["python/immediate/op_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":immediate_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-
-py_test(
-    name = "math_ops_test",
-    srcs = ["python/immediate/ops/math_ops_test.py"],
-    size = "small",
-    deps = [
-           ":immediate_py",
-           ":immediate_test_lib",
-           "//tensorflow:tensorflow_py",
-           "//tensorflow/python:framework_test_lib",
-           "//tensorflow/python:platform_test",
-           "//tensorflow/python:extra_py_tests_deps",
-           "//tensorflow/python:kernel_tests/gradient_checker",
-           ],
 )
 
 py_test(
@@ -168,65 +112,23 @@ py_test(
 )
 
 py_test(
-    name = "tensor_handle_working_test",
+    name = "math_ops_test",
+    srcs = ["python/immediate/extra_tests/math_ops_test.py"],
     size = "small",
-    srcs = ["python/immediate/tensor_handle_working_test.py"],
-    srcs_version = "PY2AND3",
     deps = [
-        ":immediate_py",
-	":immediate_test_lib",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
+           ":immediate_py",
+           ":immediate_test_lib",
+           "//tensorflow:tensorflow_py",
+           "//tensorflow/python:framework_test_lib",
+           "//tensorflow/python:platform_test",
+           "//tensorflow/python:extra_py_tests_deps",
+           "//tensorflow/python:kernel_tests/gradient_checker",
+           ],
 )
-
-
-# py_test(
-#     name = "histogram_ops_test",
-#     srcs = ["python/immediate/ops/histogram_ops_test.py"],
-#     deps = [
-#            ":immediate_py",
-#            ":immediate_test_lib",
-#            "//tensorflow:tensorflow_py",
-#            "//tensorflow/python:framework_test_lib",
-#            "//tensorflow/python:platform_test",
-#            "//tensorflow/python:extra_py_tests_deps",
-#            "//tensorflow/python:kernel_tests/gradient_checker",
-#            ],
-# )
-
-# py_test(
-#     name = "math_grad_test",
-#     srcs = ["python/immediate/ops/math_grad_test.py"],
-#     deps = [
-#            ":immediate_py",
-#            ":immediate_test_lib",
-#            "//tensorflow:tensorflow_py",
-#            "//tensorflow/python:framework_test_lib",
-#            "//tensorflow/python:platform_test",
-#            "//tensorflow/python:extra_py_tests_deps",
-#            "//tensorflow/python:kernel_tests/gradient_checker",
-#            ],
-# )
-
-# py_test(
-#     name = "special_math_ops_test",
-#     srcs = ["python/immediate/ops/special_math_ops_test.py"],
-#     deps = [
-#            ":immediate_py",
-#            ":immediate_test_lib",
-#            "//tensorflow:tensorflow_py",
-#            "//tensorflow/python:framework_test_lib",
-#            "//tensorflow/python:platform_test",
-#            "//tensorflow/python:extra_py_tests_deps",
-#            "//tensorflow/python:kernel_tests/gradient_checker",
-#            ],
-# )
 
 py_test(
     name = "nn_test",
-    srcs = ["python/immediate/ops/nn_test.py"],
+    srcs = ["python/immediate/extra_tests/nn_test.py"],
     size = "medium",
     deps = [
            ":immediate_py",
@@ -239,24 +141,10 @@ py_test(
            ],
 )
 
-py_test(
-    name = "nn_test2",
-    srcs = ["python/immediate/ops/nn_test2.py"],
-    size = "medium",
-    deps = [
-           ":immediate_py",
-           ":immediate_test_lib",
-           "//tensorflow:tensorflow_py",
-           "//tensorflow/python:framework_test_lib",
-           "//tensorflow/python:platform_test",
-           "//tensorflow/python:extra_py_tests_deps",
-           "//tensorflow/python:kernel_tests/gradient_checker",
-           ],
-)
 
 py_test(
     name = "batchnorm_test",
-    srcs = ["python/immediate/ops/batchnorm_test.py"],
+    srcs = ["python/immediate/extra_tests/batchnorm_test.py"],
     size = "medium",
     deps = [
            ":immediate_py",
@@ -269,33 +157,52 @@ py_test(
            ],
 )
 
-#cuda_py_tests(
-#    name = "op_tests",
-#    size = "small",
-##    srcs = ["python/immediate/ops/math_ops_test.py"]
-#    srcs = glob(
-#        ["python/immediate/ops/*_test.py"],
-#        exclude = [
-#            "python/immediate/ops/image_ops_test.py",
-#            "python/immediate/ops/nn_test.py",
-#            "python/immediate/ops/op_def_library_test.py",
-#            "python/immediate/ops/math_ops_test.py",
-#            "python/immediate/ops/histogram_ops_test.py",
-#            "python/immediate/ops/math_grad_test.py",
-#            "python/immediate/ops/special_math_ops_test",
-#        ],
-#    ),
-#)
 
-#cuda_py_tests(
-#    name = "nn_test",
-#    srcs = ["python/immediate/nn_test.py"]
-#)
+# TODO(yaroslavvb): enable tests below once context-manager closures
+# are correctly copied
+# py_test(
+#     name = "special_math_ops_test",
+#     srcs = ["python/immediate/extra_tests/special_math_ops_test.py"],
+#     deps = [
+#            ":immediate_py",
+#            ":immediate_test_lib",
+#            "//tensorflow:tensorflow_py",
+#            "//tensorflow/python:framework_test_lib",
+#            "//tensorflow/python:platform_test",
+#            "//tensorflow/python:extra_py_tests_deps",
+#            "//tensorflow/python:kernel_tests/gradient_checker",
+#            ],
+# )
 
-#cuda_py_tests(
-#    name = "math_ops_test",
-#    srcs = ["python/immediate/ops/math_ops_test.py"]
-#)
+# py_test(
+#     name = "nn_test2",
+#     srcs = ["python/immediate/extra_tests/nn_test2.py"],
+#     size = "medium",
+#     deps = [
+#            ":immediate_py",
+#            ":immediate_test_lib",
+#            "//tensorflow:tensorflow_py",
+#            "//tensorflow/python:framework_test_lib",
+#            "//tensorflow/python:platform_test",
+#            "//tensorflow/python:extra_py_tests_deps",
+#            "//tensorflow/python:kernel_tests/gradient_checker",
+#            ],
+# )
+
+# module patcher is an alternative implementation of namespace copying
+# py_test(
+#     name = "module_patcher_test",
+#     size = "small",
+#     srcs = ["python/immediate/module_patcher_test.py"],
+#     srcs_version = "PY2AND3",
+#     deps = [
+#         ":immediate_py",
+#         "//tensorflow:tensorflow_py",
+#         "//tensorflow/python:framework_test_lib",
+#         "//tensorflow/python:platform_test",
+#     ],
+# )
+
 
 filegroup(
     name = "all_files",

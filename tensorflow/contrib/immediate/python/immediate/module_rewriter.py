@@ -8,23 +8,23 @@ from __future__ import print_function
 
 import imp
 import inspect
-import re
 import sys
 import types
 
-from .op import OpWrapper
 from .op import OpDefLibraryWrapper
 from .op import ConvertToTensorWrapper
 from .op import ConstantOpWrapper
 
 from .tensor import _ENABLE_DEBUG_LOGGING
 
+from tensorflow.python.ops import op_def_library
+
 __all__ = ["ModuleRewriter"]
 
 # TODO(yaroslavvb): unify use of get_symbol_file and inspect.getsourcefile
-# using "get_source_file" for module stack checking results in infinite
-# recursion, meanwhile, need to use inspect.getsourcefile to lookup true
-# locations of contextlib wrappers
+# Right now, using "get_source_file" for module stack checking results in
+# infinite recursion, meanwhile, need to use inspect.getsourcefile to lookup
+# true locations of contextlib wrappers
 
 def get_symbol_file(symbol):
   """Returns filename of symbol definition, empty string if not available."""
@@ -48,14 +48,14 @@ def get_symbol_name(symbol):
 
 
 def copy_function(old_func, updated_module):
-  """Copies a function, updating it to point to given module."""
+  """Copies a function, updating it's globals to point to updated_module."""
 
   # TODO(yaroslavvb): also copy defaults and closure
   # Decorators don't set __module__ to the current function
   # detect this case and return it unchanged
   if old_func.__globals__ != sys.modules[old_func.__module__].__dict__:
     return old_func
-    
+
   new_func = types.FunctionType(old_func.__code__, updated_module.__dict__,
                                 name=old_func.__name__,
                                 argdefs=old_func.__defaults__,
@@ -117,17 +117,19 @@ class ModuleRewriter(object):
         if module.__file__:
           _module_fname_dict[__file__] = module
     self._module_fname_dict = _module_fname_dict
-    
-
 
   def __call__(self, original_module):
     return self._rewrite_module(original_module)
 
   def _lookup_module_by_fname(self, fname):
+    """Find module based on its __file__ attribute."""
+
     return self._module_fname_dict.get(fname, "")
-  
+
   def _is_contextlib_function(self, symbol):
-    try:
+    """Special handling for contextlib-wrapped functions."""
+
+    try:  # try catch because getsourcefile fails with various errors
       fname = inspect.getsourcefile(symbol)
       if fname.endswith('contextlib.py') or fname.endswith('contextlib.pyc'):
         return True
@@ -174,7 +176,7 @@ class ModuleRewriter(object):
 
       # Case 2: symbol is a module which may be affected by symbol_rewriter
       elif isinstance(symbol, types.ModuleType):  # prevent infinite recursion
-        if get_symbol_file(symbol) not in self._module_stack: 
+        if get_symbol_file(symbol) not in self._module_stack:
           new_symbol = self._rewrite_module(symbol)
 
           # copied modules always get a new name (prefixed with module_prefix)
@@ -246,44 +248,10 @@ class ModuleRewriter(object):
     self._module_stack.pop()
     return new_module
 
-class AddSymbolRewriter(object):
-  """An object implementing simple symbol rewriter."""
 
-  def __init__(self, value):
-    def new_add(arg1, arg2):
-      return value
-
-    self.replacement_func = new_add
-
-  def __call__(self, symbol):
-    if (get_symbol_name(symbol) == "add" and
-        "gen_math_ops.py" in get_symbol_file(symbol)):
-        return self.replacement_func
-
-
-from tensorflow.python.ops import op_def_library
-class OpDefLibRewriter(object):
-  """Replaces op_def_lib in gen_ops files with custom version."""
-  
-  # make this a formal dependency
-  def __init__(self, env):
-    self.env = env
-    self._fname_re = re.compile(".*tensorflow/python/ops/gen_.*_ops.pyc?$")
-    def filematch(symbol):
-      fn = get_symbol_file(symbol)
-      return bool(self._fname_re.findall(fn))
-    self.file_matches = filematch
-
-
-  def __call__(self, symbol):
-    # TODO(yaroslavvb): add filename filtering?
-    if (isinstance(symbol, op_def_library.OpDefLibrary)):
-      return OpDefLibraryWrapper(self.env, symbol)
-
-# TODO: add optional filename argument for rewriter?
 class ImmediateRewriter(object):
   """Replaces all relevant symbols with corresponding immediate versions."""
-  
+
   def __init__(self, env):
     self.env = env
 
@@ -298,6 +266,5 @@ class ImmediateRewriter(object):
         return ConvertToTensorWrapper(self.env, symbol)
 
       if (symbol.__name__ == 'constant' and
-          symbol.__module__=='tensorflow.python.ops.constant_op'):
+          symbol.__module__ == 'tensorflow.python.ops.constant_op'):
         return ConstantOpWrapper(self.env, symbol)
-        

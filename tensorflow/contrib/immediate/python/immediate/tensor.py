@@ -58,6 +58,9 @@ class Tensor(object):
                                                                   dummy_input3])
     return dummy_op
 
+  @property
+  def name(self):
+    return "ITensor"
    
 
   # tf.Tensor compatibility
@@ -70,7 +73,7 @@ class Tensor(object):
 
   def get_shape(self):
     shape_tensor = self.env.tf.shape(self)
-    shape_tuple = tuple(self.env.tensor_to_numpy(shape_tensor))
+    shape_tuple = tuple(shape_tensor.as_numpy())
     return tensor_shape.TensorShape(shape_tuple)
 
   def set_shape(self, _unused_shape):
@@ -127,7 +130,7 @@ class Tensor(object):
   def __bool__(self):
     # TODO(yaroslavvb): add in cast after Python-only ops are supported
     #    bool_tensor = self.env.cast(self, dtype=tf.bool)
-    return bool(self.env.tensor_to_numpy(self))
+    return bool(self.as_numpy())
 
   def __nonzero__(self):
     return self.__bool__()

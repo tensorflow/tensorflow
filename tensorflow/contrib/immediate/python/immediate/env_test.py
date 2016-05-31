@@ -1,21 +1,15 @@
 # Tests for immediate.Env
 
-import tensorflow as tf
 import numpy as np
-import tensorflow.contrib.immediate as immediate
 
-#from tensorflow.contrib.immediate import test_util
+import tensorflow as tf
+import tensorflow.contrib.immediate as immediate
 from tensorflow.contrib.immediate.python.immediate import test_util
 
 class EnvTest(test_util.ImmediateTestCase):
-#class EnvTest(tf.test.TestCase):
 
-  def testAdd(self):
-    with self.test_env(tf) as env:
-      self.assertEqual(env.tf.add(1, 2), 3)
-
-  def atestInit(self):
-    with self.test_env(tf) as env:
+  def testInit(self):
+    with self.test_env(tf) as _unused_env:
       self.assertTrue(True)
 
   def testNN(self):
@@ -23,9 +17,9 @@ class EnvTest(test_util.ImmediateTestCase):
       val = env.numpy_to_tensor(-1)
       self.assertEqual(env.tf.nn.relu(val), env.numpy_to_tensor(0))
 
-  def atestNumpyConversion(self):
+  def testNumpyConversion(self):
     def testForDtype(dtype):
-      a = np.array([[1,2],[3,4]], dtype=dtype)
+      a = np.array([[1, 2], [3, 4]], dtype=dtype)
       tensor_handle = env.numpy_to_handle(a)
       b = env.handle_to_numpy(tensor_handle)
       self.assertAllEqual(a, b)
@@ -80,7 +74,6 @@ class EnvTest(test_util.ImmediateTestCase):
       val2 = env.numpy_to_tensor(3)
       self.assertEqual(env.tf.pow(val1, val2), env.numpy_to_tensor(8))
 
-  # TODO(yaroslavvb): test tf.ones for empty shape (ndarray.empty)
   def testOnes(self):
     with self.test_env(tf) as env:
       val1 = env.tf.ones(shape=(3, 3))
@@ -88,26 +81,27 @@ class EnvTest(test_util.ImmediateTestCase):
 
   def testReshapeOpWithConversion(self):
     """Try reshape op where arguments are implicitly converted to Tensors"""
+
     with self.test_env(tf) as env:
-      val1 = env.numpy_to_tensor([[1],[2]])
+      val1 = env.numpy_to_tensor([[1], [2]])
       val2 = env.tf.reshape(val1, [-1])
       # TODO(yaroslavvb): implement slicing and get rid of numpy conversion
-      self.assertAllEqual(env.tensor_to_numpy(val2), [1, 2])
+      self.assertAllEqual(val2.as_numpy(), [1, 2])
 
   def testRank(self):
     with self.test_env(tf) as env:
-      val1 = env.numpy_to_tensor([[1],[2]])
+      val1 = env.numpy_to_tensor([[1], [2]])
       self.assertEqual(env.tf.rank(val1), 2)
 
   def testRange(self):
     with self.test_env(tf) as env:
       val = env.tf.range(3)
-      self.assertAllEqual(env.tensor_to_numpy(val), [0, 1, 2])
-    
+      self.assertAllEqual(val.as_numpy(), [0, 1, 2])
+
   def testReduceSum(self):
     """Try a simple non-native op."""
     with self.test_env(tf) as env:
-      val1 = env.numpy_to_tensor([1,2,3])
+      val1 = env.numpy_to_tensor([1, 2, 3])
       self.assertEqual(env.tf.reduce_sum(val1), 6)
 
   def testConstant(self):
@@ -127,10 +121,10 @@ class EnvTest(test_util.ImmediateTestCase):
       val = env.tf.random_uniform([n, n], -2, 2)
       sum_ = env.tf.reduce_sum(val)
       self.assertTrue(sum_ < n*n*2+1.)
-    
+
   def testShape(self):
     with self.test_env(tf) as env:
-      val0 = env.numpy_to_tensor([[1,2,3],[4,5,6]])
+      val0 = env.numpy_to_tensor([[1, 2, 3], [4, 5, 6]])
       self.assertAllEqual(env.tf.shape(val0).as_numpy(), [2, 3])
         
   def testSplit(self):
@@ -142,19 +136,19 @@ class EnvTest(test_util.ImmediateTestCase):
       self.assertAllEqual(split1.as_numpy(), [3, 4])
       split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2]))
       self.assertAllEqual(split0.as_numpy(), [1])
-    
+
   def testConcat(self):
     with self.test_env(tf) as env:
       val0 = env.numpy_to_tensor(0)
       self.assertEqual(env.tf.concat(0, 5), 5)
 
-      val1 = env.numpy_to_tensor([1,2])
-      val2 = env.numpy_to_tensor([3,4])
-      val3 = env.tf.concat(0, [val1, val2]) 
-      self.assertAllEqual(val3.as_numpy(), [1,2,3,4])
+      val1 = env.numpy_to_tensor([1, 2])
+      val2 = env.numpy_to_tensor([3, 4])
+      val3 = env.tf.concat(0, [val1, val2])
+      self.assertAllEqual(val3.as_numpy(), [1, 2, 3, 4])
 
 
-## TODO(yaroslavvb): move to env_test2
+## TODO(yaroslavvb): re-enable tests below once caching is put back in
 #### Tests below are for development/checking the Graph Caching system
 #### They rely on private details of session_ops implementation
 #### (such as, how often deletion graphs are created).
@@ -171,17 +165,17 @@ class EnvTest(test_util.ImmediateTestCase):
 
     # the first loop needs to be long enough to trigger tensor
     # garbage collection since that modifies the graph
-    for i in range(20):
-      tensor1+=tensor0
+    for _unused_i in range(20):
+      tensor1 += tensor0
 
-    number_of_graph_modifications = env.graph_version
+    number_of_graph_modifications = env._graph_version
 
-    for i in range(10):
-      tensor1+=tensor0
+    for _unused_i in range(10):
+      tensor1 += tensor0
 
     # check that graph hasn't been modified by checking its
     # graph version
-    self.assertEqual(number_of_graph_modifications, env.graph_version)
+    self.assertEqual(number_of_graph_modifications, env._graph_version)
     self.assertEqual(tensor1.as_numpy(), 30)
 
   def atestSplitCaching(self):
@@ -194,15 +188,15 @@ class EnvTest(test_util.ImmediateTestCase):
     split0, split1, split2 = env.tf.split(1, 3, value)
     self.assertAllEqual(env.tf.shape(split0).as_numpy(), [1, 1])
     split0, split1 = env.tf.split(0, 2, env.numpy_to_tensor([1, 2, 3, 4]))
-    version1 = env.graph_version
+    version1 = env._graph_version
     split0, split1 = env.tf.split(0, 2, to_split_value1)
-    version2 = env.graph_version
+    version2 = env._graph_version
     splits = env.tf.split(0, 3, to_split_value2)
-    version3 = env.graph_version
+    version3 = env._graph_version
     self.assertEqual(version1, version2)
     self.assertNotEqual(version2, version3)
 
-    
+
 
 if __name__ == "__main__":
   tf.test.main()
