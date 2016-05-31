@@ -32,7 +32,7 @@ class CSVParserTestCase(tf.test.TestCase):
                                   default_values=["", "", 1.4])
     csv_lines = ["one,two,2.5", "four,five,6.0"]
     csv_input = tf.constant(csv_lines, dtype=tf.string, shape=[len(csv_lines)])
-    csv_column = mocks.MockColumn("csv", csv_input)
+    csv_column = mocks.MockSeries("csv", csv_input)
     expected_output = [np.array([b"one", b"four"]),
                        np.array([b"two", b"five"]),
                        np.array([2.5, 6.0])]

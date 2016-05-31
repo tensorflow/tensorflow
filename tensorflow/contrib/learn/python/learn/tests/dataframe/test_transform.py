@@ -23,7 +23,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python import learn
-from tensorflow.contrib.learn.python.learn.dataframe.transform import _make_list_of_column
+from tensorflow.contrib.learn.python.learn.dataframe.transform import _make_list_of_series
 from tensorflow.contrib.learn.python.learn.tests.dataframe import mocks
 
 
@@ -31,17 +31,17 @@ class TransformTest(tf.test.TestCase):
   """Tests of the Transform class."""
 
   def test_make_list_of_column(self):
-    col1 = mocks.MockColumn("foo", [])
-    col2 = mocks.MockColumn("bar", [])
+    col1 = mocks.MockSeries("foo", [])
+    col2 = mocks.MockSeries("bar", [])
 
-    self.assertEqual([], _make_list_of_column(None))
-    self.assertEqual([col1], _make_list_of_column(col1))
-    self.assertEqual([col1], _make_list_of_column([col1]))
-    self.assertEqual([col1, col2], _make_list_of_column([col1, col2]))
-    self.assertEqual([col1, col2], _make_list_of_column((col1, col2)))
+    self.assertEqual([], _make_list_of_series(None))
+    self.assertEqual([col1], _make_list_of_series(col1))
+    self.assertEqual([col1], _make_list_of_series([col1]))
+    self.assertEqual([col1, col2], _make_list_of_series([col1, col2]))
+    self.assertEqual([col1, col2], _make_list_of_series((col1, col2)))
 
   def test_cache(self):
-    z = mocks.MockColumn("foobar", [])
+    z = mocks.MockSeries("foobar", [])
     t = mocks.MockTwoOutputTransform("thb", "nth", "snt")
     cache = {}
     t.apply_transform([z], cache)
@@ -78,14 +78,14 @@ class TransformTest(tf.test.TestCase):
   def test_call(self):
     t = mocks.MockTwoOutputTransform("a", "b", "c")
     # MockTwoOutputTransform has input valency 1
-    input1 = mocks.MockColumn("foobar", [])
+    input1 = mocks.MockSeries("foobar", [])
     out1, out2 = t([input1])  # pylint: disable=not-callable
 
-    self.assertEqual(learn.TransformedColumn, type(out1))
+    self.assertEqual(learn.TransformedSeries, type(out1))
     # self.assertEqual(out1.transform, t)
     # self.assertEqual(out1.output_name, "output1")
 
-    self.assertEqual(learn.TransformedColumn, type(out2))
+    self.assertEqual(learn.TransformedSeries, type(out2))
     # self.assertEqual(out2.transform, t)
     # self.assertEqual(out2.output_name, "output2")
 

@@ -23,7 +23,7 @@ from __future__ import print_function
 from abc import ABCMeta
 import collections
 
-from .column import Column
+from .series import Series
 from .transform import Transform
 
 
@@ -62,7 +62,7 @@ class DataFrame(object):
       if not isinstance(k, str):
         raise TypeError("The only supported type for keys is string; got %s" %
                         type(k))
-      if isinstance(v, Column):
+      if isinstance(v, Series):
         s = v
       elif isinstance(v, Transform) and v.input_valency() == 0:
         s = v()
@@ -74,7 +74,7 @@ class DataFrame(object):
       #   s = series.NumpySeries(v)
       else:
         raise TypeError(
-            "Column in assignment must be an inflow.Column, pandas.Series or a"
+            "Column in assignment must be an inflow.Series, pandas.Series or a"
             " numpy array; got type '%s'." % type(v).__name__)
       self._columns[k] = s
 
@@ -116,7 +116,7 @@ class DataFrame(object):
   def __setitem__(self, key, value):
     if isinstance(key, str):
       key = [key]
-    if isinstance(value, Column):
+    if isinstance(value, Series):
       value = [value]
     self.assign(**dict(zip(key, value)))
 

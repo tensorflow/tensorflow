@@ -29,14 +29,14 @@ from tensorflow.contrib.learn.python.learn.tests.dataframe import mocks
 def setup_test_df():
   """Create a dataframe populated with some test columns."""
   df = learn.DataFrame()
-  df["a"] = learn.TransformedColumn(
-      [mocks.MockColumn("foobar", [])],
+  df["a"] = learn.TransformedSeries(
+      [mocks.MockSeries("foobar", [])],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out1")
-  df["b"] = learn.TransformedColumn(
-      [mocks.MockColumn("foobar", [])],
+  df["b"] = learn.TransformedSeries(
+      [mocks.MockSeries("foobar", [])],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out2")
-  df["c"] = learn.TransformedColumn(
-      [mocks.MockColumn("foobar", [])],
+  df["c"] = learn.TransformedSeries(
+      [mocks.MockSeries("foobar", [])],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out1")
   return df
 
@@ -61,7 +61,7 @@ class DataFrameTest(tf.test.TestCase):
   def test_set_item_column(self):
     df = setup_test_df()
     self.assertEqual(3, len(df))
-    col1 = mocks.MockColumn("QuackColumn", [])
+    col1 = mocks.MockSeries("QuackColumn", [])
     df["quack"] = col1
     self.assertEqual(4, len(df))
     col2 = df["quack"]
@@ -70,8 +70,8 @@ class DataFrameTest(tf.test.TestCase):
   def test_set_item_column_multi(self):
     df = setup_test_df()
     self.assertEqual(3, len(df))
-    col1 = mocks.MockColumn("QuackColumn", [])
-    col2 = mocks.MockColumn("MooColumn", [])
+    col1 = mocks.MockSeries("QuackColumn", [])
+    col2 = mocks.MockSeries("MooColumn", [])
     df["quack", "moo"] = [col1, col2]
     self.assertEqual(5, len(df))
     col3 = df["quack"]

@@ -71,7 +71,7 @@ class ExampleParserTestCase(tf.test.TestCase):
                       "    } "
                       "  } "
                       "} ", self.example2)
-    self.example_column = mocks.MockColumn(
+    self.example_column = mocks.MockSeries(
         "example",
         tf.constant(
             [self.example1.SerializeToString(),

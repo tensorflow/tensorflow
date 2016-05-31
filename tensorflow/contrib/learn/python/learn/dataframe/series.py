@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""A Column represents a deferred Tensor computation in a DataFrame."""
+"""A Series represents a deferred Tensor computation in a DataFrame."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,13 +23,13 @@ from __future__ import print_function
 from abc import ABCMeta
 
 
-class Column(object):
-  """A single output column.
+class Series(object):
+  """A single output series.
 
-  Represents the deferred construction of a graph that computes the column
+  Represents the deferred construction of a graph that computes the series
   values.
 
-  Note every `Column` should be a `TransformedColumn`, except when mocked.
+  Note every `Series` should be a `TransformedSeries`, except when mocked.
   """
 
   __metaclass__ = ABCMeta
@@ -39,58 +39,58 @@ class Column(object):
     raise NotImplementedError()
 
 
-class TransformedColumn(Column):
-  """A `Column` that results from applying a `Transform` to a list of inputs."""
+class TransformedSeries(Series):
+  """A `Series` that results from applying a `Transform` to a list of inputs."""
 
-  def __init__(self, input_columns, transform, output_name):
-    super(TransformedColumn, self).__init__()
-    self._input_columns = input_columns
+  def __init__(self, input_series, transform, output_name):
+    super(TransformedSeries, self).__init__()
+    self._input_series = input_series
     self._transform = transform
     self._output_name = output_name
 
     if output_name is None:
       raise ValueError("output_name must be provided")
 
-    if len(input_columns) != transform.input_valency:
-      raise ValueError("Expected %s input Columns but received %s." %
-                       (transform.input_valency, len(input_columns)))
+    if len(input_series) != transform.input_valency:
+      raise ValueError("Expected %s input Series but received %s." %
+                       (transform.input_valency, len(input_series)))
 
-    self._repr = TransformedColumn.make_repr(
-        self._input_columns, self._transform, self._output_name)
+    self._repr = TransformedSeries.make_repr(
+        self._input_series, self._transform, self._output_name)
 
   def build(self, cache=None):
     if cache is None:
       cache = {}
-    all_outputs = self._transform.apply_transform(self._input_columns, cache)
+    all_outputs = self._transform.apply_transform(self._input_series, cache)
     return getattr(all_outputs, self._output_name)
 
   def __repr__(self):
     return self._repr
 
-  # Note we need to generate column reprs from Transform, without needing the
-  # columns themselves.  So we just make this public.  Alternatively we could
-  # create throwaway columns just in order to call repr() on them.
+  # Note we need to generate series reprs from Transform, without needing the
+  # series themselves.  So we just make this public.  Alternatively we could
+  # create throwaway series just in order to call repr() on them.
   @staticmethod
-  def make_repr(input_columns, transform, output_name):
-    """Generate a key for caching Tensors produced for a TransformedColumn.
+  def make_repr(input_series, transform, output_name):
+    """Generate a key for caching Tensors produced for a TransformedSeries.
 
     Generally we a need a deterministic unique key representing which transform
     was applied to which inputs, and which output was selected.
 
     Args:
-      input_columns: the input `Columns` for the `Transform`
+      input_series: an iterable of input `Series` for the `Transform`
       transform: the `Transform` being applied
       output_name: the name of the specific output from the `Transform` that is
         to be cached
 
     Returns:
       A string suitable for use as a cache key for Tensors produced via a
-        TransformedColumn
+        TransformedSeries
     """
-    input_column_keys = [repr(column) for column in input_columns]
-    input_column_keys_joined = ", ".join(input_column_keys)
+    input_series_keys = [repr(series) for series in input_series]
+    input_series_keys_joined = ", ".join(input_series_keys)
 
     return "%s(%s)[%s]" % (
-        repr(transform), input_column_keys_joined, output_name)
+        repr(transform), input_series_keys_joined, output_name)
 
 

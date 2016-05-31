@@ -25,11 +25,11 @@ from abc import ABCMeta
 from tensorflow.contrib.learn.python import learn
 
 
-class MockColumn(learn.Column):
-  """A mock column for use in testing."""
+class MockSeries(learn.Series):
+  """A mock series for use in testing."""
 
   def __init__(self, cachekey, mock_tensors):
-    super(MockColumn, self).__init__()
+    super(MockSeries, self).__init__()
     self._cachekey = cachekey
     self._mock_tensors = mock_tensors
 

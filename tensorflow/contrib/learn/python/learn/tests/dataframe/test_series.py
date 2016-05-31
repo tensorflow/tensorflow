@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests of the Column class."""
+"""Tests of the Series class."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,12 +26,12 @@ from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.tests.dataframe import mocks
 
 
-class TransformedColumnTest(tf.test.TestCase):
-  """Test of `TransformedColumn`."""
+class TransformedSeriesTest(tf.test.TestCase):
+  """Test of `TransformedSeries`."""
 
   def test_repr(self):
-    col = learn.TransformedColumn(
-        [mocks.MockColumn("foobar", [])],
+    col = learn.TransformedSeries(
+        [mocks.MockSeries("foobar", [])],
         mocks.MockTwoOutputTransform("thb", "nth", "snt"), "qux")
 
     # note params are sorted by name
@@ -41,16 +41,16 @@ class TransformedColumnTest(tf.test.TestCase):
     self.assertEqual(expected, repr(col))
 
   def test_build_no_output(self):
-    def create_no_output_column():
-      return learn.TransformedColumn(
-          [mocks.MockColumn("foobar", [])],
+    def create_no_output_series():
+      return learn.TransformedSeries(
+          [mocks.MockSeries("foobar", [])],
           mocks.MockZeroOutputTransform("thb", "nth"), None)
 
-    self.assertRaises(ValueError, create_no_output_column)
+    self.assertRaises(ValueError, create_no_output_series)
 
   def test_build_single_output(self):
-    col = learn.TransformedColumn(
-        [mocks.MockColumn("foobar", [])],
+    col = learn.TransformedSeries(
+        [mocks.MockSeries("foobar", [])],
         mocks.MockOneOutputTransform("thb", "nth"), "out1")
 
     result = col.build()
@@ -58,8 +58,8 @@ class TransformedColumnTest(tf.test.TestCase):
     self.assertEqual(expected, result)
 
   def test_build_multiple_output(self):
-    col = learn.TransformedColumn(
-        [mocks.MockColumn("foobar", [])],
+    col = learn.TransformedSeries(
+        [mocks.MockSeries("foobar", [])],
         mocks.MockTwoOutputTransform("thb", "nth", "snt"), "out2")
 
     result = col.build()

@@ -88,9 +88,9 @@ py_test(
 )
 
 py_test(
-    name = "test_column",
+    name = "test_series",
     size = "small",
-    srcs = ["python/learn/tests/dataframe/test_column.py"],
+    srcs = ["python/learn/tests/dataframe/test_series.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
