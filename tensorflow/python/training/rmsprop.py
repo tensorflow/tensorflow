@@ -57,6 +57,10 @@ class RMSPropOptimizer(optimizer.Optimizer):
                name="RMSProp"):
     """Construct a new RMSProp optimizer.
 
+    Note that in dense implement of this algorithm, m_t and v_t will 
+    update even if g is zero, but in sparse implement, m_t and v_t 
+    will not update in iterations g is zero.
+
     Args:
       learning_rate: A Tensor or a floating point value.  The learning rate.
       decay: Discounting factor for the history/coming gradient
