@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/logging.h"
@@ -692,11 +693,14 @@ struct CudaVersion {
   // Initialize from version_name in the form of "3.5"
   explicit CudaVersion(const std::string& version_name) {
     size_t dot_pos = version_name.find('.');
-    CHECK(dot_pos != string::npos);
+    CHECK(dot_pos != string::npos) << "Illegal version name: [" << version_name
+                                   << "]";
     string major_str = version_name.substr(0, dot_pos);
-    CHECK(strings::safe_strto32(major_str, &major_part));
+    CHECK(strings::safe_strto32(major_str, &major_part))
+        << "Illegal version name: [" << version_name << "]";
     string minor_str = version_name.substr(dot_pos + 1);
-    CHECK(strings::safe_strto32(minor_str, &minor_part));
+    CHECK(strings::safe_strto32(minor_str, &minor_part))
+        << "Illegal version name: [" << version_name << "]";
   }
   CudaVersion() {}
   bool operator<(const CudaVersion& other) const {
@@ -719,16 +723,36 @@ struct CudaVersion {
 std::vector<CudaVersion> supported_cuda_compute_capabilities = {
     CudaVersion("3.5"), CudaVersion("5.2")};
 
+std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
+  auto cuda_caps = supported_cuda_compute_capabilities;
+#ifdef TF_EXTRA_CUDA_CAPABILITIES
+// TF_EXTRA_CUDA_CAPABILITIES should be defined a sequence separated by commas,
+// for example:
+//   TF_EXTRA_CUDA_CAPABILITIES=3.0,4.0,5.0
+// Use two-level macro expansion for stringification.
+#define TF_XSTRING(...) #__VA_ARGS__
+#define TF_STRING(s) TF_XSTRING(s)
+  string extra_cuda_caps = TF_STRING(TF_EXTRA_CUDA_CAPABILITIES);
+#undef TF_STRING
+#undef TF_XSTRING
+  auto extra_capabilities = str_util::Split(extra_cuda_caps, ',');
+  for (const auto& capability : extra_capabilities) {
+    cuda_caps.push_back(CudaVersion(capability));
+  }
+#endif
+  return cuda_caps;
+}
+
 }  // namespace
 
 void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
   auto gpu_manager = GPUMachineManager();
   int min_gpu_core_count = GetMinGPUMultiprocessorCount();
   if (gpu_manager) {
-    CHECK(!supported_cuda_compute_capabilities.empty());
-    CudaVersion min_supported_capability =
-        *std::min_element(supported_cuda_compute_capabilities.begin(),
-                          supported_cuda_compute_capabilities.end());
+    auto cuda_supported_capabilities = GetSupportedCudaComputeCapabilities();
+    CHECK(!cuda_supported_capabilities.empty());
+    CudaVersion min_supported_capability = *std::min_element(
+        cuda_supported_capabilities.begin(), cuda_supported_capabilities.end());
 
     auto visible_device_count = gpu_manager->VisibleDeviceCount();
     for (int i = 0; i < gpu_manager->VisibleDeviceCount(); ++i) {
