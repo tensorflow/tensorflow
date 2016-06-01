@@ -1785,6 +1785,49 @@ filegroup(
     ],
 )
 
+# A file group which contains nearly all available operators which
+# may work on Android. This is intended to be used with selective
+# registration.
+filegroup(
+    name = "android_all_ops",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = [
+            "*test.cc",
+            "*testutil*",
+            "*testlib*",
+            "*main.cc",
+            "*_gpu*",
+            "*_3d*",
+            "*.cu.*",
+            # Ops already in android_srcs
+            "ops_util.cc",
+            "pooling_ops_common.cc",
+            # Ops which we are currently excluding because they are likely
+            # not used on Android. Those ops also do not compile if included,
+            # unless we add the additional deps they need.
+            "tf_record_reader_op.*",
+            "string_to_hash_bucket_op.*",
+            "text_line_reader_op.*",
+            "summary_image_op.*",
+            "encode_png_op.*",
+            "decode_png_op.*",
+            "encode_jpeg_op.*",
+            "decode_jpeg_op.*",
+            "identity_reader_op.*",
+            "reader_base.*",
+            "fixed_length_record_reader_op.*",
+            "whole_file_read_ops.*",
+            "sample_distorted_bounding_box_op.*",
+            "ctc_loss_op.*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "android_tensorflow_kernels",
     srcs = select({

@@ -43,6 +43,8 @@
 # filegroup ":android_proto_srcs" - Protos
 # filegroup ":android_srcs" - Core sources
 # cc_library ":android_tensorflow_lib" - Native library
+# cc_library ":android_tensorflow_lib_selective_registration" - Native library
+#   supporting SELECTIVE_REGISTRATION feature.
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
 package(default_visibility = ["//tensorflow:internal"])
@@ -650,9 +652,9 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Native library support for Android applications.
-# Does not contain operators, use :android_tensorflow_lib if you want full
-# operator support.
+# Native library support for Android applications.  Does not contain
+# operators, use :android_tensorflow_lib if you want full operator
+# support.
 #
 # Compiles to a trivial library on non-Android to prevent irrelevant
 # build errors. If not building this as part of an android_binary,
@@ -703,6 +705,35 @@ cc_library(
         ":android_tensorflow_lib_lite",
         ":protos_cc",
         "//tensorflow/core/kernels:android_tensorflow_kernels",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+# Android library for use with the SELECTIVE_REGISTRATION feature.
+# Does not contain operators. In contrast to android_tensorflow_lib_lite,
+# this links in framework support for all types, relying on selective
+# registration of ops to prune code size.
+cc_library(
+    name = "android_tensorflow_lib_selective_registration",
+    srcs =
+        select({
+            "//tensorflow:android": [
+                "//tensorflow/core:android_srcs",
+            ],
+            "//conditions:default": [],
+        }),
+    copts = tf_copts() + [
+        "-Os",
+        "-DSUPPORT_SELECTIVE_REGISTRATION",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_cc",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
