@@ -740,9 +740,6 @@ Status DirectSession::GetOrCreateExecutors(
     }
   }
   ek->items.reserve(graphs.size());
-  auto runner = [this, pool](Executor::Args::Closure c) {
-    SchedClosure(pool, c);
-  };
   const auto& optimizer_opts =
       options_.config.graph_options().optimizer_options();
   GraphOptimizer optimizer(optimizer_opts);
@@ -757,9 +754,9 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib = NewFunctionLibraryRuntime(device_mgr_.get(), device, runner,
-                                           graph_def_version, flib_def_.get(),
-                                           optimizer_opts);
+    item->flib =
+        NewFunctionLibraryRuntime(device_mgr_.get(), device, graph_def_version,
+                                  flib_def_.get(), optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;
