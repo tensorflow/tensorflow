@@ -46,8 +46,8 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       ...
     def input_fn_eval: # returns X, Y
       ...
-    estimator.train(input_fn_train)
-    estimator.evaluate(input_fn_eval)
+    estimator.fit(input_fn=input_fn_train)
+    estimator.evaluate(input_fn=input_fn_eval)
     estimator.predict(x)
     ```
 
@@ -124,8 +124,8 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       ...
     def input_fn_eval: # returns X, Y
       ...
-    estimator.train(input_fn_train)
-    estimator.evaluate(input_fn_eval)
+    estimator.fit(input_fn=input_fn_train)
+    estimator.evaluate(input_fn=input_fn_eval)
     estimator.predict(x)
     ```
 

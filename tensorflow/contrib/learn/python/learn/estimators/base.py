@@ -319,7 +319,7 @@ class TensorFlowEstimator(estimator.Estimator):
       raise ValueError("Restore folder doesn't contain model definition.")
     # list of parameters that are allowed to be reconfigured
     reconfigurable_params = ['_config']
-    _config = config
+    _config = config  # pylint: disable=unused-variable,invalid-name
     with gfile.Open(model_def_filename) as fmodel:
       model_def = json.loads(fmodel.read())
       # TensorFlow binding requires parameters to be strings not unicode.
@@ -390,15 +390,18 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
   """TensorFlow Base Transformer class."""
 
   def transform(self, X):  # pylint: disable=invalid-name
+    # pylint: disable=invalid-name
     """Transform X using trained transformer."""
     return(super(TensorFlowBaseTransformer, self).predict(
         X, axis=1, batch_size=None))
 
   def fit(self, X, y=None, monitor=None, logdir=None):
+    # pylint: disable=invalid-name
     """Fit a transformer."""
     return(super(TensorFlowBaseTransformer, self).fit(
         X, y, monitors=None, logdir=None))
 
   def fit_transform(self, X, y=None, monitor=None, logdir=None):
+    # pylint: disable=invalid-name
     """Fit transformer and transform X using trained transformer."""
     return self.fit(X, y, monitor=None, logdir=None).transform(X)

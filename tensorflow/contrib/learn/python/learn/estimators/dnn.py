@@ -49,7 +49,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       # Input builders
       def input_fn_train: # returns X, Y
         pass
-      estimator.train(input_fn_train)
+      estimator.fit(input_fn=input_fn_train)
 
       def input_fn_eval: # returns X, Y
         pass
@@ -130,7 +130,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       # Input builders
       def input_fn_train: # returns X, Y
         pass
-      estimator.train(input_fn_train)
+      estimator.fit(input_fn=input_fn_train)
 
       def input_fn_eval: # returns X, Y
         pass
@@ -246,6 +246,7 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
         verbose=verbose)
 
   def _model_fn(self, X, y):  # pylint: disable=invalid-name
+    # pylint: disable=invalid-name
     return models.get_dnn_model(self.hidden_units,
                                 models.logistic_regression,
                                 dropout=self.dropout)(X, y)
@@ -320,6 +321,7 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
         verbose=verbose)
 
   def _model_fn(self, X, y):  # pylint: disable=invalid-name
+    # pylint: disable=invalid-name
     return models.get_dnn_model(self.hidden_units,
                                 models.linear_regression,
                                 dropout=self.dropout)(X, y)

@@ -41,9 +41,10 @@ class LinearClassifierTest(tf.test.TestCase):
 
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language])
-    loss1 = classifier.train(input_fn, steps=100)
-    loss2 = classifier.train(input_fn, steps=200)
-
+    classifier.fit(input_fn=input_fn, steps=100)
+    loss1 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    classifier.fit(input_fn=input_fn, steps=200)
+    loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)
 
@@ -64,8 +65,12 @@ class LinearClassifierTest(tf.test.TestCase):
         feature_columns=[language],
         optimizer=tf.train.FtrlOptimizer(learning_rate=1.0,
                                          l1_regularization_strength=100.))
-    loss_no_reg = classifier_no_reg.train(input_fn, steps=100)
-    loss_with_reg = classifier_with_reg.train(input_fn, steps=100)
+    loss_no_reg = classifier_no_reg.fit(
+        input_fn=input_fn, steps=100).evaluate(
+            input_fn=input_fn, steps=1)['loss']
+    loss_with_reg = classifier_with_reg.fit(
+        input_fn=input_fn, steps=100).evaluate(
+            input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss_no_reg, loss_with_reg)
 
   def testTrainWithMissingFeature(self):
@@ -80,7 +85,8 @@ class LinearClassifierTest(tf.test.TestCase):
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
     classifier = tf.contrib.learn.LinearClassifier(feature_columns=[language])
-    loss = classifier.train(input_fn, steps=100)
+    classifier.fit(input_fn=input_fn, steps=100)
+    loss = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss, 0.01)
 
   def testEval(self):
@@ -101,7 +107,7 @@ class LinearClassifierTest(tf.test.TestCase):
         feature_columns=[age, language])
 
     # Evaluate on trained mdoel
-    classifier.train(input_fn, steps=100)
+    classifier.fit(input_fn=input_fn, steps=100)
     classifier.evaluate(input_fn=input_fn, steps=2)
 
     # TODO(ispir): Enable accuracy check after resolving the randomness issue.
@@ -127,8 +133,10 @@ class LinearRegressorTest(tf.test.TestCase):
 
     classifier = tf.contrib.learn.LinearRegressor(
         feature_columns=[age, language])
-    loss1 = classifier.train(input_fn, steps=100)
-    loss2 = classifier.train(input_fn, steps=200)
+    classifier.fit(input_fn=input_fn, steps=100)
+    loss1 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    classifier.fit(input_fn=input_fn, steps=200)
+    loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
 
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)
@@ -145,7 +153,7 @@ class InferedColumnTest(tf.test.TestCase):
 
   def testTrain(self):
     est = tf.contrib.learn.LinearRegressor()
-    est.train(input_fn=boston_input_fn, steps=1)
+    est.fit(input_fn=boston_input_fn, steps=1)
     _ = est.evaluate(input_fn=boston_input_fn, steps=1)
 
 

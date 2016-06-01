@@ -64,7 +64,7 @@ class ClassifierTest(tf.test.TestCase):
   def testIrisInputFn(self):
     iris = tf.contrib.learn.datasets.load_iris()
     est = tf.contrib.learn.Classifier(model_fn=logistic_model_fn, n_classes=3)
-    est.train(input_fn=iris_input_fn, steps=100)
+    est.fit(input_fn=iris_input_fn, steps=100)
     _ = est.evaluate(input_fn=iris_input_fn, steps=1)
     predictions = est.predict(x=iris.data)
     self.assertEqual(predictions.shape[0], iris.target.shape[0])

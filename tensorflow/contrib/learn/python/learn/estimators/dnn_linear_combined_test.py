@@ -63,7 +63,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=cont_features,
         dnn_hidden_units=[3, 3])
 
-    classifier.train(_iris_input_fn, steps=100)
+    classifier.fit(input_fn=_iris_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
@@ -103,7 +103,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=cont_features,
         dnn_hidden_units=[3, 3])
 
-    classifier.train(input_fn=_input_fn, steps=100)
+    classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
@@ -126,7 +126,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=cont_features,
         dnn_hidden_units=[3, 3])
 
-    classifier.train(_iris_input_fn, steps=100)
+    classifier.fit(input_fn=_iris_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
@@ -159,7 +159,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.train(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_eval,
                                  steps=100)
     # If there is no weight column, model should learn y=Not(x). All examples in
@@ -187,7 +187,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.train(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_train, steps=100)
     # If weight column is ignored, then accuracy should be 0.25. If it's not
     # ignored, then it should be greater than 0.6.
@@ -209,7 +209,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         dnn_optimizer=tf.train.AdagradOptimizer(learning_rate=0.1))
 
-    classifier.train(_iris_input_fn, steps=100)
+    classifier.fit(input_fn=_iris_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
@@ -229,7 +229,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         dnn_optimizer='Adagrad')
 
-    classifier.train(_iris_input_fn, steps=100)
+    classifier.fit(input_fn=_iris_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
@@ -250,7 +250,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.train(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=100)
     probs = classifier.predict_proba(input_fn=_input_fn_predict)
     self.assertAllClose([[0.75, 0.25]] * 4, probs, 0.01)
     classes = classifier.predict(input_fn=_input_fn_predict)
@@ -270,7 +270,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.train(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(
         input_fn=_input_fn_train,
         steps=100,
@@ -297,7 +297,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.train(input_fn=_input_fn_train, steps=500)
+    classifier.fit(input_fn=_input_fn_train, steps=500)
     var_names = classifier.get_variable_names()
     self.assertGreater(len(var_names), 3)
     for name in var_names:
@@ -316,7 +316,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.train(input_fn=_input_fn_train, steps=500)
+    classifier.fit(input_fn=_input_fn_train, steps=500)
     # logodds(0.75) = 1.09861228867
     self.assertAlmostEqual(
         1.0986,
@@ -340,7 +340,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.train(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=100)
     classifier.evaluate(input_fn=_input_fn_train, steps=1)
 
 

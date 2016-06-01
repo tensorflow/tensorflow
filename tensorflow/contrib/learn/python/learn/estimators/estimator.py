@@ -125,7 +125,9 @@ class BaseEstimator(sklearn.BaseEstimator):
 
     self._graph = None
 
-  def fit(self, x, y, steps, batch_size=32, monitors=None):
+  def fit(
+      self, x=None, y=None, input_fn=None, steps=None, batch_size=32,
+      monitors=None):
     """Trains a model given training data X and y.
 
     Args:
@@ -135,38 +137,36 @@ class BaseEstimator(sklearn.BaseEstimator):
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
          iterator that returns array of targets. The training target values
          (class labels in classification, real numbers in regression).
-      steps: number of steps to train model for.
-      batch_size: minibatch size to use on the input, defaults to 32.
+      input_fn: Input function. If set, `x` and `y` must be `None`.
+      steps: Number of steps for which to train model. If `None`, train forever.
+      batch_size: minibatch size to use on the input, defaults to 32. Ignored if
+        `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
                 inside the training loop.
 
     Returns:
-      Final loss.
+      `self`, for chaining.
+
+    Raises:
+      ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
     """
-    input_fn, feed_fn = _get_input_fn(x, y, batch_size)
-    return self._train_model(input_fn=input_fn,
+    feed_fn = None
+    if input_fn is None:
+      if x is None:
+        raise ValueError('Either x or input_fn must be provided.')
+      input_fn, feed_fn = _get_input_fn(x, y, batch_size)
+    elif (x is not None) or (y is not None):
+      raise ValueError('Can not provide both input_fn and either of x and y.')
+    loss = self._train_model(input_fn=input_fn,
                              feed_fn=feed_fn,
                              steps=steps,
                              monitors=monitors)
+    logging.info('Loss for final step: %s.', loss)
+    return self
 
-  # TODO(ptucker,ipolosukhin): Consider returning self and saving loss in
-  # attribute. Ditto for evaluate.
-  def train(self, input_fn, steps, monitors=None):
-    """Trains a model given input builder function.
-
-    Args:
-      input_fn: Input builder function, returns tuple of dicts or
-                dict and Tensor.
-      steps: number of steps to train model for.
-      monitors: List of `BaseMonitor` subclass instances. Used for callbacks
-                inside the training loop.
-
-    Returns:
-      Final loss.
-    """
-    return self._train_model(input_fn=input_fn, steps=steps, monitors=monitors)
-
-  def partial_fit(self, x, y, steps=1, batch_size=32, monitors=None):
+  def partial_fit(
+      self, x=None, y=None, input_fn=None, steps=1, batch_size=32,
+      monitors=None):
     """Incremental fit on a batch of samples.
 
     This method is expected to be called several times consecutively
@@ -184,19 +184,32 @@ class BaseEstimator(sklearn.BaseEstimator):
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
         iterator that returns array of targets. The training target values
         (class label in classification, real numbers in regression).
-      steps: number of steps to train model for.
-      batch_size: minibatch size to use on the input, defaults to 32.
+      input_fn: Input function. If set, `x` and `y` must be `None`.
+      steps: Number of steps for which to train model. If `None`, train forever.
+      batch_size: minibatch size to use on the input, defaults to 32. Ignored if
+        `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
                 inside the training loop.
 
     Returns:
-      Final loss.
+      `self`, for chaining.
+
+    Raises:
+      ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
     """
-    input_fn, feed_fn = _get_input_fn(x, y, batch_size)
-    return self._train_model(input_fn=input_fn,
+    feed_fn = None
+    if input_fn is None:
+      if x is None:
+        raise ValueError('Either x or input_fn must be provided.')
+      input_fn, feed_fn = _get_input_fn(x, y, batch_size)
+    elif (x is not None) or (y is not None):
+      raise ValueError('Can not provide both input_fn and either of x and y.')
+    loss = self._train_model(input_fn=input_fn,
                              feed_fn=feed_fn,
                              steps=steps,
                              monitors=monitors)
+    logging.info('Loss for final step: %s.', loss)
+    return self
 
   def evaluate(self,
                x=None,
@@ -212,12 +225,12 @@ class BaseEstimator(sklearn.BaseEstimator):
     Args:
       x: features.
       y: targets.
-      input_fn: Input function. If set, x and y must be None.
+      input_fn: Input function. If set, `x` and `y` must be `None`.
       feed_fn: Function creating a feed dict every time it is called. Called
         once per iteration.
-      batch_size: minibatch size to use on the input, defaults to 32. Ignored
-        if input_fn is set.
-      steps: Number of steps to evalute for.
+      batch_size: minibatch size to use on the input, defaults to 32. Ignored if
+        `input_fn` is provided.
+      steps: Number of steps for which to train model. If `None`, train forever.
       metrics: Dict of metric ops to run. If None, the default metric functions
         are used; if {}, no metrics are used.
       name: Name of the evaluation if user needs to run multiple evaluation on
@@ -227,13 +240,17 @@ class BaseEstimator(sklearn.BaseEstimator):
       Returns `dict` with evaluation results.
 
     Raises:
-      ValueError: If x or y are not None while input_fn or feed_fn is not None.
+      ValueError: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+          not `None`.
     """
-    if (x is not None or y is not None) and input_fn is not None:
-      raise ValueError('Either x and y or input_fn must be None.')
     if input_fn is None:
-      assert x is not None
+      if x is None:
+        raise ValueError('Either x or input_fn must be provided.')
+      if feed_fn is not None:
+        raise ValueError('Cannot provide both x and feed_fn.')
       input_fn, feed_fn = _get_predict_input_fn(x, y, batch_size)
+    elif (x is not None) or (y is not None):
+      raise ValueError('Can not provide both input_fn and either of x and y.')
     return self._evaluate_model(input_fn=input_fn,
                                 feed_fn=feed_fn,
                                 steps=steps,
@@ -496,8 +513,14 @@ class BaseEstimator(sklearn.BaseEstimator):
                    outputs=None):
     # Converts inputs into tf.DataFrame / tf.Series.
     batch_size = -1 if batch_size is None else batch_size
-    if x is not None:
+    if input_fn is None:
+      if x is None:
+        raise ValueError('Either x or input_fn must be provided.')
+      if feed_fn is not None:
+        raise ValueError('Cannot provide both x and feed_fn.')
       input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
+    elif x is not None:
+      raise ValueError('Can not provide both input_fn and x.')
 
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
