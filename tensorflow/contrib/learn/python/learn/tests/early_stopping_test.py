@@ -13,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Custom decay tests."""
+"""Early stopping tests."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,10 +28,10 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_s
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test_split
 
 
-class CustomDecayTest(tf.test.TestCase):
-  """Custom decay tests."""
+class EarlyStoppingTest(tf.test.TestCase):
+  """Early stopping tests."""
 
-  def testIrisExponentialDecay(self):
+  def testIrisES(self):
     random.seed(42)
 
     iris = datasets.load_iris()
@@ -41,21 +40,30 @@ class CustomDecayTest(tf.test.TestCase):
                                                         test_size=0.2,
                                                         random_state=42)
 
-    # setup exponential decay function
-    def exp_decay(global_step):
-      return tf.train.exponential_decay(learning_rate=0.1,
-                                        global_step=global_step,
-                                        decay_steps=100,
-                                        decay_rate=0.001)
+    x_train, x_val, y_train, y_val = train_test_split(x_train,
+                                                      y_train,
+                                                      test_size=0.2)
+    val_monitor = learn.monitors.ValidationMonitor(x_val,
+                                                   y_val,
+                                                   early_stopping_rounds=100)
 
-    classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                               n_classes=3,
-                                               steps=500,
-                                               learning_rate=exp_decay)
-    classifier.fit(x_train, y_train)
-    score = accuracy_score(y_test, classifier.predict(x_test))
+    # classifier without early stopping - overfitting
+    classifier1 = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+                                                n_classes=3,
+                                                steps=1000)
+    classifier1.fit(x_train, y_train)
+    accuracy_score(y_test, classifier1.predict(x_test))
 
-    self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
+    # classifier with early stopping - improved accuracy on testing set
+    classifier2 = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+                                                n_classes=3,
+                                                steps=1000)
+
+    classifier2.fit(x_train, y_train, monitors=[val_monitor])
+    accuracy_score(y_test, classifier2.predict(x_test))
+
+    # TODO(ipolosukhin): Restore this?
+    # self.assertGreater(score2, score1, "No improvement using early stopping.")
 
 
 if __name__ == "__main__":

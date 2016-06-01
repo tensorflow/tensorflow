@@ -84,9 +84,9 @@ class ExampleParserTestCase(tf.test.TestCase):
                                          dtype=tf.int64,
                                          default_value=[0, 0, 0])))
 
-    self.expected_string_values = np.array(
-        list(self.example1.features.feature["string_feature"].bytes_list.value) +
-        list(self.example2.features.feature["string_feature"].bytes_list.value))
+    self.expected_string_values = np.array(list(self.example1.features.feature[
+        "string_feature"].bytes_list.value) + list(
+            self.example2.features.feature["string_feature"].bytes_list.value))
     self.expected_string_indices = np.array([[0, 0], [1, 0], [1, 1]])
     self.expected_int_feature = np.array([list(self.example1.features.feature[
         "int_feature"].int64_list.value), list(self.example2.features.feature[

@@ -13,34 +13,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Multi-output tests."""
+"""Linear regression tests."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import random
-
 import numpy as np
-
 import tensorflow as tf
+
 from tensorflow.contrib.learn.python import learn
-from tensorflow.contrib.learn.python.learn.estimators._sklearn import mean_squared_error
 
 
-class MultiOutputTest(tf.test.TestCase):
-  """Multi-output tests."""
+class RegressionTest(tf.test.TestCase):
+  """Linear regression tests."""
 
-  def testMultiRegression(self):
-    random.seed(42)
-    rng = np.random.RandomState(1)
-    x = np.sort(200 * rng.rand(100, 1) - 100, axis=0)
-    y = np.array([np.pi * np.sin(x).ravel(), np.pi * np.cos(x).ravel()]).T
-    regressor = learn.TensorFlowLinearRegressor(learning_rate=0.01)
+  def testLinearRegression(self):
+    rng = np.random.RandomState(67)
+    n = 1000
+    n_weights = 10
+    bias = 2
+    x = rng.uniform(-1, 1, (n, n_weights))
+    weights = 10 * rng.randn(n_weights)
+    y = np.dot(x, weights)
+    y += rng.randn(len(x)) * 0.05 + rng.normal(bias, 0.01)
+    regressor = learn.TensorFlowLinearRegressor(optimizer="SGD")
     regressor.fit(x, y)
-    score = mean_squared_error(regressor.predict(x), y)
-    self.assertLess(score, 10, "Failed with score = {0}".format(score))
+    # Have to flatten weights since they come in (x, 1) shape.
+    self.assertAllClose(weights, regressor.weights_.flatten(), rtol=0.01)
+    assert abs(bias - regressor.bias_) < 0.1
 
 
 if __name__ == "__main__":

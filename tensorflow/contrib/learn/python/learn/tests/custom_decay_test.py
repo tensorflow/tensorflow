@@ -13,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Custom optimizer tests."""
+"""Custom decay tests."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,10 +28,10 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_s
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test_split
 
 
-class CustomOptimizer(tf.test.TestCase):
-  """Custom optimizer tests."""
+class CustomDecayTest(tf.test.TestCase):
+  """Custom decay tests."""
 
-  def testIrisMomentum(self):
+  def testIrisExponentialDecay(self):
     random.seed(42)
 
     iris = datasets.load_iris()
@@ -40,6 +39,7 @@ class CustomOptimizer(tf.test.TestCase):
                                                         iris.target,
                                                         test_size=0.2,
                                                         random_state=42)
+
     # setup exponential decay function
     def exp_decay(global_step):
       return tf.train.exponential_decay(learning_rate=0.1,
@@ -47,14 +47,10 @@ class CustomOptimizer(tf.test.TestCase):
                                         decay_steps=100,
                                         decay_rate=0.001)
 
-    def custom_optimizer(learning_rate):
-      return tf.train.MomentumOptimizer(learning_rate, 0.9)
-
     classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                n_classes=3,
-                                               steps=400,
-                                               learning_rate=exp_decay,
-                                               optimizer=custom_optimizer)
+                                               steps=500,
+                                               learning_rate=exp_decay)
     classifier.fit(x_train, y_train)
     score = accuracy_score(y_test, classifier.predict(x_test))
 

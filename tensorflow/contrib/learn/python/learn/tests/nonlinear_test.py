@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Non-linear estimator tests."""
 
 from __future__ import absolute_import
@@ -51,8 +50,11 @@ class NonLinearTest(tf.test.TestCase):
     random.seed(42)
     boston = tf.contrib.learn.datasets.load_boston()
     regressor = tf.contrib.learn.TensorFlowDNNRegressor(
-        hidden_units=[10, 20, 10], n_classes=0,
-        batch_size=boston.data.shape[0], steps=300, learning_rate=0.001)
+        hidden_units=[10, 20, 10],
+        n_classes=0,
+        batch_size=boston.data.shape[0],
+        steps=300,
+        learning_rate=0.001)
     regressor.fit(boston.data, boston.target)
     score = mean_squared_error(boston.target, regressor.predict(boston.data))
     self.assertLess(score, 110, "Failed with score = {0}".format(score))
@@ -68,7 +70,8 @@ class NonLinearTest(tf.test.TestCase):
     # Dropout prob == 0.
     iris = tf.contrib.learn.datasets.load_iris()
     classifier = tf.contrib.learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3, dropout=0.0)
+        hidden_units=[10, 20, 10],
+        n_classes=3, dropout=0.0)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
@@ -77,7 +80,8 @@ class NonLinearTest(tf.test.TestCase):
     # Dropping only a little.
     iris = tf.contrib.learn.datasets.load_iris()
     classifier = tf.contrib.learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3, dropout=0.1)
+        hidden_units=[10, 20, 10],
+        n_classes=3, dropout=0.1)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     # If the quality is lower - dropout is not working.
@@ -87,7 +91,8 @@ class NonLinearTest(tf.test.TestCase):
     # Dropping out most of it.
     iris = tf.contrib.learn.datasets.load_iris()
     classifier = tf.contrib.learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3, dropout=0.9)
+        hidden_units=[10, 20, 10],
+        n_classes=3, dropout=0.9)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.3, "Failed with score = {0}".format(score))
@@ -130,8 +135,11 @@ class NonLinearTest(tf.test.TestCase):
                                                           num_layers=2)
     classifier.fit(data, labels)
     classifier = tf.contrib.learn.TensorFlowRNNClassifier(
-        rnn_size=2, cell_type="invalid_cell_type", n_classes=2,
-        input_op_fn=_input_fn, num_layers=2)
+        rnn_size=2,
+        cell_type="invalid_cell_type",
+        n_classes=2,
+        input_op_fn=_input_fn,
+        num_layers=2)
     with self.assertRaises(ValueError):
       classifier.fit(data, labels)
 

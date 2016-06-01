@@ -13,36 +13,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Linear regression tests."""
+"""Dropout tests."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import tensorflow as tf
 
-from tensorflow.contrib.learn.python import learn
+from tensorflow.contrib.learn.python.learn import ops
 
 
-class RegressionTest(tf.test.TestCase):
-  """Linear regression tests."""
+class DropoutTest(tf.test.TestCase):
+  """Dropout tests."""
 
-  def testLinearRegression(self):
-    rng = np.random.RandomState(67)
-    n = 1000
-    n_weights = 10
-    bias = 2
-    x = rng.uniform(-1, 1, (n, n_weights))
-    weights = 10 * rng.randn(n_weights)
-    y = np.dot(x, weights)
-    y += rng.randn(len(x)) * 0.05 + rng.normal(bias, 0.01)
-    regressor = learn.TensorFlowLinearRegressor(optimizer="SGD")
-    regressor.fit(x, y)
-    # Have to flatten weights since they come in (x, 1) shape.
-    self.assertAllClose(weights, regressor.weights_.flatten(), rtol=0.01)
-    assert abs(bias - regressor.bias_) < 0.1
+  def test_dropout_float(self):
+    with self.test_session() as session:
+      x = tf.placeholder(tf.float32, [5, 5])
+      ops.dropout(x, 0.5)
+      probs = tf.get_collection(ops.DROPOUTS)
+      session.run(tf.initialize_all_variables())
+      self.assertEqual(len(probs), 1)
+      self.assertEqual(session.run(probs[0]), 0.5)
+
+  def test_dropout_tensor(self):
+    with self.test_session():
+      x = tf.placeholder(tf.float32, [5, 5])
+      y = tf.get_variable("prob", [], initializer=tf.constant_initializer(0.5))
+      ops.dropout(x, y)
+      probs = tf.get_collection(ops.DROPOUTS)
+      self.assertEqual(probs, [y])
 
 
 if __name__ == "__main__":

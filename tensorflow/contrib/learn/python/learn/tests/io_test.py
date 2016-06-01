@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """tf.learn IO operation tests."""
 
 from __future__ import absolute_import
@@ -29,6 +28,7 @@ from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn.io import *
+
 # pylint: enable=wildcard-import
 
 

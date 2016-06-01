@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Test base estimators."""
 
 from __future__ import absolute_import
@@ -64,16 +63,14 @@ class BaseTest(tf.test.TestCase):
     iris = datasets.load_iris()
     classifier = learn.TensorFlowLinearClassifier(n_classes=3)
     classifier.fit(iris.data, [float(x) for x in iris.target])
-    self.assertEqual(
-        classifier.get_variable_names(),
-        ["OptimizeLoss/learning_rate",
-         "OptimizeLoss/logistic_regression/bias/Adagrad",
-         "OptimizeLoss/logistic_regression/softmax_classifier/"
-         "softmax_cross_entropy_loss/value/avg",
-         "OptimizeLoss/logistic_regression/weights/Adagrad",
-         "global_step",
-         "logistic_regression/bias",
-         "logistic_regression/weights"])
+    self.assertEqual(classifier.get_variable_names(),
+                     ["OptimizeLoss/learning_rate",
+                      "OptimizeLoss/logistic_regression/bias/Adagrad",
+                      "OptimizeLoss/logistic_regression/softmax_classifier/"
+                      "softmax_cross_entropy_loss/value/avg",
+                      "OptimizeLoss/logistic_regression/weights/Adagrad",
+                      "global_step", "logistic_regression/bias",
+                      "logistic_regression/weights"])
 
   def testIrisSummaries(self):
     iris = datasets.load_iris()
