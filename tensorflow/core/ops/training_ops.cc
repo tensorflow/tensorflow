@@ -478,6 +478,9 @@ REGISTER_OP("SparseApplyRMSProp")
     .Attr("use_locking: bool = false")
     .Doc(R"doc(
 Update '*var' according to the RMSProp algorithm.
+Note that in dense implement of this algorithm, ms and mom will 
+update even if the grad is zero, but in this sparse implement, ms 
+and mom will not update in iterations the grad is zero.
 
 mean_square = decay * mean_square + (1-decay) * gradient ** 2
 Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
