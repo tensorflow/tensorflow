@@ -492,6 +492,11 @@ class BaseSession(SessionInterface):
     return self._do_call(_setup_fn, self._session, feed_list, unique_fetches,
                          target_list)
 
+  def _assert_fetchable(self, op):
+    if not self.graph.is_fetchable(op):
+      raise ValueError(
+          'Operation %r has been marked as not fetchable.' % op.name)
+
   def _process_fetches(self, fetches):
     """Validate and process fetches."""
     def _fetch_fn(fetch):
@@ -520,8 +525,10 @@ class BaseSession(SessionInterface):
                                                 allow_operation=True)
           fetch_name = compat.as_bytes(fetch_t.name)
           if isinstance(fetch_t, ops.Operation):
+            self._assert_fetchable(fetch_t)
             target_list.append(fetch_name)
           else:
+            self._assert_fetchable(fetch_t.op)
             subfetch_names.append(fetch_name)
           # Remember the fetch if it is for a tensor handle.
           if (isinstance(fetch_t, ops.Tensor) and

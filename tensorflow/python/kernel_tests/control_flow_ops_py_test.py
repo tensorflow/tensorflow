@@ -1606,6 +1606,22 @@ class ControlFlowTest(tf.test.TestCase):
     s = control_flow_ops.ref_select(index, [p1, p2])
     self.assertEqual(None, s.get_shape())
 
+  def testRunLoopTensor(self):
+    with self.test_session() as sess:
+      tensor_list = []
+      def condition(t):
+        return t < tf.constant(5)
+      def body(_):
+        tensor_list.append(tf.constant(5))
+        return tf.constant(10)
+      result = tf.while_loop(condition, body, [tf.constant(4)])
+      self.assertEqual(10, sess.run(result))
+
+      # Ensure that we cannot run a tensor that escapes the loop body
+      # accidentally.
+      with self.assertRaises(ValueError):
+        sess.run(tensor_list[0])
+
 
 class TupleTest(tf.test.TestCase):
 

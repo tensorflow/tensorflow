@@ -1222,6 +1222,8 @@ class CondContext(ControlFlowContext):
           op._update_input(index, x)
       for x in op.outputs:
         self._values.add(x.name)
+    if self._outer_context or op.type not in {"Exit", "RefExit"}:
+      op.graph.prevent_fetching(op)
 
   def BuildCondBranch(self, fn):
     """Add the subgraph defined by fn() to the graph."""
@@ -1503,6 +1505,8 @@ class WhileContext(ControlFlowContext):
       self._MaybeAddControlDependency(op)
       for x in op.outputs:
         self._values.add(x.name)
+    if self._outer_context or op.type not in {"Exit", "RefExit"}:
+      op.graph.prevent_fetching(op)
 
   def _MaybeAddControlDependency(self, op):
     """Add a control input to the op if it only depends on loop invariants."""
