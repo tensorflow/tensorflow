@@ -584,8 +584,7 @@ class ColocationGraph {
 // (shape).  Not necessarily a complete list.
 bool IsMetadataNode(const Node* node) {
   const string& node_type = node->type_string();
-  return (node_type == "Size" || node_type == "Shape" ||
-          node_type == "ShapeN" || node_type == "Rank");
+  return (node_type == "Size" || node_type == "Shape" || node_type == "Rank");
 }
 
 }  // namespace
