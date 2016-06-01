@@ -658,7 +658,7 @@ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_packag
 
 mkdir _python_build
 cd _python_build
-ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow* .
+ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/* .
 ln -s ../tensorflow/tools/pip_package/* .
 python setup.py develop
 ```
