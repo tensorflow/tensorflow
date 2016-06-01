@@ -543,7 +543,6 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
   def __new__(cls, column_name, dimension, default_value, dtype):
     if default_value is not None:
       default_value = tuple(default_value)
-
     return super(_RealValuedColumn, cls).__new__(cls, column_name, dimension,
                                                  default_value, dtype)
 
@@ -573,7 +572,10 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
                          input_tensor,
                          weight_collections=None,
                          trainable=True):
-    return input_tensor
+    batch_size = input_tensor.get_shape().as_list()[0]
+    batch_size = int(batch_size) if batch_size else -1
+    flattened_shape = [batch_size, self.dimension]
+    return array_ops.reshape(math_ops.to_float(input_tensor), flattened_shape)
 
   def to_weighted_sum(self,
                       input_tensor,
