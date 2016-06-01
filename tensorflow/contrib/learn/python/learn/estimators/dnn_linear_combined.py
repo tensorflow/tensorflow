@@ -209,7 +209,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
     if self._n_classes == 2:
       predictions = math_ops.sigmoid(logits)
-      result["eval_auc"] = metrics_lib.streaming_auc(predictions, targets)
+      result["auc"] = metrics_lib.streaming_auc(predictions, targets)
 
     if metrics:
       predictions = self._logits_to_predictions(logits, proba=False)
