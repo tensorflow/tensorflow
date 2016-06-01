@@ -146,6 +146,10 @@ class TensorBoardStaticSerializer(object):
                 url = 'individualAudio?' + snd['query']
                 # pull down the audio clips themselves
                 self.GetAndSave(url, AUDIO_SUFFIX)
+          elif tag_type == 'run_metadata':
+            for t in tags:
+              url = Url('run_metadata', {'run': run, 'tag': t})
+              self.GetAndSave(url, GRAPH_SUFFIX, unzip=True)
           else:
             for t in tags:
               # Save this, whatever it is :)
