@@ -99,6 +99,21 @@ _baseslice = slice
 listdiff = gen_array_ops.list_diff
 
 
+def rank(input, name=None):
+  """Override for gen_array_ops.rank(), making it work for SparseTensor.
+
+  Args:
+    input: A `Tensor` or `SparseTensor` object.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
+  if isinstance(input, ops.SparseTensor):
+    return size(input.shape)
+  else:
+    return gen_array_ops.rank(input)
+
 # DEPRECATED use init_ops.zeros_initializer
 # TODO(irving) Move it to init_ops.py
 def zeros_initializer(shape, dtype=dtypes.float32):
