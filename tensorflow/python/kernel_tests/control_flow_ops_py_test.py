@@ -1236,6 +1236,38 @@ class ControlFlowTest(tf.test.TestCase):
     self.assertEqual(0, value_x)
     self.assertEqual(73, value_x_grad)
 
+  def testWhileGrad_IndexedSlices(self):
+    with self.test_session():
+      values = tf.constant([2.0, 4.0], name="values")
+      indices = tf.constant([0, 3], name="indices")
+      shape = tf.constant([10], name="dense_shape")
+      i = tf.constant(0)
+      x = tf.IndexedSlices(values, indices, dense_shape=shape)
+      def c(i, _):
+        return i < 10
+      def b(i, x):
+        return [i + 1, tf.IndexedSlices(x.values * 2.0, x.indices,
+                                        x.dense_shape)]
+      _, r = tf.while_loop(c, b, [i, x])
+      r = tf.gradients(r.values, values)[0]
+      self.assertAllClose(np.array([1024.0, 1024.0]), r.eval())
+
+  def testWhileGrad_SparseTensor(self):
+    with self.test_session():
+      values = tf.constant([2.0, 4.0], name="values")
+      indices = tf.constant([[0], [3]], dtype=tf.int64, name="indices")
+      shape = tf.constant([10], dtype=tf.int64, name="dense_shape")
+      i = tf.constant(0)
+      x = tf.SparseTensor(indices, values, shape=shape)
+      def c(i, _):
+        return i < 10
+      def b(i, x):
+        return [i + 1, tf.SparseTensor(x.indices, x.values * 2.0,
+                                       x.shape)]
+      _, r = tf.while_loop(c, b, [i, x])
+      r = tf.gradients(r.values, values)[0]
+      self.assertAllClose(np.array([1024.0, 1024.0]), r.eval())
+
   def testOneValueCond(self):
     with self.test_session():
       c = tf.placeholder(tf.int32, shape=[])

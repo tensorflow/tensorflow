@@ -939,8 +939,9 @@ class SparseTensor(object):
   @@__init__
   @@indices
   @@values
-  @@dtype
   @@shape
+  @@dtype
+  @@op
   @@graph
   """
 
@@ -1002,6 +1003,11 @@ class SparseTensor(object):
       A 1-D Tensor of any data type.
     """
     return self._values
+
+  @property
+  def op(self):
+    """The `Operation` that produces `values` as an output."""
+    return self.values.op
 
   @property
   def dtype(self):
