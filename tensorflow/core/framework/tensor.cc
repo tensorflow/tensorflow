@@ -129,7 +129,12 @@ struct Helper {
       return nullptr;
     }
     Buffer<T>* buf = new Buffer<T>(a, n);
-    port::CopyToArray(in, buf->template base<char>());
+    char* data = buf->template base<char>();
+    if (data == nullptr) {
+      buf->Unref();
+      return nullptr;
+    }
+    port::CopyToArray(in, data);
     return buf;
   }
 
@@ -161,6 +166,10 @@ struct Helper<string> {
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
     Buffer<string>* buf = new Buffer<string>(a, n);
     string* strings = buf->template base<string>();
+    if (strings == nullptr) {
+      buf->Unref();
+      return nullptr;
+    }
     if (port::DecodeStringList(in, strings, n)) {
       return buf;
     } else {
@@ -308,7 +317,9 @@ Buffer<T>::~Buffer() {
   if (LogMemory::IsEnabled()) {
     RecordDeallocation();
   }
-  alloc_->Deallocate<T>(data_, elem_);
+  if (data_) {
+    alloc_->Deallocate<T>(data_, elem_);
+  }
 }
 
 // Allocates a T[n] buffer. Fills in the buffer with repeated values
@@ -326,6 +337,11 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
   CHECK_GT(n, 0);
   Buffer<T>* buf = new Buffer<T>(a, n);
   T* data = buf->template base<T>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+
   const int64 in_n = ProtoHelper<T>::NumElements(in);
   auto begin = ProtoHelper<T>::Begin(in);
   if (n <= in_n) {
@@ -349,6 +365,10 @@ TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
   CHECK_GT(n, 0);
   Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
   uint16* data = buf->template base<uint16>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
   const int64 in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
