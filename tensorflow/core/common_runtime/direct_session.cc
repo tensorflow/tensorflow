@@ -208,7 +208,7 @@ DirectSession::~DirectSession() {
 }
 
 void DirectSession::MaybeInitializeExecutionState(const GraphDef& graph) {
-  // If already initialied, do nothing.
+  // If already initialized, do nothing.
   if (flib_def_ && execution_state_) {
     return;
   }
@@ -839,6 +839,7 @@ Status DirectSession::GetOrCreateExecutors(
 Status DirectSession::CreateGraphs(const BuildGraphOptions& options,
                                    std::unordered_map<string, Graph*>* outputs,
                                    RunStateArgs* run_state_args) {
+  mutex_lock l(graph_def_lock_);
   std::unique_ptr<SimpleClientGraph> client_graph;
   SimpleClientGraph* cgraph = nullptr;
 
@@ -947,16 +948,13 @@ Status DirectSession::CreateGraphs(const BuildGraphOptions& options,
     Device* d;
     s = device_mgr_->LookupDevice(partition_name, &d);
     if (!s.ok()) break;
-    {
-      mutex_lock l(graph_def_lock_);
-      // TODO(pbar) The library is currently shared and immutable. There
-      // may be possible use cases where a device may want to modify
-      // function definitions - in which case the library would need to be
-      // replicated per device.
-      s = d->MaybeRewriteGraph(flib_def_->ToProto(), graph_def);
-      if (!s.ok()) {
-        break;
-      }
+    // TODO(pbar) The library is currently shared and immutable. There
+    // may be possible use cases where a device may want to modify
+    // function definitions - in which case the library would need to be
+    // replicated per device.
+    s = d->MaybeRewriteGraph(flib_def_->ToProto(), graph_def);
+    if (!s.ok()) {
+      break;
     }
     Graph* device_graph = new Graph(flib_def_.get());
     GraphConstructorOptions device_opts;
