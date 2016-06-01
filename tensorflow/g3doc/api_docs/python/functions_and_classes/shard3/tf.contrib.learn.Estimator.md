@@ -24,12 +24,12 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -42,12 +42,13 @@ Evaluates given model with provided evaluation data.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.Estimator.fit(x, y, steps, batch_size=32, monitors=None)` {#Estimator.fit}
+#### `tf.contrib.learn.Estimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#Estimator.fit}
 
 Trains a model given training data X and y.
 
@@ -60,14 +61,21 @@ Trains a model given training data X and y.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
      (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -125,7 +133,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#Estimator.partial_fit}
+#### `tf.contrib.learn.Estimator.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#Estimator.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -146,14 +154,21 @@ to converge, and you want to split up training into subparts.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
     (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -200,25 +215,5 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.Estimator.train(input_fn, steps, monitors=None)` {#Estimator.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
 
 

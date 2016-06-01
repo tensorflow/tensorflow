@@ -42,12 +42,12 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -60,12 +60,13 @@ Evaluates given model with provided evaluation data.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.fit(x, y, steps, batch_size=32, monitors=None)` {#BaseEstimator.fit}
+#### `tf.contrib.learn.BaseEstimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#BaseEstimator.fit}
 
 Trains a model given training data X and y.
 
@@ -78,14 +79,21 @@ Trains a model given training data X and y.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
      (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -143,7 +151,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#BaseEstimator.partial_fit}
+#### `tf.contrib.learn.BaseEstimator.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#BaseEstimator.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -164,14 +172,21 @@ to converge, and you want to split up training into subparts.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
     (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -220,26 +235,6 @@ component of a nested object.
 *  <b>`ValueError`</b>: If params contain invalid names.
 
 
-- - -
-
-#### `tf.contrib.learn.BaseEstimator.train(input_fn, steps, monitors=None)` {#BaseEstimator.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
-
-
 
 - - -
 
@@ -271,12 +266,12 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -289,12 +284,13 @@ Evaluates given model with provided evaluation data.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.Estimator.fit(x, y, steps, batch_size=32, monitors=None)` {#Estimator.fit}
+#### `tf.contrib.learn.Estimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#Estimator.fit}
 
 Trains a model given training data X and y.
 
@@ -307,14 +303,21 @@ Trains a model given training data X and y.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
      (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -372,7 +375,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#Estimator.partial_fit}
+#### `tf.contrib.learn.Estimator.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#Estimator.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -393,14 +396,21 @@ to converge, and you want to split up training into subparts.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
     (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -447,26 +457,6 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.Estimator.train(input_fn, steps, monitors=None)` {#Estimator.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
 
 
 
@@ -754,26 +744,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.train(input_fn, steps, monitors=None)` {#TensorFlowClassifier.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowClassifier.weights_` {#TensorFlowClassifier.weights_}
 
 Returns weights of the linear classifier.
@@ -803,7 +773,7 @@ A classifier for TensorFlow DNN models.
     # Input builders
     def input_fn_train: # returns X, Y
       pass
-    estimator.train(input_fn_train)
+    estimator.fit(input_fn=input_fn_train)
 
     def input_fn_eval: # returns X, Y
       pass
@@ -858,12 +828,12 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -876,12 +846,13 @@ Evaluates given model with provided evaluation data.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.fit(x, y, steps, batch_size=32, monitors=None)` {#DNNClassifier.fit}
+#### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#DNNClassifier.fit}
 
 Trains a model given training data X and y.
 
@@ -894,14 +865,21 @@ Trains a model given training data X and y.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
      (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -973,7 +951,7 @@ Returns weights per feature of the linear part.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#DNNClassifier.partial_fit}
+#### `tf.contrib.learn.DNNClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#DNNClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -994,14 +972,21 @@ to converge, and you want to split up training into subparts.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
     (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -1066,26 +1051,6 @@ component of a nested object.
 *  <b>`ValueError`</b>: If params contain invalid names.
 
 
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.train(input_fn, steps, monitors=None)` {#DNNClassifier.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
-
-
 
 - - -
 
@@ -1110,7 +1075,7 @@ A regressor for TensorFlow DNN models.
     # Input builders
     def input_fn_train: # returns X, Y
       pass
-    estimator.train(input_fn_train)
+    estimator.fit(input_fn=input_fn_train)
 
     def input_fn_eval: # returns X, Y
       pass
@@ -1165,12 +1130,12 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -1183,12 +1148,13 @@ Evaluates given model with provided evaluation data.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.fit(x, y, steps, batch_size=32, monitors=None)` {#DNNRegressor.fit}
+#### `tf.contrib.learn.DNNRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#DNNRegressor.fit}
 
 Trains a model given training data X and y.
 
@@ -1201,14 +1167,21 @@ Trains a model given training data X and y.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
      (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -1280,7 +1253,7 @@ Returns weights per feature of the linear part.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#DNNRegressor.partial_fit}
+#### `tf.contrib.learn.DNNRegressor.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#DNNRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -1301,14 +1274,21 @@ to converge, and you want to split up training into subparts.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
     (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -1371,26 +1351,6 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNRegressor.train(input_fn, steps, monitors=None)` {#DNNRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
 
 
 
@@ -1685,26 +1645,6 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.train(input_fn, steps, monitors=None)` {#TensorFlowDNNClassifier.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
 
 
 - - -
@@ -2010,26 +1950,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.train(input_fn, steps, monitors=None)` {#TensorFlowDNNRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowDNNRegressor.weights_` {#TensorFlowDNNRegressor.weights_}
 
 Returns weights of the DNN weight layers.
@@ -2329,26 +2249,6 @@ component of a nested object.
 *  <b>`ValueError`</b>: If params contain invalid names.
 
 
-- - -
-
-#### `tf.contrib.learn.TensorFlowEstimator.train(input_fn, steps, monitors=None)` {#TensorFlowEstimator.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
-
-
 
 - - -
 
@@ -2372,8 +2272,8 @@ Linear classifier model.
     ...
   def input_fn_eval: # returns X, Y
     ...
-  estimator.train(input_fn_train)
-  estimator.evaluate(input_fn_eval)
+  estimator.fit(input_fn=input_fn_train)
+  estimator.evaluate(input_fn=input_fn_eval)
   estimator.predict(x)
   ```
 
@@ -2426,12 +2326,12 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -2444,12 +2344,13 @@ Evaluates given model with provided evaluation data.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.fit(x, y, steps, batch_size=32, monitors=None)` {#LinearClassifier.fit}
+#### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#LinearClassifier.fit}
 
 Trains a model given training data X and y.
 
@@ -2462,14 +2363,21 @@ Trains a model given training data X and y.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
      (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -2541,7 +2449,7 @@ Returns weights per feature of the linear part.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#LinearClassifier.partial_fit}
+#### `tf.contrib.learn.LinearClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#LinearClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -2562,14 +2470,21 @@ to converge, and you want to split up training into subparts.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
     (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -2636,26 +2551,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.train(input_fn, steps, monitors=None)` {#LinearClassifier.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
-
-
-- - -
-
 #### `tf.contrib.learn.LinearClassifier.weights_` {#LinearClassifier.weights_}
 
 
@@ -2684,8 +2579,8 @@ Linear regressor model.
     ...
   def input_fn_eval: # returns X, Y
     ...
-  estimator.train(input_fn_train)
-  estimator.evaluate(input_fn_eval)
+  estimator.fit(input_fn=input_fn_train)
+  estimator.evaluate(input_fn=input_fn_eval)
   estimator.predict(x)
   ```
 
@@ -2736,12 +2631,12 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -2754,12 +2649,13 @@ Evaluates given model with provided evaluation data.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.fit(x, y, steps, batch_size=32, monitors=None)` {#LinearRegressor.fit}
+#### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#LinearRegressor.fit}
 
 Trains a model given training data X and y.
 
@@ -2772,14 +2668,21 @@ Trains a model given training data X and y.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
      (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -2851,7 +2754,7 @@ Returns weights per feature of the linear part.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#LinearRegressor.partial_fit}
+#### `tf.contrib.learn.LinearRegressor.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#LinearRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -2872,14 +2775,21 @@ to converge, and you want to split up training into subparts.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
     (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Final loss.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -2942,26 +2852,6 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearRegressor.train(input_fn, steps, monitors=None)` {#LinearRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
 
 
 - - -
@@ -3244,26 +3134,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearClassifier.train(input_fn, steps, monitors=None)` {#TensorFlowLinearClassifier.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowLinearClassifier.weights_` {#TensorFlowLinearClassifier.weights_}
 
 Returns weights of the linear classifier.
@@ -3538,26 +3408,6 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearRegressor.train(input_fn, steps, monitors=None)` {#TensorFlowLinearRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
 
 
 - - -
@@ -3873,26 +3723,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNClassifier.train(input_fn, steps, monitors=None)` {#TensorFlowRNNClassifier.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowRNNClassifier.weights_` {#TensorFlowRNNClassifier.weights_}
 
 Returns weights of the rnn layer.
@@ -4204,26 +4034,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNRegressor.train(input_fn, steps, monitors=None)` {#TensorFlowRNNRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowRNNRegressor.weights_` {#TensorFlowRNNRegressor.weights_}
 
 Returns weights of the rnn layer.
@@ -4498,26 +4308,6 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRegressor.train(input_fn, steps, monitors=None)` {#TensorFlowRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Final loss.
 
 
 - - -
