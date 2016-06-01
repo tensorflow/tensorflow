@@ -100,19 +100,34 @@ listdiff = gen_array_ops.list_diff
 
 
 def rank(input, name=None):
-  """Override for gen_array_ops.rank(), making it work for SparseTensor.
+  """Returns the rank of a tensor.
+
+  This operation returns an integer representing the rank of `input`.
+
+  For example:
+
+  ```prettyprint
+  # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+  # shape of tensor 't' is [2, 2, 3]
+  rank(t) ==> 3
+  ```
+
+  **Note**: The rank of a tensor is not the same as the rank of a matrix. The
+  rank of a tensor is the number of indices required to uniquely select each
+  element of the tensor. Rank is also known as "order", "degree", or "ndims."
 
   Args:
-    input: A `Tensor` or `SparseTensor` object.
+    input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `int32`.
   """
-  if isinstance(input, ops.SparseTensor):
-    return size(input.shape)
-  else:
-    return gen_array_ops.rank(input)
+  with ops.op_scope([input], name, "Rank") as name:
+    if isinstance(input, ops.SparseTensor):
+      return gen_array_ops.size(input.shape)
+    else:
+      return gen_array_ops.rank(input)
 
 # DEPRECATED use init_ops.zeros_initializer
 # TODO(irving) Move it to init_ops.py

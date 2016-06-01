@@ -65,8 +65,7 @@ class ShapeOpsTest(tf.test.TestCase):
     self.assertAllEqual(np_ans, result)
     self.assertShapeEqual(np_ans, tf_ans)
 
-  def _compareRankSparse(self, x_shape, use_gpu=False):
-    x_np = np.random.randn(*x_shape)
+  def _compareRankSparse(self, x_np, use_gpu=False):
     np_ans = np.asarray(np.ndim(x_np))
     x_tf, nnz = _sparsify(x_np)
     with self.test_session(use_gpu=use_gpu):
@@ -88,38 +87,26 @@ class ShapeOpsTest(tf.test.TestCase):
     self._compareShapeN(x, use_gpu=False)
     self._compareRank(x, use_gpu=False)
     self._compareSize(x, use_gpu=False)
-
-  def _testCpuSparse(self, x_shape):
-    self._compareRankSparse(x_shape, use_gpu=False)
+    self._compareRankSparse(x, use_gpu=False)
 
   def _testGpu(self, x):
     self._compareShape(x, use_gpu=True)
     self._compareShapeN(x, use_gpu=True)
     self._compareRank(x, use_gpu=True)
     self._compareSize(x, use_gpu=True)
+    self._compareRankSparse(x, use_gpu=True)
 
   def _testAll(self, x):
     self._testCpu(x)
     self._testGpu(x)
 
-  def _testAllSparse(self, x_shape):
-    self._testCpuSparse(x_shape)
-
   def testBasic(self):
-    self._testAll(np.zeros([2]))
-    self._testAll(np.zeros([2, 3]))
-    self._testAll(np.zeros([2, 3, 5]))
-    self._testAll(np.zeros([2, 3, 5, 7]))
-    self._testAll(np.zeros([2, 3, 5, 7, 11]))
-    self._testAll(np.zeros([2, 3, 5, 7, 11, 13]))
-
-  def testBasicSparse(self):
-    self._testAllSparse([2])
-    self._testAllSparse([2, 3])
-    self._testAllSparse([2, 3, 5])
-    self._testAllSparse([2, 3, 5, 7])
-    self._testAllSparse([2, 3, 5, 7, 11])
-    self._testAllSparse([2, 3, 5, 7, 11, 13])
+    self._testAll(np.random.randn(2))
+    self._testAll(np.random.randn(2, 3))
+    self._testAll(np.random.randn(2, 3, 5))
+    self._testAll(np.random.randn(2, 3, 5, 7))
+    self._testAll(np.random.randn(2, 3, 5, 7, 11))
+    self._testAll(np.random.randn(2, 3, 5, 7, 11, 13))
 
   def _compareExpandDims(self, x, dim, use_gpu):
     np_ans = np.expand_dims(x, axis=dim)
