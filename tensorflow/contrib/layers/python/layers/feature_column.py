@@ -932,13 +932,14 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
         trainable, self.name + "_weights")
 
 
-def crossed_column(columns, hash_bucket_size):
+def crossed_column(columns, hash_bucket_size, combiner="sum"):
   """Creates a _CrossedColumn.
 
   Args:
     columns: An iterable of _FeatureColumn. Items can be an instance of
       _SparseColumn, _CrossedColumn, or _BucketizedColumn.
     hash_bucket_size: An int that is > 1. The number of buckets.
+    combiner: A combiner string, supports sum, mean, sqrtn.
 
   Returns:
     A _CrossedColumn.
@@ -950,7 +951,7 @@ def crossed_column(columns, hash_bucket_size):
     ValueError: if hash_bucket_size is not > 1 or
       len(columns) is not > 1.
   """
-  return _CrossedColumn(columns, hash_bucket_size)
+  return _CrossedColumn(columns, hash_bucket_size, combiner=combiner)
 
 
 def _get_feature_config(feature_column):
