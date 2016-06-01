@@ -146,6 +146,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     build_file = path_prefix + "boringssl.BUILD",
   )
 
+  native.bind(
+    name = "boringssl_err_data_c",
+    actual = "@//" + path_prefix + "third_party/boringssl:err_data_c",
+  )
+
   native.new_http_archive(
     name = "avro_archive",
     url = "http://www-us.apache.org/dist/avro/avro-1.8.0/cpp/avro-cpp-1.8.0.tar.gz",
