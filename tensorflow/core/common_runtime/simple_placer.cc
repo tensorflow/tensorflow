@@ -33,37 +33,31 @@ namespace tensorflow {
 
 namespace {
 
-// Returns a list of devices sorted by name from 'devices' whose type is in
-// 'supported_device_types'.  This function searches in order of the device
-// types in 'supported_device_types' and returns the *first* subset of devices
-// that match.
-//
-// For example, if supported_device_types contains {GPU, CPU} and
-// 'devices' contains CPU and GPU devices, the returned vector will
-// include *only* GPU devices, since that is higher in the priority
-// order in 'supported_device_types'.
+// Returns a list of devices sorted by preferred type and then name
+// from 'devices' whose type is in 'supported_device_types'.  This
+// function searches the device types in 'supported_device_types' and
+// returns the subset of devices that match.
 std::vector<Device*> FilterSupportedDevices(
     const std::vector<Device*>& devices,
     const DeviceTypeVector& supported_device_types) {
   std::vector<Device*> filtered_devices;
-  auto device_sort = [](const Device* a, const Device* b) {
-    return a->name() < b->name();
-  };
   for (DeviceType d : supported_device_types) {
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) == d) {
         filtered_devices.emplace_back(device);
       }
     }
-
-    // If there are any devices under this device type, return this
-    // subset.
-    if (!filtered_devices.empty()) {
-      std::sort(filtered_devices.begin(), filtered_devices.end(), device_sort);
-      return filtered_devices;
-    }
   }
 
+  auto device_sort = [](const Device* a, const Device* b) {
+    // First sort by prioritized device type and then by device name.
+    return std::make_pair(
+               DeviceSet::DeviceTypeOrder(DeviceType(a->device_type())),
+               StringPiece(a->name())) <
+           std::make_pair(
+               DeviceSet::DeviceTypeOrder(DeviceType(b->device_type())),
+               StringPiece(b->name()));
+  };
   std::sort(filtered_devices.begin(), filtered_devices.end(), device_sort);
   return filtered_devices;
 }
@@ -586,6 +580,14 @@ class ColocationGraph {
   std::unordered_map<string, const Node*> colocation_group_root_;
 };
 
+// Returns true if the node only depends on its input's metadata
+// (shape).  Not necessarily a complete list.
+bool IsMetadataNode(const Node* node) {
+  const string& node_type = node->type_string();
+  return (node_type == "Size" || node_type == "Shape" ||
+          node_type == "ShapeN" || node_type == "Rank");
+}
+
 }  // namespace
 
 SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
@@ -710,11 +712,34 @@ Status SimplePlacer::Run() {
     // Returns the first device in sorted devices list so we will always
     // choose the same device.
     //
-    // TODO(vrv): Factor this assignment out into a pluggable algorithm,
-    // so that SimplePlacer is responsible for enforcing preconditions
-    // and we can experiment with other algorithms when given a choice of
-    // devices.
-    node->set_assigned_device_name(devices[0]->name());
+    // TODO(vrv): Factor this assignment out into a pluggable
+    // algorithm, so that SimplePlacer is responsible for enforcing
+    // preconditions and we can experiment with other algorithms when
+    // given a choice of devices. Once we have a better idea of the
+    // types of heuristics we want to use and the information needed
+    // to perform good placement we can add an interface for this.
+    string assigned_device = devices[0]->name();
+
+    // If the node only operates on metadata, not data, then it is
+    // desirable to place that metadata node with its input.
+    if (IsMetadataNode(node)) {
+      // Make sure that the input device type is in the list of supported
+      // device types for this node.
+      const Node* input = (*node->in_edges().begin())->src();
+
+      if (!input->assigned_device_name().empty()) {
+        const Device* input_device =
+            devices_->FindDeviceByName(input->assigned_device_name());
+        if (std::any_of(
+                devices.begin(), devices.end(), [input_device](Device* d) {
+                  return d->device_type() == input_device->device_type();
+                })) {
+          assigned_device = input->assigned_device_name();
+        }
+      }
+    }
+
+    node->set_assigned_device_name(assigned_device);
     // Log placement if log_device_placement is set.
     if (options_ && options_->config.log_device_placement()) {
       printf("%s: %s\n", node->name().c_str(),
