@@ -202,7 +202,7 @@ class TrainTest(tf.test.TestCase):
       tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
       tf_predictions = LogisticClassifier(tf_inputs)
-      log_loss = slim.losses.log(tf_predictions, tf_labels)
+      log_loss = slim.losses.log_loss(tf_predictions, tf_labels)
       total_loss = slim.losses.get_total_loss([log_loss])
 
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
@@ -225,7 +225,7 @@ class TrainTest(tf.test.TestCase):
         tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
         tf_predictions = LogisticClassifier(tf_inputs)
-        log_loss = slim.losses.log(tf_predictions, tf_labels)
+        log_loss = slim.losses.log_loss(tf_predictions, tf_labels)
         total_loss = slim.losses.get_total_loss([log_loss])
 
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
@@ -242,7 +242,7 @@ class TrainTest(tf.test.TestCase):
     tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
     tf_predictions = LogisticClassifier(tf_inputs)
-    log_loss = slim.losses.log(tf_predictions, tf_labels)
+    log_loss = slim.losses.log_loss(tf_predictions, tf_labels)
     total_loss = slim.losses.get_total_loss([log_loss])
 
     optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
@@ -352,7 +352,7 @@ class TrainTest(tf.test.TestCase):
     tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
     tf_predictions = LogisticClassifier(tf_inputs)
-    log_loss = slim.losses.log(tf_predictions, tf_labels)
+    log_loss = slim.losses.log_loss(tf_predictions, tf_labels)
     return slim.losses.get_total_loss([log_loss])
 
   def  testTrainAllVarsHasLowerLossThanTrainSubsetOfVars(self):
