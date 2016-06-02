@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TODO(nsilberman): Documentation.
+"""Slim is an interface to contrib functions, examples and models.
+
+TODO(nsilberman): flesh out documentation.
 """
 
 from __future__ import absolute_import
@@ -20,8 +22,18 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,g-importing-member,wildcard-import
-from tensorflow.contrib.slim.python.ops import queues
+from tensorflow.contrib import losses
+from tensorflow.contrib import metrics
+from tensorflow.contrib.framework.python.ops.arg_scope import *
+from tensorflow.contrib.framework.python.ops.variables import *
+from tensorflow.contrib.layers.python.layers import *
+from tensorflow.contrib.layers.python.layers.initializers import *
+from tensorflow.contrib.layers.python.layers.regularizers import *
+from tensorflow.contrib.slim.python.slim import evaluation
+from tensorflow.contrib.slim.python.slim import learning
+from tensorflow.contrib.slim.python.slim import queues
 from tensorflow.python.util.all_util import make_all
 # pylint: enable=unused-import,line-too-long,g-importing-member,wildcard-import
 
 __all__ = make_all(__name__)
+
