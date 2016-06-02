@@ -1205,6 +1205,16 @@ class SelectOpTest(tf.test.TestCase):
       z = tf.select(c, xt, yt).eval()
       self.assertAllEqual(z_expected, z)
 
+  def testNan(self):
+    """Verify that nans don't propagate where they shouldn't."""
+    with self.test_session():
+      for c in False, True:
+        for a in 7.0, np.nan:
+          for b in 5.0, np.nan:
+            x = tf.select(c, a, b).eval()
+            y = a if c else b
+            self.assertEqual(np.isnan(x), np.isnan(y))
+
 
 class BatchSelectOpTest(tf.test.TestCase):
   """Test broadcasting of Select when 'c' is a vec and 't' &'e' are rank2+."""
