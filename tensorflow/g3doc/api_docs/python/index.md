@@ -561,6 +561,8 @@
 
 * **[Learn (contrib)](../../api_docs/python/contrib.learn.md)**:
   * [`BaseEstimator`](../../api_docs/python/contrib.learn.md#BaseEstimator)
+  * [`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier)
+  * [`DNNRegressor`](../../api_docs/python/contrib.learn.md#DNNRegressor)
   * [`Estimator`](../../api_docs/python/contrib.learn.md#Estimator)
   * [`evaluate`](../../api_docs/python/contrib.learn.md#evaluate)
   * [`extract_dask_data`](../../api_docs/python/contrib.learn.md#extract_dask_data)
@@ -569,6 +571,8 @@
   * [`extract_pandas_labels`](../../api_docs/python/contrib.learn.md#extract_pandas_labels)
   * [`extract_pandas_matrix`](../../api_docs/python/contrib.learn.md#extract_pandas_matrix)
   * [`infer`](../../api_docs/python/contrib.learn.md#infer)
+  * [`LinearClassifier`](../../api_docs/python/contrib.learn.md#LinearClassifier)
+  * [`LinearRegressor`](../../api_docs/python/contrib.learn.md#LinearRegressor)
   * [`ModeKeys`](../../api_docs/python/contrib.learn.md#ModeKeys)
   * [`NanLossDuringTrainingError`](../../api_docs/python/contrib.learn.md#NanLossDuringTrainingError)
   * [`read_batch_examples`](../../api_docs/python/contrib.learn.md#read_batch_examples)

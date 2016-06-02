@@ -229,7 +229,7 @@ static const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  public:
   FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Device* device,
-                             Runner runner, int graph_def_version,
+                             int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options);
 
@@ -255,7 +255,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   const DeviceMgr* const device_mgr_;
   Device* const device_;
-  Runner runner_ = nullptr;
   const int graph_def_version_;
   const FunctionLibraryDefinition* const lib_def_;
   GraphOptimizer optimizer_;
@@ -293,12 +292,11 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
-    const DeviceMgr* dmgr, Device* device, Runner runner, int graph_def_version,
+    const DeviceMgr* dmgr, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options)
     : device_mgr_(dmgr),
       device_(device),
-      runner_(runner),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
       optimizer_(optimizer_options) {
@@ -334,6 +332,7 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -379,6 +378,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -660,12 +660,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     delete frame;
     return done(s);
   }
+  DCHECK(opts.runner != nullptr);
+
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
-  exec_args.runner = runner_;
+  exec_args.runner = *opts.runner;
   // TODO(zhifengc): we can avoid creating rendez here if we know
   // there is no send/recv nodes in the graph.
   auto* rendez = new IntraProcessRendezvous(device_mgr_);
@@ -693,10 +695,10 @@ bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Device* device, Runner runner, int graph_def_version,
+    const DeviceMgr* dmgr, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return new FunctionLibraryRuntimeImpl(dmgr, device, runner, graph_def_version,
+  return new FunctionLibraryRuntimeImpl(dmgr, device, graph_def_version,
                                         lib_def, optimizer_options);
 }
 

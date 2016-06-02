@@ -228,7 +228,7 @@ def parse_feature_columns_from_examples(serialized,
 
   columns_to_tensors = parsing_ops.parse_example(
       serialized=serialized,
-      features=fc.create_dict_for_parse_example(feature_columns),
+      features=fc.create_feature_spec_for_parsing(feature_columns),
       name=name,
       example_names=example_names)
 

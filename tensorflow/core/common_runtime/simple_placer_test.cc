@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -140,6 +139,9 @@ REGISTER_KERNEL_BUILDER(Name("TestDevice").Device(DEVICE_GPU), DummyOp);
 REGISTER_OP("TestDeviceEnforce").Input("a: Ref(float)").Output("b: float");
 REGISTER_KERNEL_BUILDER(Name("TestDeviceEnforce").Device(DEVICE_CPU), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("TestDeviceEnforce").Device(DEVICE_GPU), DummyOp);
+
+REGISTER_KERNEL_BUILDER(Name("Shape").Device(DEVICE_CPU), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Shape").Device(DEVICE_GPU), DummyOp);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -284,6 +286,25 @@ TEST_F(SimplePlacerTest, TestDeviceTypeConstraints) {
   EXPECT_DEVICE_TYPE(g, "var_gpu", DEVICE_GPU);
   EXPECT_DEVICE_TYPE(g, "assign_gpu", DEVICE_GPU);
   EXPECT_COLOCATED(g, "var_gpu", "assign_gpu");
+}
+
+TEST_F(SimplePlacerTest, TestMetadataColocatedWithInput) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* var_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var_cpu"));
+
+    // Normally, shape has a GPU implementation and would be placed
+    // on GPU.  However, because it is a metadata operation, it is
+    // placed on CPU to avoid transferring the data from CPU to GPU.
+    ops::UnaryOp("Shape", var_cpu, b.opts().WithName("shape_op"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "var_cpu", DEVICE_CPU);
+  EXPECT_DEVICE_TYPE(g, "shape_op", DEVICE_CPU);
+  EXPECT_COLOCATED(g, "var_cpu", "shape_op");
 }
 
 // Test that a graph with partial device specifications on the ops

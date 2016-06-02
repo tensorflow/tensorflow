@@ -19,7 +19,6 @@ from sklearn import datasets, metrics
 from sklearn.cross_validation import train_test_split
 
 import tensorflow as tf
-from tensorflow.contrib import skflow
 
 iris = datasets.load_iris()
 X_train, X_test, y_train, y_test = train_test_split(iris.data,
@@ -33,8 +32,9 @@ def exp_decay(global_step):
         decay_steps=100, decay_rate=0.001)
 
 # use customized decay function in learning_rate
-classifier = skflow.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                            n_classes=3, steps=800,
-                                            learning_rate=exp_decay)
-classifier.fit(X_train, y_train)
+optimizer = tf.train.AdagradOptimizer(learning_rate=exp_decay)
+classifier = tf.contrib.learn.DNNClassifier(hidden_units=[10, 20, 10],
+                                            n_classes=3,
+                                            optimizer=optimizer)
+classifier.fit(X_train, y_train, steps=800)
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))

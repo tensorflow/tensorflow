@@ -163,13 +163,13 @@ def GetTestConfigs():
 
 class Conv2DTest(tf.test.TestCase):
 
-  def _DtypesToTest(self):
-    if test_util.CudaSupportsHalfMatMulAndConv():
+  def _DtypesToTest(self, use_gpu):
+    if use_gpu and not test_util.CudaSupportsHalfMatMulAndConv():
+      return [tf.float32]
+    else:
       # It is important that float32 comes before float16 here,
       # as we will be using its gradients as reference for fp16 gradients.
       return [tf.float32, tf.float16]
-    else:
-      return [tf.float32]
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, strides,
                             padding, data_format, dtype, use_gpu):
@@ -255,10 +255,9 @@ class Conv2DTest(tf.test.TestCase):
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, strides,
                     padding, expected):
-    for dtype in self._DtypesToTest():
-      print(dtype)
-      tensors = []
-      for (data_format, use_gpu) in GetTestConfigs():
+    tensors = []
+    for (data_format, use_gpu) in GetTestConfigs():
+      for dtype in self._DtypesToTest(use_gpu):
         result = self._SetupValuesForDevice(tensor_in_sizes,
                                             filter_in_sizes,
                                             strides,
@@ -274,7 +273,10 @@ class Conv2DTest(tf.test.TestCase):
           value = values[i]
           print("expected = ", expected)
           print("actual = ", value)
-          self.assertAllCloseAccordingToType(expected, np.ravel(value))
+          tol = 1e-5
+          if value.dtype == np.float16:
+            tol = 1e-3
+          self.assertAllClose(expected, np.ravel(value), atol=tol, rtol=tol)
           self.assertShapeEqual(value, conv)
 
   def testConv2D1x1Filter(self):
@@ -360,7 +362,7 @@ class Conv2DTest(tf.test.TestCase):
     #                   strides=[4, 4], padding="SAME",
     #                   expected=[72, 112, 392, 432])
 
-  # Testing for backprops
+    # Testing for backprops
   def _RunAndVerifyBackpropInput(self, input_sizes, filter_sizes, output_sizes,
                                  strides, padding, expected, data_format,
                                  use_gpu):
@@ -506,7 +508,7 @@ class Conv2DTest(tf.test.TestCase):
     # numbers from 1.
     x0 = [f * 1.0 for f in range(1, total_input_size + 1)]
     x2 = [f * 1.0 for f in range(1, total_output_size + 1)]
-    for dtype in self._DtypesToTest():
+    for dtype in self._DtypesToTest(use_gpu=use_gpu):
       with self.test_session(use_gpu=use_gpu) as sess:
         t0 = tf.constant(x0, shape=input_sizes, dtype=dtype)
         t1 = tf.constant(filter_sizes, shape=[len(filter_sizes)])
@@ -635,7 +637,7 @@ class Conv2DTest(tf.test.TestCase):
     # a problem in the way Eigen's Conv2DGrad works for double.
     # So we disable the DOUBLE path.  We should re-enable this
     # when double support returns for CPU and/or GPU.
-    for dtype in self._DtypesToTest():
+    for dtype in self._DtypesToTest(use_gpu=use_gpu):
       with self.test_session(use_gpu=use_gpu):
         input_tensor = tf.constant(input_data, shape=input_shape,
                                    dtype=dtype, name="input")
@@ -933,7 +935,6 @@ class Conv2DTest(tf.test.TestCase):
                     tf.placeholder(tf.float32,
                                           shape=[21, 20, 3, 2]),
                     strides=[1, 1, 1, 1], padding="SAME")
-
 
 
 # This is only a very simple test. More comprehensive tests live in

@@ -51,7 +51,7 @@ class EncodeAudioOpTest(tf.test.TestCase):
                      encoded[encoded.find(b'data'):])
 
   def testRoundTrip(self):
-    """Reads a wav file, writes it, and compares them."""
+    """Fabricates some audio, creates a wav file, reverses it, and compares."""
     with self.test_session():
       path = os.path.join(
           resource_loader.get_data_files_path(), 'testdata/mono_10khz.wav')
@@ -64,7 +64,7 @@ class EncodeAudioOpTest(tf.test.TestCase):
       encode_op = ffmpeg.encode_audio(
           audio_op, file_format='wav', samples_per_second=10000)
       encoded_contents = encode_op.eval()
-      self._compareWavFiles(original_contents, encoded_contents)
+      self.assertEqual(original_contents, encoded_contents)
 
 
 if __name__ == '__main__':

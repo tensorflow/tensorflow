@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,7 +48,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       # Input builders
       def input_fn_train: # returns X, Y
         pass
-      estimator.train(input_fn_train)
+      estimator.fit(input_fn=input_fn_train)
 
       def input_fn_eval: # returns X, Y
         pass
@@ -130,7 +129,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       # Input builders
       def input_fn_train: # returns X, Y
         pass
-      estimator.train(input_fn_train)
+      estimator.fit(input_fn=input_fn_train)
 
       def input_fn_eval: # returns X, Y
         pass
@@ -245,7 +244,8 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
         config=config,
         verbose=verbose)
 
-  def _model_fn(self, X, y):
+  def _model_fn(self, X, y):  # pylint: disable=invalid-name
+    # pylint: disable=invalid-name
     return models.get_dnn_model(self.hidden_units,
                                 models.logistic_regression,
                                 dropout=self.dropout)(X, y)
@@ -253,18 +253,19 @@ class TensorFlowDNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
   @property
   def weights_(self):
     """Returns weights of the DNN weight layers."""
-    return [self.get_tensor_value(w.name)
+    return [self.get_variable_value(w.name)
             for w in self._graph.get_collection('dnn_weights')
-           ] + [self.get_tensor_value('logistic_regression/weights')]
+           ] + [self.get_variable_value('logistic_regression/weights')]
 
   @property
   def bias_(self):
     """Returns bias of the DNN's bias layers."""
-    return [self.get_tensor_value(b.name)
+    return [self.get_variable_value(b.name)
             for b in self._graph.get_collection('dnn_biases')
-           ] + [self.get_tensor_value('logistic_regression/bias')]
+           ] + [self.get_variable_value('logistic_regression/bias')]
 
 
+# TODO(ipolosukhin): Deprecate this class in favor of DNNRegressor.
 class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
   """TensorFlow DNN Regressor model.
 
@@ -318,7 +319,8 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
         config=config,
         verbose=verbose)
 
-  def _model_fn(self, X, y):
+  def _model_fn(self, X, y):  # pylint: disable=invalid-name
+    # pylint: disable=invalid-name
     return models.get_dnn_model(self.hidden_units,
                                 models.linear_regression,
                                 dropout=self.dropout)(X, y)
@@ -326,13 +328,13 @@ class TensorFlowDNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
   @property
   def weights_(self):
     """Returns weights of the DNN weight layers."""
-    return [self.get_tensor_value(w.name)
+    return [self.get_variable_value(w.name)
             for w in self._graph.get_collection('dnn_weights')
-           ] + [self.get_tensor_value('linear_regression/weights')]
+           ] + [self.get_variable_value('linear_regression/weights')]
 
   @property
   def bias_(self):
     """Returns bias of the DNN's bias layers."""
-    return [self.get_tensor_value(b.name)
+    return [self.get_variable_value(b.name)
             for b in self._graph.get_collection('dnn_biases')
-           ] + [self.get_tensor_value('linear_regression/bias')]
+           ] + [self.get_variable_value('linear_regression/bias')]

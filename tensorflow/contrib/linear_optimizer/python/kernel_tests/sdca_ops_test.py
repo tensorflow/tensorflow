@@ -95,20 +95,14 @@ def make_variable_dict(max_age, max_gender):
               dense_features_weights=[])
 
 
-def make_dense_variable_dict(num_dense_features, num_examples):
+def make_dense_variable_dict(num_dense_features):
   feature_weights = ([
       tf.Variable(tf.zeros([1],
                            dtype=tf.float32))
       for _ in xrange(0, num_dense_features)
   ])
   return dict(sparse_features_weights=[],
-              dense_features_weights=feature_weights,
-              dual=tf.Variable(tf.zeros(
-                  [num_examples],
-                  dtype=tf.float32)),
-              primal_loss=tf.Variable(tf.zeros(
-                  [],
-                  dtype=tf.float64)))
+              dense_features_weights=feature_weights)
 
 
 def get_binary_predictions_for_logistic(predictions, cutoff=0.5):
@@ -622,7 +616,7 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
           dense_feature_values=[[1.0, 0.0], [0.0, 1.0]],
           weights=[1.0, 1.0],
           labels=[10.0, -5.0])
-      variables = make_dense_variable_dict(2, 2)
+      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
@@ -653,7 +647,7 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
           dense_feature_values=[[1.0, 0.0], [0.0, 1.0]],
           weights=[20.0, 10.0],
           labels=[10.0, -5.0])
-      variables = make_dense_variable_dict(2, 2)
+      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=5.0,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
@@ -734,7 +728,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
           dense_feature_values=[[1.0, 1.0], [1.0, -1.0]],
           weights=[1.0, 1.0],
           labels=[1.0, 0.0])
-      variables = make_dense_variable_dict(2, 2)
+      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
@@ -765,7 +759,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
           dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
           weights=[1.0, 1.0],
           labels=[1.0, 0.0])
-      variables = make_dense_variable_dict(2, 2)
+      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
@@ -795,7 +789,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
           dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
           weights=[3.0, 1.0],
           labels=[1.0, 0.0])
-      variables = make_dense_variable_dict(2, 2)
+      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
