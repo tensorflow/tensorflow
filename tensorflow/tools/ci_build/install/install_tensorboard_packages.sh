@@ -19,10 +19,11 @@ set -e
 # Install dependencies from ubuntu deb repository.
 apt-get update
 apt-get install -y \
+    chromium-browser \
     nodejs \
     nodejs-legacy \
     npm \
-    chromium-browser \
+    python-numpy \
     xvfb
 apt-get clean
 rm -rf /var/lib/apt/lists/*
