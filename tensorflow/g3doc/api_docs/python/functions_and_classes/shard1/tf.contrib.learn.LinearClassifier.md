@@ -61,6 +61,20 @@ Parameters:
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.dnn_bias_` {#LinearClassifier.dnn_bias_}
+
+Returns bias of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.dnn_weights_` {#LinearClassifier.dnn_weights_}
+
+Returns weights of deep neural network part.
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#LinearClassifier.evaluate}
 
 Evaluates given model with provided evaluation data.

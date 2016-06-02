@@ -59,6 +59,20 @@ Parameters:
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.dnn_bias_` {#LinearRegressor.dnn_bias_}
+
+Returns bias of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.dnn_weights_` {#LinearRegressor.dnn_weights_}
+
+Returns weights of deep neural network part.
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#LinearRegressor.evaluate}
 
 Evaluates given model with provided evaluation data.

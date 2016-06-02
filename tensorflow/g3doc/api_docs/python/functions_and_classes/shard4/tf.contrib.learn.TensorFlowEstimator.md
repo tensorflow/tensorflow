@@ -52,7 +52,6 @@ Neural network model from provided `model_fn` and training data.
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
-
 To restart learning, create new estimator.
 
 ##### Args:
@@ -156,7 +155,6 @@ Incremental fit on a batch of samples.
 This method is expected to be called several times consecutively
 on different or the same chunks of the dataset. This either can
 implement iterative training or out-of-core/online training.
-
 This is especially useful when the whole dataset is too big to
 fit in memory at the same time. Or when model is taking long time
 to converge, and you want to split up training into subparts.

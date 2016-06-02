@@ -190,6 +190,11 @@ Returns predictions for given features.
 
   Numpy array of predicted classes or regression values.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
+
 
 - - -
 

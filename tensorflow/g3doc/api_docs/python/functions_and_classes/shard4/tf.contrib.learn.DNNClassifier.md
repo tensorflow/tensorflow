@@ -54,11 +54,33 @@ Parameters:
     will use an Adagrad optimizer.
   activation_fn: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
+  dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None)` {#DNNClassifier.__init__}
 
 
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.bias_` {#DNNClassifier.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.dnn_bias_` {#DNNClassifier.dnn_bias_}
+
+Returns bias of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.dnn_weights_` {#DNNClassifier.dnn_weights_}
+
+Returns weights of deep neural network part.
 
 
 - - -
@@ -293,5 +315,12 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.weights_` {#DNNClassifier.weights_}
+
+
 
 

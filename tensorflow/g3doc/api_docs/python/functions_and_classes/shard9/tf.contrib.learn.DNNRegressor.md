@@ -54,11 +54,33 @@ Parameters:
     will use an Adagrad optimizer.
   activation_fn: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
+  dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None)` {#DNNRegressor.__init__}
 
 
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.bias_` {#DNNRegressor.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.dnn_bias_` {#DNNRegressor.dnn_bias_}
+
+Returns bias of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.dnn_weights_` {#DNNRegressor.dnn_weights_}
+
+Returns weights of deep neural network part.
 
 
 - - -
@@ -293,5 +315,12 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.weights_` {#DNNRegressor.weights_}
+
+
 
 

@@ -208,6 +208,11 @@ Returns predictions for given features.
 
   Numpy array of predicted classes or regression values.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
+
 
 - - -
 
@@ -432,6 +437,11 @@ Returns predictions for given features.
 
   Numpy array of predicted classes or regression values.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
+
 
 - - -
 
@@ -476,10 +486,10 @@ The following standard keys are defined:
 
 ### `class tf.contrib.learn.TensorFlowClassifier` {#TensorFlowClassifier}
 
-TensorFlow Linear Classifier model.
+
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.__init__(n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowClassifier.__init__}
+#### `tf.contrib.learn.TensorFlowClassifier.__init__(*args, **kwargs)` {#TensorFlowClassifier.__init__}
 
 
 
@@ -488,49 +498,61 @@ TensorFlow Linear Classifier model.
 
 #### `tf.contrib.learn.TensorFlowClassifier.bias_` {#TensorFlowClassifier.bias_}
 
-Returns weights of the linear classifier.
 
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowClassifier.evaluate(x=None, y=None, input_fn=None, steps=None)` {#TensorFlowClassifier.evaluate}
-
-See base class.
 
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowClassifier.fit}
+#### `tf.contrib.learn.TensorFlowClassifier.dnn_bias_` {#TensorFlowClassifier.dnn_bias_}
 
-Neural network model from provided `model_fn` and training data.
+Returns bias of deep neural network part.
 
-Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
-This logic follows partial_fit() interface in scikit-learn.
 
-To restart learning, create new estimator.
+- - -
+
+#### `tf.contrib.learn.TensorFlowClassifier.dnn_weights_` {#TensorFlowClassifier.dnn_weights_}
+
+Returns weights of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#TensorFlowClassifier.evaluate}
+
+Evaluates given model with provided evaluation data.
 
 ##### Args:
 
 
-*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
-*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class labels in classification, real numbers in regression).
-
-*  <b>`steps`</b>: int, number of steps to train.
-         If None or 0, train for `self.steps`.
-*  <b>`monitors`</b>: List of `BaseMonitor` objects to print training progress and
-    invoke early stopping.
-*  <b>`logdir`</b>: the directory to save the log file that can be used for
-  optional visualization.
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowClassifier.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowClassifier.fit}
+
+
 
 
 - - -
@@ -550,22 +572,6 @@ Get parameters for this estimator.
 
   params : mapping of string to any
   Parameter names mapped to their values.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowClassifier.get_tensor(name)` {#TensorFlowClassifier.get_tensor}
-
-Returns tensor by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Tensor.
 
 
 - - -
@@ -597,6 +603,20 @@ Returns value of the variable given by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowClassifier.linear_bias_` {#TensorFlowClassifier.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowClassifier.linear_weights_` {#TensorFlowClassifier.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowClassifier.model_dir` {#TensorFlowClassifier.model_dir}
 
 
@@ -604,7 +624,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.partial_fit(x, y)` {#TensorFlowClassifier.partial_fit}
+#### `tf.contrib.learn.TensorFlowClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#TensorFlowClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -620,88 +640,40 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class label in classification, real numbers in regression).
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
 
 ##### Returns:
 
-  Returns self.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowClassifier.predict(x, axis=1, batch_size=None)` {#TensorFlowClassifier.predict}
-
-Predict class or regression for X.
-
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
-returned.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`axis`</b>: Which axis to argmax for classification.
-    By default axis 1 (next after batch) is used.
-    Use 2 for sequence predictions.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member
-    variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-  value.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowClassifier.predict_proba(x, batch_size=None)` {#TensorFlowClassifier.predict_proba}
-
-Predict class probability of the input samples X.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-  probabilities for each class.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowClassifier.restore(cls, path, config=None)` {#TensorFlowClassifier.restore}
-
-Restores model from give path.
-
-##### Args:
-
-
-*  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
-      reconfigured.
-
-##### Returns:
-
-  Estimator, object of the subclass of TensorFlowEstimator.
+  `self`, for chaining.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowClassifier.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowClassifier.predict}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowClassifier.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None)` {#TensorFlowClassifier.predict_proba}
+
+
 
 
 - - -
@@ -746,7 +718,7 @@ component of a nested object.
 
 #### `tf.contrib.learn.TensorFlowClassifier.weights_` {#TensorFlowClassifier.weights_}
 
-Returns weights of the linear classifier.
+
 
 
 
@@ -810,11 +782,33 @@ Parameters:
     will use an Adagrad optimizer.
   activation_fn: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
+  dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None)` {#DNNClassifier.__init__}
 
 
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.bias_` {#DNNClassifier.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.dnn_bias_` {#DNNClassifier.dnn_bias_}
+
+Returns bias of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.dnn_weights_` {#DNNClassifier.dnn_weights_}
+
+Returns weights of deep neural network part.
 
 
 - - -
@@ -1051,6 +1045,13 @@ component of a nested object.
 *  <b>`ValueError`</b>: If params contain invalid names.
 
 
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.weights_` {#DNNClassifier.weights_}
+
+
+
+
 
 - - -
 
@@ -1112,11 +1113,33 @@ Parameters:
     will use an Adagrad optimizer.
   activation_fn: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
+  dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None)` {#DNNRegressor.__init__}
 
 
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.bias_` {#DNNRegressor.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.dnn_bias_` {#DNNRegressor.dnn_bias_}
+
+Returns bias of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.dnn_weights_` {#DNNRegressor.dnn_weights_}
+
+Returns weights of deep neural network part.
 
 
 - - -
@@ -1353,38 +1376,22 @@ component of a nested object.
 *  <b>`ValueError`</b>: If params contain invalid names.
 
 
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.weights_` {#DNNRegressor.weights_}
+
+
+
+
 
 - - -
 
 ### `class tf.contrib.learn.TensorFlowDNNClassifier` {#TensorFlowDNNClassifier}
 
-TensorFlow DNN Classifier model.
 
-Parameters:
-  hidden_units: List of hidden units per layer.
-  n_classes: Number of classes in the target.
-  batch_size: Mini batch size.
-  steps: Number of steps to run over data.
-  optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
-  learning_rate: If this is constant float value, no decay function is used.
-    Instead, a customized decay function can be passed that accepts
-    global_step as parameter and returns a Tensor.
-    e.g. exponential decay function:
-    def exp_decay(global_step):
-        return tf.train.exponential_decay(
-            learning_rate=0.1, global_step,
-            decay_steps=2, decay_rate=0.001)
-  class_weight: None or list of n_classes floats. Weight associated with
-    classes for loss computation. If not given, all classes are
-    supposed to have weight one.
-  continue_training: when continue_training is True, once initialized
-    model will be continuely trained on every call of fit.
-  config: RunConfig object that controls the configurations of the
-    session, e.g. num_cores, gpu_memory_fraction, etc.
-  dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNClassifier.__init__(hidden_units, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1, dropout=None)` {#TensorFlowDNNClassifier.__init__}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.__init__(*args, **kwargs)` {#TensorFlowDNNClassifier.__init__}
 
 
 
@@ -1393,49 +1400,61 @@ Parameters:
 
 #### `tf.contrib.learn.TensorFlowDNNClassifier.bias_` {#TensorFlowDNNClassifier.bias_}
 
-Returns bias of the DNN's bias layers.
 
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.evaluate(x=None, y=None, input_fn=None, steps=None)` {#TensorFlowDNNClassifier.evaluate}
-
-See base class.
 
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNClassifier.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowDNNClassifier.fit}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.dnn_bias_` {#TensorFlowDNNClassifier.dnn_bias_}
 
-Neural network model from provided `model_fn` and training data.
+Returns bias of deep neural network part.
 
-Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
-This logic follows partial_fit() interface in scikit-learn.
 
-To restart learning, create new estimator.
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNClassifier.dnn_weights_` {#TensorFlowDNNClassifier.dnn_weights_}
+
+Returns weights of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#TensorFlowDNNClassifier.evaluate}
+
+Evaluates given model with provided evaluation data.
 
 ##### Args:
 
 
-*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
-*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class labels in classification, real numbers in regression).
-
-*  <b>`steps`</b>: int, number of steps to train.
-         If None or 0, train for `self.steps`.
-*  <b>`monitors`</b>: List of `BaseMonitor` objects to print training progress and
-    invoke early stopping.
-*  <b>`logdir`</b>: the directory to save the log file that can be used for
-  optional visualization.
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNClassifier.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowDNNClassifier.fit}
+
+
 
 
 - - -
@@ -1455,22 +1474,6 @@ Get parameters for this estimator.
 
   params : mapping of string to any
   Parameter names mapped to their values.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.get_tensor(name)` {#TensorFlowDNNClassifier.get_tensor}
-
-Returns tensor by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Tensor.
 
 
 - - -
@@ -1502,6 +1505,20 @@ Returns value of the variable given by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNClassifier.linear_bias_` {#TensorFlowDNNClassifier.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNClassifier.linear_weights_` {#TensorFlowDNNClassifier.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNClassifier.model_dir` {#TensorFlowDNNClassifier.model_dir}
 
 
@@ -1509,7 +1526,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNClassifier.partial_fit(x, y)` {#TensorFlowDNNClassifier.partial_fit}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#TensorFlowDNNClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -1525,88 +1542,40 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class label in classification, real numbers in regression).
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
 
 ##### Returns:
 
-  Returns self.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.predict(x, axis=1, batch_size=None)` {#TensorFlowDNNClassifier.predict}
-
-Predict class or regression for X.
-
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
-returned.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`axis`</b>: Which axis to argmax for classification.
-    By default axis 1 (next after batch) is used.
-    Use 2 for sequence predictions.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member
-    variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-  value.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.predict_proba(x, batch_size=None)` {#TensorFlowDNNClassifier.predict_proba}
-
-Predict class probability of the input samples X.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-  probabilities for each class.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.restore(cls, path, config=None)` {#TensorFlowDNNClassifier.restore}
-
-Restores model from give path.
-
-##### Args:
-
-
-*  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
-      reconfigured.
-
-##### Returns:
-
-  Estimator, object of the subclass of TensorFlowEstimator.
+  `self`, for chaining.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNClassifier.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowDNNClassifier.predict}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNClassifier.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None)` {#TensorFlowDNNClassifier.predict_proba}
+
+
 
 
 - - -
@@ -1651,7 +1620,7 @@ component of a nested object.
 
 #### `tf.contrib.learn.TensorFlowDNNClassifier.weights_` {#TensorFlowDNNClassifier.weights_}
 
-Returns weights of the DNN weight layers.
+
 
 
 
@@ -1659,33 +1628,10 @@ Returns weights of the DNN weight layers.
 
 ### `class tf.contrib.learn.TensorFlowDNNRegressor` {#TensorFlowDNNRegressor}
 
-TensorFlow DNN Regressor model.
 
-Parameters:
-  hidden_units: List of hidden units per layer.
-  batch_size: Mini batch size.
-  steps: Number of steps to run over data.
-  optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
-  learning_rate: If this is constant float value, no decay function is
-    used. Instead, a customized decay function can be passed that accepts
-    global_step as parameter and returns a Tensor.
-    e.g. exponential decay function:
-    def exp_decay(global_step):
-        return tf.train.exponential_decay(
-            learning_rate=0.1, global_step,
-            decay_steps=2, decay_rate=0.001)
-  continue_training: when continue_training is True, once initialized
-    model will be continuely trained on every call of fit.
-  config: RunConfig object that controls the configurations of the session,
-    e.g. num_cores, gpu_memory_fraction, etc.
-  verbose: Controls the verbosity, possible values:
-    0: the algorithm and debug information is muted.
-    1: trainer prints the progress.
-    2: log device placement is printed.
-  dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.__init__(hidden_units, n_classes=0, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1, dropout=None)` {#TensorFlowDNNRegressor.__init__}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.__init__(*args, **kwargs)` {#TensorFlowDNNRegressor.__init__}
 
 
 
@@ -1694,49 +1640,61 @@ Parameters:
 
 #### `tf.contrib.learn.TensorFlowDNNRegressor.bias_` {#TensorFlowDNNRegressor.bias_}
 
-Returns bias of the DNN's bias layers.
 
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.evaluate(x=None, y=None, input_fn=None, steps=None)` {#TensorFlowDNNRegressor.evaluate}
-
-See base class.
 
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowDNNRegressor.fit}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.dnn_bias_` {#TensorFlowDNNRegressor.dnn_bias_}
 
-Neural network model from provided `model_fn` and training data.
+Returns bias of deep neural network part.
 
-Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
-This logic follows partial_fit() interface in scikit-learn.
 
-To restart learning, create new estimator.
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.dnn_weights_` {#TensorFlowDNNRegressor.dnn_weights_}
+
+Returns weights of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#TensorFlowDNNRegressor.evaluate}
+
+Evaluates given model with provided evaluation data.
 
 ##### Args:
 
 
-*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
-*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class labels in classification, real numbers in regression).
-
-*  <b>`steps`</b>: int, number of steps to train.
-         If None or 0, train for `self.steps`.
-*  <b>`monitors`</b>: List of `BaseMonitor` objects to print training progress and
-    invoke early stopping.
-*  <b>`logdir`</b>: the directory to save the log file that can be used for
-  optional visualization.
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowDNNRegressor.fit}
+
+
 
 
 - - -
@@ -1756,22 +1714,6 @@ Get parameters for this estimator.
 
   params : mapping of string to any
   Parameter names mapped to their values.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.get_tensor(name)` {#TensorFlowDNNRegressor.get_tensor}
-
-Returns tensor by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Tensor.
 
 
 - - -
@@ -1803,6 +1745,20 @@ Returns value of the variable given by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNRegressor.linear_bias_` {#TensorFlowDNNRegressor.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.linear_weights_` {#TensorFlowDNNRegressor.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNRegressor.model_dir` {#TensorFlowDNNRegressor.model_dir}
 
 
@@ -1810,7 +1766,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.partial_fit(x, y)` {#TensorFlowDNNRegressor.partial_fit}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#TensorFlowDNNRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -1826,88 +1782,40 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class label in classification, real numbers in regression).
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
 
 ##### Returns:
 
-  Returns self.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.predict(x, axis=1, batch_size=None)` {#TensorFlowDNNRegressor.predict}
-
-Predict class or regression for X.
-
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
-returned.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`axis`</b>: Which axis to argmax for classification.
-    By default axis 1 (next after batch) is used.
-    Use 2 for sequence predictions.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member
-    variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-  value.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.predict_proba(x, batch_size=None)` {#TensorFlowDNNRegressor.predict_proba}
-
-Predict class probability of the input samples X.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-  probabilities for each class.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.restore(cls, path, config=None)` {#TensorFlowDNNRegressor.restore}
-
-Restores model from give path.
-
-##### Args:
-
-
-*  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
-      reconfigured.
-
-##### Returns:
-
-  Estimator, object of the subclass of TensorFlowEstimator.
+  `self`, for chaining.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowDNNRegressor.predict}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None)` {#TensorFlowDNNRegressor.predict_proba}
+
+
 
 
 - - -
@@ -1952,7 +1860,7 @@ component of a nested object.
 
 #### `tf.contrib.learn.TensorFlowDNNRegressor.weights_` {#TensorFlowDNNRegressor.weights_}
 
-Returns weights of the DNN weight layers.
+
 
 
 
@@ -2014,7 +1922,6 @@ Neural network model from provided `model_fn` and training data.
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
-
 To restart learning, create new estimator.
 
 ##### Args:
@@ -2118,7 +2025,6 @@ Incremental fit on a batch of samples.
 This method is expected to be called several times consecutively
 on different or the same chunks of the dataset. This either can
 implement iterative training or out-of-core/online training.
-
 This is especially useful when the whole dataset is too big to
 fit in memory at the same time. Or when model is taking long time
 to converge, and you want to split up training into subparts.
@@ -2313,6 +2219,20 @@ Parameters:
 #### `tf.contrib.learn.LinearClassifier.bias_` {#LinearClassifier.bias_}
 
 
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.dnn_bias_` {#LinearClassifier.dnn_bias_}
+
+Returns bias of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.dnn_weights_` {#LinearClassifier.dnn_weights_}
+
+Returns weights of deep neural network part.
 
 
 - - -
@@ -2622,6 +2542,20 @@ Parameters:
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.dnn_bias_` {#LinearRegressor.dnn_bias_}
+
+Returns bias of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.dnn_weights_` {#LinearRegressor.dnn_weights_}
+
+Returns weights of deep neural network part.
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#LinearRegressor.evaluate}
 
 Evaluates given model with provided evaluation data.
@@ -2866,10 +2800,10 @@ component of a nested object.
 
 ### `class tf.contrib.learn.TensorFlowLinearClassifier` {#TensorFlowLinearClassifier}
 
-TensorFlow Linear Classifier model.
+
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearClassifier.__init__(n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowLinearClassifier.__init__}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.__init__(*args, **kwargs)` {#TensorFlowLinearClassifier.__init__}
 
 
 
@@ -2878,49 +2812,61 @@ TensorFlow Linear Classifier model.
 
 #### `tf.contrib.learn.TensorFlowLinearClassifier.bias_` {#TensorFlowLinearClassifier.bias_}
 
-Returns weights of the linear classifier.
 
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearClassifier.evaluate(x=None, y=None, input_fn=None, steps=None)` {#TensorFlowLinearClassifier.evaluate}
-
-See base class.
 
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearClassifier.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowLinearClassifier.fit}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.dnn_bias_` {#TensorFlowLinearClassifier.dnn_bias_}
 
-Neural network model from provided `model_fn` and training data.
+Returns bias of deep neural network part.
 
-Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
-This logic follows partial_fit() interface in scikit-learn.
 
-To restart learning, create new estimator.
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearClassifier.dnn_weights_` {#TensorFlowLinearClassifier.dnn_weights_}
+
+Returns weights of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#TensorFlowLinearClassifier.evaluate}
+
+Evaluates given model with provided evaluation data.
 
 ##### Args:
 
 
-*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
-*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class labels in classification, real numbers in regression).
-
-*  <b>`steps`</b>: int, number of steps to train.
-         If None or 0, train for `self.steps`.
-*  <b>`monitors`</b>: List of `BaseMonitor` objects to print training progress and
-    invoke early stopping.
-*  <b>`logdir`</b>: the directory to save the log file that can be used for
-  optional visualization.
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearClassifier.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowLinearClassifier.fit}
+
+
 
 
 - - -
@@ -2940,22 +2886,6 @@ Get parameters for this estimator.
 
   params : mapping of string to any
   Parameter names mapped to their values.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearClassifier.get_tensor(name)` {#TensorFlowLinearClassifier.get_tensor}
-
-Returns tensor by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Tensor.
 
 
 - - -
@@ -2987,6 +2917,20 @@ Returns value of the variable given by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowLinearClassifier.linear_bias_` {#TensorFlowLinearClassifier.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearClassifier.linear_weights_` {#TensorFlowLinearClassifier.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowLinearClassifier.model_dir` {#TensorFlowLinearClassifier.model_dir}
 
 
@@ -2994,7 +2938,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearClassifier.partial_fit(x, y)` {#TensorFlowLinearClassifier.partial_fit}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#TensorFlowLinearClassifier.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -3010,88 +2954,40 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class label in classification, real numbers in regression).
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
 
 ##### Returns:
 
-  Returns self.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearClassifier.predict(x, axis=1, batch_size=None)` {#TensorFlowLinearClassifier.predict}
-
-Predict class or regression for X.
-
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
-returned.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`axis`</b>: Which axis to argmax for classification.
-    By default axis 1 (next after batch) is used.
-    Use 2 for sequence predictions.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member
-    variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-  value.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearClassifier.predict_proba(x, batch_size=None)` {#TensorFlowLinearClassifier.predict_proba}
-
-Predict class probability of the input samples X.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-  probabilities for each class.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearClassifier.restore(cls, path, config=None)` {#TensorFlowLinearClassifier.restore}
-
-Restores model from give path.
-
-##### Args:
-
-
-*  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
-      reconfigured.
-
-##### Returns:
-
-  Estimator, object of the subclass of TensorFlowEstimator.
+  `self`, for chaining.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearClassifier.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowLinearClassifier.predict}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearClassifier.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None)` {#TensorFlowLinearClassifier.predict_proba}
+
+
 
 
 - - -
@@ -3136,7 +3032,7 @@ component of a nested object.
 
 #### `tf.contrib.learn.TensorFlowLinearClassifier.weights_` {#TensorFlowLinearClassifier.weights_}
 
-Returns weights of the linear classifier.
+
 
 
 
@@ -3144,10 +3040,10 @@ Returns weights of the linear classifier.
 
 ### `class tf.contrib.learn.TensorFlowLinearRegressor` {#TensorFlowLinearRegressor}
 
-TensorFlow Linear Regression model.
+
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearRegressor.__init__(n_classes=0, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowLinearRegressor.__init__}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.__init__(*args, **kwargs)` {#TensorFlowLinearRegressor.__init__}
 
 
 
@@ -3156,49 +3052,61 @@ TensorFlow Linear Regression model.
 
 #### `tf.contrib.learn.TensorFlowLinearRegressor.bias_` {#TensorFlowLinearRegressor.bias_}
 
-Returns bias of the linear regression.
 
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearRegressor.evaluate(x=None, y=None, input_fn=None, steps=None)` {#TensorFlowLinearRegressor.evaluate}
-
-See base class.
 
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowLinearRegressor.fit}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.dnn_bias_` {#TensorFlowLinearRegressor.dnn_bias_}
 
-Neural network model from provided `model_fn` and training data.
+Returns bias of deep neural network part.
 
-Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
-This logic follows partial_fit() interface in scikit-learn.
 
-To restart learning, create new estimator.
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.dnn_weights_` {#TensorFlowLinearRegressor.dnn_weights_}
+
+Returns weights of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#TensorFlowLinearRegressor.evaluate}
+
+Evaluates given model with provided evaluation data.
 
 ##### Args:
 
 
-*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
-*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class labels in classification, real numbers in regression).
-
-*  <b>`steps`</b>: int, number of steps to train.
-         If None or 0, train for `self.steps`.
-*  <b>`monitors`</b>: List of `BaseMonitor` objects to print training progress and
-    invoke early stopping.
-*  <b>`logdir`</b>: the directory to save the log file that can be used for
-  optional visualization.
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowLinearRegressor.fit}
+
+
 
 
 - - -
@@ -3218,22 +3126,6 @@ Get parameters for this estimator.
 
   params : mapping of string to any
   Parameter names mapped to their values.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearRegressor.get_tensor(name)` {#TensorFlowLinearRegressor.get_tensor}
-
-Returns tensor by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Tensor.
 
 
 - - -
@@ -3265,6 +3157,20 @@ Returns value of the variable given by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowLinearRegressor.linear_bias_` {#TensorFlowLinearRegressor.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.linear_weights_` {#TensorFlowLinearRegressor.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowLinearRegressor.model_dir` {#TensorFlowLinearRegressor.model_dir}
 
 
@@ -3272,7 +3178,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearRegressor.partial_fit(x, y)` {#TensorFlowLinearRegressor.partial_fit}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#TensorFlowLinearRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -3288,88 +3194,40 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class label in classification, real numbers in regression).
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
 
 ##### Returns:
 
-  Returns self.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearRegressor.predict(x, axis=1, batch_size=None)` {#TensorFlowLinearRegressor.predict}
-
-Predict class or regression for X.
-
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
-returned.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`axis`</b>: Which axis to argmax for classification.
-    By default axis 1 (next after batch) is used.
-    Use 2 for sequence predictions.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member
-    variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-  value.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearRegressor.predict_proba(x, batch_size=None)` {#TensorFlowLinearRegressor.predict_proba}
-
-Predict class probability of the input samples X.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-  probabilities for each class.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearRegressor.restore(cls, path, config=None)` {#TensorFlowLinearRegressor.restore}
-
-Restores model from give path.
-
-##### Args:
-
-
-*  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
-      reconfigured.
-
-##### Returns:
-
-  Estimator, object of the subclass of TensorFlowEstimator.
+  `self`, for chaining.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowLinearRegressor.predict}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None)` {#TensorFlowLinearRegressor.predict_proba}
+
+
 
 
 - - -
@@ -3414,7 +3272,7 @@ component of a nested object.
 
 #### `tf.contrib.learn.TensorFlowLinearRegressor.weights_` {#TensorFlowLinearRegressor.weights_}
 
-Returns weights of the linear regression.
+
 
 
 
@@ -3486,7 +3344,6 @@ Neural network model from provided `model_fn` and training data.
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
-
 To restart learning, create new estimator.
 
 ##### Args:
@@ -3590,7 +3447,6 @@ Incremental fit on a batch of samples.
 This method is expected to be called several times consecutively
 on different or the same chunks of the dataset. This either can
 implement iterative training or out-of-core/online training.
-
 This is especially useful when the whole dataset is too big to
 fit in memory at the same time. Or when model is taking long time
 to converge, and you want to split up training into subparts.
@@ -3797,7 +3653,6 @@ Neural network model from provided `model_fn` and training data.
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
-
 To restart learning, create new estimator.
 
 ##### Args:
@@ -3901,7 +3756,6 @@ Incremental fit on a batch of samples.
 This method is expected to be called several times consecutively
 on different or the same chunks of the dataset. This either can
 implement iterative training or out-of-core/online training.
-
 This is especially useful when the whole dataset is too big to
 fit in memory at the same time. Or when model is taking long time
 to converge, and you want to split up training into subparts.
@@ -4044,10 +3898,10 @@ Returns weights of the rnn layer.
 
 ### `class tf.contrib.learn.TensorFlowRegressor` {#TensorFlowRegressor}
 
-TensorFlow Linear Regression model.
+
 - - -
 
-#### `tf.contrib.learn.TensorFlowRegressor.__init__(n_classes=0, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRegressor.__init__}
+#### `tf.contrib.learn.TensorFlowRegressor.__init__(*args, **kwargs)` {#TensorFlowRegressor.__init__}
 
 
 
@@ -4056,49 +3910,61 @@ TensorFlow Linear Regression model.
 
 #### `tf.contrib.learn.TensorFlowRegressor.bias_` {#TensorFlowRegressor.bias_}
 
-Returns bias of the linear regression.
 
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRegressor.evaluate(x=None, y=None, input_fn=None, steps=None)` {#TensorFlowRegressor.evaluate}
-
-See base class.
 
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowRegressor.fit}
+#### `tf.contrib.learn.TensorFlowRegressor.dnn_bias_` {#TensorFlowRegressor.dnn_bias_}
 
-Neural network model from provided `model_fn` and training data.
+Returns bias of deep neural network part.
 
-Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
-This logic follows partial_fit() interface in scikit-learn.
 
-To restart learning, create new estimator.
+- - -
+
+#### `tf.contrib.learn.TensorFlowRegressor.dnn_weights_` {#TensorFlowRegressor.dnn_weights_}
+
+Returns weights of deep neural network part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#TensorFlowRegressor.evaluate}
+
+Evaluates given model with provided evaluation data.
 
 ##### Args:
 
 
-*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
-*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class labels in classification, real numbers in regression).
-
-*  <b>`steps`</b>: int, number of steps to train.
-         If None or 0, train for `self.steps`.
-*  <b>`monitors`</b>: List of `BaseMonitor` objects to print training progress and
-    invoke early stopping.
-*  <b>`logdir`</b>: the directory to save the log file that can be used for
-  optional visualization.
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRegressor.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowRegressor.fit}
+
+
 
 
 - - -
@@ -4118,22 +3984,6 @@ Get parameters for this estimator.
 
   params : mapping of string to any
   Parameter names mapped to their values.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRegressor.get_tensor(name)` {#TensorFlowRegressor.get_tensor}
-
-Returns tensor by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Tensor.
 
 
 - - -
@@ -4165,6 +4015,20 @@ Returns value of the variable given by name.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRegressor.linear_bias_` {#TensorFlowRegressor.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRegressor.linear_weights_` {#TensorFlowRegressor.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRegressor.model_dir` {#TensorFlowRegressor.model_dir}
 
 
@@ -4172,7 +4036,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRegressor.partial_fit(x, y)` {#TensorFlowRegressor.partial_fit}
+#### `tf.contrib.learn.TensorFlowRegressor.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#TensorFlowRegressor.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -4188,88 +4052,40 @@ to converge, and you want to split up training into subparts.
 
 
 *  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
-  iterator that returns arrays of features. The training input
-  samples for fitting the model.
-
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-  iterator that returns array of targets. The training target values
-  (class label in classification, real numbers in regression).
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
 
 ##### Returns:
 
-  Returns self.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRegressor.predict(x, axis=1, batch_size=None)` {#TensorFlowRegressor.predict}
-
-Predict class or regression for X.
-
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
-returned.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`axis`</b>: Which axis to argmax for classification.
-    By default axis 1 (next after batch) is used.
-    Use 2 for sequence predictions.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member
-    variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples]. The predicted classes or predicted
-  value.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRegressor.predict_proba(x, batch_size=None)` {#TensorFlowRegressor.predict_proba}
-
-Predict class probability of the input samples X.
-
-##### Args:
-
-
-*  <b>`x`</b>: array-like matrix, [n_samples, n_features...] or iterator.
-*  <b>`batch_size`</b>: If test set is too big, use batch size to split
-    it into mini batches. By default the batch_size member variable is used.
-
-##### Returns:
-
-
-*  <b>`y`</b>: array of shape [n_samples, n_classes]. The predicted
-  probabilities for each class.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRegressor.restore(cls, path, config=None)` {#TensorFlowRegressor.restore}
-
-Restores model from give path.
-
-##### Args:
-
-
-*  <b>`path`</b>: Path to the checkpoints and other model information.
-*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
-    e.g. num_cores, gpu_memory_fraction, etc. This is allowed to be
-      reconfigured.
-
-##### Returns:
-
-  Estimator, object of the subclass of TensorFlowEstimator.
+  `self`, for chaining.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `path` does not contain a model definition.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowRegressor.predict}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRegressor.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None)` {#TensorFlowRegressor.predict_proba}
+
+
 
 
 - - -
@@ -4314,7 +4130,7 @@ component of a nested object.
 
 #### `tf.contrib.learn.TensorFlowRegressor.weights_` {#TensorFlowRegressor.weights_}
 
-Returns weights of the linear regression.
+
 
 
 
