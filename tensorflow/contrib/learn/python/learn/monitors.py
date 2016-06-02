@@ -85,7 +85,7 @@ class BaseMonitor(object):
 
 
 class EveryN(BaseMonitor):
-  """Base class for monitors that execute callbacks every n steps / seconds.
+  """Base class for monitors that execute callbacks every n steps.
 
   Parameters:
     every_n_steps: int, calls `every_n_step_{begin,end}` every this many steps.
@@ -124,6 +124,12 @@ class EveryN(BaseMonitor):
 
 
 class PrintTensor(EveryN):
+  """Prints given tensors every N steps.
+
+  Print the tensors provided in `tensor_names` `every_n`
+  steps, starting with the `first_n`th step.
+
+  """
 
   def __init__(self, tensor_names, every_n=100, first_n=1):
     super(PrintTensor, self).__init__(every_n, first_n)
@@ -141,7 +147,7 @@ class PrintTensor(EveryN):
 
 
 class SummarySaver(EveryN):
-  """Saves summary every N seconds."""
+  """Saves a summary every N steps."""
 
   def __init__(self, summary_op, save_steps=100, output_dir=None,
                summary_writer=None):
