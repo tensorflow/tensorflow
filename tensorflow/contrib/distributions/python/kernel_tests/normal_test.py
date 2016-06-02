@@ -27,7 +27,7 @@ import tensorflow as tf
 class NormalTest(tf.test.TestCase):
 
   def testNormalLogPDF(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       mu = tf.constant([3.0] * batch_size)
       sigma = tf.constant([math.sqrt(10.0)] * batch_size)
@@ -41,12 +41,20 @@ class NormalTest(tf.test.TestCase):
 
       log_pdf = normal.log_pdf(x)
       self.assertAllClose(expected_log_pdf, log_pdf.eval())
+      self.assertAllEqual(normal.batch_shape().eval(), log_pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape().eval(), log_pdf.eval().shape)
+      self.assertAllEqual(normal.get_batch_shape(), log_pdf.get_shape())
+      self.assertAllEqual(normal.get_batch_shape(), log_pdf.eval().shape)
 
       pdf = normal.pdf(x)
       self.assertAllClose(np.exp(expected_log_pdf), pdf.eval())
+      self.assertAllEqual(normal.batch_shape().eval(), pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape().eval(), pdf.eval().shape)
+      self.assertAllEqual(normal.get_batch_shape(), pdf.get_shape())
+      self.assertAllEqual(normal.get_batch_shape(), pdf.eval().shape)
 
   def testNormalLogPDFMultidimensional(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       mu = tf.constant([[3.0, -3.0]] * batch_size)
       sigma = tf.constant([[math.sqrt(10.0), math.sqrt(15.0)]] * batch_size)
@@ -62,14 +70,22 @@ class NormalTest(tf.test.TestCase):
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(expected_log_pdf, log_pdf_values)
+      self.assertAllEqual(normal.batch_shape().eval(), log_pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape().eval(), log_pdf.eval().shape)
+      self.assertAllEqual(normal.get_batch_shape(), log_pdf.get_shape())
+      self.assertAllEqual(normal.get_batch_shape(), log_pdf.eval().shape)
 
       pdf = normal.pdf(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(np.exp(expected_log_pdf), pdf_values)
+      self.assertAllEqual(normal.batch_shape().eval(), pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape().eval(), pdf_values.shape)
+      self.assertAllEqual(normal.get_batch_shape(), pdf.get_shape())
+      self.assertAllEqual(normal.get_batch_shape(), pdf_values.shape)
 
   def testNormalCDF(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       mu = tf.constant([3.0] * batch_size)
       sigma = tf.constant([math.sqrt(10.0)] * batch_size)
@@ -85,19 +101,28 @@ class NormalTest(tf.test.TestCase):
 
       cdf = normal.cdf(x)
       self.assertAllClose(expected_cdf, cdf.eval())
+      self.assertAllEqual(normal.batch_shape().eval(), cdf.get_shape())
+      self.assertAllEqual(normal.batch_shape().eval(), cdf.eval().shape)
+      self.assertAllEqual(normal.get_batch_shape(), cdf.get_shape())
+      self.assertAllEqual(normal.get_batch_shape(), cdf.eval().shape)
 
   def testNormalEntropy(self):
-    with tf.Session():
+    with self.test_session():
       mu_v = np.array([1.0, 1.0, 1.0])
       sigma_v = np.array([[1.0, 2.0, 3.0]]).T
       normal = tf.contrib.distributions.Normal(mu=mu_v, sigma=sigma_v)
 
       sigma_broadcast = mu_v * sigma_v
       expected_entropy = 0.5 * np.log(2*np.pi*np.exp(1)*sigma_broadcast**2)
-      self.assertAllClose(expected_entropy, normal.entropy().eval())
+      entropy = normal.entropy()
+      self.assertAllClose(expected_entropy, entropy.eval())
+      self.assertAllEqual(normal.batch_shape().eval(), entropy.get_shape())
+      self.assertAllEqual(normal.batch_shape().eval(), entropy.eval().shape)
+      self.assertAllEqual(normal.get_batch_shape(), entropy.get_shape())
+      self.assertAllEqual(normal.get_batch_shape(), entropy.eval().shape)
 
   def testNormalSample(self):
-    with tf.Session():
+    with self.test_session():
       mu = tf.constant(3.0)
       sigma = tf.constant(math.sqrt(10.0))
       mu_v = 3.0
@@ -110,8 +135,22 @@ class NormalTest(tf.test.TestCase):
       self.assertAllClose(sample_values.mean(), mu_v, atol=1e-2)
       self.assertAllClose(sample_values.std(), sigma_v, atol=1e-1)
 
+      expected_samples_shape = (
+          tf.TensorShape([n.eval()]).concatenate(
+              tf.TensorShape(normal.batch_shape().eval())))
+
+      self.assertAllEqual(expected_samples_shape, samples.get_shape())
+      self.assertAllEqual(expected_samples_shape, sample_values.shape)
+
+      expected_samples_shape = (
+          tf.TensorShape([n.eval()]).concatenate(
+              normal.get_batch_shape()))
+
+      self.assertAllEqual(expected_samples_shape, samples.get_shape())
+      self.assertAllEqual(expected_samples_shape, sample_values.shape)
+
   def testNormalSampleMultiDimensional(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 2
       mu = tf.constant([[3.0, -3.0]] * batch_size)
       sigma = tf.constant([[math.sqrt(10.0), math.sqrt(15.0)]] * batch_size)
@@ -127,8 +166,19 @@ class NormalTest(tf.test.TestCase):
       self.assertAllClose(sample_values[:, 0, 1].mean(), mu_v[1], atol=1e-2)
       self.assertAllClose(sample_values[:, 0, 1].std(), sigma_v[1], atol=1e-1)
 
+      expected_samples_shape = (
+          tf.TensorShape([n.eval()]).concatenate(
+              tf.TensorShape(normal.batch_shape().eval())))
+      self.assertAllEqual(expected_samples_shape, samples.get_shape())
+      self.assertAllEqual(expected_samples_shape, sample_values.shape)
+
+      expected_samples_shape = (
+          tf.TensorShape([n.eval()]).concatenate(normal.get_batch_shape()))
+      self.assertAllEqual(expected_samples_shape, samples.get_shape())
+      self.assertAllEqual(expected_samples_shape, sample_values.shape)
+
   def testNegativeSigmaFails(self):
-    with tf.Session():
+    with self.test_session():
       normal = tf.contrib.distributions.Normal(
           mu=[1.],
           sigma=[-5.],
@@ -136,6 +186,32 @@ class NormalTest(tf.test.TestCase):
       with self.assertRaisesOpError(
           r'should contain only positive values'):
         normal.mean.eval()
+
+  def testNormalShape(self):
+    with self.test_session():
+      mu = tf.constant([-3.0] * 5)
+      sigma = tf.constant(11.0)
+      normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
+
+      self.assertEqual(normal.batch_shape().eval(), [5])
+      self.assertEqual(normal.get_batch_shape(), tf.TensorShape([5]))
+      self.assertEqual(normal.event_shape().eval(), 1)
+      self.assertEqual(normal.get_event_shape(), tf.TensorShape([]))
+
+  def testNormalShapeWithPlaceholders(self):
+    mu = tf.placeholder(dtype=tf.float32)
+    sigma = tf.placeholder(dtype=tf.float32)
+    normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
+
+    with self.test_session() as sess:
+      # get_batch_shape should return an "<unknown>" tensor.
+      self.assertEqual(normal.get_batch_shape(), tf.TensorShape(None))
+      self.assertEqual(normal.get_event_shape(), ())
+      self.assertEqual(normal.event_shape().eval(), 1)
+      self.assertAllEqual(
+          sess.run(normal.batch_shape(),
+                   feed_dict={mu: 5.0, sigma: [1.0, 2.0]}),
+          [2])
 
 if __name__ == '__main__':
   tf.test.main()

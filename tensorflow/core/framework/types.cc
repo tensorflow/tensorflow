@@ -181,7 +181,7 @@ DataTypeVector AllTypes() {
           DT_QUINT16, DT_QINT32, DT_HALF};
 }
 
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || defined(SUPPORT_SELECTIVE_REGISTRATION)
 
 DataTypeVector RealNumberTypes() {
   return {DT_FLOAT, DT_DOUBLE, DT_INT32,  DT_INT64, DT_UINT8,

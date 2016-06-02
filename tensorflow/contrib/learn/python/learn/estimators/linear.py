@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,8 +45,8 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       ...
     def input_fn_eval: # returns X, Y
       ...
-    estimator.train(input_fn_train)
-    estimator.evaluate(input_fn_eval)
+    estimator.fit(input_fn=input_fn_train)
+    estimator.evaluate(input_fn=input_fn_eval)
     estimator.predict(x)
     ```
 
@@ -96,6 +95,14 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       self._linear_feature_columns = layers.infer_real_valued_columns(features)
     return super(LinearClassifier, self)._get_train_ops(features, targets)
 
+  @property
+  def weights_(self):
+    return self.linear_weights_
+
+  @property
+  def bias_(self):
+    return self.linear_bias_
+
 
 class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   """Linear regressor model.
@@ -116,8 +123,8 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       ...
     def input_fn_eval: # returns X, Y
       ...
-    estimator.train(input_fn_train)
-    estimator.evaluate(input_fn_eval)
+    estimator.fit(input_fn=input_fn_train)
+    estimator.evaluate(input_fn=input_fn_eval)
     estimator.predict(x)
     ```
 
@@ -163,8 +170,16 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       self._linear_feature_columns = layers.infer_real_valued_columns(features)
     return super(LinearRegressor, self)._get_train_ops(features, targets)
 
+  @property
+  def weights_(self):
+    return self.linear_weights_
 
-# TODO(ipolosukhin): Deprecate this class in favor of LinearClassifier.
+  @property
+  def bias_(self):
+    return self.linear_bias_
+
+
+# TODO(ipolosukhin): Deprecate this class in favor of LinearRegressor.
 class TensorFlowLinearRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
   """TensorFlow Linear Regression model."""
 
@@ -194,14 +209,15 @@ class TensorFlowLinearRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
   @property
   def weights_(self):
     """Returns weights of the linear regression."""
-    return self.get_tensor_value('linear_regression/weights')
+    return self.get_variable_value('linear_regression/weights')
 
   @property
   def bias_(self):
     """Returns bias of the linear regression."""
-    return self.get_tensor_value('linear_regression/bias')
+    return self.get_variable_value('linear_regression/bias')
 
 
+# TODO(ipolosukhin): Deprecate this class in favor of LinearClassifier.
 class TensorFlowLinearClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
   """TensorFlow Linear Classifier model."""
 
@@ -233,12 +249,12 @@ class TensorFlowLinearClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
   @property
   def weights_(self):
     """Returns weights of the linear classifier."""
-    return self.get_tensor_value('logistic_regression/weights')
+    return self.get_variable_value('logistic_regression/weights')
 
   @property
   def bias_(self):
     """Returns weights of the linear classifier."""
-    return self.get_tensor_value('logistic_regression/bias')
+    return self.get_variable_value('logistic_regression/bias')
 
 
 TensorFlowRegressor = TensorFlowLinearRegressor

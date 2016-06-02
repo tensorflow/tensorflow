@@ -328,6 +328,8 @@ class FunctionLibraryRuntime {
     CancellationManager* cancellation_manager = nullptr;
     // The id of the step that is calling this function.
     int64 step_id = 0;
+
+    std::function<void(std::function<void()>)>* runner = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,

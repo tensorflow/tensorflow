@@ -67,6 +67,24 @@ Status ReluGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Relu", ReluGrad);
 
+Status Relu6Grad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "dy: T"},
+      // Ret val defs
+      {"dx: T"},
+      // Attr defs
+      {{"T: {float, double}"}},
+      // Nodes
+      {
+        {{"dx"}, "Relu6Grad", {"dy", "x"}, {{"T", "$T"}}}
+      });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("Relu6", Relu6Grad);
+
 Status CrossEntropyGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(

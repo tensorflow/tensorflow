@@ -56,7 +56,7 @@ class TensorArray(object):
 
   def __init__(self, dtype, size=None, dynamic_size=None,
                clear_after_read=None, tensor_array_name=None, handle=None,
-               flow=None, infer_shape=False, name=None):
+               flow=None, infer_shape=True, name=None):
     """Construct a new TensorArray or wrap an existing TensorArray handle.
 
     Args:
@@ -74,8 +74,9 @@ class TensorArray(object):
       handle: (optional) A `Tensor` handle to an existing TensorArray.  If this
         is set, tensor_array_name should be None.
       flow: (optional) A float `Tensor` scalar coming from an existing
-        TensorArray.flow.
-      infer_shape: (optional) If True, shape inference is enabled.
+        `TensorArray.flow`.
+      infer_shape: (optional, default: True) If True, shape inference
+        is enabled.  In this case, all elements must have the same shape.
       name: A name for the operation (optional).
 
     Raises:
@@ -158,7 +159,8 @@ class TensorArray(object):
             handle=self._handle, source=source, flow_in=flow, name=name)
         with ops.control_dependencies([g_handle]):
           flow = array_ops.identity(flow, name="gradient_flow")
-        g = TensorArray(dtype=self._dtype, handle=g_handle, flow=flow)
+        g = TensorArray(dtype=self._dtype, handle=g_handle, flow=flow,
+                        infer_shape=self._infer_shape)
         return g
 
   def read(self, index, name=None):
@@ -206,7 +208,9 @@ class TensorArray(object):
         val_shape = flow_out.op.inputs[2].get_shape()
         if ta._elem_shape:
           if not val_shape == ta._elem_shape[0]:
-            raise ValueError("Shape inference failed.")
+            raise ValueError(
+                "Inconsistent shapes: saw %s but expected %s "
+                "(and infer_shape=True)" % (val_shape, ta._elem_shape[0]))
         else:
           ta._elem_shape.append(val_shape)
       return ta
@@ -279,7 +283,9 @@ class TensorArray(object):
           elem_shape = tensor_shape.TensorShape(val_shape.dims[1:])
         if ta._elem_shape:
           if not elem_shape == ta._elem_shape[0]:
-            raise ValueError("Shape inference failed.")
+            raise ValueError(
+                "Inconsistent shapes: saw %s but expected %s "
+                "(and infer_shape=True)" % (elem_shape, ta._elem_shape[0]))
         else:
           ta._elem_shape.append(elem_shape)
       return ta
@@ -321,7 +327,9 @@ class TensorArray(object):
                 [clengths[0]] + val_shape.dims[1:])
         if ta._elem_shape:
           if not elem_shape == ta._elem_shape[0]:
-            raise ValueError("Shape inference failed.")
+            raise ValueError(
+                "Inconsistent shapes: saw %s but expected %s "
+                "(and infer_shape=True)" % (elem_shape, ta._elem_shape[0]))
         else:
           ta._elem_shape.append(elem_shape)
       return ta

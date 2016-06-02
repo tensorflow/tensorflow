@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,7 +37,7 @@ from .dask_io import HAS_DASK, extract_dask_data, extract_dask_labels
 
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
   """Returns shape for input and output of the data feeder."""
-  if batch_size < 0:
+  if batch_size is None or batch_size < 0:
     batch_size = x_shape[0]
   x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
   input_shape = [batch_size] + x_shape
@@ -321,7 +320,7 @@ class DataFeeder(object):
         feed_dict[self._epoch_placeholder.name] = [self.epoch]
 
       # take next batch of indices
-      if self.batch_size < 0:
+      if self.batch_size is None or self.batch_size < 0:
         batch_indices = self.indices
       else:
         end = min(self.X.shape[0], self.offset + self.batch_size)
@@ -334,7 +333,7 @@ class DataFeeder(object):
       feed_dict[self._input_placeholder.name] = inp
 
       # move offset and reset it if necessary
-      if self.batch_size > 0:
+      if self.batch_size is not None and self.batch_size > 0:
         self.offset += self.batch_size
         if self.offset >= self.X.shape[0]:
           self.indices = self.random_state.permutation(self.X.shape[0])

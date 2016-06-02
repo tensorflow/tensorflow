@@ -71,6 +71,21 @@ struct SpatialConvolution {
   }
 };
 
+template <typename Device>
+struct SpatialConvolution<Device, Eigen::half> {
+  void operator()(const Device& d,
+                  typename TTypes<Eigen::half, 4>::Tensor output,
+                  typename TTypes<Eigen::half, 4>::ConstTensor input,
+                  typename TTypes<Eigen::half, 4>::ConstTensor filter,
+                  int row_stride, int col_stride,
+                  const Eigen::PaddingType& padding) {
+    output.device(d) =
+        Eigen::SpatialConvolution(input.cast<float>(), filter.cast<float>(),
+                                  col_stride, row_stride, padding)
+            .cast<Eigen::half>();
+  }
+};
+
 template <typename Device, typename T>
 struct SpatialConvolutionBackwardInput {
   void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,

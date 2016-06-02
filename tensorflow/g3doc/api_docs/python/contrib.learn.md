@@ -19,7 +19,6 @@ Concrete implementation of this class should provide following functions:
   * _get_train_ops
   * _get_eval_ops
   * _get_predict_ops
-It may override _get_default_metric_functions.
 
 `Estimator` implemented below is a good example of how to use this class.
 
@@ -43,12 +42,12 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -56,17 +55,18 @@ Evaluates given model with provided evaluation data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.fit(x, y, steps, batch_size=32, monitors=None)` {#BaseEstimator.fit}
+#### `tf.contrib.learn.BaseEstimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#BaseEstimator.fit}
 
 Trains a model given training data X and y.
 
@@ -79,14 +79,21 @@ Trains a model given training data X and y.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
      (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Returns self.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -144,7 +151,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#BaseEstimator.partial_fit}
+#### `tf.contrib.learn.BaseEstimator.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#BaseEstimator.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -165,19 +172,26 @@ to converge, and you want to split up training into subparts.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
     (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Returns self.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None)` {#BaseEstimator.predict}
+#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#BaseEstimator.predict}
 
 Returns predictions for given features.
 
@@ -187,6 +201,8 @@ Returns predictions for given features.
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+           If `None`, returns all.
 
 ##### Returns:
 
@@ -219,26 +235,6 @@ component of a nested object.
 *  <b>`ValueError`</b>: If params contain invalid names.
 
 
-- - -
-
-#### `tf.contrib.learn.BaseEstimator.train(input_fn, steps, monitors=None)` {#BaseEstimator.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
-
-
 
 - - -
 
@@ -249,22 +245,12 @@ Estimator class is the basic TensorFlow model trainer/evaluator.
 Parameters:
   model_fn: Model function, takes features and targets tensors or dicts of
             tensors and returns predictions and loss tensors.
-            E.g. `(features, targets) -> (predictions, loss)`.
+            E.g. `(features, targets) -> (predictions, loss, train_op)`.
   model_dir: Directory to save model parameters, graph and etc.
-  classification: boolean, true if classification problem.
-  learning_rate: learning rate for the model.
-  optimizer: optimizer for the model, can be:
-             string: name of optimizer, like 'SGD', 'Adam', 'Adagrad', 'Ftl',
-               'Momentum', 'RMSProp', 'Momentum').
-               Full list in contrib/layers/optimizers.py
-             class: sub-class of Optimizer
-               (like tf.train.GradientDescentOptimizer).
-  clip_gradients: clip_norm value for call to `clip_by_global_norm`. None
-                  denotes no gradient clipping.
   config: Configuration object.
 - - -
 
-#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, classification=True, learning_rate=0.1, optimizer='Adagrad', clip_gradients=None, config=None)` {#Estimator.__init__}
+#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None)` {#Estimator.__init__}
 
 
 
@@ -280,12 +266,12 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -293,17 +279,18 @@ Evaluates given model with provided evaluation data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.Estimator.fit(x, y, steps, batch_size=32, monitors=None)` {#Estimator.fit}
+#### `tf.contrib.learn.Estimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#Estimator.fit}
 
 Trains a model given training data X and y.
 
@@ -316,14 +303,21 @@ Trains a model given training data X and y.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
      (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Returns self.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
@@ -381,7 +375,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#Estimator.partial_fit}
+#### `tf.contrib.learn.Estimator.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#Estimator.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -402,19 +396,26 @@ to converge, and you want to split up training into subparts.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
     (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Returns self.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.Estimator.predict(x=None, input_fn=None, axis=None, batch_size=None)` {#Estimator.predict}
+#### `tf.contrib.learn.Estimator.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#Estimator.predict}
 
 Returns predictions for given features.
 
@@ -423,31 +424,13 @@ Returns predictions for given features.
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
-*  <b>`axis`</b>: Axis on which to argmax (for classification).
-        Last axis is used by default.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+           If `None`, returns all.
 
 ##### Returns:
 
   Numpy array of predicted classes or regression values.
-
-
-- - -
-
-#### `tf.contrib.learn.Estimator.predict_proba(x=None, input_fn=None, batch_size=None)` {#Estimator.predict_proba}
-
-Returns prediction probabilities for given features (classification).
-
-##### Args:
-
-
-*  <b>`x`</b>: features.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
-*  <b>`batch_size`</b>: Override default batch size.
-
-##### Returns:
-
-  Numpy array of predicted probabilities.
 
 
 - - -
@@ -474,26 +457,6 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.Estimator.train(input_fn, steps, monitors=None)` {#Estimator.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
 
 
 
@@ -603,22 +566,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowClassifier.get_tensor_value(name)` {#TensorFlowClassifier.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -797,29 +744,613 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.train(input_fn, steps, monitors=None)` {#TensorFlowClassifier.train}
+#### `tf.contrib.learn.TensorFlowClassifier.weights_` {#TensorFlowClassifier.weights_}
 
-Trains a model given input builder function.
+Returns weights of the linear classifier.
+
+
+
+- - -
+
+### `class tf.contrib.learn.DNNClassifier` {#DNNClassifier}
+
+A classifier for TensorFlow DNN models.
+
+  Example:
+    ```
+    installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
+    impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+
+    installed_emb = embedding_column(installed_app_id, dimension=16,
+                                     combiner="sum")
+    impression_emb = embedding_column(impression_app_id, dimension=16,
+                                      combiner="sum")
+
+    estimator = DNNClassifier(
+        feature_columns=[installed_emb, impression_emb],
+        hidden_units=[1024, 512, 256])
+
+    # Input builders
+    def input_fn_train: # returns X, Y
+      pass
+    estimator.fit(input_fn=input_fn_train)
+
+    def input_fn_eval: # returns X, Y
+      pass
+    estimator.evaluate(input_fn_eval)
+    estimator.predict(x)
+    ```
+
+  Input of `fit`, `train`, and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
+      - if `feauture_columns` is None, then `input` must contains only real
+        valued `Tensor`.
+
+Parameters:
+  hidden_units: List of hidden units per layer. All layers are fully
+    connected. Ex. [64, 32] means first layer has 64 nodes and second one has
+    32.
+  feature_columns: An iterable containing all the feature columns used by the
+    model. All items in the set should be instances of classes derived from
+    `FeatureColumn`.
+  model_dir: Directory to save model parameters, graph and etc.
+  n_classes: number of target classes. Default is binary classification.
+    It must be greater than 1.
+  weight_column_name: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
+    will use an Adagrad optimizer.
+  activation_fn: Activation function applied to each layer. If `None`, will
+    use `tf.nn.relu`.
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu)` {#DNNClassifier.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#DNNClassifier.evaluate}
+
+Evaluates given model with provided evaluation data.
 
 ##### Args:
 
 
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
+
+##### Returns:
+
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#DNNClassifier.fit}
+
+Trains a model given training data X and y.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+     iterator that returns arrays of features. The training input
+     samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of targets. The training target values
+     (class labels in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Returns self.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.weights_` {#TensorFlowClassifier.weights_}
+#### `tf.contrib.learn.DNNClassifier.get_params(deep=True)` {#DNNClassifier.get_params}
 
-Returns weights of the linear classifier.
+Get parameters for this estimator.
+
+##### Args:
+
+
+*  <b>`deep`</b>: boolean, optional
+    If True, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.get_variable_names()` {#DNNClassifier.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.get_variable_value(name)` {#DNNClassifier.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.linear_bias_` {#DNNClassifier.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.linear_weights_` {#DNNClassifier.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.model_dir` {#DNNClassifier.model_dir}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#DNNClassifier.partial_fit}
+
+Incremental fit on a batch of samples.
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.predict(x=None, input_fn=None, batch_size=None)` {#DNNClassifier.predict}
+
+Returns predictions for given features.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted classes or regression values.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.predict_proba(x=None, input_fn=None, batch_size=None)` {#DNNClassifier.predict_proba}
+
+Returns prediction probabilities for given features (classification).
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted probabilities.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.set_params(**params)` {#DNNClassifier.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
+##### Returns:
+
+  self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
+
+
+
+- - -
+
+### `class tf.contrib.learn.DNNRegressor` {#DNNRegressor}
+
+A regressor for TensorFlow DNN models.
+
+  Example:
+    ```
+    installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
+    impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+
+    installed_emb = embedding_column(installed_app_id, dimension=16,
+                                     combiner="sum")
+    impression_emb = embedding_column(impression_app_id, dimension=16,
+                                      combiner="sum")
+
+    estimator = DNNRegressor(
+        feature_columns=[installed_emb, impression_emb],
+        hidden_units=[1024, 512, 256])
+
+    # Input builders
+    def input_fn_train: # returns X, Y
+      pass
+    estimator.fit(input_fn=input_fn_train)
+
+    def input_fn_eval: # returns X, Y
+      pass
+    estimator.evaluate(input_fn_eval)
+    estimator.predict(x)
+    ```
+
+  Input of `fit`, `train`, and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
+      - if `feauture_columns` is None, then `input` must contains only real
+        valued `Tensor`.
+
+
+
+Parameters:
+  hidden_units: List of hidden units per layer. All layers are fully
+    connected. Ex. [64, 32] means first layer has 64 nodes and second one has
+    32.
+  feature_columns: An iterable containing all the feature columns used by the
+    model. All items in the set should be instances of classes derived from
+    `FeatureColumn`.
+  model_dir: Directory to save model parameters, graph and etc.
+  weight_column_name: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
+    will use an Adagrad optimizer.
+  activation_fn: Activation function applied to each layer. If `None`, will
+    use `tf.nn.relu`.
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu)` {#DNNRegressor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#DNNRegressor.evaluate}
+
+Evaluates given model with provided evaluation data.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
+
+##### Returns:
+
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#DNNRegressor.fit}
+
+Trains a model given training data X and y.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+     iterator that returns arrays of features. The training input
+     samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of targets. The training target values
+     (class labels in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.get_params(deep=True)` {#DNNRegressor.get_params}
+
+Get parameters for this estimator.
+
+##### Args:
+
+
+*  <b>`deep`</b>: boolean, optional
+    If True, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.get_variable_names()` {#DNNRegressor.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.get_variable_value(name)` {#DNNRegressor.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.linear_bias_` {#DNNRegressor.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.linear_weights_` {#DNNRegressor.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.model_dir` {#DNNRegressor.model_dir}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#DNNRegressor.partial_fit}
+
+Incremental fit on a batch of samples.
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.predict(x=None, input_fn=None, batch_size=None)` {#DNNRegressor.predict}
+
+Returns predictions for given features.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted classes or regression values.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.predict_proba(x=None, input_fn=None, batch_size=None)` {#DNNRegressor.predict_proba}
+
+Returns prediction probabilities for given features (classification).
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted probabilities.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.set_params(**params)` {#DNNRegressor.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
+##### Returns:
+
+  self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 
@@ -940,22 +1471,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.get_tensor_value(name)` {#TensorFlowDNNClassifier.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -1134,26 +1649,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNClassifier.train(input_fn, steps, monitors=None)` {#TensorFlowDNNClassifier.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowDNNClassifier.weights_` {#TensorFlowDNNClassifier.weights_}
 
 Returns weights of the DNN weight layers.
@@ -1277,22 +1772,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.get_tensor_value(name)` {#TensorFlowDNNRegressor.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -1471,26 +1950,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.train(input_fn, steps, monitors=None)` {#TensorFlowDNNRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowDNNRegressor.weights_` {#TensorFlowDNNRegressor.weights_}
 
 Returns weights of the DNN weight layers.
@@ -1614,22 +2073,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowEstimator.get_tensor_value(name)` {#TensorFlowEstimator.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -1806,24 +2249,616 @@ component of a nested object.
 *  <b>`ValueError`</b>: If params contain invalid names.
 
 
+
 - - -
 
-#### `tf.contrib.learn.TensorFlowEstimator.train(input_fn, steps, monitors=None)` {#TensorFlowEstimator.train}
+### `class tf.contrib.learn.LinearClassifier` {#LinearClassifier}
 
-Trains a model given input builder function.
+Linear classifier model.
+
+  Example:
+  ```
+  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
+  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+
+  installed_x_impression = crossed_column(
+      [installed_app_id, impression_app_id])
+
+  estimator = LinearClassifier(
+      feature_columns=[impression_app_id, installed_x_impression])
+
+  # Input builders
+  def input_fn_train: # returns X, Y
+    ...
+  def input_fn_eval: # returns X, Y
+    ...
+  estimator.fit(input_fn=input_fn_train)
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x)
+  ```
+
+  Input of `fit`, `train`, and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
+      - if `feauture_columns` is None, then `input` must contains only real
+        valued `Tensor`.
+
+
+Parameters:
+  feature_columns: An iterable containing all the feature columns used by the
+    model. All items in the set should be instances of classes derived from
+    `FeatureColumn`.
+  model_dir: Directory to save model parameters, graph and etc.
+  n_classes: number of target classes. Default is binary classification.
+  weight_column_name: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
+    will use an Ftrl optimizer.
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None)` {#LinearClassifier.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.bias_` {#LinearClassifier.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#LinearClassifier.evaluate}
+
+Evaluates given model with provided evaluation data.
 
 ##### Args:
 
 
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
+
+##### Returns:
+
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#LinearClassifier.fit}
+
+Trains a model given training data X and y.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+     iterator that returns arrays of features. The training input
+     samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of targets. The training target values
+     (class labels in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
             inside the training loop.
 
 ##### Returns:
 
-  Returns self.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.get_params(deep=True)` {#LinearClassifier.get_params}
+
+Get parameters for this estimator.
+
+##### Args:
+
+
+*  <b>`deep`</b>: boolean, optional
+    If True, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.get_variable_names()` {#LinearClassifier.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.get_variable_value(name)` {#LinearClassifier.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.linear_bias_` {#LinearClassifier.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.linear_weights_` {#LinearClassifier.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.model_dir` {#LinearClassifier.model_dir}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#LinearClassifier.partial_fit}
+
+Incremental fit on a batch of samples.
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.predict(x=None, input_fn=None, batch_size=None)` {#LinearClassifier.predict}
+
+Returns predictions for given features.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted classes or regression values.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.predict_proba(x=None, input_fn=None, batch_size=None)` {#LinearClassifier.predict_proba}
+
+Returns prediction probabilities for given features (classification).
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted probabilities.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.set_params(**params)` {#LinearClassifier.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
+##### Returns:
+
+  self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.weights_` {#LinearClassifier.weights_}
+
+
+
+
+
+- - -
+
+### `class tf.contrib.learn.LinearRegressor` {#LinearRegressor}
+
+Linear regressor model.
+
+  Example:
+  ```
+  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
+  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+
+  installed_x_impression = crossed_column(
+      [installed_app_id, impression_app_id])
+
+  estimator = LinearRegressor(
+      feature_columns=[impression_app_id, installed_x_impression])
+
+  # Input builders
+  def input_fn_train: # returns X, Y
+    ...
+  def input_fn_eval: # returns X, Y
+    ...
+  estimator.fit(input_fn=input_fn_train)
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x)
+  ```
+
+  Input of `fit`, `train`, and `evaluate` should have following features,
+    otherwise there will be a KeyError:
+      if `weight_column_name` is not None:
+        key=weight_column_name, value=a `Tensor`
+      for column in `feature_columns`:
+      - if isinstance(column, `SparseColumn`):
+          key=column.name, value=a `SparseTensor`
+      - if isinstance(column, `RealValuedColumn`):
+          key=column.name, value=a `Tensor`
+      - if `feauture_columns` is None:
+          input must contains only real valued `Tensor`.
+
+Parameters:
+  feature_columns: An iterable containing all the feature columns used by the
+    model. All items in the set should be instances of classes derived from
+    `FeatureColumn`.
+  model_dir: Directory to save model parameters, graph and etc.
+  weight_column_name: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
+    will use an Ftrl optimizer.
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None)` {#LinearRegressor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.bias_` {#LinearRegressor.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#LinearRegressor.evaluate}
+
+Evaluates given model with provided evaluation data.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
+    once per iteration.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
+    are used; if {}, no metrics are used.
+*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
+    different data sets, such as evaluate on training data vs test data.
+
+##### Returns:
+
+  Returns `dict` with evaluation results.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
+      not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=32, monitors=None)` {#LinearRegressor.fit}
+
+Trains a model given training data X and y.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+     iterator that returns arrays of features. The training input
+     samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of targets. The training target values
+     (class labels in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.get_params(deep=True)` {#LinearRegressor.get_params}
+
+Get parameters for this estimator.
+
+##### Args:
+
+
+*  <b>`deep`</b>: boolean, optional
+    If True, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.get_variable_names()` {#LinearRegressor.get_variable_names}
+
+Returns list of all variable names in this model.
+
+##### Returns:
+
+  List of names.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.get_variable_value(name)` {#LinearRegressor.get_variable_value}
+
+Returns value of the variable given by name.
+
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.linear_bias_` {#LinearRegressor.linear_bias_}
+
+Returns bias of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.linear_weights_` {#LinearRegressor.linear_weights_}
+
+Returns weights per feature of the linear part.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.model_dir` {#LinearRegressor.model_dir}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=32, monitors=None)` {#LinearRegressor.partial_fit}
+
+Incremental fit on a batch of samples.
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
+    iterator that returns arrays of features. The training input
+    samples for fitting the model.
+*  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+    iterator that returns array of targets. The training target values
+    (class label in classification, real numbers in regression).
+*  <b>`input_fn`</b>: Input function. If set, `x` and `y` must be `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored if
+    `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+            inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.predict(x=None, input_fn=None, batch_size=None)` {#LinearRegressor.predict}
+
+Returns predictions for given features.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted classes or regression values.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.predict_proba(x=None, input_fn=None, batch_size=None)` {#LinearRegressor.predict_proba}
+
+Returns prediction probabilities for given features (classification).
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+
+##### Returns:
+
+  Numpy array of predicted probabilities.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.set_params(**params)` {#LinearRegressor.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
+##### Returns:
+
+  self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.weights_` {#LinearRegressor.weights_}
+
+
 
 
 
@@ -1921,22 +2956,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearClassifier.get_tensor_value(name)` {#TensorFlowLinearClassifier.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -2115,26 +3134,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearClassifier.train(input_fn, steps, monitors=None)` {#TensorFlowLinearClassifier.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowLinearClassifier.weights_` {#TensorFlowLinearClassifier.weights_}
 
 Returns weights of the linear classifier.
@@ -2235,22 +3234,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowLinearRegressor.get_tensor_value(name)` {#TensorFlowLinearRegressor.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -2429,26 +3412,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearRegressor.train(input_fn, steps, monitors=None)` {#TensorFlowLinearRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowLinearRegressor.weights_` {#TensorFlowLinearRegressor.weights_}
 
 Returns weights of the linear regression.
@@ -2582,22 +3545,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRNNClassifier.get_tensor_value(name)` {#TensorFlowRNNClassifier.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -2776,26 +3723,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNClassifier.train(input_fn, steps, monitors=None)` {#TensorFlowRNNClassifier.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowRNNClassifier.weights_` {#TensorFlowRNNClassifier.weights_}
 
 Returns weights of the rnn layer.
@@ -2929,22 +3856,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRNNRegressor.get_tensor_value(name)` {#TensorFlowRNNRegressor.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -3123,26 +4034,6 @@ component of a nested object.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNRegressor.train(input_fn, steps, monitors=None)` {#TensorFlowRNNRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
-
-
-- - -
-
 #### `tf.contrib.learn.TensorFlowRNNRegressor.weights_` {#TensorFlowRNNRegressor.weights_}
 
 Returns weights of the rnn layer.
@@ -3243,22 +4134,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRegressor.get_tensor_value(name)` {#TensorFlowRegressor.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -3433,26 +4308,6 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowRegressor.train(input_fn, steps, monitors=None)` {#TensorFlowRegressor.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
 
 
 - - -

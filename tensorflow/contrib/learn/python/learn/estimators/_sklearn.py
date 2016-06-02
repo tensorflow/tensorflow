@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -129,7 +128,7 @@ class _TransformerMixin():
   """Mixin class for all transformer estimators."""
 
 
-class _NotFittedError(ValueError, AttributeError):
+class NotFittedError(ValueError, AttributeError):
   """Exception class to raise if estimator is used before fitting.
 
   This class inherits from both ValueError and AttributeError to help with
@@ -175,7 +174,7 @@ def _train_test_split(*args, **options):
     train_size = 0.75
   elif train_size is None:
     train_size = 1 - test_size
-  train_size *= args[0].shape[0]
+  train_size = int(train_size * args[0].shape[0])
 
   np.random.seed(random_state)
   indices = np.random.permutation(args[0].shape[0])
@@ -199,14 +198,13 @@ if TRY_IMPORT_SKLEARN:
     try:
       from sklearn.utils.validation import NotFittedError
     except ImportError:
-      NotFittedError = _NotFittedError
+      pass
 else:
   # Naive implementations of sklearn classes and functions.
   BaseEstimator = _BaseEstimator
   ClassifierMixin = _ClassifierMixin
   RegressorMixin = _RegressorMixin
   TransformerMixin = _TransformerMixin
-  NotFittedError = _NotFittedError
   accuracy_score = _accuracy_score
   log_loss = None
   mean_squared_error = _mean_squared_error

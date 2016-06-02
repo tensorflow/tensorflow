@@ -967,6 +967,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.inputs = &inputs;
   params.input_device_contexts = &input_device_contexts;
   params.input_alloc_attrs = &input_alloc_attrs;
+  params.runner = &runner_;
 
   Status s;
   NodeExecStats* stats = nullptr;

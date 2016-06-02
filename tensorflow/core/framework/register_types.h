@@ -43,8 +43,7 @@ limitations under the License.
    #undef REGISTER_PARTITION
 */
 
-#if !defined(__ANDROID__)
-
+#if !defined(__ANDROID__) || defined(SUPPORT_SELECTIVE_REGISTRATION)
 // Call "m" for all number types that support the comparison operations "<" and
 // ">".
 #define TF_CALL_INTEGRAL_TYPES(m)                                       \

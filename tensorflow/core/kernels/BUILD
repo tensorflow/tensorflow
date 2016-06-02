@@ -313,6 +313,7 @@ tf_kernel_libraries(
         "one_hot_op",
         "pack_op",
         "pad_op",
+        "quantize_and_dequantize_op",
         "random_shuffle_op",
         "reshape_op",
         "reverse_op",
@@ -441,6 +442,23 @@ tf_cc_test(
         ":identity_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "quantize_and_dequantize_op_test",
+    size = "small",
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantize_and_dequantize_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1765,6 +1783,49 @@ filegroup(
         "xent_op.cc",
         ":android_extended_ops_headers",
     ],
+)
+
+# A file group which contains nearly all available operators which
+# may work on Android. This is intended to be used with selective
+# registration.
+filegroup(
+    name = "android_all_ops",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = [
+            "*test.cc",
+            "*testutil*",
+            "*testlib*",
+            "*main.cc",
+            "*_gpu*",
+            "*_3d*",
+            "*.cu.*",
+            # Ops already in android_srcs
+            "ops_util.cc",
+            "pooling_ops_common.cc",
+            # Ops which we are currently excluding because they are likely
+            # not used on Android. Those ops also do not compile if included,
+            # unless we add the additional deps they need.
+            "tf_record_reader_op.*",
+            "string_to_hash_bucket_op.*",
+            "text_line_reader_op.*",
+            "summary_image_op.*",
+            "encode_png_op.*",
+            "decode_png_op.*",
+            "encode_jpeg_op.*",
+            "decode_jpeg_op.*",
+            "identity_reader_op.*",
+            "reader_base.*",
+            "fixed_length_record_reader_op.*",
+            "whole_file_read_ops.*",
+            "sample_distorted_bounding_box_op.*",
+            "ctc_loss_op.*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
