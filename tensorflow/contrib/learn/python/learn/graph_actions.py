@@ -35,7 +35,6 @@ from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
@@ -429,14 +428,8 @@ def evaluate(graph,
   global_step_tensor = contrib_variables.assert_or_get_global_step(
       graph, global_step_tensor)
 
-  # Add scalar summaries for every tensor in evaluation dict if there is not
-  # one existing already or it's a string.
-  existing_tags = [tensor_util.constant_value(summary.op.inputs[0])
-                   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES)]
-  existing_tags = [name.tolist() if isinstance(name, np.ndarray) else name
-                   for name in existing_tags]
   for key, value in eval_dict.items():
-    if key.encode() in existing_tags:
+    if not summaries.is_summary_tag_unique(key):
       continue
     if isinstance(value, ops.Tensor):
       summaries.summarize_tensor(value, tag=key)

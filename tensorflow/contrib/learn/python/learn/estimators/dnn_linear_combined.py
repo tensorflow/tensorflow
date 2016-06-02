@@ -267,7 +267,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         collections=[self._centered_bias_weight_collection,
                      ops.GraphKeys.VARIABLES],
         name="centered_bias_weight")
-    # TODO(zakaria): Create summaries for centered_bias
+    logging_ops.scalar_summary(
+        ["centered_bias_%d" % cb for cb in range(self._num_label_columns())],
+        array_ops.reshape(centered_bias, [-1]))
     return centered_bias
 
   def _centered_bias_step(self, targets, weight_tensor):
