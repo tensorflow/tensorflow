@@ -106,7 +106,7 @@ def rank(input, name=None):
 
   For example:
 
-  ```prettyprint
+  ```python
   # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
   # shape of tensor 't' is [2, 2, 3]
   rank(t) ==> 3
@@ -125,9 +125,9 @@ def rank(input, name=None):
   """
   with ops.op_scope([input], name, "Rank") as name:
     if isinstance(input, ops.SparseTensor):
-      return gen_array_ops.size(input.shape)
+      return gen_array_ops.size(input.shape, name=name)
     else:
-      return gen_array_ops.rank(input)
+      return gen_array_ops.rank(input, name=name)
 
 # DEPRECATED use init_ops.zeros_initializer
 # TODO(irving) Move it to init_ops.py
