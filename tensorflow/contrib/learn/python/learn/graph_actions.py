@@ -199,11 +199,12 @@ def train(graph,
   if global_step_tensor is None:
     raise ValueError('No "global_step" was provided or found in the graph.')
 
-  summary_writer = get_summary_writer(output_dir)
+  summary_writer = (get_summary_writer(output_dir)
+                    if supervisor_is_chief else None)
 
   # TODO(ipolosukhin): Replace all functionality of Supervisor with Monitors.
   if not supervisor_is_chief:
-    # monitors should run only in supervisor.
+    # monitors should run only on the chief.
     monitors = []
   elif not monitors:
     monitors = monitors_lib.get_default_monitors(
