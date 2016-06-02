@@ -47,7 +47,9 @@ struct ApplyAdadelta<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat grad) {
     accum.device(d) =
         accum * rho() + grad.square() * (static_cast<T>(1) - rho());
-    const auto update = accum_update * (accum + epsilon()).rsqrt() * grad;
+    const auto update = 
+	(accum_update + epsilon()).sqrt() *
+	(accum + epsilon()).rsqrt() * grad;
     accum_update.device(d) =
         accum_update * rho() + update.square() * (static_cast<T>(1) - rho());
     var.device(d) -= update * lr();
