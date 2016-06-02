@@ -468,9 +468,19 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       {runName: {images: [tag1, tag2, tag3],
                  audio: [tag4, tag5, tag6],
                  scalars: [tagA, tagB, tagC],
-                 histograms: [tagX, tagY, tagZ]}}
+                 histograms: [tagX, tagY, tagZ],
+                 firstEventTimestamp: 123456.789}}
     """
-    self._send_json_response(self._multiplexer.Runs())
+    runs = self._multiplexer.Runs()
+    for run_name, run_data in runs.items():
+      try:
+        run_data['firstEventTimestamp'] = self._multiplexer.FirstEventTimestamp(
+            run_name)
+      except ValueError:
+        logging.warning('Unable to get first event timestamp for run %s',
+                        run_name)
+        run_data['firstEventTimestamp'] = None
+    self._send_json_response(runs)
 
   def _serve_index(self, unused_query_params):
     """Serves the index page (i.e., the tensorboard app itself)."""

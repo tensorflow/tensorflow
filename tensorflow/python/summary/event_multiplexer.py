@@ -188,6 +188,26 @@ class EventMultiplexer(object):
       l.Reload()
     return self
 
+  def FirstEventTimestamp(self, run):
+    """Return the timestamp of the first event of the given run.
+
+    This may perform I/O if no events have been loaded yet for the run.
+
+    Args:
+      run: A string name of the run for which the timestamp is retrieved.
+
+    Returns:
+      The wall_time of the first event of the run, which will typically be
+      seconds since the epoch.
+
+    Raises:
+      KeyError: If the run is not found.
+      ValueError: If the run has no events loaded and there are no events on
+        disk to load.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.FirstEventTimestamp()
+
   def Scalars(self, run, tag):
     """Retrieve the scalar events associated with a run and tag.
 

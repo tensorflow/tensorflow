@@ -54,6 +54,9 @@ class _FakeAccumulator(object):
             event_accumulator.COMPRESSED_HISTOGRAMS: ['cmphst1', 'cmphst2'],
             event_accumulator.SCALARS: ['sv1', 'sv2']}
 
+  def FirstEventTimestamp(self):
+    return 0
+
   def Scalars(self, tag_name):
     if tag_name not in self.Tags()[event_accumulator.SCALARS]:
       raise KeyError
