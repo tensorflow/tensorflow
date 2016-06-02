@@ -157,7 +157,9 @@ int64 UniqueConstantId() {
 }
 
 Device* GetCPUDevice() {
-  static Device* device = nullptr;
+  static mutex mu;
+  static Device* device GUARDED_BY(mu) = nullptr;
+  mutex_lock l(mu);
   if (!device) {
     std::vector<Device*> devices;
     DeviceFactory::GetFactory(DEVICE_CPU)
