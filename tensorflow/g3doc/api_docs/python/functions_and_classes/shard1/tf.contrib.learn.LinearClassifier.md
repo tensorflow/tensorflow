@@ -253,7 +253,7 @@ Returns predictions for given features.
 
 #### `tf.contrib.learn.LinearClassifier.predict_proba(x=None, input_fn=None, batch_size=None)` {#LinearClassifier.predict_proba}
 
-Returns prediction probabilities for given features (classification).
+Returns prediction probabilities for given features.
 
 ##### Args:
 
