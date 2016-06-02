@@ -31,8 +31,10 @@ prior to the initial matrix multiply by `weights`.
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: Optional list of collections for all the variables or
-    a dictionay containing a different list of collection per variable.
+    a dictionary containing a different list of collections per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for variable_op_scope.
 
 ##### Returns:
