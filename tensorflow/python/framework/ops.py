@@ -1700,6 +1700,9 @@ def set_shapes_for_outputs(op):
       raise RuntimeError("No shape function registered for standard op: %s"
                          % op.type)
   shapes = shape_func(op)
+  if shapes is None:
+    raise RuntimeError(
+        "Shape function for op %s did not return any shapes" % op)
   if len(op.outputs) != len(shapes):
     raise RuntimeError(
         "Shape function for op %s returned %d shapes but expected %d" %
