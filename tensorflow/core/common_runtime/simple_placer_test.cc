@@ -307,6 +307,34 @@ TEST_F(SimplePlacerTest, TestMetadataColocatedWithInput) {
   EXPECT_COLOCATED(g, "var_cpu", "shape_op");
 }
 
+// Heuristic A implements "Island fusing": if a node only generates
+// an output and it has only one consumer, we place the node
+// with its consumer.
+TEST_F(SimplePlacerTest, TestHeuristicA) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+
+    // A variable is only on CPU
+    Node* var_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var_cpu"));
+
+    // The constant to be assigned can be on both GPU or CPU.
+    //
+    // Because of the heuristic, it gets placed on CPU to avoid a
+    // copy.
+    Node* input = ops::SourceOp("TestCPUGPUOutput", b.opts().WithName("in"));
+
+    // The assign is bound to CPU by the reference edge.
+    ops::BinaryOp("TestAssign", var_cpu, input, b.opts().WithName("assign"));
+
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_COLOCATED(g, "var_cpu", "in");
+  EXPECT_COLOCATED(g, "assign", "in");
+}
+
 // Test that a graph with partial device specifications on the ops
 // will successfully
 TEST_F(SimplePlacerTest, TestPartialSpec) {

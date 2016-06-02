@@ -587,6 +587,17 @@ bool IsMetadataNode(const Node* node) {
   return (node_type == "Size" || node_type == "Shape" || node_type == "Rank");
 }
 
+// Returns true if the node has no inputs and produces outputs
+// that are consumed by a single node.
+//
+// TODO(vrv): Currently this handles only nodes with one output, but
+// this could be extended to handle the case where a node has many
+// outputs that are connected to nodes in the same colocation group.
+bool IsGeneratorNode(const Node* node) {
+  return node->num_inputs() == 0 && node->num_outputs() == 1 &&
+         node->out_edges().size() == 1 && !IsRefType(node->output_type(0));
+}
+
 }  // namespace
 
 SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
@@ -690,6 +701,7 @@ Status SimplePlacer::Run() {
   // 3. For each node, assign a device based on the constraints in the
   // disjoint node set.
   std::vector<Device*> devices;
+  std::vector<Node*> second_pass;
   for (Node* node : graph_->nodes()) {
     // Skip the source and sink nodes.
     if (!node->IsOp()) {
@@ -697,6 +709,17 @@ Status SimplePlacer::Run() {
     }
     // Skip nodes that already have an assigned name.
     if (!node->assigned_device_name().empty()) {
+      continue;
+    }
+
+    // Heuristic A: prefer to place "generators" with their only
+    // consumers.
+    //
+    // If this is a node with no inputs and a single (non-ref)
+    // consumer, we save this for a second pass, so that the
+    // consumer's placement is chosen.
+    if (IsGeneratorNode(node)) {
+      second_pass.push_back(node);
       continue;
     }
 
@@ -719,35 +742,81 @@ Status SimplePlacer::Run() {
     // to perform good placement we can add an interface for this.
     string assigned_device = devices[0]->name();
 
-    // If the node only operates on metadata, not data, then it is
-    // desirable to place that metadata node with its input.
+    // Heuristic B: If the node only operates on metadata, not data,
+    // then it is desirable to place that metadata node with its
+    // input.
     if (IsMetadataNode(node)) {
       // Make sure that the input device type is in the list of supported
       // device types for this node.
       const Node* input = (*node->in_edges().begin())->src();
-
-      if (!input->assigned_device_name().empty()) {
-        const Device* input_device =
-            devices_->FindDeviceByName(input->assigned_device_name());
-        if (std::any_of(
-                devices.begin(), devices.end(), [input_device](Device* d) {
-                  return d->device_type() == input_device->device_type();
-                })) {
-          assigned_device = input->assigned_device_name();
-        }
+      // TODO(vrv): if the input is empty, consider postponing this
+      // node's assignment to the second pass, so that we handle the
+      // case where a metadata node's input comes from a backedge
+      // of a loop.
+      const string& input_device_name = input->assigned_device_name();
+      if (CanAssignToDevice(input_device_name, devices)) {
+        assigned_device = input_device_name;
       }
     }
 
-    node->set_assigned_device_name(assigned_device);
-    // Log placement if log_device_placement is set.
-    if (options_ && options_->config.log_device_placement()) {
-      printf("%s: %s\n", node->name().c_str(),
-             node->assigned_device_name().c_str());
-      LOG(INFO) << node->name() << ": " << node->assigned_device_name();
+    AssignAndLog(assigned_device, node);
+  }
+
+  // 4. Perform a second pass assignment for those nodes explicitly
+  // skipped during the first pass.
+  for (Node* node : second_pass) {
+    status = colocation_graph.GetDevicesForNode(node, &devices);
+    if (!status.ok()) {
+      return AttachDef(
+          errors::InvalidArgument("Cannot assign a device to node '",
+                                  node->name(), "': ", status.error_message()),
+          node->def());
     }
+
+    string assigned_device = devices[0]->name();
+
+    // Heuristic A application.
+    if (IsGeneratorNode(node)) {
+      const Node* output = (*node->out_edges().begin())->dst();
+      const string& output_device_name = output->assigned_device_name();
+      if (CanAssignToDevice(output_device_name, devices)) {
+        assigned_device = output_device_name;
+      }
+    }
+
+    AssignAndLog(assigned_device, node);
   }
 
   return Status::OK();
+}
+
+bool SimplePlacer::CanAssignToDevice(const string& candidate_device_name,
+                                     const std::vector<Device*> devices) const {
+  if (!candidate_device_name.empty()) {
+    // Can we assign to the same device?  Check by validating that
+    // the device type of 'candidate_device_name' is present
+    // in 'devices'.
+    const Device* other_device =
+        devices_->FindDeviceByName(candidate_device_name);
+    if (std::any_of(devices.begin(), devices.end(), [other_device](Device* d) {
+          return d->device_type() == other_device->device_type();
+        })) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void SimplePlacer::AssignAndLog(const string& assigned_device,
+                                Node* node) const {
+  node->set_assigned_device_name(assigned_device);
+  // Log placement if log_device_placement is set.
+  if (options_ && options_->config.log_device_placement()) {
+    printf("%s: %s\n", node->name().c_str(),
+           node->assigned_device_name().c_str());
+    LOG(INFO) << node->name() << ": " << node->assigned_device_name();
+  }
 }
 
 }  // namespace tensorflow

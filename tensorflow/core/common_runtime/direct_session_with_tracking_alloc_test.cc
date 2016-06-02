@@ -95,7 +95,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_EQ(5, cm->AllocationId(node, 0));
       } else if (node->name() == y_neg->name()) {
         EXPECT_LE(8, cm->MaxMemorySize(node, 0));
-        EXPECT_EQ(6, cm->AllocationId(node, 0));
+        EXPECT_EQ(7, cm->AllocationId(node, 0));
       }
       // Check the execution time. Since it's highly variable, we'll
       // use a large window: anything between 1 and 10000 microseconds is
