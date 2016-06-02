@@ -350,6 +350,18 @@ struct sin : base<T, Eigen::internal::scalar_sin_op<T> > {};
 template <typename T>
 struct cos : base<T, Eigen::internal::scalar_cos_op<T> > {};
 
+template <typename T>
+struct tan : base<T, Eigen::internal::scalar_tan_op<T> > {};
+
+template <typename T>
+struct asin : base<T, Eigen::internal::scalar_asin_op<T> > {};
+
+template <typename T>
+struct acos : base<T, Eigen::internal::scalar_acos_op<T> > {};
+
+template <typename T>
+struct atan : base<T, Eigen::internal::scalar_atan_op<T> > {};
+
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool> > {
 };
 

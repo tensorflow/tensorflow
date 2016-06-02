@@ -47,8 +47,8 @@ class EncodeAudioOpTest(tf.test.TestCase):
     # Skip header size
     self.assertEqual(original[20:36], encoded[20:36])
     # Skip extra bits inserted by ffmpeg.
-    self.assertEqual(original[original.find('data'):],
-                     encoded[encoded.find('data'):])
+    self.assertEqual(original[original.find(b'data'):],
+                     encoded[encoded.find(b'data'):])
 
   def testRoundTrip(self):
     """Reads a wav file, writes it, and compares them."""
