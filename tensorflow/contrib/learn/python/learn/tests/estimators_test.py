@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Custom optimizer tests."""
 
 from __future__ import absolute_import
@@ -39,12 +40,6 @@ class CustomOptimizer(tf.test.TestCase):
                                                         iris.target,
                                                         test_size=0.2,
                                                         random_state=42)
-    # setup exponential decay function
-    def exp_decay(global_step):
-      return tf.train.exponential_decay(learning_rate=0.1,
-                                        global_step=global_step,
-                                        decay_steps=100,
-                                        decay_rate=0.001)
 
     def custom_optimizer(learning_rate):
       return tf.train.MomentumOptimizer(learning_rate, 0.9)
@@ -52,7 +47,7 @@ class CustomOptimizer(tf.test.TestCase):
     classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
                                                n_classes=3,
                                                steps=400,
-                                               learning_rate=exp_decay,
+                                               learning_rate=0.01,
                                                optimizer=custom_optimizer)
     classifier.fit(x_train, y_train)
     score = accuracy_score(y_test, classifier.predict(x_test))

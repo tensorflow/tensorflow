@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 
@@ -33,7 +34,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
                                       shape=[1, 1])
-      }, tf.constant([[1.]])
+      }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
     age = tf.contrib.layers.real_valued_column('age')
@@ -55,7 +56,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'language': tf.SparseTensor(values=['hindi'],
                                       indices=[[0, 0]],
                                       shape=[1, 1])
-      }, tf.constant([[1.]])
+      }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
     classifier_no_reg = tf.contrib.learn.LinearClassifier(
@@ -80,7 +81,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'language': tf.SparseTensor(values=['Swahili', 'turkish'],
                                       indices=[[0, 0], [2, 0]],
                                       shape=[3, 1])
-      }, tf.constant([[1.], [1.], [1.]])
+      }, tf.constant([[1], [1], [1]], dtype=tf.int32)
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
     classifier = tf.contrib.learn.LinearClassifier(feature_columns=[language])
@@ -98,7 +99,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'language': tf.SparseTensor(values=['greek', 'chinise'],
                                       indices=[[0, 0], [1, 0]],
                                       shape=[2, 1]),
-      }, tf.constant([[1.], [0.]])
+      }, tf.constant([[1], [0]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
     age = tf.contrib.layers.real_valued_column('age')
@@ -139,6 +140,22 @@ class LinearRegressorTest(tf.test.TestCase):
 
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)
+
+  def testRecoverWeights(self):
+    rng = np.random.RandomState(67)
+    n = 1000
+    n_weights = 10
+    bias = 2
+    x = rng.uniform(-1, 1, (n, n_weights))
+    weights = 10 * rng.randn(n_weights)
+    y = np.dot(x, weights)
+    y += rng.randn(len(x)) * 0.05 + rng.normal(bias, 0.01)
+    regressor = tf.contrib.learn.LinearRegressor()
+    regressor.fit(x, y, batch_size=32, steps=1000)
+    # Have to flatten weights since they come in (x, 1) shape.
+    self.assertAllClose(weights, regressor.weights_.flatten(), rtol=0.01)
+    # TODO(ispir): Disable centered_bias.
+    # assert abs(bias - regressor.bias_) < 0.1
 
 
 def boston_input_fn():

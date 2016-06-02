@@ -184,7 +184,8 @@ class ValidationMonitor(EveryN):
 
   def __init__(self, x=None, y=None, input_fn=None,
                every_n_steps=100, early_stopping_rounds=None):
-    super(ValidationMonitor, self).__init__(every_n_steps=every_n_steps)
+    super(ValidationMonitor, self).__init__(every_n_steps=every_n_steps,
+                                            first_n_steps=-1)
     if x is None and input_fn is None:
       raise ValueError("Either x or input_fn should be provided.")
     self.x = x

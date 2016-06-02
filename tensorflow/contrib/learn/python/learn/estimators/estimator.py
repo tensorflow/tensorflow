@@ -268,8 +268,19 @@ class BaseEstimator(sklearn.BaseEstimator):
 
     Returns:
       Numpy array of predicted classes or regression values.
+
+    Raises:
+      ValueError: If x and input_fn are both provided or both `None`.
     """
-    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size,
+    if x is None and input_fn is None:
+      raise ValueError('Either x or input_fn must be provided.')
+    if x is not None and input_fn is not None:
+      raise ValueError('Can not provide both input_fn and x.')
+    feed_fn = None
+    if x is not None:
+      batch_size = -1 if batch_size is None else batch_size
+      input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
+    return self._infer_model(input_fn=input_fn, feed_fn=feed_fn,
                              outputs=outputs)
 
   def get_variable_value(self, name):
@@ -508,19 +519,7 @@ class BaseEstimator(sklearn.BaseEstimator):
       return result[0]
     return result
 
-  def _infer_model(self, x=None, input_fn=None, feed_fn=None, batch_size=None,
-                   outputs=None):
-    # Converts inputs into tf.DataFrame / tf.Series.
-    batch_size = -1 if batch_size is None else batch_size
-    if input_fn is None:
-      if x is None:
-        raise ValueError('Either x or input_fn must be provided.')
-      if feed_fn is not None:
-        raise ValueError('Cannot provide both x and feed_fn.')
-      input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
-    elif x is not None:
-      raise ValueError('Can not provide both input_fn and x.')
-
+  def _infer_model(self, input_fn, feed_fn=None, outputs=None):
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
@@ -620,7 +619,7 @@ class Estimator(BaseEstimator):
     metrics = metrics or {}
     if isinstance(targets, dict) and len(targets) == 1:
       # Unpack single target into just tensor.
-      targets = targets[targets.keys()[0]]
+      targets = targets[list(targets.keys())[0]]
     for name, metric in six.iteritems(metrics):
       if isinstance(name, tuple):
         # Multi-head metrics.

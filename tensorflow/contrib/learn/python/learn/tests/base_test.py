@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Test base estimators."""
 
 from __future__ import absolute_import
@@ -20,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import tempfile
 
 import numpy as np
 import tensorflow as tf
@@ -47,37 +49,45 @@ class BaseTest(tf.test.TestCase):
   def testIris(self):
     iris = datasets.load_iris()
     classifier = learn.TensorFlowLinearClassifier(n_classes=3)
-    classifier.fit(iris.data, [float(x) for x in iris.target])
+    classifier.fit(iris.data, [x for x in iris.target])
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
 
   def testIrisClassWeight(self):
     iris = datasets.load_iris()
-    classifier = learn.TensorFlowLinearClassifier(n_classes=3,
-                                                  class_weight=[0.1, 0.8, 0.1])
-    classifier.fit(iris.data, iris.target)
-    score = accuracy_score(iris.target, classifier.predict(iris.data))
-    self.assertLess(score, 0.7, "Failed with score = {0}".format(score))
+    # Note, class_weight are not supported anymore :( Use weight_column.
+    with self.assertRaises(ValueError):
+      classifier = learn.TensorFlowLinearClassifier(
+          n_classes=3, class_weight=[0.1, 0.8, 0.1])
+      classifier.fit(iris.data, iris.target)
+      score = accuracy_score(iris.target, classifier.predict(iris.data))
+      self.assertLess(score, 0.7, "Failed with score = {0}".format(score))
 
   def testIrisAllVariables(self):
     iris = datasets.load_iris()
     classifier = learn.TensorFlowLinearClassifier(n_classes=3)
-    classifier.fit(iris.data, [float(x) for x in iris.target])
-    self.assertEqual(classifier.get_variable_names(),
-                     ["OptimizeLoss/learning_rate",
-                      "OptimizeLoss/logistic_regression/bias/Adagrad",
-                      "OptimizeLoss/logistic_regression/softmax_classifier/"
-                      "softmax_cross_entropy_loss/value/avg",
-                      "OptimizeLoss/logistic_regression/weights/Adagrad",
-                      "global_step", "logistic_regression/bias",
-                      "logistic_regression/weights"])
+    classifier.fit(iris.data, [x for x in iris.target])
+    self.assertEqual(
+        classifier.get_variable_names(),
+        ["centered_bias_weight",
+         "centered_bias_weight/Adagrad",
+         "global_step",
+         "linear/_weight",
+         "linear/_weight/Ftrl",
+         "linear/_weight/Ftrl_1",
+         "linear/bias_weight",
+         "linear/bias_weight/Ftrl",
+         "linear/bias_weight/Ftrl_1"])
 
   def testIrisSummaries(self):
     iris = datasets.load_iris()
-    classifier = learn.TensorFlowLinearClassifier(n_classes=3)
-    classifier.fit(iris.data, iris.target, logdir="/tmp/learn_tests/")
+    output_dir = tempfile.mkdtemp() + "learn_tests/"
+    classifier = learn.TensorFlowLinearClassifier(n_classes=3,
+                                                  model_dir=output_dir)
+    classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
+    # TODO(ipolosukhin): Check that summaries are correclty written.
 
   def testIrisContinueTraining(self):
     iris = datasets.load_iris()

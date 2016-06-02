@@ -23,8 +23,10 @@ import json
 import os
 import types
 
+import numpy as np
 import six
 from six import string_types
+
 
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
@@ -36,6 +38,7 @@ from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_dat
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _write_with_backup(filename, content):
@@ -128,7 +131,6 @@ class TensorFlowEstimator(estimator.Estimator):
     Note: called first time constructs the graph and initializers
     variables. Consecutives times it will continue training the same model.
     This logic follows partial_fit() interface in scikit-learn.
-
     To restart learning, create new estimator.
 
     Args:
@@ -175,7 +177,6 @@ class TensorFlowEstimator(estimator.Estimator):
     This method is expected to be called several times consecutively
     on different or the same chunks of the dataset. This either can
     implement iterative training or out-of-core/online training.
-
     This is especially useful when the whole dataset is too big to
     fit in memory at the same time. Or when model is taking long time
     to converge, and you want to split up training into subparts.
@@ -220,7 +221,6 @@ class TensorFlowEstimator(estimator.Estimator):
     For a classification model, the predicted class for each sample in X is
     returned. For a regression model, the predicted value based on X is
     returned.
-
     Args:
       x: array-like matrix, [n_samples, n_features...] or iterator.
       axis: Which axis to argmax for classification.
@@ -358,11 +358,11 @@ class TensorFlowEstimator(estimator.Estimator):
 
     Args:
       model_fn: Core model function.
+
     Returns:
       Model function.
     """
     def _model_fn(features, targets, mode):
-      """Backward-compatible model_fn."""
       ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
       if self.class_weight is not None:
         constant_op.constant(self.class_weight, name='class_weight')
@@ -388,19 +388,102 @@ class TensorFlowEstimator(estimator.Estimator):
 class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
   """TensorFlow Base Transformer class."""
 
-  def transform(self, X):  # pylint: disable=invalid-name
-    # pylint: disable=invalid-name
+  def transform(self, x):
     """Transform X using trained transformer."""
     return(super(TensorFlowBaseTransformer, self).predict(
-        X, axis=1, batch_size=None))
+        x, axis=1, batch_size=None))
 
-  def fit(self, X, y=None, monitor=None, logdir=None):
-    # pylint: disable=invalid-name
+  def fit(self, x, y=None, monitor=None, logdir=None):
     """Fit a transformer."""
     return(super(TensorFlowBaseTransformer, self).fit(
-        X, y, monitors=None, logdir=None))
+        x, y, monitors=None, logdir=None))
 
-  def fit_transform(self, X, y=None, monitor=None, logdir=None):
-    # pylint: disable=invalid-name
+  def fit_transform(self, x, y=None, monitor=None, logdir=None):
     """Fit transformer and transform X using trained transformer."""
-    return self.fit(X, y, monitor=None, logdir=None).transform(X)
+    return self.fit(x, y, monitor=None, logdir=None).transform(x)
+
+
+class DeprecatedMixin(object):
+  """This is mixin for deprecated TensorFlowYYY classes."""
+
+  def __init__(self, *args, **kwargs):
+    this_class = type(self).__name__
+    alternative_class = this_class[len('TensorFlow'):]
+    logging.warning(
+        '%s class is deprecated. Please consider using %s as an alternative.',
+        this_class, alternative_class)
+    # Handle deprecated arguments.
+    self.__deprecated_n_classes = kwargs.get('n_classes', 0)
+    if self.__deprecated_n_classes < 1 and 'n_classes' in kwargs:
+      kwargs.pop('n_classes')
+    self.batch_size = kwargs.pop('batch_size', 32)
+    self.steps = kwargs.pop('steps', 200)
+    if 'optimizer' in kwargs or 'learning_rate' in kwargs:
+      self.learning_rate = kwargs.pop('learning_rate', 0.1)
+      self.optimizer = kwargs.pop('optimizer', 'Adagrad')
+      if isinstance(self.learning_rate, types.FunctionType):
+        raise ValueError('Function-like learning_rate are not supported '
+                         'consider using custom Estimator.')
+      else:
+        learning_rate = self.learning_rate
+      if isinstance(self.optimizer, types.FunctionType):
+        optimizer = self.optimizer(learning_rate)
+      elif isinstance(self.optimizer, six.string_types):
+        optimizer = layers.OPTIMIZER_CLS_NAMES[self.optimizer](learning_rate)
+      else:
+        optimizer = self.optimizer
+      kwargs['optimizer'] = optimizer
+    if 'class_weight' in kwargs:
+      raise ValueError('Sorry we switched interface for providing class '
+                       'weights. Please use weight column instead which '
+                       'provides more granular control (per example).')
+    if 'clip_gradients' in kwargs:
+      logging.warning('clip_gradients argument in %s is now ignored.' %
+                      this_class)
+      kwargs.pop('clip_gradients')
+    if 'continue_training' in kwargs:
+      logging.warning('continue_training argument in %s is now ignored.' %
+                      this_class)
+      kwargs.pop('continue_training')
+    if 'verbose' in kwargs:
+      logging.warning('verbose argument in %s is now ignored.' %
+                      this_class)
+      kwargs.pop('verbose')
+    super(DeprecatedMixin, self).__init__(*args, **kwargs)
+
+  def fit(self, x, y, steps=None, batch_size=None, monitors=None, logdir=None):
+    if logdir is not None:
+      self._model_dir = logdir
+    return super(DeprecatedMixin, self).fit(x=x, y=y, steps=steps or self.steps,
+      batch_size=batch_size or self.batch_size, monitors=monitors)
+
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              axis=1):
+    if x is not None:
+      predict_data_feeder = setup_train_data_feeder(
+          x, None, n_classes=None,
+          batch_size=batch_size or self.batch_size,
+          shuffle=False, epochs=1)
+      result = super(DeprecatedMixin, self)._infer_model(
+        input_fn=predict_data_feeder.input_builder,
+        feed_fn=predict_data_feeder.get_feed_dict_fn(),
+        outputs=outputs)
+    else:
+      result = super(DeprecatedMixin, self)._infer_model(
+      input_fn=input_fn, outputs=outputs)
+    if self.__deprecated_n_classes > 1 and axis is not None:
+      return np.argmax(result, axis)
+    return result
+
+  def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None):
+    return self.predict(x=x, input_fn=input_fn, batch_size=batch_size,
+                        outputs=outputs, axis=None)
+
+  def save(self, path):
+    """Saves checkpoints and graph to given path.
+
+    Args:
+      path: Folder to save model to.
+    """
+    # Copy model dir into new path.
+    _copy_dir(self.model_dir, path)

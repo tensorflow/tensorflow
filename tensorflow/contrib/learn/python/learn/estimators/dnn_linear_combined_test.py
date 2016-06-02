@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
@@ -83,7 +85,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
           values=['en', 'fr', 'zh'],
           indices=[[0, 0], [0, 1], [60, 0]],
           shape=[len(iris.target), 2])
-      target = tf.reshape(tf.constant(iris.target, dtype=tf.float32), [-1, 1])
+      target = tf.reshape(tf.constant(iris.target, dtype=tf.int32), [-1, 1])
       return features, target
 
     iris = _prepare_iris_data_for_logistic_regression()
@@ -325,22 +327,44 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
 class DNNLinearCombinedRegressorTest(tf.test.TestCase):
 
+  def _input_fn_train(self):
+    # Create 4 rows of (y = x)
+    target = tf.constant([[100.], [3.], [2.], [2.]])
+    features = {'x': tf.constant([[100.], [3.], [2.], [2.]])}
+    return features, target
+
   def testRegression(self):
     """Tests a regression problem."""
-
-    def _input_fn_train():
-      # Create 4 rows of (y = x)
-      target = tf.constant([[100.], [3.], [2.], [2.]])
-      features = {'x': tf.constant([[100.], [3.], [2.], [2.]])}
-      return features, target
-
     classifier = tf.contrib.learn.DNNLinearCombinedRegressor(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.fit(input_fn=_input_fn_train, steps=100)
-    classifier.evaluate(input_fn=_input_fn_train, steps=1)
+    classifier.fit(input_fn=self._input_fn_train, steps=100)
+    classifier.evaluate(input_fn=self._input_fn_train, steps=1)
+
+  def testRegressionContinueTraining(self):
+    """Tests regression with restarting training / evaluate."""
+    output_dir = tempfile.mkdtemp()
+    new_estimator = lambda: tf.contrib.learn.DNNLinearCombinedRegressor(
+        linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_hidden_units=[3, 3], model_dir=output_dir)
+    classifier = new_estimator()
+
+    classifier.fit(input_fn=self._input_fn_train, steps=50)
+    del classifier
+
+    classifier = new_estimator()
+    classifier.fit(input_fn=self._input_fn_train, steps=100)
+    del classifier
+
+    classifier = new_estimator()
+    classifier.evaluate(input_fn=self._input_fn_train, steps=1)
+    del classifier
+
+    classifier = new_estimator()
+    classifier.predict(input_fn=self._input_fn_train)
 
 
 if __name__ == '__main__':

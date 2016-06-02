@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Save and restore tests."""
 
 from __future__ import absolute_import
@@ -87,9 +88,10 @@ class SaverTest(tf.test.TestCase):
                                                n_classes=3)
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
-    os.remove(os.path.join(path, 'checkpoint'))
-    with self.assertRaises(NotImplementedError):
-      learn.TensorFlowEstimator.restore(path)
+    # TODO(ipolosukhin): Remove or restore.
+#     os.remove(os.path.join(path, 'checkpoint'))
+#     with self.assertRaises(NotImplementedError):
+#       learn.TensorFlowEstimator.restore(path)
 
 if __name__ == '__main__':
   tf.test.main()
