@@ -11,6 +11,10 @@ TensorBoard is fully configured, it looks like this:
 [![MNIST TensorBoard](../../images/mnist_tensorboard.png "MNIST TensorBoard")](http://tensorflow.org/tensorboard)
 [*Click try a TensorBoard with data from this tutorial!*](http://tensorflow.org/tensorboard)
 
+This tutorial is intended to get you started with simple TensorBoard usage.
+There are other resources available as well! The [TensorBoard README](../../../tensorboard/README.md)
+has a lot more information on TensorBoard usage, including tips & tricks, and
+debugging information.
 
 ## Serializing the data
 
@@ -195,3 +199,6 @@ corner. Each tab represents a set of serialized data that can be visualized.
 
 For in depth information on how to use the *graph* tab to visualize your graph,
 see [TensorBoard: Graph Visualization](../../how_tos/graph_viz/index.md).
+
+For more usage information on TensorBoard in general, see the [TensorBoard
+Readme](../../../tensorboard/README.md).
