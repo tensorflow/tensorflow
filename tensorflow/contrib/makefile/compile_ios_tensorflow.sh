@@ -8,7 +8,7 @@ LIB_PREFIX=libtensorflow-core
 
 make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARMV7 LIB_NAME=${LIB_PREFIX}-armv7.a OPTFLAGS="$1"
+TARGET=IOS IOS_ARCH=ARMV7 LIB_NAME=${LIB_PREFIX}-armv7.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
 then
   echo "armv7 compilation failed."
@@ -17,7 +17,7 @@ fi
 
 make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARMV7S LIB_NAME=${LIB_PREFIX}-armv7s.a OPTFLAGS="$1"
+TARGET=IOS IOS_ARCH=ARMV7S LIB_NAME=${LIB_PREFIX}-armv7s.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
 then
   echo "arm7vs compilation failed."
@@ -26,7 +26,7 @@ fi
 
 make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARM64 LIB_NAME=${LIB_PREFIX}-arm64.a OPTFLAGS="$1"
+TARGET=IOS IOS_ARCH=ARM64 LIB_NAME=${LIB_PREFIX}-arm64.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
 then
   echo "arm64 compilation failed."
@@ -35,7 +35,7 @@ fi
 
 make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=I386 LIB_NAME=${LIB_PREFIX}-i386.a OPTFLAGS="$1"
+TARGET=IOS IOS_ARCH=I386 LIB_NAME=${LIB_PREFIX}-i386.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
 then
   echo "i386 compilation failed."
@@ -44,7 +44,7 @@ fi
 
 make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=X86_64 LIB_NAME=${LIB_PREFIX}-x86_64.a OPTFLAGS="$1"
+TARGET=IOS IOS_ARCH=X86_64 LIB_NAME=${LIB_PREFIX}-x86_64.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
 then
   echo "x86_64 compilation failed."

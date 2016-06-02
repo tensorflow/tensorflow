@@ -17,9 +17,6 @@
 		59A3D00C1CF4E68100C4259F /* RunModelViewController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 59A3D0001CF4E68100C4259F /* RunModelViewController.xib */; };
 		59A3D0141CF4E82500C4259F /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 59A3D0131CF4E82500C4259F /* CoreGraphics.framework */; };
 		59A3D0181CF4E86100C4259F /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 59A3D0171CF4E86100C4259F /* UIKit.framework */; };
-		59A3D01A1CF7B0DE00C4259F /* libtensorflow-core.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 59A3D0191CF7B0DE00C4259F /* libtensorflow-core.a */; };
-		59A3D01B1CF7C16600C4259F /* libprotobuf-lite.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 59A3D00F1CF4E7F200C4259F /* libprotobuf-lite.a */; };
-		59A3D01C1CF7C16600C4259F /* libprotobuf.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 59A3D0101CF4E7F200C4259F /* libprotobuf.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,12 +36,9 @@
 		59A3CFFE1CF4E68100C4259F /* RunModelViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RunModelViewController.h; sourceTree = "<group>"; };
 		59A3CFFF1CF4E68100C4259F /* RunModelViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = RunModelViewController.mm; sourceTree = "<group>"; };
 		59A3D0001CF4E68100C4259F /* RunModelViewController.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = RunModelViewController.xib; sourceTree = "<group>"; };
-		59A3D00F1CF4E7F200C4259F /* libprotobuf-lite.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libprotobuf-lite.a"; path = "../tensorflow4prs/tensorflow/contrib/makefile/gen/protobuf_ios/lib/libprotobuf-lite.a"; sourceTree = "<group>"; };
-		59A3D0101CF4E7F200C4259F /* libprotobuf.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libprotobuf.a; path = ../tensorflow4prs/tensorflow/contrib/makefile/gen/protobuf_ios/lib/libprotobuf.a; sourceTree = "<group>"; };
 		59A3D0131CF4E82500C4259F /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		59A3D0151CF4E83D00C4259F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		59A3D0171CF4E86100C4259F /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
-		59A3D0191CF7B0DE00C4259F /* libtensorflow-core.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libtensorflow-core.a"; path = "../tensorflow4prs/tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,9 +46,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				59A3D01B1CF7C16600C4259F /* libprotobuf-lite.a in Frameworks */,
-				59A3D01C1CF7C16600C4259F /* libprotobuf.a in Frameworks */,
-				59A3D01A1CF7B0DE00C4259F /* libtensorflow-core.a in Frameworks */,
 				59A3D0181CF4E86100C4259F /* UIKit.framework in Frameworks */,
 				59A3D0141CF4E82500C4259F /* CoreGraphics.framework in Frameworks */,
 			);
@@ -69,9 +60,6 @@
 				59A3D0171CF4E86100C4259F /* UIKit.framework */,
 				59A3D0151CF4E83D00C4259F /* Foundation.framework */,
 				59A3D0131CF4E82500C4259F /* CoreGraphics.framework */,
-				59A3D00F1CF4E7F200C4259F /* libprotobuf-lite.a */,
-				59A3D0101CF4E7F200C4259F /* libprotobuf.a */,
-				59A3D0191CF7B0DE00C4259F /* libtensorflow-core.a */,
 				59A3CFF11CF4E68100C4259F /* AppDelegate.h */,
 				59A3CFF21CF4E68100C4259F /* AppDelegate.mm */,
 				59A3CFF31CF4E68100C4259F /* data */,
@@ -277,21 +265,21 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				HEADER_SEARCH_PATHS = (
-					"$(SRCROOT)/../../..",
-					"$(SRCROOT)/../makefile/downloads/protobuf/src/",
-					"$(SRCROOT)/../makefile/downloads",
-					"$(SRCROOT)/../makefile/downloads/eigen-eigen-f3a13643ac1f",
-					"$(SRCROOT)/../makefile/gen/proto",
+					"$(SRCROOT)/../../../..",
+					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
+					"$(SRCROOT)/../../makefile/downloads",
+					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-f3a13643ac1f",
+					"$(SRCROOT)/../../makefile/gen/proto",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				LIBRARY_SEARCH_PATHS = (
-					"$(SRCROOT)/../makefile/gen/protobuf_ios/lib",
-					"$(SRCROOT)/../makefile/gen/lib",
+					"$(SRCROOT)/../../makefile/gen/protobuf_ios/lib",
+					"$(SRCROOT)/../../makefile/gen/lib",
 				);
 				OTHER_LDFLAGS = (
 					"-force_load",
-					"$(SRCROOT)/../makefile/gen/lib/libtensorflow-core.a",
+					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -304,21 +292,21 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				HEADER_SEARCH_PATHS = (
-					"$(SRCROOT)/../../..",
-					"$(SRCROOT)/../makefile/downloads/protobuf/src/",
-					"$(SRCROOT)/../makefile/downloads",
-					"$(SRCROOT)/../makefile/downloads/eigen-eigen-f3a13643ac1f",
-					"$(SRCROOT)/../makefile/gen/proto",
+					"$(SRCROOT)/../../../..",
+					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
+					"$(SRCROOT)/../../makefile/downloads",
+					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-f3a13643ac1f",
+					"$(SRCROOT)/../../makefile/gen/proto",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				LIBRARY_SEARCH_PATHS = (
-					"$(SRCROOT)/../makefile/gen/protobuf_ios/lib",
-					"$(SRCROOT)/../makefile/gen/lib",
+					"$(SRCROOT)/../../makefile/gen/protobuf_ios/lib",
+					"$(SRCROOT)/../../makefile/gen/lib",
 				);
 				OTHER_LDFLAGS = (
 					"-force_load",
-					"$(SRCROOT)/../makefile/gen/lib/libtensorflow-core.a",
+					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -204,7 +204,6 @@ NSString* RunInferenceOnImage() {
       for (int c = 0; c < wanted_channels; ++c) {
         out_pixel[c] = (in_pixel[c] / input_std) - input_mean;
       }
-      
     }
   }
 
