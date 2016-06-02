@@ -1339,7 +1339,6 @@ var TF;
             this.tag = tag;
             this.colorScale = colorScale;
             this.tooltip = tooltip;
-            this.buildChart(xType);
         }
         /**
          * Change the runs on the chart. The work of actually setting the dataset
@@ -1413,6 +1412,7 @@ var TF;
     var LineChart = (function (_super) {
         __extends(LineChart, _super);
         function LineChart(tag, dataFn, xType, colorScale, tooltip) {
+            _super.call(this, tag, dataFn, xType, colorScale, tooltip);
             this.datasets = [];
             // lastPointDataset is a dataset that contains just the last point of
             // every dataset we're currently drawing.
@@ -1421,7 +1421,7 @@ var TF;
             // need to do a single bind, so we can deregister the callback from
             // old Plottable.Datasets. (Deregistration is done by identity checks.)
             this.updateSpecialDatasets = this._updateSpecialDatasets.bind(this);
-            _super.call(this, tag, dataFn, xType, colorScale, tooltip);
+            this.buildChart(xType);
         }
         LineChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
             var _this = this;
@@ -1672,8 +1672,9 @@ var TF;
     TF.LineChart = LineChart;
     var HistogramChart = (function (_super) {
         __extends(HistogramChart, _super);
-        function HistogramChart() {
-            _super.apply(this, arguments);
+        function HistogramChart(tag, dataFn, xType, colorScale, tooltip) {
+            _super.call(this, tag, dataFn, xType, colorScale, tooltip);
+            this.buildChart(xType);
         }
         HistogramChart.prototype.changeRuns = function (runs) {
             var _this = this;
@@ -2556,11 +2557,12 @@ var TF;
             if (dataDir[dataDir.length - 1] === '/') {
                 dataDir = dataDir.slice(0, dataDir.length - 1);
             }
-            function standardRoute(route) {
+            function standardRoute(route, demoExtension) {
+                if (demoExtension === void 0) { demoExtension = '.json'; }
                 return function (tag, run) {
                     var url = dataDir + '/' + route + clean(Backend.queryEncoder({ tag: tag, run: run }));
                     if (demoMode) {
-                        url += '.json';
+                        url += demoExtension;
                     }
                     return url;
                 };
@@ -2608,7 +2610,7 @@ var TF;
                 compressedHistograms: standardRoute('compressedHistograms'),
                 images: standardRoute('images'),
                 audio: standardRoute('audio'),
-                runMetadata: standardRoute('run_metadata'),
+                runMetadata: standardRoute('run_metadata', '.pbtxt'),
             };
         }
         Backend.router = router;
@@ -10115,9 +10117,9 @@ Polymer({
 ::content .faded path,
 ::content #rectHatch line,
 ::content #ellipseHatch line {
-  color: var(--tb-graph-faded) !important;
+  color: #e0d4b3 !important;
   fill: white;
-  stroke: var(--tb-graph-faded) !important;
+  stroke: #e0d4b3 !important;
 }
 
 
@@ -10307,7 +10309,7 @@ Polymer({
 }
 
 ::content #annotation-arrowhead-faded {
-  fill: var(--tb-graph-faded);
+  fill: #e0d4b3;
 }
 
 ::content #ref-annotation-arrowhead {
@@ -10315,7 +10317,7 @@ Polymer({
 }
 
 ::content #ref-annotation-arrowhead-faded {
-  fill: var(--tb-graph-faded);
+  fill: #e0d4b3;
 }
 
 ::content .annotation > .annotation-label {
