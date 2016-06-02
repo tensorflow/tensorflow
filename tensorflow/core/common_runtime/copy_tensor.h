@@ -48,12 +48,9 @@ class CopyTensor {
                      const AllocatorAttributes dst_alloc_attr,
                      const Tensor* input, Tensor* output, StatusCallback done);
 
-  // Register a function for copying between two specific DeviceTypes.
-  static Status Register(DeviceType sender_device_type,
-                         DeviceType receiver_device_type,
-                         CopyFunction copy_function);
-
   // Object used to call Register() at static-initialization time.
+  // Note: This should only ever be used as a global-static object; no stack
+  // or heap instances.
   class Registration {
    public:
     Registration(DeviceType sender_device_type, DeviceType receiver_device_type,
@@ -62,6 +59,14 @@ class CopyTensor {
           Register(sender_device_type, receiver_device_type, copy_function));
     }
   };
+
+ private:
+  // Register a function for copying between two specific DeviceTypes.
+  // Note: This should only be called via the constructor of
+  // CopyTensor::Registration.
+  static Status Register(DeviceType sender_device_type,
+                         DeviceType receiver_device_type,
+                         CopyFunction copy_function);
 };
 
 }  // namespace tensorflow
