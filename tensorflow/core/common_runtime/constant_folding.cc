@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -157,7 +157,9 @@ int64 UniqueConstantId() {
 }
 
 Device* GetCPUDevice() {
-  static Device* device = nullptr;
+  static mutex mu;
+  static Device* device GUARDED_BY(mu) = nullptr;
+  mutex_lock l(mu);
   if (!device) {
     std::vector<Device*> devices;
     DeviceFactory::GetFactory(DEVICE_CPU)

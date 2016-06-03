@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,23 +23,17 @@ import abc
 import os
 import tempfile
 import time
-import types
 
 import numpy as np
 import six
 
 from tensorflow.contrib import framework as contrib_framework
-from tensorflow.contrib import layers
-from tensorflow.contrib import losses
-from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
-from tensorflow.contrib.learn.python.learn.graph_actions import evaluate
-from tensorflow.contrib.learn.python.learn.graph_actions import infer
-from tensorflow.contrib.learn.python.learn.graph_actions import train
+from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
@@ -51,16 +44,6 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
-
-
-# Default metrics for evaluation.
-_EVAL_METRICS = {
-    'regression': {
-        'mean_squared_error': metrics_lib.streaming_mean_squared_error,
-    },
-    'classification': {
-        'logistic': losses.sigmoid_cross_entropy,
-    },}
 
 
 class ModeKeys(object):
@@ -98,7 +81,6 @@ class BaseEstimator(sklearn.BaseEstimator):
     * _get_train_ops
     * _get_eval_ops
     * _get_predict_ops
-  It may override _get_default_metric_functions.
 
   `Estimator` implemented below is a good example of how to use this class.
 
@@ -139,46 +121,57 @@ class BaseEstimator(sklearn.BaseEstimator):
 
     self._graph = None
 
-  def fit(self, x, y, steps, batch_size=32, monitors=None):
-    """Trains a model given training data X and y.
+  def fit(
+      self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+      monitors=None):
+    """Trains a model given training data `x` predictions and `y` targets.
 
     Args:
       x: matrix or tensor of shape [n_samples, n_features...]. Can be
          iterator that returns arrays of features. The training input
-         samples for fitting the model.
+         samples for fitting the model. If set, `input_fn` must be `None`.
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
          iterator that returns array of targets. The training target values
-         (class labels in classification, real numbers in regression).
-      steps: number of steps to train model for.
-      batch_size: minibatch size to use on the input, defaults to 32.
+         (class labels in classification, real numbers in regression). If set,
+         `input_fn` must be `None`.
+      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
+        `None`.
+      steps: Number of steps for which to train model. If `None`, train forever.
+      batch_size: minibatch size to use on the input, defaults to first
+        dimension of `x`. Must be `None` if `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
-                inside the training loop.
+        inside the training loop.
 
     Returns:
-      Returns self.
+      `self`, for chaining.
+
+    Raises:
+      ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+    Raises:
+      ValueError: If at least one of `x` and `y` is provided, and `input_fn` is
+          provided.
     """
-    input_fn, feed_fn = _get_input_fn(x, y, batch_size)
-    return self._train_model(input_fn=input_fn,
+    feed_fn = None
+    if input_fn is None:
+      if x is None:
+        raise ValueError('Either x or input_fn must be provided.')
+      input_fn, feed_fn = _get_input_fn(x, y, batch_size)
+    elif (x is not None) or (y is not None):
+      raise ValueError('Can not provide both input_fn and either of x and y.')
+    elif batch_size is not None:
+      raise ValueError('Can not provide both input_fn and batch_size.')
+
+    loss = self._train_model(input_fn=input_fn,
                              feed_fn=feed_fn,
                              steps=steps,
                              monitors=monitors)
+    logging.info('Loss for final step: %s.', loss)
+    return self
 
-  def train(self, input_fn, steps, monitors=None):
-    """Trains a model given input builder function.
-
-    Args:
-      input_fn: Input builder function, returns tuple of dicts or
-                dict and Tensor.
-      steps: number of steps to train model for.
-      monitors: List of `BaseMonitor` subclass instances. Used for callbacks
-                inside the training loop.
-
-    Returns:
-      Returns self.
-    """
-    return self._train_model(input_fn=input_fn, steps=steps, monitors=monitors)
-
-  def partial_fit(self, x, y, steps=1, batch_size=32, monitors=None):
+  def partial_fit(
+      self, x=None, y=None, input_fn=None, steps=1, batch_size=None,
+      monitors=None):
     """Incremental fit on a batch of samples.
 
     This method is expected to be called several times consecutively
@@ -192,30 +185,46 @@ class BaseEstimator(sklearn.BaseEstimator):
     Args:
       x: matrix or tensor of shape [n_samples, n_features...]. Can be
         iterator that returns arrays of features. The training input
-        samples for fitting the model.
+        samples for fitting the model. If set, `input_fn` must be `None`.
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
         iterator that returns array of targets. The training target values
-        (class label in classification, real numbers in regression).
-      steps: number of steps to train model for.
-      batch_size: minibatch size to use on the input, defaults to 32.
+        (class label in classification, real numbers in regression). If set,
+         `input_fn` must be `None`.
+      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
+        `None`.
+      steps: Number of steps for which to train model. If `None`, train forever.
+      batch_size: minibatch size to use on the input, defaults to first
+        dimension of `x`. Must be `None` if `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
-                inside the training loop.
+        inside the training loop.
 
     Returns:
-      Returns self.
+      `self`, for chaining.
+
+    Raises:
+      ValueError: If at least one of `x` and `y` is provided, and `input_fn` is
+          provided.
     """
-    input_fn, feed_fn = _get_input_fn(x, y, batch_size)
-    return self._train_model(input_fn=input_fn,
+    feed_fn = None
+    if input_fn is None:
+      if x is None:
+        raise ValueError('Either x or input_fn must be provided.')
+      input_fn, feed_fn = _get_input_fn(x, y, batch_size)
+    elif (x is not None) or (y is not None):
+      raise ValueError('Can not provide both input_fn and either of x and y.')
+    loss = self._train_model(input_fn=input_fn,
                              feed_fn=feed_fn,
                              steps=steps,
                              monitors=monitors)
+    logging.info('Loss for final step: %s.', loss)
+    return self
 
   def evaluate(self,
                x=None,
                y=None,
                input_fn=None,
                feed_fn=None,
-               batch_size=32,
+               batch_size=None,
                steps=None,
                metrics=None,
                name=None):
@@ -224,46 +233,67 @@ class BaseEstimator(sklearn.BaseEstimator):
     Args:
       x: features.
       y: targets.
-      input_fn: Input function. If set, x and y must be None.
+      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
+        `None`.
       feed_fn: Function creating a feed dict every time it is called. Called
         once per iteration.
-      batch_size: minibatch size to use on the input, defaults to 32. Ignored
-        if input_fn is set.
-      steps: Number of steps to evalute for.
+      batch_size: minibatch size to use on the input, defaults to first
+        dimension of `x`. Must be `None` if `input_fn` is provided.
+      steps: Number of steps for which to evaluate model. If `None`, evaluate
+        forever.
       metrics: Dict of metric ops to run. If None, the default metric functions
         are used; if {}, no metrics are used.
       name: Name of the evaluation if user needs to run multiple evaluation on
         different data sets, such as evaluate on training data vs test data.
 
     Returns:
-      Returns self.
+      Returns `dict` with evaluation results.
 
     Raises:
-      ValueError: If x or y are not None while input_fn or feed_fn is not None.
+      ValueError: If at least one of `x` or `y` is provided, and at least one of
+          `input_fn` or `feed_fn` is provided.
     """
-    if (x is not None or y is not None) and input_fn is not None:
-      raise ValueError('Either x and y or input_fn must be None.')
     if input_fn is None:
-      assert x is not None
+      if x is None:
+        raise ValueError('Either x or input_fn must be provided.')
+      if feed_fn is not None:
+        raise ValueError('Cannot provide both x and feed_fn.')
       input_fn, feed_fn = _get_predict_input_fn(x, y, batch_size)
+    elif (x is not None) or (y is not None):
+      raise ValueError('Can not provide both input_fn and either of x and y.')
+    elif batch_size is not None:
+      raise ValueError('Can not provide both input_fn and batch_size.')
     return self._evaluate_model(input_fn=input_fn,
                                 feed_fn=feed_fn,
                                 steps=steps,
                                 metrics=metrics,
                                 name=name)
 
-  def predict(self, x=None, input_fn=None, batch_size=None):
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None):
     """Returns predictions for given features.
 
     Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
+      x: Features. If set, `input_fn` must be `None`.
+      input_fn: Input function. If set, `x` must be `None`.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+               If `None`, returns all.
 
     Returns:
       Numpy array of predicted classes or regression values.
+
+    Raises:
+      ValueError: If x and input_fn are both provided or both `None`.
     """
-    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
+    if x is None and input_fn is None:
+      raise ValueError('Either x or input_fn must be provided.')
+    if x is not None and input_fn is not None:
+      raise ValueError('Can not provide both input_fn and x.')
+    feed_fn = None
+    if x is not None:
+      input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
+    return self._infer_model(input_fn=input_fn, feed_fn=feed_fn,
+                             outputs=outputs)
 
   def get_variable_value(self, name):
     """Returns value of the variable given by name.
@@ -333,18 +363,21 @@ class BaseEstimator(sklearn.BaseEstimator):
     raise NotImplementedError('_get_eval_ops not implemented in BaseEstimator')
 
   def _get_feature_ops_from_example(self, examples_batch):
-    """Method that returns features given the batch of examples.
-
-    This method will be used to export model into a server.
+    """Returns feature parser for given example batch using features info.
 
     Args:
       examples_batch: batch of tf.Example
 
     Returns:
       features: `Tensor` or `dict` of `Tensor` objects.
+
+    Raises:
+      ValueError: If `_features_info` attribute is not available.
     """
-    raise NotImplementedError('_get_feature_ops_from_example not implemented '
-                              'in BaseEstimator')
+    if self._features_info is None:
+      raise ValueError('Features information is missing.')
+    return tensor_signature.create_example_parser_from_signatures(
+        self._features_info, examples_batch)
 
   def _check_inputs(self, features, targets):
     if self._features_info is not None:
@@ -374,8 +407,12 @@ class BaseEstimator(sklearn.BaseEstimator):
                    monitors=None,
                    log_every_steps=100,
                    fail_on_nan_loss=True):
+    # TODO(wicke): This is a hack and needs to go.
     if self._config.execution_mode not in ('all', 'train'):
       return
+
+    if not self._model_dir:
+      raise ValueError('Estimator\'s model_dir should be non-empty.')
 
     # Stagger startup of worker sessions based on task id.
     sleep_secs = min(self._config.training_worker_max_startup_secs,
@@ -415,7 +452,7 @@ class BaseEstimator(sklearn.BaseEstimator):
       for monitor in monitors:
         monitor.set_estimator(self)
 
-      return train(
+      return graph_actions.train(
           graph=g,
           output_dir=self._model_dir,
           train_op=train_op,
@@ -462,12 +499,20 @@ class BaseEstimator(sklearn.BaseEstimator):
                       feed_fn=None,
                       metrics=None,
                       name=''):
+    # TODO(wicke): This is a hack and needs to go.
     if self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset'):
       return
 
+    # Check that model has been trained.
     checkpoint_path = self._model_dir
+    latest_path = saver.latest_checkpoint(checkpoint_path)
+    if not latest_path:
+      raise NotFittedError("Couldn't find trained model at %s."
+                           % checkpoint_path)
+    # Setup output directory.
     eval_dir = os.path.join(self._model_dir, 'eval' if not name else
                             'eval_' + name)
+
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
@@ -475,15 +520,16 @@ class BaseEstimator(sklearn.BaseEstimator):
       self._check_inputs(features, targets)
       eval_dict = self._get_eval_ops(features, targets, metrics)
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
-      eval_results, _ = evaluate(graph=g,
-                                 output_dir=eval_dir,
-                                 checkpoint_path=checkpoint_path,
-                                 eval_dict=eval_dict,
-                                 update_op=update_op,
-                                 global_step_tensor=global_step,
-                                 supervisor_master=self._config.master,
-                                 feed_fn=feed_fn,
-                                 max_steps=steps)
+      eval_results, _ = graph_actions.evaluate(
+          graph=g,
+          output_dir=eval_dir,
+          checkpoint_path=checkpoint_path,
+          eval_dict=eval_dict,
+          update_op=update_op,
+          global_step_tensor=global_step,
+          supervisor_master=self._config.master,
+          feed_fn=feed_fn,
+          max_steps=steps)
       return eval_results
 
   def _get_features_from_input_fn(self, input_fn):
@@ -492,23 +538,34 @@ class BaseEstimator(sklearn.BaseEstimator):
       return result[0]
     return result
 
-  def _infer_model(self, x=None, input_fn=None, feed_fn=None, batch_size=None):
-    # Converts inputs into tf.DataFrame / tf.Series.
-    batch_size = -1 if batch_size is None else batch_size
-    if x is not None:
-      input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
-
+  def _infer_model(self, input_fn, feed_fn=None, outputs=None):
+    # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      raise NotFittedError("Couldn't find trained model at %s."
+                           % self._model_dir)
+
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
       predictions = self._get_predict_ops(features)
+      # If predictions is single output - wrap it into dict, and remember to
+      # return not a dict.
       return_dict = True
       if not isinstance(predictions, dict):
         predictions, return_dict = {'predictions': predictions}, False
+      # Filter what to run predictions on, if outputs provided.
+      if outputs:
+        existing_keys = predictions.keys()
+        predictions = {
+            key: value for key, value in predictions.items() if key in outputs
+        }
+        if not predictions:
+          raise ValueError('Expected to run at least one output from %s, '
+                           'provided %s.' % (existing_keys, outputs))
       if feed_fn is None:
-        preds = infer(checkpoint_path, predictions)
+        preds = graph_actions.infer(checkpoint_path, predictions)
       else:
         preds = {}
         def _feed_fn():
@@ -532,80 +589,17 @@ class Estimator(BaseEstimator):
   Parameters:
     model_fn: Model function, takes features and targets tensors or dicts of
               tensors and returns predictions and loss tensors.
-              E.g. `(features, targets) -> (predictions, loss)`.
+              E.g. `(features, targets) -> (predictions, loss, train_op)`.
     model_dir: Directory to save model parameters, graph and etc.
-    classification: boolean, true if classification problem.
-    learning_rate: learning rate for the model.
-    optimizer: optimizer for the model, can be:
-               string: name of optimizer, like 'SGD', 'Adam', 'Adagrad', 'Ftl',
-                 'Momentum', 'RMSProp', 'Momentum').
-                 Full list in contrib/layers/optimizers.py
-               class: sub-class of Optimizer
-                 (like tf.train.GradientDescentOptimizer).
-    clip_gradients: clip_norm value for call to `clip_by_global_norm`. None
-                    denotes no gradient clipping.
     config: Configuration object.
   """
 
   def __init__(self,
                model_fn=None,
                model_dir=None,
-               classification=True,
-               learning_rate=0.1,
-               optimizer='Adagrad',
-               clip_gradients=None,
                config=None):
     super(Estimator, self).__init__(model_dir=model_dir, config=config)
-
     self._model_fn = model_fn
-    self._classification = classification
-    if isinstance(optimizer, six.string_types):
-      if optimizer not in layers.OPTIMIZER_CLS_NAMES:
-        raise ValueError(
-            'Optimizer name should be one of [%s], you provided %s.' %
-            (', '.join(layers.OPTIMIZER_CLS_NAMES), optimizer))
-    self.optimizer = optimizer
-    self.learning_rate = learning_rate
-    self.clip_gradients = clip_gradients
-
-  def predict(self, x=None, input_fn=None, axis=None, batch_size=None):
-    """Returns predictions for given features.
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
-      axis: Axis on which to argmax (for classification).
-            Last axis is used by default.
-      batch_size: Override default batch size.
-
-    Returns:
-      Numpy array of predicted classes or regression values.
-    """
-    predictions = self._infer_model(x=x,
-                                    input_fn=input_fn,
-                                    batch_size=batch_size)
-    if self._classification:
-      if isinstance(predictions, dict):
-        for key in predictions:
-          cur_axis = (len(predictions[key].shape) - 1) if axis is None else axis
-          predictions[key] = np.argmax(predictions[key], axis=cur_axis)
-      else:
-        cur_axis = (len(predictions.shape) - 1) if axis is None else axis
-        predictions = np.argmax(predictions, axis=cur_axis)
-    return predictions
-
-  def predict_proba(self, x=None, input_fn=None, batch_size=None):
-    """Returns prediction probabilities for given features (classification).
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x and y must be None.
-      batch_size: Override default batch size.
-
-    Returns:
-      Numpy array of predicted probabilities.
-    """
-    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -621,26 +615,7 @@ class Estimator(BaseEstimator):
     Returns:
       Tuple of train `Operation` and loss `Tensor`.
     """
-    _, loss = self._model_fn(features, targets, ModeKeys.TRAIN)
-    # TODO(ipolosukhin): Move this to TensorFlowEstimator when
-    # moving out training.
-    if isinstance(self.learning_rate, types.FunctionType):
-      learning_rate = self.learning_rate(contrib_framework.get_global_step())
-    else:
-      learning_rate = self.learning_rate
-    if isinstance(self.optimizer, types.FunctionType):
-      optimizer = self.optimizer(learning_rate)
-    else:
-      optimizer = self.optimizer
-    train_op = layers.optimize_loss(
-        loss,
-        contrib_framework.get_global_step(),
-        learning_rate=learning_rate,
-        optimizer=optimizer,
-        clip_gradients=self.clip_gradients)
-    # Add update ops.
-    train_op = control_flow_ops.group(
-        train_op, *ops.get_collection('update_ops'))
+    _, loss, train_op = self._model_fn(features, targets, ModeKeys.TRAIN)
     return train_op, loss
 
   def _get_eval_ops(self, features, targets, metrics):
@@ -658,17 +633,19 @@ class Estimator(BaseEstimator):
     Returns:
       metrics: `dict` of `Tensor` objects.
     """
-    predictions, loss = self._model_fn(features, targets, ModeKeys.EVAL)
+    predictions, loss, _ = self._model_fn(features, targets, ModeKeys.EVAL)
     result = {'loss': loss}
-    if metrics is None:
-      metrics = _EVAL_METRICS[
-          'classification' if self._classification else 'regression']
+    metrics = metrics or {}
     if isinstance(targets, dict) and len(targets) == 1:
       # Unpack single target into just tensor.
-      targets = targets[targets.keys()[0]]
+      targets = targets[list(targets.keys())[0]]
     for name, metric in six.iteritems(metrics):
-      # TODO(ipolosukhin): Add support for multi-head metrics.
-      result[name] = metric(predictions, targets)
+      if isinstance(name, tuple):
+        # Multi-head metrics.
+        result[name[0]] = metric(predictions[name[1]], targets)
+      else:
+        # Single head metrics.
+        result[name] = metric(predictions, targets)
     return result
 
   def _get_predict_ops(self, features):
@@ -686,22 +663,5 @@ class Estimator(BaseEstimator):
     """
     targets = tensor_signature.create_placeholders_from_signatures(
         self._targets_info)
-    predictions, _ = self._model_fn(features, targets, ModeKeys.INFER)
+    predictions, _, _ = self._model_fn(features, targets, ModeKeys.INFER)
     return predictions
-
-  def _get_feature_ops_from_example(self, examples_batch):
-    """Unimplemented.
-
-    TODO(vihanjain): We need a way to parse tf.Example into features.
-
-    Args:
-      examples_batch: batch of tf.Example
-
-    Returns:
-      features: `Tensor` or `dict` of `Tensor` objects.
-
-    Raises:
-      Exception: Unimplemented
-    """
-    raise NotImplementedError('_get_feature_ops_from_example not yet '
-                              'implemented')

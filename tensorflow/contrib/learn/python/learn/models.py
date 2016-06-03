@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -152,8 +151,10 @@ def logistic_regression(X,
       bias = vs.get_variable('bias', [y.get_shape()[-1]],
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev))
-    logging_ops.histogram_summary('%s.weights' % vs.get_variable_scope().name, weights)
-    logging_ops.histogram_summary('%s.bias' % vs.get_variable_scope().name, bias)
+    logging_ops.histogram_summary('%s.weights' % vs.get_variable_scope().name,
+                                  weights)
+    logging_ops.histogram_summary('%s.bias' % vs.get_variable_scope().name,
+                                  bias)
     # If no class weight provided, try to retrieve one from pre-defined
     # tensor name in the graph.
     if not class_weight:

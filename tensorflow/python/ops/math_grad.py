@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -571,7 +571,7 @@ ops.NoGradient("LogicalNot")
 def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
-  zeros = array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
+  zeros = array_ops.zeros_like(x)
   return (None, math_ops.select(c, grad, zeros),
           math_ops.select(c, zeros, grad))
 

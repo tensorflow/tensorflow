@@ -14,7 +14,9 @@ To download the example text and evaluation data:
 ```shell
 wget http://mattmahoney.net/dc/text8.zip -O text8.zip
 unzip text8.zip
-wget https://word2vec.googlecode.com/svn/trunk/questions-words.txt
+wget https://storage.googleapis.com/google-code-archive-source/v2/code.google.com/word2vec/source-archive.zip
+unzip -p source-archive.zip  word2vec/trunk/questions-words.txt > questions-words.txt
+rm source-archive.zip
 ```
 
 Assuming you are using the pip package install and have cloned the git

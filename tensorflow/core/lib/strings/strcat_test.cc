@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -118,6 +119,10 @@ TEST(StrCat, Basics) {
   d *= d;
   result = StrCat("A hundred K and a half squared is ", d);
   EXPECT_EQ(result, "A hundred K and a half squared is 10000100000.25");
+
+  Eigen::half h(10007.0f);
+  result = StrCat("Ten thousand seven is approximately ", h);
+  EXPECT_EQ(result, "Ten thousand seven is approximately 10008");
 
   result = StrCat(1, 2, 333, 4444, 55555, 666666, 7777777, 88888888, 999999999);
   EXPECT_EQ(result, "12333444455555666666777777788888888999999999");

@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -173,16 +172,20 @@ def read_batch_features(file_pattern, batch_size, features, reader,
         num_epochs=num_epochs, queue_capacity=queue_capacity,
         num_threads=reader_num_threads, name=scope)
 
-    # Parse features into tensors in many threads and put on the queue.
-    features_list = []
-    for _ in range(parser_num_threads):
-      features_list.append(parsing_ops.parse_example(examples, features))
-    return input_ops.batch_join(
-        features_list,
-        batch_size=batch_size,
-        capacity=queue_capacity,
-        enqueue_many=True,
-        name='parse_example_batch_join')
+    if parser_num_threads == 1:
+      # Avoid queue overhead for single thread
+      return parsing_ops.parse_example(examples, features)
+    else:
+      # Parse features into tensors in many threads and put on the queue.
+      features_list = []
+      for _ in range(parser_num_threads):
+        features_list.append(parsing_ops.parse_example(examples, features))
+      return input_ops.batch_join(
+          features_list,
+          batch_size=batch_size,
+          capacity=queue_capacity,
+          enqueue_many=True,
+          name='parse_example_batch_join')
 
 
 def read_batch_record_features(file_pattern, batch_size, features,

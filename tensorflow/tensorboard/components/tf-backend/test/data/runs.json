@@ -15,6 +15,9 @@
     "compressedHistograms": [
       "histo1"
     ],
+    "run_metadata": [
+      "step99"
+    ],
     "graph": false
   },
   "fake_run_no_data": {
@@ -23,6 +26,7 @@
     "scalars": ["scalar2"],
     "histograms": ["histo1"],
     "compressedHistograms": ["histo1"],
+    "run_metadata": ["step99"],
     "graph": true
   }
 }

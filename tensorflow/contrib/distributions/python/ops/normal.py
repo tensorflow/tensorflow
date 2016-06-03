@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import math
 
+from tensorflow.contrib.distributions.python.ops.distribution import ContinuousDistribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -38,7 +39,7 @@ def _assert_all_positive(x):
       ["Tensor %s should contain only positive values: " % x.name, x])
 
 
-class Normal(object):
+class Normal(ContinuousDistribution):
   """The scalar Normal distribution with mean and stddev parameters mu, sigma.
 
   #### Mathematical details
@@ -84,7 +85,7 @@ class Normal(object):
 
   """
 
-  def __init__(self, mu, sigma, name=None):
+  def __init__(self, mu, sigma, name="Normal"):
     """Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
     The parameters `mu` and `sigma` must be shaped in a way that supports
@@ -99,18 +100,72 @@ class Normal(object):
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
-    with ops.op_scope([mu, sigma], name, "Normal"):
+    with ops.op_scope([mu, sigma], name):
       mu = ops.convert_to_tensor(mu)
       sigma = ops.convert_to_tensor(sigma)
       with ops.control_dependencies([_assert_all_positive(sigma)]):
+        self._name = name
         self._mu = array_ops.identity(mu, name="mu")
         self._sigma = array_ops.identity(sigma, name="sigma")
+        self._batch_shape = self._ones().get_shape()
+        self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((mu, sigma))
 
   @property
+  def name(self):
+    return self._name
+
+  @property
   def dtype(self):
     return self._mu.dtype
+
+  def batch_shape(self, name="batch_shape"):
+    """Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+    The product of the dimensions of the `batch_shape` is the number of
+    independent distributions of this kind the instance represents.
+
+    Args:
+      name: name to give to the op.
+
+    Returns:
+      `Tensor` `batch_shape`
+    """
+    with ops.name_scope(self._name):
+      return array_ops.shape(self._ones(), name=name)
+
+  def get_batch_shape(self):
+    """`TensorShape` available at graph construction time.
+
+    Same meaning as `batch_shape`. May be only partially defined.
+
+    Returns:
+      batch shape
+    """
+    return self._batch_shape
+
+  def event_shape(self, name="event_shape"):
+    """Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+    Args:
+      name: name to give to the op.
+
+    Returns:
+      `Tensor` `event_shape`
+    """
+    with ops.name_scope(self._name):
+      return constant_op.constant(1, name=name)
+
+  def get_event_shape(self):
+    """`TensorShape` available at graph construction time.
+
+    Same meaning as `event_shape`. May be only partially defined.
+
+    Returns:
+      event shape
+    """
+    return self._event_shape
 
   @property
   def mu(self):
@@ -174,7 +229,7 @@ class Normal(object):
     with ops.op_scope([self._mu, self._sigma, x], name, "NormalLogCdf"):
       return math_ops.log(self.cdf(x))
 
-  def pdf(self, x, name=None):
+  def pdf(self, x, name="pdf"):
     """The PDF of observations in `x` under these Normal distribution(s).
 
     Args:
@@ -184,8 +239,7 @@ class Normal(object):
     Returns:
       pdf: tensor of dtype `dtype`, the pdf values of `x`.
     """
-    with ops.op_scope([self._mu, self._sigma, x], name, "NormalPdf"):
-      return math_ops.exp(self.log_pdf(x))
+    return super(Normal, self).pdf(x, name=name)
 
   def entropy(self, name=None):
     """The entropy of Normal distribution(s).
@@ -233,3 +287,9 @@ class Normal(object):
   @property
   def is_reparameterized(self):
     return True
+
+  def _ones(self):
+    return array_ops.ones_like(self._mu + self._sigma)
+
+  def _zeros(self):
+    return array_ops.zeros_like(self._mu + self._sigma)

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -967,6 +967,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.inputs = &inputs;
   params.input_device_contexts = &input_device_contexts;
   params.input_alloc_attrs = &input_alloc_attrs;
+  params.runner = &runner_;
 
   Status s;
   NodeExecStats* stats = nullptr;

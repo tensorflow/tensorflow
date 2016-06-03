@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -435,15 +435,16 @@ class FCTest(tf.test.TestCase):
 
   def testCreateFC(self):
     height, width = 3, 3
-    with self.test_session():
-      inputs = tf.random_uniform((5, height * width * 3), seed=1)
-      output = tf.contrib.layers.fully_connected(inputs, 32)
-      self.assertEquals(output.op.name, 'fully_connected/Relu')
-      self.assertListEqual(output.get_shape().as_list(), [5, 32])
-      weights = tf.contrib.framework.get_variables_by_name('weights')[0]
-      self.assertListEqual(weights.get_shape().as_list(), [3 * 3 * 3, 32])
-      biases = tf.contrib.framework.get_variables_by_name('biases')[0]
-      self.assertListEqual(biases.get_shape().as_list(), [32])
+    for layer_fn in (tf.contrib.layers.fully_connected, tf.contrib.layers.relu):
+      with tf.Graph().as_default() as g, self.test_session(g):
+        inputs = tf.random_uniform((5, height * width * 3), seed=1)
+        output = layer_fn(inputs, 32)
+        self.assertEquals(output.op.name, 'fully_connected/Relu')
+        self.assertListEqual(output.get_shape().as_list(), [5, 32])
+        weights = tf.contrib.framework.get_variables_by_name('weights')[0]
+        self.assertListEqual(weights.get_shape().as_list(), [3 * 3 * 3, 32])
+        biases = tf.contrib.framework.get_variables_by_name('biases')[0]
+        self.assertListEqual(biases.get_shape().as_list(), [32])
 
   def testCreateFCWithScope(self):
     height, width = 3, 3
@@ -985,27 +986,6 @@ class LegacyFullyConnectedTest(tf.test.TestCase):
     self.assertEqual(0,
                      len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
 
-  def test_relu6_layer_basic_use(self):
-    output = tf.contrib.layers.legacy_relu6(self.input, 8)
-
-    with tf.Session() as sess:
-      with self.assertRaises(tf.errors.FailedPreconditionError):
-        sess.run(output)
-
-      tf.initialize_all_variables().run()
-      out_value = sess.run(output)
-
-    self.assertEqual(output.get_shape().as_list(), [2, 8])
-    self.assertTrue(np.all(out_value >= 0),
-                    'Relu6 should have all values >= 0.')
-    self.assertTrue(np.all(out_value <= 6),
-                    'Relu6 should have all values <= 6.')
-
-    self.assertEqual(2,
-                     len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
-    self.assertEqual(0,
-                     len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
-
   def test_variable_reuse_with_scope(self):
     with tf.variable_scope('test') as vs:
       output1 = tf.contrib.layers.legacy_relu(self.input, 8)
@@ -1206,132 +1186,6 @@ class LegacyFullyConnectedTest(tf.test.TestCase):
         tf.contrib.layers.legacy_fully_connected(x,
                                                  2,
                                                  activation_fn=tf.nn.softmax)
-
-
-class LegacyConvolution2dTest(tf.test.TestCase):
-
-  def setUp(self):
-    tf.test.TestCase.setUp(self)
-    tf.set_random_seed(1234)
-    self.input = tf.constant(np.arange(2 * 3 * 3 * 4).reshape(
-        [2, 3, 3, 4]).astype(np.float32))
-    assert not tf.get_collection(tf.GraphKeys.SUMMARIES)
-
-  def test_basic_use(self):
-    output = tf.contrib.layers.legacy_convolution2d(self.input,
-                                                    8, (3, 3),
-                                                    activation_fn=tf.nn.relu)
-
-    with tf.Session() as sess:
-      with self.assertRaises(tf.errors.FailedPreconditionError):
-        sess.run(output)
-
-      tf.initialize_all_variables().run()
-      out_value = sess.run(output)
-
-    self.assertEqual(output.get_shape().as_list(), [2, 3, 3, 8])
-    self.assertTrue(np.all(out_value >= 0),
-                    'Relu should have capped all values.')
-    self.assertEqual(2,
-                     len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
-    self.assertEqual(0,
-                     len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)))
-
-  def test_variable_reuse_with_scope(self):
-    with tf.variable_scope('test') as vs:
-      output1 = tf.contrib.layers.legacy_convolution2d(self.input,
-                                                       8, (3, 3),
-                                                       activation_fn=tf.nn.relu)
-      output2 = tf.contrib.layers.legacy_convolution2d(self.input,
-                                                       8, (3, 3),
-                                                       activation_fn=tf.nn.relu)
-
-    with tf.variable_scope(vs, reuse=True):
-      output3 = tf.contrib.layers.legacy_convolution2d(self.input,
-                                                       8, (3, 3),
-                                                       activation_fn=tf.nn.relu)
-
-    with tf.Session() as sess:
-      tf.initialize_all_variables().run()
-      out_value1, out_value2, out_value3 = sess.run([output1, output2, output3])
-
-    self.assertFalse(np.allclose(out_value1, out_value2))
-    self.assertAllClose(out_value1, out_value3)
-
-  def test_variable_reuse_with_template(self):
-    tmpl1 = tf.make_template('test',
-                             tf.contrib.layers.legacy_convolution2d,
-                             kernel_size=(3, 3),
-                             num_output_channels=8)
-    output1 = tmpl1(self.input)
-    output2 = tmpl1(self.input)
-
-    with tf.Session() as sess:
-      tf.initialize_all_variables().run()
-      out_value1, out_value2 = sess.run([output1, output2])
-    self.assertAllClose(out_value1, out_value2)
-
-  def test_custom_initializers(self):
-    output = tf.contrib.layers.legacy_convolution2d(
-        self.input,
-        2, (3, 3),
-        activation_fn=tf.nn.relu,
-        weight_init=tf.constant_initializer(2.0),
-        bias_init=tf.constant_initializer(1.0),
-        padding='VALID')
-
-    with tf.Session() as sess:
-      tf.initialize_all_variables().run()
-      out_value = sess.run(output)
-
-    self.assertAllClose(
-        np.array([[[[1261., 1261.]]], [[[3853., 3853.]]]]), out_value)
-
-  def test_custom_collections(self):
-    tf.contrib.layers.legacy_convolution2d(self.input,
-                                           2, (3, 3),
-                                           activation_fn=tf.nn.relu,
-                                           weight_collections=['unbiased'],
-                                           bias_collections=['biased'])
-
-    self.assertEquals(1, len(tf.get_collection('unbiased')))
-    self.assertEquals(1, len(tf.get_collection('biased')))
-
-  def test_all_custom_collections(self):
-    tf.contrib.layers.legacy_convolution2d(
-        self.input,
-        2, (3, 3),
-        activation_fn=tf.nn.relu,
-        weight_collections=['unbiased', 'all'],
-        bias_collections=['biased', 'all'])
-
-    self.assertEquals(1, len(tf.get_collection('unbiased')))
-    self.assertEquals(1, len(tf.get_collection('biased')))
-    self.assertEquals(2, len(tf.get_collection('all')))
-    self.assertEquals(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
-                      tf.get_collection('all'))
-
-  def test_regularizer(self):
-    cnt = [0]
-    tensor = tf.constant(5.0)
-    def test_fn(_):
-      cnt[0] += 1
-      return tensor
-
-    tf.contrib.layers.legacy_convolution2d(self.input,
-                                           2, (3, 3),
-                                           weight_regularizer=test_fn)
-
-    self.assertEqual([tensor],
-                     tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
-    self.assertEqual(1, cnt[0])
-
-  def test_no_bias(self):
-    tf.contrib.layers.legacy_convolution2d(self.input,
-                                           2, (3, 3),
-                                           bias_init=None)
-    self.assertEqual(1,
-                     len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)))
 
 
 if __name__ == '__main__':

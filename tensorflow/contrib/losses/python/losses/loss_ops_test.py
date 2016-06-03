@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -312,29 +312,29 @@ class LogLossTest(tf.test.TestCase):
   def testValueErrorThrownWhenWeightIsNone(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        tf.contrib.losses.log(self._targets, self._targets, weight=None)
+        tf.contrib.losses.log_loss(self._targets, self._targets, weight=None)
 
   def testAllCorrectNoLossWeight(self):
-    loss = tf.contrib.losses.log(self._targets, self._targets)
+    loss = tf.contrib.losses.log_loss(self._targets, self._targets)
     with self.test_session():
       self.assertAlmostEqual(0.0, loss.eval(), 3)
 
   def testAllCorrectNoLossWeightWithPlaceholder(self):
     tf_predictions = tf.placeholder(tf.float32, shape=self._np_targets.shape)
-    loss = tf.contrib.losses.log(tf_predictions, self._targets)
+    loss = tf.contrib.losses.log_loss(tf_predictions, self._targets)
     with self.test_session():
       self.assertAlmostEqual(0.0, loss.eval(feed_dict={
           tf_predictions: self._np_targets}), 3)
 
   def testNonZeroLoss(self):
-    loss = tf.contrib.losses.log(self._predictions, self._targets)
+    loss = tf.contrib.losses.log_loss(self._predictions, self._targets)
     with self.test_session():
       self.assertAlmostEqual(-np.sum(self._expected_losses) / 6.0,
                              loss.eval(), 3)
 
   def testNonZeroLossWithPythonScalarWeight(self):
     weight = 2.3
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(weight * -np.sum(self._expected_losses) / 6.0,
@@ -342,7 +342,7 @@ class LogLossTest(tf.test.TestCase):
 
   def testNonZeroLossWithScalarTensorWeight(self):
     weight = 2.3
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         self._predictions, self._targets, tf.constant(weight))
     with self.test_session():
       self.assertAlmostEqual(weight * -np.sum(self._expected_losses) / 6.0,
@@ -352,7 +352,7 @@ class LogLossTest(tf.test.TestCase):
     tf_predictions = tf.placeholder(tf.float32,
                                     shape=self._np_predictions.shape)
     weight = 2.3
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         tf_predictions, self._targets, tf.constant(weight))
     with self.test_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._np_predictions})
@@ -362,7 +362,7 @@ class LogLossTest(tf.test.TestCase):
   def testNonZeroLossWithScalarTensorWeightAndPlaceholderWithRankOnly(self):
     tf_predictions = tf.placeholder(tf.float32, shape=[None, None])
     weight = 2.3
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         tf_predictions, self._targets, tf.constant(weight))
     with self.test_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._np_predictions})
@@ -374,7 +374,7 @@ class LogLossTest(tf.test.TestCase):
     expectedes = np.multiply(
         self._expected_losses,
         np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(-np.sum(expectedes) / 6.0,
@@ -385,7 +385,7 @@ class LogLossTest(tf.test.TestCase):
     expectedes = np.multiply(
         self._expected_losses,
         np.asarray([1.2, 1.2, 1.2, 0, 0, 0]).reshape((2, 3)))
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(-np.sum(expectedes) / 3.0,
@@ -396,7 +396,7 @@ class LogLossTest(tf.test.TestCase):
     expectedes = np.multiply(
         self._expected_losses,
         np.asarray([1.2, 1.2, 1.2, 0, 0, 0]).reshape((2, 3)))
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(-np.sum(expectedes) / 3.0,
@@ -406,13 +406,13 @@ class LogLossTest(tf.test.TestCase):
     weight = tf.constant(np.random.normal(size=(2, 4)), shape=[2, 4])
     with self.test_session():
       with self.assertRaises(ValueError):
-        tf.contrib.losses.log(self._predictions, self._targets, weight)
+        tf.contrib.losses.log_loss(self._predictions, self._targets, weight)
 
   def testNonZeroLossWithMeasurementSpecificWeights(self):
     weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3))
     expectedes = np.multiply(self._expected_losses, weight)
 
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         self._predictions,
         self._targets,
         weight=tf.constant(weight, shape=(2, 3)))
@@ -424,7 +424,7 @@ class LogLossTest(tf.test.TestCase):
     expectedes = np.multiply(self._expected_losses, weight)
 
     tf_predictions = tf.placeholder(tf.float32, shape=[2, 3])
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         tf_predictions,
         self._targets,
         weight=tf.constant(weight, shape=(2, 3)))
@@ -437,7 +437,7 @@ class LogLossTest(tf.test.TestCase):
     weight = np.array([0, 0, 0, 0, 0, 2]).reshape((2, 3))
     expectedes = np.multiply(self._expected_losses, weight)
 
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         self._predictions,
         self._targets,
         weight=tf.constant(weight, shape=(2, 3)))
@@ -450,7 +450,7 @@ class LogLossTest(tf.test.TestCase):
 
     tf_predictions = tf.placeholder(tf.float32, shape=[2, 3])
     tf_weight = tf.constant(weight, shape=(2, 3))
-    loss = tf.contrib.losses.log(tf_predictions, self._targets, tf_weight)
+    loss = tf.contrib.losses.log_loss(tf_predictions, self._targets, tf_weight)
 
     with self.test_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._np_predictions})
@@ -458,7 +458,7 @@ class LogLossTest(tf.test.TestCase):
 
   def testLossWithSampleSpecificWeightsAllZero(self):
     tf_weight = tf.zeros(shape=(2, 3))
-    loss = tf.contrib.losses.log(
+    loss = tf.contrib.losses.log_loss(
         self._predictions, self._targets, tf_weight)
     with self.test_session():
       self.assertAlmostEqual(0.0, loss.eval(), 3)

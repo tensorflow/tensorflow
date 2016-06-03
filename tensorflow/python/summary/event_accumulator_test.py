@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -192,7 +192,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen.AddImage('im2')
     gen.AddAudio('snd1')
     gen.AddAudio('snd2')
-    self.assertEqual(acc.Tags(), self.empty)
     acc.Reload()
     self.assertTagsEqual(acc.Tags(), {
         ea.IMAGES: ['im1', 'im2'],
@@ -628,6 +627,38 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 200])
     self.assertEqual([x.step for x in acc.Scalars('s2')], [])
 
+  def testFirstEventTimestamp(self):
+    """Test that FirstEventTimestamp() returns wall_time of the first event."""
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+    gen.AddEvent(tf.Event(wall_time=10, step=20, file_version='brain.Event:2'))
+    gen.AddScalar('s1', wall_time=30, step=40, value=20)
+    self.assertEqual(acc.FirstEventTimestamp(), 10)
+
+  def testReloadPopulatesFirstEventTimestamp(self):
+    """Test that Reload() means FirstEventTimestamp() won't load events."""
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+    gen.AddEvent(tf.Event(wall_time=1, step=2, file_version='brain.Event:2'))
+
+    acc.Reload()
+
+    def _Die(*args, **kwargs):  # pylint: disable=unused-argument
+      raise RuntimeError('Load() should not be called')
+
+    self.stubs.Set(gen, 'Load', _Die)
+    self.assertEqual(acc.FirstEventTimestamp(), 1)
+
+  def testFirstEventTimestampLoadsEvent(self):
+    """Test that FirstEventTimestamp() doesn't discard the loaded event."""
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+    gen.AddEvent(tf.Event(wall_time=1, step=2, file_version='brain.Event:2'))
+
+    self.assertEqual(acc.FirstEventTimestamp(), 1)
+    acc.Reload()
+    self.assertEqual(acc.file_version, 2.0)
+
 
 class RealisticEventAccumulatorTest(EventAccumulatorTest):
 
@@ -659,7 +690,7 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     device_stats.device = 'test device'
     writer.add_run_metadata(run_metadata, 'test run')
 
-    # Write a bunch of events using the writer
+    # Write a bunch of events using the writer.
     for i in xrange(30):
       summ_id = FakeScalarSummary('id', i)
       summ_sq = FakeScalarSummary('sq', i * i)
@@ -670,15 +701,17 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     # Verify that we can load those events properly
     acc = ea.EventAccumulator(directory)
     acc.Reload()
-    self.assertTagsEqual(acc.Tags(), {
-        ea.IMAGES: [],
-        ea.AUDIO: [],
-        ea.SCALARS: ['id', 'sq'],
-        ea.HISTOGRAMS: [],
-        ea.COMPRESSED_HISTOGRAMS: [],
-        ea.GRAPH: True,
-        ea.RUN_METADATA: ['test run']
-    })
+    self.assertTagsEqual(
+        acc.Tags(),
+        {
+            ea.IMAGES: [],
+            ea.AUDIO: [],
+            ea.SCALARS: ['id', 'sq'],
+            ea.HISTOGRAMS: [],
+            ea.COMPRESSED_HISTOGRAMS: [],
+            ea.GRAPH: True,
+            ea.RUN_METADATA: ['test run']
+        })
     id_events = acc.Scalars('id')
     sq_events = acc.Scalars('sq')
     self.assertEqual(30, len(id_events))

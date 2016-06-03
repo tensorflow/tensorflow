@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -191,7 +191,7 @@ class FeatureColumnTest(tf.test.TestCase):
                                                                10,
                                                                dtype=tf.float32)
 
-  def testCreateDictForParseExample(self):
+  def testCreateFeatureSpec(self):
     sparse_col = tf.contrib.layers.sparse_column_with_hash_bucket(
         "sparse_column", hash_bucket_size=100)
     embedding_col = tf.contrib.layers.embedding_column(
@@ -219,7 +219,7 @@ class FeatureColumnTest(tf.test.TestCase):
                            real_valued_col1, real_valued_col2,
                            bucketized_col1, bucketized_col2,
                            cross_col])
-    config = tf.contrib.layers.create_dict_for_parse_example(feature_columns)
+    config = tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)
     self.assertDictEqual({
         "sparse_column": tf.VarLenFeature(tf.string),
         "sparse_column_for_embedding": tf.VarLenFeature(tf.string),
@@ -232,7 +232,7 @@ class FeatureColumnTest(tf.test.TestCase):
         "cross_aaa": tf.VarLenFeature(tf.string),
         "cross_bbb": tf.VarLenFeature(tf.string)}, config)
 
-  def testCreateDictForParseExample_RealValuedColumnWithDefaultValue(self):
+  def testCreateFeatureSpec_RealValuedColumnWithDefaultValue(self):
     real_valued_col1 = tf.contrib.layers.real_valued_column(
         "real_valued_column1", default_value=2)
     real_valued_col2 = tf.contrib.layers.real_valued_column(
@@ -244,7 +244,7 @@ class FeatureColumnTest(tf.test.TestCase):
         default_value=[1, 0, 6])
     feature_columns = [real_valued_col1, real_valued_col2,
                        real_valued_col3, real_valued_col4]
-    config = tf.contrib.layers.create_dict_for_parse_example(feature_columns)
+    config = tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)
     self.assertEqual(4, len(config))
     self.assertDictEqual({
         "real_valued_column1":

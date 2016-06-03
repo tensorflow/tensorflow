@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -134,7 +134,7 @@ Node* Assign(Graph* g, Node* var, Node* val) {
 Node* Reduce(Graph* g, const string& reduce, Node* data, Node* axes,
              bool keep_dims) {
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), reduce)
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), reduce, g->op_registry())
                   .Input(data)
                   .Input(axes)
                   .Attr("keep_dims", keep_dims)
@@ -168,7 +168,7 @@ Node* Matmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
 Node* RandomNumberGenerator(const string& op, Graph* g, Node* input,
                             DataType dtype) {
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), op)
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), op, g->op_registry())
                   .Input(input)
                   .Attr("dtype", dtype)
                   .Attr("seed", 0)
@@ -190,14 +190,15 @@ Node* TruncatedNormal(Graph* g, Node* input, DataType dtype) {
 
 Node* Unary(Graph* g, const string& func, Node* input, int index) {
   Node* ret;
-  TF_CHECK_OK(
-      NodeBuilder(g->NewName("n"), func).Input(input, index).Finalize(g, &ret));
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())
+                  .Input(input, index)
+                  .Finalize(g, &ret));
   return ret;
 }
 
 Node* Binary(Graph* g, const string& func, Node* in0, Node* in1) {
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), func)
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())
                   .Input(in0)
                   .Input(in1)
                   .Finalize(g, &ret));
@@ -206,7 +207,7 @@ Node* Binary(Graph* g, const string& func, Node* in0, Node* in1) {
 
 Node* Multi(Graph* g, const string& func, gtl::ArraySlice<Node*> ins) {
   Node* ret;
-  auto b = NodeBuilder(g->NewName("n"), func);
+  auto b = NodeBuilder(g->NewName("n"), func, g->op_registry());
   for (Node* n : ins) b = b.Input(n);
   TF_CHECK_OK(b.Finalize(g, &ret));
   return ret;

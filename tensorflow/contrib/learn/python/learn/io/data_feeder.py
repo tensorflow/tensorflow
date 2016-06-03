@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,14 +35,16 @@ from .pandas_io import HAS_PANDAS, extract_pandas_data, extract_pandas_matrix, e
 from .dask_io import HAS_DASK, extract_dask_data, extract_dask_labels
 
 
-def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
+def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size=None):
   """Returns shape for input and output of the data feeder."""
-  if batch_size < 0:
+  if batch_size is None:
     batch_size = x_shape[0]
+  elif batch_size <= 0:
+    raise ValueError('Invalid batch_size %d.' % batch_size)
   x_shape = list(x_shape[1:]) if len(x_shape) > 1 else [1]
   input_shape = [batch_size] + x_shape
   if y_shape is None:
-    return input_shape, None
+    return input_shape, None, batch_size
   y_shape = list(y_shape[1:]) if len(y_shape) > 1 else []
   # Skip first dimension if it is 1.
   if y_shape and y_shape[0] == 1:
@@ -52,7 +53,7 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
     output_shape = [batch_size] + y_shape + [n_classes]
   else:
     output_shape = [batch_size] + y_shape
-  return input_shape, output_shape
+  return input_shape, output_shape, batch_size
 
 
 def _data_type_filter(X, y):
@@ -75,7 +76,7 @@ def _is_iterable(X):
 
 
 def setup_train_data_feeder(
-    X, y, n_classes, batch_size, shuffle=True, epochs=None):
+    X, y, n_classes, batch_size=None, shuffle=True, epochs=None):
   # pylint: disable=invalid-name
   """Create data feeder, to sample inputs from dataset.
 
@@ -85,7 +86,7 @@ def setup_train_data_feeder(
     X: numpy, pandas or Dask matrix or iterable.
     y: numpy, pandas or Dask array or iterable.
     n_classes: number of classes.
-    batch_size: size to split data into parts.
+    batch_size: size to split data into parts. Must be >= 1.
     shuffle: Whether to shuffle the inputs.
     epochs: Number of epochs to run.
 
@@ -111,33 +112,38 @@ def setup_train_data_feeder(
     if y is not None and not _is_iterable(y):
       raise ValueError('Both X and y should be iterators for '
                        'streaming learning to work.')
-    data_feeder_cls = StreamingDataFeeder
+    return StreamingDataFeeder(X, y, n_classes, batch_size)
   return data_feeder_cls(
       X, y, n_classes, batch_size, shuffle=shuffle, epochs=epochs)
 
 
-def _batch_data(X, batch_size):
+def _batch_data(X, batch_size=None):
   # pylint: disable=invalid-name
+  if (batch_size is not None) and (batch_size <= 0):
+    raise ValueError('Invalid batch_size %d.' % batch_size)
   chunk = []
   for data in X:
     chunk.append(data)
-    if batch_size > 0 and len(chunk) >= batch_size:
+    if (batch_size is not None) and (len(chunk) >= batch_size):
       yield np.matrix(chunk)
       chunk = []
   yield np.matrix(chunk)
 
 
-def setup_predict_data_feeder(X, batch_size=-1):
+def setup_predict_data_feeder(X, batch_size=None):
   # pylint: disable=invalid-name
   """Returns an iterable for feeding into predict step.
 
   Args:
     X: numpy, pandas, Dask array or iterable.
     batch_size: Size of batches to split data into.
-      If negative, returns one batch of full size.
+      If `None`, returns one batch of full size.
 
   Returns:
     List or iterator of parts of data to predict on.
+
+  Raises:
+    ValueError: if batch_size <= 0.
   """
   if HAS_DASK:
     X = extract_dask_data(X)
@@ -147,7 +153,9 @@ def setup_predict_data_feeder(X, batch_size=-1):
     return _batch_data(X, batch_size)
   if len(X.shape) == 1:
     X = np.reshape(X, (-1, 1))
-  if batch_size > 0:
+  if batch_size is not None:
+    if batch_size <= 0:
+      raise ValueError('Invalid batch_size %d.' % batch_size)
     n_batches = int(math.ceil(float(len(X)) / batch_size))
     return [X[i * batch_size:(i + 1) * batch_size] for i in xrange(n_batches)]
   return [X]
@@ -211,7 +219,7 @@ class DataFeeder(object):
   """
 
   def __init__(
-      self, X, y, n_classes, batch_size, shuffle=True, random_state=None,
+      self, X, y, n_classes, batch_size=None, shuffle=True, random_state=None,
       epochs=None):
     # pylint: disable=invalid-name
     x_dtype = np.int64 if X.dtype == np.int64 else np.float32
@@ -223,21 +231,20 @@ class DataFeeder(object):
       self.y = (None if y is None else check_array(y, dtype=y_dtype))
     else:
       self.y = y
+      if isinstance(self.y, list):
+        self.y = np.array(y)
     self.n_classes = n_classes
-    self.batch_size = batch_size
     self.max_epochs = epochs
-    self.input_shape, self.output_shape = _get_in_out_shape(self.X.shape, None
-                                                            if self.y is None
-                                                            else self.y.shape,
-                                                            n_classes,
-                                                            batch_size)
+    self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
+        self.X.shape, None if self.y is None else self.y.shape, n_classes,
+        batch_size)
     # Input dtype matches dtype of X.
     self.input_dtype = x_dtype
     # self.n_classes is None means we're passing in raw target indices
     if n_classes is not None or y is None:
       self.output_dtype = np.float32
     else:
-      self.output_dtype = y.dtype
+      self.output_dtype = self.y.dtype
     self.shuffle = shuffle
     self.random_state = np.random.RandomState(
         42) if random_state is None else random_state
@@ -248,6 +255,10 @@ class DataFeeder(object):
     self.offset = 0
     self.epoch = 0
     self._epoch_placeholder = None
+
+  @property
+  def batch_size(self):
+    return self._batch_size
 
   def make_epoch_variable(self):
     """Adds a placeholder variable for the epoch to the graph.
@@ -301,7 +312,7 @@ class DataFeeder(object):
     return {
         'epoch': self.epoch,
         'offset': self.offset,
-        'batch_size': self.batch_size
+        'batch_size': self._batch_size
     }
 
   def get_feed_dict_fn(self):
@@ -320,27 +331,21 @@ class DataFeeder(object):
       if self._epoch_placeholder is not None:
         feed_dict[self._epoch_placeholder.name] = [self.epoch]
 
-      # take next batch of indices
-      if self.batch_size < 0:
-        batch_indices = self.indices
-      else:
-        end = min(self.X.shape[0], self.offset + self.batch_size)
-        batch_indices = self.indices[self.offset:end]
+      # Take next batch of indices.
+      end = min(self.X.shape[0], self.offset + self._batch_size)
+      batch_indices = self.indices[self.offset:end]
 
-      # assign input features from random indices
+      # Assign input features from random indices.
       inp = (
           np.array(self.X[batch_indices]).reshape((batch_indices.shape[0], 1))
           if len(self.X.shape) == 1 else self.X[batch_indices])
       feed_dict[self._input_placeholder.name] = inp
 
       # move offset and reset it if necessary
-      if self.batch_size > 0:
-        self.offset += self.batch_size
-        if self.offset >= self.X.shape[0]:
-          self.indices = self.random_state.permutation(self.X.shape[0])
-          self.offset = 0
-          self.epoch += 1
-      else:
+      self.offset += self._batch_size
+      if self.offset >= self.X.shape[0]:
+        self.indices = self.random_state.permutation(self.X.shape[0])
+        self.offset = 0
         self.epoch += 1
 
       # return early if there are no labels
@@ -396,7 +401,8 @@ class StreamingDataFeeder(DataFeeder):
     output_dtype: dtype of output.
   """
 
-  def __init__(self, X, y, n_classes, batch_size, shuffle=False, epochs=None):
+  def __init__(self, X, y, n_classes, batch_size):
+    # pylint: disable=invalid-name,super-init-not-called
     X_first_el = six.next(X)
     self.X = itertools.chain([X_first_el], X)
     if y is not None:
@@ -406,8 +412,7 @@ class StreamingDataFeeder(DataFeeder):
       y_first_el = None
       self.y = None
     self.n_classes = n_classes
-    self.batch_size = batch_size
-    self.input_shape, self.output_shape = _get_in_out_shape(
+    self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
         [1] + list(X_first_el.shape),
         [1] + list(y_first_el.shape) if y is not None else None,
         n_classes,
@@ -418,7 +423,13 @@ class StreamingDataFeeder(DataFeeder):
     if self.input_dtype == np.float64:
       self.input_dtype = np.float32
     # Output types are floats, due to both softmaxes and regression req.
-    self.output_dtype = np.float32
+    if n_classes is not None and n_classes > 0:
+      self.output_dtype = np.float32
+    elif y is not None:
+      if isinstance(y_first_el, list) or isinstance(y_first_el, np.ndarray):
+        self.output_dtype = np.dtype(type(y_first_el[0]))
+      else:
+        self.output_dtype = np.dtype(type(y_first_el))
 
   def get_feed_params(self):
     """Function returns a dict with data feed params while training.
@@ -426,14 +437,10 @@ class StreamingDataFeeder(DataFeeder):
     Returns:
       A dict with data feed params while training.
     """
-    return {'batch_size': self.batch_size}
+    return {'batch_size': self._batch_size}
 
   def get_feed_dict_fn(self):
     """Returns a function, that will sample data and provide it to placeholders.
-
-    Args:
-      input_placeholder: tf.Placeholder for input features mini batch.
-      output_placeholder: tf.Placeholder for output targets.
 
     Returns:
       A function that when called samples a random subset of batch size
@@ -442,12 +449,17 @@ class StreamingDataFeeder(DataFeeder):
     self.stopped = False
 
     def _feed_dict_fn():
+      """Sample data and provides it to placeholders.
+
+      Returns:
+        Dict of input and output tensors.
+      """
       if self.stopped:
         raise StopIteration
       inp = np.zeros(self.input_shape, dtype=self.input_dtype)
       if self.y is not None:
         out = np.zeros(self.output_shape, dtype=self.output_dtype)
-      for i in xrange(self.batch_size):
+      for i in xrange(self._batch_size):
         # Add handling when queue ends.
         try:
           inp[i, :] = six.next(self.X)
@@ -477,10 +489,10 @@ class StreamingDataFeeder(DataFeeder):
 
 
 class DaskDataFeeder(object):
-  """Data feeder for TF trainer that reads data from dask.Series and dask.DataFrame.
+  """Data feeder for that reads data from dask.Series and dask.DataFrame.
 
   Numpy arrays can be serialized to disk and it's possible to do random seeks
-  into them. DaskDataFeeder will remove requirement to have full dataset in the 
+  into them. DaskDataFeeder will remove requirement to have full dataset in the
   memory and still do random seeks for sampling of batches.
 
   Parameters:
@@ -502,8 +514,10 @@ class DaskDataFeeder(object):
     input_dtype: dtype of input.
     output_dtype: dtype of output.
   """
-  def __init__(self, X, y, n_classes, batch_size, shuffle=True, random_state=None):
-    import dask.dataframe as dd
+  def __init__(self, X, y, n_classes, batch_size, shuffle=True,
+               random_state=None, epochs=None):
+    # pylint: disable=invalid-name,super-init-not-called
+    import dask.dataframe as dd  # pylint: disable=g-import-not-at-top
     # TODO(terrytangyuan): check X and y dtypes in dask_io like pandas
     self.X = X
     self.y = y
@@ -524,17 +538,19 @@ class DaskDataFeeder(object):
     X_count = X.count().compute()[0]
     X_shape = (X_count, len(self.X.columns))
     y_shape = (X_count, len(self.y.columns))
-    self.sample_fraction = batch_size / float(X_count)
-    self.input_shape, self.output_shape = _get_in_out_shape(X_shape, y_shape,
-                                                            n_classes,
-                                                            batch_size)
+    # TODO(terrytangyuan): Add support for shuffle and epochs.
+    self.shuffle = shuffle
+    self.epochs = epochs
+    self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
+        X_shape, y_shape, n_classes, batch_size)
+    self.sample_fraction = self._batch_size / float(X_count)
+    # TODO(ptucker,ipolosukhin): Remove this?
     # self.X.dtypes[0], self.y.dtypes[self.y_columns]
     self.input_dtype, self.output_dtype = np.float32, np.float32
     if random_state is None:
       self.random_state = 66
     else:
       self.random_state = random_state
-    self.batch_size = batch_size
 
   def get_feed_params(self):
     """Function returns a dict with data feed params while training.
@@ -542,7 +558,7 @@ class DaskDataFeeder(object):
     Returns:
       A dict with data feed params while training.
     """
-    return {'batch_size': self.batch_size}
+    return {'batch_size': self._batch_size}
 
   def get_feed_dict_fn(self, input_placeholder, output_placeholder):
     """Returns a function, that will sample data and provide it to placeholders.
