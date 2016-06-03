@@ -270,6 +270,18 @@ def _DepthwiseConv2dNativeGrad(op, grad):
   ]
 
 
+@ops.RegisterGradient("Dilation2D")
+def _Dilation2DGrad(op, grad):
+  return [nn_ops.dilation2d_backprop_input(op.inputs[0], op.inputs[1], grad,
+                                           op.get_attr("strides"),
+                                           op.get_attr("rates"),
+                                           op.get_attr("padding")),
+          nn_ops.dilation2d_backprop_filter(op.inputs[0], op.inputs[1], grad,
+                                            op.get_attr("strides"),
+                                            op.get_attr("rates"),
+                                            op.get_attr("padding"))]
+
+
 @ops.RegisterGradient("LRN")
 def _LRNGrad(op, grad):
   depth_radius = op.get_attr("depth_radius")

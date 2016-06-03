@@ -1227,6 +1227,7 @@ tf_kernel_libraries(
         ":conv_ops",
         ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
+        ":dilation_ops",
         ":ops_util",
         ":pooling_ops",
         "//tensorflow/core:framework",
@@ -1343,6 +1344,19 @@ cc_library(
     deps = [
         ":eigen_helpers",
         ":ops_util_hdrs",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "dilation_ops",
+    prefix = "dilation_ops",
+    deps = [
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],
 )
