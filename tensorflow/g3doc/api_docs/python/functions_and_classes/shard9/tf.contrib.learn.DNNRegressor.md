@@ -288,24 +288,6 @@ Returns predictions for given features.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.predict_proba(x=None, input_fn=None, batch_size=None)` {#DNNRegressor.predict_proba}
-
-Returns prediction probabilities for given features (classification).
-
-##### Args:
-
-
-*  <b>`x`</b>: features.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
-*  <b>`batch_size`</b>: Override default batch size.
-
-##### Returns:
-
-  Numpy array of predicted probabilities.
-
-
-- - -
-
 #### `tf.contrib.learn.DNNRegressor.set_params(**params)` {#DNNRegressor.set_params}
 
 Set the parameters of this estimator.
