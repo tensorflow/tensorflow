@@ -188,7 +188,8 @@ export function parseGraphPbTxt(input: Blob):
 /**
  * Parses a blob of proto txt file into a StepStats object.
  */
-function parseStatsPbTxt(input: Blob): Promise<tf.graph.proto.StepStats> {
+export function parseStatsPbTxt(input: Blob):
+    Promise<tf.graph.proto.StepStats> {
   return parsePbtxtFile(input, METADATA_REPEATED_FIELDS)
       .then(obj => obj['step_stats']);
 }

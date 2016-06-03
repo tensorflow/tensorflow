@@ -444,7 +444,7 @@ export function joinAndAggregateStats(
   // Reset stats for each group node.
   _.each(h.getNodeMap(), (node, nodeName) => {
     if (node.isGroupNode) {
-      node.stats = new NodeStats(0, 0, null);
+      node.stats = new NodeStats(null);
       (<GroupNode>node).deviceHistogram = {};
     }
   });
