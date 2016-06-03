@@ -1,0 +1,1 @@
+bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package --copt=-DCTC_DISABLE_OMP --copt=-D_FORCE_INLINES && bazel-bin/tensorflow/tools/pip_package/build_pip_package /home/weiwan/package/tensorflow_531_pkg
