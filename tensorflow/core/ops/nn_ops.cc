@@ -28,7 +28,7 @@ REGISTER_OP("AvgPool")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, double}")
+    .Attr("T: {float, half, double}")
     .Doc(R"doc(
 Performs average pooling on the input.
 
@@ -55,7 +55,7 @@ REGISTER_OP("AvgPoolGrad")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, double}")
+    .Attr("T: {float, half, double}")
     .Doc(R"doc(
 Computes gradients of the average pooling function.
 
@@ -642,12 +642,13 @@ output: The gradients for LRN.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MaxPool")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Input("input: float")
-    .Output("output: float")
+    .Input("input: T")
+    .Output("output: T")
     .Doc(R"doc(
 Performs max pooling on the input.
 
@@ -669,10 +670,11 @@ REGISTER_OP("MaxPoolGrad")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Input("orig_input: float")
-    .Input("orig_output: float")
-    .Input("grad: float")
-    .Output("output: float")
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Computes gradients of the maxpooling function.
 
@@ -696,9 +698,10 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Attr("strides: list(int) >= 4")
     .Attr("Targmax: {int32, int64} = DT_INT64")
     .Attr(GetPaddingAttrString())
-    .Input("input: float")
-    .Output("output: float")
+    .Input("input: T")
+    .Output("output: T")
     .Output("argmax: Targmax")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Performs max pooling on the input and outputs both max values and indices.
 
@@ -720,10 +723,11 @@ REGISTER_OP("MaxPoolGradWithArgmax")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr("Targmax: {int32, int64}")
-    .Input("input: float")
-    .Input("grad: float")
+    .Input("input: T")
+    .Input("grad: T")
     .Input("argmax: Targmax")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Computes gradients of the maxpooling function.
 
