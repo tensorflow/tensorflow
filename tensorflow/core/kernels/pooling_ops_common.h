@@ -311,7 +311,7 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
       }
     }
   }
-  DCHECK_GT(out_count.minCoeff(), T(0));
+  DCHECK_GT(out_count.minCoeff(), 0);
   out_mat.array().rowwise() /= out_count.transpose().array();
 }
 

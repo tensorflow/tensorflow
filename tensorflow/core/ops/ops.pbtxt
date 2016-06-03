@@ -1170,7 +1170,6 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
-        type: DT_HALF
         type: DT_DOUBLE
       }
     }
@@ -1367,7 +1366,6 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
-        type: DT_HALF
         type: DT_DOUBLE
       }
     }
@@ -6472,25 +6470,12 @@ op {
   input_arg {
     name: "input"
     description: "4-D input to pool over."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   output_arg {
     name: "output"
     description: "The max pooled output tensor."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    default_value {
-      type: DT_FLOAT
-    }
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_HALF
-      }
-    }
+    type: DT_FLOAT
   }
   attr {
     name: "ksize"
@@ -6669,22 +6654,22 @@ op {
   input_arg {
     name: "orig_input"
     description: "The original input tensor."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   input_arg {
     name: "orig_output"
     description: "The original output tensor."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   input_arg {
     name: "grad"
     description: "4-D.  Gradients w.r.t. the output of `max_pool`."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   output_arg {
     name: "output"
     description: "Gradients w.r.t. the input to `max_pool`."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   attr {
     name: "ksize"
@@ -6725,19 +6710,6 @@ op {
       }
     }
   }
-  attr {
-    name: "T"
-    type: "type"
-    default_value {
-      type: DT_FLOAT
-    }
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_HALF
-      }
-    }
-  }
   summary: "Computes gradients of the maxpooling function."
 }
 op {
@@ -6745,12 +6717,12 @@ op {
   input_arg {
     name: "input"
     description: "The original input."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   input_arg {
     name: "grad"
     description: "4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the\noutput of `max_pool`."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   input_arg {
     name: "argmax"
@@ -6760,7 +6732,7 @@ op {
   output_arg {
     name: "output"
     description: "Gradients w.r.t. the input of `max_pool`."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   attr {
     name: "ksize"
@@ -6797,19 +6769,6 @@ op {
       }
     }
   }
-  attr {
-    name: "T"
-    type: "type"
-    default_value {
-      type: DT_FLOAT
-    }
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_HALF
-      }
-    }
-  }
   summary: "Computes gradients of the maxpooling function."
 }
 op {
@@ -6817,12 +6776,12 @@ op {
   input_arg {
     name: "input"
     description: "4-D with shape `[batch, height, width, channels]`.  Input to pool over."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   output_arg {
     name: "output"
     description: "The max pooled output tensor."
-    type_attr: "T"
+    type: DT_FLOAT
   }
   output_arg {
     name: "argmax"
@@ -6864,19 +6823,6 @@ op {
       list {
         s: "SAME"
         s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "T"
-    type: "type"
-    default_value {
-      type: DT_FLOAT
-    }
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_HALF
       }
     }
   }

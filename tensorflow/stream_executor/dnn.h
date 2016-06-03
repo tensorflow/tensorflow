@@ -1011,13 +1011,6 @@ class DnnSupport {
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemory<float>* output_data) = 0;
 
-  virtual bool DoPoolForward(Stream* stream,
-                             const dnn::PoolingDescriptor& pooling_dimensions,
-                             const dnn::BatchDescriptor& input_dimensions,
-                             const DeviceMemory<Eigen::half>& input_data,
-                             const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<Eigen::half>* output_data) = 0;
-
   // Performs differentiation of the pooling operation.
   virtual bool DoPoolBackward(Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,
@@ -1027,15 +1020,6 @@ class DnnSupport {
                               const DeviceMemory<float>& output_data,
                               const DeviceMemory<float>& input_diff_data,
                               DeviceMemory<float>* output_diff_data) = 0;
-
-  virtual bool DoPoolBackward(Stream* stream,
-                              const dnn::PoolingDescriptor& pooling_dimensions,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              const DeviceMemory<Eigen::half>& input_data,
-                              const dnn::BatchDescriptor& output_dimensions,
-                              const DeviceMemory<Eigen::half>& output_data,
-                              const DeviceMemory<Eigen::half>& input_diff_data,
-                              DeviceMemory<Eigen::half>* output_diff_data) = 0;
 
   // Applies local response normalization to the values from
   // input_data and writes the result to output_data. See comments on

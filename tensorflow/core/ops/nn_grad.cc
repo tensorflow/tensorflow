@@ -154,25 +154,22 @@ Status MaxPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
     // Arg defs
-    {"input: T", "grad: T"},
+    {"input: float", "grad: float"},
     // Ret val defs
-    {"output: T"},
+    {"output: float"},
     // Attr defs
-    {"T: {float, half} = DT_FLOAT",
-     "ksize: list(int) >= 4",
+    {"ksize: list(int) >= 4",
      "strides: list(int) >= 4",
      GetPaddingAttrString()},
     // Nodes
     {
       // Invoke MaxPool again to recompute the outputs (removed by CSE?).
       {{"maxpool"}, "MaxPool", {"input"},
-       /*Attrs=*/{{"T", "$T"},
-                  {"ksize", "$ksize"},
+       /*Attrs=*/{{"ksize", "$ksize"},
                   {"strides", "$strides"},
                   {"padding", "$padding"}}},
       {{"output"}, "MaxPoolGrad", {"input", "maxpool", "grad"},
-       /*Attrs=*/{{"T", "$T"},
-                  {"ksize", "$ksize"},
+       /*Attrs=*/{{"ksize", "$ksize"},
                   {"strides", "$strides"},
                   {"padding", "$padding"}}}
     });

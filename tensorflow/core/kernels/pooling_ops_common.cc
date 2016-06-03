@@ -124,7 +124,6 @@ namespace functor {
   extern template struct TransformDepth<GPUDevice, T, Eigen::DenseIndex>;
 
 DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -369,9 +368,7 @@ void DnnPoolingGradOp<T>::Compute(
   }
 }
 
-template class DnnPoolingOp<Eigen::half>;
 template class DnnPoolingOp<float>;
-template class DnnPoolingGradOp<Eigen::half>;
 template class DnnPoolingGradOp<float>;
 
 #endif  // GOOGLE_CUDA

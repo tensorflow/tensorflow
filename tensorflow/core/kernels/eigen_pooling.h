@@ -309,7 +309,7 @@ struct AvgPoolMeanReducer {
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE AvgPoolMeanReducer() : scalarCount_(0) {
     typedef typename packet_traits<T>::type Packet;
-    packetCount_ = pset1<Packet>(T(0.0));
+    packetCount_ = pset1<Packet>(0.0);
   }
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void reduce(const T t, T* accum) {
