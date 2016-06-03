@@ -63,10 +63,13 @@ class DeviceMemory;
 class Timer;
 
 namespace dnn {
-struct BatchDescriptor;
-struct FilterDescriptor;
-struct ConvolutionDescriptor;
-struct ProfileResult;
+class BatchDescriptor;
+class FilterDescriptor;
+class ConvolutionDescriptor;
+class BatchDescriptor;
+class FilterDescriptor;
+class ConvolutionDescriptor;
+class ProfileResult;
 typedef int64 AlgorithmType;
 }  // namespace dnn
 
@@ -1257,7 +1260,7 @@ class Stream {
   // back-end implementation will be appropriately seeded by default.
   // At a minimum 16 bytes of data are required in the seed buffer.
   //
-  // To seed with good (non-reproducable) data:
+  // To seed with good (non-reproducible) data:
   //   File* f = File::Open("/dev/random", "r");
   //   int64 bytes_read = f->Read(seed_data, bytes_to_read);
   //   < error checking >
@@ -1297,7 +1300,7 @@ class Stream {
                      uint64 size);
 
   // Alternative interface for memcpying from device to host that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
   Stream &ThenMemcpyD2H(const DeviceMemory<T> &gpu_src,
@@ -1308,7 +1311,7 @@ class Stream {
   }
 
   // Alternative interface for memcpying from host to device that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
   Stream &ThenMemcpyH2D(port::ArraySlice<T> host_src,
@@ -1339,7 +1342,7 @@ class Stream {
 
   // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location
   // of
-  // size bytes, where bytes must be evenly 32-bit sized (i.e. evently
+  // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly
   // divisible
   // by 4). The location must not be null.
   Stream &ThenMemset32(DeviceMemoryBase *location, const uint32 &pattern,

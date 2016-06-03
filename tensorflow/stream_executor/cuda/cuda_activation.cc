@@ -27,8 +27,7 @@ CudaContext* ExtractCudaContext(CUDAExecutor *cuda_exec);
 CUDAExecutor *ExtractCudaExecutor(StreamExecutor *stream_exec);
 
 ScopedActivateExecutorContext::ScopedActivateExecutorContext(
-    CUDAExecutor *cuda_exec)
-    : cuda_exec_(cuda_exec),
+    CUDAExecutor *cuda_exec):
       driver_scoped_activate_context_(
           new ScopedActivateContext{ExtractCudaContext(cuda_exec)}) { }
 

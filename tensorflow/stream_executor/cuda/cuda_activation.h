@@ -51,8 +51,6 @@ class ScopedActivateExecutorContext {
   ~ScopedActivateExecutorContext();
 
  private:
-  // The CUDA executor implementation whose context is activated.
-  CUDAExecutor* cuda_exec_;
 
   // The cuda.h-using datatype that we wrap.
   ScopedActivateContext* driver_scoped_activate_context_;

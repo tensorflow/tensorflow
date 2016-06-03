@@ -7,7 +7,7 @@ The contrib directory contains project directories, each of which has designated
 owners. It is meant to contain features and contributions that eventually should
 get merged into core TensorFlow, but whose interfaces may still change, or which
 require some testing to see whether they can find broader acceptance. We are
-trying to keep dupliction within contrib to a minimum, so you may be asked to
+trying to keep duplication within contrib to a minimum, so you may be asked to
 refactor code in contrib to use some feature inside core or in another project
 in contrib rather than reimplementing the feature.
 
