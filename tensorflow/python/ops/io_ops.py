@@ -77,6 +77,7 @@ Queues](../../how_tos/threading_and_queues/index.md).
 
 @@QueueBase
 @@FIFOQueue
+@@PaddingFIFOQueue
 @@RandomShuffleQueue
 
 ## Dealing with the filesystem

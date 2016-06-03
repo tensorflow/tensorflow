@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Data Flow Operations."""
+"""TensorArray operations.
+
+## Classes containing dynamically sized arrays of Tensors.
+
+@@TensorArray
+"""
 # Mixture of pep8 and non-pep8 names, so disable pylint bad-name
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -37,8 +42,8 @@ class TensorArray(object):
   """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
 
   This class is meant to be used with dynamic iteration primitives such as
-  `While` loops, and supports gradient back-propagation via special "flow"
-  control flow dependencies.
+  `while_loop` and `map_fn`.  It supports gradient back-propagation via special
+  "flow" control flow dependencies.
 
   @@handle
   @@flow

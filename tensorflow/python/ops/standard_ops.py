@@ -66,6 +66,7 @@ from tensorflow.python.ops.state_ops import scatter_sub
 from tensorflow.python.ops.state_ops import scatter_update
 from tensorflow.python.ops.string_ops import *
 from tensorflow.python.ops.template import *
+from tensorflow.python.ops.tensor_array_ops import *
 from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *
 # pylint: enable=wildcard-import

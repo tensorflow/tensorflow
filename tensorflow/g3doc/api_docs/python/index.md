@@ -301,6 +301,13 @@
   * [`map_fn`](../../api_docs/python/functional_ops.md#map_fn)
   * [`scan`](../../api_docs/python/functional_ops.md#scan)
 
+* **[TensorArray Operations](../../api_docs/python/tensor_array_ops.md)**:
+  * [`concat`](../../api_docs/python/tensor_array_ops.md#concat)
+  * [`pack`](../../api_docs/python/tensor_array_ops.md#pack)
+  * [`split`](../../api_docs/python/tensor_array_ops.md#split)
+  * [`TensorArray`](../../api_docs/python/tensor_array_ops.md#TensorArray)
+  * [`unpack`](../../api_docs/python/tensor_array_ops.md#unpack)
+
 * **[Tensor Handle Operations](../../api_docs/python/session_ops.md)**:
   * [`delete_session_tensor`](../../api_docs/python/session_ops.md#delete_session_tensor)
   * [`get_session_handle`](../../api_docs/python/session_ops.md#get_session_handle)
@@ -377,6 +384,7 @@
   * [`limit_epochs`](../../api_docs/python/io_ops.md#limit_epochs)
   * [`match_filenames_once`](../../api_docs/python/io_ops.md#match_filenames_once)
   * [`matching_files`](../../api_docs/python/io_ops.md#matching_files)
+  * [`PaddingFIFOQueue`](../../api_docs/python/io_ops.md#PaddingFIFOQueue)
   * [`parse_example`](../../api_docs/python/io_ops.md#parse_example)
   * [`parse_single_example`](../../api_docs/python/io_ops.md#parse_single_example)
   * [`placeholder`](../../api_docs/python/io_ops.md#placeholder)

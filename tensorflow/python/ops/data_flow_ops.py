@@ -652,7 +652,8 @@ class PaddingFIFOQueue(QueueBase):
 
     Raises:
       ValueError: If shapes is not a list of shapes, or the lengths of dtypes
-        and shapes do not match.
+        and shapes do not match, or if names is specified and the lengths of
+        dtypes and names do not match.
     """
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes, unknown_dim_allowed=True)
