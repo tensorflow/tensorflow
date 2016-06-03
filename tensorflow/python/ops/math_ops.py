@@ -51,6 +51,10 @@ mathematical functions to your graph.
 @@cos
 @@sin
 @@lbeta
+@@tan
+@@acos
+@@asin
+@@atan
 @@lgamma
 @@digamma
 @@erf
@@ -313,8 +317,10 @@ def pow(x, y, name=None):
   ```
 
   Args:
-    x: A `Tensor` of type `float`, `double`, `int32`, `complex64`, or `int64`.
-    y: A `Tensor` of type `float`, `double`, `int32`, `complex64`, or `int64`.
+    x: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
+     `complex128`.
+    y: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
+     `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -359,7 +365,7 @@ def complex(real, imag, name=None):
     elif input_types == (dtypes.float32, dtypes.float32):
       Tout = dtypes.complex64
     else:
-      raise TypeError("Types of real and imag don't match: "
+      raise TypeError("real and imag have incorrect types: "
                       "{} {}".format(real.dtype.name, imag.dtype.name))
     return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
 
@@ -1422,6 +1428,9 @@ def tanh(x, name=None):
 
 
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
+ops.RegisterShape("Acos")(common_shapes.unchanged_shape)
+ops.RegisterShape("Asin")(common_shapes.unchanged_shape)
+ops.RegisterShape("Atan")(common_shapes.unchanged_shape)
 ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
 ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cos")(common_shapes.unchanged_shape)
@@ -1444,6 +1453,7 @@ ops.RegisterShape("Sqrt")(common_shapes.unchanged_shape)
 ops.RegisterShape("Square")(common_shapes.unchanged_shape)
 ops.RegisterShape("Sigmoid")(common_shapes.unchanged_shape)
 ops.RegisterShape("Tanh")(common_shapes.unchanged_shape)
+ops.RegisterShape("Tan")(common_shapes.unchanged_shape)
 ops.RegisterShape("Lgamma")(common_shapes.unchanged_shape)
 ops.RegisterShape("Digamma")(common_shapes.unchanged_shape)
 ops.RegisterShape("Erf")(common_shapes.unchanged_shape)

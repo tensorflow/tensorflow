@@ -243,6 +243,7 @@ def conv2d_transpose(value,
     strides: A list of ints. The stride of the sliding window for each
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: Optional name for the returned tensor.
 
   Returns:
@@ -296,7 +297,7 @@ def bias_add(value, bias, data_format=None, name=None):
 
   Args:
     value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-      `int16`, `int8`, or `complex64`.
+      `int16`, `int8`, `complex64`, or `complex128`.
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
@@ -330,7 +331,7 @@ def bias_add_v1(value, bias, name=None):
 
   Args:
     value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-      `int16`, `int8`, or `complex64`.
+      `int16`, `int8`, `complex64`, or `complex128`.
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
@@ -490,6 +491,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
@@ -517,6 +519,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     strides: A list of ints that has length >= 4.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 

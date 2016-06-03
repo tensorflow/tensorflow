@@ -146,7 +146,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     remote = "https://boringssl.googlesource.com/boringssl",
     build_file = path_prefix + "boringssl.BUILD",
   )
-
+  
   native.bind(
     name = "boringssl_err_data_c",
     actual = "@//" + path_prefix + "third_party/boringssl:err_data_c",

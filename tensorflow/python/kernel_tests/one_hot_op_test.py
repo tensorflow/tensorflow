@@ -116,9 +116,13 @@ class OneHotTest(tf.test.TestCase):
     self._testBasic(np.int64)
     self._testDefaultBasic(np.int64)
 
-  def testComplexBasic(self):
+  def testComplex64Basic(self):
     self._testBasic(np.complex64)
     self._testDefaultBasic(np.complex64)
+
+  def testComplex128Basic(self):
+    self._testBasic(np.complex128)
+    self._testDefaultBasic(np.complex128)
 
   def _testBatch(self, dtype):
     indices = np.asarray([[0, 2, -1, 1],

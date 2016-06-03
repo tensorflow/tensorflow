@@ -410,13 +410,13 @@ using pip. You'll need pip for that, so install it as described
 ### Clone the TensorFlow repository
 
 ```bash
-$ git clone --recurse-submodules https://github.com/tensorflow/tensorflow
+$ git clone https://github.com/tensorflow/tensorflow
 ```
 
-`--recurse-submodules` is required to fetch the protobuf library that TensorFlow
-depends on. Note that these instructions will install the latest master branch
+Note that these instructions will install the latest master branch
 of tensorflow. If you want to install a specific branch (such as a release branch),
-pass `-b <branchname>` to the `git clone` command.
+pass `-b <branchname>` to the `git clone` command and `--recurse-submodules` for
+r0.8 and earlier to fetch the protobuf library that TensorFlow depends on.
 
 ### Installation for Linux
 
@@ -612,17 +612,79 @@ which you can install as follows:
 $ sudo easy_install ipython
 ```
 
+If you plan to  build with GPU support you will need to make sure you have
+GNU coreutils installed via homebrew:
+
+```bash
+$ brew install coreutils
+```
+
+Next you will need to make sure you have a recent [CUDA
+Toolkit](https://developer.nvidia.com/cuda-toolkit) installed by either
+downloading the package for your version of OSX directly from
+[NVIDIA](https://developer.nvidia.com/cuda-downloads) or by using the [Homebrew
+Cask](https://caskroom.github.io/) extension:
+
+```bash
+$ brew tap caskroom/cask
+$ brew cask install cuda
+```
+
+Once you have the CUDA Toolkit installed you will need to setup the required
+environment variables by adding the following to your `~/.bash_profile`:
+
+```bash
+export CUDA_HOME=/usr/local/cuda
+export DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH:$CUDA_HOME/lib"
+export PATH="$CUDA_HOME/bin:$PATH"
+```
+
+Finally, you will also want to install the [CUDA Deep Neural
+Network](https://developer.nvidia.com/cudnn) (cuDNN) library which currently
+requires an [Accelerated Computing Developer
+Program](https://developer.nvidia.com/accelerated-computing-developer) account.
+Once you have it downloaded locally, you can unzip and move the header and
+libraries to your local CUDA Toolkit folder:
+
+```bash
+$ sudo mv include/cudnn.h /Developer/NVIDIA/CUDA-7.5/include/
+$ sudo mv lib/libcudnn* /Developer/NVIDIA/CUDA-7.5/lib
+$ sudo ln -s /Developer/NVIDIA/CUDA-7.5/lib/libcudnn* /usr/local/cuda/lib/
+```
+
 #### Configure the installation
 
 Run the `configure` script at the root of the tree.  The configure script
 asks you for the path to your python interpreter.
 
-This step is used to locate the python and numpy header files.
+This step is used to locate the python and numpy header files as well as
+enabling GPU support if you have a CUDA enabled GPU and Toolkit installed. For
+example:
+
 
 ```bash
 $ ./configure
 Please specify the location of python. [Default is /usr/bin/python]:
-Do you wish to build TensorFlow with GPU support? [y/N]
+Do you wish to build TensorFlow with Google Cloud Platform support? [y/N] N
+No Google Cloud Platform support will be enabled for TensorFlow
+Do you wish to build TensorFlow with GPU support? [y/N] y
+GPU support will be enabled for TensorFlow
+Please specify which gcc nvcc should use as the host compiler. [Default is /usr/bin/gcc]:
+Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: 7.5
+Please specify the location where CUDA 7.5 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
+Please specify the Cudnn version you want to use. [Leave empty to use system default]: 5
+Please specify the location where cuDNN 5 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
+Please specify a list of comma-separated Cuda compute capabilities you want to build with.
+You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
+Please note that each additional compute capability significantly increases your build time and binary size.
+[Default is: "3.5,5.2"]: 3.0
+Setting up Cuda include
+Setting up Cuda lib
+Setting up Cuda bin
+Setting up Cuda nvvm
+Setting up CUPTI include
+Setting up CUPTI lib64
+Configuration finished
 ```
 
 ### Create the pip package and install
@@ -658,7 +720,7 @@ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_packag
 
 mkdir _python_build
 cd _python_build
-ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow* .
+ln -s ../bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/* .
 ln -s ../tensorflow/tools/pip_package/* .
 python setup.py develop
 ```

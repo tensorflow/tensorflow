@@ -530,6 +530,7 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:
@@ -595,6 +596,7 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:

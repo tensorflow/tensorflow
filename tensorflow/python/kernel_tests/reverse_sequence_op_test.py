@@ -82,8 +82,11 @@ class ReverseSequenceTest(tf.test.TestCase):
   def testInt64Basic(self):
     self._testBasic(np.int64)
 
-  def testSComplexBasic(self):
+  def testComplex64Basic(self):
     self._testBasic(np.complex64)
+
+  def testComplex128Basic(self):
+    self._testBasic(np.complex128)
 
   def testFloatReverseSequenceGrad(self):
     x = np.asarray([
