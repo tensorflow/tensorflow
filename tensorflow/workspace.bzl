@@ -108,11 +108,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@protobuf//:protoc_lib",
   )
 
-  native.git_repository(
+  native.new_git_repository(
     name = "grpc",
-    commit = "2bc7d80",
+    commit = "39650266",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
+    build_file = path_prefix + "grpc.BUILD",
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
@@ -146,6 +147,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     build_file = path_prefix + "boringssl.BUILD",
   )
 
+  native.new_git_repository(
+    name = "nanopb_git",
+    commit = "1251fa1",
+    remote = "https://github.com/nanopb/nanopb.git",
+    build_file = path_prefix + "nanopb.BUILD",
+  )
+
+  native.bind(
+    name = "nanopb",
+    actual = "@nanopb_git//:nanopb",
+  )
+
   native.new_http_archive(
     name = "avro_archive",
     url = "http://www-us.apache.org/dist/avro/avro-1.8.0/cpp/avro-cpp-1.8.0.tar.gz",
@@ -173,4 +186,3 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
     build_file = path_prefix + "zlib.BUILD",
   )
-
