@@ -18,3 +18,42 @@
 
 set -e
 
+# Helper functions
+die() {
+  echo $1
+  exit 1
+}
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo ""
+echo "=== Downloading dependencies ==="
+echo ""
+
+${SCRIPT_DIR}/download_dependencies.sh
+
+echo ""
+echo "=== Building host (OS X) copy of protobuf ==="
+echo ""
+
+pushd ${SCRIPT_DIR}/downloads/protobuf
+./autogen.sh
+./configure
+make
+
+echo ""
+echo "=== Installing host copy of protobuf ==="
+echo ""
+
+sudo make install
+popd
+
+echo ""
+echo "=== Building iOS native version of protobuf ==="
+echo ""
+tensorflow/contrib/makefile/compile_ios_protobuf.sh
+
+echo ""
+echo "=== Building all iOS architectures for TensorFlow ==="
+echo ""
+tensorflow/contrib/makefile/compile_ios_tensorflow.sh
