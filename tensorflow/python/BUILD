@@ -599,6 +599,7 @@ tf_gen_op_wrapper_py(
         "ReaderNumRecordsProduced",
         "ReaderNumWorkUnitsCompleted",
         "ReaderRead",
+        "ReaderReadUpTo",
         "ReaderReset",
         "ReaderRestoreState",
         "ReaderSerializeState",

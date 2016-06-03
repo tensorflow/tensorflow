@@ -51,6 +51,18 @@ class ReaderInterface : public ResourceBase {
   virtual void Read(QueueInterface* queue, string* key, string* value,
                     OpKernelContext* context) = 0;
 
+  // Read up to num_records records into keys / values. May get more work from
+  // *queue if the current work is complete.  Sets the status on
+  // *context with an OutOfRange Status if the current work is
+  // complete and the queue is done (closed and empty).
+  // This method may block.
+  // The std::vector keys/value pointers are assumed to point to empty
+  // structures (that have most likely been reserve(num_records)).
+  // Returns how many records were actually read.
+  virtual int64 ReadUpTo(const int64 num_records, QueueInterface* queue,
+                         std::vector<string>* keys, std::vector<string>* value,
+                         OpKernelContext* context) = 0;
+
   // Restore this reader to its newly-constructed state.
   virtual Status Reset() = 0;
 

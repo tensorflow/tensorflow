@@ -74,6 +74,69 @@ Status ReaderBase::RestoreStateLocked(const string& state) {
   return errors::Unimplemented("Reader RestoreState");
 }
 
+int64 ReaderBase::ReadUpTo(const int64 num_records, QueueInterface* queue,
+                           std::vector<string>* keys,
+                           std::vector<string>* values,
+                           OpKernelContext* context) {
+  mutex_lock lock(mu_);
+  int64 records_produced_this_call = 0;
+  while (true) {
+    // Records produced by this iteration of the ReadUpToLocked call.
+    int64 num_records_produced = 0;
+    int64 remaining = num_records - records_produced_this_call;
+    if (remaining == 0) {
+      return records_produced_this_call;
+    }
+    if (!work_in_progress()) {
+      GetNextWorkLocked(queue, context);
+      if (!context->status().ok()) return records_produced_this_call;
+    }
+    bool at_end = false;
+
+    Status status =
+        ReadUpToLocked(remaining, keys, values, &num_records_produced, &at_end);
+    // This call so far.
+    records_produced_this_call += num_records_produced;
+
+    // In total, over the lifetime of the ReaderBase.
+    num_records_produced_ += num_records_produced;
+
+    if (!at_end && status.ok() && num_records_produced == 0) {
+      status = errors::Internal(
+          "ReadManyLocked() for ", name(),
+          " must set *at_end=true, *num_produced > 0 or return an error.");
+      context->SetStatus(status);
+      return records_produced_this_call;
+    }
+    if (status.ok() && at_end) {
+      status = OnWorkFinishedLocked();
+      work_finished_ = work_started_;
+    }
+    if (!status.ok()) {
+      context->SetStatus(status);
+      return records_produced_this_call;
+    }
+  }
+}
+
+// Default implementation just reads one record at a time.
+Status ReaderBase::ReadUpToLocked(int64 num_records, std::vector<string>* keys,
+                                  std::vector<string>* values, int64* num_read,
+                                  bool* at_end) {
+  bool produced;
+  string key;
+  string value;
+  Status status = ReadLocked(&key, &value, &produced, at_end);
+  if (produced) {
+    keys->emplace_back(key);
+    values->emplace_back(value);
+    *num_read = 1;
+  } else {
+    *num_read = 0;
+  }
+  return status;
+}
+
 void ReaderBase::Read(QueueInterface* queue, string* key, string* value,
                       OpKernelContext* context) {
   mutex_lock lock(mu_);
@@ -148,6 +211,10 @@ void ReaderBase::SaveBaseState(ReaderBaseState* state) const {
   state->set_work_finished(work_finished_);
   state->set_num_records_produced(num_records_produced_);
   state->set_current_work(work_);
+}
+
+string ReaderBase::KeyName(const string& key) const {
+  return strings::StrCat(current_work(), ":", key);
 }
 
 Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
