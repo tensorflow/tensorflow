@@ -113,32 +113,6 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     self._linear_weight_collection = "DNNLinearCombined_linear"
     self._centered_bias_weight_collection = "centered_bias"
 
-  def predict(self, x=None, input_fn=None, batch_size=None):
-    """Returns predictions for given features.
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
-      batch_size: Override default batch size.
-
-    Returns:
-      Numpy array of predicted classes or regression values.
-    """
-    raise NotImplementedError
-
-  def predict_proba(self, x=None, input_fn=None, batch_size=None):
-    """Returns prediction probabilities for given features (classification).
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x and y must be None.
-      batch_size: Override default batch size.
-
-    Returns:
-      Numpy array of predicted probabilities.
-    """
-    raise NotImplementedError
-
   @property
   def linear_weights_(self):
     """Returns weights per feature of the linear part."""
@@ -509,7 +483,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     Returns:
       Numpy array of predicted classes or regression values.
     """
-    predictions = super(_DNNLinearCombinedBaseEstimator, self).predict(
+    predictions = super(DNNLinearCombinedClassifier, self).predict(
         x=x, input_fn=input_fn, batch_size=batch_size)
     predictions = np.argmax(predictions, axis=1)
     return predictions
@@ -525,7 +499,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     Returns:
       Numpy array of predicted probabilities.
     """
-    return super(_DNNLinearCombinedBaseEstimator, self).predict(
+    return super(DNNLinearCombinedClassifier, self).predict(
         x=x, input_fn=input_fn, batch_size=batch_size)
 
   def _loss_vec(self, logits, target):
@@ -693,7 +667,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
     Returns:
       Numpy array of predicted classes or regression values.
     """
-    return super(_DNNLinearCombinedBaseEstimator, self).predict(
+    return super(DNNLinearCombinedRegressor, self).predict(
         x=x, input_fn=input_fn, batch_size=batch_size)
 
   def _loss_vec(self, logits, target):
