@@ -88,7 +88,7 @@ class NonLinearTest(tf.test.TestCase):
     # Dropping out most of it.
     iris = tf.contrib.learn.datasets.load_iris()
     classifier = tf.contrib.learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3, dropout=0.95)
+        hidden_units=[10, 20, 10], n_classes=3, dropout=0.9)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.3, "Failed with score = {0}".format(score))
