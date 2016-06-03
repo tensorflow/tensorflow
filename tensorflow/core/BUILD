@@ -53,6 +53,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_android",
     "tf_copts",
     "tf_cc_test",
     "tf_cc_tests",
@@ -667,13 +668,7 @@ filegroup(
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
-    srcs =
-        select({
-            "//tensorflow:android": [
-                "//tensorflow/core:android_srcs",
-            ],
-            "//conditions:default": [],
-        }),
+    srcs = if_android(["//tensorflow/core:android_srcs"]),
     copts = tf_copts() + ["-Os"],
     tags = [
         "manual",
@@ -691,12 +686,7 @@ cc_library(
 # binary size (by packaging a reduced operator set) is a concern.
 cc_library(
     name = "android_tensorflow_lib",
-    srcs = select({
-        "//tensorflow:android": [
-            ":android_op_registrations_and_gradients",
-        ],
-        "//conditions:default": [],
-    }),
+    srcs = if_android([":android_op_registrations_and_gradients"]),
     copts = tf_copts(),
     tags = [
         "manual",
@@ -718,13 +708,7 @@ cc_library(
 # registration of ops to prune code size.
 cc_library(
     name = "android_tensorflow_lib_selective_registration",
-    srcs =
-        select({
-            "//tensorflow:android": [
-                "//tensorflow/core:android_srcs",
-            ],
-            "//conditions:default": [],
-        }),
+    srcs = if_android(["//tensorflow/core:android_srcs"]),
     copts = tf_copts() + [
         "-Os",
         "-DSUPPORT_SELECTIVE_REGISTRATION",
@@ -756,6 +740,41 @@ filegroup(
         ],
     ),
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_test_srcs",
+    # TODO(andrewharp/nhua):
+    # make more test-related sources portable e.g. "platform/test.cc",
+    srcs = [
+        "//tensorflow/core:framework/fake_input.cc",
+        "//tensorflow/core:framework/fake_input.h",
+        "//tensorflow/core:framework/tensor_testutil.cc",
+        "//tensorflow/core:framework/tensor_testutil.h",
+        "//tensorflow/core:platform/test.h",
+        "//tensorflow/core:util/reporter.cc",
+        "//tensorflow/core:util/reporter.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Portable library providing testing functionality for Tensorflow.
+cc_library(
+    name = "android_tensorflow_test_lib",
+    testonly = 1,
+    srcs = if_android([":android_test_srcs"]),
+    copts = tf_copts() + ["-Os"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":android_tensorflow_lib",
+        ":protos_cc",
+        "//tensorflow/core/platform/default/build_config:gtest",
+        "//third_party/eigen3",
+    ],
 )
 
 # -----------------------------------------------------------------------------
