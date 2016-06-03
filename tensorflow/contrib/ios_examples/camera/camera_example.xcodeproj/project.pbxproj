@@ -291,7 +291,7 @@
 					"$(SRCROOT)/../../../..",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 7.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
 				LIBRARY_SEARCH_PATHS = (
 					"$(SRCROOT)/../../makefile/gen/lib",
 					"$(SRCROOT)/../../makefile/gen/protobuf_ios/lib",
@@ -350,7 +350,7 @@
 					"$(SRCROOT)/../../../..",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
-				IPHONEOS_DEPLOYMENT_TARGET = 7.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
 				LIBRARY_SEARCH_PATHS = (
 					"$(SRCROOT)/../../makefile/gen/lib",
 					"$(SRCROOT)/../../makefile/gen/protobuf_ios/lib",
