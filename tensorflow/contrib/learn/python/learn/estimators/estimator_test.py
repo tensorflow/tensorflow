@@ -97,19 +97,26 @@ def logistic_model_no_mode_fn(features, target):
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
   def __init__(self):
-    self.calls = None
+    self.begin_calls = None
+    self.end_calls = None
     self.expect_calls = None
 
   def begin(self, max_steps):
-    self.calls = 0
+    self.begin_calls = 0
+    self.end_calls = 0
     self.expect_calls = max_steps
 
+  def step_begin(self, step):
+    self.begin_calls += 1
+    return {}
+
   def step_end(self, step, outputs):
-    self.calls += 1
+    self.end_calls += 1
     return False
 
   def end(self):
-    assert self.calls == self.expect_calls
+    assert (self.end_calls == self.expect_calls and
+            self.begin_calls == self.expect_calls)
 
 
 class EstimatorTest(tf.test.TestCase):
