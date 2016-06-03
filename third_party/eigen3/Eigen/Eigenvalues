@@ -1,1 +1,5 @@
+<<<<<<< d9a89a5cf63b2ecedf68d3eefdc24be3f519e503
 #include "Eigen/Eigenvalues"
+=======
+#include "benoitsteiner-opencl-9d4a08d57d0d/Eigen/Eigenvalues"
+>>>>>>> Pull the latest Eigen version that supports OpenCL
