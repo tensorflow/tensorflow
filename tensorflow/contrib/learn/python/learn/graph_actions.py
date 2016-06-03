@@ -193,6 +193,9 @@ def train(graph,
     NanLossDuringTrainingError: If `fail_on_nan_loss` is `True`, and loss ever
         evaluates to `NaN`.
   """
+  if not output_dir:
+    raise ValueError('Output directory should be non-empty.')
+
   global_step_tensor = contrib_variables.assert_or_get_global_step(
       graph, global_step_tensor)
   if global_step_tensor is None:

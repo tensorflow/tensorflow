@@ -363,18 +363,21 @@ class BaseEstimator(sklearn.BaseEstimator):
     raise NotImplementedError('_get_eval_ops not implemented in BaseEstimator')
 
   def _get_feature_ops_from_example(self, examples_batch):
-    """Method that returns features given the batch of examples.
-
-    This method will be used to export model into a server.
+    """Returns feature parser for given example batch using features info.
 
     Args:
       examples_batch: batch of tf.Example
 
     Returns:
       features: `Tensor` or `dict` of `Tensor` objects.
+
+    Raises:
+      ValueError: If `_features_info` attribute is not available.
     """
-    raise NotImplementedError('_get_feature_ops_from_example not implemented '
-                              'in BaseEstimator')
+    if self._features_info is None:
+      raise ValueError('Features information is missing.')
+    return tensor_signature.create_example_parser_from_signatures(
+        self._features_info, examples_batch)
 
   def _check_inputs(self, features, targets):
     if self._features_info is not None:
@@ -407,6 +410,9 @@ class BaseEstimator(sklearn.BaseEstimator):
     # TODO(wicke): This is a hack and needs to go.
     if self._config.execution_mode not in ('all', 'train'):
       return
+
+    if not self._model_dir:
+      raise ValueError('Estimator\'s model_dir should be non-empty.')
 
     # Stagger startup of worker sessions based on task id.
     sleep_secs = min(self._config.training_worker_max_startup_secs,
@@ -659,21 +665,3 @@ class Estimator(BaseEstimator):
         self._targets_info)
     predictions, _, _ = self._model_fn(features, targets, ModeKeys.INFER)
     return predictions
-
-  def _get_feature_ops_from_example(self, examples_batch):
-    """Unimplemented.
-
-    TODO(vihanjain): We need a way to parse tf.Example into features.
-
-    Args:
-      examples_batch: batch of tf.Example
-
-    Returns:
-      features: `Tensor` or `dict` of `Tensor` objects.
-
-    Raises:
-      Exception: Unimplemented
-    """
-    raise NotImplementedError('_get_feature_ops_from_example not yet '
-                              'implemented')
-

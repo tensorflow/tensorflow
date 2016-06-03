@@ -858,6 +858,7 @@ def trainable_variables():
   """
   return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
 
+
 def local_variables():
   """Returns all variables created with collection=[LOCAL_VARIABLES].
 
@@ -865,6 +866,7 @@ def local_variables():
     A list of local Variable objects.
   """
   return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+
 
 def moving_average_variables():
   """Returns all variables that maintain their moving averages.

@@ -24,6 +24,7 @@ import collections
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import parsing_ops
 
 
 class TensorSignature(collections.namedtuple(
@@ -67,7 +68,13 @@ class TensorSignature(collections.namedtuple(
   def get_placeholder(self):
     if self.is_sparse:
       return array_ops.sparse_placeholder(dtype=self.dtype)
-    return array_ops.placeholder(dtype=self.dtype, shape=self.shape)
+    return array_ops.placeholder(dtype=self.dtype,
+                                 shape=[None] + list(self.shape[1:]))
+
+  def get_feature_spec(self):
+    if self.is_sparse:
+      return parsing_ops.VarLenFeature(dtype=self.dtype)
+    return parsing_ops.FixedLenFeature(shape=self.shape[1:], dtype=self.dtype)
 
 
 def tensors_compatible(tensors, signatures):
@@ -127,3 +134,24 @@ def create_placeholders_from_signatures(signatures):
   return {
       key: signatures[key].get_placeholder()
       for key in signatures}
+
+
+def create_example_parser_from_signatures(signatures, examples_batch,
+                                          single_feature_name="feature"):
+  """Creates example parser from given signatures.
+
+  Args:
+    signatures: Dict of `TensorSignature` objects or single `TensorSignature`.
+    examples_batch: string `Tensor` of serialized `Example` proto.
+    single_feature_name: string, single feature name.
+
+  Returns:
+    features: `Tensor` or `dict` of `Tensor` objects.
+  """
+  feature_spec = {}
+  if not isinstance(signatures, dict):
+    feature_spec[single_feature_name] = signatures.get_feature_spec()
+  else:
+    feature_spec = {key: signatures[key].get_feature_spec()
+                    for key in signatures}
+  return parsing_ops.parse_example(examples_batch, feature_spec)
