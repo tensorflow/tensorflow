@@ -54,6 +54,7 @@ or join multiple tensors together.
 @@reverse_sequence
 @@reverse
 @@transpose
+@@extract_image_patches
 @@space_to_batch
 @@batch_to_space
 @@space_to_depth
@@ -1669,6 +1670,57 @@ def _QuantizeDequantizeShape(op):
   return common_shapes.unchanged_shape(op)
 
 
+@ops.RegisterShape("ExtractImagePatches")
+def _ExtractImagePatchesShape(op):
+  """Shape function for the ExtractImagePatches op.
+
+  Args:
+    op: An ExtractImagePatches op.
+
+  Raises:
+    ValueError: If the strides or padding are invalid.
+
+  Returns:
+    The shape of the op output.
+  """
+  images_shape = op.inputs[0].get_shape().with_rank(4)
+  batch = images_shape[0]
+  in_rows = images_shape[1]
+  in_cols = images_shape[2]
+  in_depth = images_shape[3]
+
+  ksize_b, ksize_r, ksize_c, ksize_d = op.get_attr("ksizes")
+  if ksize_b != 1 or ksize_d != 1:
+    raise ValueError("Current implementation does not yet support "
+                     "ksizes in the batch and depth dimensions.")
+
+  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
+  if stride_b != 1 or stride_d != 1:
+    raise ValueError("Current implementation does not yet support "
+                     "strides in the batch and depth dimensions.")
+
+  rate_b, rate_r, rate_c, rate_d = op.get_attr("rates")
+  if rate_b != 1 or rate_d != 1:
+    raise ValueError("Current implementation does not yet support "
+                     "rates in the batch and depth dimensions.")
+
+  # Effective patch size, taking into account filter upsampling by rates.
+  ksize_r_eff = ksize_r + (ksize_r - 1) * (rate_r - 1)
+  ksize_c_eff = ksize_c + (ksize_c - 1) * (rate_c - 1)
+
+  padding = op.get_attr("padding")
+  out_rows, out_cols = common_shapes.get2d_conv_output_size(in_rows, in_cols,
+                                                            ksize_r_eff,
+                                                            ksize_c_eff,
+                                                            stride_r, stride_c,
+                                                            padding)
+
+  out_depth = None if in_depth is None else ksize_r * ksize_c * int(in_depth)
+  output_shape = [batch, out_rows, out_cols, out_depth]
+
+  return [tensor_shape.TensorShape(output_shape)]
+
+
 @ops.RegisterShape("SpaceToBatch")
 def _SpaceToBatchShape(op):
   """Shape function for the SpaceToBatch op.
@@ -2055,14 +2107,14 @@ def one_hot(indices, depth, on_value=None, off_value=None,
                   else None
     off_dtype = ops.convert_to_tensor(off_value).dtype.base_dtype if off_exists\
                   else None
-    
+
     if on_exists or off_exists:
       if dtype is not None:
         # Ensure provided on_value and/or off_value match dtype
         if (on_exists and on_dtype != dtype):
           raise TypeError("dtype {0} of on_value does not match " \
                           "dtype parameter {1}".format(on_dtype, dtype))
-        if (off_exists and off_dtype != dtype): 
+        if (off_exists and off_dtype != dtype):
           raise TypeError("dtype {0} of off_value does not match " \
                           "dtype parameter {1}".format(off_dtype, dtype))
       else:
@@ -2071,7 +2123,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
     elif dtype is None:
       # None of on_value, off_value, or dtype provided. Default dtype to float32
       dtype = dtypes.float32
-    
+
     if not on_exists:
       # on_value not provided: assign to value 1 of type dtype
       on_value = ops.convert_to_tensor(1, dtype, name="on_value")
@@ -2085,8 +2137,8 @@ def one_hot(indices, depth, on_value=None, off_value=None,
       raise TypeError("dtype {0} of on_value does not match " \
                       "dtype {1} of off_value".format(on_dtype, off_dtype))
 
-    return gen_array_ops._one_hot(indices, depth, on_value, 
-                                  off_value, axis, name)
+    return gen_array_ops._one_hot(indices, depth, on_value, off_value, axis,
+                                  name)
 
 
 @ops.RegisterShape("OneHot")

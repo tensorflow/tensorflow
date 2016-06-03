@@ -71,6 +71,19 @@ cc_library(
     ],
 )
 
+tf_kernel_library(
+    name = "extract_image_patches_op",
+    prefix = "extract_image_patches_op",
+    deps = [
+        ":bounds_check",
+        ":eigen_helpers",
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
 cc_library(
     name = "conv_3d",
     hdrs = ["conv_3d.h"],
@@ -333,6 +346,7 @@ tf_kernel_libraries(
         ":concat_lib",
         ":cuda_device_array",
         ":depth_space_ops",
+        ":extract_image_patches_op",
         ":fill_functor",
         ":ops_util",
         ":spacetobatch_op",
