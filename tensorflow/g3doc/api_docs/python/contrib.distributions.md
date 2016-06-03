@@ -72,7 +72,7 @@ u = Uniform(minval, maxval)
 
 # `event_shape` is `TensorShape([])`.
 event_shape = u.get_event_shape()
-# `event_shape_t` is a `Tensor` which will evaluate to a scalar 1.
+# `event_shape_t` is a `Tensor` which will evaluate to [].
 event_shape_t = u.event_shape
 
 # Sampling returns a sample per distribution.  `samples` has shape
