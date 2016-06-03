@@ -153,6 +153,13 @@ Log CDF.
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.log_likelihood(value, name='log_likelihood')` {#StudentT.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.log_pdf(x, name='log_pdf')` {#StudentT.log_pdf}
 
 Log pdf of observations in `x` under these Student's t-distribution(s).
@@ -171,7 +178,14 @@ Log pdf of observations in `x` under these Student's t-distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.mean` {#StudentT.mean}
+#### `tf.contrib.distributions.StudentT.mean(name='mean')` {#StudentT.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.mode(name='mode')` {#StudentT.mode}
 
 
 
@@ -238,7 +252,14 @@ Scaling factors of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.variance` {#StudentT.variance}
+#### `tf.contrib.distributions.StudentT.std(name='std')` {#StudentT.std}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.variance(name='variance')` {#StudentT.variance}
 
 
 

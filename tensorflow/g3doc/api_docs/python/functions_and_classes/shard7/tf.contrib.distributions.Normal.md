@@ -84,7 +84,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.cdf(x, name=None)` {#Normal.cdf}
+#### `tf.contrib.distributions.Normal.cdf(x, name='cdf')` {#Normal.cdf}
 
 CDF of observations in `x` under these Normal distribution(s).
 
@@ -109,7 +109,7 @@ CDF of observations in `x` under these Normal distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Normal.entropy(name=None)` {#Normal.entropy}
+#### `tf.contrib.distributions.Normal.entropy(name='entropy')` {#Normal.entropy}
 
 The entropy of Normal distribution(s).
 
@@ -175,7 +175,7 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_cdf(x, name=None)` {#Normal.log_cdf}
+#### `tf.contrib.distributions.Normal.log_cdf(x, name='log_cdf')` {#Normal.log_cdf}
 
 Log CDF of observations `x` under these Normal distribution(s).
 
@@ -193,7 +193,14 @@ Log CDF of observations `x` under these Normal distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_pdf(x, name=None)` {#Normal.log_pdf}
+#### `tf.contrib.distributions.Normal.log_likelihood(value, name='log_likelihood')` {#Normal.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.log_pdf(x, name='log_pdf')` {#Normal.log_pdf}
 
 Log pdf of observations in `x` under these Normal distribution(s).
 
@@ -211,16 +218,23 @@ Log pdf of observations in `x` under these Normal distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Normal.mean` {#Normal.mean}
+#### `tf.contrib.distributions.Normal.mean(name='mean')` {#Normal.mean}
+
+Mean of this distribution.
 
 
+- - -
+
+#### `tf.contrib.distributions.Normal.mode(name='mode')` {#Normal.mode}
+
+Mode of this distribution.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.mu` {#Normal.mu}
 
-
+Distribution parameter for the mean.
 
 
 - - -
@@ -250,7 +264,7 @@ The PDF of observations in `x` under these Normal distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sample(n, seed=None, name=None)` {#Normal.sample}
+#### `tf.contrib.distributions.Normal.sample(n, seed=None, name='sample')` {#Normal.sample}
 
 Sample `n` observations from the Normal Distributions.
 
@@ -272,6 +286,20 @@ Sample `n` observations from the Normal Distributions.
 
 #### `tf.contrib.distributions.Normal.sigma` {#Normal.sigma}
 
+Distribution parameter for standard deviation.
 
+
+- - -
+
+#### `tf.contrib.distributions.Normal.std(name='std')` {#Normal.std}
+
+Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.variance(name='variance')` {#Normal.variance}
+
+Variance of this distribution.
 
 

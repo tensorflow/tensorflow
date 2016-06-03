@@ -128,7 +128,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.cdf(x)` {#DirichletMultinomial.cdf}
+#### `tf.contrib.distributions.DirichletMultinomial.cdf(x, name='cdf')` {#DirichletMultinomial.cdf}
 
 
 
@@ -142,7 +142,7 @@ dtype of samples from this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.entropy(name=None)` {#DirichletMultinomial.entropy}
+#### `tf.contrib.distributions.DirichletMultinomial.entropy(name='entropy')` {#DirichletMultinomial.entropy}
 
 Entropy of the distribution in nats.
 
@@ -191,9 +191,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.log_cdf(x)` {#DirichletMultinomial.log_cdf}
+#### `tf.contrib.distributions.DirichletMultinomial.log_cdf(x, name='log_cdf')` {#DirichletMultinomial.log_cdf}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.log_likelihood(value, name='log_likelihood')` {#DirichletMultinomial.log_likelihood}
+
+Log likelihood of this distribution (same as log_pmf).
 
 
 - - -
@@ -226,9 +233,16 @@ probability includes a combinatorial coefficient.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.mean` {#DirichletMultinomial.mean}
+#### `tf.contrib.distributions.DirichletMultinomial.mean(name='mean')` {#DirichletMultinomial.mean}
 
 Class means for every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.mode(name='mode')` {#DirichletMultinomial.mode}
+
+Mode of the distribution.
 
 
 - - -
@@ -275,7 +289,7 @@ probability includes a combinatorial coefficient.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.sample(n, seed=None, name=None)` {#DirichletMultinomial.sample}
+#### `tf.contrib.distributions.DirichletMultinomial.sample(n, seed=None, name='sample')` {#DirichletMultinomial.sample}
 
 Generate `n` samples.
 
@@ -291,5 +305,19 @@ Generate `n` samples.
 
 *  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
       with values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.std(name='std')` {#DirichletMultinomial.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.variance(name='variance')` {#DirichletMultinomial.variance}
+
+Variance of the distribution.
 
 

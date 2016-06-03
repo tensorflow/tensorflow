@@ -80,7 +80,7 @@ cum_prob_invalid = u.cdf([4.0, 5.0, 6.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.BaseDistribution.batch_shape(name=None)` {#BaseDistribution.batch_shape}
+#### `tf.contrib.distributions.BaseDistribution.batch_shape(name='batch_shape')` {#BaseDistribution.batch_shape}
 
 Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
@@ -113,14 +113,14 @@ dtype of samples from this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.BaseDistribution.entropy(name=None)` {#BaseDistribution.entropy}
+#### `tf.contrib.distributions.BaseDistribution.entropy(name='entropy')` {#BaseDistribution.entropy}
 
 Entropy of the distribution in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.BaseDistribution.event_shape(name=None)` {#BaseDistribution.event_shape}
+#### `tf.contrib.distributions.BaseDistribution.event_shape(name='event_shape')` {#BaseDistribution.event_shape}
 
 Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
@@ -161,9 +161,16 @@ Log CDF.
 
 - - -
 
-#### `tf.contrib.distributions.BaseDistribution.mean` {#BaseDistribution.mean}
+#### `tf.contrib.distributions.BaseDistribution.mean(name='mean')` {#BaseDistribution.mean}
+
+Mean of the distribution.
 
 
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.mode(name='mode')` {#BaseDistribution.mode}
+
+Mode of the distribution.
 
 
 - - -
@@ -175,7 +182,7 @@ Name to prepend to all ops.
 
 - - -
 
-#### `tf.contrib.distributions.BaseDistribution.sample(n, seed=None, name=None)` {#BaseDistribution.sample}
+#### `tf.contrib.distributions.BaseDistribution.sample(n, seed=None, name='sample')` {#BaseDistribution.sample}
 
 Generate `n` samples.
 
@@ -191,5 +198,19 @@ Generate `n` samples.
 
 *  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
       with values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.std(name='std')` {#BaseDistribution.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.variance(name='variance')` {#BaseDistribution.variance}
+
+Variance of the distribution.
 
 

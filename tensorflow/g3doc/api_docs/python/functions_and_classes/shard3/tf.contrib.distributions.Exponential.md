@@ -173,6 +173,13 @@ Log CDF of observations `x` under these Gamma distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.log_likelihood(value, name='log_likelihood')` {#Exponential.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.log_pdf(x, name='log_pdf')` {#Exponential.log_pdf}
 
 Log pdf of observations in `x` under these Gamma distribution(s).
@@ -196,9 +203,16 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.mean` {#Exponential.mean}
+#### `tf.contrib.distributions.Exponential.mean(name='mean')` {#Exponential.mean}
 
 Mean of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.mode(name='mode')` {#Exponential.mode}
+
+Mode of each batch member.  Defined only if alpha >= 1.
 
 
 - - -
@@ -253,7 +267,14 @@ Sample `n` observations from the Exponential Distributions.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.variance` {#Exponential.variance}
+#### `tf.contrib.distributions.Exponential.std(name='std')` {#Exponential.std}
+
+Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.variance(name='variance')` {#Exponential.variance}
 
 Variance of each batch member.
 

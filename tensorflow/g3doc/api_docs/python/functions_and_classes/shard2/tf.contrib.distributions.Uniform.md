@@ -142,6 +142,13 @@ The entropy of Uniform distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.log_likelihood(value, name='log_likelihood')` {#Uniform.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.log_pdf(x, name='log_pdf')` {#Uniform.log_pdf}
 
 
@@ -149,9 +156,16 @@ The entropy of Uniform distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.mean` {#Uniform.mean}
+#### `tf.contrib.distributions.Uniform.mean(name='mean')` {#Uniform.mean}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.mode(name='mode')` {#Uniform.mode}
+
+Mode of the distribution.
 
 
 - - -
@@ -182,7 +196,7 @@ The PDF of observations in `x` under these Uniform distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.range` {#Uniform.range}
+#### `tf.contrib.distributions.Uniform.range(name='range')` {#Uniform.range}
 
 `b - a`.
 
@@ -209,7 +223,14 @@ Sample `n` observations from the Uniform Distributions.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.variance` {#Uniform.variance}
+#### `tf.contrib.distributions.Uniform.std(name='std')` {#Uniform.std}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.variance(name='variance')` {#Uniform.variance}
 
 
 
