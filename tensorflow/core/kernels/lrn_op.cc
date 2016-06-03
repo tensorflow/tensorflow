@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-#if !defined(__ANDROID__)
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
@@ -87,7 +87,7 @@ class LRNOp : public OpKernel {
                    context->allocate_output(
                        0, TensorShape({batch, rows, cols, depth}), &output));
 
-#if defined(__ANDROID__)
+#if defined(IS_MOBILE_PLATFORM)
     SingleThreadedLRN(in, batch, rows, cols, depth, output);
 #else
     if (depth > kSingleThreadedLRNDepthCutoff &&
@@ -171,7 +171,7 @@ class LRNOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LRN").Device(DEVICE_CPU), LRNOp);
 
-#if !defined(__ANDROID__)
+#if !defined(IS_MOBILE_PLATFORM)
 
 class LRNGradOp : public OpKernel {
  public:
@@ -277,6 +277,6 @@ class LRNGradOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LRNGrad").Device(DEVICE_CPU), LRNGradOp);
 
-#endif  // !defined(__ANDROID__)
+#endif  // !defined(IS_MOBILE_PLATFORM)
 
 }  // namespace tensorflow
