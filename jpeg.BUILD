@@ -45,6 +45,7 @@ SOURCES = [
     "jquant1.c",
     "jquant2.c",
     "jutils.c",
+    "transupp.c",
 ]
 
 HEADERS = [

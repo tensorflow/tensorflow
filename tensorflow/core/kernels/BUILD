@@ -708,6 +708,7 @@ tf_kernel_libraries(
         "colorspace_op",
         "decode_jpeg_op",
         "decode_png_op",
+        "decode_gif_op",
         "draw_bounding_box_op",
         "encode_jpeg_op",
         "attention_ops",
