@@ -22,13 +22,7 @@ set -e
 die() {
   echo $1
   exit 1
-i}
-
-# Make sure that system is OS X
-if [[ $(uname) != "Darwin" ]]; then
-  die "ERROR: This makefile build requires OS X, which the current system "\
-"is not."
-fi
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
