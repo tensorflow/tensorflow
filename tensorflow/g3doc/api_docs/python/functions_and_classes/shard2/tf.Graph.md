@@ -776,8 +776,22 @@ Returns `True` if and only if `tensor` is feedable.
 
 - - -
 
+#### `tf.Graph.is_fetchable(tensor_or_op)` {#Graph.is_fetchable}
+
+Returns `True` if and only if `tensor_or_op` is fetchable.
+
+
+- - -
+
 #### `tf.Graph.prevent_feeding(tensor)` {#Graph.prevent_feeding}
 
 Marks the given `tensor` as unfeedable in this graph.
+
+
+- - -
+
+#### `tf.Graph.prevent_fetching(op)` {#Graph.prevent_fetching}
+
+Marks the given `op` as unfetchable in this graph.
 
 

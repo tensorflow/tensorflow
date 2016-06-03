@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +35,6 @@ from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
@@ -102,27 +100,6 @@ def _restore_from_checkpoint(session, graph, checkpoint_path, saver=None):
     saver.restore(session, checkpoint_path)
   else:
     logging.info('No variables found in graph, not creating Saver() object.')
-
-
-def _run_dict(session, run_dict, feed_dict=None):
-  """Convenience function to run a session on each item in a dict of tensors.
-
-  Args:
-    session: The session to evaluate.
-    run_dict: A dict of tensors to be run in the session.
-    feed_dict: Feed dict to be used in running the session.
-
-  Returns:
-    A dict containing the result of evaluating the tensors.
-  Raises:
-    ValueError: if `run_dict` is missing or empty.
-  """
-  if run_dict is None:
-    raise ValueError('Invalid run_dict %s.', run_dict)
-  keys = run_dict.keys()
-  tensors = [run_dict[key] for key in keys]
-  values = session.run(tensors, feed_dict=feed_dict)
-  return dict(zip(keys, values))
 
 
 def _run_with_monitors(session, step, tensors, feed_dict, monitors):
@@ -216,16 +193,20 @@ def train(graph,
     NanLossDuringTrainingError: If `fail_on_nan_loss` is `True`, and loss ever
         evaluates to `NaN`.
   """
+  if not output_dir:
+    raise ValueError('Output directory should be non-empty.')
+
   global_step_tensor = contrib_variables.assert_or_get_global_step(
       graph, global_step_tensor)
   if global_step_tensor is None:
     raise ValueError('No "global_step" was provided or found in the graph.')
 
-  summary_writer = get_summary_writer(output_dir)
+  summary_writer = (get_summary_writer(output_dir)
+                    if supervisor_is_chief else None)
 
   # TODO(ipolosukhin): Replace all functionality of Supervisor with Monitors.
   if not supervisor_is_chief:
-    # monitors should run only in supervisor.
+    # monitors should run only on the chief.
     monitors = []
   elif not monitors:
     monitors = monitors_lib.get_default_monitors(
@@ -450,12 +431,8 @@ def evaluate(graph,
   global_step_tensor = contrib_variables.assert_or_get_global_step(
       graph, global_step_tensor)
 
-  # Add scalar summaries for every tensor in evaluation dict if there is not
-  # one existing already or it's a string.
-  existing_tags = [tensor_util.constant_value(summary.op.inputs[0])
-                   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES)]
   for key, value in eval_dict.items():
-    if key in existing_tags:
+    if not summaries.is_summary_tag_unique(key):
       continue
     if isinstance(value, ops.Tensor):
       summaries.summarize_tensor(value, tag=key)
@@ -490,33 +467,37 @@ def evaluate(graph,
     eval_results = None
     # TODO(amodei): Fix this to run through the eval set exactly once.
     step = 0
+    eval_step = None
+    feed_dict = None
     logging.info('Eval steps [%d,%s) for training step %d.', step,
                  'inf' if max_steps is None
                  else str(max_steps), current_global_step)
     try:
       try:
         while (max_steps is None) or (step < max_steps):
+          step += 1
           start_time = time.time()
           feed_dict = feed_fn() if feed_fn is not None else None
-          eval_results = None
           if update_op is not None:
             session.run(update_op, feed_dict=feed_dict)
           else:
-            eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
+            eval_results = session.run(eval_dict, feed_dict=feed_dict)
+            eval_step = step
 
           # TODO(wicke): We should assert that the global step hasn't changed.
-          step += 1
           if step % log_every_steps == 0:
-            if eval_results is None:
-              eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
+            if eval_step is None or step != eval_step:
+              eval_results = session.run(eval_dict, feed_dict=feed_dict)
+              eval_step = step
             duration = time.time() - start_time
             logging.info('Results after %d steps (%.3f sec/batch): %s.',
                          step, float(duration),
                          ', '.join('%s = %s' % (k, v)
                                    for k, v in eval_results.items()))
       finally:
-        if eval_results is None:
-          eval_results = _run_dict(session, eval_dict, feed_dict=feed_dict)
+        if eval_results is None or step != eval_step:
+          eval_results = session.run(eval_dict, feed_dict=feed_dict)
+          eval_step = step
         # Stop queue runners.
         coord.request_stop()
         coord.join(threads, stop_grace_period_secs=120)
@@ -614,7 +595,7 @@ def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
       coord = Coordinator()
       try:
         queue_runner.start_queue_runners(session, coord=coord)
-        return [_run_dict(session, output_dict, f) for f in feed_dicts]
+        return [session.run(output_dict, f) for f in feed_dicts]
       finally:
         coord.request_stop()
 

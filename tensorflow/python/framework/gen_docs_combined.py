@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,8 +54,10 @@ def get_module_to_name():
       tf.contrib.copy_graph: "tf.contrib.copy_graph",
       tf.contrib.distributions: "tf.contrib.distributions",
       tf.contrib.ffmpeg: "tf.contrib.ffmpeg",
+      tf.contrib.framework: "tf.contrib.framework",
       tf.contrib.layers: "tf.contrib.layers",
       tf.contrib.learn: "tf.contrib.learn",
+      tf.contrib.losses: "tf.contrib.losses",
       tf.contrib.metrics: "tf.contrib.metrics",
       tf.contrib.util: "tf.contrib.util",
   }
@@ -101,6 +103,7 @@ def all_libraries(module_to_name, members, documented):
       library("histogram_ops", "Histograms"),
       library("control_flow_ops", "Control Flow", prefix=PREFIX_TEXT),
       library("functional_ops", "Higher Order Functions", prefix=PREFIX_TEXT),
+      library("tensor_array_ops", "TensorArray Operations", prefix=PREFIX_TEXT),
       library("session_ops", "Tensor Handle Operations", prefix=PREFIX_TEXT),
       library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"],
               prefix=PREFIX_TEXT),
@@ -110,7 +113,6 @@ def all_libraries(module_to_name, members, documented):
               prefix=PREFIX_TEXT),
       library("io_ops", "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
-                               "PaddingFIFOQueue",
                                "initialize_all_tables",
                                "parse_single_sequence_example",
                                "string_to_hash_bucket"],
@@ -140,8 +142,10 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.distributions", "Statistical distributions (contrib)",
               tf.contrib.distributions),
       library("contrib.ffmpeg", "FFmpeg (contrib)", ffmpeg),
+      library("contrib.framework", "Framework (contrib)", tf.contrib.framework),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
+      library("contrib.losses", "Losses (contrib)", tf.contrib.losses),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)",
@@ -152,7 +156,7 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
                    "GPUOptions", "GraphOptions", "RunOptions", "RunMetadata",
                    "SessionInterface", "BaseSession", "NameAttrList",
-                   "AttrValue", "TensorArray", "OptimizerOptions",
+                   "AttrValue", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
                    "SaverDef", "VariableDef", "TestCase", "GrpcServer",
                    "ClusterDef", "JobDef", "ServerDef"]

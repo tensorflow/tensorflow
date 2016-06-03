@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -70,7 +69,7 @@ def extract_pandas_labels(labels):
       raise ValueError('Only one column for labels is allowed.')
 
     if all(dtype.name in PANDAS_DTYPES for dtype in labels.dtypes):
-      return labels.values.astype('float')
+      return labels.values
     else:
       raise ValueError('Data types for labels must be int, float, or bool.')
   else:

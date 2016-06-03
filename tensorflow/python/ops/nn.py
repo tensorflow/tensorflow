@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -130,6 +130,46 @@ to the `Convolution` section for details about the padding calculation.
 @@max_pool_with_argmax
 @@avg_pool3d
 @@max_pool3d
+
+## Morphological filtering
+
+Morphological operators are non-linear filters used in image processing.
+
+[Greyscale morphological dilation]
+(https://en.wikipedia.org/wiki/Dilation_(morphology)) is the max-sum counterpart
+of standard sum-product convolution:
+
+    output[b, y, x, c] =
+        max_{dy, dx} input[b,
+                           strides[1] * y + rates[1] * dy,
+                           strides[2] * x + rates[2] * dx,
+                           c] +
+                     filter[dy, dx, c]
+
+The `filter` is usually called structuring function. Max-pooling is a special
+case of greyscale morphological dilation when the filter assumes all-zero
+values (a.k.a. flat structuring function).
+
+[Greyscale morphological erosion]
+(https://en.wikipedia.org/wiki/Erosion_(morphology)) is the min-sum counterpart
+of standard sum-product convolution:
+
+    output[b, y, x, c] =
+        min_{dy, dx} input[b,
+                           strides[1] * y - rates[1] * dy,
+                           strides[2] * x - rates[2] * dx,
+                           c] -
+                     filter[dy, dx, c]
+
+Dilation and erosion are dual to each other. The dilation of the input signal
+`f` by the structuring signal `g` is equal to the negation of the erosion of
+`-f` by the reflected `g`, and vice versa.
+
+Striding and padding is carried out in exactly the same way as in standard
+convolution. Please refer to the `Convolution` section for details.
+
+@@dilation2d
+@@erosion2d
 
 ## Normalization
 

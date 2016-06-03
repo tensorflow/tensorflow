@@ -875,7 +875,7 @@ Exception:
 [Errno 1] Operation not permitted: '/tmp/pip-a1DXRT-uninstall/System/Library/Frameworks/Python.framework/Versions/2.7/Extras/lib/python/_markerlib'
 ```
 
-Solution: Add an `--ignore_installed` flag to the pip command.
+Solution: Add an `--ignore-installed` flag to the pip command.
 
 
 ### Linux issues
@@ -925,7 +925,7 @@ copy of Python.
 
 On El Capitan, "six" is a special package that can't be modified, and this
 error is reported when "pip install" tried to modify this package. To fix use
-"ignore_installed" flag, ie
+"ignore-installed" flag, ie
 
 sudo pip install --ignore-installed six https://storage.googleapis.com/....
 

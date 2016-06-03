@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,8 +43,7 @@ limitations under the License.
    #undef REGISTER_PARTITION
 */
 
-#if !defined(__ANDROID__)
-
+#if !defined(__ANDROID__) || defined(SUPPORT_SELECTIVE_REGISTRATION)
 // Call "m" for all number types that support the comparison operations "<" and
 // ">".
 #define TF_CALL_INTEGRAL_TYPES(m)                                       \

@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +40,7 @@ class DNNClassifierTest(tf.test.TestCase):
                                                 feature_columns=cont_features,
                                                 hidden_units=[3, 3])
 
-    classifier.train(_iris_input_fn, steps=1000)
+    classifier.fit(input_fn=_iris_input_fn, steps=1000)
     classifier.evaluate(input_fn=_iris_input_fn, steps=100)
     # TODO(ispir): Enable accuracy check after resolving the randomness issue.
     # self.assertGreater(scores['accuracy/mean'], 0.6)
@@ -57,7 +56,7 @@ class DNNRegressorTest(tf.test.TestCase):
     regressor = tf.contrib.learn.DNNRegressor(feature_columns=cont_features,
                                               hidden_units=[3, 3])
 
-    regressor.train(_iris_input_fn, steps=1000)
+    regressor.fit(input_fn=_iris_input_fn, steps=1000)
     regressor.evaluate(input_fn=_iris_input_fn, steps=100)
 
 
@@ -72,7 +71,7 @@ class InferedColumnTest(tf.test.TestCase):
 
   def testTrain(self):
     est = tf.contrib.learn.DNNRegressor(hidden_units=[3, 3])
-    est.train(input_fn=boston_input_fn, steps=1)
+    est.fit(input_fn=boston_input_fn, steps=1)
     _ = est.evaluate(input_fn=boston_input_fn, steps=1)
 
 

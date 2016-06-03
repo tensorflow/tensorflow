@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,11 +24,11 @@ from abc import ABCMeta
 from tensorflow.contrib.learn.python import learn
 
 
-class MockColumn(learn.Column):
-  """A mock column for use in testing."""
+class MockSeries(learn.Series):
+  """A mock series for use in testing."""
 
   def __init__(self, cachekey, mock_tensors):
-    super(MockColumn, self).__init__()
+    super(MockSeries, self).__init__()
     self._cachekey = cachekey
     self._mock_tensors = mock_tensors
 

@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +29,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -77,6 +77,8 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If `None`,
       will use `tf.nn.relu`.
+    dnn_dropout: When not None, the probability we will drop out
+      a given coordinate.
     config: RunConfig object to configure the runtime settings.
 
     Raises:
@@ -86,7 +88,6 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
   def __init__(self,
                model_dir=None,
-               n_classes=2,
                weight_column_name=None,
                linear_feature_columns=None,
                linear_optimizer=None,
@@ -94,10 +95,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
                dnn_optimizer=None,
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
+               dnn_dropout=None,
                config=None):
     super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir,
                                                           config=config)
-    self._n_classes = n_classes
     self._weight_column_name = weight_column_name
     self._linear_feature_columns = linear_feature_columns
     self._linear_optimizer = linear_optimizer
@@ -107,46 +108,52 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     self._dnn_activation_fn = dnn_activation_fn
     if self._dnn_activation_fn is None:
       self._dnn_activation_fn = nn.relu
+    self._dnn_dropout = dnn_dropout
     self._dnn_weight_collection = "DNNLinearCombined_dnn"
     self._linear_weight_collection = "DNNLinearCombined_linear"
     self._centered_bias_weight_collection = "centered_bias"
 
-  def predict(self, x=None, input_fn=None, batch_size=None):
-    """Returns predictions for given features.
+  @property
+  def linear_weights_(self):
+    """Returns weights per feature of the linear part."""
+    all_variables = self.get_variable_names()
+    # TODO(ispir): Figure out a better way to retrieve variables for features.
+    # for example using feature info / columns.
+    values = {}
+    for name in all_variables:
+      if (name.startswith("linear/") and name.rfind("/") == 6 and
+          name != "linear/bias_weight"):
+        values[name] = self.get_variable_value(name)
+    if len(values) == 1:
+      return values[list(values.keys())[0]]
+    return values
 
-    Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
-      batch_size: Override default batch size.
+  @property
+  def linear_bias_(self):
+    """Returns bias of the linear part."""
+    return (self.get_variable_value("linear/bias_weight") +
+            self.get_variable_value("centered_bias_weight"))
 
-    Returns:
-      Numpy array of predicted classes or regression values.
-    """
-    predictions = self._infer_model(x=x,
-                                    input_fn=input_fn,
-                                    batch_size=batch_size)
-    if self._n_classes > 1:
-      predictions = np.argmax(predictions, axis=1)
-    return predictions
+  @property
+  def dnn_weights_(self):
+    """Returns weights of deep neural network part."""
+    return [self.get_variable_value("hiddenlayer_%d/weights" % i)
+            for i, _ in enumerate(self._dnn_hidden_units)] + [
+                self.get_variable_value("dnn_logit/weights")]
 
-  def predict_proba(self, x=None, input_fn=None, batch_size=None):
-    """Returns prediction probabilities for given features (classification).
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x and y must be None.
-      batch_size: Override default batch size.
-
-    Returns:
-      Numpy array of predicted probabilities.
-    """
-    return self._infer_model(x=x, input_fn=input_fn, batch_size=batch_size)
+  @property
+  def dnn_bias_(self):
+    """Returns bias of deep neural network part."""
+    return [self.get_variable_value("hiddenlayer_%d/bias" % i)
+            for i, _ in enumerate(self._dnn_hidden_units)] + [
+                self.get_variable_value("dnn_logit/bias"),
+                self.get_variable_value("centered_bias_weight")]
 
   def _get_train_ops(self, features, targets):
     """See base class."""
     global_step = contrib_variables.get_global_step()
     assert global_step
-    logits = self._logits(features)
+    logits = self._logits(features, is_training=True)
     with ops.control_dependencies([self._centered_bias_step(
         targets, self._get_weight_tensor(features))]):
       loss = self._loss(logits, targets, self._get_weight_tensor(features))
@@ -179,26 +186,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     return result
 
   def _get_eval_ops(self, features, targets, metrics=None):
-    """See base class."""
-    logits = self._logits(features)
-    result = {"loss": metrics_lib.streaming_mean(self._loss(
-        logits, targets,
-        weight_tensor=self._get_weight_tensor(features)))}
-
-    # Adding default metrics
-    if metrics is None and self._n_classes > 1:
-      metrics = {"accuracy": metrics_lib.streaming_accuracy}
-
-    if self._n_classes == 2:
-      predictions = math_ops.sigmoid(logits)
-      result["eval_auc"] = metrics_lib.streaming_auc(predictions, targets)
-
-    if metrics:
-      predictions = self._logits_to_predictions(logits, proba=False)
-      result.update(self._run_metrics(predictions, targets, metrics,
-                                      self._get_weight_tensor(features)))
-
-    return result
+    raise NotImplementedError
 
   def _get_predict_ops(self, features):
     """See base class."""
@@ -206,26 +194,17 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     return self._logits_to_predictions(logits, proba=True)
 
   def _logits_to_predictions(self, logits, proba=False):
-    if self._n_classes < 2:
-      return array_ops.reshape(logits, [-1])
-
-    if self._n_classes == 2:
-      logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
-
-    if proba:
-      return nn.softmax(logits)
-    else:
-      return math_ops.argmax(logits, 1)
+    raise NotImplementedError
 
   def _get_feature_ops_from_example(self, examples_batch):
-    column_types = layers.create_dict_for_parse_example(
-        (self._get_linear_feature_columns() or []) +
-        (self._get_dnn_feature_columns() or []))
+    column_types = layers.create_feature_spec_for_parsing((
+        self._get_linear_feature_columns() or []) + (
+            self._get_dnn_feature_columns() or []))
     features = parsing_ops.parse_example(examples_batch, column_types)
     return features
 
   def _num_label_columns(self):
-    return 1 if self._n_classes <= 2 else self._n_classes
+    raise NotImplementedError
 
   def _get_linear_feature_columns(self):
     return sorted(
@@ -236,7 +215,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     return sorted(set(
         self._dnn_feature_columns)) if self._dnn_feature_columns else None
 
-  def _dnn_logits(self, features):
+  def _dnn_logits(self, features, is_training=False):
     net = layers.input_from_feature_columns(
         features,
         self._get_dnn_feature_columns(),
@@ -249,6 +228,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
           weight_collections=[self._dnn_weight_collection],
           bias_collections=[self._dnn_weight_collection],
           name="hiddenlayer_%d" % layer_id)
+      if self._dnn_dropout is not None and is_training:
+        net = layers.dropout(
+            net,
+            keep_prob=(1.0 - self._dnn_dropout))
       self._add_hidden_layer_summary(net, "hiddenlayer_%d" % layer_id)
     logit = layers.legacy_fully_connected(
         net,
@@ -285,21 +268,23 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         collections=[self._centered_bias_weight_collection,
                      ops.GraphKeys.VARIABLES],
         name="centered_bias_weight")
-    # TODO(zakaria): Create summaries for centered_bias
+    logging_ops.scalar_summary(
+        ["centered_bias_%d" % cb for cb in range(self._num_label_columns())],
+        array_ops.reshape(centered_bias, [-1]))
     return centered_bias
 
   def _centered_bias_step(self, targets, weight_tensor):
     centered_bias = ops.get_collection(self._centered_bias_weight_collection)
-    batch_size = array_ops.size(targets)
+    batch_size = array_ops.shape(targets)[0]
     logits = array_ops.reshape(
         array_ops.tile(centered_bias[0], [batch_size]),
-        [-1, self._num_label_columns()])
+        [batch_size, self._num_label_columns()])
     loss = self._loss(logits, targets, weight_tensor)
     # Learn central bias by an optimizer. 0.1 is a convervative lr for a single
     # variable.
     return training.AdagradOptimizer(0.1).minimize(loss, var_list=centered_bias)
 
-  def _logits(self, features):
+  def _logits(self, features, is_training=False):
     if not (self._get_linear_feature_columns() or
             self._get_dnn_feature_columns()):
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
@@ -307,9 +292,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
     features = self._get_feature_dict(features)
     if self._get_linear_feature_columns() and self._get_dnn_feature_columns():
-      logits = self._linear_logits(features) + self._dnn_logits(features)
+      logits = (self._linear_logits(features) +
+                self._dnn_logits(features, is_training=is_training))
     elif self._get_dnn_feature_columns():
-      logits = self._dnn_logits(features)
+      logits = self._dnn_logits(features, is_training=is_training)
     else:
       logits = self._linear_logits(features)
 
@@ -323,15 +309,11 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
           math_ops.to_float(features[self._weight_column_name]),
           shape=(-1,))
 
+  def _loss_vec(self, logits, targets):
+    raise NotImplementedError
+
   def _loss(self, logits, target, weight_tensor):
-    if self._n_classes < 2:
-      loss_vec = math_ops.square(logits - math_ops.to_float(target))
-    elif self._n_classes == 2:
-      loss_vec = nn.sigmoid_cross_entropy_with_logits(
-          logits, array_ops.reshape(math_ops.to_float(target), [-1, 1]))
-    else:
-      loss_vec = nn.sparse_softmax_cross_entropy_with_logits(
-          logits, array_ops.reshape(target, [-1]))
+    loss_vec = self._loss_vec(logits, target)
 
     if weight_tensor is None:
       return math_ops.reduce_mean(loss_vec, name="loss")
@@ -450,6 +432,8 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If `None`,
       will use `tf.nn.relu`.
+    dnn_dropout: When not None, the probability we will drop out
+      a given coordinate.
     config: RunConfig object to configure the runtime settings.
 
     Raises:
@@ -468,14 +452,16 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
                dnn_optimizer=None,
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
+               dnn_dropout=None,
                config=None):
+
     if n_classes < 2:
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
           n_classes))
 
+    self._n_classes = n_classes
     super(DNNLinearCombinedClassifier, self).__init__(
         model_dir=model_dir,
-        n_classes=n_classes,
         weight_column_name=weight_column_name,
         linear_feature_columns=linear_feature_columns,
         linear_optimizer=linear_optimizer,
@@ -483,7 +469,93 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,
         dnn_activation_fn=dnn_activation_fn,
+        dnn_dropout=dnn_dropout,
         config=config)
+
+  def predict(self, x=None, input_fn=None, batch_size=None):
+    """Returns predictions for given features.
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x must be None.
+      batch_size: Override default batch size.
+
+    Returns:
+      Numpy array of predicted classes or regression values.
+    """
+    predictions = super(DNNLinearCombinedClassifier, self).predict(
+        x=x, input_fn=input_fn, batch_size=batch_size)
+    predictions = np.argmax(predictions, axis=1)
+    return predictions
+
+  def predict_proba(self, x=None, input_fn=None, batch_size=None):
+    """Returns prediction probabilities for given features.
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x and y must be None.
+      batch_size: Override default batch size.
+
+    Returns:
+      Numpy array of predicted probabilities.
+    """
+    return super(DNNLinearCombinedClassifier, self).predict(
+        x=x, input_fn=input_fn, batch_size=batch_size)
+
+  def _loss_vec(self, logits, target):
+    # Check that we got int32/int64 for classification.
+    if (not target.dtype.is_compatible_with(dtypes.int64) and
+        not target.dtype.is_compatible_with(dtypes.int32)):
+      raise ValueError("Target's dtype should be int32, int64 or compatible. "
+                       "Instead got %s." % target.dtype)
+
+    if self._n_classes == 2:
+      # sigmoid_cross_entropy_with_logits requires [batch_size, 1] target.
+      if len(target.get_shape()) == 1:
+        target = array_ops.expand_dims(target, dim=[1])
+      loss_vec = nn.sigmoid_cross_entropy_with_logits(
+          logits, math_ops.to_float(target))
+    else:
+      # sparse_softmax_cross_entropy_with_logits requires [batch_size] target.
+      if len(target.get_shape()) == 2:
+        target = array_ops.squeeze(target, squeeze_dims=[1])
+      loss_vec = nn.sparse_softmax_cross_entropy_with_logits(
+          logits, target)
+    return loss_vec
+
+  def _logits_to_predictions(self, logits, proba=False):
+    if self._n_classes == 2:
+      logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
+
+    if proba:
+      return nn.softmax(logits)
+    else:
+      return math_ops.argmax(logits, 1)
+
+  def _num_label_columns(self):
+    return 1 if self._n_classes == 2 else self._n_classes
+
+  def _get_eval_ops(self, features, targets, metrics=None):
+    """See base class."""
+    logits = self._logits(features)
+    result = {"loss": metrics_lib.streaming_mean(self._loss(
+        logits, targets,
+        weight_tensor=self._get_weight_tensor(features)))}
+
+    # Adding default metrics
+    if metrics is None:
+      metrics = {"accuracy": metrics_lib.streaming_accuracy}
+
+    if self._n_classes == 2:
+      predictions = math_ops.sigmoid(logits)
+      result["eval_auc"] = metrics_lib.streaming_auc(predictions, targets)
+
+    if metrics:
+      predictions = self._logits_to_predictions(logits, proba=False)
+      result.update(self._run_metrics(predictions, targets, metrics,
+                                      self._get_weight_tensor(features)))
+
+    return result
 
 
 class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
@@ -552,6 +624,8 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       deep part of the model. If `None`, will use an Adagrad optimizer.
     dnn_activation_fn: Activation function applied to each layer. If None, will
       use `tf.nn.relu`.
+    dnn_dropout: When not None, the probability we will drop out
+      a given coordinate.
     config: RunConfig object to configure the runtime settings.
 
     Raises:
@@ -568,10 +642,10 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                dnn_optimizer=None,
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
+               dnn_dropout=None,
                config=None):
     super(DNNLinearCombinedRegressor, self).__init__(
         model_dir=model_dir,
-        n_classes=0,
         weight_column_name=weight_column_name,
         linear_feature_columns=linear_feature_columns,
         linear_optimizer=linear_optimizer,
@@ -579,4 +653,54 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,
         dnn_activation_fn=dnn_activation_fn,
+        dnn_dropout=dnn_dropout,
         config=config)
+
+  def predict(self, x=None, input_fn=None, batch_size=None):
+    """Returns predictions for given features.
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x must be None.
+      batch_size: Override default batch size.
+
+    Returns:
+      Numpy array of predicted classes or regression values.
+    """
+    return super(DNNLinearCombinedRegressor, self).predict(
+        x=x, input_fn=input_fn, batch_size=batch_size)
+
+  def _loss_vec(self, logits, target):
+    # To prevent broadcasting inside "-".
+    if len(target.get_shape()) == 1:
+      target = array_ops.expand_dims(target, dim=[1])
+    logits.get_shape().assert_is_compatible_with(target.get_shape())
+    return math_ops.square(logits - math_ops.to_float(target))
+
+  def _logits_to_predictions(self, logits, proba=False):
+    # TODO(ispir): Add target column support.
+    if self._targets_info is None or len(self._targets_info.shape) == 1:
+      return array_ops.squeeze(logits, squeeze_dims=[1])
+    return logits
+
+  def _num_label_columns(self):
+    # TODO(ispir): Add target column support.
+    if self._targets_info is None or len(self._targets_info.shape) == 1:
+      return 1
+    return int(self._targets_info.shape[1])
+
+  def _get_eval_ops(self, features, targets, metrics=None):
+    """See base class."""
+    logits = self._logits(features)
+    result = {"loss": metrics_lib.streaming_mean(self._loss(
+        logits, targets,
+        weight_tensor=self._get_weight_tensor(features)))}
+
+    # Adding default metrics
+    if metrics:
+      predictions = self._logits_to_predictions(logits, proba=False)
+      result.update(self._run_metrics(predictions, targets, metrics,
+                                      self._get_weight_tensor(features)))
+
+    return result
+

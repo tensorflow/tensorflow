@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -939,8 +939,9 @@ class SparseTensor(object):
   @@__init__
   @@indices
   @@values
-  @@dtype
   @@shape
+  @@dtype
+  @@op
   @@graph
   """
 
@@ -1002,6 +1003,11 @@ class SparseTensor(object):
       A 1-D Tensor of any data type.
     """
     return self._values
+
+  @property
+  def op(self):
+    """The `Operation` that produces `values` as an output."""
+    return self.values.op
 
   @property
   def dtype(self):
@@ -1694,6 +1700,9 @@ def set_shapes_for_outputs(op):
       raise RuntimeError("No shape function registered for standard op: %s"
                          % op.type)
   shapes = shape_func(op)
+  if shapes is None:
+    raise RuntimeError(
+        "Shape function for op %s did not return any shapes" % op)
   if len(op.outputs) != len(shapes):
     raise RuntimeError(
         "Shape function for op %s returned %d shapes but expected %d" %
@@ -1964,6 +1973,8 @@ class Graph(object):
     self._colocation_stack = []
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
+    # Set of operations that are dangerous to fetch!
+    self._unfetchable_ops = set()
     # A map of tensor handle placeholder to tensor dtype.
     self._handle_feeders = {}
     # A map from tensor handle to its read op.
@@ -3260,6 +3271,17 @@ class Graph(object):
   def is_feedable(self, tensor):
     """Returns `True` if and only if `tensor` is feedable."""
     return tensor not in self._unfeedable_tensors
+
+  def prevent_fetching(self, op):
+    """Marks the given `op` as unfetchable in this graph."""
+    self._unfetchable_ops.add(op)
+
+  def is_fetchable(self, tensor_or_op):
+    """Returns `True` if and only if `tensor_or_op` is fetchable."""
+    if isinstance(tensor_or_op, Tensor):
+      return tensor_or_op.op not in self._unfetchable_ops
+    else:
+      return tensor_or_op not in self._unfetchable_ops
 
 
 def device(device_name_or_function):

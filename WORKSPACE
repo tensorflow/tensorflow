@@ -112,7 +112,7 @@ new_git_repository(
   name = "iron_dropdown",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-dropdown.git",
-  tag = "v1.4.0",
+  tag = "v1.4.1",
 )
 
 new_git_repository(

@@ -102,24 +102,25 @@ running the necessary graph fragment to execute every `Operation`
 and evaluate every `Tensor` in `fetches`, substituting the values in
 `feed_dict` for the corresponding input values.
 
-The `fetches` argument may be a list of graph elements or a single
-graph element, and these determine the return value of this
+The `fetches` argument may be a single graph element, a list of
+graph elements, or a dictionary whose values are the above. The type of
+`fetches` determines the return value of this
 method. A graph element can be one of the following types:
 
-* If the *i*th element of `fetches` is an
-  [`Operation`](../../api_docs/python/framework.md#Operation), the *i*th
-  return value will be `None`.
-* If the *i*th element of `fetches` is a
-  [`Tensor`](../../api_docs/python/framework.md#Tensor), the *i*th return
-  value will be a numpy ndarray containing the value of that tensor.
-* If the *i*th element of `fetches` is a
+* If an element of `fetches` is an
+  [`Operation`](../../api_docs/python/framework.md#Operation), the
+  corresponding fetched value will be `None`.
+* If an element of `fetches` is a
+  [`Tensor`](../../api_docs/python/framework.md#Tensor), the corresponding
+  fetched value will be a numpy ndarray containing the value of that tensor.
+* If an element of `fetches` is a
   [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
-  the *i*th return value will be a
+  the corresponding fetched value will be a
   [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
   containing the value of that sparse tensor.
-* If the *i*th element of `fetches` is produced by a `get_tensor_handle` op,
-  the *i*th return value will be a numpy ndarray containing the handle of
-  that tensor.
+* If an element of `fetches` is produced by a `get_tensor_handle` op,
+  the corresponding fetched value will be a numpy ndarray containing the
+  handle of that tensor.
 
 The optional `feed_dict` argument allows the caller to override
 the value of tensors in the graph. Each key in `feed_dict` can be
@@ -151,8 +152,9 @@ collected into this argument and passed back.
 ##### Args:
 
 
-*  <b>`fetches`</b>: A single graph element, or a list of graph elements
-    (described above).
+*  <b>`fetches`</b>: A single graph element, a list of graph elements,
+    or a dictionary whose values are graph elements or lists of graph
+    elements (described above).
 *  <b>`feed_dict`</b>: A dictionary that maps graph elements to values
     (described above).
 *  <b>`options`</b>: A [`RunOptions`] protocol buffer
@@ -161,7 +163,8 @@ collected into this argument and passed back.
 ##### Returns:
 
   Either a single value if `fetches` is a single graph element, or
-  a list of values if `fetches` is a list (described above).
+  a list of values if `fetches` is a list, or a dictionary with the
+  same keys as `fetches` if that is a dictionary (described above).
 
 ##### Raises:
 
