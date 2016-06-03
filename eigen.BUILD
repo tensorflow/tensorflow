@@ -1,6 +1,6 @@
 package(default_visibility = ["//visibility:public"])
 
-archive_dir = "eigen-eigen-d02e6a705c30"
+archive_dir = "benoitsteiner-opencl-9d4a08d57d0d"
 
 cc_library(
     name = "eigen",
