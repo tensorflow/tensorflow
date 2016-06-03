@@ -94,14 +94,17 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                weight_column_name=None,
                optimizer=None,
                activation_fn=nn.relu,
-               dropout=None):
-    super(DNNClassifier, self).__init__(n_classes=n_classes,
+               dropout=None,
+               config=None):
+    super(DNNClassifier, self).__init__(model_dir=model_dir,
+                                        n_classes=n_classes,
                                         weight_column_name=weight_column_name,
                                         dnn_feature_columns=feature_columns,
                                         dnn_optimizer=optimizer,
                                         dnn_hidden_units=hidden_units,
                                         dnn_activation_fn=activation_fn,
-                                        dnn_dropout=dropout)
+                                        dnn_dropout=dropout,
+                                        config=config)
 
   def _get_train_ops(self, features, targets):
     """See base class."""
@@ -185,13 +188,16 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                weight_column_name=None,
                optimizer=None,
                activation_fn=nn.relu,
-               dropout=None):
-    super(DNNRegressor, self).__init__(weight_column_name=weight_column_name,
+               dropout=None,
+               config=None):
+    super(DNNRegressor, self).__init__(model_dir=model_dir,
+                                       weight_column_name=weight_column_name,
                                        dnn_feature_columns=feature_columns,
                                        dnn_optimizer=optimizer,
                                        dnn_hidden_units=hidden_units,
                                        dnn_activation_fn=activation_fn,
-                                       dnn_dropout=dropout)
+                                       dnn_dropout=dropout,
+                                       config=config)
 
   def _get_train_ops(self, features, targets):
     """See base class."""
