@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,11 +33,9 @@ namespace tensorflow {
 // The returned object does not take ownerships of "device" or
 // "lib_def".  The caller must ensure "device" and "lib_def" outlives
 // the returned object.
-typedef std::function<void()> Closure;
-typedef std::function<void(Closure)> Runner;
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Device* device, Runner runner,
-    int graph_def_version, const FunctionLibraryDefinition* lib_def,
+    const DeviceMgr* device_mgr, Device* device, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an

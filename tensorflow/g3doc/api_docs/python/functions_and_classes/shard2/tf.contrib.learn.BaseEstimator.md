@@ -4,7 +4,6 @@ Concrete implementation of this class should provide following functions:
   * _get_train_ops
   * _get_eval_ops
   * _get_predict_ops
-It may override _get_default_metric_functions.
 
 `Estimator` implemented below is a good example of how to use this class.
 
@@ -19,7 +18,7 @@ Parameters:
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=32, steps=None, metrics=None, name=None)` {#BaseEstimator.evaluate}
+#### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#BaseEstimator.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -28,12 +27,14 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32. Ignored
-    if input_fn is set.
-*  <b>`steps`</b>: Number of steps to evalute for.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
+    dimension of `x`. Must be `None` if `input_fn` is provided.
+*  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
+    forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
@@ -41,37 +42,53 @@ Evaluates given model with provided evaluation data.
 
 ##### Returns:
 
-  Returns self.
+  Returns `dict` with evaluation results.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If x or y are not None while input_fn or feed_fn is not None.
+*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
+      `input_fn` or `feed_fn` is provided.
 
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.fit(x, y, steps, batch_size=32, monitors=None)` {#BaseEstimator.fit}
+#### `tf.contrib.learn.BaseEstimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#BaseEstimator.fit}
 
-Trains a model given training data X and y.
+Trains a model given training data `x` predictions and `y` targets.
 
 ##### Args:
 
 
 *  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
      iterator that returns arrays of features. The training input
-     samples for fitting the model.
+     samples for fitting the model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
      iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
+*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
+    `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
+    dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
+    inside the training loop.
 
 ##### Returns:
 
-  Returns self.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
+      provided.
 
 
 - - -
@@ -129,7 +146,7 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.partial_fit(x, y, steps=1, batch_size=32, monitors=None)` {#BaseEstimator.partial_fit}
+#### `tf.contrib.learn.BaseEstimator.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=None, monitors=None)` {#BaseEstimator.partial_fit}
 
 Incremental fit on a batch of samples.
 
@@ -146,36 +163,53 @@ to converge, and you want to split up training into subparts.
 
 *  <b>`x`</b>: matrix or tensor of shape [n_samples, n_features...]. Can be
     iterator that returns arrays of features. The training input
-    samples for fitting the model.
+    samples for fitting the model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
     iterator that returns array of targets. The training target values
-    (class label in classification, real numbers in regression).
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to 32.
+    (class label in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
+*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
+    `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
+    dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
+    inside the training loop.
 
 ##### Returns:
 
-  Returns self.
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
+      provided.
 
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None)` {#BaseEstimator.predict}
+#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#BaseEstimator.predict}
 
 Returns predictions for given features.
 
 ##### Args:
 
 
-*  <b>`x`</b>: features.
-*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`x`</b>: Features. If set, `input_fn` must be `None`.
+*  <b>`input_fn`</b>: Input function. If set, `x` must be `None`.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+           If `None`, returns all.
 
 ##### Returns:
 
   Numpy array of predicted classes or regression values.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
 
 
 - - -
@@ -202,25 +236,5 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.BaseEstimator.train(input_fn, steps, monitors=None)` {#BaseEstimator.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
 
 

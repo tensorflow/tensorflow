@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1218,6 +1218,16 @@ class SelectOpTest(tf.test.TestCase):
       yt = y.astype(np.float32)
       z = tf.select(c, xt, yt).eval()
       self.assertAllEqual(z_expected, z)
+
+  def testNan(self):
+    """Verify that nans don't propagate where they shouldn't."""
+    with self.test_session():
+      for c in False, True:
+        for a in 7.0, np.nan:
+          for b in 5.0, np.nan:
+            x = tf.select(c, a, b).eval()
+            y = a if c else b
+            self.assertEqual(np.isnan(x), np.isnan(y))
 
 
 class BatchSelectOpTest(tf.test.TestCase):

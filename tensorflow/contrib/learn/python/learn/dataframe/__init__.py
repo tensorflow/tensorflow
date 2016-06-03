@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.dataframe.column import Column
-from tensorflow.contrib.learn.python.learn.dataframe.column import TransformedColumn
 from tensorflow.contrib.learn.python.learn.dataframe.dataframe import DataFrame
+from tensorflow.contrib.learn.python.learn.dataframe.series import Series
+from tensorflow.contrib.learn.python.learn.dataframe.series import TransformedSeries
 from tensorflow.contrib.learn.python.learn.dataframe.transform import parameter
 from tensorflow.contrib.learn.python.learn.dataframe.transform import Transform
 
@@ -31,4 +30,4 @@ from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import PandasSource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source import ReaderSource
 
-__all__ = ['Column', 'TransformedColumn', 'DataFrame', 'parameter', 'Transform']
+__all__ = ['Series', 'TransformedSeries', 'DataFrame', 'parameter', 'Transform']

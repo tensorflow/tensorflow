@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -208,7 +208,7 @@ DirectSession::~DirectSession() {
 }
 
 void DirectSession::MaybeInitializeExecutionState(const GraphDef& graph) {
-  // If already initialied, do nothing.
+  // If already initialized, do nothing.
   if (flib_def_ && execution_state_) {
     return;
   }
@@ -740,9 +740,6 @@ Status DirectSession::GetOrCreateExecutors(
     }
   }
   ek->items.reserve(graphs.size());
-  auto runner = [this, pool](Executor::Args::Closure c) {
-    SchedClosure(pool, c);
-  };
   const auto& optimizer_opts =
       options_.config.graph_options().optimizer_options();
   GraphOptimizer optimizer(optimizer_opts);
@@ -757,9 +754,9 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib = NewFunctionLibraryRuntime(device_mgr_.get(), device, runner,
-                                           graph_def_version, flib_def_.get(),
-                                           optimizer_opts);
+    item->flib =
+        NewFunctionLibraryRuntime(device_mgr_.get(), device, graph_def_version,
+                                  flib_def_.get(), optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;
@@ -839,6 +836,7 @@ Status DirectSession::GetOrCreateExecutors(
 Status DirectSession::CreateGraphs(const BuildGraphOptions& options,
                                    std::unordered_map<string, Graph*>* outputs,
                                    RunStateArgs* run_state_args) {
+  mutex_lock l(graph_def_lock_);
   std::unique_ptr<SimpleClientGraph> client_graph;
   SimpleClientGraph* cgraph = nullptr;
 
@@ -947,16 +945,13 @@ Status DirectSession::CreateGraphs(const BuildGraphOptions& options,
     Device* d;
     s = device_mgr_->LookupDevice(partition_name, &d);
     if (!s.ok()) break;
-    {
-      mutex_lock l(graph_def_lock_);
-      // TODO(pbar) The library is currently shared and immutable. There
-      // may be possible use cases where a device may want to modify
-      // function definitions - in which case the library would need to be
-      // replicated per device.
-      s = d->MaybeRewriteGraph(flib_def_->ToProto(), graph_def);
-      if (!s.ok()) {
-        break;
-      }
+    // TODO(pbar) The library is currently shared and immutable. There
+    // may be possible use cases where a device may want to modify
+    // function definitions - in which case the library would need to be
+    // replicated per device.
+    s = d->MaybeRewriteGraph(flib_def_->ToProto(), graph_def);
+    if (!s.ok()) {
+      break;
     }
     Graph* device_graph = new Graph(flib_def_.get());
     GraphConstructorOptions device_opts;

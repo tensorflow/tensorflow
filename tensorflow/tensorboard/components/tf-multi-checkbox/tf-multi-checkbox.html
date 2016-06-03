@@ -194,7 +194,8 @@ handle these situations gracefully.
       // e.g. if TensorBoard was opened into a new tab that isn't visible.
       // As a workaround... we know requestAnimationFrame won't fire until the
       // page has focus, so updateStyles again on requestAnimationFrame.
-      window.requestAnimationFrame(() => this.updateStyles());
+      var _this = this;
+      window.requestAnimationFrame(function() {_this.updateStyles();});
     },
     _checkboxChange: function(e) {
       var name = e.srcElement.name;
@@ -210,14 +211,13 @@ handle these situations gracefully.
       this.outSelected = change.base.slice();
     },
     toggleAll: function() {
+      var _this = this;
       var allOn = this.namesMatchingRegex
-                    .filter((n) => !this.runToIsCheckedMapping[n])
+                    .filter(function(n) {return !_this.runToIsCheckedMapping[n]})
                     .length === 0;
-
-      this.namesMatchingRegex.forEach((n) => this.runToIsCheckedMapping[n] = !allOn);
+      this.namesMatchingRegex.forEach(function(n) {_this.runToIsCheckedMapping[n] = !allOn});
       this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
     },
   });
   </script>
-
 </dom-module>

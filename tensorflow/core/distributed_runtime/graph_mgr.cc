@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -134,9 +134,6 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     TF_RETURN_IF_ERROR(AddControlEdges(popts, &partitions));
   }
 
-  thread::ThreadPool* pool = worker_env_->compute_pool;
-  auto runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
-
   LocalExecutorParams params;
 
   Status s;
@@ -169,10 +166,9 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     opseg->AddHold(session);
 
     // Function library runtime.
-    unit->lib =
-        NewFunctionLibraryRuntime(worker_env_->device_mgr, unit->device, runner,
-                                  def->versions().producer(), item->lib_def,
-                                  graph_options.optimizer_options());
+    unit->lib = NewFunctionLibraryRuntime(
+        worker_env_->device_mgr, unit->device, def->versions().producer(),
+        item->lib_def, graph_options.optimizer_options());
 
     // Construct the root executor for the subgraph.
     params.device = unit->device;

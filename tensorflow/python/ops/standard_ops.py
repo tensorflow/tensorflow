@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -66,6 +66,7 @@ from tensorflow.python.ops.state_ops import scatter_sub
 from tensorflow.python.ops.state_ops import scatter_update
 from tensorflow.python.ops.string_ops import *
 from tensorflow.python.ops.template import *
+from tensorflow.python.ops.tensor_array_ops import *
 from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *
 # pylint: enable=wildcard-import

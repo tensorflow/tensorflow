@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,7 +57,6 @@ module TF {
       this.tag = tag;
       this.colorScale = colorScale;
       this.tooltip = tooltip;
-      this.buildChart(xType);
     }
 
     /**
@@ -151,6 +150,7 @@ module TF {
     constructor(
         tag: string, dataFn: DataFn, xType: string,
         colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
+      super(tag, dataFn, xType, colorScale, tooltip);
       this.datasets = [];
       // lastPointDataset is a dataset that contains just the last point of
       // every dataset we're currently drawing.
@@ -159,7 +159,7 @@ module TF {
       // need to do a single bind, so we can deregister the callback from
       // old Plottable.Datasets. (Deregistration is done by identity checks.)
       this.updateSpecialDatasets = this._updateSpecialDatasets.bind(this);
-      super(tag, dataFn, xType, colorScale, tooltip);
+      this.buildChart(xType);
     }
     protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
       this.yAccessor = (d: Backend.ScalarDatum) => d.scalar;
@@ -430,6 +430,12 @@ module TF {
 
   export class HistogramChart extends BaseChart {
     private plots: Plottable.XYPlot<number | Date, number>[];
+    constructor(
+        tag: string, dataFn: DataFn, xType: string,
+        colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
+      super(tag, dataFn, xType, colorScale, tooltip);
+      this.buildChart(xType);
+    }
 
     public changeRuns(runs: string[]) {
       super.changeRuns(runs);

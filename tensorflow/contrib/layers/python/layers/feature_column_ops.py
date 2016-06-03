@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -228,7 +228,7 @@ def parse_feature_columns_from_examples(serialized,
 
   columns_to_tensors = parsing_ops.parse_example(
       serialized=serialized,
-      features=fc.create_dict_for_parse_example(feature_columns),
+      features=fc.create_feature_spec_for_parsing(feature_columns),
       name=name,
       example_names=example_names)
 

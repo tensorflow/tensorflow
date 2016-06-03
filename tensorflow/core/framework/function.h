@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -328,6 +328,8 @@ class FunctionLibraryRuntime {
     CancellationManager* cancellation_manager = nullptr;
     // The id of the step that is calling this function.
     int64 step_id = 0;
+
+    std::function<void(std::function<void()>)>* runner = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,

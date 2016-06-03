@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -39,13 +39,13 @@ module TF.Backend {
     if (dataDir[dataDir.length - 1] === '/') {
       dataDir = dataDir.slice(0, dataDir.length - 1);
     }
-    function standardRoute(route: string):
+    function standardRoute(route: string, demoExtension = '.json'):
         ((tag: string, run: string) => string) {
       return function(tag: string, run: string): string {
         var url =
             dataDir + '/' + route + clean(queryEncoder({tag: tag, run: run}));
         if (demoMode) {
-          url += '.json';
+          url += demoExtension;
         }
         return url;
       };
@@ -94,7 +94,7 @@ module TF.Backend {
       compressedHistograms: standardRoute('compressedHistograms'),
       images: standardRoute('images'),
       audio: standardRoute('audio'),
-      runMetadata: standardRoute('run_metadata'),
+      runMetadata: standardRoute('run_metadata', '.pbtxt'),
     };
   };
 }

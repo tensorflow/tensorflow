@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1070,5 +1070,143 @@ def conv1d(value, filters, stride, padding,
                                use_cudnn_on_gpu=use_cudnn_on_gpu,
                                data_format=data_format)
     return array_ops.squeeze(result, [1])
+
+
+@ops.RegisterShape("Dilation2D")
+def _Dilation2DShape(op):
+  """Shape function for Dilation2D op."""
+  input_shape = op.inputs[0].get_shape().with_rank(4)
+  filter_shape = op.inputs[1].get_shape().with_rank(3)
+
+  batch_size = input_shape[0]
+  in_rows = input_shape[1]
+  in_cols = input_shape[2]
+  depth = input_shape[3]
+
+  filter_rows = filter_shape[0]
+  filter_cols = filter_shape[1]
+  # Check that the input depths are compatible.
+  input_shape[3].assert_is_compatible_with(filter_shape[2])
+
+  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
+  if stride_b != 1 or stride_d != 1:
+    raise ValueError("Current implementation does not yet support "
+                     "strides in the batch and depth dimensions.")
+
+  rate_b, rate_r, rate_c, rate_d = op.get_attr("rates")
+  if rate_b != 1 or rate_d != 1:
+    raise ValueError("Current implementation does not yet support "
+                     "rates in the batch and depth dimensions.")
+
+  filter_rows_eff = filter_rows + (filter_rows - 1) * (rate_r - 1)
+  filter_cols_eff = filter_cols + (filter_cols - 1) * (rate_c - 1)
+
+  padding = op.get_attr("padding")
+  out_rows, out_cols = common_shapes.get2d_conv_output_size(in_rows, in_cols,
+                                                            filter_rows_eff,
+                                                            filter_cols_eff,
+                                                            stride_r, stride_c,
+                                                            padding)
+
+  output_shape = [batch_size, out_rows, out_cols, depth]
+  return [tensor_shape.TensorShape(output_shape)]
+
+
+@ops.RegisterShape("Dilation2DBackpropInput")
+def _Dilation2DBackpropInputShape(op):
+  """Shape function for Dilation2DBackpropInput op."""
+  return [op.inputs[0].get_shape()]
+
+
+@ops.RegisterShape("Dilation2DBackpropFilter")
+def _Dilation2DBackpropFilterShape(op):
+  """Shape function for Dilation2DBackpropFilter op."""
+  return [op.inputs[1].get_shape()]
+
+
+@ops.RegisterStatistics("Dilation2D", "flops")
+def _calc_dilation2d_flops(graph, node):
+  """Calculates the compute resources needed for Dilation2D."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
+                                                            node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_height = int(filter_shape[0])
+  filter_width = int(filter_shape[1])
+  output_count = np.prod(output_shape.as_list())
+  return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
+
+
+@ops.RegisterStatistics("Dilation2D", "weight_parameters")
+def _calc_dilation2d_weight_params(graph, node):
+  """Calculates the on-disk size of the weights for Dilation2D."""
+  filter_shape = graph_util.tensor_shape_from_node_def_name(graph,
+                                                            node.input[1])
+  filter_shape.assert_is_fully_defined()
+  filter_height = int(filter_shape[0])
+  filter_width = int(filter_shape[1])
+  filter_depth = int(filter_shape[2])
+  return ops.OpStats("weight_parameters",
+                     (filter_height * filter_width * filter_depth))
+
+
+def erosion2d(value, kernel, strides, rates, padding, name=None):
+  """Computes the grayscale erosion of 4-D `value` and 3-D `kernel` tensors.
+
+  The `value` tensor has shape `[batch, in_height, in_width, depth]` and the
+  `kernel` tensor has shape `[kernel_height, kernel_width, depth]`, i.e.,
+  each input channel is processed independently of the others with its own
+  structuring function. The `output` tensor has shape
+  `[batch, out_height, out_width, depth]`. The spatial dimensions of the
+  output tensor depend on the `padding` algorithm. We currently only support the
+  default "NHWC" `data_format`.
+
+  In detail, the grayscale morphological 2-D erosion is given by:
+
+      output[b, y, x, c] =
+         min_{dy, dx} value[b,
+                            strides[1] * y - rates[1] * dy,
+                            strides[2] * x - rates[2] * dx,
+                            c] -
+                      kernel[dy, dx, c]
+
+  Duality: The erosion of `value` by the `kernel` is equal to the negation of
+  the dilation of `-value` by the reflected `kernel`.
+
+  Args:
+    value: A `Tensor`. 4-D with shape `[batch, in_height, in_width, depth]`.
+    kernel: A `Tensor`. Must have the same type as `value`.
+      3-D with shape `[kernel_height, kernel_width, depth]`.
+    strides: A list of `ints` that has length `>= 4`.
+      1-D of length 4. The stride of the sliding window for each dimension of
+      the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
+    rates: A list of `ints` that has length `>= 4`.
+      1-D of length 4. The input stride for atrous morphological dilation.
+      Must be: `[1, rate_height, rate_width, 1]`.
+    padding: A `string` from: `"SAME", "VALID"`.
+      The type of padding algorithm to use.
+    name: A name for the operation (optional). If not specified "erosion2d"
+      is used.
+
+  Returns:
+    A `Tensor`. Has the same type as `value`.
+    4-D with shape `[batch, out_height, out_width, depth]`.
+
+  Raises:
+    ValueError: If the `value` depth does not match `kernel`' shape, or if
+      padding is other than `'VALID'` or `'SAME'`.
+  """
+  with ops.op_scope([value, kernel], name, "erosion2d") as name:
+    # Reduce erosion to dilation by duality.
+    return math_ops.neg(gen_nn_ops.dilation2d(input=math_ops.neg(value),
+                                              filter=array_ops.reverse(
+                                                  kernel, [True, True, False]),
+                                              strides=strides,
+                                              rates=rates,
+                                              padding=padding,
+                                              name=name))
 
 # pylint: enable=invalid-name

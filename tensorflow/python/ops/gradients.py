@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -155,8 +155,8 @@ def _PendingCount(graph, to_ops, from_ops):
   Returns:
     A tuple containing: (1) a list of integers indexed by operation id,
     indicating the number of backprop inputs to this operation, and (2)
-    a boolean which is True if any of the ops in between from_ops and to_ops
-    contain control flow loops.
+    a ControlFlowState object which is not None if the ops between from_ops
+    and to_ops contain control flow loops.
   """
   # Mark reachable ops from from_ops.
   reached_ops = [False] * (graph._last_id + 1)
@@ -483,18 +483,7 @@ def gradients(ys,
               if gate_gradients and len(
                   [x for x in in_grads if x is not None]) > 1:
                 in_grads = control_flow_ops.tuple(in_grads)
-          logging.vlog(1, "Gradient for '" + op.name + "'")
-          def _FilterGrad(x):
-            if x is None:
-              return False
-            if isinstance(x, (list, tuple)):
-              return bool(x)
-            else:
-              return True
-          logging.vlog(1, "  in  --> %s",
-                       ", ".join([x.name for x in out_grads if _FilterGrad(x)]))
-          logging.vlog(1, "  out --> %s",
-                       ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
+          _LogOpGradients(op, out_grads, in_grads)
         else:
           # If no grad_fn is defined or none of out_grads is available,
           # just propagates a list of None backwards.
@@ -507,7 +496,7 @@ def gradients(ys,
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=False)
 
-      # update pending count for the inputs of op.
+      # update pending count for the inputs of op and enqueue ready ops.
       # pylint: disable=protected-access
       for x in op.inputs:
         pending_count[x.op._id] -= 1
@@ -522,6 +511,9 @@ def gradients(ys,
         if pending_count[x._id] is 0:
           queue.append(x)
       # pylint: enable=protected-access
+
+  if loop_state:
+    loop_state.PostProcessing()
   return [_GetGrad(grads, x) for x in xs]
 
 
@@ -579,6 +571,22 @@ def _AccumulatorShape(inputs):
   return shape
 
 
+def _LogOpGradients(op, out_grads, in_grads):
+  """Log the in and out grads of an op."""
+  logging.vlog(1, "Gradient for '" + op.name + "'")
+  def _FilterGrad(x):
+    if x is None:
+      return False
+    if isinstance(x, (list, tuple)):
+      return bool(x)
+    else:
+      return True
+  logging.vlog(1, "  in  --> %s",
+               ", ".join([x.name for x in out_grads if _FilterGrad(x)]))
+  logging.vlog(1, "  out --> %s",
+               ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
+
+
 class AggregationMethod(object):
   """A class listing aggregation methods used to combine gradients.
 
@@ -634,8 +642,9 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         assert control_flow_ops.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
-    if not all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
-                for g in out_grad if g is not None]):
+    if (out_grad is None or
+        not all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
+                 for g in out_grad if g is not None])):
       raise TypeError("gradients have to be either all Tensors "
                       "or all IndexedSlices")
     # Aggregate multiple gradients, and convert [] to None.

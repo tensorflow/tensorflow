@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -187,6 +187,26 @@ class EventMultiplexer(object):
     for l in loaders:
       l.Reload()
     return self
+
+  def FirstEventTimestamp(self, run):
+    """Return the timestamp of the first event of the given run.
+
+    This may perform I/O if no events have been loaded yet for the run.
+
+    Args:
+      run: A string name of the run for which the timestamp is retrieved.
+
+    Returns:
+      The wall_time of the first event of the run, which will typically be
+      seconds since the epoch.
+
+    Raises:
+      KeyError: If the run is not found.
+      ValueError: If the run has no events loaded and there are no events on
+        disk to load.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.FirstEventTimestamp()
 
   def Scalars(self, run, tag):
     """Retrieve the scalar events associated with a run and tag.

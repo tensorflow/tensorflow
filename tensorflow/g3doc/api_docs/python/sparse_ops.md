@@ -105,6 +105,13 @@ The non-zero values in the represented dense tensor.
 
 - - -
 
+#### `tf.SparseTensor.shape` {#SparseTensor.shape}
+
+A 1-D Tensor of int64 representing the shape of the dense tensor.
+
+
+- - -
+
 #### `tf.SparseTensor.dtype` {#SparseTensor.dtype}
 
 The `DType` of elements in this tensor.
@@ -112,9 +119,9 @@ The `DType` of elements in this tensor.
 
 - - -
 
-#### `tf.SparseTensor.shape` {#SparseTensor.shape}
+#### `tf.SparseTensor.op` {#SparseTensor.op}
 
-A 1-D Tensor of int64 representing the shape of the dense tensor.
+The `Operation` that produces `values` as an output.
 
 
 - - -

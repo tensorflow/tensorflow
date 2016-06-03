@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -67,6 +67,42 @@ def _get_indexed_slices_value_from_fetches(fetched_vals):
 def _get_feeds_for_indexed_slices(feed, feed_val):
   return list(zip([feed.values, feed.indices] if feed.dense_shape is None else
                   [feed.values, feed.indices, feed.dense_shape], feed_val))
+
+
+def _flatten1(seq):
+  """Flattens one level of nested sequences."""
+  ret = []
+  for el in seq:
+    if isinstance(el, (list, tuple)):
+      ret.extend(el)
+    else:
+      ret.append(el)
+  return ret
+
+
+def _unflatten_fetches(fetches, flat_values):
+  """Creates a dictionary mapping fetched keys to values.
+
+  Args:
+    fetches: A heterogeneous list of either graph elements or lists/tuples
+      of graph elements.
+    flat_values: A flat list of fetched values.
+
+  Returns:
+    A dictionary with the same keys as `fetches`, mapping to the fetched value
+    (or list of values) in `flat_values`.
+  """
+  used = 0
+  ret = {}
+  for key, fetch in fetches.items():
+    if isinstance(fetch, (list, tuple)):
+      start, used = used, used + len(fetch)
+      ret[key] = flat_values[start : used]
+    else:
+      ret[key] = flat_values[used]
+      used += 1
+  assert used == len(flat_values)
+  return ret
 
 
 class BaseSession(SessionInterface):
@@ -256,24 +292,25 @@ class BaseSession(SessionInterface):
     and evaluate every `Tensor` in `fetches`, substituting the values in
     `feed_dict` for the corresponding input values.
 
-    The `fetches` argument may be a list of graph elements or a single
-    graph element, and these determine the return value of this
+    The `fetches` argument may be a single graph element, a list of
+    graph elements, or a dictionary whose values are the above. The type of
+    `fetches` determines the return value of this
     method. A graph element can be one of the following types:
 
-    * If the *i*th element of `fetches` is an
-      [`Operation`](../../api_docs/python/framework.md#Operation), the *i*th
-      return value will be `None`.
-    * If the *i*th element of `fetches` is a
-      [`Tensor`](../../api_docs/python/framework.md#Tensor), the *i*th return
-      value will be a numpy ndarray containing the value of that tensor.
-    * If the *i*th element of `fetches` is a
+    * If an element of `fetches` is an
+      [`Operation`](../../api_docs/python/framework.md#Operation), the
+      corresponding fetched value will be `None`.
+    * If an element of `fetches` is a
+      [`Tensor`](../../api_docs/python/framework.md#Tensor), the corresponding
+      fetched value will be a numpy ndarray containing the value of that tensor.
+    * If an element of `fetches` is a
       [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
-      the *i*th return value will be a
+      the corresponding fetched value will be a
       [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
       containing the value of that sparse tensor.
-    * If the *i*th element of `fetches` is produced by a `get_tensor_handle` op,
-      the *i*th return value will be a numpy ndarray containing the handle of
-      that tensor.
+    * If an element of `fetches` is produced by a `get_tensor_handle` op,
+      the corresponding fetched value will be a numpy ndarray containing the
+      handle of that tensor.
 
     The optional `feed_dict` argument allows the caller to override
     the value of tensors in the graph. Each key in `feed_dict` can be
@@ -303,8 +340,9 @@ class BaseSession(SessionInterface):
     collected into this argument and passed back.
 
     Args:
-      fetches: A single graph element, or a list of graph elements
-        (described above).
+      fetches: A single graph element, a list of graph elements,
+        or a dictionary whose values are graph elements or lists of graph
+        elements (described above).
       feed_dict: A dictionary that maps graph elements to values
         (described above).
       options: A [`RunOptions`] protocol buffer
@@ -312,7 +350,8 @@ class BaseSession(SessionInterface):
 
     Returns:
       Either a single value if `fetches` is a single graph element, or
-      a list of values if `fetches` is a list (described above).
+      a list of values if `fetches` is a list, or a dictionary with the
+      same keys as `fetches` if that is a dictionary (described above).
 
     Raises:
       RuntimeError: If this `Session` is in an invalid state (e.g. has been
@@ -369,14 +408,17 @@ class BaseSession(SessionInterface):
 
     Args:
       handle: A handle for a sequence of partial runs.
-      fetches: A single graph element, or a list of graph elements
-        (described above).
+      fetches: A single graph element, a list of graph elements,
+        or a dictionary whose values are graph elements or lists of graph
+        elements (see documentation for `run`).
       feed_dict: A dictionary that maps graph elements to values
         (described above).
 
     Returns:
       Either a single value if `fetches` is a single graph element, or
-      a list of values if `fetches` is a list (described above).
+      a list of values if `fetches` is a list, or a dictionary with the
+      same keys as `fetches` if that is a dictionary
+      (see documentation for `run`).
 
     Raises:
       tf.errors.OpError: Or one of its subclasses on error.
@@ -450,6 +492,11 @@ class BaseSession(SessionInterface):
     return self._do_call(_setup_fn, self._session, feed_list, unique_fetches,
                          target_list)
 
+  def _assert_fetchable(self, op):
+    if not self.graph.is_fetchable(op):
+      raise ValueError(
+          'Operation %r has been marked as not fetchable.' % op.name)
+
   def _process_fetches(self, fetches):
     """Validate and process fetches."""
     def _fetch_fn(fetch):
@@ -478,8 +525,10 @@ class BaseSession(SessionInterface):
                                                 allow_operation=True)
           fetch_name = compat.as_bytes(fetch_t.name)
           if isinstance(fetch_t, ops.Operation):
+            self._assert_fetchable(fetch_t)
             target_list.append(fetch_name)
           else:
+            self._assert_fetchable(fetch_t.op)
             subfetch_names.append(fetch_name)
           # Remember the fetch if it is for a tensor handle.
           if (isinstance(fetch_t, ops.Tensor) and
@@ -516,6 +565,20 @@ class BaseSession(SessionInterface):
     if self.graph.version == 0:
       raise RuntimeError('The Session graph is empty.  Add operations to the '
                          'graph before calling run().')
+
+    # Flatten/unflatten fetched values.
+    if isinstance(fetches, (list, tuple)):
+      # fetches is already a list or tuple; nothing to do.
+      unflatten = lambda fetched: fetched
+    elif isinstance(fetches, dict):
+      # fetches is a dictionary; flatten the values and map fetched
+      # values back into to a dictionary.
+      orig_fetches, fetches = fetches, _flatten1(fetches.values())
+      unflatten = lambda fetched: _unflatten_fetches(orig_fetches, fetched)
+    else:
+      # fetches is a singleton.
+      fetches = [fetches]
+      unflatten = lambda fetched: fetched[0]
 
     # Validate and process fetches.
     processed_fetches = self._process_fetches(fetches)
@@ -595,10 +658,7 @@ class BaseSession(SessionInterface):
       else:
         ret.append(None)
 
-    if isinstance(fetches, (list, tuple)):
-      return ret
-    else:
-      return ret[0]
+    return unflatten(ret)
 
   # Captures the name of a node in an error status.
   _NODEDEF_NAME_RE = re.compile(r'\[\[Node: ([^ ]*?) =')

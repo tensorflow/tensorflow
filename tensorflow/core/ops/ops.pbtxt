@@ -3753,6 +3753,194 @@ op {
   description: "`Gamma(x)`), element-wise."
 }
 op {
+  name: "Dilation2D"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "rates"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes the grayscale dilation of 4-D `input` and 3-D `filter` tensors."
+  description: "The `input` tensor has shape `[batch, in_height, in_width, depth]` and the\n`filter` tensor has shape `[filter_height, filter_width, depth]`, i.e., each\ninput channel is processed independently of the others with its own structuring\nfunction. The `output` tensor has shape\n`[batch, out_height, out_width, depth]`. The spatial dimensions of the output\ntensor depend on the `padding` algorithm. We currently only support the default\n\"NHWC\" `data_format`.\n\nIn detail, the grayscale morphological 2-D dilation is the max-sum correlation\n(for consistency with `conv2d`, we use unmirrored filters):\n\n    output[b, y, x, c] =\n       max_{dy, dx} input[b,\n                          strides[1] * y + rates[1] * dy,\n                          strides[2] * x + rates[2] * dx,\n                          c] +\n                    filter[dy, dx, c]\n\nMax-pooling is a special case when the filter has size equal to the pooling\nkernel size and contains all zeros."
+}
+op {
+  name: "Dilation2DBackpropFilter"
+  input_arg {
+    name: "input"
+    description: "4-D with shape `[batch, in_height, in_width, depth]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    description: "3-D with shape `[filter_height, filter_width, depth]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    description: "4-D with shape `[batch, out_height, out_width, depth]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "filter_backprop"
+    description: "3-D with shape `[filter_height, filter_width, depth]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D of length 4. The stride of the sliding window for each dimension of\nthe input tensor. Must be: `[1, stride_height, stride_width, 1]`."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "rates"
+    type: "list(int)"
+    description: "1-D of length 4. The input stride for atrous morphological dilation.\nMust be: `[1, rate_height, rate_width, 1]`."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes the gradient of morphological 2-D dilation with respect to the filter."
+}
+op {
+  name: "Dilation2DBackpropInput"
+  input_arg {
+    name: "input"
+    description: "4-D with shape `[batch, in_height, in_width, depth]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    description: "3-D with shape `[filter_height, filter_width, depth]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    description: "4-D with shape `[batch, out_height, out_width, depth]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "in_backprop"
+    description: "4-D with shape `[batch, in_height, in_width, depth]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D of length 4. The stride of the sliding window for each dimension of\nthe input tensor. Must be: `[1, stride_height, stride_width, 1]`."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "rates"
+    type: "list(int)"
+    description: "1-D of length 4. The input stride for atrous morphological dilation.\nMust be: `[1, rate_height, rate_width, 1]`."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes the gradient of morphological 2-D dilation with respect to the input."
+}
+op {
   name: "Div"
   input_arg {
     name: "x"

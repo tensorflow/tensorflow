@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -181,7 +181,7 @@ DataTypeVector AllTypes() {
           DT_QUINT16, DT_QINT32, DT_HALF};
 }
 
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) || defined(SUPPORT_SELECTIVE_REGISTRATION)
 
 DataTypeVector RealNumberTypes() {
   return {DT_FLOAT, DT_DOUBLE, DT_INT32,  DT_INT64, DT_UINT8,

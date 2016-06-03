@@ -30,6 +30,7 @@ sh_binary(
         ":other_headers",
         ":simple_console",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/slim:all_files",
         "//tensorflow/core:framework_headers",
         "//tensorflow/examples/tutorials/mnist:package",
         "//tensorflow/models/embedding:package",

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -543,7 +543,6 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
   def __new__(cls, column_name, dimension, default_value, dtype):
     if default_value is not None:
       default_value = tuple(default_value)
-
     return super(_RealValuedColumn, cls).__new__(cls, column_name, dimension,
                                                  default_value, dtype)
 
@@ -573,7 +572,10 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
                          input_tensor,
                          weight_collections=None,
                          trainable=True):
-    return input_tensor
+    batch_size = input_tensor.get_shape().as_list()[0]
+    batch_size = int(batch_size) if batch_size else -1
+    flattened_shape = [batch_size, self.dimension]
+    return array_ops.reshape(math_ops.to_float(input_tensor), flattened_shape)
 
   def to_weighted_sum(self,
                       input_tensor,
@@ -932,13 +934,14 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
         trainable, self.name + "_weights")
 
 
-def crossed_column(columns, hash_bucket_size):
+def crossed_column(columns, hash_bucket_size, combiner="sum"):
   """Creates a _CrossedColumn.
 
   Args:
     columns: An iterable of _FeatureColumn. Items can be an instance of
       _SparseColumn, _CrossedColumn, or _BucketizedColumn.
     hash_bucket_size: An int that is > 1. The number of buckets.
+    combiner: A combiner string, supports sum, mean, sqrtn.
 
   Returns:
     A _CrossedColumn.
@@ -950,7 +953,7 @@ def crossed_column(columns, hash_bucket_size):
     ValueError: if hash_bucket_size is not > 1 or
       len(columns) is not > 1.
   """
-  return _CrossedColumn(columns, hash_bucket_size)
+  return _CrossedColumn(columns, hash_bucket_size, combiner=combiner)
 
 
 def _get_feature_config(feature_column):
@@ -968,7 +971,7 @@ def _get_feature_config(feature_column):
                   "Given column is {}".format(feature_column))
 
 
-def create_dict_for_parse_example(feature_columns):
+def create_feature_spec_for_parsing(feature_columns):
   """Helper that prepares features config from input feature_columns.
 
   The returned feature config can be used as arg 'features' in tf.parse_example.
@@ -986,10 +989,10 @@ def create_dict_for_parse_example(feature_columns):
   feature_columns = set([age, click_bucket, country_x_click])
   batch_examples = tf.parse_example(
       serialized_examples,
-      create_dict_for_parse_example(feature_columns))
+      create_feature_spec_for_parsing(feature_columns))
   ```
 
-  For the above example, create_dict_for_parse_example would return the dict:
+  For the above example, create_feature_spec_for_parsing would return the dict:
   {"age": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
    "historical_click_ratio": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
    "country": parsing_ops.VarLenFeature(tf.string)}
@@ -1017,7 +1020,7 @@ def make_place_holder_tensors_for_base_features(feature_columns):
     placeholder Tensors (dense columns).
   """
   # Get dict mapping features to FixedLenFeature or VarLenFeature values.
-  dict_for_parse_example = create_dict_for_parse_example(feature_columns)
+  dict_for_parse_example = create_feature_spec_for_parsing(feature_columns)
   placeholders = {}
   for column_name, column_type in dict_for_parse_example.items():
     if isinstance(column_type, parsing_ops.VarLenFeature):
