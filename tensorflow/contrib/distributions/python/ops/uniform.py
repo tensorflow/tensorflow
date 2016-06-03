@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops.distribution import ContinuousDistribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -101,7 +102,7 @@ class Uniform(ContinuousDistribution):
 
   def event_shape(self, name="event_shape"):
     with ops.name_scope(self.name):
-      return constant_op.constant(1, name=name)
+      return constant_op.constant([], name=name, dtype=dtypes.int32)
 
   def get_event_shape(self):
     return self._event_shape

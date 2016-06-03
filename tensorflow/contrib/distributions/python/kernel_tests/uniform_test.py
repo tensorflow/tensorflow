@@ -66,7 +66,7 @@ class UniformTest(tf.test.TestCase):
 
       self.assertEqual(uniform.batch_shape().eval(), (5,))
       self.assertEqual(uniform.get_batch_shape(), tf.TensorShape([5]))
-      self.assertEqual(uniform.event_shape().eval(), 1)
+      self.assertAllEqual(uniform.event_shape().eval(), [])
       self.assertEqual(uniform.get_event_shape(), tf.TensorShape([]))
 
   def testUniformPDFWithScalarEndpoint(self):

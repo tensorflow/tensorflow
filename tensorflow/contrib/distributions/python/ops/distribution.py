@@ -83,7 +83,7 @@ class BaseDistribution(object):
 
   # `event_shape` is `TensorShape([])`.
   event_shape = u.get_event_shape()
-  # `event_shape_t` is a `Tensor` which will evaluate to a scalar 1.
+  # `event_shape_t` is a `Tensor` which will evaluate to [].
   event_shape_t = u.event_shape
 
   # Sampling returns a sample per distribution.  `samples` has shape
@@ -129,6 +129,7 @@ class BaseDistribution(object):
     Returns:
       `Tensor` `event_shape`
     """
+    # For scalar distributions, constant([], int32)
     pass
 
   @abc.abstractmethod
@@ -178,9 +179,9 @@ class BaseDistribution(object):
 
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function."""
-    value = ops.convert_to_tensor(value)
     with ops.op_scope([value], self.name):
       with ops.name_scope(name):
+        value = ops.convert_to_tensor(value)
         return math_ops.exp(self.log_cdf(value))
 
   def log_cdf(self, value, name="log_cdf"):
@@ -223,17 +224,17 @@ class ContinuousDistribution(BaseDistribution):
   @abc.abstractmethod
   def pdf(self, value, name="pdf"):
     """Probability density function."""
-    value = ops.convert_to_tensor(value)
     with ops.op_scope([value], self.name):
       with ops.name_scope(name):
+        value = ops.convert_to_tensor(value)
         return math_ops.exp(self.log_pdf(value))
 
   @abc.abstractmethod
   def log_pdf(self, value, name="log_pdf"):
     """Log of the probability density function."""
-    value = ops.convert_to_tensor(value)
     with ops.op_scope([value], self.name):
       with ops.name_scope(name):
+        value = ops.convert_to_tensor(value)
         return math_ops.log(self.pdf(value))
 
 
@@ -253,15 +254,15 @@ class DiscreteDistribution(BaseDistribution):
   @abc.abstractmethod
   def pmf(self, value, name="pmf"):
     """Probability mass function."""
-    value = ops.convert_to_tensor(value)
     with ops.op_scope([value], self.name):
       with ops.name_scope(name):
+        value = ops.convert_to_tensor(value)
         return math_ops.exp(self.log_pmf(value))
 
   @abc.abstractmethod
   def log_pmf(self, value, name="log_pmf"):
     """Log of the probability mass function."""
-    value = ops.convert_to_tensor(value)
     with ops.op_scope([value], self.name):
       with ops.name_scope(name):
+        value = ops.convert_to_tensor(value)
         return math_ops.log(self.pmf(value))

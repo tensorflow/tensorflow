@@ -33,7 +33,7 @@ class GammaTest(tf.test.TestCase):
 
       self.assertEqual(gamma.batch_shape().eval(), (5,))
       self.assertEqual(gamma.get_batch_shape(), tf.TensorShape([5]))
-      self.assertEqual(gamma.event_shape().eval(), 1)
+      self.assertAllEqual(gamma.event_shape().eval(), [])
       self.assertEqual(gamma.get_event_shape(), tf.TensorShape([]))
 
   def testGammaLogPDF(self):

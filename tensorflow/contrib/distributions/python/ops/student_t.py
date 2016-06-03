@@ -163,7 +163,7 @@ class StudentT(ContinuousDistribution):
 
   def event_shape(self, name="event_shape"):
     with ops.name_scope(self.name):
-      return constant_op.constant(1, name=name)
+      return constant_op.constant([], name=name, dtype=math_ops.int32)
 
   def get_event_shape(self):
     return self._event_shape

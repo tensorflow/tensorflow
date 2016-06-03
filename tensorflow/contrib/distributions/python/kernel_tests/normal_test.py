@@ -195,7 +195,7 @@ class NormalTest(tf.test.TestCase):
 
       self.assertEqual(normal.batch_shape().eval(), [5])
       self.assertEqual(normal.get_batch_shape(), tf.TensorShape([5]))
-      self.assertEqual(normal.event_shape().eval(), 1)
+      self.assertAllEqual(normal.event_shape().eval(), [])
       self.assertEqual(normal.get_event_shape(), tf.TensorShape([]))
 
   def testNormalShapeWithPlaceholders(self):
@@ -207,7 +207,7 @@ class NormalTest(tf.test.TestCase):
       # get_batch_shape should return an "<unknown>" tensor.
       self.assertEqual(normal.get_batch_shape(), tf.TensorShape(None))
       self.assertEqual(normal.get_event_shape(), ())
-      self.assertEqual(normal.event_shape().eval(), 1)
+      self.assertAllEqual(normal.event_shape().eval(), [])
       self.assertAllEqual(
           sess.run(normal.batch_shape(),
                    feed_dict={mu: 5.0, sigma: [1.0, 2.0]}),

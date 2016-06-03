@@ -22,6 +22,7 @@ import math
 
 from tensorflow.contrib.distributions.python.ops.distribution import ContinuousDistribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -154,8 +155,8 @@ class Normal(ContinuousDistribution):
     Returns:
       `Tensor` `event_shape`
     """
-    with ops.name_scope(self._name):
-      return constant_op.constant(1, name=name)
+    with ops.name_scope(self.name):
+      return constant_op.constant([], name=name, dtype=dtypes.int32)
 
   def get_event_shape(self):
     """`TensorShape` available at graph construction time.
