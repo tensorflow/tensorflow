@@ -61,7 +61,19 @@ def boston_eval_fn():
   return tf.concat(0, [features, features]), tf.concat(0, [target, target])
 
 
-def linear_model_fn(features, target, unused_mode):
+def linear_model_params_fn(features, target, mode, params):
+  assert mode in ('train', 'eval', 'infer')
+  prediction, loss = (
+      tf.contrib.learn.models.linear_regression_zero_init(features, target)
+  )
+  train_op = tf.contrib.layers.optimize_loss(
+      loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
+      learning_rate=params['learning_rate'])
+  return prediction, loss, train_op
+
+
+def linear_model_fn(features, target, mode):
+  assert mode in ('train', 'eval', 'infer')
   prediction, loss = (
       tf.contrib.learn.models.linear_regression_zero_init(features, target)
   )
@@ -71,7 +83,7 @@ def linear_model_fn(features, target, unused_mode):
   return prediction, loss, train_op
 
 
-def logistic_model_fn(features, target, unused_mode):
+def logistic_model_no_mode_fn(features, target):
   target = tf.one_hot(target, 3, 1, 0)
   prediction, loss = (
       tf.contrib.learn.models.logistic_regression_zero_init(features, target)
@@ -146,6 +158,12 @@ class EstimatorTest(tf.test.TestCase):
         metrics={'MSE': tf.contrib.metrics.streaming_mean_squared_error})
     self.assertLess(scores3['MSE'], scores['MSE'])
 
+  def testEstimatorParams(self):
+    boston = tf.contrib.learn.datasets.load_boston()
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_params_fn,
+                                     params={'learning_rate': 0.01})
+    est.fit(x=boston.data, y=boston.target.astype(np.float32), steps=100)
+
   def testBostonAll(self):
     boston = tf.contrib.learn.datasets.load_boston()
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
@@ -160,7 +178,7 @@ class EstimatorTest(tf.test.TestCase):
 
   def testIrisAll(self):
     iris = tf.contrib.learn.datasets.load_iris()
-    est = tf.contrib.learn.Estimator(model_fn=logistic_model_fn)
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
     est.fit(iris.data, iris.target, steps=100)
     scores = est.evaluate(
         x=iris.data,
@@ -177,7 +195,7 @@ class EstimatorTest(tf.test.TestCase):
 
   def testIrisInputFn(self):
     iris = tf.contrib.learn.datasets.load_iris()
-    est = tf.contrib.learn.Estimator(model_fn=logistic_model_fn)
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
     est.fit(input_fn=iris_input_fn, steps=100)
     _ = est.evaluate(input_fn=iris_input_fn, steps=1)
     predictions = est.predict(x=iris.data)['class']
