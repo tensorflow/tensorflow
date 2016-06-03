@@ -108,11 +108,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@protobuf//:protoc_lib",
   )
 
-  native.git_repository(
+  native.new_git_repository(
     name = "grpc",
     commit = "39650266",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
+    build_file = path_prefix + "grpc.BUILD",
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
@@ -139,11 +140,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@jsoncpp_git//:jsoncpp",
   )
 
-  native.git_repository(
+  native.new_git_repository(
     name = "boringssl_git",
-    commit = "436432d8",
-    init_submodules = True,
-    remote = "https://github.com/mdsteele/boringssl-bazel",
+    commit = "e72df93461c6d9d2b5698f10e16d3ab82f5adde3",
+    remote = "https://boringssl.googlesource.com/boringssl",
+    build_file = path_prefix + "boringssl.BUILD",
   )
 
   native.new_git_repository(
@@ -184,14 +185,4 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     url = "http://zlib.net/zlib-1.2.8.tar.gz",
     sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
     build_file = path_prefix + "zlib.BUILD",
-  )
-
-  native.bind(
-    name = "zlib",
-    actual = "@zlib_archive//:zlib",
-  )
-
-  native.bind(
-    name = "libssl",
-    actual = "@boringssl_git//:ssl",
   )
