@@ -8361,6 +8361,62 @@ op {
   }
 }
 op {
+  name: "ExtractImagePatches"
+  input_arg {
+    name: "images"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "patches"
+    type_attr: "T"
+  }
+  attr {
+    name: "ksizes"
+    type: "list(int)"
+    default_value {
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    default_value {
+    }
+  }
+  attr {
+    name: "rates"
+    type: "list(int)"
+    default_value {
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+}
+op {
   name: "FFT"
   input_arg {
     name: "in"

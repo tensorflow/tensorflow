@@ -166,8 +166,8 @@ class StudentTTest(tf.test.TestCase):
   def testBroadcastingParams(self):
 
     def _check(student):
-      self.assertEqual(student.mean.get_shape(), (3,))
-      self.assertEqual(student.variance.get_shape(), (3,))
+      self.assertEqual(student.mean().get_shape(), (3,))
+      self.assertEqual(student.variance().get_shape(), (3,))
       self.assertEqual(student.entropy().get_shape(), (3,))
       self.assertEqual(student.log_pdf(2.).get_shape(), (3,))
       self.assertEqual(student.pdf(2.).get_shape(), (3,))
@@ -228,22 +228,60 @@ class StudentTTest(tf.test.TestCase):
     _check2d_rows(tf.contrib.distributions.StudentT(
         df=7., mu=3., sigma=[[2.], [3.], [4.]]))
 
-  def testMeanVar(self):
+  def testMean(self):
     with tf.Session():
+      mu = [-2, 0., 1., 3.3, 4.4]
       student = tf.contrib.distributions.StudentT(
-          df=[1., 2., 3., 5., 7.],
-          mu=np.exp(1, dtype=np.float32),
+          df=[0.5, 1., 3., 5., 7.],
+          mu=mu,
           sigma=[5., 4., 3., 2., 1.])
       # Test broadcast of mu across shape of df/sigma
-      mean = student.mean.eval()
-      self.assertAllClose([np.exp(1, dtype=np.float32)] * 5, mean)
-      var = student.variance.eval()
-      # loc does not effect variance, so we use 0.
-      self.assertAllClose([stats.t.var(1., loc=0., scale=5.),
-                           stats.t.var(2., loc=0., scale=4.),
-                           stats.t.var(3., loc=0., scale=3.),
-                           stats.t.var(5., loc=0., scale=2.),
-                           stats.t.var(7., loc=0., scale=1.)], var)
+      mean = student.mean().eval()
+      self.assertAllClose([np.nan, np.nan, 1., 3.3, 4.4], mean)
+
+  def testVariance(self):
+    with tf.Session():
+      df = [0.5, 1., 3., 5., 7.]
+      mu = [-2, 0., 1., 3.3, 4.4]
+      sigma = [5., 4., 3., 2., 1.]
+      student = tf.contrib.distributions.StudentT(df=df, mu=mu, sigma=sigma)
+      # Test broadcast of mu across shape of df/sigma
+      var = student.variance().eval()
+      # scipy uses inf rather than nan here.  Assert we use NaN, then replace
+      # with infinity to compare to scipy.
+      self.assertFalse(np.isinf(var).any())
+      var[np.isnan(var)] = np.inf
+
+      expected_var = [
+          stats.t.var(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)]
+      self.assertAllClose(expected_var, var)
+
+  def testStd(self):
+    with tf.Session():
+      df = [0.5, 1., 3., 5., 7.]
+      mu = [-2, 0., 1., 3.3, 4.4]
+      sigma = [5., 4., 3., 2., 1.]
+      student = tf.contrib.distributions.StudentT(df=df, mu=mu, sigma=sigma)
+      # Test broadcast of mu across shape of df/sigma
+      std = student.std().eval()
+      # scipy uses inf rather than nan here.  Assert we use NaN, then replace
+      # with infinity to compare to scipy.
+      self.assertFalse(np.isinf(std).any())
+      std[np.isnan(std)] = np.inf
+
+      expected_std = [
+          stats.t.std(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)]
+      self.assertAllClose(expected_std, std)
+
+  def testMode(self):
+    with tf.Session():
+      student = tf.contrib.distributions.StudentT(
+          df=[0.5, 1., 3],
+          mu=[-1, 0., 1],
+          sigma=[5., 4., 3.])
+      # Test broadcast of mu across shape of df/sigma
+      mode = student.mode().eval()
+      self.assertAllClose([-1., 0, 1], mode)
 
   def testPdfOfSample(self):
     with tf.Session() as sess:
@@ -251,10 +289,10 @@ class StudentTTest(tf.test.TestCase):
       num = 20000
       samples = student.sample(num, seed=137)
       pdfs = student.pdf(samples)
-      mean = student.mean
-      mean_pdf = student.pdf(student.mean)
+      mean = student.mean()
+      mean_pdf = student.pdf(student.mean())
       sample_vals, pdf_vals, mean_val, mean_pdf_val = sess.run(
-          [samples, pdfs, student.mean, mean_pdf])
+          [samples, pdfs, student.mean(), mean_pdf])
       self.assertEqual(samples.get_shape(), (num,))
       self.assertEqual(pdfs.get_shape(), (num,))
       self.assertEqual(mean.get_shape(), ())
@@ -305,7 +343,7 @@ class StudentTTest(tf.test.TestCase):
                                                   sigma=1.,
                                                   name='S')
       with self.assertRaisesOpError(r'Condition x > 0 did not hold'):
-        student.mean.eval()
+        student.mean().eval()
 
   def testNegativeScaleFails(self):
     with tf.Session():
@@ -314,7 +352,7 @@ class StudentTTest(tf.test.TestCase):
                                                   sigma=[[3.], [-2.]],
                                                   name='S')
       with self.assertRaisesOpError(r'Condition x > 0 did not hold'):
-        student.mean.eval()
+        student.mean().eval()
 
 
 if __name__ == '__main__':

@@ -197,6 +197,13 @@ Log CDF of observations `x` under these Gamma distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Gamma.log_likelihood(value, name='log_likelihood')` {#Gamma.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
 #### `tf.contrib.distributions.Gamma.log_pdf(x, name='log_pdf')` {#Gamma.log_pdf}
 
 Log pdf of observations in `x` under these Gamma distribution(s).
@@ -220,9 +227,16 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.mean` {#Gamma.mean}
+#### `tf.contrib.distributions.Gamma.mean(name='mean')` {#Gamma.mean}
 
 Mean of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.mode(name='mode')` {#Gamma.mode}
+
+Mode of each batch member.  Defined only if alpha >= 1.
 
 
 - - -
@@ -257,7 +271,7 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.sample(n, seed=None, name=None)` {#Gamma.sample}
+#### `tf.contrib.distributions.Gamma.sample(n, seed=None, name='sample')` {#Gamma.sample}
 
 Generate `n` samples.
 
@@ -277,7 +291,14 @@ Generate `n` samples.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.variance` {#Gamma.variance}
+#### `tf.contrib.distributions.Gamma.std(name='std')` {#Gamma.std}
+
+Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.variance(name='variance')` {#Gamma.variance}
 
 Variance of each batch member.
 

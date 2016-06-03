@@ -564,18 +564,20 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     return "{}".format(self)
 
   def insert_transformed_feature(self, columns_to_tensors):
-    # No transformation is needed for _RealValuedColumn.
-    columns_to_tensors[self] = columns_to_tensors[self.name]
+    # No transformation is needed for _RealValuedColumn except reshaping.
+    input_tensor = columns_to_tensors[self.name]
+    batch_size = input_tensor.get_shape().as_list()[0]
+    batch_size = int(batch_size) if batch_size else -1
+    flattened_shape = [batch_size, self.dimension]
+    columns_to_tensors[self] = array_ops.reshape(
+        math_ops.to_float(input_tensor), flattened_shape)
 
   # pylint: disable=unused-argument
   def to_dnn_input_layer(self,
                          input_tensor,
                          weight_collections=None,
                          trainable=True):
-    batch_size = input_tensor.get_shape().as_list()[0]
-    batch_size = int(batch_size) if batch_size else -1
-    flattened_shape = [batch_size, self.dimension]
-    return array_ops.reshape(math_ops.to_float(input_tensor), flattened_shape)
+    return input_tensor
 
   def to_weighted_sum(self,
                       input_tensor,
@@ -740,8 +742,10 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
 
   def insert_transformed_feature(self, columns_to_tensors):
     # Bucketize the source column.
+    if self.source_column not in columns_to_tensors:
+      self.source_column.insert_transformed_feature(columns_to_tensors)
     columns_to_tensors[self] = bucketization_op.bucketize(
-        columns_to_tensors[self.source_column.name],
+        columns_to_tensors[self.source_column],
         boundaries=list(self.boundaries))
 
   # pylint: disable=unused-argument

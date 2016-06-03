@@ -42,8 +42,11 @@ bazel build tensorflow/tensorboard:tensorboard
 
 This should print that TensorBoard has started. Next, connect to http://localhost:6006.
 
-Note that TensorBoard requires a `logdir` to read logs from. For info on
-configuring TensorBoard, run `tensorboard --help`.
+TensorBoard requires a `logdir` to read logs from. For info on configuring
+TensorBoard, run `tensorboard --help`.
+
+TensorBoard can be used in Google Chrome or Firefox. Other browsers might
+work, but there may be bugs or performance issues.
 
 # Key Concepts
 

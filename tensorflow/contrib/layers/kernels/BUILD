@@ -22,6 +22,7 @@ cc_library(
     name = "sparse_feature_cross_kernel",
     srcs = ["sparse_feature_cross_kernel.cc"],
     deps = [
+        "@farmhash_archive//:farmhash",
         "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

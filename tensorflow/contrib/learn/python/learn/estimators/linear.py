@@ -80,13 +80,15 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                model_dir=None,
                n_classes=2,
                weight_column_name=None,
-               optimizer=None):
+               optimizer=None,
+               config=None):
     super(LinearClassifier, self).__init__(
         model_dir=model_dir,
         n_classes=n_classes,
         weight_column_name=weight_column_name,
         linear_feature_columns=feature_columns,
-        linear_optimizer=optimizer)
+        linear_optimizer=optimizer,
+        config=config)
 
   def _get_train_ops(self, features, targets):
     """See base class."""
@@ -156,12 +158,14 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                model_dir=None,
                n_classes=2,
                weight_column_name=None,
-               optimizer=None):
+               optimizer=None,
+               config=None):
     super(LinearRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
         linear_feature_columns=feature_columns,
-        linear_optimizer=optimizer)
+        linear_optimizer=optimizer,
+        config=config)
 
   def _get_train_ops(self, features, targets):
     """See base class."""

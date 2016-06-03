@@ -121,6 +121,7 @@
   * [`dynamic_partition`](../../api_docs/python/array_ops.md#dynamic_partition)
   * [`dynamic_stitch`](../../api_docs/python/array_ops.md#dynamic_stitch)
   * [`expand_dims`](../../api_docs/python/array_ops.md#expand_dims)
+  * [`extract_image_patches`](../../api_docs/python/array_ops.md#extract_image_patches)
   * [`gather`](../../api_docs/python/array_ops.md#gather)
   * [`gather_nd`](../../api_docs/python/array_ops.md#gather_nd)
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)

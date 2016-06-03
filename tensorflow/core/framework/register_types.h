@@ -43,7 +43,7 @@ limitations under the License.
    #undef REGISTER_PARTITION
 */
 
-#if !defined(__ANDROID__) || defined(SUPPORT_SELECTIVE_REGISTRATION)
+#if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
 // Call "m" for all number types that support the comparison operations "<" and
 // ">".
 #define TF_CALL_INTEGRAL_TYPES(m)                                       \
@@ -111,7 +111,7 @@ limitations under the License.
 #define TF_CALL_QUANTIZED_TYPES(m) \
   m(::tensorflow::qint8) m(::tensorflow::quint8) m(::tensorflow::qint32)
 
-#else  // defined(__ANDROID__) && !defined(__ANDROID_TYPES_FULL__)
+#else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
 
 #define TF_CALL_REAL_NUMBER_TYPES(m) m(float) m(::tensorflow::int32)
 
@@ -130,6 +130,6 @@ limitations under the License.
 
 #define TF_CALL_QUANTIZED_TYPES(m)
 
-#endif  // defined(__ANDROID__)
+#endif  // defined(IS_MOBILE_PLATFORM)
 
 #endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_

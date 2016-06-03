@@ -105,7 +105,8 @@ def _restore_from_checkpoint(session, graph, checkpoint_path, saver=None):
 def _run_with_monitors(session, step, tensors, feed_dict, monitors):
   """Runs session for given tensors with monitor callbacks."""
   for monitor in monitors:
-    tensors = monitor.step_begin(step, tensors)
+    tensors += monitor.step_begin(step)
+  tensors = list(set(tensors))
 
   outputs = session.run(tensors, feed_dict=feed_dict)
   outputs = dict(zip(

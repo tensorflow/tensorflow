@@ -263,12 +263,28 @@ Estimator class is the basic TensorFlow model trainer/evaluator.
 Parameters:
   model_fn: Model function, takes features and targets tensors or dicts of
             tensors and returns predictions and loss tensors.
-            E.g. `(features, targets) -> (predictions, loss, train_op)`.
+            Supports next three signatures for the function:
+              * `(features, targets) -> (predictions, loss, train_op)`
+              * `(features, targets, mode) -> (predictions, loss, train_op)`
+              * `(features, targets, mode, params) ->
+                  (predictions, loss, train_op)`
+            Where:
+              * `features` are single `Tensor` or `dict` of `Tensor`s
+                   (depending on data passed to `fit`),
+              * `targets` are `Tensor` or
+                  `dict` of `Tensor`s (for multi-head model).
+              * `mode` represents if this training, evaluation or prediction.
+                  See `ModeKeys` for example keys.
+              * `params` is a `dict` of hyperparameters. Will receive what is
+                  passed to Estimator in `params` parameter. This allows to
+                  configure Estimators from hyper parameter tunning.
   model_dir: Directory to save model parameters, graph and etc.
   config: Configuration object.
+  params: `dict` of hyper parameters that will be passed into `model_fn`.
+          Keys are names of parameters, values are basic python types.
 - - -
 
-#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None)` {#Estimator.__init__}
+#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None)` {#Estimator.__init__}
 
 
 
@@ -816,7 +832,7 @@ Parameters:
   dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, config=None)` {#DNNClassifier.__init__}
 
 
 
@@ -1160,7 +1176,7 @@ Parameters:
   dropout: When not None, the probability we will drop out a given coordinate.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, config=None)` {#DNNRegressor.__init__}
 
 
 
@@ -2258,7 +2274,7 @@ Parameters:
     will use an Ftrl optimizer.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, config=None)` {#LinearClassifier.__init__}
 
 
 
@@ -2590,7 +2606,7 @@ Parameters:
     will use an Ftrl optimizer.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, config=None)` {#LinearRegressor.__init__}
 
 
 

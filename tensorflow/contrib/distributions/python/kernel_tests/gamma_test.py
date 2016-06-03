@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for initializers."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,18 +25,18 @@ import tensorflow as tf
 class GammaTest(tf.test.TestCase):
 
   def testGammaShape(self):
-    with tf.Session():
+    with self.test_session():
       alpha = tf.constant([3.0] * 5)
       beta = tf.constant(11.0)
       gamma = tf.contrib.distributions.Gamma(alpha=alpha, beta=beta)
 
       self.assertEqual(gamma.batch_shape().eval(), (5,))
       self.assertEqual(gamma.get_batch_shape(), tf.TensorShape([5]))
-      self.assertEqual(gamma.event_shape().eval(), 1)
+      self.assertAllEqual(gamma.event_shape().eval(), [])
       self.assertEqual(gamma.get_event_shape(), tf.TensorShape([]))
 
   def testGammaLogPDF(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       alpha = tf.constant([2.0] * batch_size)
       beta = tf.constant([3.0] * batch_size)
@@ -55,7 +54,7 @@ class GammaTest(tf.test.TestCase):
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
   def testGammaLogPDFMultidimensional(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       alpha = tf.constant([[2.0, 4.0]] * batch_size)
       beta = tf.constant([[3.0, 4.0]] * batch_size)
@@ -75,7 +74,7 @@ class GammaTest(tf.test.TestCase):
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
 
   def testGammaLogPDFMultidimensionalBroadcasting(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       alpha = tf.constant([[2.0, 4.0]] * batch_size)
       beta = tf.constant(3.0)
@@ -95,7 +94,7 @@ class GammaTest(tf.test.TestCase):
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
 
   def testGammaCDF(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       alpha = tf.constant([2.0] * batch_size)
       beta = tf.constant([3.0] * batch_size)
@@ -111,25 +110,45 @@ class GammaTest(tf.test.TestCase):
       self.assertAllClose(cdf.eval(), expected_cdf)
 
   def testGammaMean(self):
-    with tf.Session():
+    with self.test_session():
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
       expected_means = stats.gamma.mean(alpha_v, scale=1 / beta_v)
-      self.assertEqual(gamma.mean.get_shape(), (3,))
-      self.assertAllClose(gamma.mean.eval(), expected_means)
+      self.assertEqual(gamma.mean().get_shape(), (3,))
+      self.assertAllClose(gamma.mean().eval(), expected_means)
+
+  def testGammaMode(self):
+    with self.test_session():
+      # Mode will not be defined for the first entry.
+      alpha_v = np.array([0.5, 3.0, 2.5])
+      beta_v = np.array([1.0, 4.0, 5.0])
+      gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
+      expected_modes = (alpha_v - 1) / beta_v
+      expected_modes[0] = np.nan
+      self.assertEqual(gamma.mode().get_shape(), (3,))
+      self.assertAllClose(gamma.mode().eval(), expected_modes)
 
   def testGammaVariance(self):
-    with tf.Session():
+    with self.test_session():
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
       expected_variances = stats.gamma.var(alpha_v, scale=1 / beta_v)
-      self.assertEqual(gamma.variance.get_shape(), (3,))
-      self.assertAllClose(gamma.variance.eval(), expected_variances)
+      self.assertEqual(gamma.variance().get_shape(), (3,))
+      self.assertAllClose(gamma.variance().eval(), expected_variances)
+
+  def testGammaStd(self):
+    with self.test_session():
+      alpha_v = np.array([1.0, 3.0, 2.5])
+      beta_v = np.array([1.0, 4.0, 5.0])
+      gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
+      expected_std = stats.gamma.std(alpha_v, scale=1 / beta_v)
+      self.assertEqual(gamma.std().get_shape(), (3,))
+      self.assertAllClose(gamma.std().eval(), expected_std)
 
   def testGammaEntropy(self):
-    with tf.Session():
+    with self.test_session():
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       expected_entropy = stats.gamma.entropy(alpha_v, scale=1 / beta_v)
@@ -138,12 +157,12 @@ class GammaTest(tf.test.TestCase):
       self.assertAllClose(gamma.entropy().eval(), expected_entropy)
 
   def testGammaNonPositiveInitializationParamsRaises(self):
-    with tf.Session():
+    with self.test_session():
       alpha_v = tf.constant(0.0, name='alpha')
       beta_v = tf.constant(1.0, name='beta')
       gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
       with self.assertRaisesOpError('alpha'):
-        gamma.mean.eval()
+        gamma.mean().eval()
 
 
 if __name__ == '__main__':

@@ -17,7 +17,7 @@ See `BaseDistribution` for more information on the API for probability
 distributions.
 - - -
 
-#### `tf.contrib.distributions.ContinuousDistribution.batch_shape(name=None)` {#ContinuousDistribution.batch_shape}
+#### `tf.contrib.distributions.ContinuousDistribution.batch_shape(name='batch_shape')` {#ContinuousDistribution.batch_shape}
 
 Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
@@ -50,14 +50,14 @@ dtype of samples from this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousDistribution.entropy(name=None)` {#ContinuousDistribution.entropy}
+#### `tf.contrib.distributions.ContinuousDistribution.entropy(name='entropy')` {#ContinuousDistribution.entropy}
 
 Entropy of the distribution in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousDistribution.event_shape(name=None)` {#ContinuousDistribution.event_shape}
+#### `tf.contrib.distributions.ContinuousDistribution.event_shape(name='event_shape')` {#ContinuousDistribution.event_shape}
 
 Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
@@ -105,6 +105,13 @@ Log CDF.
 
 - - -
 
+#### `tf.contrib.distributions.ContinuousDistribution.log_likelihood(value, name='log_likelihood')` {#ContinuousDistribution.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
 #### `tf.contrib.distributions.ContinuousDistribution.log_pdf(value, name='log_pdf')` {#ContinuousDistribution.log_pdf}
 
 Log of the probability density function.
@@ -112,9 +119,16 @@ Log of the probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousDistribution.mean` {#ContinuousDistribution.mean}
+#### `tf.contrib.distributions.ContinuousDistribution.mean(name='mean')` {#ContinuousDistribution.mean}
+
+Mean of the distribution.
 
 
+- - -
+
+#### `tf.contrib.distributions.ContinuousDistribution.mode(name='mode')` {#ContinuousDistribution.mode}
+
+Mode of the distribution.
 
 
 - - -
@@ -133,7 +147,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousDistribution.sample(n, seed=None, name=None)` {#ContinuousDistribution.sample}
+#### `tf.contrib.distributions.ContinuousDistribution.sample(n, seed=None, name='sample')` {#ContinuousDistribution.sample}
 
 Generate `n` samples.
 
@@ -149,5 +163,19 @@ Generate `n` samples.
 
 *  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
       with values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousDistribution.std(name='std')` {#ContinuousDistribution.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousDistribution.variance(name='variance')` {#ContinuousDistribution.variance}
+
+Variance of the distribution.
 
 

@@ -10,7 +10,7 @@ See `BaseDistribution` for more information on the API for probability
 distributions.
 - - -
 
-#### `tf.contrib.distributions.DiscreteDistribution.batch_shape(name=None)` {#DiscreteDistribution.batch_shape}
+#### `tf.contrib.distributions.DiscreteDistribution.batch_shape(name='batch_shape')` {#DiscreteDistribution.batch_shape}
 
 Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
@@ -43,14 +43,14 @@ dtype of samples from this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.DiscreteDistribution.entropy(name=None)` {#DiscreteDistribution.entropy}
+#### `tf.contrib.distributions.DiscreteDistribution.entropy(name='entropy')` {#DiscreteDistribution.entropy}
 
 Entropy of the distribution in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.DiscreteDistribution.event_shape(name=None)` {#DiscreteDistribution.event_shape}
+#### `tf.contrib.distributions.DiscreteDistribution.event_shape(name='event_shape')` {#DiscreteDistribution.event_shape}
 
 Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
@@ -91,6 +91,13 @@ Log CDF.
 
 - - -
 
+#### `tf.contrib.distributions.DiscreteDistribution.log_likelihood(value, name='log_likelihood')` {#DiscreteDistribution.log_likelihood}
+
+Log likelihood of this distribution (same as log_pmf).
+
+
+- - -
+
 #### `tf.contrib.distributions.DiscreteDistribution.log_pmf(value, name='log_pmf')` {#DiscreteDistribution.log_pmf}
 
 Log of the probability mass function.
@@ -98,9 +105,16 @@ Log of the probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.DiscreteDistribution.mean` {#DiscreteDistribution.mean}
+#### `tf.contrib.distributions.DiscreteDistribution.mean(name='mean')` {#DiscreteDistribution.mean}
+
+Mean of the distribution.
 
 
+- - -
+
+#### `tf.contrib.distributions.DiscreteDistribution.mode(name='mode')` {#DiscreteDistribution.mode}
+
+Mode of the distribution.
 
 
 - - -
@@ -119,7 +133,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.DiscreteDistribution.sample(n, seed=None, name=None)` {#DiscreteDistribution.sample}
+#### `tf.contrib.distributions.DiscreteDistribution.sample(n, seed=None, name='sample')` {#DiscreteDistribution.sample}
 
 Generate `n` samples.
 
@@ -135,5 +149,19 @@ Generate `n` samples.
 
 *  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
       with values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DiscreteDistribution.std(name='std')` {#DiscreteDistribution.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.DiscreteDistribution.variance(name='variance')` {#DiscreteDistribution.variance}
+
+Variance of the distribution.
 
 

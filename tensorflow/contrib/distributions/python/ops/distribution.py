@@ -83,7 +83,7 @@ class BaseDistribution(object):
 
   # `event_shape` is `TensorShape([])`.
   event_shape = u.get_event_shape()
-  # `event_shape_t` is a `Tensor` which will evaluate to a scalar 1.
+  # `event_shape_t` is a `Tensor` which will evaluate to [].
   event_shape_t = u.event_shape
 
   # Sampling returns a sample per distribution.  `samples` has shape
@@ -112,15 +112,17 @@ class BaseDistribution(object):
   @abc.abstractproperty
   def name(self):
     """Name to prepend to all ops."""
+    # return self._name.
     pass
 
   @abc.abstractproperty
   def dtype(self):
     """dtype of samples from this distribution."""
+    # return self._dtype
     pass
 
   @abc.abstractmethod
-  def event_shape(self, name=None):
+  def event_shape(self, name="event_shape"):
     """Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
     Args:
@@ -129,6 +131,10 @@ class BaseDistribution(object):
     Returns:
       `Tensor` `event_shape`
     """
+    # For scalar distributions, constant([], int32)
+    # with ops.name_scope(self.name):
+    #   with ops.op_scope([tensor_arguments], name):
+    #     Your code here
     pass
 
   @abc.abstractmethod
@@ -137,10 +143,11 @@ class BaseDistribution(object):
 
     Same meaning as `event_shape`. May be only partially defined.
     """
+    # return self._event_shape
     pass
 
   @abc.abstractmethod
-  def batch_shape(self, name=None):
+  def batch_shape(self, name="batch_shape"):
     """Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
     The product of the dimensions of the `batch_shape` is the number of
@@ -152,6 +159,9 @@ class BaseDistribution(object):
     Returns:
       `Tensor` `batch_shape`
     """
+    # with ops.name_scope(self.name):
+    #   with ops.op_scope([tensor_arguments], name):
+    #     Your code here
     pass
 
   @abc.abstractmethod
@@ -162,7 +172,7 @@ class BaseDistribution(object):
     """
     pass
 
-  def sample(self, n, seed=None, name=None):
+  def sample(self, n, seed=None, name="sample"):
     """Generate `n` samples.
 
     Args:
@@ -178,22 +188,38 @@ class BaseDistribution(object):
 
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function."""
-    value = ops.convert_to_tensor(value)
-    with ops.op_scope([value], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        value = ops.convert_to_tensor(value)
         return math_ops.exp(self.log_cdf(value))
 
   def log_cdf(self, value, name="log_cdf"):
     """Log CDF."""
     raise NotImplementedError("log_cdf is not implemented")
 
-  def entropy(self, name=None):
+  def entropy(self, name="entropy"):
     """Entropy of the distribution in nats."""
     raise NotImplementedError("entropy not implemented")
 
-  @property
-  def mean(self):
+  def mean(self, name="mean"):
+    """Mean of the distribution."""
+    # Set to np.nan if parameters mean it is undefined/infinite.
     raise NotImplementedError("mean not implemented")
+
+  def mode(self, name="mode"):
+    """Mode of the distribution."""
+    # Set to np.nan if parameters mean it is undefined/infinite.
+    raise NotImplementedError("mode not implemented")
+
+  def std(self, name="std"):
+    """Standard deviation of the distribution."""
+    # Set to np.nan if parameters mean it is undefined/infinite.
+    raise NotImplementedError("std not implemented")
+
+  def variance(self, name="variance"):
+    """Variance of the distribution."""
+    # Set to np.nan if parameters mean it is undefined/infinite.
+    raise NotImplementedError("variance not implemented")
 
 
 class ContinuousDistribution(BaseDistribution):
@@ -223,18 +249,24 @@ class ContinuousDistribution(BaseDistribution):
   @abc.abstractmethod
   def pdf(self, value, name="pdf"):
     """Probability density function."""
-    value = ops.convert_to_tensor(value)
-    with ops.op_scope([value], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        value = ops.convert_to_tensor(value)
         return math_ops.exp(self.log_pdf(value))
 
   @abc.abstractmethod
   def log_pdf(self, value, name="log_pdf"):
     """Log of the probability density function."""
-    value = ops.convert_to_tensor(value)
-    with ops.op_scope([value], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        value = ops.convert_to_tensor(value)
         return math_ops.log(self.pdf(value))
+
+  def log_likelihood(self, value, name="log_likelihood"):
+    """Log likelihood of this distribution (same as log_pdf)."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        return self.log_pdf(value)
 
 
 class DiscreteDistribution(BaseDistribution):
@@ -253,15 +285,21 @@ class DiscreteDistribution(BaseDistribution):
   @abc.abstractmethod
   def pmf(self, value, name="pmf"):
     """Probability mass function."""
-    value = ops.convert_to_tensor(value)
-    with ops.op_scope([value], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        value = ops.convert_to_tensor(value)
         return math_ops.exp(self.log_pmf(value))
 
   @abc.abstractmethod
   def log_pmf(self, value, name="log_pmf"):
     """Log of the probability mass function."""
-    value = ops.convert_to_tensor(value)
-    with ops.op_scope([value], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        value = ops.convert_to_tensor(value)
         return math_ops.log(self.pmf(value))
+
+  def log_likelihood(self, value, name="log_likelihood"):
+    """Log likelihood of this distribution (same as log_pmf)."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        return self.log_pmf(value)

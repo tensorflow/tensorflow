@@ -266,6 +266,26 @@ key: A scalar.
 value: A scalar.
 )doc");
 
+REGISTER_OP("ReaderReadUpTo")
+    .Input("reader_handle: Ref(string)")
+    .Input("queue_handle: Ref(string)")
+    .Input("num_records: int64")
+    .Output("keys: string")
+    .Output("values: string")
+    .Doc(R"doc(
+Returns up to `num_records` (key, value) pairs produced by a Reader.
+
+Will dequeue from the input queue if necessary (e.g. when the
+Reader needs to start reading from a new file since it has finished
+with the previous file).
+
+reader_handle: Handle to a `Reader`.
+queue_handle: Handle to a `Queue`, with string work items.
+num_records: number of records to read from `Reader`.
+keys: A 1-D tensor.
+values: A 1-D tensor.
+)doc");
+
 REGISTER_OP("ReaderNumRecordsProduced")
     .Input("reader_handle: Ref(string)")
     .Output("records_produced: int64")

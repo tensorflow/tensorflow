@@ -197,7 +197,7 @@ class Conv3DBackpropInputOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("Conv3DBackpropInput").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     Conv3DBackpropInputOp<CPUDevice, float>);
-#ifndef __ANDROID__
+#ifndef IS_MOBILE_PLATFORM
 REGISTER_KERNEL_BUILDER(
     Name("Conv3DBackpropInput").Device(DEVICE_CPU).TypeConstraint<double>("T"),
     Conv3DBackpropInputOp<CPUDevice, double>);
@@ -306,7 +306,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("Conv3DBackpropFilter").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     Conv3DBackpropFilterOp<CPUDevice, float>);
-#ifndef __ANDROID__
+#ifndef IS_MOBILE_PLATFORM
 REGISTER_KERNEL_BUILDER(
     Name("Conv3DBackpropFilter").Device(DEVICE_CPU).TypeConstraint<double>("T"),
     Conv3DBackpropFilterOp<CPUDevice, double>);

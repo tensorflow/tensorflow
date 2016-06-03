@@ -332,6 +332,34 @@ class ReaderBase(object):
       queue_ref = queue.queue_ref
     return gen_io_ops._reader_read(self._reader_ref, queue_ref, name=name)
 
+  def read_up_to(self, queue, num_records,  # pylint: disable=invalid-name
+                 name=None):
+    """Returns up to num_records (key, value pairs) produced by a reader.
+
+    Will dequeue a work unit from queue if necessary (e.g., when the
+    Reader needs to start reading from a new file since it has
+    finished with the previous file).
+
+    Args:
+      queue: A Queue or a mutable string Tensor representing a handle
+        to a Queue, with string work items.
+      num_records: Number of records to read.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tuple of Tensors (keys, values).
+      keys: A 1-D string Tensor.
+      values: A 1-D string Tensor.
+    """
+    if isinstance(queue, ops.Tensor):
+      queue_ref = queue
+    else:
+      queue_ref = queue.queue_ref
+    return gen_io_ops._reader_read_up_to(self._reader_ref,
+                                         queue_ref,
+                                         num_records,
+                                         name=name)
+
   def num_records_produced(self, name=None):
     """Returns the number of records this reader has produced.
 
@@ -407,6 +435,7 @@ class ReaderBase(object):
 
 
 ops.NoGradient("ReaderRead")
+ops.NoGradient("ReaderReadUpTo")
 ops.NoGradient("ReaderNumRecordsProduced")
 ops.NoGradient("ReaderNumWorkUnitsCompleted")
 ops.NoGradient("ReaderSerializeState")
@@ -553,6 +582,13 @@ def _ReaderReadShape(op):
   unused_queue_shape = op.inputs[1].get_shape().merge_with(
       tensor_shape.scalar())
   return [tensor_shape.scalar(), tensor_shape.scalar()]
+
+
+@ops.RegisterShape("ReaderReadUpTo")
+def _ReaderReadUpToShape(_):
+  """Shape function for the ReaderBase.ReadUpTo op."""
+  return [tensor_shape.unknown_shape(ndims=1),
+          tensor_shape.unknown_shape(ndims=1)]
 
 
 @ops.RegisterShape("ReaderReset")

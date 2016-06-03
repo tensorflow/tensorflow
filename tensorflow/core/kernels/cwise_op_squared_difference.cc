@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER4(BinaryOp, CPU, "SquaredDifference", functor::squared_difference,
-          float, double, int32, int64);
+REGISTER5(BinaryOp, CPU, "SquaredDifference", functor::squared_difference,
+          float, Eigen::half, double, int32, int64);
 #if GOOGLE_CUDA
-REGISTER3(BinaryOp, GPU, "SquaredDifference", functor::squared_difference,
-          float, double, int64);
+REGISTER4(BinaryOp, GPU, "SquaredDifference", functor::squared_difference,
+          float, Eigen::half, double, int64);
 #endif
 
 // A special GPU kernel for int32.

@@ -56,6 +56,12 @@ class ReaderBase : public ReaderInterface {
 
   // Descendants may optionally implement these -------------------------------
 
+  // Produce up to num_records next key/value pairs from the current
+  // work item, in the same manner of ReadLocked.
+  virtual Status ReadUpToLocked(int64 num_records, std::vector<string>* keys,
+                                std::vector<string>* values, int64* num_read,
+                                bool* at_end);
+
   // Called when work starts / finishes.
   virtual Status OnWorkStartedLocked() { return Status::OK(); }
   virtual Status OnWorkFinishedLocked() { return Status::OK(); }
@@ -81,6 +87,9 @@ class ReaderBase : public ReaderInterface {
   // What was passed to the constructor.
   const string& name() const { return name_; }
 
+  // Produce the key name (from current_work and the actual key).
+  string KeyName(const string& key) const;
+
  protected:
   // For descendants wishing to implement serialize & restore state.
 
@@ -96,6 +105,11 @@ class ReaderBase : public ReaderInterface {
   // and call the methods above to do the work.
   void Read(QueueInterface* queue, string* key, string* value,
             OpKernelContext* context) override;
+
+  int64 ReadUpTo(const int64 num_records, QueueInterface* queue,
+                 std::vector<string>* keys, std::vector<string>* value,
+                 OpKernelContext* context);
+
   Status Reset() override;
   int64 NumRecordsProduced() override;
   int64 NumWorkUnitsCompleted() override;
