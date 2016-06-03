@@ -120,7 +120,6 @@ tf_proto_library_cc(
     srcs = ["protobuf/worker_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
     cc_libs = [":worker_proto_cc"],
     cc_stubby_versions = ["2"],
     visibility = [
@@ -143,7 +142,6 @@ tf_proto_library_cc(
     srcs = ["protobuf/master_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
     cc_libs = [":master_proto_cc"],
     cc_stubby_versions = ["2"],
     visibility = [
