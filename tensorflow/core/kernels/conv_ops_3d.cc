@@ -124,7 +124,7 @@ REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     Conv3DOp<CPUDevice, float>);
 
-#ifndef __ANDROID__
+#ifndef IS_MOBILE_PLATFORM
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<double>("T"),
     Conv3DOp<CPUDevice, double>);

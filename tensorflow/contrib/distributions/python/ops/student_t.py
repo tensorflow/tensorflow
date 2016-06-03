@@ -22,7 +22,7 @@ import math
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops.distribution import ContinuousDistribution  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -35,7 +35,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 
 
-class StudentT(ContinuousDistribution):
+class StudentT(distribution.ContinuousDistribution):
   """Student's t distribution with degree-of-freedom parameter df.
 
   #### Mathematical details
@@ -113,8 +113,8 @@ class StudentT(ContinuousDistribution):
         contrib_tensor_util.assert_same_float_dtype(
             (self._df, self._mu, self._sigma))
       self._name = scope
-      self._batch_shape = self._ones().get_shape()
-      self._event_shape = tensor_shape.TensorShape([])
+      self._get_batch_shape = self._ones().get_shape()
+      self._get_event_shape = tensor_shape.TensorShape([])
 
   @property
   def name(self):
@@ -139,31 +139,45 @@ class StudentT(ContinuousDistribution):
     """Scaling factors of these Student's t distribution(s)."""
     return self._sigma
 
-  @property
   def mean(self, name="mean"):
     with ops.name_scope(self.name):
-      return math_ops.mul(self._mu, self._ones(), name=name)
+      with ops.op_scope([self._mu], name):
+        df_gt_1 = self._df > self._ones()
+        result_if_defined = self._mu * self._ones()
+        nan = np.nan + self._zeros()
+        return math_ops.select(df_gt_1, result_if_defined, nan)
 
-  @property
-  def variance(self, name="var"):
+  def mode(self, name="mode"):
     with ops.name_scope(self.name):
-      return math_ops.select(
-          (self._zeros() + self._df > 2),
-          self._zeros() + math_ops.square(self._sigma) * self._df /
-          (self._df - 2),
-          self._zeros() + np.inf,
-          name=name)
+      with ops.op_scope([], name):
+        return array_ops.identity(self._mu)
+
+  def variance(self, name="variance"):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._df, self._sigma], name):
+        return math_ops.select(
+            (self._zeros() + self._df > 2),
+            self._zeros() + math_ops.square(self._sigma) * self._df /
+            (self._df - 2),
+            self._zeros() + np.nan)
+
+  def std(self, name="std"):
+    with ops.name_scope(self.name):
+      with ops.op_scope([], name):
+        return math_ops.sqrt(self.variance())
 
   def batch_shape(self, name="batch_shape"):
     with ops.name_scope(self.name):
-      return array_ops.shape(self._ones(), name=name)
+      with ops.op_scope([], name):
+        return array_ops.shape(self._ones())
 
   def get_batch_shape(self):
-    return self._batch_shape
+    return self._get_batch_shape
 
   def event_shape(self, name="event_shape"):
     with ops.name_scope(self.name):
-      return constant_op.constant(1, name=name)
+      with ops.op_scope([], name):
+        return constant_op.constant([], dtype=math_ops.int32)
 
   def get_event_shape(self):
     return self._event_shape
@@ -178,8 +192,8 @@ class StudentT(ContinuousDistribution):
     Returns:
       log_pdf: tensor of dtype `dtype`, the log-PDFs of `x`.
     """
-    with ops.op_scope([self._df, self._mu, self._sigma, x], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._df, self._mu, self._sigma, x], name):
         x = ops.convert_to_tensor(x)
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
@@ -202,8 +216,8 @@ class StudentT(ContinuousDistribution):
     Returns:
       pdf: tensor of dtype `dtype`, the pdf values of `x`.
     """
-    with ops.op_scope([self._df, self._mu, self._sigma, x], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._df, self._mu, self._sigma, x], name):
         x = ops.convert_to_tensor(x)
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
@@ -224,8 +238,8 @@ class StudentT(ContinuousDistribution):
     Returns:
       entropy: tensor of dtype `dtype`, the entropy.
     """
-    with ops.op_scope([self._df, self._sigma], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._df, self._sigma], name):
         u = array_ops.expand_dims(self._df + self._zeros(), -1)
         v = array_ops.expand_dims(self._ones(), -1)
         beta_arg = array_ops.concat(len(u.get_shape()) - 1, [u, v]) / 2
@@ -247,8 +261,8 @@ class StudentT(ContinuousDistribution):
       samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
           with values of type `self.dtype`.
     """
-    with ops.op_scope([self._df, self._mu, self._sigma, n], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._df, self._mu, self._sigma, n], name):
         n = ops.convert_to_tensor(n, name="n")
         n_val = tensor_util.constant_value(n)
 

@@ -20,26 +20,20 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.contrib.distributions.python.ops.distribution import ContinuousDistribution  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import constant_op
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
 
-# TODO(ebrevdo): Use asserts contrib module when ready
-def _assert_all_positive(x):
-  return logging_ops.Assert(
-      math_ops.reduce_all(x > 0),
-      ["Tensor %s should contain only positive values: " % x.name, x])
-
-
-class Normal(ContinuousDistribution):
+class Normal(distribution.ContinuousDistribution):
   """The scalar Normal distribution with mean and stddev parameters mu, sigma.
 
   #### Mathematical details
@@ -103,7 +97,7 @@ class Normal(ContinuousDistribution):
     with ops.op_scope([mu, sigma], name):
       mu = ops.convert_to_tensor(mu)
       sigma = ops.convert_to_tensor(sigma)
-      with ops.control_dependencies([_assert_all_positive(sigma)]):
+      with ops.control_dependencies([check_ops.assert_positive(sigma)]):
         self._name = name
         self._mu = array_ops.identity(mu, name="mu")
         self._sigma = array_ops.identity(sigma, name="sigma")
@@ -132,8 +126,9 @@ class Normal(ContinuousDistribution):
     Returns:
       `Tensor` `batch_shape`
     """
-    with ops.name_scope(self._name):
-      return array_ops.shape(self._ones(), name=name)
+    with ops.name_scope(self.name):
+      with ops.op_scope([], name):
+        return array_ops.shape(self._ones())
 
   def get_batch_shape(self):
     """`TensorShape` available at graph construction time.
@@ -154,8 +149,9 @@ class Normal(ContinuousDistribution):
     Returns:
       `Tensor` `event_shape`
     """
-    with ops.name_scope(self._name):
-      return constant_op.constant(1, name=name)
+    with ops.name_scope(self.name):
+      with ops.op_scope([], name):
+        return constant_op.constant([], dtype=dtypes.int32)
 
   def get_event_shape(self):
     """`TensorShape` available at graph construction time.
@@ -169,17 +165,37 @@ class Normal(ContinuousDistribution):
 
   @property
   def mu(self):
+    """Distribution parameter for the mean."""
     return self._mu
 
   @property
   def sigma(self):
+    """Distribution parameter for standard deviation."""
     return self._sigma
 
-  @property
-  def mean(self):
-    return self._mu * array_ops.ones_like(self._sigma)
+  def mean(self, name="mean"):
+    """Mean of this distribution."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._sigma, self._mu], name):
+        return self._mu * array_ops.ones_like(self._sigma)
 
-  def log_pdf(self, x, name=None):
+  def mode(self, name="mode"):
+    """Mode of this distribution."""
+    return self.mean(name="mode")
+
+  def std(self, name="std"):
+    """Standard deviation of this distribution."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._sigma, self._mu], name):
+        return self._sigma * array_ops.ones_like(self._mu)
+
+  def variance(self, name="variance"):
+    """Variance of this distribution."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([], name):
+        return math_ops.square(self.std())
+
+  def log_pdf(self, x, name="log_pdf"):
     """Log pdf of observations in `x` under these Normal distribution(s).
 
     Args:
@@ -189,16 +205,17 @@ class Normal(ContinuousDistribution):
     Returns:
       log_pdf: tensor of dtype `dtype`, the log-PDFs of `x`.
     """
-    with ops.op_scope([self._mu, self._sigma, x], name, "NormalLogPdf"):
-      x = ops.convert_to_tensor(x)
-      if x.dtype != self.dtype:
-        raise TypeError("Input x dtype does not match dtype: %s vs. %s"
-                        % (x.dtype, self.dtype))
-      log_2_pi = constant_op.constant(math.log(2 * math.pi), dtype=self.dtype)
-      return (-0.5*log_2_pi - math_ops.log(self._sigma)
-              -0.5*math_ops.square((x - self._mu) / self._sigma))
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._mu, self._sigma, x], name):
+        x = ops.convert_to_tensor(x)
+        if x.dtype != self.dtype:
+          raise TypeError("Input x dtype does not match dtype: %s vs. %s"
+                          % (x.dtype, self.dtype))
+        log_2_pi = constant_op.constant(math.log(2 * math.pi), dtype=self.dtype)
+        return (-0.5*log_2_pi - math_ops.log(self._sigma)
+                -0.5*math_ops.square((x - self._mu) / self._sigma))
 
-  def cdf(self, x, name=None):
+  def cdf(self, x, name="cdf"):
     """CDF of observations in `x` under these Normal distribution(s).
 
     Args:
@@ -208,15 +225,16 @@ class Normal(ContinuousDistribution):
     Returns:
       cdf: tensor of dtype `dtype`, the CDFs of `x`.
     """
-    with ops.op_scope([self._mu, self._sigma, x], name, "NormalCdf"):
-      x = ops.convert_to_tensor(x)
-      if x.dtype != self.dtype:
-        raise TypeError("Input x dtype does not match dtype: %s vs. %s"
-                        % (x.dtype, self.dtype))
-      return (0.5 + 0.5*math_ops.erf(
-          1.0/(math.sqrt(2.0) * self._sigma)*(x - self._mu)))
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._mu, self._sigma, x], name):
+        x = ops.convert_to_tensor(x)
+        if x.dtype != self.dtype:
+          raise TypeError("Input x dtype does not match dtype: %s vs. %s"
+                          % (x.dtype, self.dtype))
+        return (0.5 + 0.5*math_ops.erf(
+            1.0/(math.sqrt(2.0) * self._sigma)*(x - self._mu)))
 
-  def log_cdf(self, x, name=None):
+  def log_cdf(self, x, name="log_cdf"):
     """Log CDF of observations `x` under these Normal distribution(s).
 
     Args:
@@ -226,8 +244,9 @@ class Normal(ContinuousDistribution):
     Returns:
       log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
     """
-    with ops.op_scope([self._mu, self._sigma, x], name, "NormalLogCdf"):
-      return math_ops.log(self.cdf(x))
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._mu, self._sigma, x], name):
+        return math_ops.log(self.cdf(x))
 
   def pdf(self, x, name="pdf"):
     """The PDF of observations in `x` under these Normal distribution(s).
@@ -241,7 +260,7 @@ class Normal(ContinuousDistribution):
     """
     return super(Normal, self).pdf(x, name=name)
 
-  def entropy(self, name=None):
+  def entropy(self, name="entropy"):
     """The entropy of Normal distribution(s).
 
     Args:
@@ -250,14 +269,15 @@ class Normal(ContinuousDistribution):
     Returns:
       entropy: tensor of dtype `dtype`, the entropy.
     """
-    with ops.op_scope([self._mu, self._sigma], name, "NormalEntropy"):
-      two_pi_e1 = constant_op.constant(
-          2 * math.pi * math.exp(1), dtype=self.dtype)
-      # Use broadcasting rules to calculate the full broadcast sigma.
-      sigma = self._sigma * array_ops.ones_like(self._mu)
-      return 0.5 * math_ops.log(two_pi_e1 * math_ops.square(sigma))
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._mu, self._sigma], name):
+        two_pi_e1 = constant_op.constant(
+            2 * math.pi * math.exp(1), dtype=self.dtype)
+        # Use broadcasting rules to calculate the full broadcast sigma.
+        sigma = self._sigma * array_ops.ones_like(self._mu)
+        return 0.5 * math_ops.log(two_pi_e1 * math_ops.square(sigma))
 
-  def sample(self, n, seed=None, name=None):
+  def sample(self, n, seed=None, name="sample"):
     """Sample `n` observations from the Normal Distributions.
 
     Args:
@@ -269,20 +289,21 @@ class Normal(ContinuousDistribution):
       samples: `[n, ...]`, a `Tensor` of `n` samples for each
         of the distributions determined by broadcasting the hyperparameters.
     """
-    with ops.op_scope([self._mu, self._sigma, n], name, "NormalSample"):
-      broadcast_shape = (self._mu + self._sigma).get_shape()
-      n = ops.convert_to_tensor(n)
-      shape = array_ops.concat(
-          0, [array_ops.pack([n]), array_ops.shape(self.mean)])
-      sampled = random_ops.random_normal(
-          shape=shape, mean=0, stddev=1, dtype=self._mu.dtype, seed=seed)
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._mu, self._sigma, n], name):
+        broadcast_shape = (self._mu + self._sigma).get_shape()
+        n = ops.convert_to_tensor(n)
+        shape = array_ops.concat(
+            0, [array_ops.pack([n]), array_ops.shape(self.mean())])
+        sampled = random_ops.random_normal(
+            shape=shape, mean=0, stddev=1, dtype=self._mu.dtype, seed=seed)
 
-      # Provide some hints to shape inference
-      n_val = tensor_util.constant_value(n)
-      final_shape = tensor_shape.vector(n_val).concatenate(broadcast_shape)
-      sampled.set_shape(final_shape)
+        # Provide some hints to shape inference
+        n_val = tensor_util.constant_value(n)
+        final_shape = tensor_shape.vector(n_val).concatenate(broadcast_shape)
+        sampled.set_shape(final_shape)
 
-      return sampled * self._sigma + self._mu
+        return sampled * self._sigma + self._mu
 
   @property
   def is_reparameterized(self):

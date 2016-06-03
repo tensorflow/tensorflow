@@ -16,15 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_
 #define TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_
 
+// Set one PLATFORM_* macro and set IS_MOBILE_PLATFORM if the platform is for
+// mobile.
+
 #if !defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE) && \
     !defined(PLATFORM_POSIX_ANDROID) && !defined(PLATFORM_GOOGLE_ANDROID)
 
 // Choose which platform we are on.
 #if defined(ANDROID) || defined(__ANDROID__)
 #define PLATFORM_POSIX_ANDROID
+#define IS_MOBILE_PLATFORM
 
 #elif defined(__APPLE__)
 #define PLATFORM_POSIX
+
+#include "TargetConditionals.h"
+#if TARGET_IPHONE_SIMULATOR
+#define IS_MOBILE_PLATFORM
+#elif TARGET_OS_IPHONE
+#define IS_MOBILE_PLATFORM
+#endif
 
 #else
 // If no platform specified, use:

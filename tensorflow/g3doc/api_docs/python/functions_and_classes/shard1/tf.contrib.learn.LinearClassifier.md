@@ -47,7 +47,7 @@ Parameters:
     will use an Ftrl optimizer.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, config=None)` {#LinearClassifier.__init__}
 
 
 

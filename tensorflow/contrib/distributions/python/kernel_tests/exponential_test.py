@@ -61,16 +61,16 @@ class ExponentialTest(tf.test.TestCase):
       lam_v = np.array([1.0, 4.0, 2.5])
       expected_mean = stats.expon.mean(scale=1 / lam_v)
       exponential = tf.contrib.distributions.Exponential(lam=lam_v)
-      self.assertEqual(exponential.mean.get_shape(), (3,))
-      self.assertAllClose(exponential.mean.eval(), expected_mean)
+      self.assertEqual(exponential.mean().get_shape(), (3,))
+      self.assertAllClose(exponential.mean().eval(), expected_mean)
 
   def testExponentialVariance(self):
     with tf.Session():
       lam_v = np.array([1.0, 4.0, 2.5])
       expected_variance = stats.expon.var(scale=1 / lam_v)
       exponential = tf.contrib.distributions.Exponential(lam=lam_v)
-      self.assertEqual(exponential.variance.get_shape(), (3,))
-      self.assertAllClose(exponential.variance.eval(), expected_variance)
+      self.assertEqual(exponential.variance().get_shape(), (3,))
+      self.assertAllClose(exponential.variance().eval(), expected_variance)
 
   def testExponentialEntropy(self):
     with tf.Session():

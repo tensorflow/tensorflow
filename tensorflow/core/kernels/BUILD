@@ -71,6 +71,19 @@ cc_library(
     ],
 )
 
+tf_kernel_library(
+    name = "extract_image_patches_op",
+    prefix = "extract_image_patches_op",
+    deps = [
+        ":bounds_check",
+        ":eigen_helpers",
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
 cc_library(
     name = "conv_3d",
     hdrs = ["conv_3d.h"],
@@ -333,6 +346,7 @@ tf_kernel_libraries(
         ":concat_lib",
         ":cuda_device_array",
         ":depth_space_ops",
+        ":extract_image_patches_op",
         ":fill_functor",
         ":ops_util",
         ":spacetobatch_op",
@@ -1737,12 +1751,14 @@ filegroup(
         "check_numerics_op.cc",
         "control_flow_ops.cc",
         "conv_2d.h",
+        "conv_grad_ops.cc",
         "conv_ops.cc",
         "cwise_op_add.cc",
         "cwise_op_div.cc",
         "cwise_op_equal_to.cc",
         "cwise_op_exp.cc",
         "cwise_op_greater.cc",
+        "cwise_op_inverse.cc",
         "cwise_op_isfinite.cc",
         "cwise_op_less.cc",
         "cwise_op_log.cc",
@@ -1755,6 +1771,7 @@ filegroup(
         "cwise_op_sigmoid.cc",
         "cwise_op_sqrt.cc",
         "cwise_op_square.cc",
+        "cwise_op_squared_difference.cc",
         "cwise_op_sub.cc",
         "cwise_op_tanh.cc",
         "dynamic_partition_op.cc",
@@ -1778,6 +1795,7 @@ filegroup(
         "reduction_ops_prod.cc",
         "reduction_ops_sum.cc",
         "relu_op.cc",
+        "resize_bilinear_op.cc",
         "resize_nearest_neighbor_op.cc",
         "restore_op.cc",
         "reverse_op.cc",

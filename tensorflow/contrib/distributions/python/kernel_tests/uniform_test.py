@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from scipy import stats
 import tensorflow as tf
 
 
@@ -31,7 +32,7 @@ class UniformTest(tf.test.TestCase):
       uniform = tf.contrib.distributions.Uniform(a=a, b=b)
       self.assertAllClose(a, uniform.a.eval())
       self.assertAllClose(b, uniform.b.eval())
-      self.assertAllClose(b - a, uniform.range.eval())
+      self.assertAllClose(b - a, uniform.range().eval())
 
   def testUniformPDF(self):
     with self.test_session():
@@ -66,7 +67,7 @@ class UniformTest(tf.test.TestCase):
 
       self.assertEqual(uniform.batch_shape().eval(), (5,))
       self.assertEqual(uniform.get_batch_shape(), tf.TensorShape([5]))
-      self.assertEqual(uniform.event_shape().eval(), 1)
+      self.assertAllEqual(uniform.event_shape().eval(), [])
       self.assertEqual(uniform.get_event_shape(), tf.TensorShape([]))
 
   def testUniformPDFWithScalarEndpoint(self):
@@ -172,13 +173,29 @@ class UniformTest(tf.test.TestCase):
       self.assertAllClose(sample_values[:, 0, 1].mean(), (a_v[1] + b_v[1]) / 2,
                           atol=1e-2)
 
-  def testUniformMeanAndVariance(self):
+  def testUniformMean(self):
     with self.test_session():
       a = 10.0
       b = 100.0
       uniform = tf.contrib.distributions.Uniform(a=a, b=b)
-      self.assertAllClose(uniform.variance.eval(), (b - a)**2 / 12)
-      self.assertAllClose(uniform.mean.eval(), (b + a) / 2)
+      s_uniform = stats.uniform(loc=a, scale=b-a)
+      self.assertAllClose(uniform.mean().eval(), s_uniform.mean())
+
+  def testUniformVariance(self):
+    with self.test_session():
+      a = 10.0
+      b = 100.0
+      uniform = tf.contrib.distributions.Uniform(a=a, b=b)
+      s_uniform = stats.uniform(loc=a, scale=b-a)
+      self.assertAllClose(uniform.variance().eval(), s_uniform.var())
+
+  def testUniformStd(self):
+    with self.test_session():
+      a = 10.0
+      b = 100.0
+      uniform = tf.contrib.distributions.Uniform(a=a, b=b)
+      s_uniform = stats.uniform(loc=a, scale=b-a)
+      self.assertAllClose(uniform.std().eval(), s_uniform.std())
 
   def testUniformNans(self):
     with self.test_session():

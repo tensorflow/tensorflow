@@ -173,6 +173,13 @@ Log CDF of observations `x` under these Gamma distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.log_likelihood(value, name='log_likelihood')` {#Chi2.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.log_pdf(x, name='log_pdf')` {#Chi2.log_pdf}
 
 Log pdf of observations in `x` under these Gamma distribution(s).
@@ -196,9 +203,16 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.mean` {#Chi2.mean}
+#### `tf.contrib.distributions.Chi2.mean(name='mean')` {#Chi2.mean}
 
 Mean of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.mode(name='mode')` {#Chi2.mode}
+
+Mode of each batch member.  Defined only if alpha >= 1.
 
 
 - - -
@@ -233,7 +247,7 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.sample(n, seed=None, name=None)` {#Chi2.sample}
+#### `tf.contrib.distributions.Chi2.sample(n, seed=None, name='sample')` {#Chi2.sample}
 
 Generate `n` samples.
 
@@ -253,7 +267,14 @@ Generate `n` samples.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.variance` {#Chi2.variance}
+#### `tf.contrib.distributions.Chi2.std(name='std')` {#Chi2.std}
+
+Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.variance(name='variance')` {#Chi2.variance}
 
 Variance of each batch member.
 

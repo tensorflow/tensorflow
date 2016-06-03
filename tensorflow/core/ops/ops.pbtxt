@@ -4542,6 +4542,69 @@ op {
   description: "Returns a set of windows called glimpses extracted at location\n`offsets` from the input tensor. If the windows only partially\noverlaps the inputs, the non overlapping areas will be filled with\nrandom noise.\n\nThe result is a 4-D tensor of shape `[batch_size, glimpse_height,\nglimpse_width, channels]`. The channels and batch dimensions are the\nsame as that of the input tensor. The height and width of the output\nwindows are specified in the `size` parameter.\n\nThe argument `normalized` and `centered` controls how the windows are"
 }
 op {
+  name: "ExtractImagePatches"
+  input_arg {
+    name: "images"
+    description: "4-D Tensor with shape `[batch, in_rows, in_cols, depth]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "patches"
+    description: "4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *\nksize_cols * depth]` containing image patches with size\n`ksize_rows x ksize_cols x depth` vectorized in the \"depth\" dimension."
+    type_attr: "T"
+  }
+  attr {
+    name: "ksizes"
+    type: "list(int)"
+    default_value {
+    }
+    description: "The size of the sliding window for each dimension of `images`."
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    default_value {
+    }
+    description: "1-D of length 4. How far the centers of two consecutive patches are in\nthe images. Must be: `[1, stride_rows, stride_cols, 1]`."
+  }
+  attr {
+    name: "rates"
+    type: "list(int)"
+    default_value {
+    }
+    description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1), followed by\nsubsampling them spatially by a factor of `rates`."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use.\n\nWe specify the size-related attributes as:\n\n      ksizes = [1, ksize_rows, ksize_cols, 1]\n      strides = [1, strides_rows, strides_cols, 1]\n      rates = [1, rates_rows, rates_cols, 1]"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Extract `patches` from `images` and puth them in the \"depth\" output dimension."
+}
+op {
   name: "FFT"
   input_arg {
     name: "input"

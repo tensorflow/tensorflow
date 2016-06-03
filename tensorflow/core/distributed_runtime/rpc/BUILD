@@ -74,11 +74,11 @@ cc_library(
         "@grpc//:grpc++_unsecure",
         ":grpc_client_cq_tag",
         ":grpc_util",
+        ":grpc_worker_service_impl",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:worker_proto_cc",
-        "//tensorflow/core:worker_service_proto_cc",
         "//tensorflow/core/distributed_runtime:worker_cache_logger",
         "//tensorflow/core/distributed_runtime:worker_interface",
     ],
@@ -137,14 +137,14 @@ cc_library(
         ":async_service_interface",
         ":grpc_call",
         ":grpc_util",
+        ":grpc_worker_service_impl",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_lib",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:worker_proto_cc",
-        "//tensorflow/core:worker_service_proto_cc",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:graph_mgr",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_cache",
@@ -154,15 +154,25 @@ cc_library(
 )
 
 cc_library(
+    name = "grpc_worker_service_impl",
+    srcs = ["grpc_worker_service_impl.cc"],
+    hdrs = ["grpc_worker_service_impl.h"],
+    deps = [
+        "@grpc//:grpc++_unsecure",
+        ":grpc_serialization_traits",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_library(
     name = "grpc_remote_master",
     srcs = ["grpc_remote_master.cc"],
     hdrs = ["grpc_remote_master.h"],
     deps = [
-        "@grpc//:grpc++_unsecure",
+        ":grpc_master_service_impl",
         ":grpc_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:master_service_proto_cc",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
     ],
@@ -177,14 +187,33 @@ cc_library(
         "@grpc//:grpc++_unsecure",
         ":async_service_interface",
         ":grpc_call",
+        ":grpc_master_service_impl",
         ":grpc_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:master_service_proto_cc",
         "//tensorflow/core/distributed_runtime:master",
-        "//tensorflow/core/distributed_runtime:master_interface",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "grpc_master_service_impl",
+    srcs = ["grpc_master_service_impl.cc"],
+    hdrs = ["grpc_master_service_impl.h"],
+    deps = [
+        "@grpc//:grpc++_unsecure",
+        ":grpc_serialization_traits",
+        "//tensorflow/core:master_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "grpc_serialization_traits",
+    srcs = [],
+    hdrs = ["grpc_serialization_traits.h"],
+    deps = [
+        "@grpc//:grpc++_unsecure",
+    ],
 )
 
 cc_library(

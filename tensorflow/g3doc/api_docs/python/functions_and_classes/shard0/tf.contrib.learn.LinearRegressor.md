@@ -45,7 +45,7 @@ Parameters:
     will use an Ftrl optimizer.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, config=None)` {#LinearRegressor.__init__}
 
 
 

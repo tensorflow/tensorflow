@@ -41,10 +41,10 @@ export function detect(h, verifyTemplate): {[templateId: string]: string[]} {
   // maximum differentiation.
   return <{[templateId: string]: string[]}>_(templates)
       .pairs()
-      .sortBy(function(pair: {level: number, nodes: string[]}) {
+      .sortBy(function(pair: {level: number, nodes: string[]}[]) {
         return pair[1].level;
       })
-      .map(function(pair: {level: number, nodes: string[]}) {
+      .map(function(pair: {level: number, nodes: string[]}[]) {
         return [pair[0], pair[1].nodes];
       })
       .object()

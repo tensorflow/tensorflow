@@ -82,9 +82,12 @@ string DebugString(const Tensor& x, const Tensor& y) {
   CHECK_EQ(y.NumElements(), 2);
   auto x_flat = x.flat<float>();
   auto y_flat = y.flat<float>();
-  const float lambda = y_flat(0) / x_flat(0);
+  // Compute an estimate of the eigenvalue via
+  //      (x' A x) / (x' x) = (x' y) / (x' x)
+  // and exploit the fact that x' x = 1 by assumption
+  Eigen::Tensor<float, 0, Eigen::RowMajor> lambda = (x_flat * y_flat).sum();
   return strings::Printf("lambda = %8.6f x = [%8.6f %8.6f] y = [%8.6f %8.6f]",
-                         lambda, x_flat(0), x_flat(1), y_flat(0), y_flat(1));
+                         lambda(), x_flat(0), x_flat(1), y_flat(0), y_flat(1));
 }
 
 void ConcurrentSteps(const Options* opts, int session_index) {
@@ -106,7 +109,11 @@ void ConcurrentSteps(const Options* opts, int session_index) {
     step_threads.Schedule([&session, opts, session_index, step]() {
       // Randomly initialize the input.
       Tensor x(DT_FLOAT, TensorShape({2, 1}));
-      x.flat<float>().setRandom();
+      auto x_flat = x.flat<float>();
+      x_flat.setRandom();
+      Eigen::Tensor<float, 0, Eigen::RowMajor> inv_norm =
+          x_flat.square().sum().sqrt().inverse();
+      x_flat = x_flat * inv_norm();
 
       // Iterations.
       std::vector<Tensor> outputs;

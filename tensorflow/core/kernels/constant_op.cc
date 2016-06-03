@@ -273,5 +273,10 @@ class PlaceholderOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
+// The following GPU kernel registration is used to address the situation that
+// a placeholder is added in a GPU device context and soft placement is false.
+// Since a placeholder should never be executed, adding these GPU kernels has
+// no effect on graph execution.
+REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
 
 }  // namespace tensorflow
