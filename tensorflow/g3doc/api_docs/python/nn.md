@@ -759,6 +759,141 @@ Performs 3D max pooling on the input.
 
 
 
+## Morphological filtering
+
+Morphological operators are non-linear filters used in image processing.
+
+[Greyscale morphological dilation]
+(https://en.wikipedia.org/wiki/Dilation_(morphology)) is the max-sum counterpart
+of standard sum-product convolution:
+
+    output[b, y, x, c] =
+        max_{dy, dx} input[b,
+                           strides[1] * y + rates[1] * dy,
+                           strides[2] * x + rates[2] * dx,
+                           c] +
+                     filter[dy, dx, c]
+
+The `filter` is usually called structuring function. Max-pooling is a special
+case of greyscale morphological dilation when the filter assumes all-zero
+values (a.k.a. flat structuring function).
+
+[Greyscale morphological erosion]
+(https://en.wikipedia.org/wiki/Erosion_(morphology)) is the min-sum counterpart
+of standard sum-product convolution:
+
+    output[b, y, x, c] =
+        min_{dy, dx} input[b,
+                           strides[1] * y - rates[1] * dy,
+                           strides[2] * x - rates[2] * dx,
+                           c] -
+                     filter[dy, dx, c]
+
+Dilation and erosion are dual to each other. The dilation of the input signal
+`f` by the structuring signal `g` is equal to the negation of the erosion of
+`-f` by the reflected `g`, and vice versa.
+
+Striding and padding is carried out in exactly the same way as in standard
+convolution. Please refer to the `Convolution` section for details.
+
+- - -
+
+### `tf.nn.dilation2d(input, filter, strides, rates, padding, name=None)` {#dilation2d}
+
+Computes the grayscale dilation of 4-D `input` and 3-D `filter` tensors.
+
+The `input` tensor has shape `[batch, in_height, in_width, depth]` and the
+`filter` tensor has shape `[filter_height, filter_width, depth]`, i.e., each
+input channel is processed independently of the others with its own structuring
+function. The `output` tensor has shape
+`[batch, out_height, out_width, depth]`. The spatial dimensions of the output
+tensor depend on the `padding` algorithm. We currently only support the default
+"NHWC" `data_format`.
+
+In detail, the grayscale morphological 2-D dilation is the max-sum correlation
+(for consistency with `conv2d`, we use unmirrored filters):
+
+    output[b, y, x, c] =
+       max_{dy, dx} input[b,
+                          strides[1] * y + rates[1] * dy,
+                          strides[2] * x + rates[2] * dx,
+                          c] +
+                    filter[dy, dx, c]
+
+Max-pooling is a special case when the filter has size equal to the pooling
+kernel size and contains all zeros.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
+*  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
+*  <b>`rates`</b>: A list of `ints` that has length `>= 4`.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+
+
+- - -
+
+### `tf.nn.erosion2d(value, kernel, strides, rates, padding, name=None)` {#erosion2d}
+
+Computes the grayscale erosion of 4-D `value` and 3-D `kernel` tensors.
+
+The `value` tensor has shape `[batch, in_height, in_width, depth]` and the
+`kernel` tensor has shape `[kernel_height, kernel_width, depth]`, i.e.,
+each input channel is processed independently of the others with its own
+structuring function. The `output` tensor has shape
+`[batch, out_height, out_width, depth]`. The spatial dimensions of the
+output tensor depend on the `padding` algorithm. We currently only support the
+default "NHWC" `data_format`.
+
+In detail, the grayscale morphological 2-D erosion is given by:
+
+    output[b, y, x, c] =
+       min_{dy, dx} value[b,
+                          strides[1] * y - rates[1] * dy,
+                          strides[2] * x - rates[2] * dx,
+                          c] -
+                    kernel[dy, dx, c]
+
+Duality: The erosion of `value` by the `kernel` is equal to the negation of
+the dilation of `-value` by the reflected `kernel`.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor`. 4-D with shape `[batch, in_height, in_width, depth]`.
+*  <b>`kernel`</b>: A `Tensor`. Must have the same type as `value`.
+    3-D with shape `[kernel_height, kernel_width, depth]`.
+*  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
+    1-D of length 4. The stride of the sliding window for each dimension of
+    the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
+*  <b>`rates`</b>: A list of `ints` that has length `>= 4`.
+    1-D of length 4. The input stride for atrous morphological dilation.
+    Must be: `[1, rate_height, rate_width, 1]`.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional). If not specified "erosion2d"
+    is used.
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `value`.
+  4-D with shape `[batch, out_height, out_width, depth]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `value` depth does not match `kernel`' shape, or if
+    padding is other than `'VALID'` or `'SAME'`.
+
+
+
 ## Normalization
 
 Normalization is useful to prevent neurons from saturating when inputs may

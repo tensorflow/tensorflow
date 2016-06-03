@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -79,7 +78,8 @@ class TensorSignatureTest(tf.test.TestCase):
     placeholder_out = tensor_signature.create_placeholders_from_signatures(
         signatures)
     self.assertEqual(placeholder_out.dtype, placeholder_a.dtype)
-    self.assertEqual(placeholder_out.get_shape(), placeholder_a.get_shape())
+    self.assertTrue(placeholder_out.get_shape().is_compatible_with(
+        placeholder_a.get_shape()))
     self.assertTrue(tensor_signature.tensors_compatible(placeholder_out,
                                                         signatures))
 
@@ -88,8 +88,9 @@ class TensorSignatureTest(tf.test.TestCase):
     placeholders_out = tensor_signature.create_placeholders_from_signatures(
         signatures)
     self.assertEqual(placeholders_out['a'].dtype, placeholder_a.dtype)
-    self.assertEqual(placeholders_out['a'].get_shape(),
-                     placeholder_a.get_shape())
+    self.assertTrue(
+        placeholders_out['a'].get_shape().is_compatible_with(
+            placeholder_a.get_shape()))
     self.assertTrue(tensor_signature.tensors_compatible(placeholders_out,
                                                         signatures))
 

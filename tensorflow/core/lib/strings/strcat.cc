@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdio.h>
 #include <string.h>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -27,6 +28,9 @@ namespace tensorflow {
 namespace strings {
 
 AlphaNum gEmptyAlphaNum("");
+
+AlphaNum::AlphaNum(const Eigen::half &f)
+    : piece_(digits_, strlen(FloatToBuffer(static_cast<float>(f), digits_))) {}
 
 AlphaNum::AlphaNum(Hex hex) {
   char *const end = &digits_[kFastToBufferSize];

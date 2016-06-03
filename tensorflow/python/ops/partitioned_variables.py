@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -210,20 +210,15 @@ def create_partitioned_variables(
   partitioner = lambda **unused_kwargs: slicing
 
   with variable_scope.variable_op_scope(
-      [], name, "PartitionedVariable", reuse=reuse) as scope:
-
+      [], name, "PartitionedVariable", reuse=reuse):
     # pylint: disable=protected-access
-    vs, _ = variable_scope._get_partitioned_variable_list(
-        name="part",
+    partitioned_var = variable_scope._get_partitioned_variable(
+        name=None,
         shape=shape,
         dtype=dtype,
         initializer=initializer,
         trainable=trainable,
         partitioner=partitioner,
         collections=collections)
-
-    for var in vs:
-      var._save_slice_info.full_name = scope.name
+    return partitioned_var._get_variable_list()
     # pylint: enable=protected-access
-
-  return vs

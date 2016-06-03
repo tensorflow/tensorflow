@@ -5,6 +5,51 @@ licenses(["restricted"])  # OpenSSL license, partly BSD-like
 # See https://boringssl.googlesource.com/boringssl/+/master/INCORPORATING.md
 # on how to re-generate the list of source files.
 
+ssl_headers = [
+]
+
+ssl_internal_headers = [
+    "ssl/internal.h",
+    "ssl/test/async_bio.h",
+    "ssl/test/packeted_bio.h",
+    "ssl/test/scoped_types.h",
+    "ssl/test/test_config.h",
+]
+
+ssl_sources = [
+    "ssl/custom_extensions.c",
+    "ssl/d1_both.c",
+    "ssl/d1_clnt.c",
+    "ssl/d1_lib.c",
+    "ssl/d1_meth.c",
+    "ssl/d1_pkt.c",
+    "ssl/d1_srtp.c",
+    "ssl/d1_srvr.c",
+    "ssl/dtls_record.c",
+    "ssl/pqueue/pqueue.c",
+    "ssl/s3_both.c",
+    "ssl/s3_clnt.c",
+    "ssl/s3_enc.c",
+    "ssl/s3_lib.c",
+    "ssl/s3_meth.c",
+    "ssl/s3_pkt.c",
+    "ssl/s3_srvr.c",
+    "ssl/ssl_aead_ctx.c",
+    "ssl/ssl_asn1.c",
+    "ssl/ssl_buffer.c",
+    "ssl/ssl_cert.c",
+    "ssl/ssl_cipher.c",
+    "ssl/ssl_ecdh.c",
+    "ssl/ssl_file.c",
+    "ssl/ssl_lib.c",
+    "ssl/ssl_rsa.c",
+    "ssl/ssl_session.c",
+    "ssl/ssl_stat.c",
+    "ssl/t1_enc.c",
+    "ssl/t1_lib.c",
+    "ssl/tls_record.c",
+]
+
 crypto_headers = [
     "include/openssl/aead.h",
     "include/openssl/aes.h",
@@ -394,7 +439,7 @@ crypto_sources = [
 # A trick to take the generated err_data.c from another package.
 genrule(
     name = "err_data_c",
-    srcs = ["@//third_party/boringssl:err_data_c"],
+    srcs = ["//external:boringssl_err_data_c"],
     outs = ["err_data.c"],
     cmd = "cp $< $@",
 )
@@ -407,4 +452,15 @@ cc_library(
     defines = ["OPENSSL_NO_ASM"],
     includes = ["include"],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "ssl",
+    srcs = ssl_internal_headers + ssl_sources,
+    hdrs = ssl_headers,
+    includes = ["src/include"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":crypto",
+    ],
 )

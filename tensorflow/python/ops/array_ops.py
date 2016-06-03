@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -98,6 +98,36 @@ _baseslice = slice
 # Aliases for some automatically-generated names.
 listdiff = gen_array_ops.list_diff
 
+
+def rank(input, name=None):
+  """Returns the rank of a tensor.
+
+  This operation returns an integer representing the rank of `input`.
+
+  For example:
+
+  ```python
+  # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+  # shape of tensor 't' is [2, 2, 3]
+  rank(t) ==> 3
+  ```
+
+  **Note**: The rank of a tensor is not the same as the rank of a matrix. The
+  rank of a tensor is the number of indices required to uniquely select each
+  element of the tensor. Rank is also known as "order", "degree", or "ndims."
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
+  with ops.op_scope([input], name, "Rank") as name:
+    if isinstance(input, ops.SparseTensor):
+      return gen_array_ops.size(input.shape, name=name)
+    else:
+      return gen_array_ops.rank(input, name=name)
 
 # DEPRECATED use init_ops.zeros_initializer
 # TODO(irving) Move it to init_ops.py
@@ -716,9 +746,10 @@ def zeros(shape, dtype=dtypes.float32, name=None):
     A `Tensor` with all elements set to zero.
   """
   with ops.op_scope([shape], name, "zeros") as name:
-    if isinstance(shape, (list, tuple)):
+    try:
+      shape = tensor_shape.as_shape(shape)
       output = constant(0, shape=shape, dtype=dtype, name=name)
-    else:
+    except (TypeError, ValueError):
       shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
       output = fill(shape, constant(0, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype
@@ -812,9 +843,10 @@ def ones(shape, dtype=dtypes.float32, name=None):
     A `Tensor` with all elements set to 1.
   """
   with ops.op_scope([shape], name, "ones") as name:
-    if isinstance(shape, (list, tuple)):
+    try:
+      shape = tensor_shape.as_shape(shape)
       output = constant(1, shape=shape, dtype=dtype, name=name)
-    else:
+    except (TypeError, ValueError):
       shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
       output = fill(shape, constant(1, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype

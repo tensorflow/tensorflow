@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -248,7 +248,9 @@ class Conv2DOp : public BinaryOp<T> {
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     Conv2DOp<CPUDevice, float>);
-
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    Conv2DOp<CPUDevice, Eigen::half>);
 #if GOOGLE_CUDA
 
 int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,

@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,10 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
-from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
-from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowEstimator
+from tensorflow.contrib.learn.python.learn.estimators.base import DeprecatedMixin
 
 
 class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
@@ -46,8 +44,8 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       ...
     def input_fn_eval: # returns X, Y
       ...
-    estimator.train(input_fn_train)
-    estimator.evaluate(input_fn_eval)
+    estimator.fit(input_fn=input_fn_train)
+    estimator.evaluate(input_fn=input_fn_eval)
     estimator.predict(x)
     ```
 
@@ -96,6 +94,14 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       self._linear_feature_columns = layers.infer_real_valued_columns(features)
     return super(LinearClassifier, self)._get_train_ops(features, targets)
 
+  @property
+  def weights_(self):
+    return self.linear_weights_
+
+  @property
+  def bias_(self):
+    return self.linear_bias_
+
 
 class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   """Linear regressor model.
@@ -116,8 +122,8 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       ...
     def input_fn_eval: # returns X, Y
       ...
-    estimator.train(input_fn_train)
-    estimator.evaluate(input_fn_eval)
+    estimator.fit(input_fn=input_fn_train)
+    estimator.evaluate(input_fn=input_fn_eval)
     estimator.predict(x)
     ```
 
@@ -163,82 +169,24 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       self._linear_feature_columns = layers.infer_real_valued_columns(features)
     return super(LinearRegressor, self)._get_train_ops(features, targets)
 
-
-# TODO(ipolosukhin): Deprecate this class in favor of LinearClassifier.
-class TensorFlowLinearRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
-  """TensorFlow Linear Regression model."""
-
-  def __init__(self,
-               n_classes=0,
-               batch_size=32,
-               steps=200,
-               optimizer='Adagrad',
-               learning_rate=0.1,
-               clip_gradients=5.0,
-               continue_training=False,
-               config=None,
-               verbose=1):
-
-    super(TensorFlowLinearRegressor, self).__init__(
-        model_fn=models.linear_regression_zero_init,
-        n_classes=n_classes,
-        batch_size=batch_size,
-        steps=steps,
-        optimizer=optimizer,
-        learning_rate=learning_rate,
-        clip_gradients=clip_gradients,
-        continue_training=continue_training,
-        config=config,
-        verbose=verbose)
-
   @property
   def weights_(self):
-    """Returns weights of the linear regression."""
-    return self.get_tensor_value('linear_regression/weights')
+    return self.linear_weights_
 
   @property
   def bias_(self):
-    """Returns bias of the linear regression."""
-    return self.get_tensor_value('linear_regression/bias')
+    return self.linear_bias_
 
 
-class TensorFlowLinearClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
-  """TensorFlow Linear Classifier model."""
+# TensorFlowLinearRegressor and TensorFlowLinearClassifier are deprecated.
+class TensorFlowLinearRegressor(DeprecatedMixin, LinearRegressor,
+                                _sklearn.RegressorMixin):
+  pass
 
-  def __init__(self,
-               n_classes,
-               batch_size=32,
-               steps=200,
-               optimizer='Adagrad',
-               learning_rate=0.1,
-               class_weight=None,
-               clip_gradients=5.0,
-               continue_training=False,
-               config=None,
-               verbose=1):
 
-    super(TensorFlowLinearClassifier, self).__init__(
-        model_fn=models.logistic_regression_zero_init,
-        n_classes=n_classes,
-        batch_size=batch_size,
-        steps=steps,
-        optimizer=optimizer,
-        learning_rate=learning_rate,
-        class_weight=class_weight,
-        clip_gradients=clip_gradients,
-        continue_training=continue_training,
-        config=config,
-        verbose=verbose)
-
-  @property
-  def weights_(self):
-    """Returns weights of the linear classifier."""
-    return self.get_tensor_value('logistic_regression/weights')
-
-  @property
-  def bias_(self):
-    """Returns weights of the linear classifier."""
-    return self.get_tensor_value('logistic_regression/bias')
+class TensorFlowLinearClassifier(DeprecatedMixin, LinearClassifier,
+                                 _sklearn.ClassifierMixin):
+  pass
 
 
 TensorFlowRegressor = TensorFlowLinearRegressor

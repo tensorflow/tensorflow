@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,12 +20,10 @@ from __future__ import print_function
 
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import tf_logging as logging
 
 
 @ops.RegisterShape('DecodeAudio')
@@ -121,18 +119,15 @@ def _load_library(name, op_list=None):
   Raises:
     NameError if one of the required ops is missing.
   """
-  try:
-    filename = resource_loader.get_path_to_datafile(name)
-    library = load_library.load_op_library(filename)
-    for expected_op in (op_list or []):
-      for lib_op in library.OP_LIST.op:
-        if lib_op.name == expected_op:
-          break
-      else:
-        raise NameError('Could not find operator %s in dynamic library %s' %
-                        (expected_op, name))
-  except errors.NotFoundError:
-    logging.warning('%s file could not be loaded.', name)
+  filename = resource_loader.get_path_to_datafile(name)
+  library = load_library.load_op_library(filename)
+  for expected_op in (op_list or []):
+    for lib_op in library.OP_LIST.op:
+      if lib_op.name == expected_op:
+        break
+    else:
+      raise NameError('Could not find operator %s in dynamic library %s' %
+                      (expected_op, name))
 
 
 _load_library('ffmpeg.so', ['DecodeAudio', 'EncodeAudio'])

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -652,7 +652,8 @@ class PaddingFIFOQueue(QueueBase):
 
     Raises:
       ValueError: If shapes is not a list of shapes, or the lengths of dtypes
-        and shapes do not match.
+        and shapes do not match, or if names is specified and the lengths of
+        dtypes and names do not match.
     """
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes, unknown_dim_allowed=True)

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -387,6 +387,14 @@ class OnesTest(tf.test.TestCase):
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, d)
     self.assertShapeEqual(np_ans, z)
+
+  def testAutoPack(self):
+    with self.test_session():
+      h = tf.placeholder(tf.int32, shape=[])
+      w = tf.placeholder(tf.int32, shape=[])
+      z = tf.ones([h, w])
+      out = z.eval(feed_dict={h: 4, w: 16})
+    self.assertAllEqual(out, np.array([[1] * 16] * 4))
 
   def testDtype(self):
     with self.test_session():

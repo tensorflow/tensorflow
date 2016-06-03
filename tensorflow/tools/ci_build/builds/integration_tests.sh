@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -112,8 +112,7 @@ test_ffmpeg_lib() {
     return $?
   else
     bazel test tensorflow/contrib/ffmpeg/default:ffmpeg_lib_installed_test \
-        tensorflow/contrib/ffmpeg:decode_audio_op_test \
-        tensorflow/contrib/ffmpeg:encode_audio_op_test
+        tensorflow/contrib/ffmpeg:decode_audio_op_test
     return $?
   fi
 }

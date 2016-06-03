@@ -43,6 +43,8 @@
 # filegroup ":android_proto_srcs" - Protos
 # filegroup ":android_srcs" - Core sources
 # cc_library ":android_tensorflow_lib" - Native library
+# cc_library ":android_tensorflow_lib_selective_registration" - Native library
+#   supporting SELECTIVE_REGISTRATION feature.
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
 package(default_visibility = ["//tensorflow:internal"])
@@ -216,7 +218,9 @@ cc_library(
         "platform/types.h",
     ],
     visibility = ["//visibility:public"],
-    deps = [":lib_internal"],
+    deps = [
+        ":lib_internal",
+    ],
 )
 
 # Test support library needed for all tests
@@ -278,6 +282,7 @@ tf_cuda_library(
         "framework/resource_mgr.h",
         "framework/selective_registration.h",
         "framework/session_state.h",
+        "framework/shape_inference.h",
         "framework/tensor.h",
         "framework/tensor_shape.h",
         "framework/tensor_slice.h",
@@ -630,9 +635,10 @@ filegroup(
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
-            "util/events_writer.*",
-            "util/tf_status_helper.*",
             "util/checkpoint_reader.*",
+            "util/events_writer.*",
+            "util/reporter.*",
+            "util/tf_status_helper.*",
             "platform/default/stream_executor.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
@@ -648,9 +654,9 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Native library support for Android applications.
-# Does not contain operators, use :android_tensorflow_lib if you want full
-# operator support.
+# Native library support for Android applications.  Does not contain
+# operators, use :android_tensorflow_lib if you want full operator
+# support.
 #
 # Compiles to a trivial library on non-Android to prevent irrelevant
 # build errors. If not building this as part of an android_binary,
@@ -701,6 +707,35 @@ cc_library(
         ":android_tensorflow_lib_lite",
         ":protos_cc",
         "//tensorflow/core/kernels:android_tensorflow_kernels",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+# Android library for use with the SELECTIVE_REGISTRATION feature.
+# Does not contain operators. In contrast to android_tensorflow_lib_lite,
+# this links in framework support for all types, relying on selective
+# registration of ops to prune code size.
+cc_library(
+    name = "android_tensorflow_lib_selective_registration",
+    srcs =
+        select({
+            "//tensorflow:android": [
+                "//tensorflow/core:android_srcs",
+            ],
+            "//conditions:default": [],
+        }),
+    copts = tf_copts() + [
+        "-Os",
+        "-DSUPPORT_SELECTIVE_REGISTRATION",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_cc",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -893,6 +928,7 @@ filegroup(
         "framework/rendezvous.h",
         "framework/selective_registration.h",
         "framework/session_state.h",
+        "framework/shape_inference.h",
         "framework/tensor.h",
         "framework/tensor_reference.h",
         "framework/tensor_shape.h",
@@ -922,6 +958,7 @@ filegroup(
         "platform/default/thread_annotations.h",
         "platform/env.h",
         "platform/file_system.h",
+        "platform/fingerprint.h",
         "platform/host_info.h",
         "platform/logging.h",
         "platform/macros.h",
@@ -929,6 +966,7 @@ filegroup(
         "platform/mutex.h",
         "platform/platform.h",
         "platform/protobuf.h",
+        "platform/strong_hash.h",
         "platform/thread_annotations.h",
         "platform/types.h",
         "public/version.h",
@@ -1187,6 +1225,7 @@ tf_cc_tests(
         ":protos_all_cc",
         ":test",
         ":test_main",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1222,7 +1261,6 @@ cc_test(
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
-        ":protos_all_cc",
         ":test",
         ":test_main",
     ],

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -146,6 +146,10 @@ class TensorBoardStaticSerializer(object):
                 url = 'individualAudio?' + snd['query']
                 # pull down the audio clips themselves
                 self.GetAndSave(url, AUDIO_SUFFIX)
+          elif tag_type == 'run_metadata':
+            for t in tags:
+              url = Url('run_metadata', {'run': run, 'tag': t})
+              self.GetAndSave(url, GRAPH_SUFFIX, unzip=True)
           else:
             for t in tags:
               # Save this, whatever it is :)

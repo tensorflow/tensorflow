@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -85,13 +85,16 @@ int32 BestFeatureRegression(
   const auto splits_count_accessor = split_sums.tensor<float, 3>();
   const auto totals_count_accessor = total_sums.tensor<float, 2>();
 
-  Eigen::array<int, 1> bcast({num_splits});
+  Eigen::array<int, 1> bcast;
+  bcast[0] = num_splits;
   const auto right_sums = tc_sum.broadcast(bcast) - splits_sum;
   const auto right_squares = tc_square.broadcast(bcast) - splits_square;
 
   for (int i = 0; i < num_splits; i++) {
-    Eigen::array<int, 1> offsets = {i * num_regression_dims};
-    Eigen::array<int, 1> extents = {num_regression_dims};
+    Eigen::array<int, 1> offsets;
+    offsets[0] = i * num_regression_dims;
+    Eigen::array<int, 1> extents;
+    extents[0] = num_regression_dims;
     float left_count = splits_count_accessor(accumulator, i, 0);
     float right_count = totals_count_accessor(accumulator, 0) - left_count;
 

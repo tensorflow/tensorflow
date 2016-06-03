@@ -1,4 +1,4 @@
-<!-- Copyright 2015 Google Inc. All Rights Reserved.
+<!-- Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ Instead, use `gulp regenerate` to create a new version with your changes.
 -->
 
 <html><head><meta charset="UTF-8">
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ var TF;
     })(TensorBoard = TF.TensorBoard || (TF.TensorBoard = {}));
 })(TF || (TF = {}));
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -588,7 +588,7 @@ var TF;
     };
 })(TF || (TF = {}));
 </script>
-  <script>/* Copyright 2015 Google Inc. All Rights Reserved.
+  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -890,7 +890,7 @@ var TF;
       }
     </style>
   </template>
-  <script>/* Copyright 2015 Google Inc. All Rights Reserved.
+  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -1126,7 +1126,7 @@ var Categorizer;
 
     </style>
   </template>
-  <script>/* Copyright 2015 Google Inc. All Rights Reserved.
+  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -1310,7 +1310,7 @@ var Plottable;
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1339,7 +1339,6 @@ var TF;
             this.tag = tag;
             this.colorScale = colorScale;
             this.tooltip = tooltip;
-            this.buildChart(xType);
         }
         /**
          * Change the runs on the chart. The work of actually setting the dataset
@@ -1413,6 +1412,7 @@ var TF;
     var LineChart = (function (_super) {
         __extends(LineChart, _super);
         function LineChart(tag, dataFn, xType, colorScale, tooltip) {
+            _super.call(this, tag, dataFn, xType, colorScale, tooltip);
             this.datasets = [];
             // lastPointDataset is a dataset that contains just the last point of
             // every dataset we're currently drawing.
@@ -1421,7 +1421,7 @@ var TF;
             // need to do a single bind, so we can deregister the callback from
             // old Plottable.Datasets. (Deregistration is done by identity checks.)
             this.updateSpecialDatasets = this._updateSpecialDatasets.bind(this);
-            _super.call(this, tag, dataFn, xType, colorScale, tooltip);
+            this.buildChart(xType);
         }
         LineChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
             var _this = this;
@@ -1672,8 +1672,9 @@ var TF;
     TF.LineChart = LineChart;
     var HistogramChart = (function (_super) {
         __extends(HistogramChart, _super);
-        function HistogramChart() {
-            _super.apply(this, arguments);
+        function HistogramChart(tag, dataFn, xType, colorScale, tooltip) {
+            _super.call(this, tag, dataFn, xType, colorScale, tooltip);
+            this.buildChart(xType);
         }
         HistogramChart.prototype.changeRuns = function (runs) {
             var _this = this;
@@ -2317,7 +2318,7 @@ var TF;
     })(Dashboard = TF.Dashboard || (TF.Dashboard = {}));
 })(TF || (TF = {}));
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -2477,7 +2478,7 @@ var TF;
     })(Backend = TF.Backend || (TF.Backend = {}));
 })(TF || (TF = {}));
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -2525,7 +2526,7 @@ var TF;
     })(Backend = TF.Backend || (TF.Backend = {}));
 })(TF || (TF = {}));
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -2556,11 +2557,12 @@ var TF;
             if (dataDir[dataDir.length - 1] === '/') {
                 dataDir = dataDir.slice(0, dataDir.length - 1);
             }
-            function standardRoute(route) {
+            function standardRoute(route, demoExtension) {
+                if (demoExtension === void 0) { demoExtension = '.json'; }
                 return function (tag, run) {
                     var url = dataDir + '/' + route + clean(Backend.queryEncoder({ tag: tag, run: run }));
                     if (demoMode) {
-                        url += '.json';
+                        url += demoExtension;
                     }
                     return url;
                 };
@@ -2608,7 +2610,7 @@ var TF;
                 compressedHistograms: standardRoute('compressedHistograms'),
                 images: standardRoute('images'),
                 audio: standardRoute('audio'),
-                runMetadata: standardRoute('run_metadata'),
+                runMetadata: standardRoute('run_metadata', '.pbtxt'),
             };
         }
         Backend.router = router;
@@ -2616,7 +2618,7 @@ var TF;
     })(Backend = TF.Backend || (TF.Backend = {}));
 })(TF || (TF = {}));
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -3808,7 +3810,7 @@ Polymer({
   }
 });
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -3938,7 +3940,7 @@ var tf;
     }, {});
 })(tf || (tf = {}));
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -3953,7 +3955,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -3968,7 +3970,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -4763,7 +4765,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module tf.graph
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -5445,7 +5447,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module tf.graph.hierarchy
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6158,7 +6160,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6421,7 +6423,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // Close module tf.graph.parser.
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6441,7 +6443,7 @@ limitations under the License.
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -7620,7 +7622,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module tf.graph.render
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -7836,7 +7838,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -7901,7 +7903,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -8220,7 +8222,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -8830,7 +8832,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -9250,7 +9252,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -9515,7 +9517,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {}));
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -9707,7 +9709,7 @@ var tf;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {}));
 </script>
-<script>/* Copyright 2015 Google Inc. All Rights Reserved.
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -10115,9 +10117,9 @@ Polymer({
 ::content .faded path,
 ::content #rectHatch line,
 ::content #ellipseHatch line {
-  color: var(--tb-graph-faded) !important;
+  color: #e0d4b3 !important;
   fill: white;
-  stroke: var(--tb-graph-faded) !important;
+  stroke: #e0d4b3 !important;
 }
 
 
@@ -10307,7 +10309,7 @@ Polymer({
 }
 
 ::content #annotation-arrowhead-faded {
-  fill: var(--tb-graph-faded);
+  fill: #e0d4b3;
 }
 
 ::content #ref-annotation-arrowhead {
@@ -10315,7 +10317,7 @@ Polymer({
 }
 
 ::content #ref-annotation-arrowhead-faded {
-  fill: var(--tb-graph-faded);
+  fill: #e0d4b3;
 }
 
 ::content .annotation > .annotation-label {

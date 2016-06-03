@@ -136,6 +136,10 @@ message ConfigProto {
   // inter_op_parallelism_threads.
   bool use_per_session_threads = 9;
 
+  // This option is experimental - it may be replaced with a different mechanism
+  // in the future. The intended use is for when some session invocations need
+  // to run in a background pool limited to a small number of threads.
+  //
   // Configures session thread pools. If this is configured, then RunOptions for
   // a Run call can select the thread pool to use.
   //

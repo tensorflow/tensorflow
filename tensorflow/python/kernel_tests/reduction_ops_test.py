@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -158,11 +158,13 @@ class SumReductionTest(tf.test.TestCase):
   # Simple tests for various types.
   def testDoubleReduce1D(self):
     np_arr = np.arange(1, 6).reshape([5]).astype(np.float64)
+    self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])
 
   def testInt32Reduce1D(self):
     np_arr = np.arange(1, 6).reshape([5]).astype(np.int32)
+    self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])
 
@@ -252,14 +254,17 @@ class SumReductionTest(tf.test.TestCase):
 class MeanReductionTest(tf.test.TestCase):
 
   def _compare(self, x, reduction_axes, keep_dims, use_gpu=False):
-    np_sum = x
-    count = 1
-    for ra in reduction_axes[::-1]:
-      np_sum = np.sum(np_sum, axis=ra, keepdims=keep_dims)
-      count *= x.shape[ra]
-    np_ans = np_sum / count
-    with self.test_session(use_gpu=use_gpu):
+    np_ans = x
+    if reduction_axes is None:
+      np_ans = np.mean(np_ans, keepdims=keep_dims)
+    else:
       reduction_axes = np.array(reduction_axes).astype(np.int32)
+      count = 1
+      for ra in reduction_axes.ravel()[::-1]:
+        np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
+        count *= x.shape[ra]
+      np_ans /= count
+    with self.test_session(use_gpu=use_gpu):
       tf_ans = tf.reduce_mean(x, reduction_axes, keep_dims)
       out = tf_ans.eval()
     self.assertAllClose(np_ans, out)
@@ -275,6 +280,7 @@ class MeanReductionTest(tf.test.TestCase):
     # Create a 3D array of floats and reduce across all possible
     # dimensions
     np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float32)
+    self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])
     self._compareAll(np_arr, [1])
@@ -288,6 +294,7 @@ class MeanReductionTest(tf.test.TestCase):
     # Create a 3D array of doubles and reduce across all possible
     # dimensions
     np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float64)
+    self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])
     self._compareAll(np_arr, [1])
@@ -455,6 +462,7 @@ class MinReductionTest(tf.test.TestCase):
     # Create a 3D array of floats and reduce across all possible
     # dimensions
     np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float32)
+    self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])
     self._compareAll(np_arr, [1])
@@ -468,6 +476,7 @@ class MinReductionTest(tf.test.TestCase):
     # Create a 3D array of doubles and reduce across all possible
     # dimensions
     np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float64)
+    self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])
     self._compareAll(np_arr, [1])

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -736,6 +736,99 @@ grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
   output of `max_pool`.
 argmax: The indices of the maximum values chosen for each output of `max_pool`.
 output: Gradients w.r.t. the input of `max_pool`.
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Dilation2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("strides: list(int) >= 4")
+    .Attr("rates: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes the grayscale dilation of 4-D `input` and 3-D `filter` tensors.
+
+The `input` tensor has shape `[batch, in_height, in_width, depth]` and the
+`filter` tensor has shape `[filter_height, filter_width, depth]`, i.e., each
+input channel is processed independently of the others with its own structuring
+function. The `output` tensor has shape
+`[batch, out_height, out_width, depth]`. The spatial dimensions of the output
+tensor depend on the `padding` algorithm. We currently only support the default
+"NHWC" `data_format`.
+
+In detail, the grayscale morphological 2-D dilation is the max-sum correlation
+(for consistency with `conv2d`, we use unmirrored filters):
+
+    output[b, y, x, c] =
+       max_{dy, dx} input[b,
+                          strides[1] * y + rates[1] * dy,
+                          strides[2] * x + rates[2] * dx,
+                          c] +
+                    filter[dy, dx, c]
+
+Max-pooling is a special case when the filter has size equal to the pooling
+kernel size and contains all zeros.
+
+Duality: The dilation of `input` by the `filter` is equal to the negation of
+the erosion of `-input` by the reflected `filter`.
+
+input: 4-D with shape `[batch, in_height, in_width, depth]`.
+filter: 3-D with shape `[filter_height, filter_width, depth]`.
+strides: The stride of the sliding window for each dimension of the input
+ tensor. Must be: `[1, stride_height, stride_width, 1]`.
+rates: The input stride for atrous morphological dilation. Must be:
+ `[1, rate_height, rate_width, 1]`.
+padding: The type of padding algorithm to use.
+output: 4-D with shape `[batch, out_height, out_width, depth]`.
+)doc");
+
+REGISTER_OP("Dilation2DBackpropInput")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Output("in_backprop: T")
+    .Attr("T: realnumbertype")
+    .Attr("strides: list(int) >= 4")
+    .Attr("rates: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes the gradient of morphological 2-D dilation with respect to the input.
+
+input: 4-D with shape `[batch, in_height, in_width, depth]`.
+filter: 3-D with shape `[filter_height, filter_width, depth]`.
+out_backprop: 4-D with shape `[batch, out_height, out_width, depth]`.
+in_backprop: 4-D with shape `[batch, in_height, in_width, depth]`.
+strides: 1-D of length 4. The stride of the sliding window for each dimension of
+  the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
+rates: 1-D of length 4. The input stride for atrous morphological dilation.
+  Must be: `[1, rate_height, rate_width, 1]`.
+padding: The type of padding algorithm to use.
+)doc");
+
+REGISTER_OP("Dilation2DBackpropFilter")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Output("filter_backprop: T")
+    .Attr("T: realnumbertype")
+    .Attr("strides: list(int) >= 4")
+    .Attr("rates: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes the gradient of morphological 2-D dilation with respect to the filter.
+
+input: 4-D with shape `[batch, in_height, in_width, depth]`.
+filter: 3-D with shape `[filter_height, filter_width, depth]`.
+out_backprop: 4-D with shape `[batch, out_height, out_width, depth]`.
+filter_backprop: 3-D with shape `[filter_height, filter_width, depth]`.
+strides: 1-D of length 4. The stride of the sliding window for each dimension of
+  the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
+rates: 1-D of length 4. The input stride for atrous morphological dilation.
+  Must be: `[1, rate_height, rate_width, 1]`.
+padding: The type of padding algorithm to use.
 )doc");
 
 // --------------------------------------------------------------------------
