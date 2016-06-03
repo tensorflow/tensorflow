@@ -1655,10 +1655,25 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
                                                   delta=epsilon)
     self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
+  def _compareBroadcastGradient(self, x):
+    x_ = tf.convert_to_tensor(x)
+    epsilon = 1e-3
+    with self.test_session():
+      for args in [(x_, 0.), (0., x_)]:
+          z = tf.reduce_sum(tf.complex_abs(tf.complex(*args)))
+          jacob_t, jacob_n = tf.test.compute_gradient(x_,
+                                                      list(x.shape),
+                                                      z,
+                                                      [1],
+                                                      x_init_value=x,
+                                                      delta=epsilon)
+          self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
+
   def testGradient(self):
     # complex64
     data = np.arange(1, 2, 0.10).reshape([5, 2]).astype(np.float32)
     self._compareGradient(data)
+    self._compareBroadcastGradient(data)
     # complex128
     data = np.arange(1, 2, 0.10).reshape([5, 2]).astype(np.float64)
     self._compareGradient(data)
