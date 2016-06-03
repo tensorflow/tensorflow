@@ -34,9 +34,6 @@ from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.contrib.learn.python.learn.graph_actions import evaluate
-from tensorflow.contrib.learn.python.learn.graph_actions import infer
-from tensorflow.contrib.learn.python.learn.graph_actions import train
 from tensorflow.contrib.learn.python.learn.io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
@@ -125,29 +122,35 @@ class BaseEstimator(sklearn.BaseEstimator):
     self._graph = None
 
   def fit(
-      self, x=None, y=None, input_fn=None, steps=None, batch_size=32,
+      self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
       monitors=None):
-    """Trains a model given training data X and y.
+    """Trains a model given training data `x` predictions and `y` targets.
 
     Args:
       x: matrix or tensor of shape [n_samples, n_features...]. Can be
          iterator that returns arrays of features. The training input
-         samples for fitting the model.
+         samples for fitting the model. If set, `input_fn` must be `None`.
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
          iterator that returns array of targets. The training target values
-         (class labels in classification, real numbers in regression).
-      input_fn: Input function. If set, `x` and `y` must be `None`.
+         (class labels in classification, real numbers in regression). If set,
+         `input_fn` must be `None`.
+      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
+        `None`.
       steps: Number of steps for which to train model. If `None`, train forever.
-      batch_size: minibatch size to use on the input, defaults to 32. Ignored if
-        `input_fn` is provided.
+      batch_size: minibatch size to use on the input, defaults to first
+        dimension of `x`. Must be `None` if `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
-                inside the training loop.
+        inside the training loop.
 
     Returns:
       `self`, for chaining.
 
     Raises:
       ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
+
+    Raises:
+      ValueError: If at least one of `x` and `y` is provided, and `input_fn` is
+          provided.
     """
     feed_fn = None
     if input_fn is None:
@@ -156,6 +159,9 @@ class BaseEstimator(sklearn.BaseEstimator):
       input_fn, feed_fn = _get_input_fn(x, y, batch_size)
     elif (x is not None) or (y is not None):
       raise ValueError('Can not provide both input_fn and either of x and y.')
+    elif batch_size is not None:
+      raise ValueError('Can not provide both input_fn and batch_size.')
+
     loss = self._train_model(input_fn=input_fn,
                              feed_fn=feed_fn,
                              steps=steps,
@@ -164,7 +170,7 @@ class BaseEstimator(sklearn.BaseEstimator):
     return self
 
   def partial_fit(
-      self, x=None, y=None, input_fn=None, steps=1, batch_size=32,
+      self, x=None, y=None, input_fn=None, steps=1, batch_size=None,
       monitors=None):
     """Incremental fit on a batch of samples.
 
@@ -179,22 +185,25 @@ class BaseEstimator(sklearn.BaseEstimator):
     Args:
       x: matrix or tensor of shape [n_samples, n_features...]. Can be
         iterator that returns arrays of features. The training input
-        samples for fitting the model.
+        samples for fitting the model. If set, `input_fn` must be `None`.
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
         iterator that returns array of targets. The training target values
-        (class label in classification, real numbers in regression).
-      input_fn: Input function. If set, `x` and `y` must be `None`.
+        (class label in classification, real numbers in regression). If set,
+         `input_fn` must be `None`.
+      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
+        `None`.
       steps: Number of steps for which to train model. If `None`, train forever.
-      batch_size: minibatch size to use on the input, defaults to 32. Ignored if
-        `input_fn` is provided.
+      batch_size: minibatch size to use on the input, defaults to first
+        dimension of `x`. Must be `None` if `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
-                inside the training loop.
+        inside the training loop.
 
     Returns:
       `self`, for chaining.
 
     Raises:
-      ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
+      ValueError: If at least one of `x` and `y` is provided, and `input_fn` is
+          provided.
     """
     feed_fn = None
     if input_fn is None:
@@ -215,7 +224,7 @@ class BaseEstimator(sklearn.BaseEstimator):
                y=None,
                input_fn=None,
                feed_fn=None,
-               batch_size=32,
+               batch_size=None,
                steps=None,
                metrics=None,
                name=None):
@@ -224,12 +233,14 @@ class BaseEstimator(sklearn.BaseEstimator):
     Args:
       x: features.
       y: targets.
-      input_fn: Input function. If set, `x` and `y` must be `None`.
+      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
+        `None`.
       feed_fn: Function creating a feed dict every time it is called. Called
         once per iteration.
-      batch_size: minibatch size to use on the input, defaults to 32. Ignored if
-        `input_fn` is provided.
-      steps: Number of steps for which to train model. If `None`, train forever.
+      batch_size: minibatch size to use on the input, defaults to first
+        dimension of `x`. Must be `None` if `input_fn` is provided.
+      steps: Number of steps for which to evaluate model. If `None`, evaluate
+        forever.
       metrics: Dict of metric ops to run. If None, the default metric functions
         are used; if {}, no metrics are used.
       name: Name of the evaluation if user needs to run multiple evaluation on
@@ -239,8 +250,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       Returns `dict` with evaluation results.
 
     Raises:
-      ValueError: If `x` or `y` are not `None` while `input_fn` or `feed_fn` is
-          not `None`.
+      ValueError: If at least one of `x` or `y` is provided, and at least one of
+          `input_fn` or `feed_fn` is provided.
     """
     if input_fn is None:
       if x is None:
@@ -250,6 +261,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       input_fn, feed_fn = _get_predict_input_fn(x, y, batch_size)
     elif (x is not None) or (y is not None):
       raise ValueError('Can not provide both input_fn and either of x and y.')
+    elif batch_size is not None:
+      raise ValueError('Can not provide both input_fn and batch_size.')
     return self._evaluate_model(input_fn=input_fn,
                                 feed_fn=feed_fn,
                                 steps=steps,
@@ -260,8 +273,8 @@ class BaseEstimator(sklearn.BaseEstimator):
     """Returns predictions for given features.
 
     Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
+      x: Features. If set, `input_fn` must be `None`.
+      input_fn: Input function. If set, `x` must be `None`.
       batch_size: Override default batch size.
       outputs: list of `str`, name of the output to predict.
                If `None`, returns all.
@@ -278,7 +291,6 @@ class BaseEstimator(sklearn.BaseEstimator):
       raise ValueError('Can not provide both input_fn and x.')
     feed_fn = None
     if x is not None:
-      batch_size = -1 if batch_size is None else batch_size
       input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
     return self._infer_model(input_fn=input_fn, feed_fn=feed_fn,
                              outputs=outputs)
@@ -434,7 +446,7 @@ class BaseEstimator(sklearn.BaseEstimator):
       for monitor in monitors:
         monitor.set_estimator(self)
 
-      return train(
+      return graph_actions.train(
           graph=g,
           output_dir=self._model_dir,
           train_op=train_op,
@@ -502,15 +514,16 @@ class BaseEstimator(sklearn.BaseEstimator):
       self._check_inputs(features, targets)
       eval_dict = self._get_eval_ops(features, targets, metrics)
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
-      eval_results, _ = evaluate(graph=g,
-                                 output_dir=eval_dir,
-                                 checkpoint_path=checkpoint_path,
-                                 eval_dict=eval_dict,
-                                 update_op=update_op,
-                                 global_step_tensor=global_step,
-                                 supervisor_master=self._config.master,
-                                 feed_fn=feed_fn,
-                                 max_steps=steps)
+      eval_results, _ = graph_actions.evaluate(
+          graph=g,
+          output_dir=eval_dir,
+          checkpoint_path=checkpoint_path,
+          eval_dict=eval_dict,
+          update_op=update_op,
+          global_step_tensor=global_step,
+          supervisor_master=self._config.master,
+          feed_fn=feed_fn,
+          max_steps=steps)
       return eval_results
 
   def _get_features_from_input_fn(self, input_fn):
@@ -546,7 +559,7 @@ class BaseEstimator(sklearn.BaseEstimator):
           raise ValueError('Expected to run at least one output from %s, '
                            'provided %s.' % (existing_keys, outputs))
       if feed_fn is None:
-        preds = infer(checkpoint_path, predictions)
+        preds = graph_actions.infer(checkpoint_path, predictions)
       else:
         preds = {}
         def _feed_fn():
