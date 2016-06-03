@@ -99,6 +99,36 @@ _baseslice = slice
 listdiff = gen_array_ops.list_diff
 
 
+def rank(input, name=None):
+  """Returns the rank of a tensor.
+
+  This operation returns an integer representing the rank of `input`.
+
+  For example:
+
+  ```python
+  # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+  # shape of tensor 't' is [2, 2, 3]
+  rank(t) ==> 3
+  ```
+
+  **Note**: The rank of a tensor is not the same as the rank of a matrix. The
+  rank of a tensor is the number of indices required to uniquely select each
+  element of the tensor. Rank is also known as "order", "degree", or "ndims."
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
+  with ops.op_scope([input], name, "Rank") as name:
+    if isinstance(input, ops.SparseTensor):
+      return gen_array_ops.size(input.shape, name=name)
+    else:
+      return gen_array_ops.rank(input, name=name)
+
 # DEPRECATED use init_ops.zeros_initializer
 # TODO(irving) Move it to init_ops.py
 def zeros_initializer(shape, dtype=dtypes.float32):
