@@ -110,7 +110,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.git_repository(
     name = "grpc",
-    commit = "2bc7d80",
+    commit = "39650266",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
   )
@@ -139,11 +139,23 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@jsoncpp_git//:jsoncpp",
   )
 
-  native.new_git_repository(
+  native.git_repository(
     name = "boringssl_git",
-    commit = "e72df93461c6d9d2b5698f10e16d3ab82f5adde3",
-    remote = "https://boringssl.googlesource.com/boringssl",
-    build_file = path_prefix + "boringssl.BUILD",
+    commit = "436432d8",
+    init_submodules = True,
+    remote = "https://github.com/mdsteele/boringssl-bazel",
+  )
+
+  native.new_git_repository(
+    name = "nanopb_git",
+    commit = "1251fa1",
+    remote = "https://github.com/nanopb/nanopb.git",
+    build_file = path_prefix + "nanopb.BUILD",
+  )
+
+  native.bind(
+    name = "nanopb",
+    actual = "@nanopb_git//:nanopb",
   )
 
   native.new_http_archive(
@@ -174,3 +186,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     build_file = path_prefix + "zlib.BUILD",
   )
 
+  native.bind(
+    name = "zlib",
+    actual = "@zlib_archive//:zlib",
+  )
+
+  native.bind(
+    name = "libssl",
+    actual = "@boringssl_git//:ssl",
+  )
