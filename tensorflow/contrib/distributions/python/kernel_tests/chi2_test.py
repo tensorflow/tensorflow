@@ -61,16 +61,16 @@ class Chi2Test(tf.test.TestCase):
       df_v = np.array([1., 3, 5], dtype=np.float64)
       expected_mean = stats.chi2.mean(df_v)
       chi2 = tf.contrib.distributions.Chi2(df=df_v)
-      self.assertEqual(chi2.mean.get_shape(), (3,))
-      self.assertAllClose(chi2.mean.eval(), expected_mean)
+      self.assertEqual(chi2.mean().get_shape(), (3,))
+      self.assertAllClose(chi2.mean().eval(), expected_mean)
 
   def testChi2Variance(self):
     with tf.Session():
       df_v = np.array([1., 3, 5], np.float64)
       expected_variances = stats.chi2.var(df_v)
       chi2 = tf.contrib.distributions.Chi2(df=df_v)
-      self.assertEqual(chi2.variance.get_shape(), (3,))
-      self.assertAllClose(chi2.variance.eval(), expected_variances)
+      self.assertEqual(chi2.variance().get_shape(), (3,))
+      self.assertAllClose(chi2.variance().eval(), expected_variances)
 
   def testChi2Entropy(self):
     with tf.Session():

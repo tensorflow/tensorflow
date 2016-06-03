@@ -19,7 +19,7 @@ from __future__ import print_function
 
 # pylint: disable=line-too-long
 
-from tensorflow.contrib.distributions.python.ops.distribution import DiscreteDistribution
+from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -73,7 +73,7 @@ def _log_combinations(n, counts, name='log_combinations'):
     return total_permutations - redundant_permutations
 
 
-class DirichletMultinomial(DiscreteDistribution):
+class DirichletMultinomial(distribution.DiscreteDistribution):
   """DirichletMultinomial mixture distribution.
 
   This distribution is parameterized by a vector `alpha` of concentration
@@ -195,19 +195,13 @@ class DirichletMultinomial(DiscreteDistribution):
 
       self._allow_arbitrary_counts = allow_arbitrary_counts
 
-      alpha_sum = math_ops.reduce_sum(self._alpha,
-                                      reduction_indices=[-1],
-                                      keep_dims=False)
+      self._alpha_sum = math_ops.reduce_sum(
+          self._alpha, reduction_indices=[-1], keep_dims=False)
 
-      mean = self._alpha / array_ops.expand_dims(alpha_sum, -1)
-      self._mean = array_ops.expand_dims(n, -1) * mean
+      self._get_batch_shape = self._alpha_sum.get_shape()
 
-      self._batch_shape = array_ops.shape(alpha_sum)
-      self._get_batch_shape = alpha_sum.get_shape()
-
-      self._event_shape = array_ops.reverse(
-          array_ops.shape(self._mean), [True])[0]
-      self._get_event_shape = self._mean.get_shape().with_rank_at_least(1)[-1:]
+      # event shape depends only on alpha, not "n".
+      self._get_event_shape = self._alpha.get_shape().with_rank_at_least(1)[-1:]
 
   @property
   def n(self):
@@ -227,12 +221,17 @@ class DirichletMultinomial(DiscreteDistribution):
   @property
   def dtype(self):
     """dtype of samples from this distribution."""
-    return self._mean.dtype
+    return self._alpha.dtype
 
-  @property
-  def mean(self):
+  def mean(self, name='mean'):
     """Class means for every batch member."""
-    return self._mean
+    alpha = self._alpha
+    alpha_sum = self._alpha_sum
+    n = self._n
+    with ops.name_scope(self.name):
+      with ops.op_scope([alpha, alpha_sum, n], name):
+        mean_no_n = alpha / array_ops.expand_dims(alpha_sum, -1)
+        return array_ops.expand_dims(n, -1) * mean_no_n
 
   def batch_shape(self, name='batch_shape'):
     """Batch dimensions of this instance as a 1-D int32 `Tensor`.
@@ -247,8 +246,8 @@ class DirichletMultinomial(DiscreteDistribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return self._batch_shape
+      with ops.op_scope([self._alpha_sum], name):
+        return array_ops.shape(self._alpha_sum)
 
   def get_batch_shape(self):
     """`TensorShape` available at graph construction time.
@@ -270,8 +269,8 @@ class DirichletMultinomial(DiscreteDistribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return self._event_shape
+      with ops.op_scope([self._alpha], name):
+        return array_ops.reverse(array_ops.shape(self._alpha), [True])[0]
 
   def get_event_shape(self):
     """`TensorShape` available at graph construction time.
@@ -283,11 +282,11 @@ class DirichletMultinomial(DiscreteDistribution):
     """
     return self._get_event_shape
 
-  def cdf(self, x):
+  def cdf(self, x, name='cdf'):
     raise NotImplementedError(
         'DirichletMultinomial does not have a well-defined cdf.')
 
-  def log_cdf(self, x):
+  def log_cdf(self, x, name='log_cdf'):
     raise NotImplementedError(
         'DirichletMultinomial does not have a well-defined cdf.')
 
@@ -356,9 +355,7 @@ class DirichletMultinomial(DiscreteDistribution):
     Returns:
       Probabilities for each record, shape `[N1,...,Nn]`.
     """
-    with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return super(DirichletMultinomial, self).pmf(counts, name=name)
+    return super(DirichletMultinomial, self).pmf(counts, name=name)
 
   def _check_counts(self, counts):
     """Check counts for proper shape, values, then return tensor version."""

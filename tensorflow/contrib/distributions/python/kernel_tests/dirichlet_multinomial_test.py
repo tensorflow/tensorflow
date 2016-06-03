@@ -170,7 +170,7 @@ class DirichletMultinomialTest(tf.test.TestCase):
         counts = np.zeros((3), dtype=np.float32)
         counts[class_num] = 1
         dist = tf.contrib.distributions.DirichletMultinomial(1., alpha)
-        mean = dist.mean.eval()
+        mean = dist.mean().eval()
         pmf = dist.pmf(counts).eval()
 
         self.assertAllClose(mean[class_num], pmf)
@@ -192,8 +192,8 @@ class DirichletMultinomialTest(tf.test.TestCase):
         dist1 = tf.contrib.distributions.DirichletMultinomial(1., alpha)
         dist2 = tf.contrib.distributions.DirichletMultinomial(2., alpha)
 
-        mean1 = dist1.mean.eval()
-        mean2 = dist2.mean.eval()
+        mean1 = dist1.mean().eval()
+        mean2 = dist2.mean().eval()
 
         self.assertAllClose(mean2[class_num], 2 * mean1[class_num])
         self.assertTupleEqual((3,), mean1.shape)

@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.distribution import ContinuousDistribution  # pylint: disable=line-too-long
+import numpy as np
+
+from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,7 +32,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
-class Gamma(ContinuousDistribution):
+class Gamma(distribution.ContinuousDistribution):
   """The `Gamma` distribution with parameter alpha and beta.
 
   The parameters are the shape and inverse scale parameters alpha, beta.
@@ -79,14 +81,9 @@ class Gamma(ContinuousDistribution):
         beta = array_ops.identity(beta, name="beta")
 
         contrib_tensor_util.assert_same_float_dtype((alpha, beta))
+        self._broadcast_tensor = alpha + beta
 
-        with ops.name_scope("mean"):
-          self._mean = alpha / beta
-
-        with ops.name_scope("variance"):
-          self._variance = alpha / math_ops.square(beta)
-
-    self._get_batch_shape = self._mean.get_shape()
+    self._get_batch_shape = self._broadcast_tensor.get_shape()
     self._get_event_shape = tensor_shape.TensorShape([])
 
     self._alpha = alpha
@@ -126,7 +123,8 @@ class Gamma(ContinuousDistribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      return array_ops.shape(self._mean, name=name)
+      with ops.op_scope([self._broadcast_tensor], name):
+        return array_ops.shape(self._broadcast_tensor)
 
   def get_batch_shape(self):
     """`TensorShape` available at graph construction time.
@@ -148,7 +146,8 @@ class Gamma(ContinuousDistribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      return constant_op.constant([], name=name, dtype=dtypes.int32)
+      with ops.op_scope([], name):
+        return constant_op.constant([], dtype=dtypes.int32)
 
   def get_event_shape(self):
     """`TensorShape` available at graph construction time.
@@ -160,15 +159,34 @@ class Gamma(ContinuousDistribution):
     """
     return self._get_event_shape
 
-  @property
-  def mean(self):
+  def mean(self, name="mean"):
     """Mean of each batch member."""
-    return self._mean
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._alpha, self._beta], name):
+        return self._alpha / self._beta
 
-  @property
-  def variance(self):
+  def mode(self, name="mode"):
+    """Mode of each batch member.  Defined only if alpha >= 1."""
+    alpha = self._alpha
+    beta = self._beta
+    with ops.name_scope(self.name):
+      with ops.op_scope([alpha, beta], name):
+        alpha_ge_1 = alpha >= 1.0
+        mode_if_defined = (alpha - 1.0) / beta
+        nan = np.nan * self._ones()
+        return math_ops.select(alpha_ge_1, mode_if_defined, nan)
+
+  def variance(self, name="variance"):
     """Variance of each batch member."""
-    return self._variance
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._alpha, self._beta], name):
+        return self._alpha / math_ops.square(self._beta)
+
+  def std(self, name="std"):
+    """Standard deviation of this distribution."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._alpha, self._beta], name):
+        return math_ops.sqrt(self._alpha) / self._beta
 
   def log_pdf(self, x, name="log_pdf"):
     """Log pdf of observations in `x` under these Gamma distribution(s).
@@ -183,8 +201,8 @@ class Gamma(ContinuousDistribution):
     Raises:
       TypeError: if `x` and `alpha` are different dtypes.
     """
-    with ops.op_scope([self._alpha, self._beta, x], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._alpha, self._beta, x], name):
         alpha = self._alpha
         beta = self._beta
         x = ops.convert_to_tensor(x)
@@ -209,8 +227,9 @@ class Gamma(ContinuousDistribution):
     Raises:
       TypeError: if `x` and `alpha` are different dtypes.
     """
-    with ops.name_scope(name):
-      return math_ops.exp(self.log_pdf(x, name))
+    with ops.name_scope(self.name):
+      with ops.op_scope([], name):
+        return math_ops.exp(self.log_pdf(x))
 
   def log_cdf(self, x, name="log_cdf"):
     """Log CDF of observations `x` under these Gamma distribution(s).
@@ -222,8 +241,8 @@ class Gamma(ContinuousDistribution):
     Returns:
       log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
     """
-    with ops.op_scope([self._alpha, self._beta, x], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._alpha, self._beta, x], name):
         x = ops.convert_to_tensor(x)
         x = control_flow_ops.with_dependencies(
             [check_ops.assert_positive(x)], x)
@@ -243,8 +262,8 @@ class Gamma(ContinuousDistribution):
     Returns:
       cdf: tensor of dtype `dtype`, the CDFs of `x`.
     """
-    with ops.op_scope([self._alpha, self._beta, x], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._alpha, self._beta, x], name):
         return math_ops.igamma(self._alpha, self._beta * x)
 
   def entropy(self, name="entropy"):
@@ -265,8 +284,8 @@ class Gamma(ContinuousDistribution):
     Returns:
       entropy: tensor of dtype `dtype`, the entropy.
     """
-    with ops.op_scope([self.alpha, self._beta], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self.alpha, self._beta], name):
         alpha = self._alpha
         beta = self._beta
         return (alpha - math_ops.log(beta) + math_ops.lgamma(alpha) +
@@ -275,3 +294,6 @@ class Gamma(ContinuousDistribution):
   @property
   def is_reparameterized(self):
     return False
+
+  def _ones(self):
+    return array_ops.ones_like(self._alpha + self._beta, dtype=self.dtype)
