@@ -414,9 +414,9 @@ class OnesTest(tf.test.TestCase):
 class OnesLikeTest(tf.test.TestCase):
 
   def testOnesLike(self):
-    for dtype in (tf.float32, tf.float64, tf.int32,
+    for dtype in [tf.float32, tf.float64, tf.int32,
                   tf.uint8, tf.int16, tf.int8,
-                  tf.complex64, tf.complex128, tf.int64):
+                  tf.complex64, tf.complex128, tf.int64]:
       numpy_dtype = dtype.as_numpy_dtype
       with self.test_session():
         # Creates a tensor of non-zero values with shape 2 x 3.

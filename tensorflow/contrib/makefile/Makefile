@@ -95,7 +95,7 @@ PROTOGENDIR := $(GENDIR)proto/
 # Settings for the target compiler.
 CXX := gcc
 OPTFLAGS := -O0
-CXXFLAGS := --std=c++11
+CXXFLAGS := --std=c++11 $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
 INCLUDES := \
@@ -126,6 +126,13 @@ endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
 	LIBS += -ldl
+endif
+# If we're cross-compiling for the Raspberry Pi, use the right gcc.
+ifeq ($(TARGET),PI)
+	CXX := arm-linux-gnueabihf-g++
+	LDFLAGS := -L$(GENDIR)protobuf_pi/lib/ -Wl,--no-whole-archive
+	LIBS += -ldl
+	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
 endif
 
 # Set up Android building
