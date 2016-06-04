@@ -48,11 +48,6 @@ from tensorflow.python.training import session_manager as session_manager_lib
 from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor as tf_supervisor
 
-# pylint: disable=invalid-name
-Supervisor = tf_supervisor.Supervisor
-Coordinator = coordinator.Coordinator
-SummaryWriter = summary_io.SummaryWriter
-
 # Singletone for SummaryWriter per logdir folder.
 _SUMMARY_WRITERS = {}
 
@@ -72,8 +67,8 @@ def get_summary_writer(logdir):
   """
   _summary_writer_lock.acquire()
   if logdir not in _SUMMARY_WRITERS:
-    _SUMMARY_WRITERS[logdir] = SummaryWriter(logdir,
-                                             graph=ops.get_default_graph())
+    _SUMMARY_WRITERS[logdir] = summary_io.SummaryWriter(
+        logdir, graph=ops.get_default_graph())
   _summary_writer_lock.release()
   return _SUMMARY_WRITERS[logdir]
 
@@ -220,9 +215,9 @@ def train(graph,
   for monitor in monitors:
     monitor.begin(max_steps=max_steps)
 
-  supervisor = Supervisor(
+  supervisor = tf_supervisor.Supervisor(
       graph,
-      init_op=init_op or Supervisor.USE_DEFAULT,
+      init_op=init_op or tf_supervisor.Supervisor.USE_DEFAULT,
       init_feed_dict=init_feed_dict,
       is_chief=supervisor_is_chief,
       logdir=output_dir,
@@ -593,7 +588,7 @@ def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
         session.run(variables.initialize_all_variables())
       session.run(variables.initialize_local_variables())
       session.run(data_flow_ops.initialize_all_tables())
-      coord = Coordinator()
+      coord = coordinator.Coordinator()
       try:
         queue_runner.start_queue_runners(session, coord=coord)
         return [session.run(output_dict, f) for f in feed_dicts]

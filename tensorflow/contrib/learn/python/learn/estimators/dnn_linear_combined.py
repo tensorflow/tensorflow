@@ -393,9 +393,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         dnn_optimizer=tf.train.AdagradOptimizer(...))
 
     # Input builders
-    def input_fn_train: # returns X, Y
+    def input_fn_train: # returns x, y
       ...
-    def input_fn_eval: # returns X, Y
+    def input_fn_eval: # returns x, y
       ...
     estimator.train(input_fn_train)
     estimator.evaluate(input_fn_eval)
@@ -586,9 +586,9 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         dnn_optimizer=tf.train.AdagradOptimizer(...))
 
     # Input builders
-    def input_fn_train: # returns X, Y
+    def input_fn_train: # returns x, y
       ...
-    def input_fn_eval: # returns X, Y
+    def input_fn_eval: # returns x, y
       ...
     estimator.train(input_fn_train)
     estimator.evaluate(input_fn_eval)
