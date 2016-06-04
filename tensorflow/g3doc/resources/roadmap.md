@@ -31,5 +31,5 @@ we do not have timelines for these features.
 
 ### Community
 * More educational resources
-* Better integration of TensorFlow into the opensource big data ecosystem
+* Better integration of TensorFlow into the opensource big data ecosystem ([#2655](https://github.com/tensorflow/tensorflow/issues/2655), [#2218](https://github.com/tensorflow/tensorflow/issues/2218))
 * Models benchmarking and comparison tooling
