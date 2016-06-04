@@ -64,7 +64,7 @@ class TensorFlowEstimator(estimator.Estimator):
   """Base class for all TensorFlow estimators.
 
   Parameters:
-    model_fn: Model function, that takes input X, y tensors and outputs
+    model_fn: Model function, that takes input `x`, `y` tensors and outputs
       prediction and loss tensors.
     n_classes: Number of classes in the target.
     batch_size: Mini batch size.
@@ -216,10 +216,10 @@ class TensorFlowEstimator(estimator.Estimator):
     return preds
 
   def predict(self, x, axis=1, batch_size=None):
-    """Predict class or regression for X.
+    """Predict class or regression for `x`.
 
-    For a classification model, the predicted class for each sample in X is
-    returned. For a regression model, the predicted value based on X is
+    For a classification model, the predicted class for each sample in `x` is
+    returned. For a regression model, the predicted value based on `x` is
     returned.
     Args:
       x: array-like matrix, [n_samples, n_features...] or iterator.
@@ -237,7 +237,7 @@ class TensorFlowEstimator(estimator.Estimator):
     return self._predict(x, axis=axis, batch_size=batch_size)
 
   def predict_proba(self, x, batch_size=None):
-    """Predict class probability of the input samples X.
+    """Predict class probability of the input samples `x`.
 
     Args:
       x: array-like matrix, [n_samples, n_features...] or iterator.
@@ -259,6 +259,8 @@ class TensorFlowEstimator(estimator.Estimator):
     Returns:
       Tensor.
     """
+    if self._graph is None:
+      raise NotFittedError
     return self._graph.get_tensor_by_name(name)
 
   def save(self, path):
@@ -363,6 +365,7 @@ class TensorFlowEstimator(estimator.Estimator):
       Model function.
     """
     def _model_fn(features, targets, mode):
+      """Model function."""
       ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
       if self.class_weight is not None:
         constant_op.constant(self.class_weight, name='class_weight')
@@ -389,7 +392,7 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
   """TensorFlow Base Transformer class."""
 
   def transform(self, x):
-    """Transform X using trained transformer."""
+    """Transform `x` using trained transformer."""
     return(super(TensorFlowBaseTransformer, self).predict(
         x, axis=1, batch_size=None))
 
@@ -399,7 +402,7 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
         x, y, monitors=None, logdir=None))
 
   def fit_transform(self, x, y=None, monitor=None, logdir=None):
-    """Fit transformer and transform X using trained transformer."""
+    """Fit transformer and transform `x` using trained transformer."""
     return self.fit(x, y, monitor=None, logdir=None).transform(x)
 
 
@@ -454,23 +457,25 @@ class DeprecatedMixin(object):
   def fit(self, x, y, steps=None, batch_size=None, monitors=None, logdir=None):
     if logdir is not None:
       self._model_dir = logdir
-    return super(DeprecatedMixin, self).fit(x=x, y=y, steps=steps or self.steps,
-      batch_size=batch_size or self.batch_size, monitors=monitors)
+    return super(DeprecatedMixin, self).fit(
+        x=x, y=y, steps=steps or self.steps,
+        batch_size=batch_size or self.batch_size, monitors=monitors)
 
   def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
               axis=1):
+    """Predict class or regression for `x`."""
     if x is not None:
       predict_data_feeder = setup_train_data_feeder(
           x, None, n_classes=None,
           batch_size=batch_size or self.batch_size,
           shuffle=False, epochs=1)
       result = super(DeprecatedMixin, self)._infer_model(
-        input_fn=predict_data_feeder.input_builder,
-        feed_fn=predict_data_feeder.get_feed_dict_fn(),
-        outputs=outputs)
+          input_fn=predict_data_feeder.input_builder,
+          feed_fn=predict_data_feeder.get_feed_dict_fn(),
+          outputs=outputs)
     else:
       result = super(DeprecatedMixin, self)._infer_model(
-      input_fn=input_fn, outputs=outputs)
+          input_fn=input_fn, outputs=outputs)
     if self.__deprecated_n_classes > 1 and axis is not None:
       return np.argmax(result, axis)
     return result
@@ -487,3 +492,4 @@ class DeprecatedMixin(object):
     """
     # Copy model dir into new path.
     _copy_dir(self.model_dir, path)
+
