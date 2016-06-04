@@ -46,10 +46,13 @@ static std::unique_ptr<tensorflow::Session> session;
 
 static std::vector<std::string> g_label_strings;
 static bool g_compute_graph_initialized = false;
-//static mutex g_compute_graph_mutex(base::LINKER_INITIALIZED);
+// static mutex g_compute_graph_mutex(base::LINKER_INITIALIZED);
 
 static int g_tensorflow_input_size;  // The image size for the model input.
-static int g_image_mean;  // The image mean.
+static int g_image_mean;             // The image mean.
+static float g_image_std;            // The scale value for the input image.
+static std::unique_ptr<std::string> g_input_name;
+static std::unique_ptr<std::string> g_output_name;
 static std::unique_ptr<StatSummarizer> g_stats;
 
 // For basic benchmarking.
@@ -84,13 +87,14 @@ inline static int64 CurrentThreadTimeUs() {
 
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model,
-    jstring labels, jint num_classes, jint model_input_size, jint image_mean) {
+    jstring labels, jint num_classes, jint model_input_size, jint image_mean,
+    jfloat image_std, jstring input_name, jstring output_name) {
   g_num_runs = 0;
   g_timing_total_us = 0;
   g_frequency_start.Reset();
   g_frequency_end.Reset();
 
-  //MutexLock input_lock(&g_compute_graph_mutex);
+  // MutexLock input_lock(&g_compute_graph_mutex);
   if (g_compute_graph_initialized) {
     LOG(INFO) << "Compute graph already loaded. skipping.";
     return 0;
@@ -103,6 +107,10 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
 
   g_tensorflow_input_size = model_input_size;
   g_image_mean = image_mean;
+  g_image_std = image_std;
+  g_input_name.reset(new std::string(env->GetStringUTFChars(input_name, NULL)));
+  g_output_name.reset(
+      new std::string(env->GetStringUTFChars(output_name, NULL)));
 
   LOG(INFO) << "Loading Tensorflow.";
 
@@ -139,8 +147,8 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
 
   // Read the label list
   ReadFileToVector(asset_manager, labels_cstr, &g_label_strings);
-  LOG(INFO) << g_label_strings.size() << " label strings loaded from: "
-            << labels_cstr;
+  LOG(INFO) << g_label_strings.size()
+            << " label strings loaded from: " << labels_cstr;
   g_compute_graph_initialized = true;
 
   const int64 end_time = CurrentThreadTimeUs();
@@ -168,8 +176,9 @@ static void GetTopN(
     std::vector<std::pair<float, int> >* top_results) {
   // Will contain top N results in ascending order.
   std::priority_queue<std::pair<float, int>,
-      std::vector<std::pair<float, int> >,
-      std::greater<std::pair<float, int> > > top_result_pq;
+                      std::vector<std::pair<float, int> >,
+                      std::greater<std::pair<float, int> > >
+      top_result_pq;
 
   const int count = prediction.size();
   for (int i = 0; i < count; ++i) {
@@ -208,9 +217,7 @@ static int64 GetCpuSpeed() {
   return result;
 }
 
-static std::string ClassifyImage(const RGBA* const bitmap_src,
-                                 const int in_stride,
-                                 const int width, const int height) {
+static std::string ClassifyImage(const RGBA* const bitmap_src) {
   // Force the app to quit if we've reached our run quota, to make
   // benchmarks more reproducible.
   if (MAX_NUM_RUNS > 0 && g_num_runs >= MAX_NUM_RUNS) {
@@ -226,8 +233,8 @@ static std::string ClassifyImage(const RGBA* const bitmap_src,
   // Create input tensor
   tensorflow::Tensor input_tensor(
       tensorflow::DT_FLOAT,
-      tensorflow::TensorShape({
-          1, g_tensorflow_input_size, g_tensorflow_input_size, 3}));
+      tensorflow::TensorShape(
+          {1, g_tensorflow_input_size, g_tensorflow_input_size, 3}));
 
   auto input_tensor_mapped = input_tensor.tensor<float, 4>();
 
@@ -235,23 +242,23 @@ static std::string ClassifyImage(const RGBA* const bitmap_src,
   for (int i = 0; i < g_tensorflow_input_size; ++i) {
     const RGBA* src = bitmap_src + i * g_tensorflow_input_size;
     for (int j = 0; j < g_tensorflow_input_size; ++j) {
-       // Copy 3 values
+      // Copy 3 values
       input_tensor_mapped(0, i, j, 0) =
-          static_cast<float>(src->red) - g_image_mean;
+          (static_cast<float>(src->red) - g_image_mean) / g_image_std;
       input_tensor_mapped(0, i, j, 1) =
-          static_cast<float>(src->green) - g_image_mean;
+          (static_cast<float>(src->green) - g_image_mean) / g_image_std;
       input_tensor_mapped(0, i, j, 2) =
-          static_cast<float>(src->blue) - g_image_mean;
+          (static_cast<float>(src->blue) - g_image_mean) / g_image_std;
       ++src;
     }
   }
 
   std::vector<std::pair<std::string, tensorflow::Tensor> > input_tensors(
-      {{"input:0", input_tensor}});
+      {{*g_input_name, input_tensor}});
 
   VLOG(0) << "Start computing.";
   std::vector<tensorflow::Tensor> output_tensors;
-  std::vector<std::string> output_names({"output:0"});
+  std::vector<std::string> output_names({*g_output_name});
 
   tensorflow::Status s;
   int64 start_time, end_time;
@@ -330,24 +337,22 @@ static std::string ClassifyImage(const RGBA* const bitmap_src,
   return ss.str();
 }
 
-JNIEXPORT jstring JNICALL
-TENSORFLOW_METHOD(classifyImageRgb)(
+JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(classifyImageRgb)(
     JNIEnv* env, jobject thiz, jintArray image, jint width, jint height) {
   // Copy image into currFrame.
   jboolean iCopied = JNI_FALSE;
   jint* pixels = env->GetIntArrayElements(image, &iCopied);
 
-  std::string result = ClassifyImage(
-      reinterpret_cast<const RGBA*>(pixels), width * 4, width, height);
+  std::string result = ClassifyImage(reinterpret_cast<const RGBA*>(pixels));
 
   env->ReleaseIntArrayElements(image, pixels, JNI_ABORT);
 
   return env->NewStringUTF(result.c_str());
 }
 
-JNIEXPORT jstring JNICALL
-TENSORFLOW_METHOD(classifyImageBmp)(
-    JNIEnv* env, jobject thiz, jobject bitmap) {
+JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(classifyImageBmp)(JNIEnv* env,
+                                                              jobject thiz,
+                                                              jobject bitmap) {
   // Obtains the bitmap information.
   AndroidBitmapInfo info;
   CHECK_EQ(AndroidBitmap_getInfo(env, bitmap, &info),
@@ -363,8 +368,7 @@ TENSORFLOW_METHOD(classifyImageBmp)(
         "Error: Android system is not using RGBA_8888 in default.");
   }
 
-  std::string result = ClassifyImage(
-      static_cast<const RGBA*>(pixels), info.stride, info.width, info.height);
+  std::string result = ClassifyImage(static_cast<const RGBA*>(pixels));
 
   // Finally, unlock the pixels
   CHECK_EQ(AndroidBitmap_unlockPixels(env, bitmap),
