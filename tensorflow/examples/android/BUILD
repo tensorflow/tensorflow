@@ -14,7 +14,7 @@ cc_binary(
     srcs = glob([
         "jni/**/*.cc",
         "jni/**/*.h",
-    ]) + [":libpthread.so"],
+    ]) + [],
     copts = tf_copts(),
     linkopts = [
         "-landroid",
@@ -35,25 +35,9 @@ cc_binary(
     deps = ["//tensorflow/core:android_tensorflow_lib"],
 )
 
-# This library only exists as a workaround to satisfy dependencies
-# that declare -lpthread in their linkopts. Although Android supports
-# pthreads, it does not provide it as a separate library.
-cc_binary(
-    name = "libpthread.so",
-    srcs = [],
-    linkopts = ["-shared"],
-    tags = [
-        "manual",
-        "notap",
-    ],
-)
-
 cc_library(
     name = "tensorflow_native_libs",
-    srcs = [
-        ":libpthread.so",
-        ":libtensorflow_demo.so",
-    ],
+    srcs = [":libtensorflow_demo.so"],
     tags = [
         "manual",
         "notap",
