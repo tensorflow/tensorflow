@@ -713,7 +713,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowClassifier.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowClassifier.predict}
 
-
+Predict class or regression for `x`.
 
 
 - - -
@@ -790,11 +790,11 @@ A classifier for TensorFlow DNN models.
         hidden_units=[1024, 512, 256])
 
     # Input builders
-    def input_fn_train: # returns X, Y
+    def input_fn_train: # returns x, Y
       pass
     estimator.fit(input_fn=input_fn_train)
 
-    def input_fn_eval: # returns X, Y
+    def input_fn_eval: # returns x, Y
       pass
     estimator.evaluate(input_fn_eval)
     estimator.predict(x)
@@ -1134,11 +1134,11 @@ A regressor for TensorFlow DNN models.
         hidden_units=[1024, 512, 256])
 
     # Input builders
-    def input_fn_train: # returns X, Y
+    def input_fn_train: # returns x, Y
       pass
     estimator.fit(input_fn=input_fn_train)
 
-    def input_fn_eval: # returns X, Y
+    def input_fn_eval: # returns x, Y
       pass
     estimator.evaluate(input_fn_eval)
     estimator.predict(x)
@@ -1628,7 +1628,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowDNNClassifier.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowDNNClassifier.predict}
 
-
+Predict class or regression for `x`.
 
 
 - - -
@@ -1873,7 +1873,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowDNNRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowDNNRegressor.predict}
 
-
+Predict class or regression for `x`.
 
 
 - - -
@@ -1936,7 +1936,7 @@ component of a nested object.
 Base class for all TensorFlow estimators.
 
 Parameters:
-  model_fn: Model function, that takes input X, y tensors and outputs
+  model_fn: Model function, that takes input `x`, `y` tensors and outputs
     prediction and loss tensors.
   n_classes: Number of classes in the target.
   batch_size: Mini batch size.
@@ -2114,10 +2114,10 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowEstimator.predict(x, axis=1, batch_size=None)` {#TensorFlowEstimator.predict}
 
-Predict class or regression for X.
+Predict class or regression for `x`.
 
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
+For a classification model, the predicted class for each sample in `x` is
+returned. For a regression model, the predicted value based on `x` is
 returned.
 
 ##### Args:
@@ -2142,7 +2142,7 @@ returned.
 
 #### `tf.contrib.learn.TensorFlowEstimator.predict_proba(x, batch_size=None)` {#TensorFlowEstimator.predict_proba}
 
-Predict class probability of the input samples X.
+Predict class probability of the input samples `x`.
 
 ##### Args:
 
@@ -2239,9 +2239,9 @@ Linear classifier model.
       feature_columns=[impression_app_id, installed_x_impression])
 
   # Input builders
-  def input_fn_train: # returns X, Y
+  def input_fn_train: # returns x, y
     ...
-  def input_fn_eval: # returns X, Y
+  def input_fn_eval: # returns x, y
     ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
@@ -2573,9 +2573,9 @@ Linear regressor model.
       feature_columns=[impression_app_id, installed_x_impression])
 
   # Input builders
-  def input_fn_train: # returns X, Y
+  def input_fn_train: # returns x, y
     ...
-  def input_fn_eval: # returns X, Y
+  def input_fn_eval: # returns x, y
     ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
@@ -3058,7 +3058,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowLinearClassifier.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowLinearClassifier.predict}
 
-
+Predict class or regression for `x`.
 
 
 - - -
@@ -3303,7 +3303,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowLinearRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowLinearRegressor.predict}
 
-
+Predict class or regression for `x`.
 
 
 - - -
@@ -3371,7 +3371,7 @@ Parameters:
   num_layers: The number of layers of the rnn model.
   input_op_fn: Function that will transform the input tensor, such as
     creating word embeddings, byte list, etc. This takes
-    an argument X for input and returns transformed X.
+    an argument x for input and returns transformed x.
   bidirectional: boolean, Whether this is a bidirectional rnn.
   sequence_length: If sequence_length is provided, dynamic calculation is
     performed. This saves computational time when unrolling past max sequence
@@ -3554,10 +3554,10 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowRNNClassifier.predict(x, axis=1, batch_size=None)` {#TensorFlowRNNClassifier.predict}
 
-Predict class or regression for X.
+Predict class or regression for `x`.
 
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
+For a classification model, the predicted class for each sample in `x` is
+returned. For a regression model, the predicted value based on `x` is
 returned.
 
 ##### Args:
@@ -3582,7 +3582,7 @@ returned.
 
 #### `tf.contrib.learn.TensorFlowRNNClassifier.predict_proba(x, batch_size=None)` {#TensorFlowRNNClassifier.predict_proba}
 
-Predict class probability of the input samples X.
+Predict class probability of the input samples `x`.
 
 ##### Args:
 
@@ -3680,7 +3680,7 @@ Parameters:
   num_layers: The number of layers of the rnn model.
   input_op_fn: Function that will transform the input tensor, such as
     creating word embeddings, byte list, etc. This takes
-    an argument X for input and returns transformed X.
+    an argument x for input and returns transformed x.
   bidirectional: boolean, Whether this is a bidirectional rnn.
   sequence_length: If sequence_length is provided, dynamic calculation is
     performed. This saves computational time when unrolling past max sequence
@@ -3863,10 +3863,10 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowRNNRegressor.predict(x, axis=1, batch_size=None)` {#TensorFlowRNNRegressor.predict}
 
-Predict class or regression for X.
+Predict class or regression for `x`.
 
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
+For a classification model, the predicted class for each sample in `x` is
+returned. For a regression model, the predicted value based on `x` is
 returned.
 
 ##### Args:
@@ -3891,7 +3891,7 @@ returned.
 
 #### `tf.contrib.learn.TensorFlowRNNRegressor.predict_proba(x, batch_size=None)` {#TensorFlowRNNRegressor.predict_proba}
 
-Predict class probability of the input samples X.
+Predict class probability of the input samples `x`.
 
 ##### Args:
 
@@ -4166,7 +4166,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowRegressor.predict}
 
-
+Predict class or regression for `x`.
 
 
 - - -
