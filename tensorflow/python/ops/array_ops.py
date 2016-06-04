@@ -100,6 +100,31 @@ _baseslice = slice
 listdiff = gen_array_ops.list_diff
 
 
+def shape(input, name=None):
+  """Returns the shape of a tensor.
+
+  This operation returns a 1-D integer tensor representing the shape of `input`.
+
+  For example:
+
+  ```python
+  # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+  shape(t) ==> [2, 2, 3]
+  ```
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
+  with ops.op_scope([input], name, "Shape") as name:
+    if isinstance(input, ops.SparseTensor):
+      return input.shape
+    else:
+      return gen_array_ops.shape(input, name=name)
+
 def rank(input, name=None):
   """Returns the rank of a tensor.
 
