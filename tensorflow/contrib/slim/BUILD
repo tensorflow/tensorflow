@@ -76,6 +76,7 @@ py_library(
         ":evaluation",
         ":learning",
         ":queues",
+        "//tensorflow/contrib/slim/python/slim/data",
     ],
 )
 
