@@ -66,12 +66,10 @@ class GPUUtil {
   // (up to a limit).  "device" can be either a CPU or a GPU device.
   static string MemoryDebugString(const Device* device, Tensor* tensor);
 
-  static perftools::gputools::DeviceMemory<float> AsGPUFloat(const Tensor& t);
-
   // Map a Tensor as a DeviceMemory object wrapping the given typed
   // buffer.
   template <typename T>
-  perftools::gputools::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
+  static perftools::gputools::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
     T* ptr = reinterpret_cast<T*>(const_cast<void*>(DMAHelper::base(&t)));
     return perftools::gputools::DeviceMemory<T>(
         perftools::gputools::DeviceMemoryBase(ptr, t.TotalBytes()));
