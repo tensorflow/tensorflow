@@ -19,7 +19,7 @@
 # Usage:
 #   create_tf_cluster.sh <num_workers> <num_parameter_servers>
 #
-# In addition, this script obeys values in the folllowing environment variables:
+# In addition, this script obeys values in the following environment variables:
 #   TF_DIST_LOCAL_CLUSTER:        create TensorFlow cluster on local machine
 #   TF_DIST_SERVER_DOCKER_IMAGE:  overrides the default docker image to launch
 #                                 TensorFlow (GRPC) servers with
