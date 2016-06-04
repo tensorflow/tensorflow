@@ -1,21 +1,41 @@
 # Changes Since Last Release
 
-## Features & Improvements
-* TensorBoard now has an Audio Dashboard, with associated audio summaries.
-* TensorBoard now has a reload button, and supports auto-reloading
-* TensorBoard scalar charts now show tooltips with more information
-* TensorBoard now supports run filtering
-* TensorBoard has color changes: the same run always gets the same hue
-* Tensorboard graph visualizer now supports run metadata. Clicking on nodes
-  while viewing a stats for a particular run will show runtime statistics, such
-  as memory or compute usage. Unused nodes will be faded out.
+# Release 0.9.0
 
-## Bug Fixes and Other Changes
-* TensorBoard now displays graphs with only one data point
-* TensorBoard now visually displays NaN values
+## Major Features and Improvements
+
+* Python 3.5 support and binaries
+* Added iOS support
+* Added support for processing on GPUs on MacOS
+* Added makefile for better cross-platform build support (C API only)
+* fp16 support for many ops
+* Higher level functionality in contrib.{layers,losses,metrics,learn}
+* More features to Tensorboard
+* Improved support for string embedding and sparse features
+* TensorBoard now has an Audio Dashboard, with associated audio summaries.
+
+## Big Fixes and Other Changes
+
+* Turned on CuDNN Autotune.
+* Added support for using third-party Python optimization algorithms (contrib.opt).
+* Google Cloud Storage filesystem support.
+* HDF5 support
+* Add support for 3d convolutions and pooling.
+* Update gRPC release to 0.14.
+* Eigen version upgrade.
+* Switch to eigen thread pool
 * `tf.nn.moments()` now accepts a `shift` argument. Shifting by a good estimate
   of the mean improves numerical stability. Also changes the behavior of the
   `shift` argument to `tf.nn.sufficient_statistics()`.
+* Performance improvements
+* Many bugfixes
+* Many documentation fixes
+* TensorBoard fixes: graphs with only one data point, Nan values, 
+  reload button and auto-reload, tooltips in scalar charts, run 
+  filtering, stable colors
+* Tensorboard graph visualizer now supports run metadata. Clicking on nodes
+  while viewing a stats for a particular run will show runtime statistics, such
+  as memory or compute usage. Unused nodes will be faded out.
 
 # Release 0.8.0
 
