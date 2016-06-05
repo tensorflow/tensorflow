@@ -1047,7 +1047,7 @@ $ vi /etc/profile
 export LD_LIBRARY_PATH=/opt/glibc-2.14:$LD_LIBRARY_PATH
 
 $ pip install numpy
-$ brew install swig
+$ yum install swig
 ```
 
 
