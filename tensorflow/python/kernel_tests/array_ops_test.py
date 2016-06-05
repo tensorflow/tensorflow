@@ -157,7 +157,7 @@ class MeshgridTest(test_util.TensorFlowTestCase):
   def _compare(self, n, np_dtype, use_gpu):
     inputs = []
     for i in range(n):
-      x = np.linspace(-10, 10, 5, dtype=np_dtype)
+      x = np.linspace(-10, 10, 5).astype(np_dtype)
       if np_dtype in (np.complex64, np.complex128):
         x += 1j
       inputs.append(x)
