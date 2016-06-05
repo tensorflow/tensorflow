@@ -3,7 +3,7 @@
 package(
     default_visibility = ["//visibility:public"],
     features = [
-        "-layering_check",
+	"-layering_check",
     ],
 )
 
@@ -14,12 +14,12 @@ exports_files(["LICENSE"])
 filegroup(
     name = "all_files",
     srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
+	["**/*"],
+	exclude = [
+	    "**/METADATA",
+	    "**/OWNERS",
+	    "g3doc/sitemap.md",
+	],
     ),
 )
 
@@ -30,9 +30,9 @@ py_library(
     srcs = ["exporter.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":gc",
-        ":manifest_proto_py",
-        "//tensorflow:tensorflow_py",
+	":gc",
+	":manifest_proto_py",
+	"//tensorflow:tensorflow_py",
     ],
 )
 
@@ -40,15 +40,15 @@ py_test(
     name = "exporter_test",
     size = "small",
     srcs = [
-        "exporter_test.py",
+	"exporter_test.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
     deps = [
-        ":exporter",
-        ":gc",
-        ":manifest_proto_py",
-        "//tensorflow:tensorflow_py",
+	":exporter",
+	":gc",
+	":manifest_proto_py",
+	"//tensorflow:tensorflow_py",
     ],
 )
 
@@ -57,20 +57,20 @@ py_library(
     srcs = ["gc.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+	"//tensorflow:tensorflow_py",
     ],
 )
 
 py_test(
     name = "gc_test",
     srcs = [
-        "gc_test.py",
+	"gc_test.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
     deps = [
-        ":gc",
-        "//tensorflow:tensorflow_py",
+	":gc",
+	"//tensorflow:tensorflow_py",
     ],
 )
 
@@ -79,13 +79,13 @@ cc_library(
     srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
     deps = [
-        ":manifest_proto_cc",
-        ":signature",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
+	":manifest_proto_cc",
+	":signature",
+	"//tensorflow/core:core_cpu",
+	"//tensorflow/core:framework",
+	"//tensorflow/core:lib",
+	"//tensorflow/core:protos_all_cc",
+	"//tensorflow/core:tensorflow_opensource",
     ],
 )
 
@@ -94,20 +94,20 @@ cc_test(
     size = "small",
     srcs = ["session_bundle_test.cc"],
     data = [
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+	"//tensorflow/contrib/session_bundle/example:half_plus_two",
     ],
     # Link in all registered kernels.
     linkstatic = 1,
     visibility = ["//visibility:private"],
     deps = [
-        ":session_bundle",
-        ":test_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
+	":session_bundle",
+	":test_util",
+	"//tensorflow/core:core_cpu",
+	"//tensorflow/core:framework",
+	"//tensorflow/core:lib",
+	"//tensorflow/core:test",
+	"//tensorflow/core:test_main",
+	"//tensorflow/core:testlib",
     ],
 )
 
@@ -116,11 +116,11 @@ cc_library(
     srcs = ["signature.cc"],
     hdrs = ["signature.h"],
     deps = [
-        ":manifest_proto_cc",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow_opensource",
+	":manifest_proto_cc",
+	"//tensorflow/core:core_cpu",
+	"//tensorflow/core:framework",
+	"//tensorflow/core:lib",
+	"//tensorflow/core:tensorflow_opensource",
     ],
 )
 
@@ -130,17 +130,17 @@ cc_test(
     srcs = ["signature_test.cc"],
     visibility = ["//visibility:private"],
     deps = [
-        ":manifest_proto_cc",
-        ":signature",
-        ":test_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
+	":manifest_proto_cc",
+	":signature",
+	":test_util",
+	"//tensorflow/core:core_cpu",
+	"//tensorflow/core:framework",
+	"//tensorflow/core:lib",
+	"//tensorflow/core:protos_all_cc",
+	"//tensorflow/core:tensorflow_opensource",
+	"//tensorflow/core:test",
+	"//tensorflow/core:test_main",
+	"//tensorflow/core:testlib",
     ],
 )
 
@@ -151,9 +151,9 @@ cc_library(
     hdrs = ["test_util.h"],
     visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/core",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
+	"//tensorflow/core",
+	"//tensorflow/core:lib",
+	"//tensorflow/core:test",
     ],
 )
 
