@@ -144,12 +144,10 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   with ops.op_scope([value, filters], name, "atrous_conv2d") as name:
     value = ops.convert_to_tensor(value, name="value")
     filters = ops.convert_to_tensor(filters, name="filters")
-    value_shape = value.get_shape()
-    filter_shape = filters.get_shape()
-    if not value_shape[3].is_compatible_with(filter_shape[2]):
+    if not value.get_shape()[3].is_compatible_with(filters.get_shape()[2]):
       raise ValueError(
           "value's input channels does not match filters' input channels, "
-          "{} != {}".format(value_shape[3], filter_shape[2]))
+          "{} != {}".format(value.get_shape()[3], filters.get_shape()[2]))
     if rate < 1:
       raise ValueError("rate {} cannot be less than one".format(rate))
 
@@ -164,42 +162,54 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     # to "VALID". The second is required so that the height and width of the
     # zero-padded value tensor are multiples of rate.
 
-    # Spatial dimensions of original input
-    in_height = int(value_shape[1])
-    in_width = int(value_shape[2])
-
-    # Spatial dimensions of the filters and the upsampled filters in which we
-    # introduce (rate - 1) zeros between consecutive filter values.
-    filter_height = int(filter_shape[0])
-    filter_width = int(filter_shape[1])
-    filter_height_up = filter_height + (filter_height - 1) * (rate - 1)
-    filter_width_up = filter_width + (filter_width - 1) * (rate - 1)
-
     # Padding required to reduce to "VALID" convolution
     if padding == "SAME":
+      # Handle filters whose shape is unknown during graph creation.
+      if filters.get_shape().is_fully_defined():
+        filter_shape = filters.get_shape().as_list()
+      else:
+        filter_shape = array_ops.shape(filters)
+      filter_height, filter_width = filter_shape[0], filter_shape[1]
+
+      # Spatial dimensions of the filters and the upsampled filters in which we
+      # introduce (rate - 1) zeros between consecutive filter values.
+      filter_height_up = filter_height + (filter_height - 1) * (rate - 1)
+      filter_width_up = filter_width + (filter_width - 1) * (rate - 1)
+
       pad_height = filter_height_up - 1
       pad_width = filter_width_up - 1
+
+      # When pad_height (pad_width) is odd, we pad more to bottom (right),
+      # following the same convention as conv2d().
+      pad_top = pad_height // 2
+      pad_bottom = pad_height - pad_top
+      pad_left = pad_width // 2
+      pad_right = pad_width - pad_left
     elif padding == "VALID":
-      pad_height = 0
-      pad_width = 0
+      pad_top = 0
+      pad_bottom = 0
+      pad_left = 0
+      pad_right = 0
     else:
       raise ValueError("Invalid padding")
-    # When padding is "SAME" and the pad_height (pad_width) is odd, we pad more
-    # to bottom (right), following the same convention as conv2d().
-    pad_top = pad_height // 2
-    pad_bottom = pad_height - pad_top
-    pad_left = pad_width // 2
-    pad_right = pad_width - pad_left
 
-    # More padding so that rate divides the height and width of the input value
-    in_height = in_height + pad_top + pad_bottom
-    in_width = in_width + pad_left + pad_right
-    pad_bottom_extra = 0 if in_height % rate == 0 else rate - in_height % rate
-    pad_right_extra = 0 if in_width % rate == 0 else rate - in_width % rate
+    # Handle input whose shape is unknown during graph creation.
+    if value.get_shape().is_fully_defined():
+      value_shape = value.get_shape().as_list()
+    else:
+      value_shape = array_ops.shape(value)
 
-    # The paddings argument to space_to_batch includes both padding components
+    in_height = value_shape[1] + pad_top + pad_bottom
+    in_width = value_shape[2] + pad_left + pad_right
+
+    # More padding so that rate divides the height and width of the input.
+    pad_bottom_extra = (rate - in_height % rate) % rate
+    pad_right_extra = (rate - in_width % rate) % rate
+
+    # The paddings argument to space_to_batch includes both padding components.
     space_to_batch_pad = [[pad_top, pad_bottom + pad_bottom_extra],
                           [pad_left, pad_right + pad_right_extra]]
+
     value = array_ops.space_to_batch(input=value,
                                      paddings=space_to_batch_pad,
                                      block_size=rate)
@@ -210,8 +220,9 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
                               padding="VALID",
                               name=name)
 
-    # The crops argument to batch_to_space is just the extra padding component
+    # The crops argument to batch_to_space is just the extra padding component.
     batch_to_space_crop = [[0, pad_bottom_extra], [0, pad_right_extra]]
+
     value = array_ops.batch_to_space(input=value,
                                      crops=batch_to_space_crop,
                                      block_size=rate)
