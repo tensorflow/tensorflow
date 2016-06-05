@@ -175,6 +175,9 @@ ifeq ($(TARGET),IOS)
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7 \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-Xlinker -S \
+		-Xlinker -x \
+		-Xlinker -dead_strip \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
 		-lz
