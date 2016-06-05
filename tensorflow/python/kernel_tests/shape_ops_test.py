@@ -50,7 +50,7 @@ class ShapeOpsTest(tf.test.TestCase):
 
   def _compareShapeSparse(self, x_np, use_gpu=False):
     np_ans = np.array(np.shape(x_np))
-    x_tf, nnz = _sparsify(x_np)
+    x_tf, unused_nnz = _sparsify(x_np)
     with self.test_session(use_gpu=use_gpu):
       tf_ans = tf.shape(x_tf)
       result = tf_ans.eval()
@@ -76,7 +76,7 @@ class ShapeOpsTest(tf.test.TestCase):
 
   def _compareRankSparse(self, x_np, use_gpu=False):
     np_ans = np.asarray(np.ndim(x_np))
-    x_tf, nnz = _sparsify(x_np)
+    x_tf, unused_nnz = _sparsify(x_np)
     with self.test_session(use_gpu=use_gpu):
       tf_ans = tf.rank(x_tf)
       result = tf_ans.eval()
