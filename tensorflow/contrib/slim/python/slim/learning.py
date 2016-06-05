@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -127,6 +127,32 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
   return multiplied_grads_and_vars
 
 
+def add_gradients_summaries(grads_and_vars):
+  """Add summaries to gradients.
+
+  Args:
+    grads_and_vars: A list of gradient to variable pairs (tuples).
+
+  Returns:
+    The list of created summaries.
+  """
+  summaries = []
+  for grad, var in grads_and_vars:
+    if grad is not None:
+      if isinstance(grad, ops.IndexedSlices):
+        grad_values = grad.values
+      else:
+        grad_values = grad
+      summaries.append(logging_ops.histogram_summary(
+          var.op.name + ':gradient', grad_values))
+      summaries.append(logging_ops.histogram_summary(
+          var.op.name + ':gradient_norm', clip_ops.global_norm([grad_values])))
+    else:
+      logging.info('Var %s has no gradient', var.op.name)
+
+  return summaries
+
+
 def create_train_op(
     total_loss,
     optimizer,
@@ -198,17 +224,7 @@ def create_train_op(
 
   # Summarize gradients.
   if summarize_gradients:
-    for grad, var in grads:
-      if grad is not None:
-        if isinstance(grad, ops.IndexedSlices):
-          grad_values = grad.values
-        else:
-          grad_values = grad
-        logging_ops.histogram_summary(var.op.name + ':gradient', grad_values)
-        logging_ops.histogram_summary(var.op.name + ':gradient_norm',
-                                      clip_ops.global_norm([grad_values]))
-      else:
-        logging.info('Var %s has no gradient', var.op.name)
+    add_gradients_summaries(grads)
 
   # Create gradient updates.
   grad_updates = optimizer.apply_gradients(grads, global_step=global_step)

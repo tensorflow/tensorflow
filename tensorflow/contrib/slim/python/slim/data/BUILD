@@ -14,7 +14,6 @@ py_library(
         ":dataset_data_provider",
         ":parallel_reader",
         ":prefetch_queue",
-        ":test_utils",
         ":tfexample_decoder",
     ],
 )
@@ -53,7 +52,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_utils",
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -79,7 +78,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_utils",
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -103,7 +102,7 @@ py_test(
     srcs = ["prefetch_queue_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -115,7 +114,7 @@ py_library(
     srcs = ["test_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -134,7 +133,7 @@ py_test(
     srcs = ["tfexample_decoder_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//third_party/py/tensorflow",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",

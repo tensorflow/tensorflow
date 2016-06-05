@@ -30,6 +30,7 @@ py_library(
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/skflow",
+        "//tensorflow/contrib/slim",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/util:util_py",
