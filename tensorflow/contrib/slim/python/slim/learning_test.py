@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import numpy as np
 from numpy import testing as np_testing
 import tensorflow as tf
 
-import tensorflow.contrib.slim as slim
+slim = tf.contrib.slim
 
 
 class ClipGradientNormsTest(tf.test.TestCase):
