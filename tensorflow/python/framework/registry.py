@@ -83,3 +83,12 @@ class Registry(object):
     else:
       raise LookupError(
           "%s registry has no entry for: %s" % (self._name, name))
+
+  def unregister(self, name):
+    """Removes registration for the given "name" if one exists.
+
+    Args:
+      name: string specifying registry key to delete.
+    """
+    if name in self._registry:
+      del self._registry[name]
