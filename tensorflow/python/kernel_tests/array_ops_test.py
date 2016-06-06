@@ -22,6 +22,8 @@ import math
 
 import numpy as np
 
+import tensorflow as tf
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -150,6 +152,25 @@ class ReverseTest(test_util.TensorFlowTestCase):
       with self.test_session(use_gpu=use_gpu):
         x_tf = array_ops.reverse(x_np, [True]).eval()
         self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
+
+  def testUnknownDims(self):
+    data_t = tf.placeholder(tf.float32)
+    dims_known_t = tf.placeholder(tf.bool, shape=[3])
+    reverse_known_t = tf.reverse(data_t, dims_known_t)
+    self.assertEqual(3, reverse_known_t.get_shape().ndims)
+
+    dims_unknown_t = tf.placeholder(tf.bool)
+    reverse_unknown_t = tf.reverse(data_t, dims_unknown_t)
+    self.assertIs(None, reverse_unknown_t.get_shape().ndims)
+
+    data_2d_t = tf.placeholder(tf.float32, shape=[None, None])
+    dims_2d_t = tf.placeholder(tf.bool, shape=[2])
+    reverse_2d_t = tf.reverse(data_2d_t, dims_2d_t)
+    self.assertEqual(2, reverse_2d_t.get_shape().ndims)
+
+    dims_3d_t = tf.placeholder(tf.bool, shape=[3])
+    with self.assertRaisesRegexp(ValueError, "must have rank 3"):
+      tf.reverse(data_2d_t, dims_3d_t)
 
 
 if __name__ == "__main__":
