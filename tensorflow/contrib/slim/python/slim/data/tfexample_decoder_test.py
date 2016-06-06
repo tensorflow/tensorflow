@@ -197,9 +197,10 @@ class TFExampleDecoderTest(tf.test.TestCase):
       [tf_depth] = decoder.decode(serialized_example, ['depth'])
       depth = tf_depth.eval()
 
-    self.assertTrue(np.isclose(np_array, depth).all())
+    self.assertAllClose(np_array, depth)
 
   def testDecodeExampleWithItemHandlerCallback(self):
+    np.random.seed(0)
     tensor_shape = (2, 3, 1)
     np_array = np.random.rand(2, 3, 1)
 
@@ -232,7 +233,7 @@ class TFExampleDecoderTest(tf.test.TestCase):
       [tf_depth] = decoder.decode(serialized_example, ['depth'])
       depth = tf_depth.eval()
 
-    self.assertTrue(np.isclose(np_array, depth-1).all())
+    self.assertAllClose(np_array, depth-1)
 
   def testDecodeImageWithItemHandlerCallback(self):
     image_shape = (2, 3, 3)
