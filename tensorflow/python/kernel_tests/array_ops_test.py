@@ -171,7 +171,8 @@ class MeshgridTest(test_util.TensorFlowTestCase):
   def testCompare(self):
     for t in (np.float16, np.float32, np.float64, np.int32, np.int64,
             np.complex64, np.complex128):
-      self._compare(1, t, False)
+      # Don't test the one-dimensional case, as
+      # old numpy versions don't support it
       self._compare(2, t, False)
       self._compare(3, t, False)
       self._compare(4, t, False)
