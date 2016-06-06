@@ -552,7 +552,11 @@ class MultiGFRNNCell(rnn_cell.MultiRNNCell):
         with vs.variable_scope("Cell%d" % i):
           cur_inp, new_state = cell(cur_inp, (prev_states[i], prev_hs))
           new_states.append(new_state)
-      return cur_inp, array_ops.concat(1, new_states)
+
+      if self._state_is_tuple:
+          return cur_inp, tuple(new_states)
+      else:
+          return cur_inp, array_ops.concat(1, new_states)
 
 
 class GFLSTMCell(rnn_cell.BasicLSTMCell):
