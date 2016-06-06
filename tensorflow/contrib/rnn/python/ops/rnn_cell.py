@@ -494,7 +494,7 @@ class MultiGFRNNCell(rnn_cell.MultiRNNCell):
   """
 
   def __init__(self, cells, state_is_tuple=False):
-    """Create a RNN cell composed sequentially of a number of GFLSTMRNNCells.
+    """Create a RNN cell composed sequentially of a number of GFRNNCells.
 
     Args:
       cells: list of GFLSTMCells that will be composed in this order.
@@ -524,12 +524,10 @@ class MultiGFRNNCell(rnn_cell.MultiRNNCell):
     """
     with vs.variable_scope(scope or type(self).__name__):  # "MultiGFLSTMCell"
       curr_state_pos = 0
-      prev_hs = []
       prev_states = []
-      # We accumulate the prev_hs once here so we don't split them again in each layer
-      # We also accumulate the prev_states since we're already splitting
+      # We accumulate the prev_states in a list
       for i, cell in enumerate(self._cells):
-        with vs.name_scope("Cell%d" % i):
+        with tf.name_scope("Cell%d" % i):
           if self._state_is_tuple:
             if not _is_sequence(state):
               raise ValueError(
@@ -539,18 +537,15 @@ class MultiGFRNNCell(rnn_cell.MultiRNNCell):
           else:
             prev_state = array_ops.slice(state, [0, curr_state_pos], [-1, cell.state_size])
             curr_state_pos += cell.state_size
-          if cell._state_is_tuple:
-            _, prev_h = prev_state
-          else:
-            _, prev_h = array_ops.split(1, 2, prev_state)
-          prev_hs.append(prev_h)
           prev_states.append(prev_state)
 
       cur_inp = inputs
       new_states = []
       for i, cell in enumerate(self._cells):
         with vs.variable_scope("Cell%d" % i):
-          cur_inp, new_state = cell(cur_inp, (prev_states[i], prev_hs))
+          # Each cell gets the whole list of previous states and an
+          # index for it's own previous state
+          cur_inp, new_state = cell(cur_inp, (i, prev_states))
           new_states.append(new_state)
 
       if self._state_is_tuple:
@@ -588,6 +583,8 @@ class GFLSTMCell(rnn_cell.BasicLSTMCell):
     """Gated Feedback LSTM Cell."""
     with vs.variable_scope(scope or type(self).__name__):  # "GFLSTMCell"
       prev_state, prev_hs = state
+      state_idx, prev_states = state
+      prev_state = prev_states[state_idx]
 
       if self._state_is_tuple:
         c, h = prev_state
@@ -602,7 +599,12 @@ class GFLSTMCell(rnn_cell.BasicLSTMCell):
       with vs.variable_scope("gij"):
         gij = tf.sigmoid(linear([inputs, tf.concat(1, prev_hs)], 1, True))
       summation = []
-      for i, h_i in enumerate(prev_hs):
+      for i, s_i in enumerate(prev_states):
+        if cell._state_is_tuple:
+          _, h_i = s_i
+        else:
+          _, h_i = array_ops.split(1, 2, s_i)
+
         with vs.variable_scope("sum_term_%d" % i):
           summation_term = linear(h_i, self._num_units, True)
           summation.append(gij * summation_term)
