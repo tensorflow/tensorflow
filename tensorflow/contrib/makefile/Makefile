@@ -36,7 +36,7 @@ HOST_BINDIR := $(MAKEFILE_DIR)/gen/host_bin/
 HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 
 # Which Eigen version we're using.
-EIGEN_HASH := f3a13643ac1f
+EIGEN_HASH := d02e6a705c30
 
 # Settings for the host compiler.
 HOST_CXX := gcc
@@ -168,6 +168,9 @@ ifeq ($(TARGET),IOS)
 		-D__thread= \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
+		-DTF_LEAN_BINARY \
+		-DMIN_LOG_LEVEL=0 \
+		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7 \
@@ -182,10 +185,16 @@ ifeq ($(TARGET),IOS)
 		-D__thread= \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
+		-DTF_LEAN_BINARY \
+		-DMIN_LOG_LEVEL=0 \
+		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7s \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-Xlinker -S \
+		-Xlinker -x \
+		-Xlinker -dead_strip \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
 		-lz
@@ -195,10 +204,16 @@ ifeq ($(TARGET),IOS)
 		-arch arm64 \
 		-D__thread= \
 		-Wno-c++11-narrowing \
+		-DTF_LEAN_BINARY \
+		-DMIN_LOG_LEVEL=0 \
+		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch arm64 \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-Xlinker -S \
+		-Xlinker -x \
+		-Xlinker -dead_strip \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
 		-lz
@@ -208,10 +223,16 @@ ifeq ($(TARGET),IOS)
 		-arch i386 \
 		-D__thread= \
 		-Wno-c++11-narrowing \
+		-DTF_LEAN_BINARY \
+		-DMIN_LOG_LEVEL=0 \
+		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch i386 \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
+		-Xlinker -S \
+		-Xlinker -x \
+		-Xlinker -dead_strip \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
 		-lz
@@ -221,10 +242,16 @@ ifeq ($(TARGET),IOS)
 		-arch x86_64 \
 		-D__thread= \
 		-Wno-c++11-narrowing \
+		-DTF_LEAN_BINARY \
+		-DMIN_LOG_LEVEL=0 \
+		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch x86_64 \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
+		-Xlinker -S \
+		-Xlinker -x \
+		-Xlinker -dead_strip \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
 		-lz

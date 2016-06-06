@@ -354,7 +354,7 @@ class FilterDescriptor {
 // Arguments:
 // - zero_padding_height: padding of the "y dimension" of the input data. Note
 //    that this is different from the height of the filter.
-// - zero_padding_width: analogouus to the height above, but in the "x
+// - zero_padding_width: analogous to the height above, but in the "x
 //    dimension".
 // - vertical_filter_stride: the convolution slides a 2-dimensional window of
 //    filter-height-by-filter-width over the input layer -- the center of that
@@ -767,7 +767,7 @@ class DnnSupport {
   //  filter_descriptor: dimensions of the convolution filter.
   //  filter_data: coefficients for the convolution filter.
   //  output_descriptor: dimensions of the output gradients, which is the same
-  //    as the dimensions of the ouput.
+  //    as the dimensions of the output.
   //  backward_output_data: un-owned device memory region which contains the
   //    backprop of the output.
   //  convolution_descriptor: stride of the convolution filter.
@@ -813,7 +813,7 @@ class DnnSupport {
   //  input_data: un-owned device memory region which contains the
   //    convolution input.
   //  output_descriptor: dimensions of the output gradients, which is the same
-  //    as the dimensions of the ouput.
+  //    as the dimensions of the output.
   //  backward_output_data: un-owned device memory region which contains the
   //    backprop of the output.
   //  convolution_descriptor: stride of the convolution filter.

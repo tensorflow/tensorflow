@@ -116,11 +116,13 @@ class LogSoftmaxTest(tf.test.TestCase):
 class L2LossTest(tf.test.TestCase):
 
   def testL2Loss(self):
-    with self.test_session():
-      x = tf.constant([1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x")
-      l2loss = tf.nn.l2_loss(x)
-      value = l2loss.eval()
-    self.assertAllClose(7.0, value)
+    for dtype in [tf.float32, tf.float64]:
+      with self.test_session():
+        x = tf.constant([1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x",
+                        dtype=dtype)
+        l2loss = tf.nn.l2_loss(x)
+        value = l2loss.eval()
+      self.assertAllClose(7.0, value)
 
   def testGradient(self):
     x_shape = [20, 7, 3]
