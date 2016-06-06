@@ -56,7 +56,7 @@ using the command described at the end of the previous section.
 **Asynchronous and synchronous parameter updates**
 
 There are two modes for the coordination of the parameters from multiple
-workers: asynchronous and synchrnous.
+workers: asynchronous and synchronous.
 
 In the asynchronous mode, the parameter updates (gradients) from the workers
 are applied to the parameters without any explicit coordination. This is the
