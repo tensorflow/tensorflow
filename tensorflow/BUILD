@@ -88,6 +88,7 @@ filegroup(
         "//tensorflow/contrib/session_bundle/example:all_files",
         "//tensorflow/contrib/skflow:all_files",
         "//tensorflow/contrib/slim:all_files",
+        "//tensorflow/contrib/slim/python/slim/data:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/util:all_files",
