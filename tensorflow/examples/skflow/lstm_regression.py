@@ -1,4 +1,4 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ from tensorflow.contrib import learn
 from sklearn.metrics import mean_squared_error
 
 
-LOG_DIR = './ops_logs'
 TRAINING_STEPS = 10000
 BATCH_SIZE = 10
 PRINT_STEPS = TRAINING_STEPS / 1000
@@ -84,6 +83,29 @@ def generate_data(fct, x, time_steps, seperate=False):
     return dict(train=train_x, val=val_x, test=test_x), dict(train=train_y, val=val_y, test=test_y)
 
 
+def lstm_cells(layers):
+    if isinstance(layers[0], dict):
+        return [tf.nn.rnn_cell.DropoutWrapper(tf.nn.rnn_cell.BasicLSTMCell(layer['steps'],
+                                                                           state_is_tuple=True),
+                                              layer['keep_prob'])
+                if layer.get('keep_prob') else tf.nn.rnn_cell.BasicLSTMCell(layer['steps'],
+                                                                            state_is_tuple=True)
+                for layer in layers]
+    return [tf.nn.rnn_cell.BasicLSTMCell(steps, state_is_tuple=True) for steps in layers]
+
+
+def dnn_layers(input_layers, layers):
+    if layers and isinstance(layers, dict):
+        return learn.ops.dnn(input_layers,
+                             layers['layers'],
+                             activation=layers.get('activation'),
+                             dropout=layers.get('dropout'))
+    elif layers:
+        return learn.ops.dnn(input_layers, layers)
+    else:
+        return input_layers
+
+
 def lstm_model(time_steps, rnn_layers, dense_layers=None):
     """
     Creates a deep model based on:
@@ -96,28 +118,6 @@ def lstm_model(time_steps, rnn_layers, dense_layers=None):
     :param dense_layers: list of nodes for each layer
     :return: the model definition
     """
-
-    def lstm_cells(layers):
-        if isinstance(layers[0], dict):
-            return [tf.nn.rnn_cell.DropoutWrapper(tf.nn.rnn_cell.BasicLSTMCell(layer['steps'],
-                                                                               state_is_tuple=True),
-                                                  layer['keep_prob'])
-                    if layer.get('keep_prob') else tf.nn.rnn_cell.BasicLSTMCell(layer['steps'],
-                                                                                state_is_tuple=True)
-                    for layer in layers]
-        return [tf.nn.rnn_cell.BasicLSTMCell(steps, state_is_tuple=True) for steps in layers]
-
-    def dnn_layers(input_layers, layers):
-        if layers and isinstance(layers, dict):
-            return learn.ops.dnn(input_layers,
-                                 layers['layers'],
-                                 activation=layers.get('activation'),
-                                 dropout=layers.get('dropout'))
-        elif layers:
-            return learn.ops.dnn(input_layers, layers)
-        else:
-            return input_layers
-
     def _lstm_model(X, y):
         stacked_lstm = tf.nn.rnn_cell.MultiRNNCell(lstm_cells(rnn_layers), state_is_tuple=True)
         x_ = learn.ops.split_squeeze(1, time_steps, X)
@@ -132,20 +132,26 @@ TIMESTEPS = 5
 RNN_LAYERS = [{'steps': TIMESTEPS}, {'steps': TIMESTEPS, 'keep_prob': 0.5}]
 DENSE_LAYERS = None
 
-regressor = learn.TensorFlowEstimator(model_fn=lstm_model(TIMESTEPS, RNN_LAYERS, DENSE_LAYERS),
-                                      n_classes=0, verbose=1,
-                                      steps=TRAINING_STEPS, optimizer='Adagrad',
-                                      learning_rate=0.03, batch_size=BATCH_SIZE)
+regressor = learn.TensorFlowEstimator(
+    model_fn=lstm_model(TIMESTEPS, RNN_LAYERS, DENSE_LAYERS),
+    n_classes=0,
+    optimizer='Adagrad',
+    learning_rate=0.03)
 
 X, y = generate_data(np.sin, np.linspace(0, 100, 10000), TIMESTEPS, seperate=False)
 # create a lstm instance and validation monitor
-validation_monitor = learn.monitors.ValidationMonitor(X['val'], y['val'],
-                                                      every_n_steps=PRINT_STEPS,
-                                                      early_stopping_rounds=1000)
-regressor.fit(X['train'], y['train'], monitors=[validation_monitor], logdir=LOG_DIR+'1')
+validation_monitor = learn.monitors.ValidationMonitor(
+    X['val'], y['val'],
+    every_n_steps=PRINT_STEPS,
+    early_stopping_rounds=1000)
+regressor.fit(
+    X['train'], y['train'],
+    batch_size=BATCH_SIZE,
+    steps=TRAINING_STEPS,
+    monitors=[validation_monitor])
 predicted = regressor.predict(X['test'])
 score = mean_squared_error(predicted, y['test'])
-print ("MSE: %f" % score)
+print('MSE: %f' % score)
 
 
 # predicting cos-sin function
@@ -153,17 +159,23 @@ TIMESTEPS = 10
 RNN_LAYERS = [{'steps': TIMESTEPS}, {'steps': TIMESTEPS, 'keep_prob': 0.5}]
 DENSE_LAYERS = [2]
 
-regressor = learn.TensorFlowEstimator(model_fn=lstm_model(TIMESTEPS, RNN_LAYERS, DENSE_LAYERS),
-                                      n_classes=0, verbose=1,
-                                      steps=TRAINING_STEPS, optimizer='Adagrad',
-                                      learning_rate=0.03, batch_size=BATCH_SIZE)
+regressor = learn.TensorFlowEstimator(
+    model_fn=lstm_model(TIMESTEPS, RNN_LAYERS, DENSE_LAYERS),
+    n_classes=0,
+    optimizer='Adagrad',
+    learning_rate=0.03)
 
 X, y = generate_data(sin_cos, np.linspace(0, 100, 10000), TIMESTEPS, seperate=False)
 # create a lstm instance and validation monitor
-validation_monitor = learn.monitors.ValidationMonitor(X['val'], y['val'],
-                                                      every_n_steps=PRINT_STEPS,
-                                                      early_stopping_rounds=1000)
-regressor.fit(X['train'], y['train'], monitors=[validation_monitor], logdir=LOG_DIR+'2')
+validation_monitor = learn.monitors.ValidationMonitor(
+    X['val'], y['val'],
+    every_n_steps=PRINT_STEPS,
+    early_stopping_rounds=1000)
+regressor.fit(
+    X['train'], y['train'],
+    batch_size=BATCH_SIZE,
+    steps=TRAINING_STEPS,
+    monitors=[validation_monitor])
 predicted = regressor.predict(X['test'])
 score = mean_squared_error(predicted, y['test'])
-print ("MSE: %f" % score)
+print('MSE: %f' % score)
