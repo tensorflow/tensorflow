@@ -162,6 +162,19 @@ py_test(
 )
 
 py_test(
+    name = "tensorflow_dataframe_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/tensorflow_dataframe_test.py"],
+    data = glob(["python/learn/tests/dataframe/testdata/*"]),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "early_stopping_test",
     size = "medium",
     srcs = ["python/learn/tests/early_stopping_test.py"],
