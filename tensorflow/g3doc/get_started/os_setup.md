@@ -182,10 +182,10 @@ Finally install TensorFlow:
 
 ```bash
 # Python 2
-(tensorflow)$ sudo pip install --upgrade $TF_BINARY_URL
+(tensorflow)$ pip install --upgrade $TF_BINARY_URL
 
 # Python 3
-(tensorflow)$ sudo pip3 install --upgrade $TF_BINARY_URL
+(tensorflow)$ pip3 install --upgrade $TF_BINARY_URL
 ```
 
 With the Virtualenv environment activated, you can now
@@ -289,10 +289,10 @@ Finally install TensorFlow:
 
 ```bash
 # Python 2
-(tensorflow)$ sudo pip install --upgrade $TF_BINARY_URL
+(tensorflow)$ pip install --upgrade $TF_BINARY_URL
 
 # Python 3
-(tensorflow)$ sudo pip3 install --upgrade $TF_BINARY_URL
+(tensorflow)$ pip3 install --upgrade $TF_BINARY_URL
 ```
 
 With the conda environment activated, you can now
