@@ -36,8 +36,8 @@ class BaseInMemorySource(transform.Transform):
     super(BaseInMemorySource, self).__init__()
     self._data = data
     self._batch_size = (1 if batch_size is None else batch_size)
-    self._queue_capacity = (self._batch_size * 10 if batch_size is None
-                            else batch_size)
+    self._queue_capacity = (self._batch_size * 10 if queue_capacity is None
+                            else queue_capacity)
     self._shuffle = shuffle
     self._min_after_dequeue = (batch_size if min_after_dequeue is None
                                else min_after_dequeue)

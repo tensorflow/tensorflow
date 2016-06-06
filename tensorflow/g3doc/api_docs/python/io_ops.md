@@ -219,6 +219,32 @@ finished with the previous file).
 
 - - -
 
+#### `tf.ReaderBase.read_up_to(queue, num_records, name=None)` {#ReaderBase.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
+
+
+- - -
+
 #### `tf.ReaderBase.reader_ref` {#ReaderBase.reader_ref}
 
 Op that implements the reader.
@@ -368,6 +394,32 @@ finished with the previous file).
 
 *  <b>`key`</b>: A string scalar Tensor.
 *  <b>`value`</b>: A string scalar Tensor.
+
+
+- - -
+
+#### `tf.TextLineReader.read_up_to(queue, num_records, name=None)` {#TextLineReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
 
 
 - - -
@@ -525,6 +577,32 @@ finished with the previous file).
 
 - - -
 
+#### `tf.WholeFileReader.read_up_to(queue, num_records, name=None)` {#WholeFileReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
+
+
+- - -
+
 #### `tf.WholeFileReader.reader_ref` {#WholeFileReader.reader_ref}
 
 Op that implements the reader.
@@ -674,6 +752,32 @@ finished with the previous file).
 
 *  <b>`key`</b>: A string scalar Tensor.
 *  <b>`value`</b>: A string scalar Tensor.
+
+
+- - -
+
+#### `tf.IdentityReader.read_up_to(queue, num_records, name=None)` {#IdentityReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
 
 
 - - -
@@ -828,6 +932,32 @@ finished with the previous file).
 
 - - -
 
+#### `tf.TFRecordReader.read_up_to(queue, num_records, name=None)` {#TFRecordReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
+
+
+- - -
+
 #### `tf.TFRecordReader.reader_ref` {#TFRecordReader.reader_ref}
 
 Op that implements the reader.
@@ -977,6 +1107,32 @@ finished with the previous file).
 
 *  <b>`key`</b>: A string scalar Tensor.
 *  <b>`value`</b>: A string scalar Tensor.
+
+
+- - -
+
+#### `tf.FixedLengthRecordReader.read_up_to(queue, num_records, name=None)` {#FixedLengthRecordReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
 
 
 - - -

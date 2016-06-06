@@ -31,40 +31,37 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 
 
-def linear_regression_zero_init(X, y):
-  # pylint: disable=invalid-name
+def linear_regression_zero_init(x, y):
   """Linear regression subgraph with zero-value initial weights and bias.
 
   Args:
-    X: tensor or placeholder for input features.
+    x: tensor or placeholder for input features.
     y: tensor or placeholder for target.
 
   Returns:
     Predictions and loss tensors.
   """
-  return linear_regression(X, y, init_mean=0.0, init_stddev=0.0)
+  return linear_regression(x, y, init_mean=0.0, init_stddev=0.0)
 
 
-def logistic_regression_zero_init(X, y):
-  # pylint: disable=invalid-name
+def logistic_regression_zero_init(x, y):
   """Logistic regression subgraph with zero-value initial weights and bias.
 
   Args:
-    X: tensor or placeholder for input features.
+    x: tensor or placeholder for input features.
     y: tensor or placeholder for target.
 
   Returns:
     Predictions and loss tensors.
   """
-  return logistic_regression(X, y, init_mean=0.0, init_stddev=0.0)
+  return logistic_regression(x, y, init_mean=0.0, init_stddev=0.0)
 
 
-def linear_regression(X, y, init_mean=None, init_stddev=1.0):
-  # pylint: disable=invalid-name
+def linear_regression(x, y, init_mean=None, init_stddev=1.0):
   """Creates linear regression TensorFlow subgraph.
 
   Args:
-    X: tensor or placeholder for input features.
+    x: tensor or placeholder for input features.
     y: tensor or placeholder for target.
     init_mean: the mean value to use for initialization.
     init_stddev: the standard devation to use for initialization.
@@ -81,7 +78,7 @@ def linear_regression(X, y, init_mean=None, init_stddev=1.0):
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('linear_regression'):
-    logging_ops.histogram_summary('linear_regression.X', X)
+    logging_ops.histogram_summary('linear_regression.x', x)
     logging_ops.histogram_summary('linear_regression.y', y)
     y_shape = y.get_shape()
     if len(y_shape) == 1:
@@ -90,10 +87,10 @@ def linear_regression(X, y, init_mean=None, init_stddev=1.0):
       output_shape = y_shape[1]
     # Set up the requested initialization.
     if init_mean is None:
-      weights = vs.get_variable('weights', [X.get_shape()[1], output_shape])
+      weights = vs.get_variable('weights', [x.get_shape()[1], output_shape])
       bias = vs.get_variable('bias', [output_shape])
     else:
-      weights = vs.get_variable('weights', [X.get_shape()[1], output_shape],
+      weights = vs.get_variable('weights', [x.get_shape()[1], output_shape],
                                 initializer=init_ops.random_normal_initializer(
                                     init_mean, init_stddev))
       bias = vs.get_variable('bias', [output_shape],
@@ -101,19 +98,18 @@ def linear_regression(X, y, init_mean=None, init_stddev=1.0):
                                  init_mean, init_stddev))
     logging_ops.histogram_summary('linear_regression.weights', weights)
     logging_ops.histogram_summary('linear_regression.bias', bias)
-    return losses_ops.mean_squared_error_regressor(X, y, weights, bias)
+    return losses_ops.mean_squared_error_regressor(x, y, weights, bias)
 
 
-def logistic_regression(X,
+def logistic_regression(x,
                         y,
                         class_weight=None,
                         init_mean=None,
                         init_stddev=1.0):
-  # pylint: disable=invalid-name
   """Creates logistic regression TensorFlow subgraph.
 
   Args:
-    X: tensor or placeholder for input features,
+    x: tensor or placeholder for input features,
        shape should be [batch_size, n_features].
     y: tensor or placeholder for target,
        shape should be [batch_size, n_classes].
@@ -136,16 +132,16 @@ def logistic_regression(X,
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('logistic_regression'):
-    logging_ops.histogram_summary('%s.X' % vs.get_variable_scope().name, X)
+    logging_ops.histogram_summary('%s.x' % vs.get_variable_scope().name, x)
     logging_ops.histogram_summary('%s.y' % vs.get_variable_scope().name, y)
     # Set up the requested initialization.
     if init_mean is None:
       weights = vs.get_variable('weights',
-                                [X.get_shape()[1], y.get_shape()[-1]])
+                                [x.get_shape()[1], y.get_shape()[-1]])
       bias = vs.get_variable('bias', [y.get_shape()[-1]])
     else:
       weights = vs.get_variable('weights',
-                                [X.get_shape()[1], y.get_shape()[-1]],
+                                [x.get_shape()[1], y.get_shape()[-1]],
                                 initializer=init_ops.random_normal_initializer(
                                     init_mean, init_stddev))
       bias = vs.get_variable('bias', [y.get_shape()[-1]],
@@ -164,7 +160,7 @@ def logistic_regression(X,
       except KeyError:
         pass
 
-    return losses_ops.softmax_classifier(X,
+    return losses_ops.softmax_classifier(x,
                                          y,
                                          weights,
                                          bias,
@@ -179,7 +175,7 @@ def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
     target_predictor_fn: Function that will predict target from input
                          features. This can be logistic regression,
                          linear regression or any other model,
-                         that takes X, y and returns predictions and loss
+                         that takes x, y and returns predictions and loss
                          tensors.
     dropout: When not none, causes dropout regularization to be used,
              with the specified probability of removing a given coordinate.
@@ -188,10 +184,9 @@ def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
     A function that creates the subgraph.
   """
 
-  def dnn_estimator(X, y):
-    # pylint: disable=invalid-name
+  def dnn_estimator(x, y):
     """DNN estimator with target predictor function on top."""
-    layers = dnn_ops.dnn(X, hidden_units, dropout=dropout)
+    layers = dnn_ops.dnn(x, hidden_units, dropout=dropout)
     return target_predictor_fn(layers, y)
 
   return dnn_estimator
@@ -206,7 +201,7 @@ def get_autoencoder_model(hidden_units, target_predictor_fn,
     target_predictor_fn: Function that will predict target from input
                          features. This can be logistic regression,
                          linear regression or any other model,
-                         that takes X, y and returns predictions and loss
+                         that takes x, y and returns predictions and loss
                          tensors.
     activation: activation function used to map inner latent layer onto
                 reconstruction layer.
@@ -219,13 +214,12 @@ def get_autoencoder_model(hidden_units, target_predictor_fn,
   Returns:
       A function that creates the subgraph.
   """
-  def dnn_autoencoder_estimator(X):
-    # pylint: disable=invalid-name
+  def dnn_autoencoder_estimator(x):
     """Autoencoder estimator with target predictor function on top."""
     encoder, decoder = autoencoder_ops.dnn_autoencoder(
-        X, hidden_units, activation,
+        x, hidden_units, activation,
         add_noise=add_noise, dropout=dropout)
-    return encoder, decoder, target_predictor_fn(X, decoder)
+    return encoder, decoder, target_predictor_fn(x, decoder)
   return dnn_autoencoder_estimator
 
 
@@ -346,12 +340,12 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     num_layers: The number of layers of the rnn model.
     input_op_fn: Function that will transform the input tensor, such as
                  creating word embeddings, byte list, etc. This takes
-                 an argument X for input and returns transformed X.
+                 an argument `x` for input and returns transformed `x`.
     bidirectional: boolean, Whether this is a bidirectional rnn.
     target_predictor_fn: Function that will predict target from input
                          features. This can be logistic regression,
                          linear regression or any other model,
-                         that takes X, y and returns predictions and loss
+                         that takes `x`, `y` and returns predictions and loss
                          tensors.
     sequence_length: If sequence_length is provided, dynamic calculation is
       performed.
@@ -365,10 +359,9 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     A function that creates the subgraph.
   """
 
-  def rnn_estimator(X, y):
-    # pylint: disable=invalid-name
+  def rnn_estimator(x, y):
     """RNN estimator with target predictor function on top."""
-    X = input_op_fn(X)
+    x = input_op_fn(x)
     if cell_type == 'rnn':
       cell_fn = nn.rnn_cell.BasicRNNCell
     elif cell_type == 'gru':
@@ -385,7 +378,7 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
       # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
       _, encoding = bidirectional_rnn(rnn_fw_cell,
                                       rnn_bw_cell,
-                                      X,
+                                      x,
                                       dtype=dtypes.float32,
                                       sequence_length=sequence_length,
                                       initial_state_fw=initial_state,
@@ -393,7 +386,7 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     else:
       cell = nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
       _, encoding = nn.rnn(cell,
-                           X,
+                           x,
                            dtype=dtypes.float32,
                            sequence_length=sequence_length,
                            initial_state=initial_state)

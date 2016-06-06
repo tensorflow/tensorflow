@@ -73,10 +73,10 @@ Simple linear regression:
 from sklearn import datasets, metrics, preprocessing
 
 boston = datasets.load_boston()
-X = preprocessing.StandardScaler().fit_transform(boston.data)
+x = preprocessing.StandardScaler().fit_transform(boston.data)
 regressor = learn.TensorFlowLinearRegressor()
-regressor.fit(X, boston.target)
-score = metrics.mean_squared_error(regressor.predict(X), boston.target)
+regressor.fit(x, boston.target)
+score = metrics.mean_squared_error(regressor.predict(x), boston.target)
 print ("MSE: %f" % score)
 ```
 
@@ -103,9 +103,9 @@ from sklearn import datasets, metrics
 
 iris = datasets.load_iris()
 
-def my_model(X, y):
+def my_model(x, y):
     """This is DNN with 10, 20, 10 hidden layers, and dropout of 0.5 probability."""
-    layers = learn.ops.dnn(X, [10, 20, 10], dropout=0.5)
+    layers = learn.ops.dnn(x, [10, 20, 10], dropout=0.5)
     return learn.models.logistic_regression(layers, y)
 
 classifier = learn.TensorFlowEstimator(model_fn=my_model, n_classes=3)
@@ -135,7 +135,7 @@ To get nice visualizations and summaries you can use ``logdir`` parameter on ``f
 
 ```python
 classifier = learn.TensorFlowLinearRegression()
-classifier.fit(X, y, logdir='/tmp/tf_examples/my_model_1/')
+classifier.fit(x, y, logdir='/tmp/tf_examples/my_model_1/')
 ```
 
 Then run next command in command line:

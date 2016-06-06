@@ -683,8 +683,10 @@ def split(split_dim, num_split, value, name="split"):
 
 @ops.RegisterShape("Reverse")
 def _ReverseShape(op):
+  input_shape = op.inputs[0].get_shape()
   dims_shape = op.inputs[1].get_shape().with_rank(1)
-  input_shape = op.inputs[0].get_shape().with_rank(dims_shape[0])
+  if dims_shape[0].value is not None:
+    input_shape = input_shape.with_rank(dims_shape[0])
   if input_shape.ndims is not None and input_shape.ndims > 8:
     raise ValueError(
         "tf.reverse() does not work on tensors with more than 8 dimensions")
