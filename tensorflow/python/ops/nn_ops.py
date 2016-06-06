@@ -26,10 +26,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -165,8 +168,9 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     # zero-padded value tensor are multiples of rate.
 
     # Spatial dimensions of original input
-    in_height = int(value_shape[1])
-    in_width = int(value_shape[2])
+    value_shape = array_ops.shape(value)
+    in_height = value_shape[1]
+    in_width = value_shape[2]
 
     # Spatial dimensions of the filters and the upsampled filters in which we
     # introduce (rate - 1) zeros between consecutive filter values.
@@ -186,24 +190,31 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       raise ValueError("Invalid padding")
     # When padding is "SAME" and the pad_height (pad_width) is odd, we pad more
     # to bottom (right), following the same convention as conv2d().
-    pad_top = pad_height // 2
+    pad_top = math_ops.floordiv(pad_height, 2)
     pad_bottom = pad_height - pad_top
-    pad_left = pad_width // 2
+    pad_left = math_ops.floordiv(pad_width, 2)
     pad_right = pad_width - pad_left
 
     # More padding so that rate divides the height and width of the input value
     in_height = in_height + pad_top + pad_bottom
     in_width = in_width + pad_left + pad_right
-    pad_bottom_extra = 0 if in_height % rate == 0 else rate - in_height % rate
-    pad_right_extra = 0 if in_width % rate == 0 else rate - in_width % rate
+
+    mod_height = math_ops.mod(in_height, rate)
+    mod_width = math_ops.mod(in_width, rate)
+    null = constant_op.constant(0)
+    pad_bottom_extra = control_flow_ops.cond(gen_math_ops.equal(mod_height, 0), lambda: null, lambda: rate - mod_height)
+    pad_right_extra = control_flow_ops.cond(gen_math_ops.equal(mod_width, 0), lambda: null, lambda: rate - mod_width)
 
     # The paddings argument to space_to_batch includes both padding components
-    space_to_batch_pad = [[pad_top, pad_bottom + pad_bottom_extra],
-                          [pad_left, pad_right + pad_right_extra]]
+    pad_bottom = pad_bottom + pad_bottom_extra
+    pad_right = pad_right + pad_right_extra
+
+    space_to_batch_pad = [[pad_top, pad_bottom], [pad_left, pad_right]]
+
     value = array_ops.space_to_batch(input=value,
                                      paddings=space_to_batch_pad,
                                      block_size=rate)
-
+        
     value = gen_nn_ops.conv2d(input=value,
                               filter=filters,
                               strides=[1, 1, 1, 1],
