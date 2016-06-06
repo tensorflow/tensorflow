@@ -179,6 +179,9 @@ if [[ "${DO_PIP_BUILD}" == "1" ]]; then
   export TF_BUILD_IS_OPT="OPT"
   export TF_BUILD_IS_PIP="PIP"
 
+  export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
+"-e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
+
   pushd "${SCRIPT_DIR}/../../../"
   rm -rf pip_test/whl &&
   tensorflow/tools/ci_build/ci_parameterized_build.sh
