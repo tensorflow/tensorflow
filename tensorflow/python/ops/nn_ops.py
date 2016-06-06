@@ -174,9 +174,8 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 
     # Spatial dimensions of the filters and the upsampled filters in which we
     # introduce (rate - 1) zeros between consecutive filter values.
-    filter_shape = array_ops.shape(filters)
-    filter_height = filter_shape[0]
-    filter_width = filter_shape[1]
+    filter_height = int(filter_shape[0])
+    filter_width = int(filter_shape[1])
     filter_height_up = filter_height + (filter_height - 1) * (rate - 1)
     filter_width_up = filter_width + (filter_width - 1) * (rate - 1)
 
@@ -210,9 +209,8 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     pad_bottom = pad_bottom + pad_bottom_extra
     pad_right = pad_right + pad_right_extra
 
-    v = array_ops.expand_dims(array_ops.pack([pad_top, pad_bottom]),1)
-    h = array_ops.expand_dims(array_ops.pack([pad_left, pad_right]),1)   
-    space_to_batch_pad = array_ops.concat(1, [v,h])
+    space_to_batch_pad = [[pad_top, pad_bottom], [pad_left, pad_right]]
+
     value = array_ops.space_to_batch(input=value,
                                      paddings=space_to_batch_pad,
                                      block_size=rate)
@@ -224,9 +222,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
                               name=name)
 
     # The crops argument to batch_to_space is just the extra padding component
-    v = array_ops.expand_dims(array_ops.pack([0, pad_bottom_extra]),1)
-    h = array_ops.expand_dims(array_ops.pack([0, pad_right_extra]),1)   
-    batch_to_space_crop = array_ops.concat(1, [v,h])        
+    batch_to_space_crop = [[0, pad_bottom_extra], [0, pad_right_extra]]
     value = array_ops.batch_to_space(input=value,
                                      crops=batch_to_space_crop,
                                      block_size=rate)
