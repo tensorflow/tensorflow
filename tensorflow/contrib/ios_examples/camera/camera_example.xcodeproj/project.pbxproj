@@ -285,7 +285,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../makefile/gen/proto",
-					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-f3a13643ac1f",
+					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-d02e6a705c30",
 					"$(SRCROOT)/../../makefile/downloads",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../../..",
@@ -300,6 +300,12 @@
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
+					"-Xlinker",
+					"-S",
+					"-Xlinker",
+					"-x",
+					"-Xlinker",
+					"-dead_strip",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.google.CameraExample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -344,7 +350,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../makefile/gen/proto",
-					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-f3a13643ac1f",
+					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-d02e6a705c30",
 					"$(SRCROOT)/../../makefile/downloads",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../../..",
@@ -359,6 +365,12 @@
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
+					"-Xlinker",
+					"-S",
+					"-Xlinker",
+					"-x",
+					"-Xlinker",
+					"-dead_strip",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.google.CameraExample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
