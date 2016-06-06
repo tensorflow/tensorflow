@@ -169,12 +169,16 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
+		-D__ANDROID_TYPES_SLIM__ \
 		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7 \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-Xlinker -S \
+		-Xlinker -x \
+		-Xlinker -dead_strip \
 		-all_load \
 		-L$(GENDIR)protobuf_ios/lib \
 		-lz
@@ -186,6 +190,7 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
+		-D__ANDROID_TYPES_SLIM__ \
 		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
@@ -205,6 +210,7 @@ ifeq ($(TARGET),IOS)
 		-D__thread= \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
+		-D__ANDROID_TYPES_SLIM__ \
 		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
@@ -224,6 +230,7 @@ ifeq ($(TARGET),IOS)
 		-D__thread= \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
+		-D__ANDROID_TYPES_SLIM__ \
 		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
@@ -243,6 +250,7 @@ ifeq ($(TARGET),IOS)
 		-D__thread= \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
+		-D__ANDROID_TYPES_SLIM__ \
 		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \

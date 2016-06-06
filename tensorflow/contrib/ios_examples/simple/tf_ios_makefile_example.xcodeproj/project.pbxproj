@@ -276,7 +276,7 @@
 					"$(SRCROOT)/../../../..",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../makefile/downloads",
-					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-f3a13643ac1f",
+					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-d02e6a705c30",
 					"$(SRCROOT)/../../makefile/gen/proto",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
@@ -289,6 +289,12 @@
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
+					"-Xlinker",
+					"-S",
+					"-Xlinker",
+					"-x",
+					"-Xlinker",
+					"-dead_strip",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -304,7 +310,7 @@
 					"$(SRCROOT)/../../../..",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../makefile/downloads",
-					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-f3a13643ac1f",
+					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-d02e6a705c30",
 					"$(SRCROOT)/../../makefile/gen/proto",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
@@ -314,10 +320,16 @@
 					"$(SRCROOT)/../../makefile/gen/protobuf_ios/lib",
 					"$(SRCROOT)/../../makefile/gen/lib",
 				);
-				ONLY_ACTIVE_ARCH = NO;
+				ONLY_ACTIVE_ARCH = YES;
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
+					"-Xlinker",
+					"-S",
+					"-Xlinker",
+					"-x",
+					"-Xlinker",
+					"-dead_strip",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
 				PRODUCT_NAME = "$(TARGET_NAME)";
