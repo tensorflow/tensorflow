@@ -276,6 +276,10 @@
 					"$(SRCROOT)/../../../..",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../makefile/downloads",
+<<<<<<< HEAD
+=======
+					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-d02e6a705c30",
+>>>>>>> e8e781e... Updated iOS settings (#2694)
 					"$(SRCROOT)/../../makefile/gen/proto",
 					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
 				);
@@ -310,6 +314,10 @@
 					"$(SRCROOT)/../../../..",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../makefile/downloads",
+<<<<<<< HEAD
+=======
+					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-d02e6a705c30",
+>>>>>>> e8e781e... Updated iOS settings (#2694)
 					"$(SRCROOT)/../../makefile/gen/proto",
 					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
 				);
