@@ -23,6 +23,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -337,16 +338,15 @@ class AvgPoolingGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .HostMemory("orig_input_shape"),
-                        AvgPoolingGradOp<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T")
-                            .HostMemory("orig_input_shape"),
-                        AvgPoolingGradOp<CPUDevice, double>);
+#define REGISTER_CPU_KERNEL(T)                                 \
+  REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")                  \
+                              .Device(DEVICE_CPU)              \
+                              .TypeConstraint<T>("T")          \
+                              .HostMemory("orig_input_shape"), \
+                          AvgPoolingGradOp<CPUDevice, T>);
+
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
 
 #if GOOGLE_CUDA
 

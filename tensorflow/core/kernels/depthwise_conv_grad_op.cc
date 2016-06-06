@@ -566,16 +566,14 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropInputOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DepthwiseConv2dNativeBackpropInputOp<CPUDevice, float>);
-
-REGISTER_KERNEL_BUILDER(
-    Name("DepthwiseConv2dNativeBackpropInput")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<double>("T"),
-    DepthwiseConv2dNativeBackpropInputOp<CPUDevice, double>);
+#define REGISTER_CPU_KERNEL(T)                                       \
+  REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput") \
+                              .Device(DEVICE_CPU)                    \
+                              .TypeConstraint<T>("T"),               \
+                          DepthwiseConv2dNativeBackpropInputOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput")
@@ -951,17 +949,15 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropFilterOp);
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("DepthwiseConv2dNativeBackpropFilter")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<float>("T"),
-    DepthwiseConv2dNativeBackpropFilterOp<CPUDevice, float>);
-
-REGISTER_KERNEL_BUILDER(
-    Name("DepthwiseConv2dNativeBackpropFilter")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<double>("T"),
-    DepthwiseConv2dNativeBackpropFilterOp<CPUDevice, double>);
+#define REGISTER_CPU_KERNEL(T)                    \
+  REGISTER_KERNEL_BUILDER(                        \
+      Name("DepthwiseConv2dNativeBackpropFilter") \
+          .Device(DEVICE_CPU)                     \
+          .TypeConstraint<T>("T"),                \
+      DepthwiseConv2dNativeBackpropFilterOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(

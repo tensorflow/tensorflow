@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -245,12 +246,13 @@ class Conv2DOp : public BinaryOp<T> {
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DOp);
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    Conv2DOp<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
-    Conv2DOp<CPUDevice, Eigen::half>);
+#define REGISTER_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(                                      \
+      Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      Conv2DOp<CPUDevice, T>);
+
+TF_CALL_half(REGISTER_CPU);
+TF_CALL_float(REGISTER_CPU);
 #if GOOGLE_CUDA
 
 int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,

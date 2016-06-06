@@ -143,13 +143,11 @@ class DrawBoundingBoxesOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("DrawBoundingBoxes").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    DrawBoundingBoxesOp<float>);
-
-REGISTER_KERNEL_BUILDER(Name("DrawBoundingBoxes")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<Eigen::half>("T"),
-                        DrawBoundingBoxesOp<Eigen::half>);
+#define REGISTER_CPU_KERNEL(T)                                             \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("DrawBoundingBoxes").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      DrawBoundingBoxesOp<T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
+TF_CALL_float(REGISTER_CPU_KERNEL);
 
 }  // namespace tensorflow

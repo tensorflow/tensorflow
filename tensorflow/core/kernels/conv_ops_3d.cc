@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -120,15 +121,13 @@ class Conv3DOp : public BinaryOp<T> {
   Padding padding_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    Conv3DOp<CPUDevice, float>);
-
-#ifndef IS_MOBILE_PLATFORM
-REGISTER_KERNEL_BUILDER(
-    Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<double>("T"),
-    Conv3DOp<CPUDevice, double>);
-#endif
+#define REGISTER_CPU_KERNEL(T)                                  \
+  REGISTER_KERNEL_BUILDER(                                      \
+      Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      Conv3DOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
 

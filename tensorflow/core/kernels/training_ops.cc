@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 
@@ -219,10 +220,11 @@ class ApplyGradientDescentOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("ApplyGradientDescent").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       ApplyGradientDescentOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
-REGISTER_KERNELS(CPU, Eigen::half);
-REGISTER_KERNELS(CPU, float);
-REGISTER_KERNELS(CPU, double);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
@@ -244,6 +246,7 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>
@@ -345,10 +348,11 @@ typedef Eigen::GpuDevice GPUDevice;
   REGISTER_KERNEL_BUILDER(                                             \
       Name("ApplyAdadelta").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       ApplyAdadeltaOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
-REGISTER_KERNELS(CPU, Eigen::half);
-REGISTER_KERNELS(CPU, float);
-REGISTER_KERNELS(CPU, double);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
@@ -372,6 +376,7 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 // Note, this op works on cpu only.
@@ -503,14 +508,15 @@ class SparseApplyAdadeltaOp : public OpKernel {
                               .TypeConstraint<T>("T")                \
                               .TypeConstraint<Tindices>("Tindices"), \
                           SparseApplyAdadeltaOp<T, Tindices>);
+#define REGISTER_CPU_KERNELS(T) \
+  REGISTER_KERNELS(T, int32);   \
+  REGISTER_KERNELS(T, int64);
 
-REGISTER_KERNELS(Eigen::half, int32);
-REGISTER_KERNELS(Eigen::half, int64);
-REGISTER_KERNELS(float, int32);
-REGISTER_KERNELS(float, int64);
-REGISTER_KERNELS(double, int32);
-REGISTER_KERNELS(double, int64);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>
@@ -566,10 +572,11 @@ typedef Eigen::GpuDevice GPUDevice;
   REGISTER_KERNEL_BUILDER(                                            \
       Name("ApplyAdagrad").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       ApplyAdagradOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
-REGISTER_KERNELS(CPU, Eigen::half);
-REGISTER_KERNELS(CPU, float);
-REGISTER_KERNELS(CPU, double);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
@@ -591,6 +598,7 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 namespace {
@@ -728,13 +736,15 @@ class SparseApplyAdagradOp : public OpKernel {
                               .TypeConstraint<T>("T")                \
                               .TypeConstraint<Tindices>("Tindices"), \
                           SparseApplyAdagradOp<T, Tindices>);
+#define REGISTER_CPU_KERNELS(T) \
+  REGISTER_KERNELS(T, int32);   \
+  REGISTER_KERNELS(T, int64);
 
-REGISTER_KERNELS(Eigen::half, int32);
-REGISTER_KERNELS(Eigen::half, int64);
-REGISTER_KERNELS(float, int32);
-REGISTER_KERNELS(float, int64);
-REGISTER_KERNELS(double, int32);
-REGISTER_KERNELS(double, int64);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>
@@ -820,10 +830,13 @@ typedef Eigen::GpuDevice GPUDevice;
   REGISTER_KERNEL_BUILDER(                                         \
       Name("ApplyFtrl").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       ApplyFtrlOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
-REGISTER_KERNELS(CPU, Eigen::half);
-REGISTER_KERNELS(CPU, float);
-REGISTER_KERNELS(CPU, double);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 // Note, this op works on cpu only.
@@ -1000,13 +1013,15 @@ class SparseApplyFtrlOp : public OpKernel {
                               .TypeConstraint<T>("T")                \
                               .TypeConstraint<Tindices>("Tindices"), \
                           SparseApplyFtrlOp<CPUDevice, T, Tindices>);
+#define REGISTER_CPU_KERNELS(T) \
+  REGISTER_KERNELS(T, int32);   \
+  REGISTER_KERNELS(T, int64);
 
-REGISTER_KERNELS(Eigen::half, int32);
-REGISTER_KERNELS(Eigen::half, int64);
-REGISTER_KERNELS(float, int32);
-REGISTER_KERNELS(float, int64);
-REGISTER_KERNELS(double, int32);
-REGISTER_KERNELS(double, int64);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>
@@ -1068,10 +1083,11 @@ typedef Eigen::GpuDevice GPUDevice;
   REGISTER_KERNEL_BUILDER(                                             \
       Name("ApplyMomentum").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       ApplyMomentumOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
-REGISTER_KERNELS(CPU, Eigen::half);
-REGISTER_KERNELS(CPU, float);
-REGISTER_KERNELS(CPU, double);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
@@ -1094,6 +1110,7 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 // Note, this op works on cpu only.
@@ -1186,13 +1203,15 @@ class SparseApplyMomentumOp : public OpKernel {
                               .TypeConstraint<T>("T")                \
                               .TypeConstraint<Tindices>("Tindices"), \
                           SparseApplyMomentumOp<T, Tindices>);
+#define REGISTER_CPU_KERNELS(T) \
+  REGISTER_KERNELS(T, int32);   \
+  REGISTER_KERNELS(T, int64);
 
-REGISTER_KERNELS(Eigen::half, int32);
-REGISTER_KERNELS(Eigen::half, int64);
-REGISTER_KERNELS(float, int32);
-REGISTER_KERNELS(float, int64);
-REGISTER_KERNELS(double, int32);
-REGISTER_KERNELS(double, int64);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>
@@ -1283,10 +1302,11 @@ typedef Eigen::GpuDevice GPUDevice;
   REGISTER_KERNEL_BUILDER(                                         \
       Name("ApplyAdam").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       ApplyAdamOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
-REGISTER_KERNELS(CPU, Eigen::half);
-REGISTER_KERNELS(CPU, float);
-REGISTER_KERNELS(CPU, double);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
@@ -1314,6 +1334,7 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>
@@ -1398,10 +1419,11 @@ typedef Eigen::GpuDevice GPUDevice;
   REGISTER_KERNEL_BUILDER(                                            \
       Name("ApplyRMSProp").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       ApplyRMSPropOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
-REGISTER_KERNELS(CPU, Eigen::half);
-REGISTER_KERNELS(CPU, float);
-REGISTER_KERNELS(CPU, double);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
@@ -1426,6 +1448,7 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 }  // namespace tensorflow
