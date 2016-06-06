@@ -192,28 +192,29 @@ def train(graph,
   if not output_dir:
     raise ValueError('Output directory should be non-empty.')
 
-  global_step_tensor = contrib_variables.assert_or_get_global_step(
-      graph, global_step_tensor)
-  if global_step_tensor is None:
-    raise ValueError('No "global_step" was provided or found in the graph.')
+  with graph.as_default():
+    global_step_tensor = contrib_variables.assert_or_get_global_step(
+        graph, global_step_tensor)
+    if global_step_tensor is None:
+      raise ValueError('No "global_step" was provided or found in the graph.')
 
-  summary_writer = (get_summary_writer(output_dir)
-                    if supervisor_is_chief else None)
+    summary_writer = (get_summary_writer(output_dir)
+                      if supervisor_is_chief else None)
 
-  # TODO(ipolosukhin): Replace all functionality of Supervisor with Monitors.
-  if not supervisor_is_chief:
-    # monitors should run only on the chief.
-    monitors = []
-  elif not monitors:
-    monitors = monitors_lib.get_default_monitors(
-        loss_op=loss_op,
-        summary_op=logging_ops.get_summary_op(),
-        save_summary_steps=supervisor_save_summaries_steps,
-        summary_writer=summary_writer)
+    # TODO(ipolosukhin): Replace all functionality of Supervisor with Monitors.
+    if not supervisor_is_chief:
+      # monitors should run only on the chief.
+      monitors = []
+    elif not monitors:
+      monitors = monitors_lib.get_default_monitors(
+          loss_op=loss_op,
+          summary_op=logging_ops.get_summary_op(),
+          save_summary_steps=supervisor_save_summaries_steps,
+          summary_writer=summary_writer)
 
-  # Start monitors, can create graph parts.
-  for monitor in monitors:
-    monitor.begin(max_steps=max_steps)
+    # Start monitors, can create graph parts.
+    for monitor in monitors:
+      monitor.begin(max_steps=max_steps)
 
   supervisor = tf_supervisor.Supervisor(
       graph,
@@ -424,32 +425,32 @@ def evaluate(graph,
       eval steps were run.
     global_step: The global step this evaluation corresponds to.
   """
-  global_step_tensor = contrib_variables.assert_or_get_global_step(
-      graph, global_step_tensor)
+  with graph.as_default():
+    global_step_tensor = contrib_variables.assert_or_get_global_step(
+        graph, global_step_tensor)
+    for key, value in eval_dict.items():
+      if not summaries.is_summary_tag_unique(key):
+        continue
+      if isinstance(value, ops.Tensor):
+        summaries.summarize_tensor(value, tag=key)
 
-  for key, value in eval_dict.items():
-    if not summaries.is_summary_tag_unique(key):
-      continue
-    if isinstance(value, ops.Tensor):
-      summaries.summarize_tensor(value, tag=key)
+    # Create or get summary op, global_step and saver.
+    summary_op = logging_ops.get_summary_op()
+    saver = _get_saver()
+    local_init_op = _get_local_init_op()
+    ready_op = _get_ready_op()
 
-  # Create or get summary op, global_step and saver.
-  summary_op = logging_ops.get_summary_op()
-  saver = _get_saver()
-  local_init_op = _get_local_init_op()
-  ready_op = _get_ready_op()
+    session_manager = session_manager_lib.SessionManager(
+        local_init_op=local_init_op,
+        ready_op=ready_op)
+    session, initialized = session_manager.recover_session(
+        master=supervisor_master,
+        saver=saver,
+        checkpoint_dir=checkpoint_path)
 
-  session_manager = session_manager_lib.SessionManager(
-      local_init_op=local_init_op,
-      ready_op=ready_op)
-  session, initialized = session_manager.recover_session(
-      master=supervisor_master,
-      saver=saver,
-      checkpoint_dir=checkpoint_path)
-
-  # Start queue runners.
-  coord = coordinator.Coordinator()
-  threads = _start_queue_runners(session, coord)
+    # Start queue runners.
+    coord = coordinator.Coordinator()
+    threads = _start_queue_runners(session, coord)
 
   with session:
     if not initialized:
