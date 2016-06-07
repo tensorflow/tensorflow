@@ -111,8 +111,8 @@ class BaseEstimator(sklearn.BaseEstimator):
     self._model_dir = model_dir
     if self._model_dir is None:
       self._model_dir = tempfile.mkdtemp()
-      logging.info('Using temporary folder as model directory: %s',
-                   self._model_dir)
+      logging.warning('Using temporary folder as model directory: %s',
+                      self._model_dir)
 
     # Create a run configuration
     if config is None:
@@ -135,9 +135,8 @@ class BaseEstimator(sklearn.BaseEstimator):
 
     self._graph = None
 
-  def fit(
-      self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-      monitors=None):
+  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+          monitors=None):
     """Trains a model given training data `x` predictions and `y` targets.
 
     Args:
@@ -421,21 +420,20 @@ class BaseEstimator(sklearn.BaseEstimator):
                    monitors=None,
                    log_every_steps=100,
                    fail_on_nan_loss=True):
-    # TODO(wicke): This is a hack and needs to go.
-    if self._config.execution_mode not in ('all', 'train'):
-      return
+    # TODO(wicke): Remove this once Model and associated code are gone.
+    if hasattr(self._config, 'execution_mode'):
+      if self._config.execution_mode not in ('all', 'train'):
+        return
 
-    if not self._model_dir:
-      raise ValueError('Estimator\'s model_dir should be non-empty.')
-
-    # Stagger startup of worker sessions based on task id.
-    sleep_secs = min(self._config.training_worker_max_startup_secs,
-                     self._config.task *
-                     self._config.training_worker_session_startup_stagger_secs)
-    if sleep_secs:
-      logging.info('Waiting %d secs before starting task %d.', sleep_secs,
-                   self._config.task)
-      time.sleep(sleep_secs)
+      # Stagger startup of worker sessions based on task id.
+      sleep_secs = min(
+          self._config.training_worker_max_startup_secs,
+          self._config.task *
+          self._config.training_worker_session_startup_stagger_secs)
+      if sleep_secs:
+        logging.info('Waiting %d secs before starting task %d.', sleep_secs,
+                     self._config.task)
+        time.sleep(sleep_secs)
 
     # Device allocation
     device_fn = device_fn or self._device_fn
@@ -514,8 +512,9 @@ class BaseEstimator(sklearn.BaseEstimator):
                       feed_fn=None,
                       metrics=None,
                       name=''):
-    # TODO(wicke): This is a hack and needs to go.
-    if self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset'):
+    # TODO(wicke): Remove this once Model and associated code are gone.
+    if (hasattr(self._config, 'execution_mode') and
+        self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset')):
       return
 
     # Check that model has been trained.
