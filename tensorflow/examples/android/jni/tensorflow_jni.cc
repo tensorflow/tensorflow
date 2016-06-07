@@ -137,8 +137,7 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
   LOG(INFO) << "Creating session.";
   tensorflow::Status s = session->Create(tensorflow_graph);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
-    return -1;
+    LOG(FATAL) << "Could not create Tensorflow Graph: " << s;
   }
 
   // Clear the proto to save memory space.
@@ -302,8 +301,7 @@ static std::string ClassifyImage(const RGBA* const bitmap_src) {
           << g_num_runs << " runs)";
 
   if (!s.ok()) {
-    LOG(ERROR) << "Error during inference: " << s;
-    return "";
+    LOG(FATAL) << "Error during inference: " << s;
   }
 
   VLOG(0) << "Reading from layer " << output_names[0];
@@ -362,10 +360,9 @@ JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(classifyImageBmp)(JNIEnv* env,
            ANDROID_BITMAP_RESULT_SUCCESS);
   LOG(INFO) << "Image dimensions: " << info.width << "x" << info.height
             << " stride: " << info.stride;
-  // TODO(jiayq): deal with other formats if necessary.
+  // TODO(andrewharp): deal with other formats if necessary.
   if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
-    return env->NewStringUTF(
-        "Error: Android system is not using RGBA_8888 in default.");
+    LOG(FATAL) << "Only RGBA_8888 Bitmaps are supported.";
   }
 
   std::string result = ClassifyImage(static_cast<const RGBA*>(pixels));

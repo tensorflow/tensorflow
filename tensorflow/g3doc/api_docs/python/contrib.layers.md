@@ -146,7 +146,8 @@ subtraction, it usually shouldn't hurt much either.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `regularizer` does not return a scalar output.
+*  <b>`ValueError`</b>: If `regularizer` does not return a scalar output, or if we find
+      no weights.
 
 
 - - -

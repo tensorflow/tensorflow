@@ -569,11 +569,15 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   bool success =
       cm->RegisterCallback(token, [&calls]() { calls.StartCancel(); });
   if (!success) {
-    return errors::Cancelled("Step was cancelled");
+    calls.StartCancel();
   }
   calls.Wait();
-  cm->DeregisterCallback(token);
   call_opts->ClearCancelCallback();
+  if (success) {
+    cm->DeregisterCallback(token);
+  } else {
+    return errors::Cancelled("Step was cancelled");
+  }
 
   // Collects fetches.
   Status status = calls.status();
