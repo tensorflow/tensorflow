@@ -55,9 +55,13 @@ Parameters:
   activation_fn: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
   dropout: When not None, the probability we will drop out a given coordinate.
+  gradient_clip_norm: A float > 0. If provided, gradients are clipped
+    to their global norm with this clipping ratio. See tf.clip_by_global_norm
+    for more details.
+  config: RunConfig object to configure the runtime settings.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, config=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, config=None)` {#DNNRegressor.__init__}
 
 
 
