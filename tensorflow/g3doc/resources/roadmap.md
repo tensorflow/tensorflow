@@ -24,6 +24,7 @@ we do not have timelines for these features.
 
 ### Core Features
 * Repeated partial graph evaluation ([#672](https://github.com/tensorflow/tensorflow/issues/672))
+* Automatic op placement ([#2126](https://github.com/tensorflow/tensorflow/issues/2126))
 
 ### Platforms
 * OpenCL support ([#22](https://github.com/tensorflow/tensorflow/issues/22))
@@ -31,5 +32,7 @@ we do not have timelines for these features.
 
 ### Community
 * More educational resources
-* Better integration of TensorFlow into the opensource big data ecosystem ([#2655](https://github.com/tensorflow/tensorflow/issues/2655), [#2218](https://github.com/tensorflow/tensorflow/issues/2218))
+* Better integration of TensorFlow into the opensource big data ecosystem ([#1996](https://github.com/tensorflow/tensorflow/issues/1996),
+[#2218](https://github.com/tensorflow/tensorflow/issues/2218),
+[#2655](https://github.com/tensorflow/tensorflow/issues/2655))
 * Models benchmarking and comparison tooling
