@@ -796,11 +796,11 @@ A classifier for TensorFlow DNN models.
 
     def input_fn_eval: # returns x, Y
       pass
-    estimator.evaluate(input_fn_eval)
-    estimator.predict(x)
+    estimator.evaluate(input_fn=input_fn_eval)
+    estimator.predict(x=x)
     ```
 
-  Input of `fit`, `train`, and `evaluate` should have following features,
+  Input of `fit` and `evaluate` should have following features,
     otherwise there will be a `KeyError`:
       if `weight_column_name` is not `None`, a feature with
         `key=weight_column_name` whose value is a `Tensor`.
@@ -1140,11 +1140,11 @@ A regressor for TensorFlow DNN models.
 
     def input_fn_eval: # returns x, Y
       pass
-    estimator.evaluate(input_fn_eval)
-    estimator.predict(x)
+    estimator.evaluate(input_fn=input_fn_eval)
+    estimator.predict(x=x)
     ```
 
-  Input of `fit`, `train`, and `evaluate` should have following features,
+  Input of `fit` and `evaluate` should have following features,
     otherwise there will be a `KeyError`:
       if `weight_column_name` is not `None`, a feature with
         `key=weight_column_name` whose value is a `Tensor`.
@@ -2245,10 +2245,10 @@ Linear classifier model.
     ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x)
+  estimator.predict(x=x)
   ```
 
-  Input of `fit`, `train`, and `evaluate` should have following features,
+  Input of `fit` and `evaluate` should have following features,
     otherwise there will be a `KeyError`:
       if `weight_column_name` is not `None`, a feature with
         `key=weight_column_name` whose value is a `Tensor`.
@@ -2579,10 +2579,10 @@ Linear regressor model.
     ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x)
+  estimator.predict(x=x)
   ```
 
-  Input of `fit`, `train`, and `evaluate` should have following features,
+  Input of `fit` and `evaluate` should have following features,
     otherwise there will be a KeyError:
       if `weight_column_name` is not None:
         key=weight_column_name, value=a `Tensor`
@@ -4263,6 +4263,8 @@ Parameters:
     each GPU uniformly on the same machine.
   tf_random_seed: Random seed for TensorFlow initializers.
     Setting this value allows consistency between reruns.
+  save_summary_steps: Save summaries every this many steps.
+  save_checkpoints_secs: Save checkpoints every this many seconds.
   keep_checkpoint_max: The maximum number of recent checkpoint files to keep.
     As new files are created, older files are deleted.
     If None or 0, all checkpoint files are kept.
@@ -4279,7 +4281,7 @@ Attributes:
   keep_checkpoint_every_n_hours: Number of hours between each checkpoint.
 - - -
 
-#### `tf.contrib.learn.RunConfig.__init__(execution_mode='all', master='', task=0, num_ps_replicas=0, training_worker_session_startup_stagger_secs=5, training_worker_max_startup_secs=60, eval_delay_secs=60, eval_steps=100, num_cores=4, verbose=1, gpu_memory_fraction=1, tf_random_seed=42, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
+#### `tf.contrib.learn.RunConfig.__init__(execution_mode='all', master='', task=0, num_ps_replicas=0, training_worker_session_startup_stagger_secs=5, training_worker_max_startup_secs=60, eval_delay_secs=60, eval_steps=100, num_cores=4, verbose=1, gpu_memory_fraction=1, tf_random_seed=42, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
 
 
 
@@ -4394,7 +4396,7 @@ Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
 
 - - -
 
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_steps=100, feed_fn=None, max_steps=None, fail_on_nan_loss=True, monitors=None)` {#train}
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_steps=100, feed_fn=None, steps=None, fail_on_nan_loss=True, monitors=None)` {#train}
 
 Train a model.
 
@@ -4437,7 +4439,7 @@ program is terminated with exit code 1.
     `supervisor_save_summaries_steps` seconds when training.
 *  <b>`feed_fn`</b>: A function that is called every iteration to produce a `feed_dict`
     passed to `session.run` calls. Optional.
-*  <b>`max_steps`</b>: Train until `global_step_tensor` evaluates to this value.
+*  <b>`steps`</b>: Trains for this many steps (e.g. current global step + `steps`).
 *  <b>`fail_on_nan_loss`</b>: If true, raise `NanLossDuringTrainingError` if `loss_op`
     evaluates to `NaN`. If false, continue training as if nothing happened.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
