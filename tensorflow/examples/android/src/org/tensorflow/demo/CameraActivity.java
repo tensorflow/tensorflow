@@ -19,9 +19,8 @@ package org.tensorflow.demo;
 import android.Manifest;
 import android.app.Activity;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
 import android.view.WindowManager;
 import android.widget.Toast;
 
@@ -64,18 +63,24 @@ public class CameraActivity extends Activity {
   }
 
   private boolean hasPermission() {
-    if (ContextCompat.checkSelfPermission(this, PERMISSION_CAMERA) == PackageManager.PERMISSION_DENIED || ContextCompat.checkSelfPermission(this, PERMISSION_STORAGE) == PackageManager.PERMISSION_DENIED) {
-      return false;
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      if (checkSelfPermission(PERMISSION_CAMERA) == PackageManager.PERMISSION_DENIED || checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_DENIED) {
+        return false;
+      } else {
+        return true;
+      }
     } else {
       return true;
     }
   }
 
   private void getPermission() {
-    if (ActivityCompat.shouldShowRequestPermissionRationale(this, PERMISSION_CAMERA) || ActivityCompat.shouldShowRequestPermissionRationale(this, PERMISSION_STORAGE)) {
-      Toast.makeText(CameraActivity.this, "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG).show();
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      if (shouldShowRequestPermissionRationale(PERMISSION_CAMERA) || shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
+        Toast.makeText(CameraActivity.this, "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG).show();
+      }
+      requestPermissions(new String[]{PERMISSION_CAMERA, PERMISSION_STORAGE}, PERMISSIONS_REQUEST);
     }
-    ActivityCompat.requestPermissions(this, new String[]{PERMISSION_CAMERA, PERMISSION_STORAGE}, PERMISSIONS_REQUEST);
   }
 
   private void setFragment() {
