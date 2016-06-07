@@ -543,16 +543,43 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
 
     # Adding default metrics
     if metrics is None:
-      metrics = {"accuracy": metrics_lib.streaming_accuracy}
+      metrics = {("accuracy", "classes"): metrics_lib.streaming_accuracy}
 
     if self._n_classes == 2:
       predictions = math_ops.sigmoid(logits)
-      result["eval_auc"] = metrics_lib.streaming_auc(predictions, targets)
+      result["auc"] = metrics_lib.streaming_auc(predictions, targets)
 
     if metrics:
-      predictions = self._logits_to_predictions(logits, proba=False)
-      result.update(self._run_metrics(predictions, targets, metrics,
-                                      self._get_weight_tensor(features)))
+      class_metrics = {}
+      proba_metrics = {}
+      for name, metric_op in six.iteritems(metrics):
+        if isinstance(name, tuple):
+          if len(name) != 2:
+            raise ValueError("Ignoring metric {}. It returned a tuple with "
+                             "len {}, expected 2.".format(name, len(name)))
+          else:
+            if name[1] not in ["classes", "probabilities"]:
+              raise ValueError("Ignoring metric {}. The 2nd element of its "
+                               "name should be either 'classes' or "
+                               "'probabilities'.".format(name))
+            elif name[1] == "classes":
+              class_metrics[name[0]] = metric_op
+            else:
+              proba_metrics[name[0]] = metric_op
+        elif isinstance(name, str):
+          class_metrics[name] = metric_op
+        else:
+          raise ValueError("Ignoring metric {}. Its name is not in the correct "
+                           "form.".format(name))
+
+      if class_metrics:
+        predictions = self._logits_to_predictions(logits, proba=False)
+        result.update(self._run_metrics(predictions, targets, class_metrics,
+                                        self._get_weight_tensor(features)))
+      if proba_metrics:
+        predictions = self._logits_to_predictions(logits, proba=True)
+        result.update(self._run_metrics(predictions, targets, proba_metrics,
+                                        self._get_weight_tensor(features)))
 
     return result
 

@@ -265,13 +265,19 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertListEqual([0] * 4, list(classes))
 
   def testCustomMetrics(self):
-    """Tests weight column in evaluation."""
+    """Tests custom evaluation metrics."""
 
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1], [0], [0], [0]])
       features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
       return features, target
+
+    def _my_metric_op(predictions, targets):
+      # For the case of binary classification, the 2nd column of "predictions"
+      # denotes the model predictions.
+      predictions = tf.slice(predictions, [0, 1], [-1, 1])
+      return tf.reduce_sum(tf.mul(predictions, targets))
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -284,13 +290,33 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         steps=100,
         metrics={
             'my_accuracy': tf.contrib.metrics.streaming_accuracy,
-            'my_precision': tf.contrib.metrics.streaming_precision
+            ('my_precision', 'classes'): tf.contrib.metrics.streaming_precision,
+            ('my_metric', 'probabilities'): _my_metric_op
         })
-    self.assertTrue(set(['loss', 'my_accuracy', 'my_precision']).issubset(set(
-        scores.keys())))
+    self.assertTrue(
+        set(['loss', 'my_accuracy', 'my_precision', 'my_metric'
+            ]).issubset(set(scores.keys())))
     predictions = classifier.predict(input_fn=_input_fn_train)
     self.assertEqual(_sklearn.accuracy_score([1, 0, 0, 0], predictions),
                      scores['my_accuracy'])
+
+    # Test the case where the 2nd element of the key is neither "classes" nor
+    # "probabilities".
+    with self.assertRaises(ValueError):
+      classifier.evaluate(
+          input_fn=_input_fn_train,
+          steps=100,
+          metrics={('bad_name', 'bad_type'): tf.contrib.metrics.streaming_auc})
+
+    # Test the case where the tuple of the key doesn't have 2 elements.
+    with self.assertRaises(ValueError):
+      classifier.evaluate(
+          input_fn=_input_fn_train,
+          steps=100,
+          metrics={
+              ('bad_length_name', 'classes', 'bad_length'):
+                  tf.contrib.metrics.streaming_accuracy
+          })
 
   def testVariableQuery(self):
     """Tests bias is centered or not."""
