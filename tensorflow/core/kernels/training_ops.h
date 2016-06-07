@@ -45,10 +45,38 @@ struct ApplyAdadelta {
 };
 
 template <typename Device, typename T>
+struct FobosElasticNet {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstFlat grad);
+};
+
+template <typename Device, typename T>
+struct ApplyProximalGradientDescent {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstFlat grad);
+};
+
+template <typename Device, typename T>
 struct ApplyAdagrad {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad);
+};
+
+template <typename Device, typename T>
+struct ApplyProximalAdagrad {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
                   typename TTypes<T>::ConstFlat grad);
 };
 
