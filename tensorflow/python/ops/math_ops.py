@@ -143,6 +143,14 @@ common math computations that reduce various dimensions of a tensor.
 
 @@accumulate_n
 
+## Scan
+
+TensorFlow provides several operations that you can use to perform scans
+(running totals) across one axis of a tensor.
+
+@@cumsum
+@@cumprod
+
 ## Segmentation
 
 TensorFlow provides several operations that you can use to perform common
@@ -1583,6 +1591,74 @@ def tanh(x, name=None):
       return gen_math_ops._tanh(x, name=name)
 
 
+def cumsum(x, axis=0, reverse=False, name=None):
+    """Compute the cumulative sum of the tensor `x` along `axis`.
+
+    The output `out` at any given index i is equal to the sum of all
+    elements `x_j` of `x` with j <= i.
+
+    By setting the `reverse` operation to `True`, the sum is performed in the
+    reverse order. In contrast to using `tf.reverse`, this avoids copying the
+    tensor.
+
+    For example:
+
+    ```prettyprint
+    # tensor 'x' is [1, 2, 3, 4, 5]
+    tf.cumsum(x)               ==> [1, 3, 6, 10, 15]
+    tf.cumsum(x, reverse=True) ==> [15, 14, 12, 9, 5]
+    ```
+
+    Args:
+      x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+       `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+       `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+      axis: A `Tensor` of type `int32` (default: 0).
+      reverse: A `bool` (default: False).
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor`. Has the same type as `x`.
+    """
+    with ops.op_scope([x], name, "Cumsum") as name:
+      x = ops.convert_to_tensor(x, name="x")
+      return gen_math_ops.cumsum(x, axis, reverse, name=name)
+
+
+def cumprod(x, axis=0, reverse=False, name=None):
+    """Compute the cumulative product of the tensor `x` along `axis`.
+
+    The output `out` at any given index i is equal to the product of all
+    elements `x_j` of `x` with j <= i.
+
+    By setting the `reverse` operation to `True`, the product is performed in the
+    reverse order. In contrast to using `tf.reverse`, this avoids copying the
+    tensor.
+
+    For example:
+
+    ```prettyprint
+    # tensor 'x' is [1, 2, 3, 4, 5]
+    tf.cumprod(x)               ==> [1, 2, 6, 24, 120]
+    tf.cumprod(x, reverse=True) ==> [120, 120, 60, 20, 5]
+    ```
+
+    Args:
+      x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+       `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+       `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+      axis: A `Tensor` of type `int32` (default: 0).
+      reverse: A `bool` (default: False).
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor`. Has the same type as `x`.
+    """
+    with ops.op_scope([x], name, "Cumprod") as name:
+      x = ops.convert_to_tensor(x, name="x")
+      return gen_math_ops.cumprod(x, axis, reverse, name=name)
+
+
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
 ops.RegisterShape("Acos")(common_shapes.unchanged_shape)
 ops.RegisterShape("Asin")(common_shapes.unchanged_shape)
@@ -1630,6 +1706,8 @@ ops.RegisterShape("BatchFFT3D")(common_shapes.unchanged_shape)
 ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
 ops.RegisterShape("TanhGrad")(common_shapes.unchanged_shape)
 ops.RegisterShape("SigmoidGrad")(common_shapes.unchanged_shape)
+ops.RegisterShape("Cumsum")(common_shapes.unchanged_shape)
+ops.RegisterShape("Cumprod")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("Add")
