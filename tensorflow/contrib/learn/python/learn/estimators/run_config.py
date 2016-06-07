@@ -50,6 +50,8 @@ class RunConfig(object):
       each GPU uniformly on the same machine.
     tf_random_seed: Random seed for TensorFlow initializers.
       Setting this value allows consistency between reruns.
+    save_summary_steps: Save summaries every this many steps.
+    save_checkpoints_secs: Save checkpoints every this many seconds.
     keep_checkpoint_max: The maximum number of recent checkpoint files to keep.
       As new files are created, older files are deleted.
       If None or 0, all checkpoint files are kept.
@@ -80,6 +82,8 @@ class RunConfig(object):
                verbose=1,
                gpu_memory_fraction=1,
                tf_random_seed=42,
+               save_summary_steps=100,
+               save_checkpoints_secs=60,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000):
     self.execution_mode = execution_mode
@@ -98,5 +102,7 @@ class RunConfig(object):
                                  intra_op_parallelism_threads=num_cores,
                                  gpu_options=gpu_options)
     self.tf_random_seed = tf_random_seed
+    self.save_summary_steps = save_summary_steps
+    self.save_checkpoints_secs = save_checkpoints_secs
     self.keep_checkpoint_max = keep_checkpoint_max
     self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours

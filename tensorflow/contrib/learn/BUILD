@@ -439,6 +439,19 @@ py_test(
     ],
 )
 
+py_test(
+    name = "stability_test",
+    size = "small",
+    srcs = ["python/learn/tests/stability_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
 py_binary(
     name = "inspect_checkpoint",
     srcs = [

@@ -30,8 +30,9 @@ from six import reraise
 
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.layers.python.layers import summaries
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
+from tensorflow.contrib.learn.python.learn.utils import checkpoints
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -131,7 +132,7 @@ def train(graph,
           supervisor_save_model_secs=600,
           supervisor_save_summaries_steps=100,
           feed_fn=None,
-          max_steps=None,
+          steps=None,
           fail_on_nan_loss=True,
           monitors=None):
   """Train a model.
@@ -173,7 +174,7 @@ def train(graph,
       `supervisor_save_summaries_steps` seconds when training.
     feed_fn: A function that is called every iteration to produce a `feed_dict`
       passed to `session.run` calls. Optional.
-    max_steps: Train until `global_step_tensor` evaluates to this value.
+    steps: Trains for this many steps (e.g. current global step + `steps`).
     fail_on_nan_loss: If true, raise `NanLossDuringTrainingError` if `loss_op`
       evaluates to `NaN`. If false, continue training as if nothing happened.
     monitors: List of `BaseMonitor` subclass instances. Used for callbacks
@@ -198,6 +199,13 @@ def train(graph,
     if global_step_tensor is None:
       raise ValueError('No "global_step" was provided or found in the graph.')
 
+    # Get current step.
+    try:
+      start_step = checkpoints.load_variable(
+          output_dir, global_step_tensor.name)
+    except (errors.NotFoundError, ValueError):
+      start_step = 0
+
     summary_writer = (get_summary_writer(output_dir)
                       if supervisor_is_chief else None)
 
@@ -214,7 +222,7 @@ def train(graph,
 
     # Start monitors, can create graph parts.
     for monitor in monitors:
-      monitor.begin(max_steps=max_steps)
+      monitor.begin(max_steps=start_step + steps)
 
   supervisor = tf_supervisor.Supervisor(
       graph,
@@ -236,6 +244,7 @@ def train(graph,
     get_current_step = lambda: session.run(global_step_tensor)
 
     start_step = get_current_step()
+    max_steps = start_step + steps
     last_step = start_step
     last_log_step = start_step
     loss_value = None
@@ -376,6 +385,28 @@ def _start_queue_runners(session, coord):
   return threads
 
 
+def _eval_results_to_str(eval_results):
+  return ', '.join('%s = %s' % (k, v) for k, v in eval_results.items())
+
+
+def _write_summary_results(output_dir, eval_results, current_global_step):
+  """Writes eval results into summary file in given dir."""
+  logging.info('Saving evaluation summary for %d step: %s' % (
+      current_global_step, _eval_results_to_str(eval_results)))
+  summary_writer = get_summary_writer(output_dir)
+  summary = summary_pb2.Summary()
+  for key in eval_results:
+    if eval_results[key] is None:
+      continue
+    value = summary.value.add()
+    value.tag = key
+    if (isinstance(eval_results[key], np.float32) or
+        isinstance(eval_results[key], float)):
+      value.simple_value = float(eval_results[key])
+  summary_writer.add_summary(summary, current_global_step)
+  summary_writer.close()
+
+
 # TODO(ptucker): Add unit test.
 def evaluate(graph,
              output_dir,
@@ -428,14 +459,8 @@ def evaluate(graph,
   with graph.as_default():
     global_step_tensor = contrib_variables.assert_or_get_global_step(
         graph, global_step_tensor)
-    for key, value in eval_dict.items():
-      if not summaries.is_summary_tag_unique(key):
-        continue
-      if isinstance(value, ops.Tensor):
-        summaries.summarize_tensor(value, tag=key)
 
     # Create or get summary op, global_step and saver.
-    summary_op = logging_ops.get_summary_op()
     saver = _get_saver()
     local_init_op = _get_local_init_op()
     ready_op = _get_ready_op()
@@ -489,8 +514,7 @@ def evaluate(graph,
             duration = time.time() - start_time
             logging.info('Results after %d steps (%.3f sec/batch): %s.',
                          step, float(duration),
-                         ', '.join('%s = %s' % (k, v)
-                                   for k, v in eval_results.items()))
+                         _eval_results_to_str(eval_results))
       finally:
         if eval_results is None or step != eval_step:
           eval_results = session.run(eval_dict, feed_dict=feed_dict)
@@ -499,20 +523,6 @@ def evaluate(graph,
         coord.request_stop()
         coord.join(threads, stop_grace_period_secs=120)
 
-        # Make our own summary writer and write a summary to the eval dir.
-        # Only is feed_fn is not provided.
-        # TODO(ipolosukhin): Convert evaluation to use streaming_metrics,
-        # then we can save for non feed_fn as well.
-        if summary_op is not None and feed_fn is None:
-          summary_writer = None
-          try:
-            summary_writer = get_summary_writer(output_dir)
-            summary_str = session.run(summary_op)
-            if summary_str:
-              summary_writer.add_summary(summary_str, current_global_step)
-          finally:
-            if summary_writer:
-              summary_writer.close()
     # catch OutOfRangeError which is thrown when queue is out of data (and for
     # other reasons as well).
     except errors.OutOfRangeError as e:
@@ -526,6 +536,9 @@ def evaluate(graph,
         logging.info('Input iterator is exhausted.')
       else:
         logging.warn('Input iterator is exhausted: %s.', e)
+
+  # Save summaries for this evaluation.
+  _write_summary_results(output_dir, eval_results, current_global_step)
 
   return eval_results, current_global_step
 

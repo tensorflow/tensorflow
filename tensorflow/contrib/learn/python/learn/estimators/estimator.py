@@ -454,7 +454,7 @@ class BaseEstimator(sklearn.BaseEstimator):
       monitors += monitors_lib.get_default_monitors(
           loss_op=loss_op,
           summary_op=logging_ops.get_summary_op(),
-          save_summary_steps=100,
+          save_summary_steps=self._config.save_summary_steps,
           summary_writer=graph_actions.get_summary_writer(self._model_dir))
 
       is_chief = self._config.task == 0
@@ -478,8 +478,9 @@ class BaseEstimator(sklearn.BaseEstimator):
           log_every_steps=log_every_steps,
           supervisor_is_chief=is_chief,
           supervisor_master=self._config.master,
+          supervisor_save_model_secs=self._config.save_checkpoints_secs,
           feed_fn=feed_fn,
-          max_steps=steps,
+          steps=steps,
           fail_on_nan_loss=fail_on_nan_loss,
           monitors=monitors)
 
