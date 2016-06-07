@@ -20,7 +20,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import random
+# import random
 
 import tensorflow as tf
 
@@ -44,6 +44,7 @@ class StabilityTest(tf.test.TestCase):
 
   def testLinearRegression(self):
     # TODO(ipolosukhin): This doesn't pass at all, but should...
+    pass
 #     random.seed(42)
 #     boston = tf.contrib.learn.datasets.load_boston()
 #     regressor = tf.contrib.learn.LinearRegressor()
