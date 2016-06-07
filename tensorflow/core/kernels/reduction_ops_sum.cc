@@ -25,8 +25,8 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 // NOTE: We should have mean(complex64,int32), too. But that needs to
 // change Eigen::internal::MeanReducer to cast int to complex<float>.
 // We don't see immediate need of mean(complex64,int32) anyway.
-REGISTER_CPU_KERNELS(complex64);
-REGISTER_CPU_KERNELS(complex128);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA

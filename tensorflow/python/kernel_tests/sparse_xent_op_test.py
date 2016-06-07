@@ -30,6 +30,9 @@ from tensorflow.python.ops import sparse_ops
 class SparseXentTest(tf.test.TestCase):
 
   def _npXent(self, features, labels):
+    is_higher_dim = len(features.shape) > 2
+    features = np.reshape(features, [-1, features.shape[-1]])
+    labels = np.reshape(labels, [-1])
     batch_dim = 0
     class_dim = 1
     batch_size = features.shape[batch_dim]
@@ -40,14 +43,15 @@ class SparseXentTest(tf.test.TestCase):
     labels_mat[np.arange(batch_size), labels] = 1.0
     bp = (probs - labels_mat)
     l = -np.sum(labels_mat * np.log(probs + 1.0e-20), axis=1)
-    return l, bp
+    return l, bp, is_higher_dim
 
   def _testXent(self, np_features, np_labels, use_gpu=False):
-    np_loss, np_backprop = self._npXent(np_features, np_labels)
+    np_loss, np_backprop, is_higher_dim = self._npXent(np_features, np_labels)
     with self.test_session(use_gpu=use_gpu) as sess:
       loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
           np_features, np_labels)
-      backprop = loss.op.outputs[1]
+      backprop = (loss.op.inputs[0].op.outputs[1] if is_higher_dim
+                  else loss.op.outputs[1])
       tf_loss, tf_backprop = sess.run([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
     self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
@@ -70,14 +74,6 @@ class SparseXentTest(tf.test.TestCase):
   def testSingleClass(self):
     self._testSingleClass(use_gpu=True)
     self._testSingleClass(use_gpu=False)
-
-  def testRankTooLarge(self):
-    np_features = np.array(
-        [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]).astype(np.float32)
-    np_labels = np.array([1, 2])
-    self.assertRaisesRegexp(
-        ValueError, "must have rank 2",
-        tf.nn.sparse_softmax_cross_entropy_with_logits, np_features, np_labels)
 
   def testNpXent(self):
     # We create 2 batches of logits for testing.
@@ -104,7 +100,7 @@ class SparseXentTest(tf.test.TestCase):
     # With a hard 1, the backprop is [0.032 - 1.0 = -0.968, 0.087, 0.237, 0.644]
     # The loss for this batch is [1.0 * -log(0.25), 1.0 * -log(0.032)]
     # = [1.3862, 3.4420]
-    np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
+    np_loss, np_backprop, _ = self._npXent(np.array(features), np.array(labels))
     self.assertAllClose(np.array([[0.25, 0.25, 0.25, -0.75],
                                   [-0.968, 0.087, 0.237, 0.6439]]),
                         np_backprop,
@@ -114,15 +110,21 @@ class SparseXentTest(tf.test.TestCase):
 
   def testShapeMismatch(self):
     with self.test_session():
-      with self.assertRaises(ValueError):
+      with self.assertRaisesRegexp(ValueError, ".*Rank mismatch:*"):
         tf.nn.sparse_softmax_cross_entropy_with_logits(
-            [[0., 1.], [2., 3.]], [[0, 2]])
+            [[0., 1.], [2., 3.], [2., 3.]], [[0, 2]])
 
-  def testNotMatrix(self):
+  def testScalar(self):
     with self.test_session():
-      with self.assertRaises(ValueError):
+      with self.assertRaisesRegexp(ValueError, ".*Logits cannot be scalars*"):
         tf.nn.sparse_softmax_cross_entropy_with_logits(
-            [0., 1., 2., 3.], [0, 2])
+            tf.constant(1.0), tf.constant(0))
+
+  def testVector(self):
+    with self.test_session():
+      loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+          tf.constant([1.0]), tf.constant(0))
+      self.assertAllClose(0.0, loss.eval())
 
   def testFloat(self):
     for label_dtype in np.int32, np.int64:
@@ -154,6 +156,31 @@ class SparseXentTest(tf.test.TestCase):
       err = tf.test.compute_gradient_error(f, [3, 4], x, [3])
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
+
+  def _testHighDim(self, use_gpu, features, labels):
+    np_loss, np_backprop, _ = self._npXent(np.array(features), np.array(labels))
+    # manually reshape loss
+    np_loss = np.reshape(np_loss, np.array(labels).shape)
+    with self.test_session(use_gpu=use_gpu) as sess:
+      loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+          features, labels)
+      backprop = loss.op.inputs[0].op.outputs[1]
+      tf_loss, tf_backprop = sess.run([loss, backprop])
+    self.assertAllCloseAccordingToType(np_loss, tf_loss)
+    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
+
+  def testHighDim(self):
+    features = [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]
+    labels = [[3], [0]]
+    self._testHighDim(True, features, labels)
+    self._testHighDim(False, features, labels)
+
+  def testHighDim2(self):
+    features = [[[1., 1., 1., 1.], [2., 2., 2., 2.]],
+                [[1., 2., 3., 4.], [5., 6., 7., 8.]]]
+    labels = [[3, 2], [0, 3]]
+    self._testHighDim(True, features, labels)
+    self._testHighDim(False, features, labels)
 
 
 def _sparse_vs_dense_xent_benchmark_dense(labels, logits):

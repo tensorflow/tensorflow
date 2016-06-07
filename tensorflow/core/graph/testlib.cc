@@ -384,6 +384,15 @@ Node* GetSessionTensor(Graph* g, Node* in) {
   return ret;
 }
 
+Node* Relu(Graph* g, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Relu")
+                  .Input(in, 0)
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 void ToGraphDef(Graph* g, GraphDef* gdef) { g->ToGraphDef(gdef); }
 
 }  // end namespace graph

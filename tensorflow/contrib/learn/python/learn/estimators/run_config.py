@@ -24,79 +24,54 @@ from tensorflow.python import GPUOptions
 
 
 class RunConfig(object):
-  """This class specifies the specific configurations for the run.
+  """This class specifies the specific configurations for the run."""
 
-  Parameters:
-    execution_mode: Runners use this flag to execute different tasks, like
-      training vs evaluation. 'all' (the default) executes both training and
-      eval.
-    master: TensorFlow master. Empty string (the default) for local.
-    task: Task id of the replica running the training (default: 0).
-    num_ps_replicas: Number of parameter server tasks to use (default: 0).
-    training_worker_session_startup_stagger_secs: Seconds to sleep between the
-      startup of each worker task session (default: 5).
-    training_worker_max_startup_secs: Max seconds to wait before starting any
-      worker (default: 60).
-    eval_delay_secs: Number of seconds between the beginning of each eval run.
-      If one run takes more than this amount of time, the next run will start
-      immediately once that run completes (default 60).
-    eval_steps: Number of steps to run in each eval (default: 100).
-    num_cores: Number of cores to be used (default: 4).
-    verbose: Controls the verbosity, possible values:
-      0: the algorithm and debug information is muted.
-      1: trainer prints the progress.
-      2: log device placement is printed.
-    gpu_memory_fraction: Fraction of GPU memory used by the process on
-      each GPU uniformly on the same machine.
-    tf_random_seed: Random seed for TensorFlow initializers.
-      Setting this value allows consistency between reruns.
-    keep_checkpoint_max: The maximum number of recent checkpoint files to keep.
-      As new files are created, older files are deleted.
-      If None or 0, all checkpoint files are kept.
-      Defaults to 5 (that is, the 5 most recent checkpoint files are kept.)
-    keep_checkpoint_every_n_hours: Number of hours between each checkpoint
-      to be saved. The default value of 10,000 hours effectively disables
-      the feature.
-
-  Attributes:
-    tf_master: Tensorflow master.
-    tf_config: Tensorflow Session Config proto.
-    tf_random_seed: Tensorflow random seed.
-    keep_checkpoint_max: Maximum number of checkpoints to keep.
-    keep_checkpoint_every_n_hours: Number of hours between each checkpoint.
-  """
-
-  # TODO(wicke): Cull unused options.
+  # TODO(wicke): Move options out once functionality is covered by monitors
   def __init__(self,
-               execution_mode='all',
                master='',
                task=0,
                num_ps_replicas=0,
-               training_worker_session_startup_stagger_secs=5,
-               training_worker_max_startup_secs=60,
-               eval_delay_secs=60,
-               eval_steps=100,
                num_cores=4,
-               verbose=1,
+               log_device_placement=False,
                gpu_memory_fraction=1,
                tf_random_seed=42,
+               save_summary_steps=100,
+               save_checkpoints_secs=60,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000):
-    self.execution_mode = execution_mode
+    """Constructor.
+
+    Args:
+      master: TensorFlow master. Empty string (the default) for local.
+      task: Task id of the replica running the training (default: 0).
+      num_ps_replicas: Number of parameter server tasks to use (default: 0).
+      num_cores: Number of cores to be used (default: 4).
+      log_device_placement: Log the op placement to devices (default: False).
+      gpu_memory_fraction: Fraction of GPU memory used by the process on
+        each GPU uniformly on the same machine.
+      tf_random_seed: Random seed for TensorFlow initializers.
+        Setting this value allows consistency between reruns.
+      save_summary_steps: Save summaries every this many steps.
+      save_checkpoints_secs: Save checkpoints every this many seconds.
+      keep_checkpoint_max: The maximum number of recent checkpoint files to
+        keep. As new files are created, older files are deleted. If None or 0,
+        all checkpoint files are kept. Defaults to 5 (that is, the 5 most recent
+        checkpoint files are kept.)
+      keep_checkpoint_every_n_hours: Number of hours between each checkpoint
+        to be saved. The default value of 10,000 hours effectively disables
+        the feature.
+    """
     self.master = master
     self.task = task
     self.num_ps_replicas = num_ps_replicas
-    self.training_worker_session_startup_stagger_secs = (
-        training_worker_session_startup_stagger_secs)
-    self.training_worker_max_startup_secs = training_worker_max_startup_secs
-    self.eval_delay_secs = eval_delay_secs
-    self.eval_steps = eval_steps
     gpu_options = GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
-    self.tf_config = ConfigProto(log_device_placement=(verbose > 1),
+    self.tf_config = ConfigProto(log_device_placement=log_device_placement,
                                  inter_op_parallelism_threads=num_cores,
                                  intra_op_parallelism_threads=num_cores,
                                  gpu_options=gpu_options)
     self.tf_random_seed = tf_random_seed
+    self.save_summary_steps = save_summary_steps
+    self.save_checkpoints_secs = save_checkpoints_secs
     self.keep_checkpoint_max = keep_checkpoint_max
     self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours

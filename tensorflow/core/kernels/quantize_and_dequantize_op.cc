@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -107,15 +108,14 @@ struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
 };
 }  // namespace functor
 
-REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        QuantizeAndDequantizeOp<CPUDevice, float>);
-
-REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        QuantizeAndDequantizeOp<CPUDevice, double>);
+#define REGISTER_CPU_KERNEL(T)                           \
+  REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize") \
+                              .Device(DEVICE_CPU)        \
+                              .TypeConstraint<T>("T"),   \
+                          QuantizeAndDequantizeOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")

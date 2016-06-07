@@ -151,6 +151,7 @@ from tensorflow.python.ops import state_ops
 
 from tensorflow.python.training.adadelta import AdadeltaOptimizer
 from tensorflow.python.training.adagrad import AdagradOptimizer
+from tensorflow.python.training.proximal_adagrad import ProximalAdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
 from tensorflow.python.training.momentum import MomentumOptimizer
@@ -158,6 +159,7 @@ from tensorflow.python.training.moving_averages import ExponentialMovingAverage
 from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
+from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
 
 # Utility classes for training.

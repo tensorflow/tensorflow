@@ -97,13 +97,13 @@ class ReverseOp : public OpKernel {
                               .HostMemory("dims"),    \
                           ReverseOp<CPUDevice, T>)
 
-REGISTER_KERNEL(uint8);
-REGISTER_KERNEL(int8);
-REGISTER_KERNEL(int32);
-REGISTER_KERNEL(bool);
-REGISTER_KERNEL(Eigen::half);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_uint8(REGISTER_KERNEL);
+TF_CALL_int8(REGISTER_KERNEL);
+TF_CALL_int32(REGISTER_KERNEL);
+TF_CALL_bool(REGISTER_KERNEL);
+TF_CALL_half(REGISTER_KERNEL);
+TF_CALL_float(REGISTER_KERNEL);
+TF_CALL_double(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -129,13 +129,13 @@ namespace functor {
   DECLARE_GPU_SPEC_DIM(T, 7) \
   DECLARE_GPU_SPEC_DIM(T, 8)
 
-DECLARE_GPU_SPEC(uint8);
-DECLARE_GPU_SPEC(int8);
-DECLARE_GPU_SPEC(int32);
-DECLARE_GPU_SPEC(bool);
-DECLARE_GPU_SPEC(Eigen::half);
-DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(double);
+TF_CALL_uint8(DECLARE_GPU_SPEC);
+TF_CALL_int8(DECLARE_GPU_SPEC);
+TF_CALL_int32(DECLARE_GPU_SPEC);
+TF_CALL_bool(DECLARE_GPU_SPEC);
+TF_CALL_half(DECLARE_GPU_SPEC);
+TF_CALL_float(DECLARE_GPU_SPEC);
+TF_CALL_double(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_DIM
 }  // namespace functor
@@ -147,11 +147,11 @@ DECLARE_GPU_SPEC(double);
                               .TypeConstraint<T>("T") \
                               .HostMemory("dims"),    \
                           ReverseOp<GPUDevice, T>)
-REGISTER_GPU_KERNEL(uint8);
-REGISTER_GPU_KERNEL(int8);
-REGISTER_GPU_KERNEL(Eigen::half);
-REGISTER_GPU_KERNEL(float);
-REGISTER_GPU_KERNEL(double);
+TF_CALL_uint8(REGISTER_GPU_KERNEL);
+TF_CALL_int8(REGISTER_GPU_KERNEL);
+TF_CALL_half(REGISTER_GPU_KERNEL);
+TF_CALL_float(REGISTER_GPU_KERNEL);
+TF_CALL_double(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA

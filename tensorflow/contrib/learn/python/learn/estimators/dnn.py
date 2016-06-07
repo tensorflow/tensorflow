@@ -50,11 +50,11 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
 
       def input_fn_eval: # returns x, Y
         pass
-      estimator.evaluate(input_fn_eval)
-      estimator.predict(x)
+      estimator.evaluate(input_fn=input_fn_eval)
+      estimator.predict(x=x)
       ```
 
-    Input of `fit`, `train`, and `evaluate` should have following features,
+    Input of `fit` and `evaluate` should have following features,
       otherwise there will be a `KeyError`:
         if `weight_column_name` is not `None`, a feature with
           `key=weight_column_name` whose value is a `Tensor`.
@@ -145,11 +145,11 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
 
       def input_fn_eval: # returns x, Y
         pass
-      estimator.evaluate(input_fn_eval)
-      estimator.predict(x)
+      estimator.evaluate(input_fn=input_fn_eval)
+      estimator.predict(x=x)
       ```
 
-    Input of `fit`, `train`, and `evaluate` should have following features,
+    Input of `fit` and `evaluate` should have following features,
       otherwise there will be a `KeyError`:
         if `weight_column_name` is not `None`, a feature with
           `key=weight_column_name` whose value is a `Tensor`.

@@ -421,6 +421,12 @@ class Stream {
                           const dnn::BatchDescriptor &output_dimensions,
                           DeviceMemory<float> *output_data);
 
+  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                          const dnn::BatchDescriptor &input_dimensions,
+                          const DeviceMemory<Eigen::half> &input_data,
+                          const dnn::BatchDescriptor &output_dimensions,
+                          DeviceMemory<Eigen::half> *output_data);
+
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
                            const DeviceMemory<float> &input_data,
@@ -428,6 +434,14 @@ class Stream {
                            const DeviceMemory<float> &output_data,
                            const DeviceMemory<float> &input_diff_data,
                            DeviceMemory<float> *output_diff_data);
+
+  Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
+                           const dnn::BatchDescriptor &input_dimensions,
+                           const DeviceMemory<Eigen::half> &input_data,
+                           const dnn::BatchDescriptor &output_dimensions,
+                           const DeviceMemory<Eigen::half> &output_data,
+                           const DeviceMemory<Eigen::half> &input_diff_data,
+                           DeviceMemory<Eigen::half> *output_diff_data);
 
   Stream &ThenNormalize(const dnn::NormalizeDescriptor &normalize_descriptor,
                         const DeviceMemory<float> &input_data,
