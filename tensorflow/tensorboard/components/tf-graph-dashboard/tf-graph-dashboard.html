@@ -94,7 +94,7 @@ Polymer({
           name: runName,
           path: this.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
             tf.graph.LARGE_ATTRS_KEY),
-          runMetadata: _.map(runToMetadata[runName].sort(), function(tag) {
+          runMetadata: _.map(runToMetadata[runName], function(tag) {
             return {
               tag: tag,
               path: this.router.runMetadata(tag, runName)
