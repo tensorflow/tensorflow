@@ -157,10 +157,15 @@ EIGEN_STRONG_INLINE Packet8f pinterleave4x64<Packet8f>(const Packet8f& from) {
   return _mm256_castsi256_ps(_mm256_permute4x64_epi64(_mm256_castps_si256(from),
                                                       _MM_SHUFFLE(3, 1, 2, 0)));
 #else
-  __int64_t tmp1 = _mm256_extract_epi64(_mm256_castps_si256(from), 1);
-  __int64_t tmp2 = _mm256_extract_epi64(_mm256_castps_si256(from), 2);
-  __m256i tmp3 = _mm256_insert_epi64(_mm256_castps_si256(from), tmp1, 2);
-  return _mm256_castsi256_ps(_mm256_insert_epi64(tmp3, tmp2, 1));
+  auto tmp1 = _mm256_extract_epi32(_mm256_castps_si256(from), 2);
+  auto tmp2 = _mm256_extract_epi32(_mm256_castps_si256(from), 3);
+  auto tmp3 = _mm256_extract_epi32(_mm256_castps_si256(from), 4);
+  auto tmp4 = _mm256_extract_epi32(_mm256_castps_si256(from), 5);
+  auto tmp5 = _mm256_insert_epi32(_mm256_castps_si256(from), tmp1, 4);
+  tmp5 = _mm256_insert_epi32(tmp5, tmp2, 5);
+  tmp5 = _mm256_insert_epi32(tmp5, tmp3, 2);
+  tmp5 = _mm256_insert_epi32(tmp5, tmp4, 3);
+  return _mm256_castsi256_ps(tmp5);
 #endif
 }
 // Return a Packet with 4 floats loaded from 4 bfloat16 values
