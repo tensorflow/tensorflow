@@ -612,8 +612,8 @@ def sparse_mask(a, mask_indices, name=None):
   """Masks elements of `IndexedSlices`.
 
   Given an `IndexedSlices` instance `a`, returns another `IndexedSlices` that
-  contains a subset of the slices of `a`. Only the slices at indices specified
-  in `mask_indices` are returned.
+  contains a subset of the slices of `a`. Only the slices at indices not
+  specified in `mask_indices` are returned.
 
   This is useful when you need to extract a subset of slices in an
   `IndexedSlices` object.
@@ -627,7 +627,7 @@ def sparse_mask(a, mask_indices, name=None):
   tf.shape(a.values) => [4, 10]
 
   # `b` will be the subset of `a` slices at its second and third indices, so
-  # we want to mask of its first and last indices (which are at absolute
+  # we want to mask its first and last indices (which are at absolute
   # indices 12, 45)
   b = tf.sparse_mask(a, [12, 45])
 
