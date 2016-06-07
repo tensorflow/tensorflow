@@ -199,6 +199,30 @@ py_test(
 )
 
 py_test(
+    name = "experiment_test",
+    size = "small",
+    srcs = ["python/learn/tests/experiment_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "learn_runner_test",
+    size = "small",
+    srcs = ["python/learn/tests/learn_runner_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "tensor_signature_test",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
