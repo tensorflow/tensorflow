@@ -183,7 +183,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowLinearClassifier.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowLinearClassifier.predict}
 
-
+Predict class or regression for `x`.
 
 
 - - -

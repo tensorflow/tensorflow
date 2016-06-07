@@ -77,13 +77,13 @@ class TensorFlowDNNAutoencoder(TensorFlowBaseTransformer):
         continue_training=continue_training,
         config=config, verbose=verbose)
 
-  def _model_fn(self, X, y):
+  def _model_fn(self, x, y):
     encoder, decoder, autoencoder_estimator = models.get_autoencoder_model(
         self.hidden_units,
         models.linear_regression,
         activation=self.activation,
         add_noise=self.add_noise,
-        dropout=self.dropout)(X)
+        dropout=self.dropout)(x)
     self.encoder = encoder
     self.decoder = decoder
     return autoencoder_estimator

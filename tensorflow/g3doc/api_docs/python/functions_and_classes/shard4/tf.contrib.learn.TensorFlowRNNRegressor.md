@@ -6,7 +6,7 @@ Parameters:
   num_layers: The number of layers of the rnn model.
   input_op_fn: Function that will transform the input tensor, such as
     creating word embeddings, byte list, etc. This takes
-    an argument X for input and returns transformed X.
+    an argument x for input and returns transformed x.
   bidirectional: boolean, Whether this is a bidirectional rnn.
   sequence_length: If sequence_length is provided, dynamic calculation is
     performed. This saves computational time when unrolling past max sequence
@@ -189,10 +189,10 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowRNNRegressor.predict(x, axis=1, batch_size=None)` {#TensorFlowRNNRegressor.predict}
 
-Predict class or regression for X.
+Predict class or regression for `x`.
 
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
+For a classification model, the predicted class for each sample in `x` is
+returned. For a regression model, the predicted value based on `x` is
 returned.
 
 ##### Args:
@@ -217,7 +217,7 @@ returned.
 
 #### `tf.contrib.learn.TensorFlowRNNRegressor.predict_proba(x, batch_size=None)` {#TensorFlowRNNRegressor.predict_proba}
 
-Predict class probability of the input samples X.
+Predict class probability of the input samples `x`.
 
 ##### Args:
 

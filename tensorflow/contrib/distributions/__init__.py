@@ -27,6 +27,7 @@ initialized with parameters that define the distributions.
 
 ### Univariate (scalar) distributions
 
+@@Categorical
 @@Chi2
 @@Exponential
 @@Gamma
@@ -55,6 +56,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long
 
+from tensorflow.contrib.distributions.python.ops.categorical import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *

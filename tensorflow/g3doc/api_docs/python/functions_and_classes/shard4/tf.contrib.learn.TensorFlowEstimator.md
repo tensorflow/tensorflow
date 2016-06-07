@@ -1,7 +1,7 @@
 Base class for all TensorFlow estimators.
 
 Parameters:
-  model_fn: Model function, that takes input X, y tensors and outputs
+  model_fn: Model function, that takes input `x`, `y` tensors and outputs
     prediction and loss tensors.
   n_classes: Number of classes in the target.
   batch_size: Mini batch size.
@@ -179,10 +179,10 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowEstimator.predict(x, axis=1, batch_size=None)` {#TensorFlowEstimator.predict}
 
-Predict class or regression for X.
+Predict class or regression for `x`.
 
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
+For a classification model, the predicted class for each sample in `x` is
+returned. For a regression model, the predicted value based on `x` is
 returned.
 
 ##### Args:
@@ -207,7 +207,7 @@ returned.
 
 #### `tf.contrib.learn.TensorFlowEstimator.predict_proba(x, batch_size=None)` {#TensorFlowEstimator.predict_proba}
 
-Predict class probability of the input samples X.
+Predict class probability of the input samples `x`.
 
 ##### Args:
 

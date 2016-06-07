@@ -22,8 +22,10 @@ from __future__ import print_function
 import math
 import numpy as np
 
+# pylint: disable=g-bad-import-order
 from . import categorical_vocabulary
 from ..io.data_feeder import setup_processor_data_feeder
+# pylint: enable=g-bad-import-order
 
 
 class CategoricalProcessor(object):
@@ -56,18 +58,18 @@ class CategoricalProcessor(object):
     for vocab in self.vocabularies_:
       vocab.freeze(freeze)
 
-  def fit(self, X, unused_y=None):
-    """Learn a vocabulary dictionary of all categories in X.
+  def fit(self, x, unused_y=None):
+    """Learn a vocabulary dictionary of all categories in `x`.
 
     Args:
-      X: numpy matrix or iterable of lists/numpy arrays.
+      x: numpy matrix or iterable of lists/numpy arrays.
       unused_y: to match fit format signature of estimators.
 
     Returns:
       self
     """
-    X = setup_processor_data_feeder(X)
-    for row in X:
+    x = setup_processor_data_feeder(x)
+    for row in x:
       # Create vocabularies if not given.
       if self.vocabularies_ is None:
         # If not share, one per column, else one shared across.
@@ -89,34 +91,34 @@ class CategoricalProcessor(object):
     self.freeze()
     return self
 
-  def fit_transform(self, X, unused_y=None):
+  def fit_transform(self, x, unused_y=None):
     """Learn the vocabulary dictionary and return indexies of categories.
 
     Args:
-      X: numpy matrix or iterable of lists/numpy arrays.
+      x: numpy matrix or iterable of lists/numpy arrays.
       unused_y: to match fit_transform signature of estimators.
 
     Returns:
-      X: iterable, [n_samples]. Category-id matrix.
+      x: iterable, [n_samples]. Category-id matrix.
     """
-    self.fit(X)
-    return self.transform(X)
+    self.fit(x)
+    return self.transform(x)
 
-  def transform(self, X):
+  def transform(self, x):
     """Transform documents to category-id matrix.
 
     Converts categories to ids give fitted vocabulary from `fit` or
     one provided in the constructor.
 
     Args:
-      X: numpy matrix or iterable of lists/numpy arrays.
+      x: numpy matrix or iterable of lists/numpy arrays.
 
     Yields:
-      X: iterable, [n_samples]. Category-id matrix.
+      x: iterable, [n_samples]. Category-id matrix.
     """
     self.freeze()
-    X = setup_processor_data_feeder(X)
-    for row in X:
+    x = setup_processor_data_feeder(x)
+    for row in x:
       output_row = []
       for idx, value in enumerate(row):
         # Return <UNK> when it's Nan.

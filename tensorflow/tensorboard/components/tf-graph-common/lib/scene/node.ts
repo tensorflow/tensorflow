@@ -420,12 +420,11 @@ export function buildShape(nodeGroup, d, nodeClass: string) {
         stampType =
             groupNodeInfo.node.hasNonControlEdges ? 'vertical' : 'horizontal';
       }
-      scene
-          .selectOrCreateChild(
-              shapeGroup, 'use',
-              Class.Node.COLOR_TARGET + ' ' + groupNodeInfo.isFadedOut ?
-                  'faded-ellipse' :
-                  '')
+      let classList = [Class.Node.COLOR_TARGET];
+      if (groupNodeInfo.isFadedOut) {
+        classList.push('faded-ellipse');
+      }
+      scene.selectOrCreateChild(shapeGroup, 'use', classList)
           .attr('xlink:href', '#op-series-' + stampType + '-stamp');
       scene.selectOrCreateChild(shapeGroup, 'rect', Class.Node.COLOR_TARGET)
           .attr({rx: d.radius, ry: d.radius});

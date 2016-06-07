@@ -15,11 +15,11 @@ A regressor for TensorFlow DNN models.
         hidden_units=[1024, 512, 256])
 
     # Input builders
-    def input_fn_train: # returns X, Y
+    def input_fn_train: # returns x, Y
       pass
     estimator.fit(input_fn=input_fn_train)
 
-    def input_fn_eval: # returns X, Y
+    def input_fn_eval: # returns x, Y
       pass
     estimator.evaluate(input_fn_eval)
     estimator.predict(x)

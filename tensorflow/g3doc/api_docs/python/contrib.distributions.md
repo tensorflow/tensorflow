@@ -596,6 +596,207 @@ Variance of the distribution.
 
 - - -
 
+### `class tf.contrib.distributions.Categorical` {#Categorical}
+
+Categorical distribution.
+
+The categorical distribution is parameterized by the log-probabilities
+of a set of classes.
+
+Note, the following methods of the base class aren't implemented:
+  * mean
+  * cdf
+  * log_cdf
+- - -
+
+#### `tf.contrib.distributions.Categorical.__init__(logits, name='Categorical')` {#Categorical.__init__}
+
+Initialize Categorical distributions using class log-probabilities.
+
+##### Args:
+
+
+*  <b>`logits`</b>: An N-D `Tensor` representing the log probabilities of a set of
+      Categorical distributions. The first N - 1 dimensions index into a
+      batch of independent distributions and the last dimension indexes
+      into the classes.
+*  <b>`name`</b>: A name for this distribution (optional).
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.batch_shape(name='batch_shape')` {#Categorical.batch_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.cdf(value, name='cdf')` {#Categorical.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.dtype` {#Categorical.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.entropy(name='sample')` {#Categorical.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.event_shape(name='event_shape')` {#Categorical.event_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.get_batch_shape()` {#Categorical.get_batch_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.get_event_shape()` {#Categorical.get_event_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.is_reparameterized` {#Categorical.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.log_cdf(value, name='log_cdf')` {#Categorical.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.log_likelihood(value, name='log_likelihood')` {#Categorical.log_likelihood}
+
+Log likelihood of this distribution (same as log_pmf).
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.log_pmf(k, name='log_pmf')` {#Categorical.log_pmf}
+
+Log-probability of class `k`.
+
+##### Args:
+
+
+*  <b>`k`</b>: `int32` or `int64` Tensor.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  The log-probabilities of the classes indexed by `k`
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.logits` {#Categorical.logits}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.mean(name='mean')` {#Categorical.mean}
+
+Mean of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.mode(name='mode')` {#Categorical.mode}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.name` {#Categorical.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.num_classes` {#Categorical.num_classes}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.pmf(k, name='pmf')` {#Categorical.pmf}
+
+Probability of class `k`.
+
+##### Args:
+
+
+*  <b>`k`</b>: `int32` or `int64` Tensor.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  The probabilities of the classes indexed by `k`
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.sample(n, seed=None, name='sample')` {#Categorical.sample}
+
+Sample `n` observations from the Categorical distribution.
+
+##### Args:
+
+
+*  <b>`n`</b>: 0-D.  Number of independent samples to draw for each distribution.
+*  <b>`seed`</b>: Random seed (optional).
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  An `int64` `Tensor` with shape `[n, batch_shape, event_shape]`
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.std(name='std')` {#Categorical.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.variance(name='variance')` {#Categorical.variance}
+
+Variance of the distribution.
+
+
+
+- - -
+
 ### `class tf.contrib.distributions.Chi2` {#Chi2}
 
 The Chi2 distribution with degrees of freedom df.
@@ -2968,5 +3169,47 @@ will broadcast in the case of multidimensional sets of parameters.
 
 *  <b>`TypeError`</b>: if dtype of `s` does not match `dtype`, or `prior` is not a
     Normal object.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.contrib.distributions.batch_index(vectors, indices, name=None)` {#batch_index}
+
+Indexes into a batch of vectors.
+
+##### Args:
+
+
+*  <b>`vectors`</b>: An N-D Tensor.
+*  <b>`indices`</b>: A K-D integer Tensor, K <= N. The first K - 1 dimensions of indices
+      must be broadcastable to the first N - 1 dimensions of vectors.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  An N-D Tensor comprised of one element selected from each of the vectors.
+
+##### Example usage:
+
+  vectors = [[[1, 2, 3], [4, 5, 6]],
+             [[7, 8, 9], [1, 2, 3]]]
+
+  batch_index(vectors, 0)
+  => [[1, 4],
+      [7, 1]]
+
+  batch_index(vectors, [0])
+  => [[[1], [4]],
+      [[7], [1]]]
+
+  batch_index(vectors, [0, 0, 2, 2])
+  => [[[1, 1, 3, 3], [4, 4, 6, 6]],
+      [[7, 7, 9, 9], [1, 1, 3, 3]]]
+
+  batch_index(vectors, [[0, 0, 2, 2], [0, 1, 2, 0]])
+  => [[[1, 1, 3, 3], [4, 5, 6, 4]],
+      [[7, 7, 9, 9], [1, 2, 3, 1]]]
 
 

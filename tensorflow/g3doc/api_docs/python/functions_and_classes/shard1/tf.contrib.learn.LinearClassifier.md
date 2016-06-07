@@ -12,9 +12,9 @@ Linear classifier model.
       feature_columns=[impression_app_id, installed_x_impression])
 
   # Input builders
-  def input_fn_train: # returns X, Y
+  def input_fn_train: # returns x, y
     ...
-  def input_fn_eval: # returns X, Y
+  def input_fn_eval: # returns x, y
     ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)

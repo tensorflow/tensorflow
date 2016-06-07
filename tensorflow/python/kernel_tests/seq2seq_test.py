@@ -162,6 +162,17 @@ class Seq2SeqTest(tf.test.TestCase):
         res = sess.run([mem])
         self.assertEqual((2, 4), res[0].shape)
 
+        # Test when num_decoder_symbols is provided, the size of decoder output
+        # is num_decoder_symbols.
+        with tf.variable_scope("decoder_symbols_seq2seq"):
+          dec, mem = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
+              enc_inp, dec_inp, cell, num_symbols=5, num_decoder_symbols=3,
+              embedding_size=2)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(dec)
+        self.assertEqual(3, len(res))
+        self.assertEqual((2, 3), res[0].shape)
+
         # Test externally provided output projection.
         w = tf.get_variable("proj_w", [2, 5])
         b = tf.get_variable("proj_b", [5])

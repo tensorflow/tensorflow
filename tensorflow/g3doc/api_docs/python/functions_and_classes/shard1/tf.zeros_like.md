@@ -18,7 +18,7 @@ tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
 
 *  <b>`tensor`</b>: A `Tensor`.
 *  <b>`dtype`</b>: A type for the returned `Tensor`. Must be `float32`, `float64`,
-  `int8`, `int16`, `int32`, `int64`, `uint8`, or `complex64`.
+  `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
 

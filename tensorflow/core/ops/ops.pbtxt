@@ -38,6 +38,33 @@ op {
   description: "Given a tensor `x`, this operation returns a tensor containing the absolute\nvalue of each element in `x`. For example, if x is an input element and y is\nan output element, this operation computes \\\\(y = |x|\\\\)."
 }
 op {
+  name: "Acos"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes acos of x element-wise."
+}
+op {
   name: "Add"
   input_arg {
     name: "x"
@@ -902,6 +929,33 @@ op {
   summary: "Returns the index with the smallest value across dimensions of a tensor."
 }
 op {
+  name: "Asin"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes asin of x element-wise."
+}
+op {
   name: "Assert"
   input_arg {
     name: "condition"
@@ -1077,6 +1131,33 @@ op {
   }
   summary: "Update \'ref\' by subtracting \'value\' from it."
   description: "This operation outputs \"ref\" after the update is done.\nThis makes it easier to chain operations that need to use the reset value."
+}
+op {
+  name: "Atan"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes atan of x element-wise."
 }
 op {
   name: "AudioSummary"
@@ -8775,6 +8856,38 @@ op {
   description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file)."
 }
 op {
+  name: "ReaderReadUpTo"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a `Reader`."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "queue_handle"
+    description: "Handle to a `Queue`, with string work items."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "num_records"
+    description: "number of records to read from `Reader`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "keys"
+    description: "A 1-D tensor."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "values"
+    description: "A 1-D tensor."
+    type: DT_STRING
+  }
+  summary: "Returns up to `num_records` (key, value) pairs produced by a Reader."
+  description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file)."
+}
+op {
   name: "ReaderReset"
   input_arg {
     name: "reader_handle"
@@ -10207,12 +10320,17 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_INT64
+        type: DT_INT32
         type: DT_UINT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT8
-        type: DT_UINT16
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
         type: DT_HALF
       }
     }
@@ -10253,12 +10371,17 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_INT64
+        type: DT_INT32
         type: DT_UINT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT8
-        type: DT_UINT16
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
         type: DT_HALF
       }
     }
@@ -12781,6 +12904,33 @@ op {
   is_stateful: true
 }
 op {
+  name: "Tan"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes tan of x element-wise."
+}
+op {
   name: "Tanh"
   input_arg {
     name: "x"
@@ -13622,12 +13772,17 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
         type: DT_INT64
+        type: DT_INT32
         type: DT_UINT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT8
-        type: DT_UINT16
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
         type: DT_HALF
       }
     }
