@@ -100,10 +100,12 @@ class AvgPoolingOp : public UnaryOp<T> {
   TensorFormat data_format_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("AvgPool")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        AvgPoolingOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    AvgPoolingOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    AvgPoolingOp<CPUDevice, Eigen::half>);
 
 #if GOOGLE_CUDA
 template <typename T>
@@ -182,14 +184,17 @@ namespace functor {
       const Eigen::PaddingType& padding);                        \
   extern template struct SpatialAvgPooling<GPUDevice, T>;
 
+DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-REGISTER_KERNEL_BUILDER(Name("AvgPool")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        AvgPoolingOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    AvgPoolingOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    AvgPoolingOp<GPUDevice, float>);
 #endif  // GOOGLE_CUDA
 
 // The operation to compute AvgPool gradients.
@@ -301,7 +306,7 @@ class AvgPoolingGradOp : public OpKernel {
                            GetBroadcastSize(c, in_cols, window_cols, col_stride,
                                             pad_cols, &cindex, &csize));
 
-            T divide_coeff = 1.0 / (rsize * csize);
+            T divide_coeff(1.0 / (rsize * csize));
             int64 output_index =
                 (b * out_backprop_rows + r) * out_backprop_cols + c;
             for (int64 r_dst = rindex; r_dst < rindex + rsize; ++r_dst) {
@@ -347,6 +352,7 @@ class AvgPoolingGradOp : public OpKernel {
 
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 
 #if GOOGLE_CUDA
 
@@ -416,6 +422,12 @@ REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
                             .HostMemory("orig_input_shape")
                             .Label("cudnn"),
                         AvgPoolingGradOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
+                            .HostMemory("orig_input_shape")
+                            .Label("cudnn"),
+                        AvgPoolingGradOp<GPUDevice, Eigen::half>);
 
 // A custom GPU kernel based AvgPoolingGrad implementation. It includes the
 // padding as the candidates for the pooling operation.
@@ -532,6 +544,11 @@ REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
                             .TypeConstraint<float>("T")
                             .HostMemory("orig_input_shape"),
                         AvgPoolingGradOpCustomGPUKernel<float>);
+REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
+                            .HostMemory("orig_input_shape"),
+                        AvgPoolingGradOpCustomGPUKernel<Eigen::half>);
 
 #endif  // GOOGLE_CUDA
 
