@@ -123,19 +123,20 @@ class EigenAllocator : public ::Eigen::Allocator {
 #else
 class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
  public:
-  EigenCudaStreamDevice() : scratch_(nullptr) { Eigen::initializeDeviceProp(); }
+  EigenCudaStreamDevice() : scratch_(nullptr), semaphore_(nullptr) {
+    Eigen::initializeDeviceProp();
+  }
   ~EigenCudaStreamDevice() {
-    if (scratch_) {
-      deallocate(scratch_);
-    }
   }
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
-                    int gpu_id, ::tensorflow::Allocator* alloc) {
+                    int gpu_id, ::tensorflow::Allocator* alloc, char* scratch) {
     if (LogMemory::IsEnabled()) {
       operation_ = context->op_kernel().name() + "/EigenAllocator";
       step_id_ = context->step_id();
     }
-    assert(!scratch_);
+    scratch_ = scratch;
+    semaphore_ =
+        reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
     stream_ = cuda_stream;
     allocator_ = alloc;
     device_prop_ = &Eigen::m_deviceProperties[gpu_id];
@@ -172,11 +173,14 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   // Return a pointer to a per stream scratchpad of 1024 bytes residing
   // in global memory.
   void* scratchpad() const {
-    if (scratch_ == nullptr) {
-      scratch_ = allocate(1024);
-    }
     return scratch_;
   }
+
+  // Return a semaphore. The semaphore is initially initialized to 0, and
+  // each kernel using it is responsible for resetting to 0 upon completion
+  // to maintain the invariant that the semaphore is always equal to 0 upon
+  // each kernel start.
+  unsigned int* semaphore() const { return semaphore_; }
 
  private:
   struct AsyncFreeData {
@@ -205,7 +209,8 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   const cudaStream_t* stream_;          // Not owned.
   const cudaDeviceProp* device_prop_;   // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
-  mutable void* scratch_;
+  mutable char* scratch_;
+  mutable unsigned int* semaphore_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);
 };
@@ -261,6 +266,16 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
 
     streams_.push_back({stream, host_to_device_stream, device_to_host_stream,
                         device_to_device_stream});
+
+    perftools::gputools::DeviceMemory<char> mem =
+        executor_->AllocateArray<char>(Eigen::kCudaScratchSize +
+                                       sizeof(unsigned int));
+    scratch_.push_back(static_cast<char*>(mem.opaque()));
+    bool ok = executor_->SynchronousMemZero(
+        &mem, Eigen::kCudaScratchSize + sizeof(unsigned int));
+    if (!ok) {
+      LOG(FATAL) << "Failed to initialize device " << gpu_id;
+    }
 
     device_contexts_.push_back(
         new GPUDeviceContext(i, stream, host_to_device_stream,
@@ -486,9 +501,10 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
   ConcretePerOpGpuDevice() : device_(nullptr) {}
   void Reinitialize(OpKernelContext* context, gpu::Stream* stream,
-                    Allocator* base_allocator, ::tensorflow::EventMgr* em) {
+                    Allocator* base_allocator, ::tensorflow::EventMgr* em,
+                    char* scratch) {
     allocator_.Reinitialize(context, stream, base_allocator, em);
-    device_.Reinitialize(stream, &allocator_);
+    device_.Reinitialize(stream, &allocator_, scratch);
   }
 
   const Eigen::GpuDevice& device() const override { return device_; }
@@ -503,8 +519,9 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
   ConcretePerOpGpuDevice() : device_(&stream_device_) {}
 
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
-                    int gpu_id, Allocator* base_allocator) {
-    stream_device_.Reinitialize(context, cuda_stream, gpu_id, base_allocator);
+                    int gpu_id, Allocator* base_allocator, char* scratch) {
+    stream_device_.Reinitialize(context, cuda_stream, gpu_id, base_allocator,
+                                scratch);
   }
 
   const Eigen::GpuDevice& device() const override { return device_; }
@@ -524,11 +541,12 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
   DCHECK(concrete_device);
 #if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
   concrete_device->Reinitialize(context, streams_[stream_id].compute, allocator,
-                                em_.get());
+                                em_.get(), scratch_[stream_id]);
 #else
   const cudaStream_t* cuda_stream = reinterpret_cast<const cudaStream_t*>(
       streams_[stream_id].compute->implementation()->CudaStreamMemberHack());
-  concrete_device->Reinitialize(context, cuda_stream, gpu_id_, allocator);
+  concrete_device->Reinitialize(context, cuda_stream, gpu_id_, allocator,
+                                scratch_[stream_id]);
 #endif
 }
 
