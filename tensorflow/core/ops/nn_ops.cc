@@ -496,7 +496,7 @@ REGISTER_OP("AvgPool3D")
 Performs 3D average pooling on the input.
 
 ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -516,7 +516,7 @@ REGISTER_OP("AvgPool3DGrad")
 Computes gradients of average pooling function.
 
 ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -538,7 +538,7 @@ REGISTER_OP("MaxPool3D")
 Performs 3D max pooling on the input.
 
 ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -559,7 +559,7 @@ REGISTER_OP("MaxPool3DGrad")
 Computes gradients of max pooling function.
 
 ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
