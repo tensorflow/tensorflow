@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 
 #if GOOGLE_CUDA
@@ -202,17 +203,19 @@ struct MatMulFunctor<CPUDevice, T> {
                               .Label("cublas"),                    \
                           MatMulOp<GPUDevice, T, true /* cublas */>)
 
-REGISTER_CPU(float);
-REGISTER_CPU(double);
-REGISTER_CPU(int32);
-REGISTER_CPU(Eigen::half);
-REGISTER_CPU(complex64);
-REGISTER_CPU(complex128);
+TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
+TF_CALL_half(REGISTER_CPU);
+
+TF_CALL_int32(REGISTER_CPU);
+TF_CALL_complex64(REGISTER_CPU);
+TF_CALL_complex128(REGISTER_CPU);
+
 #if GOOGLE_CUDA
-REGISTER_GPU(float);
-REGISTER_GPU(double);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
 #if CUDA_VERSION >= 7050
-REGISTER_GPU(Eigen::half);
+TF_CALL_half(REGISTER_GPU);
 #endif
 #endif  // GOOGLE_CUDA
 

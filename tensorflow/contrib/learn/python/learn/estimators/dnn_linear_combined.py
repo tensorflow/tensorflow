@@ -397,12 +397,12 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       ...
     def input_fn_eval: # returns x, y
       ...
-    estimator.train(input_fn_train)
-    estimator.evaluate(input_fn_eval)
-    estimator.predict(x)
+    estimator.fit(input_fn=input_fn_train)
+    estimator.evaluate(input_fn=input_fn_eval)
+    estimator.predict(x=x)
     ```
 
-    Input of `fit`, `train`, and `evaluate` should have following features,
+    Input of `fit` and `evaluate` should have following features,
       otherwise there will be a `KeyError`:
         if `weight_column_name` is not `None`, a feature with
           `key=weight_column_name` whose value is a `Tensor`.

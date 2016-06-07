@@ -440,30 +440,65 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  `logits` must have the shape `[batch_size, num_classes]`
-  and dtype `float32` or `float64`.
-
-  `labels` must have the shape `[batch_size]` and dtype `int32` or `int64`.
+  A common use case is to have logits of shape `[batch_size, num_classes]` and
+  labels of shape `[batch_size]`. But higher dimensions are supported.
 
   Args:
-    logits: Unscaled log probabilities.
-    labels: Each entry `labels[i]` must be an index in `[0, num_classes)`. Other
-      values will result in a loss of 0, but incorrect gradient computations.
+    logits: Unscaled log probabilities of rank `r` and shape
+      `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
+    labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
+      `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
+      Other values will result in a loss of 0, but incorrect gradient
+      computations.
     name: A name for the operation (optional).
 
   Returns:
-    A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
-    softmax cross entropy loss.
+    A `Tensor` of the same shape as `labels` and of the same type as `logits`
+    with the softmax cross entropy loss.
+
+  Raises:
+    ValueError: If logits are scalars (need to have rank >= 1) or if the rank
+      of the labels is not equal to the rank of the labels minus one.
   """
   # TODO(pcmurray) Raise an error when the label is not an index in
   # [0, num_classes). Note: This could break users who call this with bad
   # labels, but disregard the bad results.
 
-  # The second output tensor contains the gradients.  We use it in
-  # _CrossEntropyGrad() in nn_grad but not here.
-  cost, unused_backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
-      logits, labels, name=name)
-  return cost
+  # Reshape logits and labels to rank 2.
+  with ops.op_scope([labels, logits], name,
+                    "SparseSoftmaxCrossEntropyWithLogits"):
+    labels = ops.convert_to_tensor(labels)
+    logits = ops.convert_to_tensor(logits)
+
+    # Store label shape for result later.
+    labels_static_shape = labels.get_shape()
+    labels_shape = array_ops.shape(labels)
+    if logits.get_shape().ndims is not None and logits.get_shape().ndims == 0:
+      raise ValueError("Logits cannot be scalars - received shape %s.",
+                       logits.get_shape())
+    if logits.get_shape().ndims is not None and (
+        labels_static_shape.ndims is not None and
+        labels_static_shape.ndims != logits.get_shape().ndims - 1):
+      raise ValueError("Rank mismatch: Labels rank (received %s) should equal "
+                       "logits rank (received %s) - 1.",
+                       labels_static_shape.ndims, logits.get_shape().ndims)
+    # Check if no reshapes are required.
+    if logits.get_shape().ndims == 2:
+      cost, _ = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+          logits, labels, name=name)
+      return cost
+    # Reshape logits to 2 dim, labels to 1 dim.
+    num_classes = array_ops.gather(array_ops.shape(logits),
+                                   array_ops.rank(logits) - 1)
+    logits = array_ops.reshape(logits, [-1, num_classes])
+    labels = array_ops.reshape(labels, [-1])
+    # The second output tensor contains the gradients.  We use it in
+    # _CrossEntropyGrad() in nn_grad but not here.
+    cost, _ = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+        logits, labels, name=name)
+    cost = array_ops.reshape(cost, labels_shape)
+    cost.set_shape(labels_static_shape)
+    return cost
 
 
 @ops.RegisterShape("SparseSoftmaxCrossEntropyWithLogits")

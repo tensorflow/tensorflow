@@ -2,6 +2,7 @@ build:cuda --crosstool_top=//third_party/gpus/crosstool
 build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true
 
 build --force_python=py$PYTHON_MAJOR_VERSION
+build --host_force_python=py$PYTHON_MAJOR_VERSION
 build --python$PYTHON_MAJOR_VERSION_path=$PYTHON_BINARY
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true

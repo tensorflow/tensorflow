@@ -99,6 +99,42 @@ def GetShrunkInceptionMaxPoolShapes(shrink=30):
 
 class PoolingTest(tf.test.TestCase):
 
+  def _VerifyOneType(self, pool_func, input_sizes, ksize, strides, padding,
+                     data_format, data_type, expected, use_gpu):
+    """Verifies the output values of the pooling function.
+
+    Args:
+      pool_func: Function to be called, co.MaxPool, co.AvgPool,
+        or the Lua version.
+      input_sizes: Input tensor dimensions.
+      ksize: The kernel size dimensions
+      strides: The stride dimensions
+      padding: Padding type.
+      data_format: The data format we use to run the pooling operation.
+      data_type: The data type to use to run the pooling operation.
+      expected: An array containing the expected operation outputs.
+      use_gpu: Whether we are running on GPU.
+    """
+    total_size = 1
+    for s in input_sizes:
+      total_size *= s
+    # Initializes the input tensor with array containing incrementing
+    # numbers from 1.
+    x = [f * 1.0 for f in range(1, total_size + 1)]
+    with self.test_session(use_gpu=use_gpu) as sess:
+      t = tf.constant(x, shape=input_sizes, dtype=data_type)
+      if data_format == "NCHW":
+        t = NHWCToNCHW(t)
+        ksize = NHWCToNCHW(ksize)
+        strides = NHWCToNCHW(strides)
+      t = pool_func(t, ksize=ksize, strides=strides, padding=padding,
+                    data_format=data_format)
+      if data_format == "NCHW":
+        t = NCHWToNHWC(t)
+      actual = t.eval()
+      self.assertAllCloseAccordingToType(expected, actual.flatten())
+      self.assertShapeEqual(actual, t)
+
   def _VerifyOneTest(self, pool_func, input_sizes, ksize, strides, padding,
                      data_format, expected, use_gpu):
     """Verifies the output values of the pooling function.
@@ -114,25 +150,12 @@ class PoolingTest(tf.test.TestCase):
       expected: An array containing the expected operation outputs.
       use_gpu: Whether we are running on GPU.
     """
-    total_size = 1
-    for s in input_sizes:
-      total_size *= s
-    # Initializes the input tensor with array containing incrementing
-    # numbers from 1.
-    x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
-      t = tf.constant(x, shape=input_sizes)
-      if data_format == "NCHW":
-        t = NHWCToNCHW(t)
-        ksize = NHWCToNCHW(ksize)
-        strides = NHWCToNCHW(strides)
-      t = pool_func(t, ksize=ksize, strides=strides, padding=padding,
-                    data_format=data_format)
-      if data_format == "NCHW":
-        t = NCHWToNHWC(t)
-      actual = t.eval()
-      self.assertAllClose(expected, actual.flatten())
-      self.assertShapeEqual(actual, t)
+    self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
+                        data_format, tf.float32, expected, use_gpu)
+
+    if not use_gpu or test_util.CudaSupportsHalfMatMulAndConv():
+      self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
+                          data_format, tf.float16, expected, use_gpu)
 
   def _VerifyValues(self, pool_func, input_sizes, ksize, strides, padding,
                     expected, use_gpu):
@@ -372,32 +395,40 @@ class PoolingTest(tf.test.TestCase):
 
   def testKernelSmallerThanStrideValid(self):
     for use_gpu in [True, False]:
-        self._VerifyValues(tf.nn.max_pool, input_sizes=[1, 7, 7, 1],
-                           ksize=[1, 2, 2, 1], strides=[1, 3, 3, 1],
-                           padding="VALID",
-                           expected=[9, 12, 30, 33],
-                           use_gpu=use_gpu)
+      self._VerifyValues(tf.nn.max_pool,
+                         input_sizes=[1, 7, 7, 1],
+                         ksize=[1, 2, 2, 1],
+                         strides=[1, 3, 3, 1],
+                         padding="VALID",
+                         expected=[9, 12, 30, 33],
+                         use_gpu=use_gpu)
 
-        self._VerifyValues(tf.nn.avg_pool, input_sizes=[1, 7, 7, 1],
-                           ksize=[1, 2, 2, 1], strides=[1, 3, 3, 1],
-                           padding="VALID",
-                           expected=[5, 8, 26, 29],
-                           use_gpu=use_gpu)
+      self._VerifyValues(tf.nn.avg_pool,
+                         input_sizes=[1, 7, 7, 1],
+                         ksize=[1, 2, 2, 1],
+                         strides=[1, 3, 3, 1],
+                         padding="VALID",
+                         expected=[5, 8, 26, 29],
+                         use_gpu=use_gpu)
 
   def testKernelSmallerThanStrideSame(self):
     for use_gpu in [True, False]:
-        for pool_func in [tf.nn.max_pool, tf.nn.avg_pool]:
-            self._VerifyValues(pool_func, input_sizes=[1, 3, 3, 1],
-                               ksize=[1, 1, 1, 1], strides=[1, 2, 2, 1],
-                               padding="SAME",
-                               expected=[1, 3, 7, 9],
-                               use_gpu=use_gpu)
+      for pool_func in [tf.nn.max_pool, tf.nn.avg_pool]:
+        self._VerifyValues(pool_func,
+                           input_sizes=[1, 3, 3, 1],
+                           ksize=[1, 1, 1, 1],
+                           strides=[1, 2, 2, 1],
+                           padding="SAME",
+                           expected=[1, 3, 7, 9],
+                           use_gpu=use_gpu)
 
-            self._VerifyValues(pool_func, input_sizes=[1, 4, 4, 1],
-                               ksize=[1, 1, 1, 1], strides=[1, 2, 2, 1],
-                               padding="SAME",
-                               expected=[1, 3, 9, 11],
-                               use_gpu=use_gpu)
+        self._VerifyValues(pool_func,
+                           input_sizes=[1, 4, 4, 1],
+                           ksize=[1, 1, 1, 1],
+                           strides=[1, 2, 2, 1],
+                           padding="SAME",
+                           expected=[1, 3, 9, 11],
+                           use_gpu=use_gpu)
 
   def _testDepthwiseMaxPoolInvalidConfig(self, in_size, ksize, strides,
                                          error_msg, use_gpu=False):
@@ -425,43 +456,49 @@ class PoolingTest(tf.test.TestCase):
   # The following are tests that verify that the CPU and GPU implementations
   # produce the same resuts.
   def _CompareMaxPoolingFwd(self, input_shape, ksize, strides, padding):
-    tensor_input = np.random.rand(*input_shape).astype(np.float32)
-    with self.test_session(use_gpu=True):
-      t = tf.constant(tensor_input, shape=input_shape)
-      out_op, _ = tf.nn.max_pool_with_argmax(t, ksize, strides, padding)
-      gpu_val = out_op.eval()
-    with self.test_session(use_gpu=False):
-      t = tf.constant(tensor_input, shape=input_shape)
-      out_op = tf.nn.max_pool(t, ksize, strides, padding)
-      cpu_val = out_op.eval()
-    self.assertAllClose(cpu_val, gpu_val, rtol=1e-5, atol=1e-5)
+    for dtype in np.float32, np.float16:
+      tensor_input = np.random.rand(*input_shape).astype(dtype)
+      with self.test_session(use_gpu=True):
+        t = tf.constant(tensor_input, shape=input_shape)
+        out_op, _ = tf.nn.max_pool_with_argmax(t, ksize, strides, padding)
+        gpu_val = out_op.eval()
+      with self.test_session(use_gpu=False):
+        t = tf.constant(tensor_input, shape=input_shape)
+        out_op = tf.nn.max_pool(t, ksize, strides, padding)
+        cpu_val = out_op.eval()
+      self.assertAllCloseAccordingToType(cpu_val, gpu_val)
 
   def _CompareMaxPoolingBk(self, input_shape, output_shape, ksize, strides,
                            padding):
-    # Generate numbers in a narrow range, so that there are many duplicates
-    # in the input.
-    tensor_input = np.random.random_integers(0, 3,
-                                             input_shape).astype(np.float32)
-    tensor_output = np.random.rand(*output_shape).astype(np.float32)
-    with self.test_session(use_gpu=True):
-      t = tf.constant(tensor_input, shape=input_shape)
-      _, argmax_op = tf.nn.max_pool_with_argmax(t, ksize, strides, padding)
-      argmax = argmax_op.eval()
-      grad_in = tf.constant(tensor_output, shape=output_shape)
-      out_op = gen_nn_ops._max_pool_grad_with_argmax(t, grad_in, argmax,
-                                                     ksize, strides, padding)
-      gpu_val = out_op.eval()
-      self.assertShapeEqual(gpu_val, out_op)
-    with self.test_session(use_gpu=False):
-      t = tf.constant(tensor_input, shape=input_shape)
-      out_op = tf.nn.max_pool(t, ksize, strides, padding)
-      orig_out = out_op.eval()
-      grad_in = tf.constant(tensor_output, shape=output_shape)
-      out_op = gen_nn_ops._max_pool_grad(t, orig_out, grad_in, ksize,
-                                         strides, padding)
-      cpu_val = out_op.eval()
-      self.assertShapeEqual(cpu_val, out_op)
-    self.assertAllClose(cpu_val, gpu_val, rtol=1e-5, atol=1e-5)
+    for dtype in np.float32, np.float16:
+      # Generate numbers in a narrow range, so that there are many duplicates
+      # in the input.
+      tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
+      tensor_output = np.random.rand(*output_shape).astype(dtype)
+      with self.test_session(use_gpu=True):
+        t = tf.constant(tensor_input, shape=input_shape)
+        _, argmax_op = tf.nn.max_pool_with_argmax(t, ksize, strides, padding)
+        argmax = argmax_op.eval()
+        grad_in = tf.constant(tensor_output, shape=output_shape)
+        out_op = gen_nn_ops._max_pool_grad_with_argmax(t, grad_in, argmax,
+                                                       ksize, strides, padding)
+        gpu_val = out_op.eval()
+        self.assertShapeEqual(gpu_val, out_op)
+      with self.test_session(use_gpu=False):
+        t = tf.constant(tensor_input, shape=input_shape)
+        out_op = tf.nn.max_pool(t, ksize, strides, padding)
+        orig_out = out_op.eval()
+        grad_in = tf.constant(tensor_output, shape=output_shape)
+        out_op = gen_nn_ops._max_pool_grad(t, orig_out, grad_in, ksize, strides,
+                                           padding)
+        cpu_val = out_op.eval()
+        self.assertShapeEqual(cpu_val, out_op)
+      if dtype == np.float16:
+        # The CPU version accumulates its gradient on fp16, so it's less
+        # accurate than the GPU version that does the accumulation on fp32
+        self.assertAllClose(cpu_val, gpu_val, rtol=0.01, atol=0.01)
+      else:
+        self.assertAllClose(cpu_val, gpu_val)
 
   def testMaxPoolingWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on GPU.

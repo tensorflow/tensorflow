@@ -169,6 +169,9 @@ Node* GetSessionTensor(Graph* g, Node* in);
 // given in "tensors".
 Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors);
 
+// Add a Relu node in "g".
+Node* Relu(Graph* g, Node* in);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow

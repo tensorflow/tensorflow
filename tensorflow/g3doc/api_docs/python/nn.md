@@ -690,7 +690,7 @@ The indices in `argmax` are flattened, so that a maximum value at position
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `float32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
     4-D with shape `[batch, height, width, channels]`.  Input to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 4`.
     The size of the window for each dimension of the input tensor.
@@ -706,7 +706,7 @@ The indices in `argmax` are flattened, so that a maximum value at position
 
   A tuple of `Tensor` objects (output, argmax).
 
-*  <b>`output`</b>: A `Tensor` of type `float32`. The max pooled output tensor.
+*  <b>`output`</b>: A `Tensor`. Has the same type as `input`. The max pooled output tensor.
 *  <b>`argmax`</b>: A `Tensor` of type `Targmax`. 4-D.  The flattened indices of the max values chosen for each output.
 
 
@@ -1244,23 +1244,30 @@ a probability distribution for each entry, see
 on `logits` internally for efficiency.  Do not call this op with the
 output of `softmax`, as it will produce incorrect results.
 
-`logits` must have the shape `[batch_size, num_classes]`
-and dtype `float32` or `float64`.
-
-`labels` must have the shape `[batch_size]` and dtype `int32` or `int64`.
+A common use case is to have logits of shape `[batch_size, num_classes]` and
+labels of shape `[batch_size]`. But higher dimensions are supported.
 
 ##### Args:
 
 
-*  <b>`logits`</b>: Unscaled log probabilities.
-*  <b>`labels`</b>: Each entry `labels[i]` must be an index in `[0, num_classes)`. Other
-    values will result in a loss of 0, but incorrect gradient computations.
+*  <b>`logits`</b>: Unscaled log probabilities of rank `r` and shape
+    `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
+*  <b>`labels`</b>: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
+    `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
+    Other values will result in a loss of 0, but incorrect gradient
+    computations.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
-  softmax cross entropy loss.
+  A `Tensor` of the same shape as `labels` and of the same type as `logits`
+  with the softmax cross entropy loss.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If logits are scalars (need to have rank >= 1) or if the rank
+    of the labels is not equal to the rank of the labels minus one.
 
 
 - - -
