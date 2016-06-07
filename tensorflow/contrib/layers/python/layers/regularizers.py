@@ -155,10 +155,13 @@ def apply_regularization(regularizer, weights_list=None):
     A scalar representing the overall regularization penalty.
 
   Raises:
-    ValueError: If `regularizer` does not return a scalar output.
+    ValueError: If `regularizer` does not return a scalar output, or if we find
+        no weights.
   """
   if not weights_list:
     weights_list = ops.get_collection(ops.GraphKeys.WEIGHTS)
+  if not weights_list:
+    raise ValueError('No weights to regularize.')
   with ops.op_scope(weights_list, 'get_regularization_penalty') as scope:
     penalties = [regularizer(w) for w in weights_list]
     for p in penalties:
