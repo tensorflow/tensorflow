@@ -32,6 +32,7 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import logging_ops
@@ -79,6 +80,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       will use `tf.nn.relu`.
     dnn_dropout: When not None, the probability we will drop out
       a given coordinate.
+    gradient_clip_norm: A float > 0. If provided, gradients are clipped
+      to their global norm with this clipping ratio. See tf.clip_by_global_norm
+      for more details.
     config: RunConfig object to configure the runtime settings.
 
     Raises:
@@ -96,6 +100,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
+               gradient_clip_norm=None,
                config=None):
     super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir,
                                                           config=config)
@@ -112,6 +117,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     self._dnn_weight_collection = "DNNLinearCombined_dnn"
     self._linear_weight_collection = "DNNLinearCombined_linear"
     self._centered_bias_weight_collection = "centered_bias"
+    self._gradient_clip_norm = gradient_clip_norm
 
   @property
   def linear_weights_(self):
@@ -162,6 +168,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     linear_vars = self._get_linear_vars()
     dnn_vars = self._get_dnn_vars()
     grads = gradients.gradients(loss, dnn_vars + linear_vars)
+    if self._gradient_clip_norm:
+      grads, _ = clip_ops.clip_by_global_norm(grads,
+                                              self._gradient_clip_norm)
+
     dnn_grads = grads[0:len(dnn_vars)]
     linear_grads = grads[len(dnn_vars):]
 
@@ -434,6 +444,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       will use `tf.nn.relu`.
     dnn_dropout: When not None, the probability we will drop out
       a given coordinate.
+    gradient_clip_norm: A float > 0. If provided, gradients are clipped
+      to their global norm with this clipping ratio. See tf.clip_by_global_norm
+      for more details.
     config: RunConfig object to configure the runtime settings.
 
     Raises:
@@ -453,6 +466,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
+               gradient_clip_norm=None,
                config=None):
 
     if n_classes < 2:
@@ -470,6 +484,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         dnn_hidden_units=dnn_hidden_units,
         dnn_activation_fn=dnn_activation_fn,
         dnn_dropout=dnn_dropout,
+        gradient_clip_norm=gradient_clip_norm,
         config=config)
 
   def predict(self, x=None, input_fn=None, batch_size=None):
@@ -652,6 +667,9 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       use `tf.nn.relu`.
     dnn_dropout: When not None, the probability we will drop out
       a given coordinate.
+    gradient_clip_norm: A float > 0. If provided, gradients are clipped
+      to their global norm with this clipping ratio. See tf.clip_by_global_norm
+      for more details.
     config: RunConfig object to configure the runtime settings.
 
     Raises:
@@ -669,6 +687,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
+               gradient_clip_norm=None,
                config=None):
     super(DNNLinearCombinedRegressor, self).__init__(
         model_dir=model_dir,
@@ -680,6 +699,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         dnn_hidden_units=dnn_hidden_units,
         dnn_activation_fn=dnn_activation_fn,
         dnn_dropout=dnn_dropout,
+        gradient_clip_norm=gradient_clip_norm,
         config=config)
 
   def predict(self, x=None, input_fn=None, batch_size=None):
