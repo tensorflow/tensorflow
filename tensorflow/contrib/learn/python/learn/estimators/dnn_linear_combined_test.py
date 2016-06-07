@@ -42,7 +42,14 @@ def _prepare_iris_data_for_logistic_regression():
   return iris
 
 
-def _iris_input_fn():
+def _iris_input_multiclass_fn():
+  iris = tf.contrib.learn.datasets.load_iris()
+  return {
+      'feature': tf.constant(iris.data, dtype=tf.float32)
+  }, tf.constant(iris.target, shape=[150, 1], dtype=tf.int32)
+
+
+def _iris_input_logistic_fn():
   iris = _prepare_iris_data_for_logistic_regression()
   return {
       'feature': tf.constant(iris.data, dtype=tf.float32)
@@ -64,8 +71,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=cont_features,
         dnn_hidden_units=[3, 3])
 
-    classifier.fit(input_fn=_iris_input_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    classifier.fit(input_fn=_iris_input_logistic_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testLogisticRegression_TensorData(self):
@@ -127,8 +134,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=cont_features,
         dnn_hidden_units=[3, 3])
 
-    classifier.fit(input_fn=_iris_input_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testWeightColumn(self):
@@ -210,8 +217,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         dnn_optimizer=tf.train.AdagradOptimizer(learning_rate=0.1))
 
-    classifier.fit(input_fn=_iris_input_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    classifier.fit(input_fn=_iris_input_logistic_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testCustomOptimizerByString(self):
@@ -230,8 +237,8 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         dnn_optimizer='Adagrad')
 
-    classifier.fit(input_fn=_iris_input_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    classifier.fit(input_fn=_iris_input_logistic_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testPredict(self):
