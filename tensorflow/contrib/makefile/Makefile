@@ -129,8 +129,8 @@ ifeq ($(TARGET),LINUX)
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
-	CXX := arm-linux-gnueabihf-g++
-	LDFLAGS := -L$(GENDIR)protobuf_pi/lib/ -Wl,--no-whole-archive
+	CXXFLAGS += -D__ANDROID_TYPES_SLIM__
+	LDFLAGS := -Wl,--no-whole-archive
 	LIBS += -ldl
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
 endif

@@ -37,6 +37,13 @@ limitations under the License.
 #define IS_MOBILE_PLATFORM
 #endif
 
+#elif defined(__arm__)
+#define PLATFORM_POSIX
+
+// Since there's no macro for the Raspberry Pi, assume we're on a mobile
+// platform if we're compiling for the ARM CPU.
+#define IS_MOBILE_PLATFORM
+
 #else
 // If no platform specified, use:
 #define PLATFORM_POSIX
