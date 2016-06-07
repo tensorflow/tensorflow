@@ -663,14 +663,35 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
       process_state->GetCPUAllocator(numa_node));
 }
 
-static int GetMinGPUMultiprocessorCount() {
+static int GetDefaultMinGPUMultiprocessorCount(gpu::Platform* gpu_manager) {
   static const int kDefaultMinGPUMultiprocessorCount = 8;
 
+  // Find the highest multi-processor count across all visible GPUs.
+  int max_count = -1;
+  for (int i = 0; i < gpu_manager->VisibleDeviceCount(); ++i) {
+    auto exec_status = gpu_manager->ExecutorForDevice(i);
+    if (!exec_status.ok()) {
+      continue;
+    }
+
+    gpu::StreamExecutor* se = exec_status.ValueOrDie();
+    const gpu::DeviceDescription& desc = se->GetDeviceDescription();
+    max_count = std::max(max_count, desc.core_count());
+  }
+
+  if (max_count < 0 || kDefaultMinGPUMultiprocessorCount < max_count) {
+    return kDefaultMinGPUMultiprocessorCount;
+  } else {
+    return max_count;
+  }
+}
+
+static int GetMinGPUMultiprocessorCount(gpu::Platform* gpu_manager) {
   const char* tf_min_gpu_core_count = getenv("TF_MIN_GPU_MULTIPROCESSOR_COUNT");
 
   if (tf_min_gpu_core_count == nullptr ||
       strcmp(tf_min_gpu_core_count, "") == 0) {
-    return kDefaultMinGPUMultiprocessorCount;
+    return GetDefaultMinGPUMultiprocessorCount(gpu_manager);
   }
 
   int min_gpu_core_count = -1;
@@ -680,11 +701,11 @@ static int GetMinGPUMultiprocessorCount() {
     }
   }
 
+  int count = GetDefaultMinGPUMultiprocessorCount(gpu_manager);
   LOG(ERROR) << "Invalid minimum GPU multiprocessor count: ["
              << tf_min_gpu_core_count << "]. "
-             << "Using the default value: "
-             << kDefaultMinGPUMultiprocessorCount;
-  return kDefaultMinGPUMultiprocessorCount;
+             << "Using the default value: " << count;
+  return count;
 }
 
 namespace {
@@ -747,14 +768,14 @@ std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
 
 void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
   auto gpu_manager = GPUMachineManager();
-  int min_gpu_core_count = GetMinGPUMultiprocessorCount();
   if (gpu_manager) {
     auto cuda_supported_capabilities = GetSupportedCudaComputeCapabilities();
     CHECK(!cuda_supported_capabilities.empty());
     CudaVersion min_supported_capability = *std::min_element(
         cuda_supported_capabilities.begin(), cuda_supported_capabilities.end());
 
-    auto visible_device_count = gpu_manager->VisibleDeviceCount();
+    int min_gpu_core_count = GetMinGPUMultiprocessorCount(gpu_manager);
+
     for (int i = 0; i < gpu_manager->VisibleDeviceCount(); ++i) {
       auto exec_status = gpu_manager->ExecutorForDevice(i);
       if (!exec_status.ok()) {
@@ -778,26 +799,18 @@ void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
         continue;
       }
 
-      // TensorFlow currently places computation on devices assuming
-      // they have similar capability.
-      //
-      // If there are multiple GPUs available on the machine, only
-      // consider GPUs with 8 or more multiprocessors.
-      //
-      // TODO(vrv): In the medium term: we should only filter out GPUs
-      // that are slow relative to the fastest GPU. In the long term,
-      // TensorFlow should support automatic placement based on
-      // capability.
-      if (visible_device_count > 1) {
-        if (desc.core_count() < min_gpu_core_count) {
-          LOG(INFO) << "Ignoring gpu device "
-                    << "(" << GetShortDeviceDescription(i, desc) << ") "
-                    << "with Cuda multiprocessor count: " << desc.core_count()
-                    << ". The minimum required count is " << min_gpu_core_count
-                    << ". You can adjust this requirement with the env var "
-                       "TF_MIN_GPU_MULTIPROCESSOR_COUNT.";
-          continue;
-        }
+      // Filter out slow GPUs. By default, GPUs with a lower multiprocessor
+      // count than the fastest GPU are filtered out, unless they have 8 or more
+      // multiprocessors. If the TF_MIN_GPU_MULTIPROCESSOR_COUNT environment
+      // variable is set, its value will be used to filter out GPUs.
+      if (desc.core_count() < min_gpu_core_count) {
+        LOG(INFO) << "Ignoring gpu device "
+                  << "(" << GetShortDeviceDescription(i, desc) << ") "
+                  << "with Cuda multiprocessor count: " << desc.core_count()
+                  << ". The minimum required count is " << min_gpu_core_count
+                  << ". You can adjust this requirement with the env var "
+                     "TF_MIN_GPU_MULTIPROCESSOR_COUNT.";
+        continue;
       }
 
       int new_id = ids->size();
