@@ -154,7 +154,7 @@ def read_batch_features(file_pattern, batch_size, features, reader,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.initialize_all_variables() as shown in the tests.
+      tf.initialize_local_variables() as shown in the tests.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     parser_num_threads: The number of threads to parse examples.
@@ -207,7 +207,7 @@ def read_batch_record_features(file_pattern, batch_size, features,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.initialize_all_variables() as shown in the tests.
+      tf.initialize_local_variables() as shown in the tests.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     parser_num_threads: The number of threads to parse examples.
