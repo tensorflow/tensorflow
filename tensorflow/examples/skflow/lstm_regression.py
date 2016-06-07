@@ -11,9 +11,20 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+"""This example builds a regressor based on recurrent networks:
+The objective is to predict continuous values, sin and cos functions in this example,
+based on previous observations using the LSTM architecture.
+"""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+
 from tensorflow.python.framework import dtypes
 from tensorflow.contrib import learn
 from sklearn.metrics import mean_squared_error
@@ -154,7 +165,7 @@ score = mean_squared_error(predicted, y['test'])
 print('MSE: %f' % score)
 
 
-# predicting cos-sin function
+# predicting cos-sin functions
 TIMESTEPS = 10
 RNN_LAYERS = [{'steps': TIMESTEPS}, {'steps': TIMESTEPS, 'keep_prob': 0.5}]
 DENSE_LAYERS = [2]
