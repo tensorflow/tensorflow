@@ -84,6 +84,10 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
     activation_fn: Activation function applied to each layer. If `None`, will
       use `tf.nn.relu`.
     dropout: When not None, the probability we will drop out a given coordinate.
+    gradient_clip_norm: A float > 0. If provided, gradients are clipped
+      to their global norm with this clipping ratio. See tf.clip_by_global_norm
+      for more details.
+    config: RunConfig object to configure the runtime settings.
   """
 
   def __init__(self,
@@ -95,6 +99,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                optimizer=None,
                activation_fn=nn.relu,
                dropout=None,
+               gradient_clip_norm=None,
                config=None):
     super(DNNClassifier, self).__init__(model_dir=model_dir,
                                         n_classes=n_classes,
@@ -104,6 +109,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                                         dnn_hidden_units=hidden_units,
                                         dnn_activation_fn=activation_fn,
                                         dnn_dropout=dropout,
+                                        gradient_clip_norm=gradient_clip_norm,
                                         config=config)
 
   def _get_train_ops(self, features, targets):
