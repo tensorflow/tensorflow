@@ -633,7 +633,8 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
     // trouble may manifest as slower than expected performance, or
     // outright failures.
     LOG(ERROR) << "Could not identify NUMA node of " << name
-               << ", defaulting to 0.";
+               << ", defaulting to 0.  Your kernel may not have been built "
+                  "with NUMA support.";
     numa_node = 0;
   }
 
