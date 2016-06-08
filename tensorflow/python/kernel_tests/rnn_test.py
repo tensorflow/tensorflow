@@ -52,6 +52,40 @@ class Plus1RNNCell(tf.nn.rnn_cell.RNNCell):
     return (input_ + 1, state + 1)
 
 
+class DummyMultiDimensionalLSTM(tf.nn.rnn_cell.RNNCell):
+  """LSTM Cell generating (output, new_state) = (input + 1, state + 1).
+
+  The input to this cell may have an arbitrary number of dimensions that follow
+  the preceding 'Time' and 'Batch' dimensions.
+  """
+
+  def __init__(self, dims):
+    """Initialize the Multi-dimensional LSTM cell.
+
+    Args:
+      dims: tuple that contains the dimensions of the output of the cell,
+      without including 'Time' or 'Batch' dimensions.
+    """
+    if not isinstance(dims, tuple):
+      raise TypeError("The dimensions passed to DummyMultiDimensionalLSTM"
+                      "should be a tuple of ints.")
+    self._dims = dims
+    self._output_size = tf.TensorShape(self._dims)
+    self._state_size = (tf.TensorShape(self._dims), tf.TensorShape(self._dims))
+
+  @property
+  def output_size(self):
+    return self._output_size
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  def __call__(self, input_, state, scope=None):
+    h, c = state
+    return (input_ + 1, (h + 1, c + 1))
+
+
 class TestStateSaver(object):
 
   def __init__(self, batch_size, state_size):
@@ -60,10 +94,19 @@ class TestStateSaver(object):
     self.saved_state = {}
 
   def state(self, name):
+
     if isinstance(self._state_size, dict):
-      return tf.zeros([self._batch_size, self._state_size[name]])
+      state_size = self._state_size[name]
     else:
-      return tf.zeros([self._batch_size, self._state_size])
+      state_size = self._state_size
+    if isinstance(state_size, int):
+      state_size = (state_size,)
+    elif isinstance(state_size, tuple):
+      pass
+    else:
+      raise TypeError("state_size should either be an int or a tuple")
+
+    return tf.zeros((self._batch_size,) + state_size)
 
   def save_state(self, name, state):
     self.saved_state[name] = state
@@ -1131,6 +1174,91 @@ class BidirectionalRNNTest(tf.test.TestCase):
                                                     use_shape=True)
     self._testBidirectionalRNNWithoutSequenceLength(use_gpu=True,
                                                     use_shape=True)
+
+
+class MultiDimensionalLSTMTest(tf.test.TestCase):
+
+  def setUp(self):
+    self._seed = 23489
+    np.random.seed(self._seed)
+
+  def testMultiDimensionalLSTMAllRNNContainers(self):
+    feature_dims = (3, 4, 5)
+    input_size = feature_dims
+    batch_size = 2
+    max_length = 8
+    sequence_length = [4, 6]
+    with self.test_session(graph=tf.Graph()) as sess:
+      inputs = max_length * [
+          tf.placeholder(tf.float32, shape=(None,) + input_size)]
+      inputs_using_dim = max_length * [
+          tf.placeholder(tf.float32, shape=(batch_size,) + input_size)]
+      inputs_c = tf.pack(inputs)
+      # Create a cell for the whole test. This is fine because the cell has no
+      # variables.
+      cell = DummyMultiDimensionalLSTM(feature_dims)
+      state_saver = TestStateSaver(batch_size, input_size)
+      outputs_static, state_static = tf.nn.rnn(
+          cell, inputs, dtype=tf.float32,
+          sequence_length=sequence_length)
+      outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
+          cell, inputs_c, dtype=tf.float32, time_major=True,
+          sequence_length=sequence_length)
+      outputs_bid, state_bid_fw, state_bid_bw = tf.nn.bidirectional_rnn(
+          cell, cell, inputs_using_dim, dtype=tf.float32,
+          sequence_length=sequence_length)
+      outputs_sav, state_sav = tf.nn.state_saving_rnn(
+          cell, inputs_using_dim, sequence_length=sequence_length,
+          state_saver=state_saver, state_name=("h", "c"))
+      for out, inp in zip(outputs_static, inputs):
+        self.assertEqual(out.get_shape().as_list(), inp.get_shape().as_list())
+      self.assertEqual(outputs_dynamic.get_shape().as_list(),
+                       inputs_c.get_shape().as_list())
+      for out, inp in zip(outputs_bid, inputs_using_dim):
+        input_shape_list = inp.get_shape().as_list()
+        # fwd and bwd activations are concatenated along the second dim.
+        input_shape_list[1] *= 2
+        self.assertEqual(out.get_shape().as_list(), input_shape_list)
+
+      tf.initialize_all_variables().run()
+
+      input_total_size = (batch_size,) + input_size
+      input_value = np.random.randn(*input_total_size)
+      outputs_static_v = sess.run(
+          outputs_static, feed_dict={inputs[0]: input_value})
+      outputs_dynamic_v = sess.run(
+          outputs_dynamic, feed_dict={inputs[0]: input_value})
+      outputs_bid_v = sess.run(
+          outputs_bid, feed_dict={inputs_using_dim[0]: input_value})
+      outputs_sav_v = sess.run(
+          outputs_sav, feed_dict={inputs_using_dim[0]: input_value})
+
+      self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
+      self.assertAllEqual(outputs_static_v, outputs_sav_v)
+      outputs_static_array = np.array(outputs_static_v)
+      outputs_static_array_double = np.concatenate(
+          (outputs_static_array, outputs_static_array), axis=2)
+      outputs_bid_array = np.array(outputs_bid_v)
+      self.assertAllEqual(outputs_static_array_double, outputs_bid_array)
+
+      state_static_v = sess.run(
+          state_static, feed_dict={inputs[0]: input_value})
+      state_dynamic_v = sess.run(
+          state_dynamic, feed_dict={inputs[0]: input_value})
+      state_bid_fw_v = sess.run(
+          state_bid_fw, feed_dict={inputs[0]: input_value})
+      state_bid_bw_v = sess.run(
+          state_bid_bw, feed_dict={inputs[0]: input_value})
+      state_sav_v = sess.run(
+          state_sav, feed_dict={inputs[0]: input_value})
+      self.assertAllEqual(
+          np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      self.assertAllEqual(
+          np.hstack(state_static_v), np.hstack(state_sav_v))
+      self.assertAllEqual(
+          np.hstack(state_static_v), np.hstack(state_bid_fw_v))
+      self.assertAllEqual(
+          np.hstack(state_static_v), np.hstack(state_bid_bw_v))
 
 
 ######### Benchmarking RNN code
