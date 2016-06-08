@@ -51,7 +51,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -309,7 +316,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -577,7 +591,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -878,7 +899,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -1174,9 +1202,13 @@ Parameters:
   activation_fn: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
   dropout: When not None, the probability we will drop out a given coordinate.
+  gradient_clip_norm: A float > 0. If provided, gradients are clipped
+    to their global norm with this clipping ratio. See tf.clip_by_global_norm
+    for more details.
+  config: RunConfig object to configure the runtime settings.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, config=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, config=None)` {#DNNRegressor.__init__}
 
 
 
@@ -1222,7 +1254,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -1492,7 +1531,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -1737,7 +1783,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -2272,9 +2325,13 @@ Parameters:
     will be multiplied by the loss of the example.
   optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
     will use an Ftrl optimizer.
+  gradient_clip_norm: A float > 0. If provided, gradients are clipped
+    to their global norm with this clipping ratio. See tf.clip_by_global_norm
+    for more details.
+  config: RunConfig object to configure the runtime settings.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, config=None)` {#LinearClassifier.__init__}
 
 
 
@@ -2320,7 +2377,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -2652,7 +2716,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -2922,7 +2993,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -3167,7 +3245,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -4030,7 +4115,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
@@ -4552,7 +4644,7 @@ All ops are added to the default graph.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If None, cycles through the dataset forever. NOTE - If specified,
     creates a variable that must be initialized, so call
-    tf.initialize_all_variables() as shown in the tests.
+    tf.initialize_local_variables() as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`parser_num_threads`</b>: The number of threads to parse examples.
@@ -4588,7 +4680,7 @@ See more detailed description in `read_examples`.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If None, cycles through the dataset forever. NOTE - If specified,
     creates a variable that must be initialized, so call
-    tf.initialize_all_variables() as shown in the tests.
+    tf.initialize_local_variables() as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`parser_num_threads`</b>: The number of threads to parse examples.

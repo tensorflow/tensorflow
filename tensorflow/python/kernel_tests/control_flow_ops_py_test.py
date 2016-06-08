@@ -1268,6 +1268,15 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), r.eval())
 
+  def testWhileGradGrad(self):
+    theta = tf.Variable(initial_value=1.)
+    def fn(x, prev):
+      return prev + x * theta
+    result = tf.scan(fn, [1., 2., 3.])
+    grad_theta = tf.gradients(result, theta)
+    with self.assertRaisesRegexp(TypeError, "Second-order gradient"):
+      tf.gradients(grad_theta, theta)
+
   def testOneValueCond(self):
     with self.test_session():
       c = tf.placeholder(tf.int32, shape=[])

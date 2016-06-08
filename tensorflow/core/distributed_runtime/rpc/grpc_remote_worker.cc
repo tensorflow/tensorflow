@@ -169,6 +169,9 @@ class GrpcRemoteWorker : public WorkerInterface {
                     AsyncMethod<RequestMessage, ResponseMessage> async_method,
                     StatusCallback done, CallOptions* call_opts = nullptr) {
     ::grpc::ClientContext* context = new ::grpc::ClientContext;
+    // The initialization and recovery protocols rely on blocking
+    // until we get a response.
+    context->set_fail_fast(false);
     if (call_opts) {
       call_opts->SetCancelCallback([context]() { context->TryCancel(); });
     }
