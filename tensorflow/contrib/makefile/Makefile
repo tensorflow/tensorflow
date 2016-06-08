@@ -36,7 +36,7 @@ HOST_BINDIR := $(MAKEFILE_DIR)/gen/host_bin/
 HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 
 # Which Eigen version we're using.
-EIGEN_HASH := d02e6a705c30
+EIGEN_HASH := 62a2305d5734
 
 # Settings for the host compiler.
 HOST_CXX := gcc
