@@ -8,7 +8,7 @@
 * Added iOS support
 * Added support for processing on GPUs on MacOS
 * Added makefile for better cross-platform build support (C API only)
-* fp16 support for many ops
+* fp16 support and improved complex128 support for many ops
 * Higher level functionality in contrib.{layers,losses,metrics,learn}
 * More features to Tensorboard
 * Improved support for string embedding and sparse features
