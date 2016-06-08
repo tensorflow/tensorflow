@@ -231,6 +231,9 @@ class Normal(distribution.ContinuousDistribution):
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s"
                           % (x.dtype, self.dtype))
+        # TODO(ebrevdo): wrap this in a Defun with a custom Defun
+        # gradient because the analytic gradient may be faster than
+        # automatic differentiation.
         return (0.5 + 0.5*math_ops.erf(
             1.0/(math.sqrt(2.0) * self._sigma)*(x - self._mu)))
 

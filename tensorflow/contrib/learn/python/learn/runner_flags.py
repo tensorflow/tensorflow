@@ -1,3 +1,4 @@
+# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,13 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for representing Bayesian computation.
+"""Defines FLAGS for running learn.Experiment."""
 
-## This package provides classes for Bayesian computation with TensorFlow.
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import,line-too-long
-from tensorflow.contrib.bayesflow.python.ops import stochastic_graph
+from tensorflow.python.platform import flags
+
+flags.DEFINE_string('schedule', 'local_run',
+                    'Schedule to run for this experiment. '
+                    'A schedule identifies a method on the Experiment '
+                    'instance returned by the function passed to the '
+                    'run() call')
+
+# TODO(ispir): Remove once we migrated customer pipilines.
+flags.DEFINE_string('execution_mode', 'all', 'Deprecated. Use FLAGS.schedule')
