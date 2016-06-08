@@ -1414,7 +1414,7 @@ op {
   attr {
     name: "ksize"
     type: "list(int)"
-    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[1] = 1`."
+    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[4] = 1`."
     has_minimum: true
     minimum: 5
   }
@@ -1480,7 +1480,7 @@ op {
   attr {
     name: "ksize"
     type: "list(int)"
-    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[1] = 1`."
+    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[4] = 1`."
     has_minimum: true
     minimum: 5
   }
@@ -6832,7 +6832,7 @@ op {
   attr {
     name: "ksize"
     type: "list(int)"
-    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[1] = 1`."
+    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[4] = 1`."
     has_minimum: true
     minimum: 5
   }
@@ -6902,7 +6902,7 @@ op {
   attr {
     name: "ksize"
     type: "list(int)"
-    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[1] = 1`."
+    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[4] = 1`."
     has_minimum: true
     minimum: 5
   }
