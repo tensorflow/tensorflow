@@ -42,3 +42,4 @@ from tensorflow.contrib.learn.python.learn.estimators.linear import TensorFlowRe
 from tensorflow.contrib.learn.python.learn.estimators.rnn import TensorFlowRNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.rnn import TensorFlowRNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig
+from tensorflow.contrib.learn.python.learn.estimators.sdca_optimizer import SDCAOptimizer

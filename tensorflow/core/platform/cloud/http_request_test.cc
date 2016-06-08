@@ -142,9 +142,27 @@ class FakeLibCurl : public LibCurl {
     v->push_back(str);
     return reinterpret_cast<curl_slist*>(v);
   }
+  char* curl_easy_escape(CURL* curl, const char* str, int length) override {
+    // This function just does a simple replacing of "/" with "%2F" instead of
+    // full url encoding.
+    const string victim = "/";
+    const string encoded = "%2F";
+
+    string temp_str = str;
+    std::string::size_type n = 0;
+    while ((n = temp_str.find(victim, n)) != std::string::npos) {
+      temp_str.replace(n, victim.size(), encoded);
+      n += encoded.size();
+    }
+    char* out_char_str = (char*)malloc(sizeof(char) * temp_str.size() + 1);
+    std::copy(temp_str.begin(), temp_str.end(), out_char_str);
+    out_char_str[temp_str.size()] = '\0';
+    return out_char_str;
+  }
   void curl_slist_free_all(curl_slist* list) override {
     delete reinterpret_cast<std::vector<string>*>(list);
   }
+  void curl_free(void* p) override { free(p); }
 
   // Variables defining the behavior of this fake.
   string response_content;
@@ -342,6 +360,14 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_NotInitialized) {
   ASSERT_TRUE(errors::IsFailedPrecondition(s));
   EXPECT_TRUE(StringPiece(s.error_message())
                   .contains("The object has not been initialized"));
+}
+
+TEST(HttpRequestTest, EscapeString) {
+  FakeLibCurl* libcurl = new FakeLibCurl("get response", 200);
+  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  TF_EXPECT_OK(http_request.Init());
+  const string test_string = "a/b/c";
+  EXPECT_EQ("a%2Fb%2Fc", http_request.EscapeString(test_string));
 }
 
 }  // namespace

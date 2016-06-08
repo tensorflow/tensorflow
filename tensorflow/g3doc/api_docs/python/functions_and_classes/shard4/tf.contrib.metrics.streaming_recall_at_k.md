@@ -24,7 +24,7 @@ recall value.
 *  <b>`predictions`</b>: A floating point tensor of dimension [batch_size, num_classes]
 *  <b>`labels`</b>: A tensor of dimension [batch_size] whose type is in `int32`,
     `int64`.
-*  <b>`k`</b>: The number of top elements to look at for computing precision.
+*  <b>`k`</b>: The number of top elements to look at for computing recall.
 *  <b>`ignore_mask`</b>: An optional, binary tensor whose size matches `labels`. If an
     element of `ignore_mask` is True, the corresponding prediction and label
     pair is used to compute the metrics. Otherwise, the pair is ignored.

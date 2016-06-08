@@ -14,21 +14,37 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 from sklearn import datasets, metrics, cross_validation
+import tensorflow as tf
+from tensorflow.contrib import layers
 from tensorflow.contrib import learn
 
-iris = datasets.load_iris()
-X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
-    test_size=0.2, random_state=42)
 
-def my_model(X, y):
-    """This is DNN with 10, 20, 10 hidden layers, and dropout of 0.1 probability."""
-    layers = learn.ops.dnn(X, [10, 20, 10], dropout=0.1)
-    return learn.models.logistic_regression(layers, y)
+def my_model(features, target):
+  """DNN with 10, 20, 10 hidden layers, and dropout of 0.1 probability."""
+  target = tf.one_hot(target, 3, 1, 0)
+  features = layers.stack(features, layers.fully_connected, [10, 20, 10])
+  prediction, loss = (
+      tf.contrib.learn.models.logistic_regression_zero_init(features, target)
+  )
+  train_op = tf.contrib.layers.optimize_loss(
+      loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
+      learning_rate=0.1)
+  return {'class': tf.argmax(prediction, 1), 'prob': prediction}, loss, train_op
 
-classifier = learn.TensorFlowEstimator(model_fn=my_model, n_classes=3,
-    steps=1000)
-classifier.fit(X_train, y_train)
-score = metrics.accuracy_score(y_test, classifier.predict(X_test))
-print('Accuracy: {0:f}'.format(score))
+
+def main(unused_argv):
+  iris = datasets.load_iris()
+  x_train, x_test, y_train, y_test = cross_validation.train_test_split(
+      iris.data, iris.target, test_size=0.2, random_state=42)
+
+  classifier = learn.Estimator(model_fn=my_model)
+  classifier.fit(x_train, y_train, steps=1000)
+
+  y_predicted = classifier.predict(x_test)
+  score = metrics.accuracy_score(y_test, y_predicted['class'])
+  print('Accuracy: {0:f}'.format(score))
+
+
+if __name__ == '__main__':
+  tf.app.run()

@@ -376,15 +376,6 @@ def _get_local_init_op():
   return local_init_op
 
 
-def _start_queue_runners(session, coord):
-  queue_runners = ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS)
-  threads = []
-  for qr in queue_runners:
-    threads.extend(qr.create_threads(session, coord=coord, daemon=True,
-                                     start=True))
-  return threads
-
-
 def _eval_results_to_str(eval_results):
   return ', '.join('%s = %s' % (k, v) for k, v in eval_results.items())
 
@@ -475,7 +466,7 @@ def evaluate(graph,
 
     # Start queue runners.
     coord = coordinator.Coordinator()
-    threads = _start_queue_runners(session, coord)
+    threads = queue_runner.start_queue_runners(session, coord)
 
   with session:
     if not initialized:
@@ -603,11 +594,14 @@ def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
       session.run(variables.initialize_local_variables())
       session.run(data_flow_ops.initialize_all_tables())
       coord = coordinator.Coordinator()
+      threads = None
       try:
-        queue_runner.start_queue_runners(session, coord=coord)
+        threads = queue_runner.start_queue_runners(session, coord=coord)
         return [session.run(output_dict, f) for f in feed_dicts]
       finally:
         coord.request_stop()
+        if threads:
+          coord.join(threads, stop_grace_period_secs=120)
 
 
 def infer(restore_checkpoint_path, output_dict, feed_dict=None):
