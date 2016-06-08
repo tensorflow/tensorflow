@@ -64,11 +64,7 @@ public class CameraActivity extends Activity {
 
   private boolean hasPermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      if (checkSelfPermission(PERMISSION_CAMERA) == PackageManager.PERMISSION_DENIED || checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_DENIED) {
-        return false;
-      } else {
-        return true;
-      }
+      return checkSelfPermission(PERMISSION_CAMERA) == PackageManager.PERMISSION_GRANTED && checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_GRANTED;
     } else {
       return true;
     }
