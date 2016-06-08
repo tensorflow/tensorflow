@@ -441,9 +441,11 @@ class DeprecatedMixin(object):
                        'weights. Please use weight column instead which '
                        'provides more granular control (per example).')
     if 'clip_gradients' in kwargs:
-      logging.warning('clip_gradients argument in %s is now ignored.' %
-                      this_class)
-      kwargs.pop('clip_gradients')
+      logging.warning('clip_gradients argument in %s is now converted to '
+                      'gradient_clip_norm.' % this_class)
+      kwargs['gradient_clip_norm'] = kwargs.pop('clip_gradients')
+    else:
+      kwargs['gradient_clip_norm'] = 5.0
     if 'continue_training' in kwargs:
       logging.warning('continue_training argument in %s is now ignored.' %
                       this_class)
