@@ -283,7 +283,7 @@ py_test(
 
 py_test(
     name = "linear_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
     srcs_version = "PY2AND3",
     deps = [
