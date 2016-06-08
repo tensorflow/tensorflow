@@ -13,7 +13,31 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Module for constructing RNN Cells."""
+"""Module for constructing RNN Cells.
+
+## Base interface for all RNN Cells
+
+@@RNNCell
+
+## RNN Cells for use with TensorFlow's core RNN methods
+
+@@BasicRNNCell
+@@BasicLSTMCell
+@@GRUCell
+@@LSTMCell
+
+## Classes storing split `RNNCell` state
+
+@@LSTMStateTuple
+
+## RNN Cell wrappers (RNNCells that wrap other RNNCells)
+
+@@MultiRNNCell
+@@DropoutWrapper
+@@EmbeddingWrapper
+@@InputProjectionWrapper
+@@OutputProjectionWrapper
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -24,6 +48,7 @@ import math
 import six
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import embedding_ops
@@ -132,6 +157,28 @@ def _packed_state(structure, state):
   return _sequence_like(structure, packed)
 
 
+def _state_size_with_prefix(state_size, prefix=None):
+  """Helper function that enables int or TensorShape shape specification.
+
+  This function takes a size specification, which can be an integer or a
+  TensorShape, and converts it into a list of integers. One may specify any
+  additional dimensions that precede the final state size specification.
+
+  Args:
+    state_size: TensorShape or int that specifies the size of a tensor.
+    prefix: optional additional list of dimensions to prepend.
+
+  Returns:
+    result_state_size: list of dimensions the resulting tensor size.
+  """
+  result_state_size = tensor_shape.as_shape(state_size).as_list()
+  if prefix is not None:
+    if not isinstance(prefix, list):
+      raise TypeError("prefix of _state_size_with_prefix should be a list.")
+    result_state_size = prefix + result_state_size
+  return result_state_size
+
+
 class RNNCell(object):
   """Abstract object representing an RNN cell.
 
@@ -172,12 +219,16 @@ class RNNCell(object):
 
   @property
   def state_size(self):
-    """Integer or tuple of integers: size(s) of state(s) used by this cell."""
+    """size(s) of state(s) used by this cell.
+
+    It can be represented by an Integer, a TensorShape or a tuple of Integers
+    or TensorShapes.
+    """
     raise NotImplementedError("Abstract method")
 
   @property
   def output_size(self):
-    """Integer: size of outputs produced by this cell."""
+    """Integer or TensorShape: size of outputs produced by this cell."""
     raise NotImplementedError("Abstract method")
 
   def zero_state(self, batch_size, dtype):
@@ -188,8 +239,8 @@ class RNNCell(object):
       dtype: the data type to use for the state.
 
     Returns:
-      If `state_size` is an int, then the return value is a `2-D` tensor of
-      shape `[batch_size x state_size]` filled with zeros.
+      If `state_size` is an int or TensorShape, then the return value is a
+      `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
       If `state_size` is a nested list or tuple, then the return value is
       a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -199,15 +250,17 @@ class RNNCell(object):
     if _is_sequence(state_size):
       state_size_flat = _unpacked_state(state_size)
       zeros_flat = [
-          array_ops.zeros(array_ops.pack([batch_size, s]), dtype=dtype)
+          array_ops.zeros(
+              array_ops.pack(_state_size_with_prefix(s, prefix=[batch_size])),
+              dtype=dtype)
           for s in state_size_flat]
       for s, z in zip(state_size_flat, zeros_flat):
-        z.set_shape([None, s])
+        z.set_shape(_state_size_with_prefix(s, prefix=[None]))
       zeros = _packed_state(structure=state_size, state=zeros_flat)
     else:
-      zeros = array_ops.zeros(
-          array_ops.pack([batch_size, state_size]), dtype=dtype)
-      zeros.set_shape([None, state_size])
+      zeros_size = _state_size_with_prefix(state_size, prefix=[batch_size])
+      zeros = array_ops.zeros(array_ops.pack(zeros_size), dtype=dtype)
+      zeros.set_shape(_state_size_with_prefix(state_size, prefix=[None]))
 
     return zeros
 
@@ -827,7 +880,7 @@ class MultiRNNCell(RNNCell):
     return cur_inp, new_states
 
 
-class SlimRNNCell(RNNCell):
+class _SlimRNNCell(RNNCell):
   """A simple wrapper for slim.rnn_cells."""
 
   def __init__(self, cell_fn):

@@ -35,7 +35,7 @@ class AckermannOp : public OpKernel {
     Tensor* output_tensor = NULL;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape(), &output_tensor));
-    auto output = output_tensor->template scalar<string>();
+    auto output = output_tensor->scalar<string>();
 
     output() = "A(m, 0) == A(m-1, 1)";
   }
