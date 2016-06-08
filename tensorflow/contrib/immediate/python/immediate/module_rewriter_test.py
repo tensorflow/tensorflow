@@ -5,6 +5,26 @@ import tensorflow.contrib.immediate as immediate
 from tensorflow.contrib.immediate.python.immediate import module_rewriter
 from tensorflow.contrib.immediate.python.immediate import test_util
 
+import contextlib
+import types
+
+
+@contextlib.contextmanager
+def contextwrap(op):
+  op.i = op.i+1
+  yield
+  op.i = op.i-1
+
+class Op(object):
+  def __init__(self, i):
+    self.i = i
+
+def f(i):
+  op = Op(i)
+  print(op.i)
+  with contextwrap(op) as wrap:
+    print op.i
+  print(op.i)
 
 class ModuleRewriterTest(test_util.TensorFlowTestCase):
 
@@ -13,13 +33,13 @@ class ModuleRewriterTest(test_util.TensorFlowTestCase):
 
     with self.test_env(tf) as env:
       symbol_rewriter = module_rewriter.ImmediateRewriter(env)
-      rewriter = immediate.ModuleRewriter(symbol_rewriter, "immediate.")
+      rewriter = module_rewriter.ModuleRewriter(symbol_rewriter, "immediate.")
       new_tf = rewriter(tf)
       env.__dict__['tf'] = new_tf
 
-      val1 = env.numpy_to_tensor(2)
-      val2 = env.numpy_to_tensor(3)
-      val3 = env.numpy_to_tensor([1, 2, 3, 4])
+      val1 = env.numpy_to_itensor(2)
+      val2 = env.numpy_to_itensor(3)
+      val3 = env.numpy_to_itensor([1, 2, 3, 4])
       new_tf.concat(0, [val3, val3])
 
       new_tf.add(val1, val2)
@@ -33,9 +53,9 @@ class ModuleRewriterTest(test_util.TensorFlowTestCase):
       new_tf.equal(val1, val2)
 
       new_tf.image.random_brightness(val4, 1.)
-      tensor1 = env.numpy_to_tensor([0, 0, 0, 0])
-      tensor2 = env.numpy_to_tensor([1, 1, 1, 1])
-      bool_tensor = env.numpy_to_tensor([True, False, True, False])
+      tensor1 = env.numpy_to_itensor([0, 0, 0, 0])
+      tensor2 = env.numpy_to_itensor([1, 1, 1, 1])
+      bool_tensor = env.numpy_to_itensor([True, False, True, False])
       new_tf.select(bool_tensor, tensor1, tensor2)
       new_tf.mod(5, 2)
       new_tf.cast(5, tf.float32)

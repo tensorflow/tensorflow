@@ -13,13 +13,12 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 py_library(
     name = "immediate_py",
     srcs = [
-        "python/immediate/env.py",
-        "python/immediate/tensor.py",
-        "python/immediate/op.py",
-	"python/immediate/module_rewriter.py",
-        "__init__.py",
-        "python/__init__.py",
-        "python/immediate/__init__.py",
+         "__init__.py",
+         "python/immediate/env.py",
+         "python/immediate/itensor.py",
+         "python/immediate/module_rewriter.py",
+         "python/immediate/op.py",
+         "python/immediate/util.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -74,6 +73,18 @@ py_test(
 )
 
 py_test(
+    name = "env_cache_test",
+    size = "small",
+    srcs = ["python/immediate/env_cache_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":immediate_py",
+	":immediate_test_lib",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
     name = "module_rewriter_test",
     size = "small",
     srcs = ["python/immediate/module_rewriter_test.py"],
@@ -86,9 +97,9 @@ py_test(
 )
 
 py_test(
-    name = "tensor_test",
+    name = "itensor_test",
     size = "small",
-    srcs = ["python/immediate/tensor_test.py"],
+    srcs = ["python/immediate/itensor_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":immediate_py",
@@ -172,23 +183,25 @@ py_test(
     ],
 )
 
+py_test(
+    name = "image_ops_double_test",
+    srcs = ["python/immediate/extra_tests/image_ops_double_test.py"],
+    size = "medium",
+    deps = [
+           ":immediate_py",
+           ":immediate_test_lib",
+           "//tensorflow:tensorflow_py",
+           ],
+
+    data = [
+        "//tensorflow/core:image_testdata",
+    ],
+)
+
 # TODO(yaroslavvb): tests below use ops that utilize ContextManager
 # constructs like op_scope and ops.colocate_with. Re-enable them once
 # ContextManager closures are copied in module_rewriter.
 # 
-# py_test(
-#     name = "special_math_ops_test",
-#     srcs = ["python/immediate/extra_tests/special_math_ops_test.py"],
-#     deps = [
-#            ":immediate_py",
-#            ":immediate_test_lib",
-#            "//tensorflow:tensorflow_py",
-#            "//tensorflow/python:framework_test_lib",
-#            "//tensorflow/python:platform_test",
-#            "//tensorflow/python:extra_py_tests_deps",
-#            "//tensorflow/python:kernel_tests/gradient_checker",
-#            ],
-# )
 
 # py_test(
 #     name = "nn_test2",
@@ -204,6 +217,21 @@ py_test(
 #            "//tensorflow/python:kernel_tests/gradient_checker",
 #            ],
 # )
+#
+# py_test(
+#     name = "special_math_ops_test",
+#     srcs = ["python/immediate/extra_tests/special_math_ops_test.py"],
+#     deps = [
+#            ":immediate_py",
+#            ":immediate_test_lib",
+#            "//tensorflow:tensorflow_py",
+#            "//tensorflow/python:framework_test_lib",
+#            "//tensorflow/python:platform_test",
+#            "//tensorflow/python:extra_py_tests_deps",
+#            "//tensorflow/python:kernel_tests/gradient_checker",
+#            ],
+# )
+
 
 # py_test(
 #     name = "control_flow_ops_test",
