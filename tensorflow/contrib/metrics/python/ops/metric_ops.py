@@ -469,7 +469,7 @@ def streaming_recall(predictions, labels, ignore_mask=None,
     labels: The ground truth values, a binary `Tensor` whose dimensions must
       match `predictions`.
     ignore_mask: An optional, binary tensor whose size matches `predictions`.
-    metrics_collections: An optional list of collections that `precision` should
+    metrics_collections: An optional list of collections that `recall` should
       be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
@@ -917,7 +917,7 @@ def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
     predictions: A floating point tensor of dimension [batch_size, num_classes]
     labels: A tensor of dimension [batch_size] whose type is in `int32`,
       `int64`.
-    k: The number of top elements to look at for computing precision.
+    k: The number of top elements to look at for computing recall.
     ignore_mask: An optional, binary tensor whose size matches `labels`. If an
       element of `ignore_mask` is True, the corresponding prediction and label
       pair is used to compute the metrics. Otherwise, the pair is ignored.
@@ -1054,16 +1054,17 @@ def streaming_sparse_precision_at_k(predictions,
   `streaming_sparse_precision_at_k` creates two local variables,
   `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
   the precision@k frequency. This frequency is ultimately returned as
-  `recall_at_<k>`: an idempotent operation that simply divides
-  `true_positive_at_<k>` by total (`true_positive_at_<k>` + `recall_at_<k>`). To
-  facilitate the estimation of precision@k over a stream of data, the function
-  utilizes three steps.
+  `precision_at_<k>`: an idempotent operation that simply divides
+  `true_positive_at_<k>` by total (`true_positive_at_<k>` +
+  `false_positive_at_<k>`). To facilitate the estimation of
+  precision@k over a stream of data, the function utilizes three
+  steps.
   * A `top_k` operation computes a tensor whose elements indicate the top `k`
     predictions of the `predictions` `Tensor`.
   * Set operations are applied to `top_k` and `labels` to calculate true
     positives and false positives.
   * An `update_op` operation increments `true_positive_at_<k>` and
-    `false_positive_at_<k>`. It also returns the recall value.
+    `false_positive_at_<k>`. It also returns the precision value.
 
   Args:
     predictions: Float `Tensor` with shape [D1, ... DN, num_classes] where
