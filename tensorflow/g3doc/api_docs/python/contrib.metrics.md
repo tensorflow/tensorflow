@@ -223,7 +223,7 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
 *  <b>`labels`</b>: The ground truth values, a binary `Tensor` whose dimensions must
     match `predictions`.
 *  <b>`ignore_mask`</b>: An optional, binary tensor whose size matches `predictions`.
-*  <b>`metrics_collections`</b>: An optional list of collections that `precision` should
+*  <b>`metrics_collections`</b>: An optional list of collections that `recall` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
@@ -389,7 +389,7 @@ recall value.
 *  <b>`predictions`</b>: A floating point tensor of dimension [batch_size, num_classes]
 *  <b>`labels`</b>: A tensor of dimension [batch_size] whose type is in `int32`,
     `int64`.
-*  <b>`k`</b>: The number of top elements to look at for computing precision.
+*  <b>`k`</b>: The number of top elements to look at for computing recall.
 *  <b>`ignore_mask`</b>: An optional, binary tensor whose size matches `labels`. If an
     element of `ignore_mask` is True, the corresponding prediction and label
     pair is used to compute the metrics. Otherwise, the pair is ignored.
@@ -739,16 +739,17 @@ If `class_id` is not specified, we'll calculate precision as how often on
 `streaming_sparse_precision_at_k` creates two local variables,
 `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
 the precision@k frequency. This frequency is ultimately returned as
-`recall_at_<k>`: an idempotent operation that simply divides
-`true_positive_at_<k>` by total (`true_positive_at_<k>` + `recall_at_<k>`). To
-facilitate the estimation of precision@k over a stream of data, the function
-utilizes three steps.
+`precision_at_<k>`: an idempotent operation that simply divides
+`true_positive_at_<k>` by total (`true_positive_at_<k>` +
+`false_positive_at_<k>`). To facilitate the estimation of
+precision@k over a stream of data, the function utilizes three
+steps.
 * A `top_k` operation computes a tensor whose elements indicate the top `k`
   predictions of the `predictions` `Tensor`.
 * Set operations are applied to `top_k` and `labels` to calculate true
   positives and false positives.
 * An `update_op` operation increments `true_positive_at_<k>` and
-  `false_positive_at_<k>`. It also returns the recall value.
+  `false_positive_at_<k>`. It also returns the precision value.
 
 ##### Args:
 
