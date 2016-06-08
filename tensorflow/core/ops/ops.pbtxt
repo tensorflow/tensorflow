@@ -4825,7 +4825,7 @@ op {
       }
     }
   }
-  summary: "Extract `patches` from `images` and puth them in the \"depth\" output dimension."
+  summary: "Extract `patches` from `images` and put them in the \"depth\" output dimension."
 }
 op {
   name: "FFT"
