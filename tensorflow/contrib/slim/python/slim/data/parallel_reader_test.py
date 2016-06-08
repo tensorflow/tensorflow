@@ -124,7 +124,7 @@ class SinglePassReadTest(tf.test.TestCase):
 
     key, value = slim.parallel_reader.single_pass_read(
         tfrecord_path, reader_class=tf.TFRecordReader)
-    init_op = tf.initialize_all_variables()
+    init_op = tf.initialize_local_variables()
 
     with self.test_session() as sess:
       sess.run(init_op)
@@ -142,7 +142,7 @@ class SinglePassReadTest(tf.test.TestCase):
 
     key, value = slim.parallel_reader.single_pass_read(
         tfrecord_path, reader_class=tf.TFRecordReader)
-    init_op = tf.initialize_all_variables()
+    init_op = tf.initialize_local_variables()
 
     with self.test_session() as sess:
       sess.run(init_op)

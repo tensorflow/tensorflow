@@ -73,6 +73,10 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       will be multiplied by the loss of the example.
     optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
       will use an Ftrl optimizer.
+    gradient_clip_norm: A float > 0. If provided, gradients are clipped
+      to their global norm with this clipping ratio. See tf.clip_by_global_norm
+      for more details.
+    config: RunConfig object to configure the runtime settings.
   """
 
   def __init__(self,
@@ -81,6 +85,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                n_classes=2,
                weight_column_name=None,
                optimizer=None,
+               gradient_clip_norm=None,
                config=None):
     super(LinearClassifier, self).__init__(
         model_dir=model_dir,
@@ -88,6 +93,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         weight_column_name=weight_column_name,
         linear_feature_columns=feature_columns,
         linear_optimizer=optimizer,
+        gradient_clip_norm=gradient_clip_norm,
         config=config)
 
   def _get_train_ops(self, features, targets):

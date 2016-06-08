@@ -55,9 +55,13 @@ Parameters:
   activation_fn: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
   dropout: When not None, the probability we will drop out a given coordinate.
+  gradient_clip_norm: A float > 0. If provided, gradients are clipped
+    to their global norm with this clipping ratio. See tf.clip_by_global_norm
+    for more details.
+  config: RunConfig object to configure the runtime settings.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, config=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, config=None)` {#DNNRegressor.__init__}
 
 
 
@@ -103,7 +107,14 @@ Evaluates given model with provided evaluation data.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
     forever.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
-    are used; if {}, no metrics are used.
+    are used; if {}, no metrics are used. If model has one output (i.e.,
+    returning single predction), keys are `str`, e.g. `'accuracy'` - just a
+    name of the metric that will show up in the logs / summaries.
+    Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
+    - name of the metric and name of `Tensor` in the predictions to run
+    this metric on. Metric ops should support streaming, e.g., returning
+    update_op and value tensors. See more details in
+    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluation on
     different data sets, such as evaluate on training data vs test data.
 
