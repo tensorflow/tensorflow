@@ -1937,6 +1937,7 @@ REGISTER_KERNELS(GPU, double);
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
+
 // Note, this op works on cpu only.
 template <typename T, typename Tindex>
 class SparseApplyRMSPropOp : public OpKernel {
@@ -2032,17 +2033,17 @@ class SparseApplyRMSPropOp : public OpKernel {
       const T momentum_scalar = momentum.scalar<T>()();
 
       for (Tindex i = 0; i < N; i++) {
-        const Tindex index = indices_vec(i);
+	const Tindex index = indices_vec(i);
 
         auto ms_ = ms_flat.template chip<0>(index);
         auto mom_ = mom_flat.template chip<0>(index);
         auto grad_ = grad_flat.template chip<0>(i);
 
         ms_ = ms_ * ms_.constant(rho_scalar) +
-              grad_.square() * grad_.constant(T(1) - rho_scalar);
-        mom_ = mom_ * mom_.constant(momentum_scalar) +
-               (ms_ + ms_.constant(epsilon_scalar)).rsqrt() *
-                   ms_.constant(lr_scalar) * grad_;
+		grad_.square() * grad_.constant(T(1) - rho_scalar);
+	mom_ = mom_ * mom_.constant(momentum_scalar) + 
+		(ms_ + ms_.constant(epsilon_scalar)).rsqrt() * 
+		ms_.constant(lr_scalar) * grad_;
 
         auto v = var_flat.template chip<0>(index);
         v -= mom_;
@@ -2057,7 +2058,7 @@ class SparseApplyRMSPropOp : public OpKernel {
 };
 
 #define REGISTER_KERNELS(T, Tindices)                                \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyRMSProp")                 \
+  REGISTER_KERNEL_BUILDER(Name("SparseApplyRMSProp")                \
                               .Device(DEVICE_CPU)                    \
                               .TypeConstraint<T>("T")                \
                               .TypeConstraint<Tindices>("Tindices"), \
