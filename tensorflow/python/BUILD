@@ -539,6 +539,7 @@ tf_gen_op_wrapper_py(
 tf_gen_op_wrapper_py(
     name = "data_flow_ops",
     hidden = [
+        "FIFOBucketedQueue",
         "FIFOQueue",
         "HashTable",
         "InitializeTable",
@@ -1135,6 +1136,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/determinant_op_test.py",
     "kernel_tests/diag_op_test.py",
     "kernel_tests/edit_distance_op_test.py",
+    "kernel_tests/fifo_bucketed_queue_test.py",
     "kernel_tests/fifo_queue_test.py",
     "kernel_tests/identity_op_py_test.py",
     "kernel_tests/in_topk_op_test.py",

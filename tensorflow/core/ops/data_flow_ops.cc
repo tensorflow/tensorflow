@@ -148,6 +148,35 @@ shared_name: If non-empty, this queue will be shared under the given name
   across multiple sessions.
 )doc");
 
+REGISTER_OP("FIFOBucketedQueue")
+    .Output("handle: Ref(string)")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("shapes: list(shape) >= 0 = []")
+    .Attr("buckets: int = 1")
+    .Attr("batch_size: int = 1")
+    .Attr("capacity: int = -1")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .Doc(R"doc(
+A queue that produces elements in first-in first-out order but with bucketing.
+
+handle: The handle to the queue.
+component_types: The type of each component in a value.
+buckets: number of buckets in this bucketed queue.
+batch_size: the number of elements needed to form a batch.
+shapes: The shape of each component in a value. The length of this attr must
+  be either 0 or the same as the length of component_types. If the length of
+  this attr is 0, the shapes of queue elements are not constrained, and
+  only one element may be dequeued at a time.
+capacity: The upper bound on the number of elements in this queue.
+  Negative numbers mean no limit.
+container: If non-empty, this queue is placed in the given container.
+        Otherwise, a default container is used.
+shared_name: If non-empty, this queue will be shared under the given name
+  across multiple sessions.
+)doc");
+
 REGISTER_OP("FIFOQueue")
     .Output("handle: Ref(string)")
     .Attr("component_types: list(type) >= 1")

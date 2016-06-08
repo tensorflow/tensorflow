@@ -670,6 +670,66 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
+class FIFOBucketedQueue(QueueBase):
+  """A queue implementation that dequeues elements in first-in-first out order
+  with buckets.
+
+  See [`tf.QueueBase`](#QueueBase) for a description of the methods on
+  this class.
+
+  @@__init__
+  """
+
+  def __init__(self, buckets, batch_size, capacity, dtypes, shapes=None,
+               shared_name=None, name="fifo_queue"):
+    """Creates a queue that dequeues elements in a first-in first-out order
+    with buckets.
+
+    A `FIFOBucketedQueue` holds a list of up to `capacity` elements. Each
+    element is a fixed-length tuple of tensors whose dtypes are
+    described by `dtypes`, and whose shapes are optionally described
+    by the `shapes` argument.
+
+    Args:
+      buckets: An integer. The number of buckets in our queue.
+      batch_size: An integer. The number of samples needed to return in
+        dequeue_many.
+      capacity: An integer. The upper bound on the number of elements
+        that may be stored in this queue.
+      dtypes:  A list of `DType` objects. The length of `dtypes` must equal
+        the number of tensors in each queue element. The first dtypes[0] should
+        be an integer representing the bucket id.
+      shapes: (Optional.) A list of fully-defined `TensorShape` objects,
+        with the same length as `dtypes` or `None`.
+      shared_name: (Optional.) If non-empty, this queue will be shared under
+        the given name across multiple sessions.
+      name: Optional name for the queue operation.
+    """
+
+    if buckets <= 1:
+      raise ValueError(
+          "The number of buckets must be greater than 1. If buckets == 1, it is"
+          "equivalent to a FIFOQueue.")
+    if batch_size <= 1:
+      raise ValueError(
+          "The batch_size must be greater than 1. If batch_size == 1, it is"
+          "equivalent to a FIFOQueue.")
+
+    dtypes = _as_type_list(dtypes)
+    if len(dtypes) <= 1 or not dtypes[0].is_integer:
+      raise ValueError(
+          "The len(dtypes) should be greater than 1. The first dtype should be"
+          "an integer bucket id.")
+
+    shapes = _as_shape_list(shapes, dtypes)
+    queue_ref = gen_data_flow_ops._fifo_bucketed_queue(
+        component_types=dtypes, shapes=shapes, capacity=capacity,
+        batch_size=batch_size, buckets=buckets, shared_name=shared_name,
+        name=name)
+
+    super(FIFOBucketedQueue, self).__init__(dtypes, shapes, queue_ref)
+
+
 # TODO(josh11b): class BatchQueue(QueueBase):
 
 
@@ -697,6 +757,7 @@ ops.NoGradient("InitializeTable")
 
 ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)
 ops.RegisterShape("Queue")(common_shapes.scalar_shape)
+ops.RegisterShape("FIFOBucketedQueue")(common_shapes.scalar_shape)
 ops.RegisterShape("FIFOQueue")(common_shapes.scalar_shape)
 ops.RegisterShape("PaddingFIFOQueue")(common_shapes.scalar_shape)
 ops.RegisterShape("RandomShuffleQueue")(common_shapes.scalar_shape)
