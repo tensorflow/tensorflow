@@ -31,14 +31,17 @@ properties below and and implement `__call__` with the following signature.
 
 #### `tf.nn.rnn_cell.RNNCell.output_size` {#RNNCell.output_size}
 
-Integer: size of outputs produced by this cell.
+Integer or TensorShape: size of outputs produced by this cell.
 
 
 - - -
 
 #### `tf.nn.rnn_cell.RNNCell.state_size` {#RNNCell.state_size}
 
-Integer or tuple of integers: size(s) of state(s) used by this cell.
+size(s) of state(s) used by this cell.
+
+It can be represented by an Integer, a TensorShape or a tuple of Integers
+or TensorShapes.
 
 
 - - -
@@ -55,8 +58,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -107,8 +110,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -177,8 +180,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -226,8 +229,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -317,8 +320,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -410,8 +413,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -477,8 +480,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -522,7 +525,7 @@ Create a cell with an added input embedding.
 
 #### `tf.nn.rnn_cell.EmbeddingWrapper.output_size` {#EmbeddingWrapper.output_size}
 
-Integer: size of outputs produced by this cell.
+Integer or TensorShape: size of outputs produced by this cell.
 
 
 - - -
@@ -546,8 +549,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -611,8 +614,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -677,8 +680,8 @@ Return zero-filled state tensor(s).
 
 ##### Returns:
 
-  If `state_size` is an int, then the return value is a `2-D` tensor of
-  shape `[batch_size x state_size]` filled with zeros.
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
 
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
