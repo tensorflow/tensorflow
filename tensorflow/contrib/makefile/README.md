@@ -42,7 +42,7 @@ at `tensorflow/contrib/makefile/gen/bin/benchmark`. To run the executable, use:
 tensorflow/contrib/makefile/gen/bin/benchmark --graph=tensorflow_inception_graph.pb
 ```
 
-You should download the example graph from [http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz).
+You should download the example graph from [https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip](https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip).
 
 ## Supported Systems
 
