@@ -68,7 +68,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile) {
 TEST(GcsFileSystemTest, NewWritableFile) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
-      "uploadType=media&name=path/writeable.txt\n"
+      "uploadType=media&name=path%2Fwriteable.txt\n"
       "Auth Token: fake_token\n"
       "Post body: content1,content2\n",
       "")});
@@ -88,13 +88,13 @@ TEST(GcsFileSystemTest, NewWritableFile) {
 TEST(GcsFileSystemTest, NewAppendableFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/path/appendable.txt\n"
+           "Uri: https://bucket.storage.googleapis.com/path%2Fappendable.txt\n"
            "Auth Token: fake_token\n"
            "Range: 0-1048575\n",
            "content1,"),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
-           "uploadType=media&name=path/appendable.txt\n"
+           "uploadType=media&name=path%2Fappendable.txt\n"
            "Auth Token: fake_token\n"
            "Post body: content1,content2\n",
            "")});
@@ -116,15 +116,15 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
-           "random_access.txt?fields=size\n"
+           "path%2Frandom_access.txt?fields=size\n"
            "Auth Token: fake_token\n",
            strings::StrCat("{\"size\": \"", content.size(), "\"}")),
        new FakeHttpRequest(
-           strings::StrCat(
-               "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
-               "Auth Token: fake_token\n"
-               "Range: 0-",
-               content.size() - 1, "\n"),
+           strings::StrCat("Uri: https://bucket.storage.googleapis.com/"
+                           "path%2Frandom_access.txt\n"
+                           "Auth Token: fake_token\n"
+                           "Range: 0-",
+                           content.size() - 1, "\n"),
            content)});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
@@ -132,7 +132,7 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
 
   ReadOnlyMemoryRegion* region_ptr;
   TF_EXPECT_OK(fs.NewReadOnlyMemoryRegionFromFile(
-      "gs://bucket/random_access.txt", &region_ptr));
+      "gs://bucket/path/random_access.txt", &region_ptr));
   std::unique_ptr<ReadOnlyMemoryRegion> region(region_ptr);
 
   EXPECT_EQ(content, StringPiece(reinterpret_cast<const char*>(region->data()),
@@ -143,12 +143,12 @@ TEST(GcsFileSystemTest, FileExists) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
-           "path/file1.txt?fields=size\n"
+           "path%2Ffile1.txt?fields=size\n"
            "Auth Token: fake_token\n",
            "{\"size\": \"100\"}"),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
-           "path/file2.txt?fields=size\n"
+           "path%2Ffile2.txt?fields=size\n"
            "Auth Token: fake_token\n",
            "", errors::NotFound("404"))});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
@@ -162,7 +162,7 @@ TEST(GcsFileSystemTest, FileExists) {
 TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
-      "prefix=path/&fields=items\n"
+      "prefix=path%2F&fields=items\n"
       "Auth Token: fake_token\n",
       "{\"items\": [ "
       "  { \"name\": \"path/file1.txt\" },"
@@ -184,7 +184,7 @@ TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
 TEST(GcsFileSystemTest, GetChildren_Empty) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
-      "prefix=path/&fields=items\n"
+      "prefix=path%2F&fields=items\n"
       "Auth Token: fake_token\n",
       "{}")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
@@ -200,7 +200,7 @@ TEST(GcsFileSystemTest, GetChildren_Empty) {
 TEST(GcsFileSystemTest, DeleteFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest("Uri: https://www.googleapis.com/storage/v1/b"
-                           "/bucket/o/path/file1.txt\n"
+                           "/bucket/o/path%2Ffile1.txt\n"
                            "Auth Token: fake_token\n"
                            "Delete: yes\n",
                            "")});
@@ -214,7 +214,7 @@ TEST(GcsFileSystemTest, DeleteFile) {
 TEST(GcsFileSystemTest, DeleteDir_Empty) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
-      "prefix=path/&fields=items\n"
+      "prefix=path%2F&fields=items\n"
       "Auth Token: fake_token\n",
       "{}")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
@@ -227,7 +227,7 @@ TEST(GcsFileSystemTest, DeleteDir_Empty) {
 TEST(GcsFileSystemTest, DeleteDir_NonEmpty) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
-      "prefix=path/&fields=items\n"
+      "prefix=path%2F&fields=items\n"
       "Auth Token: fake_token\n",
       "{\"items\": [ "
       "  { \"name\": \"path/file1.txt\" }]}")});
@@ -256,13 +256,14 @@ TEST(GcsFileSystemTest, GetFileSize) {
 TEST(GcsFileSystemTest, RenameFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
-           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/src.txt"
-           "/rewriteTo/b/bucket/o/dst.txt\n"
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt/rewriteTo/b/bucket/o/path%2Fdst.txt\n"
            "Auth Token: fake_token\n"
            "Post: yes\n",
            ""),
        new FakeHttpRequest(
-           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/src.txt\n"
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt\n"
            "Auth Token: fake_token\n"
            "Delete: yes\n",
            "")});
@@ -270,7 +271,8 @@ TEST(GcsFileSystemTest, RenameFile) {
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)));
 
-  TF_EXPECT_OK(fs.RenameFile("gs://bucket/src.txt", "gs://bucket/dst.txt"));
+  TF_EXPECT_OK(
+      fs.RenameFile("gs://bucket/path/src.txt", "gs://bucket/path/dst.txt"));
 }
 
 }  // namespace

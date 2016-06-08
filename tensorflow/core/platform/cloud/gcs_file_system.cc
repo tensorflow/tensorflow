@@ -98,8 +98,9 @@ class GcsRandomAccessFile : public RandomAccessFile {
 
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
-    TF_RETURN_IF_ERROR(request->SetUri(
-        strings::StrCat("https://", bucket_, ".", kStorageHost, "/", object_)));
+    TF_RETURN_IF_ERROR(
+        request->SetUri(strings::StrCat("https://", bucket_, ".", kStorageHost,
+                                        "/", request->EscapeString(object_))));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
     TF_RETURN_IF_ERROR(request->SetResultBuffer(scratch, n, result));
@@ -187,9 +188,9 @@ class GcsWritableFile : public WritableFile {
 
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
-    TF_RETURN_IF_ERROR(
-        request->SetUri(strings::StrCat(kGcsUploadUriBase, "b/", bucket_,
-                                        "/o?uploadType=media&name=", object_)));
+    TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+        kGcsUploadUriBase, "b/", bucket_, "/o?uploadType=media&name=",
+        request->EscapeString(object_))));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetPostRequest(tmp_content_filename_));
     TF_RETURN_IF_ERROR(request->Send());
@@ -330,7 +331,8 @@ bool GcsFileSystem::FileExists(const string& fname) {
     return false;
   }
   request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
-                                  object_prefix, "?fields=size"));
+                                  request->EscapeString(object_prefix),
+                                  "?fields=size"));
   request->AddAuthBearerHeader(auth_token);
   return request->Send().ok();
 }
@@ -354,9 +356,9 @@ Status GcsFileSystem::GetChildren(const string& dirname,
   StringPiece response_piece;
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(
-      request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o?prefix=",
-                                      object_prefix, "&fields=items")));
+  TF_RETURN_IF_ERROR(request->SetUri(
+      strings::StrCat(kGcsUriBase, "b/", bucket, "/o?prefix=",
+                      request->EscapeString(object_prefix), "&fields=items")));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   // TODO(surkov): Implement pagination using maxResults and pageToken
   //     instead, so that all items can be read regardless of their count.
@@ -406,8 +408,8 @@ Status GcsFileSystem::DeleteFile(const string& fname) {
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(
-      strings::StrCat(kGcsUriBase, "b/", bucket, "/o/", object)));
+  TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+      kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetDeleteRequest());
   TF_RETURN_IF_ERROR(request->Send());
@@ -444,8 +446,9 @@ Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size) {
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
-      kGcsUriBase, "b/", bucket, "/o/", object_prefix, "?fields=size")));
+  TF_RETURN_IF_ERROR(request->SetUri(
+      strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
+                      request->EscapeString(object_prefix), "?fields=size")));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(
       request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
@@ -485,9 +488,10 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(
-      strings::StrCat(kGcsUriBase, "b/", src_bucket, "/o/", src_object,
-                      "/rewriteTo/b/", target_bucket, "/o/", target_object)));
+  TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+      kGcsUriBase, "b/", src_bucket, "/o/", request->EscapeString(src_object),
+      "/rewriteTo/b/", target_bucket, "/o/",
+      request->EscapeString(target_object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetPostRequest());
   TF_RETURN_IF_ERROR(request->Send());
