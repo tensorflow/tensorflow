@@ -26,10 +26,15 @@ class Experiment(object):
   """Experiment is a class containing all information needed to train a model.
   """
 
-  def __init__(self, estimator,
+  def __init__(self,
+               estimator,
                train_input_fn,
                eval_input_fn,
-               eval_metrics=None):
+               eval_metrics=None,
+               train_steps=None,
+               eval_steps=None,
+               train_monitors=None,
+               local_train_step=1000):
     """Constructor for Experiment.
 
     Args:
@@ -38,23 +43,30 @@ class Experiment(object):
       eval_input_fn: function, returns features and targets for evaluation.
       eval_metrics: `dict` of string, metric function. If `None`, default set
         is used.
+      train_steps: Perform this many steps of training. `None`, the default,
+        means train forever.
+      eval_steps: Run this many steps of evaluation.
+      train_monitors: A list of monitors to pass to the `Estimator`'s `fit`
+        function.
+      local_train_step: Perform this many training steps when running local.
     """
     super(Experiment, self).__init__()
     self._estimator = estimator
     self._train_input_fn = train_input_fn
     self._eval_input_fn = eval_input_fn
     self._eval_metrics = eval_metrics
+    self._train_steps = train_steps
+    self._eval_steps = eval_steps
+    self._train_monitors = train_monitors
+    self._local_train_step = local_train_step
 
-  def train(self, steps=None, monitors=None, delay_secs=0):
+  def train(self, delay_secs=0):
     """Fit the estimator using the training data.
 
     Train the estimator for `steps` steps, after waiting for `delay_secs`
     seconds. If `steps` is `None`, train forever.
 
     Args:
-      steps: Perform this many steps of training. `None`, the default, means
-        train forever.
-      monitors: A list of monitors to pass to the `Estimator`'s `fit` function.
       delay_secs: Start training after this many seconds.
 
     Returns:
@@ -66,9 +78,10 @@ class Experiment(object):
       time.sleep(delay_secs)
 
     return self._estimator.fit(input_fn=self._train_input_fn,
-                               steps=steps, monitors=monitors)
+                               steps=self._train_steps,
+                               monitors=self._train_monitors)
 
-  def evaluate(self, steps=None, delay_secs=0):
+  def evaluate(self, delay_secs=0):
     """Evaluate on the evaluation data.
 
     Runs evaluation on the evaluation data and returns the result. If `steps`
@@ -76,7 +89,6 @@ class Experiment(object):
     `delay_secs` seconds.
 
     Args:
-      steps: Run this many steps of evaluation.
       delay_secs: Start evaluating after waiting for this many seconds.
 
     Returns:
@@ -88,12 +100,28 @@ class Experiment(object):
       time.sleep(delay_secs)
 
     return self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                    steps=steps,
-                                    metrics=self._eval_metrics)
+                                    steps=self._eval_steps,
+                                    metrics=self._eval_metrics,
+                                    name="one_pass")
 
-  def _continuous_eval(self, input_fn, steps=1000, delay_secs=0,
+  def local_run(self):
+    """Run when called on local machine.
+
+    Returns:
+      The result of the `evaluate` call to the `Estimator`.
+    """
+    orig_train_steps = self._train_steps
+    self._train_steps = self._local_train_step
+    self.train()
+    self._train_steps = orig_train_steps
+    return self.evaluate()
+
+  def _continuous_eval(self,
+                       input_fn,
+                       name,
+                       delay_secs=0,
                        throttle_delay_secs=60):
-    """Run continuous eval on the eval data.
+    """Run continuous eval.
 
     Run `steps` steps of evaluation on the evaluation data set. This function
     starts evaluating after `delay_secs` seconds and then runs no more than one
@@ -101,7 +129,7 @@ class Experiment(object):
 
     Args:
       input_fn: The input to use for this eval.
-      steps: Number of steps per evaluation run.
+      name: A string appended to the folder name of evaluation results.
       delay_secs: Start evaluating after this many seconds.
       throttle_delay_secs: Do not re-evaluate unless the last evaluation was
         started at least this many seconds ago.
@@ -113,8 +141,9 @@ class Experiment(object):
     while True:
       start = time.time()
       self._estimator.evaluate(input_fn=input_fn,
-                               steps=steps,
-                               metrics=self._eval_metrics)
+                               steps=self._eval_steps,
+                               metrics=self._eval_metrics,
+                               name=name)
       duration = time.time() - start
       if duration < throttle_delay_secs:
         difference = throttle_delay_secs - duration
@@ -122,13 +151,14 @@ class Experiment(object):
                      difference)
         time.sleep(difference)
 
-  def continuous_eval(self, steps=1000, delay_secs=0, throttle_delay_secs=60):
-    self._continuous_eval(self._eval_input_fn, steps=steps,
+  def continuous_eval(self, delay_secs=0, throttle_delay_secs=60):
+    self._continuous_eval(self._eval_input_fn,
+                          name="continuous",
                           delay_secs=delay_secs,
                           throttle_delay_secs=throttle_delay_secs)
 
-  def continuous_eval_on_train_data(self, steps=1000, delay_secs=0,
-                                    throttle_delay_secs=60):
-    self._continuous_eval(self._train_input_fn, steps=steps,
+  def continuous_eval_on_train_data(self, delay_secs=0, throttle_delay_secs=60):
+    self._continuous_eval(self._train_input_fn,
+                          name="continuous_on_train_data",
                           delay_secs=delay_secs,
                           throttle_delay_secs=throttle_delay_secs)

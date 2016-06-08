@@ -220,9 +220,10 @@ def train(graph,
           save_summary_steps=supervisor_save_summaries_steps,
           summary_writer=summary_writer)
 
+    max_steps = (start_step + steps) if steps else None
     # Start monitors, can create graph parts.
     for monitor in monitors:
-      monitor.begin(max_steps=start_step + steps)
+      monitor.begin(max_steps=max_steps)
 
   supervisor = tf_supervisor.Supervisor(
       graph,
@@ -244,7 +245,6 @@ def train(graph,
     get_current_step = lambda: session.run(global_step_tensor)
 
     start_step = get_current_step()
-    max_steps = start_step + steps
     last_step = start_step
     last_log_step = start_step
     loss_value = None
@@ -382,8 +382,8 @@ def _eval_results_to_str(eval_results):
 
 def _write_summary_results(output_dir, eval_results, current_global_step):
   """Writes eval results into summary file in given dir."""
-  logging.info('Saving evaluation summary for %d step: %s' % (
-      current_global_step, _eval_results_to_str(eval_results)))
+  logging.info('Saving evaluation summary for %d step: %s', current_global_step,
+               _eval_results_to_str(eval_results))
   summary_writer = get_summary_writer(output_dir)
   summary = summary_pb2.Summary()
   for key in eval_results:
