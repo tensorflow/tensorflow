@@ -1105,6 +1105,7 @@ medium_kernel_test_list = glob([
     "kernel_tests/concat_op_test.py",
     "kernel_tests/division_future_test.py",
     "kernel_tests/fft_ops_test.py",
+    "kernel_tests/pooling_ops_test.py",
     "kernel_tests/rnn_test.py",
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
