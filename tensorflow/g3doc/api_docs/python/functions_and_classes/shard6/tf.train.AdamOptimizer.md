@@ -33,7 +33,6 @@ The default value of 1e-8 for epsilon might not be a good default in
 general. For example, when training an Inception network on ImageNet a
 current good choice is 1.0 or 0.1.
 
-
 ##### Args:
 
 

@@ -9,7 +9,6 @@ See the [paper]
 
 Construct a new RMSProp optimizer.
 
-
 ##### Args:
 
 
