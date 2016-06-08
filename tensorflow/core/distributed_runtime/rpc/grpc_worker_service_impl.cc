@@ -24,17 +24,6 @@ limitations under the License.
 #include "grpc++/impl/codegen/service_type.h"
 #include "grpc++/impl/codegen/sync_stream.h"
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_serialization_traits.h"
-
-// Contains potentially large GraphDef.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RegisterGraphRequest);
-// Contains potentially large TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunGraphRequest);
-// Contains potentially large StepStats, TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunGraphResponse);
-// Contains potentially large TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RecvTensorResponse);
-
 namespace tensorflow {
 
 namespace grpc {

@@ -152,7 +152,10 @@ class UnlimitedSizeProtoSerializationTraits {
                           bool* own_buffer) {
     *own_buffer = true;
     int byte_size = msg.ByteSize();
-    if (byte_size <= tensorflow_helper::kGrpcBufferWriterMaxBufferLength) {
+    if (byte_size < 0) {
+      return Status(StatusCode::INTERNAL, "Message length was negative");
+    } else if (byte_size <=
+               tensorflow_helper::kGrpcBufferWriterMaxBufferLength) {
       gpr_slice slice = g_core_codegen_interface->gpr_slice_malloc(byte_size);
       GPR_CODEGEN_ASSERT(
           GPR_SLICE_END_PTR(slice) ==
