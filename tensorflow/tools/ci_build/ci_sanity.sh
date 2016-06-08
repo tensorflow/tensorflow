@@ -37,6 +37,8 @@ num_cpus() {
 # Subfunctions for substeps
 # Run pylint
 do_pylint() {
+  # Usage: do_pylint (PYTHON2 | PYTHON3)
+
   # Use this list to whitelist pylint errors
   ERROR_WHITELIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
 "^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
@@ -44,6 +46,21 @@ do_pylint() {
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
+
+  if [[ $# != "1" ]]; then
+    echo "Invalid syntax when invoking do_pylint"
+    echo "Usage: do_pylint (PYTHON2 | PYTHON3)"
+    return 1
+  fi
+
+  if [[ $1 == "PYTHON2" ]]; then
+    PYLINT_BIN="python /usr/local/lib/python2.7/dist-packages/pylint/lint.py"
+  elif [[ $1 == "PYTHON3" ]]; then
+    PYLINT_BIN="python3 /usr/local/lib/python3.4/dist-packages/pylint/lint.py"
+  else
+    echo "Unrecognized python version (PYTHON2 | PYTHON3): $1"
+    return 1
+  fi
 
   PYTHON_SRC_FILES=$(find tensorflow -name '*.py')
 
@@ -70,7 +87,7 @@ do_pylint() {
   rm -rf ${NONWL_ERRORS_FILE}
   touch ${NONWL_ERRORS_FILE}
 
-  pylint --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
+  ${PYLINT_BIN} --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
       --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} 2>&1 > ${OUTPUT_FILE}
   PYLINT_END_TIME=$(date +'%s')
 
@@ -128,17 +145,62 @@ do_bazel_nobuild() {
   fi
 }
 
+# Supply all sanity step commands and descriptions
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_bazel_nobuild")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "bazel nobuild")
 
-FAIL=0
+FAIL_COUNTER=0
+PASS_COUNTER=0
+STEP_EXIT_CODES=()
 
-# Pylint
-do_pylint || FAIL=1
+# Execute all the sanity build steps
+COUNTER=0
+while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
+  INDEX=COUNTER
+  ((INDEX++))
 
-# bazel nobuild
-do_bazel_nobuild || FAIL=1
+  echo ""
+  echo "=== Sanity check step ${INDEX} of ${#SANITY_STEPS[@]}: "\
+"${SANITY_STEPS[COUNTER]} (${SANITY_STEPS_DESC[COUNTER]}) ==="
+  echo ""
+
+  ${SANITY_STEPS[COUNTER]}
+  RESULT=$?
+
+  if [[ ${RESULT} != "0" ]]; then
+    ((FAIL_COUNTER++))
+  else
+    ((PASS_COUNTER++))
+  fi
+
+  STEP_EXIT_CODES+=(${RESULT})
+
+  echo ""
+  ((COUNTER++))
+done
+
+# Print summary of build results
+COUNTER=0
+echo "==== Summary of sanity check results ===="
+while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
+  INDEX=COUNTER
+  ((INDEX++))
+
+  echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
+  if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
+    echo "  PASS"
+  else
+    echo "  FAIL"
+  fi
+
+  ((COUNTER++))
+done
 
 echo ""
-if [[ ${FAIL} == "0" ]]; then
+echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
+
+echo ""
+if [[ ${FAIL_COUNTER} == "0" ]]; then
   echo "Sanity checks PASSED"
 else
   die "Sanity checks FAILED"

@@ -1,6 +1,8 @@
 # Changes Since Last Release
 
 ## Features & Improvements
+* The RNN api is finally "official" (see, e.g., `tf.nn.dynamic_rnn`,
+  `tf.nn.rnn`, and the classes in `tf.nn.rnn_cell`).
 * TensorBoard now has an Audio Dashboard, with associated audio summaries.
 * TensorBoard now has a reload button, and supports auto-reloading
 * TensorBoard scalar charts now show tooltips with more information

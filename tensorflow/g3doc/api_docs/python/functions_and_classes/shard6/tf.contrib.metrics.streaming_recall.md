@@ -25,7 +25,7 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
 *  <b>`labels`</b>: The ground truth values, a binary `Tensor` whose dimensions must
     match `predictions`.
 *  <b>`ignore_mask`</b>: An optional, binary tensor whose size matches `predictions`.
-*  <b>`metrics_collections`</b>: An optional list of collections that `precision` should
+*  <b>`metrics_collections`</b>: An optional list of collections that `recall` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
