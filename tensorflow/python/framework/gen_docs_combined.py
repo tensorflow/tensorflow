@@ -52,6 +52,8 @@ def get_module_to_name():
       tf.train: "tf.train",
       tf.python_io: "tf.python_io",
       tf.test: "tf.test",
+      tf.contrib.bayesflow.stochastic_graph: (
+          "tf.contrib.bayesflow.stochastic_graph"),
       tf.contrib.copy_graph: "tf.contrib.copy_graph",
       tf.contrib.distributions: "tf.contrib.distributions",
       tf.contrib.ffmpeg: "tf.contrib.ffmpeg",
@@ -141,6 +143,9 @@ def all_libraries(module_to_name, members, documented):
                                "RankingExample", "SequenceExample"]),
       library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT),
       library("test", "Testing", tf.test),
+      library("contrib.bayesflow.stochastic_graph",
+              "BayesFlow Stochastic Graph (contrib)",
+              tf.contrib.bayesflow.stochastic_graph),
       library("contrib.distributions", "Statistical distributions (contrib)",
               tf.contrib.distributions),
       library("contrib.ffmpeg", "FFmpeg (contrib)", ffmpeg),
