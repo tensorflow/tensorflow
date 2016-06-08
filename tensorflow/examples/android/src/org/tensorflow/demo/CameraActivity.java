@@ -42,7 +42,7 @@ public class CameraActivity extends Activity {
         setFragment();
       }
     } else {
-      getPermission();
+      requestPermission();
     }
 
   }
@@ -56,7 +56,7 @@ public class CameraActivity extends Activity {
                 && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
           setFragment();
         } else {
-          getPermission();
+          requestPermission();
         }
       }
     }
@@ -74,7 +74,7 @@ public class CameraActivity extends Activity {
     }
   }
 
-  private void getPermission() {
+  private void requestPermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       if (shouldShowRequestPermissionRationale(PERMISSION_CAMERA) || shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
         Toast.makeText(CameraActivity.this, "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG).show();
