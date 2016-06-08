@@ -193,8 +193,8 @@ def _ImageDimensions(images, dynamic_shape=False):
   Args:
     images: 4-D Tensor of shape [batch, height, width, channels]
     dynamic_shape: Whether the input image has undertermined shape. If set to
-                   `True`, shape information will be retrieved at run time.
-                   Default to `False`.
+      `True`, shape information will be retrieved at run time. Default to
+      `False`.
 
   Returns:
     list of integers [batch, height, width, channels]
@@ -413,9 +413,11 @@ def central_crop(image, central_fraction):
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
                         target_width, dynamic_shape=False):
   """Pad `image` with zeros to the specified `height` and `width`.
+  
   Adds `offset_height` rows of zeros on top, `offset_width` columns of
   zeros on the left, and then pads the image on the bottom and right
   with zeros until it has dimensions `target_height`, `target_width`.
+  
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
 
@@ -426,8 +428,8 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     target_height: Height of output image.
     target_width: Width of output image.
     dynamic_shape: Whether the input image has undertermined shape. If set to
-                   `True`, shape information will be retrieved at run time.
-                   Default to `False`.
+      `True`, shape information will be retrieved at run time. Default to
+      `False`.
 
   Returns:
     3-D tensor of shape `[target_height, target_width, channels]`
@@ -476,6 +478,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 def crop_to_bounding_box(image, offset_height, offset_width, target_height,
                          target_width, dynamic_shape=False):
   """Crops an image to a specified bounding box.
+  
   This op cuts a rectangular part out of `image`. The top-left corner of the
   returned image is at `offset_height, offset_width` in `image`, and its
   lower-right corner is at
@@ -490,8 +493,8 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     target_height: Height of the result.
     target_width: Width of the result.
     dynamic_shape: Whether the input image has undertermined shape. If set to
-                   `True`, shape information will be retrieved at run time.
-                   Default to `False`.
+      `True`, shape information will be retrieved at run time. Default to
+      `False`.
 
   Returns:
     3-D tensor of image with shape `[target_height, target_width, channels]`
@@ -525,8 +528,10 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
 def resize_image_with_crop_or_pad(image, target_height, target_width,
                                   dynamic_shape=False):
   """Crops and/or pads an image to a target width and height.
+  
   Resizes an image to a target width and height by either centrally
   cropping the image or padding it evenly with zeros.
+  
   If `width` or `height` is greater than the specified `target_width` or
   `target_height` respectively, this op centrally crops along that dimension.
   If `width` or `height` is smaller than the specified `target_width` or
@@ -538,8 +543,8 @@ def resize_image_with_crop_or_pad(image, target_height, target_width,
     target_height: Target height.
     target_width: Target width.
     dynamic_shape: Whether the input image has undertermined shape. If set to
-                   `True`, shape information will be retrieved at run time.
-                   Default to `False`.
+      `True`, shape information will be retrieved at run time. Default to
+      `False`.
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
