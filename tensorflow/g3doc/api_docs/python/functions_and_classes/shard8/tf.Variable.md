@@ -121,9 +121,9 @@ variable to its initial value.
     `initial_value` must be known.
 *  <b>`caching_device`</b>: Optional device string describing where the Variable
     should be cached for reading.  Defaults to the Variable's device.
-    If not `None`, caches on another device.  Typical use is to cache
-    on the device where the Ops using the Variable reside, to deduplicate
-    copying through `Switch` and other conditional statements.
+    If not `None`, caches on another device.  Generally the standard caching
+    mechanism is sufficient, *only* use this when a variable is accessed in
+    a `cond()`.
 *  <b>`name`</b>: Optional name for the variable. Defaults to `'Variable'` and gets
     uniquified automatically.
 *  <b>`variable_def`</b>: `VariableDef` protocol buffer. If not `None`, recreates

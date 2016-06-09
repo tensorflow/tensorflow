@@ -1855,6 +1855,9 @@ filegroup(
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
+            # Ops excluded because they do not build correctly for Android.
+            # See b/29213790
+            "sparse_matmul_op.*",
         ],
     ),
     visibility = ["//visibility:public"],

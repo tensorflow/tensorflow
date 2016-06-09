@@ -309,9 +309,19 @@ class Coordinator(object):
       pass
 
     # If any thread is still alive, wait for the grace period to expire.
+    # By the time this check is executed, threads may still be shutting down,
+    # so we add a sleep of increasing duration to give them a chance to shut
+    # down without loosing too many cycles.
+    # The sleep duration is limited to the remaining grace duration.
+    stop_wait_secs = 0.001
     while any(t.is_alive() for t in threads) and stop_grace_period_secs >= 0.0:
-      stop_grace_period_secs -= 1.0
-      time.sleep(1.0)
+      time.sleep(stop_wait_secs)
+      stop_grace_period_secs -= stop_wait_secs
+      stop_wait_secs = 2 * stop_wait_secs
+      # Keep the waiting period within sane bounds.
+      # The minimum value is to avoid decreasing stop_wait_secs to a value
+      # that could cause stop_grace_period_secs to remain unchanged.
+      stop_wait_secs = max(min(stop_wait_secs, stop_grace_period_secs), 0.001)
 
     # List the threads still alive after the grace period.
     stragglers = [t.name for t in threads if t.is_alive()]

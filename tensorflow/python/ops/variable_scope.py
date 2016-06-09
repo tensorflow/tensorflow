@@ -304,8 +304,9 @@ class _VariableStore(object):
       return existing_var
 
     if should_check and reuse:
-      raise ValueError("PartitionedVariable %s does not exist, disallowed."
-                       " Did you mean to set reuse=None in VarScope?" % name)
+      raise ValueError("PartitionedVariable %s does not exist, or was not "
+                       "created with tf.get_variable(). Did you mean to set "
+                       "reuse=None in VarScope?" % name)
 
     slice_dim, slice_shape = _compute_slice_dim_and_shape(
         shape.as_list(), partitions)
@@ -375,7 +376,7 @@ class _VariableStore(object):
       vs.append(var)
       # pylint: enable=protected-access
 
-    # pylint: disable=protected-access
+      # pylint: disable=protected-access
     partitioned_var = variables._PartitionedVariable(name=name,
                                                      shape=shape,
                                                      dtype=dtype,
@@ -450,8 +451,9 @@ class _VariableStore(object):
 
     # The code below handles only the case of creating a new variable.
     if should_check and reuse:
-      raise ValueError("Variable %s does not exist, disallowed."
-                       " Did you mean to set reuse=None in VarScope?" % name)
+      raise ValueError("Variable %s does not exist, or was not created with "
+                       "tf.get_variable(). Did you mean to set reuse=None in "
+                       "VarScope?" % name)
     if not shape.is_fully_defined() and not initializing_from_value:
       raise ValueError("Shape of a new variable (%s) must be fully defined, "
                        "but instead was %s." % (name, shape))
@@ -707,9 +709,9 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
     caching_device: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
-      device.  If not `None`, caches on another device.  Typical use is to
-      cache on the device where the Ops using the Variable reside, to
-      deduplicate copying through `Switch` and other conditional statements.
+      device.  If not `None`, caches on another device. Generally the standard
+       caching mechanism is sufficient, *only* use this when a variable is
+       accessed in a `cond()`.
     partitioner: Optional callable that accepts a fully defined `TensorShape`
       and `dtype` of the Variable to be created, and returns a list of
       partitions for each axis (currently only one axis can be partitioned).

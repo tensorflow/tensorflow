@@ -100,6 +100,37 @@ class VariableStoreTest(tf.test.TestCase):
         v_tower = tf.get_variable("v", [])
         self.assertFalse(v_tower.value().device.startswith(caching_device))
 
+  def testVarScopeCachedWithCaller(self):
+    with self.test_session():
+      device_fn = lambda x: "/job:ps"
+      with tf.variable_scope("tower"):
+        with tf.variable_scope("caching", caching_device=""):
+          with tf.device(device_fn):
+            v = tf.get_variable("v", [])
+          self.assertDeviceEqual(v.device, "/job:ps/CPU:0")
+          self.assertDeviceEqual(v.value().device, "")
+          self.assertDeviceEqual(v.initialized_value().device, "CPU:0")
+
+  def testVarScopeDeviceFn(self):
+    with self.test_session():
+      device_fn = lambda x: "/job:ps" if x.node_def.op == "Variable" else ""
+      with tf.device(device_fn):
+        v = tf.get_variable("v", [])
+        self.assertDeviceEqual(v.device, "/job:ps/CPU:0")
+        self.assertDeviceEqual(v.value().device, v.device)
+        self.assertDeviceEqual(v.initialized_value().device, v.device)
+
+  def testVarScopeCachingDeviceSet(self):
+    with self.test_session():
+      device_fn = lambda x: "/job:ps" if x.node_def.op == "Variable" else ""
+      with tf.variable_scope("RNN") as varscope:
+        varscope.set_caching_device(lambda op: op.device)
+        with tf.device(device_fn):
+          v = tf.get_variable("v", [])
+        self.assertDeviceEqual(v.device, "/job:ps/CPU:0")
+        self.assertDeviceEqual(v.value().device, "")
+        self.assertDeviceEqual(v.initialized_value().device, "CPU:0")
+
   def testVarScopeRegularizer(self):
     with self.test_session() as sess:
       init = tf.constant_initializer(0.3)

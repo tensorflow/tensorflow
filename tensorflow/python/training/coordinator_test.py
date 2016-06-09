@@ -82,15 +82,19 @@ class CoordinatorTest(tf.test.TestCase):
     coord.join(threads)
 
   def testJoinGraceExpires(self):
-    coord = tf.train.Coordinator()
-    threads = [
-        threading.Thread(target=StopInN, args=(coord, 0.01)),
-        threading.Thread(target=SleepABit, args=(10.0,))]
-    for t in threads:
-      t.daemon = True
-      t.start()
-    with self.assertRaisesRegexp(RuntimeError, "threads still running"):
-      coord.join(threads, stop_grace_period_secs=0.02)
+    def TestWithGracePeriod(stop_grace_period):
+      coord = tf.train.Coordinator()
+      threads = [
+          threading.Thread(target=StopInN, args=(coord, 0.01)),
+          threading.Thread(target=SleepABit, args=(10.0,))]
+      for t in threads:
+        t.daemon = True
+        t.start()
+      with self.assertRaisesRegexp(RuntimeError, "threads still running"):
+        coord.join(threads, stop_grace_period_secs=stop_grace_period)
+    TestWithGracePeriod(1e-10)
+    TestWithGracePeriod(0.002)
+    TestWithGracePeriod(1.0)
 
   def testJoinRaiseReportExcInfo(self):
     coord = tf.train.Coordinator()
