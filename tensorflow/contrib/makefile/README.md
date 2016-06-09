@@ -138,6 +138,7 @@ recommend starting by compiling and installing protobuf:
 ```bash
 cd tensorflow/contrib/makefile/downloads/protobuf/
 ./autogen.sh 
+./configure
 make
 sudo make install
 cd ../../../../..
@@ -149,8 +150,8 @@ Once that's done, you can use make to build the library and example:
 make -f tensorflow/contrib/makefile/Makefile TARGET=PI OPTFLAGS="-Os"
 ```
 
-If you're only interested in building for a Raspberry Pi 3, you can supply some
-extra optimization flags to give you code that will run faster:
+If you're only interested in building for Raspberry Pi's 2 and 3, you can supply
+some extra optimization flags to give you code that will run faster:
 
 ```bash
 make -f tensorflow/contrib/makefile/Makefile TARGET=PI \
