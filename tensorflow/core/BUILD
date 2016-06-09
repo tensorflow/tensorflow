@@ -1525,7 +1525,10 @@ tf_cc_test_gpu(
     name = "common_runtime/gpu/gpu_allocator_retry_test.cc",
     size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_cuda_tests_tags() + [
+        "nomac",
+        "manual",  # http://b/29223363
+    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

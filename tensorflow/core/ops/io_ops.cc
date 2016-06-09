@@ -278,6 +278,7 @@ Returns up to `num_records` (key, value) pairs produced by a Reader.
 Will dequeue from the input queue if necessary (e.g. when the
 Reader needs to start reading from a new file since it has finished
 with the previous file).
+It may return less than `num_records` even before the last batch.
 
 reader_handle: Handle to a `Reader`.
 queue_handle: Handle to a `Queue`, with string work items.

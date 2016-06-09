@@ -9079,7 +9079,7 @@ op {
     type: DT_STRING
   }
   summary: "Returns up to `num_records` (key, value) pairs produced by a Reader."
-  description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file)."
+  description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file).\nIt may return less than `num_records` even before the last batch."
 }
 op {
   name: "ReaderReset"

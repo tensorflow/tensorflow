@@ -57,7 +57,6 @@ py_binary(
         "mnist_with_summaries.py",
     ],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # http://b/29184009
     deps = [
         ":input_data",
         "//tensorflow:tensorflow_py",
@@ -97,6 +96,7 @@ py_test(
     ],
     main = "mnist_with_summaries.py",
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # http://b/29184009
     deps = [
         ":input_data",
         "//tensorflow:tensorflow_py",

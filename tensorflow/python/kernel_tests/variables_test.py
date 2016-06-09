@@ -208,6 +208,65 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertTrue(
           var_cached.initialized_value().device.startswith("/job:foo"))
 
+  def testCachingOnGPU(self):
+    with self.test_session():
+      var = tf.Variable(2.0)
+      self.assertEqual(var.device, var.value().device)
+      self.assertEqual(var.device, var.initialized_value().device)
+
+      var_cached = tf.Variable(2.0, caching_device="GPU:0")
+      self.assertDeviceEqual(var_cached.device, "CPU:0")
+      self.assertDeviceEqual(var_cached.value().device, "GPU:0")
+      self.assertDeviceEqual(var_cached.initialized_value().device, "GPU:0")
+
+  def testCachedWithOp(self):
+    with self.test_session():
+      var = tf.Variable(2.0)
+      self.assertEqual(var.device, var.value().device)
+      self.assertEqual(var.device, var.initialized_value().device)
+
+      with tf.device("/job:foo"):
+        op = tf.constant(0)
+      var_cached = tf.Variable(2.0, caching_device=op.device)
+      self.assertDeviceEqual(var_cached.device, var.device)
+      self.assertDeviceEqual(var_cached.value().device, op.device)
+      self.assertDeviceEqual(var_cached.initialized_value().device, op.device)
+
+  def testCachedWithVar(self):
+    with self.test_session():
+      var = tf.Variable(2.0, caching_device="/job:foo")
+      self.assertDeviceEqual(var.device, "CPU:0")
+      self.assertDeviceEqual(var.value().device, "/job:foo")
+      self.assertDeviceEqual(var.initialized_value().device, "/job:foo/CPU:0")
+
+      var_cached = tf.Variable(2.0, caching_device=var.device)
+      self.assertDeviceEqual(var_cached.device, var.device)
+      self.assertDeviceEqual(var_cached.value().device, var.device)
+      self.assertDeviceEqual(var_cached.initialized_value().device, var.device)
+
+  def testDeviceFnCaching(self):
+    with self.test_session():
+      with tf.device(lambda _: "/job:foo"):
+        var = tf.Variable(2.0)
+        var_cached = tf.Variable(2.0, caching_device="/job:bar")
+      self.assertEqual(var.device, var.value().device)
+      self.assertEqual(var.device, var.initialized_value().device)
+      self.assertDeviceEqual(var_cached.device, var.device)
+      self.assertDeviceEqual(var_cached.value().device, "/job:bar")
+      self.assertDeviceEqual(var_cached.initialized_value().device,
+                             "/job:bar/CPU:0")
+
+  def testCachingOnCaller(self):
+    with self.test_session():
+      with tf.device(lambda _: "/job:foo"):
+        var = tf.Variable(2.0)
+        var_cached = tf.Variable(2.0, caching_device=lambda op: op.device)
+      self.assertEqual(var.device, var.value().device)
+      self.assertEqual(var.device, var.initialized_value().device)
+      self.assertDeviceEqual(var_cached.device, var.device)
+      self.assertDeviceEqual(var_cached.value().device, "")
+      self.assertDeviceEqual(var_cached.initialized_value().device, "CPU:0")
+
   def testCollections(self):
     with self.test_session():
       var_x = tf.Variable(2.0)
