@@ -35,8 +35,8 @@ HOST_OBJDIR := $(MAKEFILE_DIR)/gen/host_obj/
 HOST_BINDIR := $(MAKEFILE_DIR)/gen/host_bin/
 HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 
-# Which Eigen version we're using.
-EIGEN_HASH := 62a2305d5734
+# Find the current Eigen version name from the Bazel build file
+EIGEN_HASH := $(shell cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d- | cut -f1 -d\")
 
 # Settings for the host compiler.
 HOST_CXX := gcc
@@ -56,7 +56,7 @@ HOST_LIBS := \
 
 # If we're on Linux, also link in the dl library.
 ifeq ($(HOST_OS),LINUX)
-	HOST_LIBS += -ldl
+	HOST_LIBS += -ldl -lpthread
 endif
 
 # If we're on a Pi, link in pthreads and dl
@@ -131,7 +131,7 @@ ifeq ($(TARGET),LINUX)
 endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
-	LIBS += -ldl
+	LIBS += -ldl -lpthread
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
