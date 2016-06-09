@@ -675,6 +675,8 @@ class Supervisor(object):
     # need to clear the coordinator's stop_event so that threads managed by the
     # coordinator can run.
     self._coord.clear_stop()
+    if self._summary_writer:
+      self._summary_writer.reopen()
 
     if self._is_chief:
       sess = self._session_manager.prepare_session(
@@ -764,18 +766,22 @@ class Supervisor(object):
     if threads is not None:
       join_threads.extend(threads)
     self._coord.request_stop()
-    self._coord.join(join_threads,
-                     stop_grace_period_secs=self._stop_grace_secs)
+    try:
+      # coord.join() re-raises the first reported exception; the "finally"
+      # block ensures that we clean up whether or not an exception was
+      # reported.
+      self._coord.join(join_threads,
+                       stop_grace_period_secs=self._stop_grace_secs)
+    finally:
+      # Close the writer last, in case one of the running threads was using it.
+      if close_summary_writer and self._summary_writer:
+        # Stop messages are not logged with event.step,
+        # since the session may have already terminated.
+        self._summary_writer.add_session_log(SessionLog(status=SessionLog.STOP))
+        self._summary_writer.close()
+        self._graph_added_to_summary = False
 
-    # Close the writer last, in case one of the running threads was using it.
-    if close_summary_writer and self._summary_writer:
-      # Stop messages are not logged with event.step,
-      # since the session may have already terminated.
-      self._summary_writer.add_session_log(SessionLog(status=SessionLog.STOP))
-      self._summary_writer.close()
-      self._graph_added_to_summary = False
-
-    self._started_threads = []
+      self._started_threads = []
 
   def request_stop(self, ex=None):
     """Request that the coordinator stop the threads.
