@@ -187,25 +187,25 @@ ops.NoGradient('SampleDistortedBoundingBox')
 ops.NoGradient("ExtractGlimpse")
 
 
-def _ImageDimensions(images, dynamic_shape=False):
+def _ImageDimensions(images):
   """Returns the dimensions of an image tensor.
 
   Args:
     images: 4-D Tensor of shape [batch, height, width, channels]
-    dynamic_shape: Whether the input image has undertermined shape. If set to
-      `True`, shape information will be retrieved at run time. Default to
-      `False`.
 
   Returns:
-    list of integers [batch, height, width, channels]
+    list of integers [batch, height, width, channels], when static shape is
+    fully defined.
+    list of integer scalar tensors [batch, height, width, channels], when
+    static shape is not fully defined.
   """
   # A simple abstraction to provide names for each dimension. This abstraction
   # should make it simpler to switch dimensions in the future (e.g. if we ever
   # want to switch height and width.)
-  if dynamic_shape:
-    return array_ops.unpack(array_ops.shape(images))
-  else:
+  if images.get_shape().is_fully_defined():
     return images.get_shape().as_list()
+  else:
+    return array_ops.unpack(array_ops.shape(images))
 
 
 def _Check3DImage(image, require_static=True):
@@ -427,56 +427,61 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     offset_width: Number of columns of zeros to add on the left.
     target_height: Height of output image.
     target_width: Width of output image.
-    dynamic_shape: Whether the input image has undertermined shape. If set to
-      `True`, shape information will be retrieved at run time. Default to
-      `False`.
 
   Returns:
     3-D tensor of shape `[target_height, target_width, channels]`
 
   Raises:
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
-      `target_*` arguments, and `dynamic_shape` is set to `False`.
+      `target_*` arguments, or either `offset_height` or `offset_width` is
+      negative.
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=(not dynamic_shape))
-  height, width, depth = _ImageDimensions(image, dynamic_shape=dynamic_shape)
+  _Check3DImage(image, require_static=False)
+  height, width, depth = _ImageDimensions(image)
 
   after_padding_width = target_width - offset_width - width
   after_padding_height = target_height - offset_height - height
 
-  if not dynamic_shape:
-    if target_width < width:
-      raise ValueError('target_width must be >= width')
-    if target_height < height:
-      raise ValueError('target_height must be >= height')
+  if not isinstance(offset_height, ops.Tensor) and offset_height < 0:
+    raise ValueError('offset_height must be >= 0')
+  if not isinstance(offset_width, ops.Tensor) and offset_width < 0:
+    raise ValueError('offset_width must be >= 0')
 
-    if after_padding_width < 0:
-      raise ValueError('target_width not possible given '
-                       'offset_width and image width')
-    if after_padding_height < 0:
-      raise ValueError('target_height not possible given '
-                       'offset_height and image height')
+  if (not isinstance(target_width, ops.Tensor) and
+      not isinstance(width, ops.Tensor) and
+      target_width < width):
+    raise ValueError('target_width must be >= width')
+  if (not isinstance(target_height, ops.Tensor) and
+      not isinstance(height, ops.Tensor) and
+      target_height < height):
+    raise ValueError('target_height must be >= height')
+
+  if (not isinstance(after_padding_width, ops.Tensor) and
+      after_padding_width < 0):
+    raise ValueError('target_width not possible given '
+                     'offset_width and image width')
+  if (not isinstance(after_padding_height, ops.Tensor) and
+      after_padding_height < 0):
+    raise ValueError('target_height not possible given '
+                     'offset_height and image height')
 
   # Do not pad on the depth dimensions.
-  if (dynamic_shape or offset_width or offset_height or
-      after_padding_width or after_padding_height):
-    paddings = array_ops.reshape(
-      array_ops.pack([offset_height, after_padding_height,
-                      offset_width, after_padding_width,
-                      0, 0]),
-      [3, 2])
-    padded = array_ops.pad(image, paddings)
-    if not dynamic_shape:
-      padded.set_shape([target_height, target_width, depth])
-  else:
-    padded = image
+  paddings = array_ops.reshape(
+    array_ops.pack([offset_height, after_padding_height,
+                    offset_width, after_padding_width,
+                    0, 0]),
+    [3, 2])
+  padded = array_ops.pad(image, paddings)
+  if not any(isinstance(i, ops.Tensor) for i in
+             [target_height, target_width, depth]):
+    padded.set_shape([target_height, target_width, depth])
 
   return padded
 
 
-def crop_to_bounding_box(image, offset_height, offset_width, target_height,
-                         target_width, dynamic_shape=False):
+def crop_to_bounding_box(image, offset_height, offset_width,
+                         target_height, target_width):
   """Crops an image to a specified bounding box.
   
   This op cuts a rectangular part out of `image`. The top-left corner of the
@@ -492,46 +497,54 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
                   the input.
     target_height: Height of the result.
     target_width: Width of the result.
-    dynamic_shape: Whether the input image has undertermined shape. If set to
-      `True`, shape information will be retrieved at run time. Default to
-      `False`.
 
   Returns:
     3-D tensor of image with shape `[target_height, target_width, channels]`
 
   Raises:
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
-    `target_*` arguments, and `dynamic_shape` is set to `False`.
+      `target_*` arguments, or either `offset_height` or `offset_width` is
+      negative.
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=(not dynamic_shape))
-  height, width, _ = _ImageDimensions(image, dynamic_shape=dynamic_shape)
+  _Check3DImage(image, require_static=False)
+  height, width, _ = _ImageDimensions(image)
 
-  if not dynamic_shape:
-    if offset_width < 0:
-      raise ValueError('offset_width must be >= 0.')
-    if offset_height < 0:
-      raise ValueError('offset_height must be >= 0.')
+  if not isinstance(offset_width, ops.Tensor) and offset_width < 0:
+    raise ValueError('offset_width must be >= 0.')
+  if not isinstance(offset_height, ops.Tensor) and offset_height < 0:
+    raise ValueError('offset_height must be >= 0.')
 
-    if width < (target_width + offset_width):
-      raise ValueError('width must be >= target + offset.')
-    if height < (target_height + offset_height):
-      raise ValueError('height must be >= target + offset.')
+  if not isinstance(target_width, ops.Tensor) and target_width < 0:
+    raise ValueError('target_width must be >= 0')
+  if not isinstance(target_height, ops.Tensor) and target_height < 0:
+    raise ValueError('target_height must be >= 0')
 
-  cropped = array_ops.slice(image,
-                            array_ops.pack([offset_height, offset_width, 0]),
-                            array_ops.pack([target_height, target_width, -1]))
+  if (not isinstance(width, ops.Tensor) and
+      not isinstance(target_width, ops.Tensor) and
+      not isinstance(offset_width, ops.Tensor) and
+      width < (target_width + offset_width)):
+    raise ValueError('width must be >= target + offset.')
+  if (not isinstance(height, ops.Tensor) and
+      not isinstance(target_height, ops.Tensor) and
+      not isinstance(offset_height, ops.Tensor) and
+      height < (target_height + offset_height)):
+    raise ValueError('height must be >= target + offset.')
+
+  cropped = array_ops.slice(
+    image,
+    array_ops.pack([offset_height, offset_width, 0]),
+    array_ops.pack([target_height, target_width, -1]))
 
   return cropped
 
 
-def resize_image_with_crop_or_pad(image, target_height, target_width,
-                                  dynamic_shape=False):
+def resize_image_with_crop_or_pad(image, target_height, target_width):
   """Crops and/or pads an image to a target width and height.
-  
+
   Resizes an image to a target width and height by either centrally
   cropping the image or padding it evenly with zeros.
-  
+
   If `width` or `height` is greater than the specified `target_width` or
   `target_height` respectively, this op centrally crops along that dimension.
   If `width` or `height` is smaller than the specified `target_width` or
@@ -542,9 +555,6 @@ def resize_image_with_crop_or_pad(image, target_height, target_width,
     image: 3-D tensor of shape [height, width, channels]
     target_height: Target height.
     target_width: Target width.
-    dynamic_shape: Whether the input image has undertermined shape. If set to
-      `True`, shape information will be retrieved at run time. Default to
-      `False`.
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
@@ -554,21 +564,21 @@ def resize_image_with_crop_or_pad(image, target_height, target_width,
     `[target_height, target_width, channels]`
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=(not dynamic_shape))
+  _Check3DImage(image, require_static=False)
   original_height, original_width, _ = \
-    _ImageDimensions(image, dynamic_shape=dynamic_shape)
+    _ImageDimensions(image)
 
   if target_width <= 0:
     raise ValueError('target_width must be > 0.')
   if target_height <= 0:
     raise ValueError('target_height must be > 0.')
 
-  if dynamic_shape:
-    max_ = math_ops.maximum
-    min_ = math_ops.minimum
-  else:
+  if image.get_shape().is_fully_defined():
     max_ = max
     min_ = min
+  else:
+    max_ = math_ops.maximum
+    min_ = math_ops.minimum
 
   width_diff = target_width - original_width
   offset_crop_width = max_(-width_diff // 2, 0)
@@ -581,13 +591,11 @@ def resize_image_with_crop_or_pad(image, target_height, target_width,
   # Maybe crop if needed.
   cropped = crop_to_bounding_box(image, offset_crop_height, offset_crop_width,
                                  min_(target_height, original_height),
-                                 min_(target_width, original_width),
-                                 dynamic_shape=dynamic_shape)
+                                 min_(target_width, original_width))
 
   # Maybe pad if needed.
   resized = pad_to_bounding_box(cropped, offset_pad_height, offset_pad_width,
-                                target_height, target_width,
-                                dynamic_shape=dynamic_shape)
+                                target_height, target_width)
 
   if resized.get_shape().ndims is None:
     raise ValueError('resized contains no shape.')
