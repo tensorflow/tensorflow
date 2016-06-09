@@ -893,7 +893,7 @@ class ControlFlowState(object):
       else:
         # Only the shape of value is needed for backprop.
         forward_ctxt.outer_context.Enter()
-        shape = array_ops.shape(value)
+        shape = array_ops.shape(val)
         forward_ctxt.outer_context.Exit()
         # Save the shape to a stack.
         history_shape = outer_grad_state.AddForwardAccumulator(shape)
@@ -902,7 +902,7 @@ class ControlFlowState(object):
         outer_grad_ctxt.Enter()
         real_shape = outer_grad_state.AddBackPropAccumulatedValue(
             history_shape, shape)
-        result = array_ops.zeros(real_shape, value.dtype)
+        result = array_ops.zeros(real_shape, val.dtype)
         outer_grad_ctxt.Exit()
     else:
       # This is not a nested loop.
