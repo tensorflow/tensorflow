@@ -19,22 +19,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.learn.python.learn import runner_flags  # pylint: disable=unused-import
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 
-
-FLAGS = flags.FLAGS
-
-
-flags.DEFINE_string('schedule', '', 'Schedule to run for this experiment. '
-                    'A schedule identifies a method on the Experiment '
-                    'instance returned by the function passed to the '
-                    'run() call')
 flags.DEFINE_string('output_dir', '', 'Base output directory. Made '
                     'available to the experiment builder function passed '
-                    'to run(). All files written by the Experiment are '
-                    'expected to be written into this directory.')
+                    'to run(). All files written by the Experiment are ')
+
+FLAGS = flags.FLAGS
 
 
 def run(experiment_fn):
@@ -67,8 +61,10 @@ def run(experiment_fn):
   task = getattr(experiment, taskname)
   if not callable(task):
     logging.error('Schedule references non-callable member %s', taskname)
-    valid_tasks = [x for x in experiment.__dict__
-                   if callable(getattr(experiment, x))]
+    valid_tasks = [
+        x for x in experiment.__dict__
+        if callable(getattr(experiment, x)) and not x.startswith('_')
+    ]
     logging.error('Allowed values for this experiment are: %s', valid_tasks)
     raise TypeError('Schedule references non-callable member %s', taskname)
 

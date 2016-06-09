@@ -71,8 +71,9 @@ class ExperimentTest(tf.test.TestCase):
     ex = tf.contrib.learn.Experiment(est,
                                      train_input_fn='train_input',
                                      eval_input_fn='eval_input',
-                                     eval_metrics='eval_metrics')
-    ex.evaluate(steps='steps', delay_secs=0)
+                                     eval_metrics='eval_metrics',
+                                     eval_steps='steps')
+    ex.evaluate(delay_secs=0)
     self.assertEquals(1, est.eval_count)
     self.assertEquals(0, est.fit_count)
 
