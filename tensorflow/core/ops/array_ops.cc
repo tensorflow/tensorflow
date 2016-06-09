@@ -1715,7 +1715,7 @@ REGISTER_OP("ExtractImagePatches")
     .Attr("T: realnumbertype")
     .Attr(GetPaddingAttrString())
     .Doc(R"doc(
-Extract `patches` from `images` and puth them in the "depth" output dimension.
+Extract `patches` from `images` and put them in the "depth" output dimension.
 
 images: 4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
 patches: 4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *
