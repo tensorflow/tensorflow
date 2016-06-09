@@ -32,18 +32,6 @@ class IdentityReaderTest(tf.test.TestCase):
     self.assertAllEqual(expected, k)
     self.assertAllEqual(expected, v)
 
-  def testReadUpTo(self):
-    # Note that this just tests the default ReaderReadUpTo
-    # since it is not overriden for IdentityReader.
-    with self.test_session() as sess:
-      reader = tf.IdentityReader("test_reader")
-      queue = tf.FIFOQueue(99, [tf.string], shapes=())
-      keys, values = reader.read_up_to(queue, 3)
-      queue.enqueue_many([["A", "B", "C"]]).run()
-      k, v = sess.run([keys, values])
-      self.assertAllEqual([b"A", b"B", b"C"], k)
-      self.assertAllEqual([b"A", b"B", b"C"], v)
-
   def testOneEpoch(self):
     with self.test_session() as sess:
       reader = tf.IdentityReader("test_reader")
@@ -392,6 +380,34 @@ class TFRecordReaderTest(tf.test.TestCase):
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
+
+  def testReadUpTo(self):
+    files = self._CreateFiles()
+    with self.test_session() as sess:
+      reader = tf.TFRecordReader(name="test_reader")
+      queue = tf.FIFOQueue(99, [tf.string], shapes=())
+      batch_size = 3
+      key, value = reader.read_up_to(queue, batch_size)
+
+      queue.enqueue_many([files]).run()
+      queue.close().run()
+      num_k = 0
+      num_v = 0
+
+      while True:
+        try:
+          k, v = sess.run([key, value])
+          # Test reading *up to* batch_size records
+          self.assertLessEqual(len(k), batch_size)
+          self.assertLessEqual(len(v), batch_size)
+          num_k += len(k)
+          num_v += len(v)
+        except tf.errors.OutOfRangeError:
+          break
+
+      # Test that we have read everything
+      self.assertEqual(self._num_files * self._num_records, num_k)
+      self.assertEqual(self._num_files * self._num_records, num_v)
 
 
 class AsyncReaderTest(tf.test.TestCase):
