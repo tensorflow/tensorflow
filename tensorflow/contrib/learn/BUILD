@@ -65,7 +65,7 @@ py_test(
 
 py_test(
     name = "dataframe_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/tests/dataframe/dataframe_test.py"],
     srcs_version = "PY2AND3",
     deps = [
