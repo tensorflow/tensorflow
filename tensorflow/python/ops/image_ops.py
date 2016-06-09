@@ -573,12 +573,17 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   if not isinstance(target_height, ops.Tensor) and target_height <= 0:
     raise ValueError('target_height must be > 0.')
 
-  if image.get_shape().is_fully_defined():
-    max_ = max
-    min_ = min
-  else:
-    max_ = math_ops.maximum
-    min_ = math_ops.minimum
+  def max_(x, y):
+    if isinstance(x, ops.Tensor) or isinstance(y, ops.Tensor):
+      return math_ops.maximum(x, y)
+    else:
+      return max(x, y)
+
+  def min_(x, y):
+    if isinstance(x, ops.Tensor) or isinstance(y, ops.Tensor):
+      return math_ops.minimum(x, y)
+    else:
+      return min(x, y)
 
   width_diff = target_width - original_width
   offset_crop_width = max_(-width_diff // 2, 0)
