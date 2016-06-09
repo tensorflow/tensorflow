@@ -364,9 +364,84 @@ function labelBuild(nodeGroup, renderNodeInfo: render.RenderNodeInfo,
     let scale = getLabelFontScale(sceneElement);
     label.attr('font-size', scale(text.length) + 'px');
   }
-  label.text(text);
+
+  let txtElement = <d3.Selection<any>>label.text(text);
+  enforceLabelWidth(txtElement, renderNodeInfo.node.type, renderNodeInfo);
   return label;
-};
+}
+/**
+ * This function shortens text which would exceed the maximum pixel width of
+ * a label.
+ *
+ * @param txtElementSelection The text element containing the label's text as d3
+ * selection.
+ * @param nodeType The type of the node the label belongs to. If the node is
+ * an annotation, the value is -1. Label widths are defined in
+ * layout.PARAMS.nodeSize.{meta|op|...}.maxLabelWidth for nodes and
+ * layout.PARAMS.annotations.labelWidth for annotations.
+ * @param renderNodeInfo The render information about the node, required to
+ * determine whether META nodes are collapsed or expanded.
+ */
+export function enforceLabelWidth(
+    txtElementSelection: d3.Selection<any>, nodeType: NodeType | number,
+    renderNodeInfo?: render.RenderNodeInfo) {
+  // Get text element itself and its on-screen width.
+  let txtNode = <SVGTextElement>txtElementSelection.node();
+  let computedTxtLength = txtNode.getComputedTextLength();
+  let labelContent = txtNode.textContent;
+
+  // Get maximum length from settings.
+  let maxLength = null;
+  switch (nodeType) {
+    case NodeType.META:
+      if (renderNodeInfo && !renderNodeInfo.expanded) {  // Only trim text if
+        // node expanded.
+        maxLength = layout.PARAMS.nodeSize.meta.maxLabelWidth;
+      }
+      break;
+
+    case NodeType.OP:
+      maxLength = layout.PARAMS.nodeSize.op.maxLabelWidth;
+      break;
+
+    case -1:
+      maxLength = layout.PARAMS.annotations.maxLabelWidth;
+      break;
+
+    default:
+      break;
+  }
+
+  // Return if no max length provided for node type, or current label length is
+  // less than or equal to the provided length limit.
+  if (maxLength === null || computedTxtLength <= maxLength) {
+    return;
+  }
+
+  // Find the index of the character which exceeds the width.
+  // getSubStringLength performs far better than getComputedTextLength, and
+  // results in a 3x speed-up on average.
+  let index = 1;
+  while (txtNode.getSubStringLength(0, index) < maxLength) {
+    index++;
+  }
+
+  // Shorten the label starting at the string length known to be one
+  // character above max pixel length.
+  // When shortened the original label's substring is concatenated with
+  // '...', baseText contains the substring not including the '...'.
+  let baseText = <string>txtNode.textContent.substr(0, index);
+  do {
+    baseText = baseText.substr(0, baseText.length - 1);
+
+    // Recompute text length.
+    txtNode.textContent = baseText + '...';
+    computedTxtLength = txtNode.getComputedTextLength();
+  } while (computedTxtLength > maxLength && baseText.length > 0);
+
+  // Add tooltip with full name and return.
+  return txtElementSelection.append('title').text(labelContent);
+}
 
 /**
  * d3 scale used for sizing font of labels, used by labelBuild,
