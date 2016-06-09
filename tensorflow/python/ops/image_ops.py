@@ -602,11 +602,11 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   resized = pad_to_bounding_box(cropped, offset_pad_height, offset_pad_width,
                                 target_height, target_width)
 
-  if resized.get_shape().ndims is None:
-    raise ValueError('resized contains no shape.')
-  if not resized.get_shape()[0].is_compatible_with(target_height):
+  if (not isinstance(target_height, ops.Tensor) and
+      not resized.get_shape()[0].is_compatible_with(target_height)):
     raise ValueError('resized height is not correct.')
-  if not resized.get_shape()[1].is_compatible_with(target_width):
+  if (not isinstance(target_width, ops.Tensor) and
+      not resized.get_shape()[1].is_compatible_with(target_width)):
     raise ValueError('resized width is not correct.')
   return resized
 
