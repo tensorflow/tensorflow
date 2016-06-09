@@ -42,7 +42,10 @@ py_library(
     name = "platform",
     srcs = glob(["platform/*.py"]),
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/core:protos_all_py"],
+    deps = [
+        ":pywrap_tensorflow",
+        "//tensorflow/core:protos_all_py",
+    ],
 )
 
 py_library(
