@@ -414,7 +414,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
       }
     }
     gpu::cuda::ScopedActivateExecutorContext scoped_activation{
-        stream->parent(), gpu::cuda::MultiOpActivation::kYes};
+        stream->parent()};
     op_kernel->Compute(context);
     if (context->status().ok()) {
       if (sync_every_op_) {
