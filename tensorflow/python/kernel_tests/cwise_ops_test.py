@@ -46,6 +46,19 @@ _XOR = lambda x, y: x ^ y
 _INV = lambda x: ~x
 
 
+# TODO(zongheng): it'd be great to factor out this function and various random
+# SparseTensor gen funcs.
+def _sparsify(x, thresh=0.5, index_dtype=np.int64):
+  x[x < thresh] = 0
+
+  non_zero = np.where(x)
+  x_indices = np.vstack(non_zero).astype(index_dtype).T
+  x_values = x[non_zero]
+  x_shape = x.shape
+
+  return tf.SparseTensor(
+      indices=x_indices, values=x_values, shape=x_shape), x_values
+
 class UnaryOpTest(tf.test.TestCase):
 
   def _compareCpu(self, x, np_func, tf_func):
@@ -102,6 +115,19 @@ class UnaryOpTest(tf.test.TestCase):
                                                     x_init_value=x)
         self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
+  def _check(self, result_tensor, result_np, input_sp_t):
+    self.assertTrue(isinstance(result_tensor, tf.SparseTensor))
+    self.assertTrue(isinstance(input_sp_t, tf.SparseTensor))
+    self.assertAllEqual(input_sp_t.indices.eval(), result_tensor.indices.eval())
+    self.assertAllEqual(input_sp_t.shape.eval(), result_tensor.shape.eval())
+    self.assertAllClose(result_np, result_tensor.values.eval())
+
+  def _compareSparseCpu(self, x, np_func, tf_func):
+    x_sp, x_sp_vals = _sparsify(x)
+    res_np = np_func(x_sp_vals)
+    with self.test_session(use_gpu=False):
+      self._check(tf_func(x_sp), res_np, x_sp)
+
   def _compareGpu(self, x, np_func, tf_func):
     np_ans = np_func(x)
     with self.test_session(use_gpu=True):
@@ -113,9 +139,19 @@ class UnaryOpTest(tf.test.TestCase):
       self.assertAllClose(np_ans, tf_gpu)
     # TODO(zhifengc/ke): make gradient checker work on GPU.
 
+  def _compareSparseGpu(self, x, np_func, tf_func):
+    x_sp, x_sp_vals = _sparsify(x)
+    res_np = np_func(x_sp_vals)
+    with self.test_session(use_gpu=True):
+      self._check(tf_func(x_sp), res_np, x_sp)
+
   def _compareBoth(self, x, np_func, tf_func):
     self._compareCpu(x, np_func, tf_func)
     self._compareGpu(x, np_func, tf_func)
+
+  def _compareBothSparse(self, x, np_func, tf_func):
+    self._compareSparseCpu(x, np_func, tf_func)
+    self._compareSparseGpu(x, np_func, tf_func)
 
   def _inv(self, x):
     return 1.0 / x
@@ -169,6 +205,8 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.vectorize(math.erf), tf.erf)
     self._compareBoth(x, np.vectorize(math.erfc), tf.erfc)
 
+    self._compareBothSparse(y, np.log, tf.log)
+
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
     self._compareBoth(x, np.tanh, tf.tanh)
@@ -201,6 +239,8 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.arccos, tf.acos)
     self._compareBoth(x, np.arctan, tf.atan)
 
+    self._compareBothSparse(x, np.log, tf.log)
+
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
     y = (x + .5).astype(np.float64)    # no zero
@@ -232,6 +272,8 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(k, np.arccos, tf.acos)
     self._compareBoth(k, np.tan, tf.tan)
 
+    self._compareBothSparse(y, np.log, tf.log)
+
   def testHalfBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float16)
     y = (x + .5).astype(np.float16)    # no zero
@@ -257,6 +299,8 @@ class UnaryOpTest(tf.test.TestCase):
         tf.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), tf.erf)
     self._compareBoth(x, np.vectorize(math.erfc), tf.erfc)
+
+    self._compareBothSparse(y, np.log, tf.log)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
@@ -300,6 +344,8 @@ class UnaryOpTest(tf.test.TestCase):
       return x / np.abs(x)
     self._compareCpu(y, complex_sign, tf.sign)
 
+    self._compareBothSparse(y, np.log, tf.log)
+
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
         np.complex128)
@@ -323,6 +369,8 @@ class UnaryOpTest(tf.test.TestCase):
     def complex_sign(x):
       return x / np.abs(x)
     self._compareCpu(y, complex_sign, tf.sign)
+
+    self._compareBothSparse(y, np.log, tf.log)
 
 
 class BinaryOpTest(tf.test.TestCase):

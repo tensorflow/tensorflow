@@ -330,6 +330,27 @@ def pow(x, y, name=None):
     return gen_math_ops._pow(x, y, name=name)
 
 
+def log(x, name=None):
+  """Computes natural logarithm of x element-wise.
+
+  I.e., \\(y = \log_e x\\).
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`, `complex64`, `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+  """
+  with ops.op_scope([x], name, "Log") as name:
+    if isinstance(x, ops.SparseTensor):
+      x_log = gen_math_ops.log(x.values, name=name)
+      return ops.SparseTensor(indices=x.indices, values=x_log, shape=x.shape)
+    else:
+      return gen_math_ops.log(x, name=name)
+
+
 def complex(real, imag, name=None):
   """Converts two real numbers to a complex number.
 
