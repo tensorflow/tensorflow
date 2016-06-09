@@ -1003,15 +1003,16 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     x_np = np.array(original, dtype=np.uint8).reshape(original_shape)
     y_np = np.array(expected).reshape(expected_shape)
 
-    target_height = expected_shape[0]
-    target_width = expected_shape[1]
+    target_height = ops.convert_to_tensor(expected_shape[0])
+    target_width = ops.convert_to_tensor(expected_shape[1])
 
     with self.test_session():
-      image = constant_op.constant(x_np, shape=original_shape)
+      image = array_ops.placeholder(dtypes.uint8,
+                                    shape=[None]*len(original_shape))
       y = image_ops.resize_image_with_crop_or_pad(image,
                                                   target_height,
                                                   target_width)
-      resized = y.eval()
+      resized = y.eval(feed_dict={image: x_np})
       self.assertAllClose(resized, y_np, atol=1e-5)
 
   def testBasic(self):
