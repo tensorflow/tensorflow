@@ -59,6 +59,12 @@ ifeq ($(HOST_OS),LINUX)
 	HOST_LIBS += -ldl
 endif
 
+# If we're on a Pi, link in pthreads and dl
+ifeq ($(HOST_OS),PI)
+	HOST_LIBS += -ldl -lpthread
+endif
+
+
 # proto_text is a tool that converts protobufs into a form we can use more
 # compactly within TensorFlow. It's a bit like protoc, but is designed to
 # produce a much more minimal result so we can save binary space.
@@ -131,7 +137,7 @@ endif
 ifeq ($(TARGET),PI)
 	CXXFLAGS += -D__ANDROID_TYPES_SLIM__
 	LDFLAGS := -Wl,--no-whole-archive
-	LIBS += -ldl
+	LIBS += -ldl -lpthread
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
 endif
 

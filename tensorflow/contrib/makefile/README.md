@@ -147,14 +147,14 @@ cd ../../../../..
 Once that's done, you can use make to build the library and example:
 
 ```bash
-make -f tensorflow/contrib/makefile/Makefile TARGET=PI OPTFLAGS="-Os"
+make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI OPTFLAGS="-Os"
 ```
 
 If you're only interested in building for Raspberry Pi's 2 and 3, you can supply
 some extra optimization flags to give you code that will run faster:
 
 ```bash
-make -f tensorflow/contrib/makefile/Makefile TARGET=PI \
+make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI \
 OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize"
 ```
 
