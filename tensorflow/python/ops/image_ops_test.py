@@ -479,19 +479,30 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
 class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
 
   def testNoOp(self):
+    dtype_np = np.float32
+    dtype_tf = dtypes.float32
+
     x_shape = [13, 9, 3]
-    x_np = np.ones(x_shape, dtype=np.float32)
+    x_np = np.ones(x_shape, dtype=dtype_np)
 
     with self.test_session():
-      x = constant_op.constant(x_np, shape=x_shape)
-      target_height = x_shape[0]
-      target_width = x_shape[1]
-      y = image_ops.crop_to_bounding_box(x, 0, 0, target_height, target_width)
-      y_tf = y.eval()
+      offset_height = ops.convert_to_tensor(0)
+      offset_width = ops.convert_to_tensor(0)
+
+      target_height = ops.convert_to_tensor(x_shape[0])
+      target_width = ops.convert_to_tensor(x_shape[1])
+
+      x = array_ops.placeholder(dtype_tf, shape=[None]*len(x_shape))
+      y = image_ops.crop_to_bounding_box(x, offset_height, offset_width,
+                                         target_height, target_width)
+      y_tf = y.eval(feed_dict={x: x_np})
       self.assertAllEqual(y_tf, x_np)
 
   def testCropping(self):
-    x_np = np.arange(0, 30, dtype=np.int32).reshape([6, 5, 1])
+    dtype_np = np.int32
+    dtype_tf = dtypes.int32
+
+    x_np = np.arange(0, 30, dtype=dtype_np).reshape([6, 5, 1])
 
     offset_height = 1
     after_height = 2
@@ -506,10 +517,15 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
                 offset_width:offset_width + target_width, :]
 
     with self.test_session():
-      x = constant_op.constant(x_np, shape=x_np.shape)
+      offset_height = ops.convert_to_tensor(offset_height)
+      offset_width = ops.convert_to_tensor(offset_width)
+      target_height = ops.convert_to_tensor(target_height)
+      target_width = ops.convert_to_tensor(target_width)
+
+      x = array_ops.placeholder(dtype_tf, shape=[None]*len(x_np.shape))
       y = image_ops.crop_to_bounding_box(x, offset_height, offset_width,
                                          target_height, target_width)
-      y_tf = y.eval()
+      y_tf = y.eval(feed_dict={x: x_np})
       self.assertAllEqual(y_tf.flatten(), y_np.flatten())
 
 
@@ -551,21 +567,31 @@ class CentralCropTest(test_util.TensorFlowTestCase):
 class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
 
   def testNoOp(self):
-    x_shape = [13, 9, 3]
-    x_np = np.ones(x_shape, dtype=np.float32)
+    dtype_np = np.float32
+    dtype_tf = dtypes.float32
 
-    target_height = x_shape[0]
-    target_width = x_shape[1]
+    x_shape = [13, 9, 3]
+    x_np = np.ones(x_shape, dtype=dtype_np)
 
     with self.test_session():
-      x = constant_op.constant(x_np, shape=x_shape)
-      y = image_ops.pad_to_bounding_box(x, 0, 0, target_height, target_width)
-      y_tf = y.eval()
+      offset_height = ops.convert_to_tensor(0)
+      offset_width = ops.convert_to_tensor(0)
+
+      target_height = ops.convert_to_tensor(x_shape[0])
+      target_width = ops.convert_to_tensor(x_shape[1])
+
+      x = array_ops.placeholder(dtype_tf, shape=[None]*len(x_shape))
+      y = image_ops.pad_to_bounding_box(x, offset_height, offset_width,
+                                        target_height, target_width)
+      y_tf = y.eval(feed_dict={x: x_np})
       self.assertAllEqual(y_tf, x_np)
 
   def testPadding(self):
+    dtype_np = np.float32
+    dtype_tf = dtypes.float32
+
     x_shape = [3, 4, 1]
-    x_np = np.ones(x_shape, dtype=np.float32)
+    x_np = np.ones(x_shape, dtype=dtype_np)
 
     offset_height = 2
     after_height = 3
@@ -584,10 +610,15 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     y_np = np.pad(x_np, paddings, 'constant')
 
     with self.test_session():
-      x = constant_op.constant(x_np, shape=x_shape)
+      offset_height = ops.convert_to_tensor(offset_height)
+      offset_width = ops.convert_to_tensor(offset_width)
+      target_height = ops.convert_to_tensor(target_height)
+      target_width = ops.convert_to_tensor(target_width)
+
+      x = array_ops.placeholder(dtype_tf, shape=[None]*len(x_shape))
       y = image_ops.pad_to_bounding_box(x, offset_height, offset_width,
                                         target_height, target_width)
-      y_tf = y.eval()
+      y_tf = y.eval(feed_dict={x: x_np})
       self.assertAllEqual(y_tf, y_np)
 
 
@@ -1000,14 +1031,17 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithCropOrPad(self, original, original_shape,
                                 expected, expected_shape):
-    x_np = np.array(original, dtype=np.uint8).reshape(original_shape)
+    dtype_np = np.uint8
+    dtype_tf = dtypes.uint8
+
+    x_np = np.array(original, dtype=dtype_np).reshape(original_shape)
     y_np = np.array(expected).reshape(expected_shape)
 
     target_height = ops.convert_to_tensor(expected_shape[0])
     target_width = ops.convert_to_tensor(expected_shape[1])
 
     with self.test_session():
-      image = array_ops.placeholder(dtypes.uint8,
+      image = array_ops.placeholder(dtype_tf,
                                     shape=[None]*len(original_shape))
       y = image_ops.resize_image_with_crop_or_pad(image,
                                                   target_height,
