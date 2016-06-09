@@ -19,6 +19,11 @@ DOWNLOADS_DIR=tensorflow/contrib/makefile/downloads
 mkdir ${DOWNLOADS_DIR}
 
 EIGEN_HASH=62a2305d5734
+if [ -f eigen.BUILD]; then
+	# Grab the current Eigen version name from the Bazel build file
+	EIGEN_HASH=$(cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d- | cut -f1 -d\")
+fi
+
 curl "https://bitbucket.org/eigen/eigen/get/${EIGEN_HASH}.tar.gz" \
 -o /tmp/eigen-${EIGEN_HASH}.tar.gz
 tar xzf /tmp/eigen-${EIGEN_HASH}.tar.gz -C ${DOWNLOADS_DIR}
