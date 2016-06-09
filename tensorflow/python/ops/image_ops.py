@@ -568,9 +568,9 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   original_height, original_width, _ = \
     _ImageDimensions(image)
 
-  if target_width <= 0:
+  if not isinstance(target_width, ops.Tensor) and target_width <= 0:
     raise ValueError('target_width must be > 0.')
-  if target_height <= 0:
+  if not isinstance(target_height, ops.Tensor) and target_height <= 0:
     raise ValueError('target_height must be > 0.')
 
   if image.get_shape().is_fully_defined():
