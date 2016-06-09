@@ -3272,6 +3272,20 @@ Call this method when you do not need the summary writer anymore.
 
 
 
+#### Other Methods
+- - -
+
+#### `tf.train.SummaryWriter.reopen()` {#SummaryWriter.reopen}
+
+Reopens the summary writer.
+
+Can be called after `close()` to add more events in the same directory.
+The events will go into a new events file.
+
+Does nothing if the summary writer was not closed.
+
+
+
 - - -
 
 ### `tf.train.summary_iterator(path)` {#summary_iterator}
