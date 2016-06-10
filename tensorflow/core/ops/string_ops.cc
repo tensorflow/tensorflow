@@ -66,9 +66,6 @@ REGISTER_OP("StringToHashBucket")
     .Input("string_tensor: string")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
-    .Deprecated(10,
-                "Use `tf.string_to_hash_bucket_fast()` or "
-                "`tf.string_to_hash_bucket_strong()`")
     .Doc(R"doc(
 Converts each string in the input Tensor to its hash mod by a number of buckets.
 
@@ -76,6 +73,8 @@ The hash function is deterministic on the content of the string within the
 process.
 
 Note that the hash function may change from time to time.
+This functionality will be deprecated and it's recommended to use
+`tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
 
 num_buckets: The number of buckets.
 output: A Tensor of the same shape as the input `string_tensor`.
