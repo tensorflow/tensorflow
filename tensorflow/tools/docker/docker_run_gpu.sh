@@ -17,6 +17,12 @@
 
 set -e
 
+echo "===== DEPRECATED ===== DEPRECATED ===== DEPRECATED ===== DEPRECATED ====="
+echo "DEPRECATED: Please use https://github.com/NVIDIA/nvidia-docker instead!"
+echo "            It does pretty much the same thing but better and it is"
+echo "            supported by NVidia."
+echo "========================================================================="
+
 export CUDA_HOME=${CUDA_HOME:-/usr/local/cuda}
 
 if [ ! -d ${CUDA_HOME}/lib64 ]; then
