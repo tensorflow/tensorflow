@@ -216,19 +216,27 @@ def with_same_shape(expected_tensor, tensor):
     return with_shape(expected_shape, tensor)
 
 
-def is_tensor(t):
+def is_tensor(x, batch_mode=False):
   """Check for tensor types.
 
-  If the object represents a tensor, returns True. Equivalent to
-  `isinstance(t, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+  For single object input, returns True if the object represents a tensor.
+  Equivalent to `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+
+  For list input, return the check result of each element as a list.
 
   Args:
-    t: An python object to check.
+    x: A python object or an iterable of objects to check.
+    batch_mode: Whether to treat `x` as a list of objects to check.
 
   Returns:
-    True if `t` represents a tensor, False if not.
+    Boolean when `batch_mode` is False. List of booleans when `batch_mode` is
+    True.
   """
-  return isinstance(t, (ops.Tensor, ops.SparseTensor, variables.Variable))
+  tensor_types = (ops.Tensor, ops.SparseTensor, variables.Variable)
+  if not batch_mode:
+    return isinstance(x, tensor_types)
+  else:
+    return [isinstance(i, tensor_types) for i in x]
 
 
 def with_shape(expected_shape, tensor):
