@@ -229,7 +229,7 @@ fi
 IMG="${USER}/tensorflow:${FINAL_TAG}"
 echo "Building docker image with image name and tag: ${IMG}"
 
-docker build -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
+docker build --no-cache -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
 if [[ $? == "0" ]]; then
   echo "docker build of ${IMG} succeeded"
 else
