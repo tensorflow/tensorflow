@@ -4599,7 +4599,7 @@ Extracts numpy matrix from pandas DataFrame.
 
 - - -
 
-### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, name=None)` {#read_batch_examples}
+### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, name=None)` {#read_batch_examples}
 
 Adds operations to read, queue, batch `Example` protos.
 
@@ -4627,6 +4627,8 @@ All ops are added to the default graph.
     `tf.initialize_all_variables()` as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
+*  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
+    records to read at once
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:
