@@ -175,6 +175,7 @@ from tensorflow.python.ops.gen_image_ops import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import make_all
+from tensorflow.contrib.framework.python.framework import is_tensor
 
 
 
@@ -443,25 +444,23 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   after_padding_width = target_width - offset_width - width
   after_padding_height = target_height - offset_height - height
 
-  if not isinstance(offset_height, ops.Tensor) and offset_height < 0:
+  if not is_tensor(offset_height) and offset_height < 0:
     raise ValueError('offset_height must be >= 0')
-  if not isinstance(offset_width, ops.Tensor) and offset_width < 0:
+  if not is_tensor(offset_width) and offset_width < 0:
     raise ValueError('offset_width must be >= 0')
 
-  if (not isinstance(target_width, ops.Tensor) and
-      not isinstance(width, ops.Tensor) and
+  if (all(not is_tensor(i) for i in [target_width, width]) and
       target_width < width):
     raise ValueError('target_width must be >= width')
-  if (not isinstance(target_height, ops.Tensor) and
-      not isinstance(height, ops.Tensor) and
+  if (all(not is_tensor(i) for i in [target_height, height]) and
       target_height < height):
     raise ValueError('target_height must be >= height')
 
-  if (not isinstance(after_padding_width, ops.Tensor) and
+  if (not is_tensor(after_padding_width) and
       after_padding_width < 0):
     raise ValueError('target_width not possible given '
                      'offset_width and image width')
-  if (not isinstance(after_padding_height, ops.Tensor) and
+  if (not is_tensor(after_padding_height) and
       after_padding_height < 0):
     raise ValueError('target_height not possible given '
                      'offset_height and image height')
@@ -473,8 +472,8 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
                     0, 0]),
     [3, 2])
   padded = array_ops.pad(image, paddings)
-  if not any(isinstance(i, ops.Tensor) for i in
-             [target_height, target_width, depth]):
+  if all(not is_tensor(i) for i in
+         [target_height, target_width, depth]):
     padded.set_shape([target_height, target_width, depth])
 
   return padded
@@ -510,24 +509,22 @@ def crop_to_bounding_box(image, offset_height, offset_width,
   _Check3DImage(image, require_static=False)
   height, width, _ = _ImageDimensions(image)
 
-  if not isinstance(offset_width, ops.Tensor) and offset_width < 0:
+  if not is_tensor(offset_width) and offset_width < 0:
     raise ValueError('offset_width must be >= 0.')
-  if not isinstance(offset_height, ops.Tensor) and offset_height < 0:
+  if not is_tensor(offset_height) and offset_height < 0:
     raise ValueError('offset_height must be >= 0.')
 
-  if not isinstance(target_width, ops.Tensor) and target_width < 0:
+  if not is_tensor(target_width) and target_width < 0:
     raise ValueError('target_width must be >= 0')
-  if not isinstance(target_height, ops.Tensor) and target_height < 0:
+  if not is_tensor(target_height) and target_height < 0:
     raise ValueError('target_height must be >= 0')
 
-  if (not isinstance(width, ops.Tensor) and
-      not isinstance(target_width, ops.Tensor) and
-      not isinstance(offset_width, ops.Tensor) and
+  if (all(not is_tensor(i) for i in
+          [width, target_width, offset_width]) and
       width < (target_width + offset_width)):
     raise ValueError('width must be >= target + offset.')
-  if (not isinstance(height, ops.Tensor) and
-      not isinstance(target_height, ops.Tensor) and
-      not isinstance(offset_height, ops.Tensor) and
+  if (all(not is_tensor(i) for i in
+          [height, target_height, offset_height]) and
       height < (target_height + offset_height)):
     raise ValueError('height must be >= target + offset.')
 
@@ -568,19 +565,19 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   original_height, original_width, _ = \
     _ImageDimensions(image)
 
-  if not isinstance(target_width, ops.Tensor) and target_width <= 0:
+  if not is_tensor(target_width) and target_width <= 0:
     raise ValueError('target_width must be > 0.')
-  if not isinstance(target_height, ops.Tensor) and target_height <= 0:
+  if not is_tensor(target_height) and target_height <= 0:
     raise ValueError('target_height must be > 0.')
 
   def max_(x, y):
-    if isinstance(x, ops.Tensor) or isinstance(y, ops.Tensor):
+    if any(is_tensor(i) for i in [x, y]):
       return math_ops.maximum(x, y)
     else:
       return max(x, y)
 
   def min_(x, y):
-    if isinstance(x, ops.Tensor) or isinstance(y, ops.Tensor):
+    if any(is_tensor(i) for i in [x, y]):
       return math_ops.minimum(x, y)
     else:
       return min(x, y)
@@ -602,10 +599,12 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   resized = pad_to_bounding_box(cropped, offset_pad_height, offset_pad_width,
                                 target_height, target_width)
 
-  if (not isinstance(target_height, ops.Tensor) and
+  if resized.get_shape().ndims is None:
+    raise ValueError('resized contains no shape.')
+  if (not is_tensor(target_height) and
       not resized.get_shape()[0].is_compatible_with(target_height)):
     raise ValueError('resized height is not correct.')
-  if (not isinstance(target_width, ops.Tensor) and
+  if (not is_tensor(target_width) and
       not resized.get_shape()[1].is_compatible_with(target_width)):
     raise ValueError('resized width is not correct.')
   return resized
