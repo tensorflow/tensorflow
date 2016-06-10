@@ -192,12 +192,12 @@ def _ImageDimensions(images):
   """Returns the dimensions of an image tensor.
 
   Args:
-    images: 4-D Tensor of shape [batch, height, width, channels]
+    images: 4-D Tensor of shape `[batch, height, width, channels]`
 
   Returns:
-    list of integers [batch, height, width, channels], when static shape is
+    list of integers `[batch, height, width, channels]`, when static shape is
     fully defined.
-    list of integer scalar tensors [batch, height, width, channels], when
+    list of integer scalar tensors `[batch, height, width, channels]`, when
     static shape is not fully defined.
   """
   # A simple abstraction to provide names for each dimension. This abstraction
@@ -549,7 +549,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   dimension.
 
   Args:
-    image: 3-D tensor of shape [height, width, channels]
+    image: 3-D tensor of shape `[height, width, channels]`
     target_height: Target height.
     target_width: Target width.
 
