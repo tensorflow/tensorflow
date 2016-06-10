@@ -630,14 +630,14 @@ class BaseSession(SessionInterface):
           feed_map[subfeed_name] = (subfeed_t, subfeed_val)
 
     # Run request and get response.
+    # We need to keep the movers alive for the following _do_run().
+    # These movers are no longer needed when _do_run() completes, and
+    # are deleted when `movers` goes out of scope when this _run() ends.
+    # TODO(yuanbyu, keveman): Revisit whether we should just treat feeding
+    # of a handle from a different device as an error.
     movers = self._update_with_movers(feed_dict_string, feed_map)
-    try:
-      results = self._do_run(handle, target_list, unique_fetches,
-                             feed_dict_string, options, run_metadata)
-    finally:
-      # The movers are no longer used. Delete them.
-      for handle in movers:
-        self._register_dead_handle(handle)
+    results = self._do_run(handle, target_list, unique_fetches,
+                           feed_dict_string, options, run_metadata)
 
     # User may have fetched the same tensor multiple times, but we
     # only fetch them from the runtime once.  Furthermore, they may

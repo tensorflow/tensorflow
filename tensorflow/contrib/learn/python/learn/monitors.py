@@ -178,7 +178,8 @@ class SummarySaver(EveryN):
 
   def set_estimator(self, estimator):
     super(SummarySaver, self).set_estimator(estimator)
-    self._summary_writer = summary_io.SummaryWriter(self._estimator.model_dir)
+    if self._summary_writer is None:
+      self._summary_writer = summary_io.SummaryWriter(self._estimator.model_dir)
 
   def every_n_step_begin(self, unused_step):
     return [self._summary_op]

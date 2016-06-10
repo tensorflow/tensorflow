@@ -702,6 +702,7 @@ tf_gen_op_wrapper_py(
 tf_gen_op_wrapper_py(
     name = "random_ops",
     hidden = [
+        "RandomGamma",
         "RandomUniform",
         "RandomUniformInt",
         "RandomShuffle",
@@ -1110,6 +1111,7 @@ medium_kernel_test_list = glob([
     "kernel_tests/fft_ops_test.py",
     "kernel_tests/pooling_ops_test.py",
     "kernel_tests/rnn_test.py",
+    "kernel_tests/random_gamma_test.py",
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",
