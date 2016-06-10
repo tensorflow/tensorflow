@@ -206,6 +206,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.vectorize(math.erfc), tf.erfc)
 
     self._compareBothSparse(y, np.log, tf.log)
+    self._compareBothSparse(x, np.exp, tf.exp)
 
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
@@ -240,6 +241,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.arctan, tf.atan)
 
     self._compareBothSparse(x, np.log, tf.log)
+    self._compareBothSparse(x, np.exp, tf.exp)
 
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
@@ -273,6 +275,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(k, np.tan, tf.tan)
 
     self._compareBothSparse(y, np.log, tf.log)
+    self._compareBothSparse(x, np.exp, tf.exp)
 
   def testHalfBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float16)
@@ -301,6 +304,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBoth(x, np.vectorize(math.erfc), tf.erfc)
 
     self._compareBothSparse(y, np.log, tf.log)
+    self._compareBothSparse(x, np.exp, tf.exp)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
@@ -345,6 +349,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(y, complex_sign, tf.sign)
 
     self._compareBothSparse(y, np.log, tf.log)
+    self._compareBothSparse(x, np.exp, tf.exp)
 
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
@@ -371,6 +376,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(y, complex_sign, tf.sign)
 
     self._compareBothSparse(y, np.log, tf.log)
+    self._compareBothSparse(x, np.exp, tf.exp)
 
 
 class BinaryOpTest(tf.test.TestCase):
