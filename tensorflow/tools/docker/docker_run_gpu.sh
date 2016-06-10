@@ -14,15 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-
 set -e
-
-export CUDA_HOME=${CUDA_HOME:-/usr/local/cuda}
-
-if [ ! -d ${CUDA_HOME}/lib64 ]; then
-  echo "Failed to locate CUDA libs at ${CUDA_HOME}/lib64."
-  exit 1
-fi
 
 export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | \
                     xargs -I{} echo '-v {}:{}')
