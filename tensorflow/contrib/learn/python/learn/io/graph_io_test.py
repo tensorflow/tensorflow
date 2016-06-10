@@ -106,6 +106,12 @@ class GraphIOTest(tf.test.TestCase):
         _VALID_FILE_PATTERN, default_batch_size, tf.TFRecordReader,
         False, num_epochs=-1, queue_capacity=queue_capacity, num_threads=1,
         name=name)
+    self.assertRaisesRegexp(
+        ValueError, "Invalid read_batch_size",
+        tf.contrib.learn.io.read_batch_examples,
+        _VALID_FILE_PATTERN, default_batch_size, tf.TFRecordReader,
+        False, num_epochs=None, queue_capacity=queue_capacity,
+        num_threads=1, read_batch_size=0, name=name)
 
   def test_batch_record_features(self):
     batch_size = 17
@@ -215,6 +221,32 @@ class GraphIOTest(tf.test.TestCase):
       self.assertAllEqual(session.run(inputs), [b"ABC"])
       self.assertAllEqual(session.run(inputs), [b"DEF"])
       self.assertAllEqual(session.run(inputs), [b"GHK"])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run(inputs)
+
+      coord.request_stop()
+
+  def test_batch_reader(self):
+    gfile.Glob = self._orig_glob
+    tempdir = tempfile.mkdtemp()
+    filename = os.path.join(tempdir, "file.csv")
+    gfile.Open(filename, "w").write("A\nB\nC\nD\nE\n")
+
+    batch_size = 3
+    queue_capacity = 10
+    name = "my_batch"
+
+    with tf.Graph().as_default() as g, self.test_session(graph=g) as session:
+      inputs = tf.contrib.learn.io.read_batch_examples(
+          [filename], batch_size, reader=tf.TextLineReader,
+          randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
+          read_batch_size=10, name=name)
+      session.run(tf.initialize_local_variables())
+
+      coord = tf.train.Coordinator()
+      tf.train.start_queue_runners(session, coord=coord)
+
+      self.assertAllEqual(session.run(inputs), [b"A", b"B", b"C"])
       with self.assertRaises(errors.OutOfRangeError):
         session.run(inputs)
 
