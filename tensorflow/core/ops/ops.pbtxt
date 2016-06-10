@@ -13067,11 +13067,7 @@ op {
     minimum: 1
   }
   summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
-  description: "The hash function is deterministic on the content of the string within the\nprocess.\n\nNote that the hash function may change from time to time."
-  deprecation {
-    version: 10
-    explanation: "Use `tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`"
-  }
+  description: "The hash function is deterministic on the content of the string within the\nprocess.\n\nNote that the hash function may change from time to time.\nThis functionality will be deprecated and it\'s recommended to use\n`tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`."
 }
 op {
   name: "StringToHashBucketFast"

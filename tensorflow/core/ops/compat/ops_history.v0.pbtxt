@@ -22642,6 +22642,23 @@ op {
   }
 }
 op {
+  name: "StringToHashBucket"
+  input_arg {
+    name: "string_tensor"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT64
+  }
+  attr {
+    name: "num_buckets"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "StringToHashBucketFast"
   input_arg {
     name: "input"
