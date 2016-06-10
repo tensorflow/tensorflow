@@ -225,7 +225,7 @@ def is_tensor(x):
     x: An python object to check.
 
   Returns:
-    True if `x` represents a tensor, False if not.
+    `True` if `x` represents a tensor, `False` if not.
   """
   tensor_types = (ops.Tensor, ops.SparseTensor, variables.Variable)
   return isinstance(x, tensor_types)
