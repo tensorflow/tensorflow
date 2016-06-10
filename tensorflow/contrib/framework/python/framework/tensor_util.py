@@ -29,6 +29,7 @@ __all__ = [
     'assert_same_float_dtype',
     'assert_scalar_int',
     'convert_to_tensor_or_sparse_tensor',
+    'is_tensor',
     'reduce_sum_n',
     'with_shape',
     'with_same_shape']
@@ -215,7 +216,7 @@ def with_same_shape(expected_tensor, tensor):
     return with_shape(expected_shape, tensor)
 
 
-def _is_tensor(t):
+def is_tensor(t):
   return isinstance(t, (ops.Tensor, ops.SparseTensor, variables.Variable))
 
 
@@ -239,7 +240,7 @@ def with_shape(expected_shape, tensor):
     raise ValueError('SparseTensor not supported.')
 
   # Shape type must be 1D int32.
-  if _is_tensor(expected_shape):
+  if is_tensor(expected_shape):
     if expected_shape.dtype.base_dtype != dtypes.int32:
       raise ValueError(
           'Invalid dtype %s for shape %s expected of tensor %s.' % (
@@ -264,14 +265,14 @@ def with_shape(expected_shape, tensor):
 
   actual_shape = tensor.get_shape()
 
-  if not actual_shape.is_fully_defined() or _is_tensor(expected_shape):
+  if not actual_shape.is_fully_defined() or is_tensor(expected_shape):
     with ops.op_scope([tensor], '%s/' % tensor.op.name):
-      if not _is_tensor(expected_shape) and (len(expected_shape) < 1):
+      if not is_tensor(expected_shape) and (len(expected_shape) < 1):
         # TODO(irving): Remove scalar special case
         return array_ops.reshape(tensor, [])
       with ops.control_dependencies([_assert_shape_op(expected_shape, tensor)]):
         result = array_ops.identity(tensor)
-      if not _is_tensor(expected_shape):
+      if not is_tensor(expected_shape):
         result.set_shape(expected_shape)
       return result
 
