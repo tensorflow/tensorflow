@@ -174,9 +174,9 @@ class Variable(object):
         `initial_value` must be known.
       caching_device: Optional device string describing where the Variable
         should be cached for reading.  Defaults to the Variable's device.
-        If not `None`, caches on another device.  Generally the standard caching
-        mechanism is sufficient, *only* use this when a variable is accessed in
-        a `cond()`.
+        If not `None`, caches on another device.  Typical use is to cache
+        on the device where the Ops using the Variable reside, to deduplicate
+        copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
       variable_def: `VariableDef` protocol buffer. If not `None`, recreates
@@ -232,9 +232,9 @@ class Variable(object):
         `initial_value` must be known.
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
-        device.  If not `None`, caches on another device. Generally the standard
-        caching mechanism is sufficient, *only* use this when a variable is
-        accessed in a `cond()`.
+        device.  If not `None`, caches on another device.  Typical use is to
+        cache on the device where the Ops using the Variable reside, to
+        deduplicate copying through `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
       dtype: If set, initial_value will be converted to the given type.
@@ -312,8 +312,7 @@ class Variable(object):
         # to take the op to colocate the snapshot with, so we can use
         # colocation rather than devices.
         if caching_device is not None:
-          # When passing a caching_device prevent using stack of devices.
-          with ops.device(None), ops.device(caching_device):
+          with ops.device(caching_device):
             self._snapshot = array_ops.identity(self._variable, name="read")
         else:
           with ops.colocate_with(self._variable.op):
