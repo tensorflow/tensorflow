@@ -217,6 +217,17 @@ def with_same_shape(expected_tensor, tensor):
 
 
 def is_tensor(t):
+  """Check for tensor types.
+
+  If the object represents a tensor, returns True. Equivalent to
+  `isinstance(t, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+
+  Args:
+    t: An python object to check.
+
+  Returns:
+    True if `t` represents a tensor, False if not.
+  """
   return isinstance(t, (ops.Tensor, ops.SparseTensor, variables.Variable))
 
 
