@@ -358,7 +358,7 @@ class DataFeeder(object):
         else:
           if self.n_classes > 1:
             if len(self.output_shape) == 2:
-              out.itemset((i, self.y[sample]), 1.0)
+              out.itemset((i, int(self.y[sample])), 1.0)
             else:
               for idx, value in enumerate(self.y[sample]):
                 out.itemset(tuple([i, idx, value]), 1.0)
