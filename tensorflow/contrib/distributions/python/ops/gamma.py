@@ -30,6 +30,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 
 
 class Gamma(distribution.ContinuousDistribution):
@@ -74,7 +75,8 @@ class Gamma(distribution.ContinuousDistribution):
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
-    with ops.op_scope([alpha, beta], name):
+    with ops.op_scope([alpha, beta], name) as scope:
+      self._name = scope
       with ops.control_dependencies([
           check_ops.assert_positive(alpha), check_ops.assert_positive(beta)]):
         alpha = array_ops.identity(alpha, name="alpha")
@@ -88,7 +90,6 @@ class Gamma(distribution.ContinuousDistribution):
 
     self._alpha = alpha
     self._beta = beta
-    self._name = name
 
   @property
   def name(self):
@@ -290,6 +291,29 @@ class Gamma(distribution.ContinuousDistribution):
         beta = self._beta
         return (alpha - math_ops.log(beta) + math_ops.lgamma(alpha) +
                 (1 - alpha) * math_ops.digamma(alpha))
+
+  def sample(self, n, seed=None, name="sample"):
+    """Draws `n` samples from the Gamma distribution(s).
+
+    See the doc for tf.random_gamma for further detail.
+
+    Args:
+      n: Python integer, the number of observations to sample from each
+        distribution.
+      seed: Python integer, the random seed for this operation.
+      name: Optional name for the operation.
+
+    Returns:
+      samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
+          with values of type `self.dtype`.
+    """
+    with ops.op_scope([n, self.alpha, self._beta], self.name):
+      return random_ops.random_gamma([n],
+                                     self.alpha,
+                                     beta=self._beta,
+                                     dtype=self.dtype,
+                                     seed=seed,
+                                     name=name)
 
   @property
   def is_reparameterized(self):

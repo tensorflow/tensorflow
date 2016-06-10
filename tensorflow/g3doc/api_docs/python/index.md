@@ -58,6 +58,7 @@
   * [`ones`](../../api_docs/python/constant_op.md#ones)
   * [`ones_like`](../../api_docs/python/constant_op.md#ones_like)
   * [`random_crop`](../../api_docs/python/constant_op.md#random_crop)
+  * [`random_gamma`](../../api_docs/python/constant_op.md#random_gamma)
   * [`random_normal`](../../api_docs/python/constant_op.md#random_normal)
   * [`random_shuffle`](../../api_docs/python/constant_op.md#random_shuffle)
   * [`random_uniform`](../../api_docs/python/constant_op.md#random_uniform)

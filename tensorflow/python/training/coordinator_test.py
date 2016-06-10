@@ -144,6 +144,26 @@ class CoordinatorTest(tf.test.TestCase):
     with self.assertRaisesRegexp(RuntimeError, "First"):
       coord.join(threads)
 
+  def testClearStopClearsExceptionToo(self):
+    coord = tf.train.Coordinator()
+    threads = [
+        threading.Thread(target=RaiseInN,
+                         args=(coord, 0.01, RuntimeError("First"), True)),
+        ]
+    for t in threads:
+      t.start()
+    with self.assertRaisesRegexp(RuntimeError, "First"):
+      coord.join(threads)
+    coord.clear_stop()
+    threads = [
+        threading.Thread(target=RaiseInN,
+                         args=(coord, 0.01, RuntimeError("Second"), True)),
+        ]
+    for t in threads:
+      t.start()
+    with self.assertRaisesRegexp(RuntimeError, "Second"):
+      coord.join(threads)
+
 
 def _StopAt0(coord, n):
   if n[0] == 0:

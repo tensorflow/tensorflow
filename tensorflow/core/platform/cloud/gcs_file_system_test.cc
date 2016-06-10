@@ -22,6 +22,25 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+std::vector<HttpRequest*> CreateGetThreeChildrenRequest() {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+      "prefix=path%2F&fields=items\n"
+      "Auth Token: fake_token\n",
+      "{\"items\": [ "
+      "  { \"name\": \"path/file1.txt\" },"
+      "  { \"name\": \"path/subpath/file2.txt\" },"
+      "  { \"name\": \"path/file3.txt\" }]}")});
+  return requests;
+}
+
+void ExpectGetThreeChildrenFiles(const std::vector<string>& children) {
+  EXPECT_EQ(3, children.size());
+  EXPECT_EQ("file1.txt", children[0]);
+  EXPECT_EQ("subpath/file2.txt", children[1]);
+  EXPECT_EQ("file3.txt", children[2]);
+}
+
 class FakeAuthProvider : public AuthProvider {
  public:
   Status GetToken(string* token) override {
@@ -160,14 +179,7 @@ TEST(GcsFileSystemTest, FileExists) {
 }
 
 TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
-  std::vector<HttpRequest*> requests({new FakeHttpRequest(
-      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
-      "prefix=path%2F&fields=items\n"
-      "Auth Token: fake_token\n",
-      "{\"items\": [ "
-      "  { \"name\": \"path/file1.txt\" },"
-      "  { \"name\": \"path/subpath/file2.txt\" },"
-      "  { \"name\": \"path/file3.txt\" }]}")});
+  auto requests = CreateGetThreeChildrenRequest();
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)));
@@ -175,10 +187,19 @@ TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
   std::vector<string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", &children));
 
-  EXPECT_EQ(3, children.size());
-  EXPECT_EQ("gs://bucket/path/file1.txt", children[0]);
-  EXPECT_EQ("gs://bucket/path/subpath/file2.txt", children[1]);
-  EXPECT_EQ("gs://bucket/path/file3.txt", children[2]);
+  ExpectGetThreeChildrenFiles(children);
+}
+
+TEST(GcsFileSystemTest, GetChildren_ThreeFiles_NoSlash) {
+  auto requests = CreateGetThreeChildrenRequest();
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)));
+
+  std::vector<string> children;
+  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path", &children));
+
+  ExpectGetThreeChildrenFiles(children);
 }
 
 TEST(GcsFileSystemTest, GetChildren_Empty) {

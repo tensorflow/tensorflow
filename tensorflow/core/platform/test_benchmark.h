@@ -54,6 +54,7 @@ class Benchmark {
   Benchmark* Arg(int x);
   Benchmark* ArgPair(int x, int y);
   Benchmark* Range(int lo, int hi);
+  Benchmark* RangePair(int lo1, int hi1, int lo2, int hi2);
   static void Run(const char* pattern);
 
  private:

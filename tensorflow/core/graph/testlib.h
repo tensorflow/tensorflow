@@ -101,6 +101,10 @@ Node* RandomUniform(Graph* g, Node* input, DataType dtype);
 // Generates random unit normal distribution of the input shape.
 Node* RandomGaussian(Graph* g, Node* input, DataType dtype);
 
+// Generates random gamma distribution with the given shape and alpha[s].
+// Output dtype determined by alpha.
+Node* RandomGamma(Graph* g, Node* shape, Node* alpha);
+
 // Generates random parameters from the truncated standard normal distribution
 // of the nput shape
 Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);

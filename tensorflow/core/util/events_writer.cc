@@ -102,6 +102,8 @@ void EventsWriter::WriteSerializedEvent(StringPiece event_str) {
   recordio_writer_->WriteRecord(event_str);
 }
 
+// NOTE(touts); This is NOT the function called by the Python code.
+// Python calls WriteSerializedEvent(), see events_writer.i.
 void EventsWriter::WriteEvent(const Event& event) {
   string record;
   event.AppendToString(&record);

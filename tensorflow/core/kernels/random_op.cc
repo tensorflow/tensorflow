@@ -412,6 +412,178 @@ class MultinomialOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(MultinomialOp);
 };
 
+// Samples from one or more gamma distributions.
+template <typename T>
+class RandomGammaOp : public OpKernel {
+ public:
+  explicit RandomGammaOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, generator_.Init(context));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& shape_t = ctx->input(0);
+    const Tensor& alpha_t = ctx->input(1);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(shape_t.shape()) &&
+                         (shape_t.dtype() == DataType::DT_INT32 ||
+                          shape_t.dtype() == DataType::DT_INT64),
+                errors::InvalidArgument(
+                    "shape must be a vector of {int32,int64}, got shape: ",
+                    shape_t.DebugString()));
+    TensorShape samples_shape;
+    if (shape_t.dtype() == DataType::DT_INT32) {
+      auto vec = shape_t.flat<int32>();
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(vec.data(), vec.size(),
+                                                      &samples_shape));
+    } else if (shape_t.dtype() == DataType::DT_INT64) {
+      auto vec = shape_t.flat<int64>();
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(vec.data(), vec.size(),
+                                                      &samples_shape));
+    }
+    const int64 num_samples = samples_shape.num_elements();
+    OP_REQUIRES(ctx, num_samples > 0,
+                errors::InvalidArgument(
+                    "Input shape should have non-zero element count, got: ",
+                    num_samples));
+
+    samples_shape.AppendShape(alpha_t.shape());
+    // Allocate output samples.
+    Tensor* samples_t = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, samples_shape, &samples_t));
+
+    using random::PhiloxRandom;
+
+    typedef random::NormalDistribution<PhiloxRandom, T> Normal;
+    typedef random::UniformDistribution<PhiloxRandom, T> Uniform;
+
+    // Each attempt is 95+% successful, and requires 1-2 normal + 1 uniform
+    static constexpr int kReservedSamplesPerOutput = 256;
+
+    const auto alpha_flat = alpha_t.flat<T>().data();
+    const int64 num_alphas = alpha_t.NumElements();
+    OP_REQUIRES(ctx, num_alphas > 0,
+                errors::InvalidArgument(
+                    "Input alpha should have non-zero element count, got: ",
+                    num_alphas));
+    auto samples_flat = samples_t->flat<T>().data();
+    PhiloxRandom rng = generator_.ReserveRandomOutputs(
+        num_samples * num_alphas, kReservedSamplesPerOutput);
+
+    // Transformation-rejection from pairs of uniform and normal random
+    // variables. http://dl.acm.org/citation.cfm?id=358414
+    //
+    // The algorithm has an acceptance rate of ~95% for the smallest alpha (~1),
+    // and higher accept rates for higher alpha, so runtime is
+    // O(NumAlphas * NumSamples * k) with k ~ 1 / 0.95.
+    //
+    // We partition work first across alphas then across samples-per-alpha to
+    // avoid a couple flops which can be done on a per-alpha basis.
+
+    auto DoWork = [num_samples, num_alphas, &rng, samples_flat, alpha_flat](
+        int start_output, int limit_output) {
+      // Capturing "rng" by-value would only make a copy for the _shared_
+      // lambda.  Since we want to let each worker have its own copy, we pass
+      // "rng" by reference and explicitly do a copy assignment.
+
+      Normal normal;
+      Uniform uniform;
+      typename Normal::ResultType norm_result;
+      typename Uniform::ResultType uniform_result;
+      for (int64 output_idx = start_output; output_idx < limit_output;
+           /* output_idx incremented within inner loop below */) {
+        int64 alpha_idx = output_idx / num_samples;
+
+        // Several calculations can be done on a per-alpha basis.
+        const T alpha = alpha_flat[alpha_idx];
+        // For alpha<1, we add one to d=alpha-1/3, and multiply the final result
+        // by uniform()^(1/alpha)
+        bool alpha_less_than_one = alpha < T(1);
+        static const T kMinusOneThird = T(-1) / 3;
+        static const T kTwoThirds = T(2) / 3;
+        const T d = alpha + (alpha_less_than_one ? kTwoThirds : kMinusOneThird);
+        static const T kOneThird = T(1) / 3;
+        using Eigen::numext::sqrt;
+        const T c = kOneThird / sqrt(d);
+
+        // Instead of +alpha_idx for each sample, we offset the pointer once.
+        auto samples_alpha_offset = samples_flat + alpha_idx;
+
+        // Compute the rest of the samples for the current alpha value.
+        for (int64 sample_idx = output_idx % num_samples;
+             sample_idx < num_samples && output_idx < limit_output;
+             sample_idx++, output_idx++) {
+          // Since each sample may use a variable number of normal/uniform
+          // samples, and we want data stable regardless of sharding (including
+          // eventually on GPU), we skip on a per-sample basis.
+          PhiloxRandom gen = rng;
+          gen.Skip(kReservedSamplesPerOutput * output_idx);
+          short norm_remaining = 0;
+          short uniform_remaining = 0;
+
+          // Keep trying until we don't reject a sample. In practice, we will
+          // only reject ~5% at worst, for low alpha near 1.
+          while (true) {
+            if (norm_remaining == 0) {
+              norm_remaining = Normal::kResultElementCount;
+              norm_result = normal(&gen);
+            }
+            norm_remaining--;
+            const T x = norm_result[norm_remaining];
+            T v = T(1) + c * x;
+            if (v <= T(0)) {
+              continue;
+            }
+            v = v * v * v;
+            if (uniform_remaining == 0) {
+              uniform_remaining = Uniform::kResultElementCount;
+              uniform_result = uniform(&gen);
+            }
+            uniform_remaining--;
+            T u = uniform_result[uniform_remaining];
+            using Eigen::numext::log;
+            // The first option in the if is a "squeeze" short-circuit to dodge
+            // the two logs. Magic constant sourced from the paper linked above.
+            // Upward of .91 of the area covered by the log inequality is
+            // covered by the squeeze as well (larger coverage for smaller
+            // values of alpha).
+            if ((u < T(1) - T(0.0331) * (x * x) * (x * x)) ||
+                (log(u) < T(0.5) * x * x + d * (T(1) - v + log(v)))) {
+              T res = d * v;
+              if (alpha_less_than_one) {
+                if (uniform_remaining == 0) {
+                  uniform_remaining = Uniform::kResultElementCount;
+                  uniform_result = uniform(&gen);
+                }
+                uniform_remaining--;
+                using Eigen::numext::pow;
+                res *= pow(uniform_result[uniform_remaining], T(1) / alpha);
+              }
+              samples_alpha_offset[sample_idx * num_alphas] = res;
+              break;
+            }
+          }
+        }
+      }
+    };
+    // Two calls to log only occur for ~10% of samples reaching the log line.
+    //   2 x 100 (64-bit cycles per log) x 0.10 = ~20.
+    // Other ops: sqrt, +, *, /, %... something like 15 of these, at 3-6 cycles
+    // each = ~60.
+    // All of this /0.95 due to the rejection possibility = ~85.
+    static const int kElementCost = 85 + 2 * Normal::kElementCost +
+                                    Uniform::kElementCost +
+                                    3 * PhiloxRandom::kElementCost;
+    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers,
+          num_alphas * num_samples, kElementCost, DoWork);
+  }
+
+ private:
+  GuardedPhiloxRandom generator_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(RandomGammaOp);
+};
+
 }  // namespace
 
 #define REGISTER(TYPE)                                                     \
@@ -440,7 +612,10 @@ class MultinomialOp : public OpKernel {
               random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >); \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("Multinomial").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),    \
-      MultinomialOp<CPUDevice, TYPE>)
+      MultinomialOp<CPUDevice, TYPE>);                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("RandomGamma").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),    \
+      RandomGammaOp<TYPE>)
 
 #define REGISTER_INT(IntType)                                   \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")              \

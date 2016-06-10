@@ -65,12 +65,49 @@ Benchmark* Benchmark::ArgPair(int x, int y) {
   return this;
 }
 
-Benchmark* Benchmark::Range(int lo, int hi) {
-  Arg(lo);
-  for (int32 i = 1; i < kint32max / 8 && i < hi; i *= 8) {
-    Arg(i);
+namespace {
+
+void AddRange(std::vector<int>* dst, int lo, int hi, int mult) {
+  CHECK_GE(lo, 0);
+  CHECK_GE(hi, lo);
+
+  // Add "lo"
+  dst->push_back(lo);
+
+  // Now space out the benchmarks in multiples of "mult"
+  for (int32 i = 1; i < kint32max / mult; i *= mult) {
+    if (i >= hi) break;
+    if (i > lo) {
+      dst->push_back(i);
+    }
   }
-  if (lo != hi) Arg(hi);
+  // Add "hi" (if different from "lo")
+  if (hi != lo) {
+    dst->push_back(hi);
+  }
+}
+
+}  // namespace
+
+Benchmark* Benchmark::Range(int lo, int hi) {
+  std::vector<int> args;
+  AddRange(&args, lo, hi, 8);
+  for (int arg : args) {
+    Arg(arg);
+  }
+  return this;
+}
+
+Benchmark* Benchmark::RangePair(int lo1, int hi1, int lo2, int hi2) {
+  std::vector<int> args1;
+  std::vector<int> args2;
+  AddRange(&args1, lo1, hi1, 8);
+  AddRange(&args2, lo2, hi2, 8);
+  for (int arg1 : args1) {
+    for (int arg2 : args2) {
+      ArgPair(arg1, arg2);
+    }
+  }
   return this;
 }
 
