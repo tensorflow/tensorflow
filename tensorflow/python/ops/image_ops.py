@@ -412,13 +412,13 @@ def central_crop(image, central_fraction):
 
 
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
-                        target_width, dynamic_shape=False):
+                        target_width):
   """Pad `image` with zeros to the specified `height` and `width`.
-  
+
   Adds `offset_height` rows of zeros on top, `offset_width` columns of
   zeros on the left, and then pads the image on the bottom and right
   with zeros until it has dimensions `target_height`, `target_width`.
-  
+
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
 
@@ -479,10 +479,10 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   return padded
 
 
-def crop_to_bounding_box(image, offset_height, offset_width,
-                         target_height, target_width):
+def crop_to_bounding_box(image, offset_height, offset_width, target_height,
+                         target_width):
   """Crops an image to a specified bounding box.
-  
+
   This op cuts a rectangular part out of `image`. The top-left corner of the
   returned image is at `offset_height, offset_width` in `image`, and its
   lower-right corner is at
@@ -562,8 +562,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   """
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
-  original_height, original_width, _ = \
-    _ImageDimensions(image)
+  original_height, original_width, _ = _ImageDimensions(image)
 
   if not is_tensor(target_width) and target_width <= 0:
     raise ValueError('target_width must be > 0.')
