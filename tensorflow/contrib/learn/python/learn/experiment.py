@@ -32,7 +32,7 @@ class Experiment(object):
                eval_input_fn,
                eval_metrics=None,
                train_steps=None,
-               eval_steps=None,
+               eval_steps=100,
                train_monitors=None,
                local_train_step=1000):
     """Constructor for Experiment.
