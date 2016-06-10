@@ -57,6 +57,10 @@ class RMSPropOptimizer(optimizer.Optimizer):
                name="RMSProp"):
     """Construct a new RMSProp optimizer.
 
+    Note that in dense implement of this algorithm, m_t and v_t will 
+    update even if g is zero, but in sparse implement, m_t and v_t 
+    will not update in iterations g is zero.
+
     Args:
       learning_rate: A Tensor or a floating point value.  The learning rate.
       decay: Discounting factor for the history/coming gradient
@@ -105,4 +109,14 @@ class RMSPropOptimizer(optimizer.Optimizer):
         grad, use_locking=self._use_locking).op
 
   def _apply_sparse(self, grad, var):
-    raise NotImplementedError()
+    rms = self.get_slot(var, "rms")
+    mom = self.get_slot(var, "momentum")
+    return training_ops.sparse_apply_rms_prop(
+        var, rms, mom,
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._decay_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._epsilon_tensor, var.dtype.base_dtype),
+        grad.values,
+        grad.indices,
+        use_locking=self._use_locking)
