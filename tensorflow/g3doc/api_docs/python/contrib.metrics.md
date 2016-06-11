@@ -106,7 +106,7 @@ idempotent operation that simply divides `total` by `count`.
 To facilitate the estimation of the accuracy over a stream of data, the
 function utilizes two operations. First, an `is_correct` operation that
 computes a tensor whose shape matches `predictions` and whose elements are
-set to 1.0 when the corresponding values of `predictions` and `labels` match
+set to 1.0 when the corresponding values of `predictions` and `labels match
 and 0.0 otherwise. Second, an `update_op` operation whose behavior is
 dependent on the value of `weights`. If `weights` is None, then `update_op`
 increments `total` with the number of elements of `predictions` that match

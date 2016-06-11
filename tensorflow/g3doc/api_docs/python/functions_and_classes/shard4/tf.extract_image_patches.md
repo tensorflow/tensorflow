@@ -1,6 +1,6 @@
 ### `tf.extract_image_patches(images, padding, ksizes=None, strides=None, rates=None, name=None)` {#extract_image_patches}
 
-Extract `patches` from `images` and puth them in the "depth" output dimension.
+Extract `patches` from `images` and put them in the "depth" output dimension.
 
 ##### Args:
 
